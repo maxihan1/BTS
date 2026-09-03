@@ -154,17 +154,39 @@ export function resolveTabHref(tab: ProjectViewTab, projectKey: string): string 
 }
 
 /**
- * 지금 경로에서 활성인 탭의 인덱스. 없으면 `-1`.
- *
- * ### 활성 판정은 두 층이고, 셋째 층이 그 둘을 대조한다
- * ① **시각·ARIA** 는 `Link` 의 `activeOptions`/`activeProps` 가 소유한다 — 라우터가 판정한다.
- * ② **오버플로 핀 고정용 인덱스**는 이 함수가 소유한다 — `ResizeObserver` 콜백 안에서
- *    라우터 훅을 부를 수 없어 순수 함수여야 한다.
- * ③ `project-view-tabs.test.ts` 가 실 라우트 전수로 두 층의 결론이 어긋나지 않는지 단언한다.
+ * 이 탭이 지금 경로에서 활성인가.
  *
  * 판정 규칙은 `Link` 의 것을 그대로 흉내낸다 — `exact` 면 완전 일치, 아니면 경로 세그먼트
  * 경계까지 포함한 접두 일치다. 🛑 `startsWith(href)` 만 쓰면 `/projects/AT` 가 `/projects/ATLAS`
  * 를 활성으로 만든다. 그래서 **`href` 자신이거나 `href + '/'` 로 시작할 때**만 활성이다.
+ *
+ * 🛑 **판별식이 이 함수를 부르게 하라.** 같은 식을 테스트 안에 베껴 두면 데이터(`exact` 플래그)만
+ *    지키고 규칙을 바꿔도 red 가 안 난다 — 이 저장소가 반복 적발한 「두 목록이 서로를 검사하지
+ *    않는다」 양식이다.
+ *
+ * ⚠️ **접두 분기는 지금 실 라우트로는 관측되지 않는다.** 정본 9탭의 목적지가 전부 말단 경로라
+ *    `/projects/ATLAS/board/…` 같은 하위 라우트가 아직 없다(실측 — 이 분기를 완전 일치로 바꿔도
+ *    라우트 전수 판별식이 통과했다). 그래서 이 규칙은 **직접 단위 테스트**가 지킨다
+ *    (`project-view-tabs.test.ts` §isTabActive). 하위 라우트가 생기는 날을 위한 대비다.
+ */
+export function isTabActive(tab: ProjectViewTab, pathname: string, projectKey: string): boolean {
+  const href = resolveTabHref(tab, projectKey)
+  return tab.exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
+}
+
+/**
+ * 지금 경로에서 활성인 탭의 인덱스. 없으면 `-1`.
+ *
+ * ### 활성 판정은 두 층이고, 판별식이 그 둘을 대조한다
+ * ① **시각·ARIA** 는 `Link` 의 `activeOptions`/`activeProps` 가 소유한다 — 라우터가 판정한다.
+ * ② **오버플로 핀 고정용 인덱스**는 이 함수가 소유한다 — `ResizeObserver` 콜백 안에서
+ *    라우터 훅을 부를 수 없어 순수 함수여야 한다.
+ *
+ * ③ 대조는 **두 군데**가 나눠 한다. 어느 한쪽만 있으면 보증이 절반이다.
+ *    - `project-view-tabs.test.ts` — `resolveTabHref` 와 `router.buildLocation()` 의 **href 생성**
+ *      일치. 목적지가 갈리는 것을 막는다.
+ *    - `ProjectNavTabs.test.tsx` — 실 렌더의 `aria-current`(라우터 판정)와 이 함수의 결론이
+ *      프로젝트 스코프 탭 목적지 전수에서 같은지. **활성 판정 자체**를 대조하는 자리다.
  *
  * @param pathname 현재 URL 의 pathname (search·hash 없음)
  * @param projectKey 지금 보고 있는 프로젝트 키
@@ -176,10 +198,7 @@ export function resolveActiveTabIndex(
   projectKey: string,
   tabs: readonly ProjectViewTab[] = PROJECT_VIEW_TABS,
 ): number {
-  return tabs.findIndex((tab) => {
-    const href = resolveTabHref(tab, projectKey)
-    return tab.exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
-  })
+  return tabs.findIndex((tab) => isTabActive(tab, pathname, projectKey))
 }
 
 /**
@@ -188,8 +207,13 @@ export function resolveActiveTabIndex(
  * 백로그 화면의 인라인 nav 가 보드 링크에 `?board=` 를 얹던 일을 이어받는다 — 없으면
  * 백로그→보드 이동에서 스코프가 증발해 보드 화면이 `boards[0]` 으로 되돌아간다.
  *
- * **종류를 가리지 않는다.** 보드 화면은 칸반·스크럼을 다 열기 때문이다. 그래서 칸반 보드를
- * 보다가 다른 탭에 다녀와도 그 보드로 돌아온다(보드 탭이 생기면서 새로 필요해진 보장이다).
+ * **종류를 가리지 않는다.** 보드 화면은 칸반·스크럼을 다 열기 때문이다.
+ *
+ * 🛑 **보장 범위는 보드↔백로그 왕복까지다.** 스코프의 유일한 출처가 URL 의 `?board=` 이고 그것을
+ *    싣는 탭이 보드·백로그 둘뿐이라, 나머지 7탭 중 하나를 밟으면 파라미터가 사라진다
+ *    (실측 — 보드 → 타임라인 → 보드 는 스코프 없이 착지해 `boards[0]` 로 튄다).
+ *    전 탭이 스코프를 나르게 하려면 탭 정의에 「스코프 운반」 축을 추가해야 하는데, 그것은
+ *    편차 X7 의 완전 해소(별건)다. **여기서 그 이상을 약속하지 않는다.**
  *
  * @param currentBoardId 지금 보고 있는 보드 UUID. 미확정이면 undefined
  */

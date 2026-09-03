@@ -99,6 +99,44 @@ test.describe('Jira 패리티 J5 — 프로젝트 뷰 탭바', () => {
     )
   })
 
+  test('S3-b 좁혔다 되돌리면 접힘이 그대로 복구된다 (히스테리시스 회귀 가드)', async ({ page }) => {
+    // 🛑 이 PR 의 리뷰가 잡은 결함의 재현 스텝 그대로다.
+    //
+    //    측정 대상을 `<ul>`(트리거의 형제, `flex-1`)에 걸었더니 트리거가 렌더되는 순간 `<ul>` 이
+    //    좁아지는데 예산에서 트리거 폭을 **또** 뺐다 — 같은 폭을 두 번 뺀 것이다. 그러면
+    //    「트리거가 있는가」가 폭을 정하고 그 폭이 다시 트리거 유무를 정하는 되먹임 고리가 생겨,
+    //    880px 에서 9탭이 보이던 화면을 860px 로 좁혔다 **되돌려도 6탭에 고정**됐다.
+    //    창을 줄였다 되돌리는 평범한 조작으로 전 화면 탭바가 틀어진다.
+    //
+    //    지금은 탭과 트리거를 함께 담는 래퍼를 재므로 폭이 트리거 유무와 무관하다.
+    //
+    // 폭 3개는 **실측으로 고른 값**이다(2026-09-04 · Chromium · 사이드바 펼침).
+    // 880 → 9탭 전량 · 860 → 접힘 · 880 되돌림 → 다시 9탭.
+    // 🛑 데스크톱 구간을 벗어나지 않는 값이어야 한다 — `max-md`(768px) 아래로 내려가면 사이드바가
+    //    오프캔버스로 빠져 본문이 **넓어지고** 오히려 접힘이 풀린다(실측: 700px 에서 9탭 전량).
+    //    그러면 「좁혔다」가 성립하지 않아 왕복 자체가 공허해진다.
+    // 라벨·폰트가 바뀌어 860 에서 더는 안 접히면 아래 「접혔다」 단언이 **먼저 red** 가 되어
+    // 폭을 다시 고르라고 알린다 — 조용히 통과하지 않는다.
+    await loginAsAlice(page)
+    await page.goto(`/projects/${PROJECT_KEY}/board`)
+
+    const nav = projectViewNav(page)
+    await expect(nav).toBeVisible()
+
+    await page.setViewportSize({ width: 880, height: 720 })
+    await expect(nav.getByRole('link')).toHaveCount(TAB_LABELS.length)
+
+    // 좁혀서 접히게 만든다 — 접혔다는 것 자체를 먼저 확인해야 왕복이 의미를 갖는다.
+    await page.setViewportSize({ width: 860, height: 720 })
+    await expect(nav.getByRole('button', { name: '더 보기', exact: true })).toBeVisible()
+    await expect(nav.getByRole('link')).not.toHaveCount(TAB_LABELS.length)
+
+    // 되돌린다 — 원래 폭에서 보이던 것이 그대로 돌아와야 한다. **결함 시점에는 6탭에 고정됐다.**
+    await page.setViewportSize({ width: 880, height: 720 })
+    await expect(nav.getByRole('link')).toHaveCount(TAB_LABELS.length)
+    await expect(nav.getByRole('button', { name: '더 보기', exact: true })).toHaveCount(0)
+  })
+
   test('S4 활성 탭은 좁혀도 탭바 밖에 남는다 (핀 고정)', async ({ page }) => {
     await loginAsAlice(page)
     // 뒤쪽 탭인 「버전」 화면으로 직접 들어간다 — 좁히면 원래는 접힐 자리다.

@@ -124,42 +124,67 @@ export function ProjectNavTabs({
   return (
     <nav
       aria-label={navLabels.projectViewNav}
-      className="relative flex items-center gap-1 border-b border-border px-6"
+      className="relative flex items-center border-b border-border px-6"
     >
-      <ul ref={setContainer} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-        {visibleIndexes.map((index) => {
-          const tab = PROJECT_VIEW_TABS[index]
-          if (tab === undefined) return null
-          return (
-            <li key={tab.key} ref={setItem(index)} className="shrink-0">
-              <ProjectViewTabLink tab={tab} projectKey={projectKey} boardScope={boardScope} />
-            </li>
-          )
-        })}
-      </ul>
+      {/*
+        🛑 측정 대상은 **탭과 트리거를 함께 담는 이 래퍼**다. `<ul>` 에 걸면 안 된다.
 
-      {shouldRenderMore && (
-        <Popover>
-          <PopoverTrigger ref={setMore} className={MORE_TRIGGER_CLASS}>
-            {projectViewLabels.overflowTrigger}
-          </PopoverTrigger>
-          <PopoverContent container={portalHost} align="end" className="w-48 p-2">
-            <ul className="flex flex-col gap-1">
-              {hiddenIndexes.map((index) => {
-                const tab = PROJECT_VIEW_TABS[index]
-                if (tab === undefined) return null
-                return (
-                  <li key={tab.key}>
-                    <ProjectViewTabLink tab={tab} projectKey={projectKey} boardScope={boardScope} />
-                  </li>
-                )
-              })}
-            </ul>
-          </PopoverContent>
-        </Popover>
-      )}
+        `<ul>` 을 `flex-1` 로 두고 트리거를 형제로 놓으면 트리거가 렌더되는 순간 `<ul>` 이
+        그만큼 좁아진다. 그런데 `computeVisibleTabIndexes` 는 예산에서 트리거 폭을 **또** 뺀다
+        — 같은 폭을 두 번 빼는 것이다. 결과는 두 가지였다(실측).
+        ① **히스테리시스** — 880px 에서 9탭이 보이던 화면을 860px 로 좁혔다 880px 로 되돌리면
+           6탭에 고정된다. 「트리거가 있는가」가 폭을 정하고 그 폭이 다시 트리거 유무를 정하는
+           되먹임 고리다. 창을 줄였다 되돌리는 평범한 조작으로 전 화면 탭바가 틀어졌다.
+        ② **한 칸을 헛되이 접는다** — 오른쪽이 비어 있는데도 마지막 탭이 팝오버로 들어갔다.
 
-      {/* nav 안의 Portal 목적지 — 접힌 탭 링크가 nav 밖으로 새지 않게 한다 */}
+        이 래퍼는 nav 의 유일한 신축 자식이라 폭이 트리거 유무와 **무관**하다. 그래야
+        순수 함수의 전제(「containerWidth 는 트리거 자리를 포함한 전체 바 폭」)가 성립한다.
+        짝 판별식 = `e2e/project-tabs-overflow.spec.ts` 의 「좁혔다 되돌리면 전량 복귀」.
+      */}
+      <div
+        ref={setContainer}
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+      >
+        <ul className="flex min-w-0 items-center gap-1">
+          {visibleIndexes.map((index) => {
+            const tab = PROJECT_VIEW_TABS[index]
+            if (tab === undefined) return null
+            return (
+              <li key={tab.key} ref={setItem(index)} className="shrink-0">
+                <ProjectViewTabLink tab={tab} projectKey={projectKey} boardScope={boardScope} />
+              </li>
+            )
+          })}
+        </ul>
+
+        {shouldRenderMore && (
+          <Popover>
+            <PopoverTrigger ref={setMore} className={MORE_TRIGGER_CLASS}>
+              {projectViewLabels.overflowTrigger}
+            </PopoverTrigger>
+            <PopoverContent container={portalHost} align="end" className="w-48 p-2">
+              <ul className="flex flex-col gap-1">
+                {hiddenIndexes.map((index) => {
+                  const tab = PROJECT_VIEW_TABS[index]
+                  if (tab === undefined) return null
+                  return (
+                    <li key={tab.key}>
+                      <ProjectViewTabLink
+                        tab={tab}
+                        projectKey={projectKey}
+                        boardScope={boardScope}
+                      />
+                    </li>
+                  )
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
+      </div>
+
+      {/* nav 안의 Portal 목적지 — 접힌 탭 링크가 nav 밖으로 새지 않게 한다.
+          🛑 측정 래퍼 **밖**이다. 안에 두면 `overflow-hidden` 이 팝오버를 잘라 낸다. */}
       <div ref={setPortalHost} />
     </nav>
   )

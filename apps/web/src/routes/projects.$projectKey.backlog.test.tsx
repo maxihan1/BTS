@@ -258,6 +258,10 @@ describe('BacklogPage', () => {
   it('T-BL-R4: 뷰 전환 nav 를 페이지가 렌더하지 않는다 (셸이 소유한다)', () => {
     renderPage('ATLAS')
 
+    // 🛑 앵커 먼저. 부재만 단언하면 페이지가 통째로 안 그려져도 초록이다 — 이 파일이
+    //    막으려는 것은 「nav 를 다시 심었다」이지 「아무것도 안 그렸다」가 아니다.
+    expect(screen.getByRole('heading', { level: 1, name: '백로그' })).toBeInTheDocument()
+
     expect(screen.queryByRole('navigation', { name: '프로젝트 뷰 전환' })).not.toBeInTheDocument()
   })
 
@@ -268,6 +272,9 @@ describe('BacklogPage', () => {
    */
   it('T-BL-R4b: 옛 인라인 뷰 전환 링크 5종이 페이지에 남아 있지 않다', () => {
     renderPage('ATLAS')
+
+    // 앵커 — 백로그 본문이 실제로 그려진 상태에서만 부재가 의미를 갖는다.
+    expect(screen.getByTestId('backlog-board')).toBeInTheDocument()
 
     const orphans = ['보드', '타임라인', '벨로시티', '누적 흐름도', '사이클/리드 타임'].filter(
       (label) => screen.queryByRole('link', { name: label }) !== null,

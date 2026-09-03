@@ -1165,6 +1165,9 @@ describe('BoardPage', () => {
 
     await renderBoardPage()
 
+    // 🛑 앵커 먼저. 부재만 단언하면 보드가 통째로 안 그려져도 초록이다.
+    expect(await screen.findByRole('heading', { level: 1, name: '보드' })).toBeInTheDocument()
+
     expect(screen.queryByRole('navigation', { name: '프로젝트 뷰 전환' })).not.toBeInTheDocument()
   })
 
@@ -1196,6 +1199,9 @@ describe('BoardPage', () => {
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: true })
 
     await renderBoardPage()
+
+    // 앵커 — 보드 스위처가 떠 있는 상태에서만 「스코프 링크 부재」가 의미를 갖는다.
+    expect(await screen.findByRole('button', { name: /보드 선택/ })).toBeInTheDocument()
 
     // 🛑 라벨이 아니라 **href 모양**으로 본다. 이 화면에는 스크럼 빈 상태의 「백로그로 이동」
     //    링크가 따로 있어 이름 조회는 그쪽을 잡거나 놓치며 의미가 흐려진다.

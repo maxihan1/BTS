@@ -136,24 +136,33 @@ export function useTabOverflow(tabCount: number, activeIndex: number): TabOverfl
     const container = containerRef.current
     if (container === null) return
 
-    // 🛑 `clientWidth` 가 0 이면 레이아웃이 없는 것이다(jsdom 이 항상 그렇다). 재지 않고
-    //    관찰도 걸지 않는다 — 캐시에 0 이 박히면 그 뒤 계산이 전부 0 예산으로 굳는다.
-    const width = container.clientWidth
-    if (width === 0) return
-
-    if (widthsRef.current === null && itemsRef.current.size === tabCount) {
-      const gap = readColumnGap(container)
-      widthsRef.current = Array.from({ length: tabCount }, (_, index) => {
-        const element = itemsRef.current.get(index)
-        return element === undefined ? 0 : element.offsetWidth + gap
-      })
-      moreWidthRef.current = (moreRef.current?.offsetWidth ?? 0) + gap
+    /**
+     * 폭 하나를 받아 캐시를 채우고 상태를 올린다.
+     *
+     * 🛑 `width === 0` 이면 아무것도 하지 않는다 — 레이아웃이 없다는 뜻이고(jsdom 이 항상
+     *    그렇다) 캐시에 0 이 박히면 그 뒤 계산이 전부 0 예산으로 굳는다.
+     *    **다만 관찰은 폭과 무관하게 건다**(아래) — 첫 프레임에 폭이 0 이어도 나중에 생기면
+     *    이 함수가 그때 불린다. 폭 0 에서 조기 반환하며 관찰까지 건너뛰면 그 마운트는
+     *    영영 전량 가시로 굳어 회복할 길이 없다.
+     */
+    const capture = (width: number): void => {
+      if (width === 0) return
+      if (widthsRef.current === null && itemsRef.current.size === tabCount) {
+        const gap = readColumnGap(container)
+        widthsRef.current = Array.from({ length: tabCount }, (_, index) => {
+          const element = itemsRef.current.get(index)
+          return element === undefined ? 0 : element.offsetWidth + gap
+        })
+        moreWidthRef.current = (moreRef.current?.offsetWidth ?? 0) + gap
+      }
+      setContainerWidth(width)
     }
 
-    setContainerWidth(width)
+    capture(container.clientWidth)
+
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0]
-      if (entry !== undefined) setContainerWidth(entry.contentRect.width)
+      if (entry !== undefined) capture(entry.contentRect.width)
     })
     observer.observe(container)
     return () => { observer.disconnect() }

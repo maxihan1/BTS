@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import { router } from '@/router'
 import {
   PROJECT_VIEW_TABS,
+  isTabActive,
   resolveActiveTabIndex,
   resolveBacklogTabSearch,
   resolveBoardTabSearch,
@@ -121,6 +122,47 @@ describe('resolveTabHref — 순수 함수와 라우터의 두 층이 같은 hre
   })
 })
 
+describe('isTabActive — 판정 규칙 직접 단언', () => {
+  /**
+   * 🛑 이 블록이 없으면 접두 분기가 **무보증**이다.
+   *
+   * 실측 — `isTabActive` 의 비-exact 분기를 완전 일치로 바꿔도 아래 「실 라우트 전수」 판별식이
+   * 통과한다. 정본 9탭의 목적지가 전부 말단 경로라 `/projects/ATLAS/board/…` 같은 하위 라우트가
+   * 아직 없기 때문이다. 라우트가 없다고 규칙을 안 지키면, 하위 라우트가 생기는 날 그 화면에서
+   * 탭 강조가 통째로 꺼진다(그리고 좁은 화면에서 지금 보는 탭이 팝오버로 숨는다).
+   */
+  const boardTab = PROJECT_VIEW_TABS.find((tab) => tab.key === 'board')
+  const summaryTab = PROJECT_VIEW_TABS.find((tab) => tab.key === 'summary')
+
+  it('비-공허: 대상 탭 2종을 정본에서 찾았다', () => {
+    expect(boardTab).toBeDefined()
+    expect(summaryTab).toBeDefined()
+    expect(boardTab?.exact).toBe(false)
+    expect(summaryTab?.exact).toBe(true)
+  })
+
+  it('비-exact 탭은 하위 경로에서도 활성이다 (접두 분기)', () => {
+    if (boardTab === undefined) throw new Error('board 탭이 정본에 없다')
+    expect(isTabActive(boardTab, '/projects/ATLAS/board', PROJECT_KEY)).toBe(true)
+    // 아직 이런 라우트는 없지만 규칙은 지켜야 한다 — 생기는 날 이 단언이 계약이 된다.
+    expect(isTabActive(boardTab, '/projects/ATLAS/board/settings', PROJECT_KEY)).toBe(true)
+    expect(isTabActive(boardTab, '/projects/ATLAS/board/a/b', PROJECT_KEY)).toBe(true)
+  })
+
+  it('비-exact 탭도 세그먼트 경계를 넘지 않는다', () => {
+    if (boardTab === undefined) throw new Error('board 탭이 정본에 없다')
+    // `startsWith(href)` 만 쓰면 여기가 true 가 된다.
+    expect(isTabActive(boardTab, '/projects/ATLAS/boardroom', PROJECT_KEY)).toBe(false)
+    expect(isTabActive(boardTab, '/projects/ATLAS/backlog', PROJECT_KEY)).toBe(false)
+  })
+
+  it('exact 탭은 하위 경로에서 활성이 아니다', () => {
+    if (summaryTab === undefined) throw new Error('summary 탭이 정본에 없다')
+    expect(isTabActive(summaryTab, '/projects/ATLAS', PROJECT_KEY)).toBe(true)
+    expect(isTabActive(summaryTab, '/projects/ATLAS/board', PROJECT_KEY)).toBe(false)
+  })
+})
+
 describe('resolveActiveTabIndex — 실 라우트 전수', () => {
   it('비-공허: 훑는 실 라우트가 50건을 넘고 프로젝트 라우트를 포함한다', () => {
     expect(shellRouteIds.length).toBeGreaterThan(50)
@@ -136,10 +178,11 @@ describe('resolveActiveTabIndex — 실 라우트 전수', () => {
       .map(({ id, pathname }) => ({
         id,
         pathname,
-        active: PROJECT_VIEW_TABS.filter((tab) => {
-          const href = resolveTabHref(tab, PROJECT_KEY)
-          return tab.exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`)
-        }).map((tab) => tab.key),
+        // 🛑 판정식을 여기 베끼지 않는다 — 베끼면 `exact` 데이터만 지키고 함수의 규칙을
+        //    바꿔도 red 가 안 난다(「두 목록이 서로를 검사하지 않는다」 양식).
+        active: PROJECT_VIEW_TABS.filter((tab) =>
+          isTabActive(tab, pathname, PROJECT_KEY),
+        ).map((tab) => tab.key),
       }))
       .filter(({ active }) => active.length > 1)
       .map(({ pathname, active }) => `${pathname} → ${active.join(', ')}`)
@@ -190,10 +233,7 @@ describe('resolveActiveTabIndex — 실 라우트 전수', () => {
       .filter((pathname) => pathname.startsWith('/projects/'))
       .flatMap((pathname) =>
         globalTabs
-          .filter((tab) => {
-            const href = resolveTabHref(tab, PROJECT_KEY)
-            return pathname === href || pathname.startsWith(`${href}/`)
-          })
+          .filter((tab) => isTabActive(tab, pathname, PROJECT_KEY))
           .map((tab) => `${pathname} → ${tab.key}`),
       )
 

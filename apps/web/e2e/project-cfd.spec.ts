@@ -43,7 +43,13 @@ const EMPTY_CFD_URL = `/projects/${EMPTY_PROJECT_KEY}/reports/cfd`
  */
 const SIDEBAR_CFD_LABEL = '누적 흐름도(CFD)'
 
-/** cfd-labels.ts cfdLabels / backlog-labels.ts backlogLabels 문자열 재노출 — E2E 셀렉터가 정본 참조 */
+/**
+ * 화면 문구 미러.
+ *
+ * ★`nav.cfdLink` 의 정본이 **바뀌었다.** 옛 정본 `backlogLabels.page.cfdLink` 는 Jira 패리티
+ * J5 로 백로그 인라인 nav 가 사라지며 함께 지워졌다. 사이드바 라벨은 `누적 흐름도(CFD)` 로
+ * 이 값과 **다르므로** 위 `SIDEBAR_CFD_LABEL` 을 따로 둔다 — 이 값은 페이지 문구 전용이다.
+ */
 const labels = {
   page: {
     title: '누적 흐름도',
@@ -80,10 +86,9 @@ test.describe('FR-RP-03 D6/D7 프로젝트 누적 흐름도(CFD)', () => {
 
     // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
     //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
-    //        그룹 하나다. 탭바에 그 링크가 없다는 사실도 여기서 함께 못 박는다.
-    const viewNav = projectViewNav(page)
-    await expect(viewNav).toBeVisible()
-    await expect(viewNav.getByRole('link', { name: labels.nav.cfdLink, exact: true })).toHaveCount(0)
+    //        그룹 하나다. 여기서는 탭바가 떠 있는 것만 확인한다 — 「탭바에 리포트 링크가
+    //        없다」는 정본 9탭 순서 단언(`project-view-tabs.test.ts`)이 더 강하게 지킨다.
+    await expect(projectViewNav(page)).toBeVisible()
 
     // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
     // 🛑 사이드바 라벨은 `누적 흐름도(CFD)` 로 옛 인라인 nav 라벨(`누적 흐름도`)과 **다르다.**

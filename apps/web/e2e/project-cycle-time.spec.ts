@@ -46,8 +46,11 @@ function cycleTimeUrl(projectKey: string): string {
 }
 
 /**
- * cycle-time-labels.ts cycleTimeLabels / backlog-labels.ts backlogLabels 문자열 재노출 —
- * E2E 셀렉터가 정본을 참조하도록 값만 복사한다(로직 재구현 아님).
+ * 화면 문구 미러 — 값만 복사한다(로직 재구현 아님).
+ *
+ * ★`nav.cycleTimeLink` 의 정본이 **바뀌었다.** 옛 정본 `backlogLabels.page.cycleTimeLink` 는
+ * Jira 패리티 J5 로 백로그 인라인 nav 가 사라지며 함께 지워졌고, 지금 이 값이 가리키는 것은
+ * 사이드바 트리(`ProjectTree.tsx` `REPORT_LINKS`)의 라벨이다 — 리포트는 탭이 아니다.
  */
 const labels = {
   page: {
@@ -109,12 +112,9 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
 
     // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
     //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
-    //        그룹 하나다. 탭바에 그 링크가 없다는 사실도 여기서 함께 못 박는다.
-    const viewNav = projectViewNav(page)
-    await expect(viewNav).toBeVisible()
-    await expect(
-      viewNav.getByRole('link', { name: labels.nav.cycleTimeLink, exact: true }),
-    ).toHaveCount(0)
+    //        그룹 하나다. 여기서는 탭바가 떠 있는 것만 확인한다 — 「탭바에 리포트 링크가
+    //        없다」는 정본 9탭 순서 단언(`project-view-tabs.test.ts`)이 더 강하게 지킨다.
+    await expect(projectViewNav(page)).toBeVisible()
 
     // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
     const cycleTimeLink = await openProjectReportFromSidebar(

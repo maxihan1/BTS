@@ -9,7 +9,11 @@ import {
   createMemoryHistory,
 } from '@tanstack/react-router'
 import { ProjectNavTabs } from '@/components/project/ProjectNavTabs'
-import { PROJECT_VIEW_TABS } from '@/components/project/project-view-tabs'
+import {
+  PROJECT_VIEW_TABS,
+  resolveActiveTabIndex,
+  resolveTabHref,
+} from '@/components/project/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 헬퍼 — 격리된 최소 route tree(메모리 히스토리)에 탭바를 마운트한다.
@@ -165,6 +169,34 @@ describe('ProjectNavTabs', () => {
       .map((link) => link.textContent)
 
     expect(current).toEqual(['보드'])
+  })
+
+  it('두 층 대조 — 라우터의 aria-current 와 순수 함수의 결론이 목적지 전수에서 같다', async () => {
+    // ① 시각·ARIA 는 `Link`(라우터)가 판정하고 ② 오버플로 핀 고정은 `resolveActiveTabIndex` 가
+    // 판정한다. 어긋나면 「강조된 탭」과 「접힘에서 지켜 주는 탭」이 달라진다 — 좁은 화면에서
+    // 지금 보는 화면이 팝오버 안으로 사라지는 증상이다.
+    //
+    // 🛑 href 생성 일치(`project-view-tabs.test.ts`)로는 이걸 못 잡는다. 거기서 보는 것은
+    //    「어디로 가는가」이고 여기서 보는 것은 「어디에 있는가」다.
+    const scoped = PROJECT_VIEW_TABS.filter((tab) => tab.usesProjectParam)
+    expect(scoped.length).toBeGreaterThan(0)
+
+    for (const tab of scoped) {
+      const pathname = resolveTabHref(tab, 'ATLAS')
+      const { unmount } = renderTabs({ pathname })
+
+      const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+      const routerSaysActive = within(nav)
+        .getAllByRole('link')
+        .filter((link) => link.getAttribute('aria-current') === 'page')
+        .map((link) => link.textContent)
+
+      const index = resolveActiveTabIndex(pathname, 'ATLAS')
+      const pureFnSaysActive = index === -1 ? [] : [PROJECT_VIEW_TABS[index]?.label]
+
+      expect(routerSaysActive, `${pathname} 에서 두 층의 판정이 다르다`).toEqual(pureFnSaysActive)
+      unmount()
+    }
   })
 
   it('레이아웃이 없는 환경(jsdom)에서는 접히지 않고 「더 보기」도 남지 않는다', async () => {
