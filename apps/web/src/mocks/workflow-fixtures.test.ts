@@ -3,7 +3,7 @@
 // 옵션 A 한계: description 은 정적 문자열이므로 backend yaml seed 와 수동으로 맞춰야 함 — 이 테스트가 그 drift 를 감지한다
 import { describe, it, expect } from 'vitest'
 import { allWorkflowFixtures } from './workflow-fixtures'
-import { transitionKey } from '@/components/workflow/workflow.types'
+import { composeTransitionKey } from '@/lib/transition-key'
 
 /** RFC4122 v4 UUID — Zod v4 `z.string().uuid()` 가 통과시키는 형식과 같은 판정 */
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -13,12 +13,11 @@ describe('workflow-fixtures transition.key 형식 검증 (D2 옵션 B 회귀 가
     '$key — 모든 transition.key 가 backend WorkflowTransition.key 게터 규칙과 일치',
     (workflow) => {
       workflow.transitions.forEach((t) => {
-        // backend 게터: NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to`
-        const expected =
-          t.fromStateKey === null
-            ? `${t.kind}__${t.toStateKey}`
-            : transitionKey(t.fromStateKey, t.toStateKey)
-        expect(t.key).toBe(expected)
+        // ★규칙을 여기서 다시 쓰지 않는다 — 종전에는 인라인 재구현이었고, 그러면 이 단언이
+        //   대조하는 것은 「픽스처(사본 A)와 이 파일(사본 B)」이라 규칙이 통째로 틀려도 초록이다.
+        //   지금 재는 것은 **픽스처가 정본 함수를 썼는가** 하나뿐이고, 규칙 자체의 형식은
+        //   `lib/transition-key.test.ts` 가 리터럴로 고정한다.
+        expect(t.key).toBe(composeTransitionKey(t))
       })
     },
   )

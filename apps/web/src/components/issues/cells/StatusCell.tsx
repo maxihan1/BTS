@@ -11,6 +11,7 @@ import { useIssueTransitions } from '@/hooks/use-issue-transitions'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { useIssueListCellField } from '@/hooks/use-issue-list-cell-field'
 import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
+import { transitionElementKey } from '@/lib/transition-key'
 import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
 
 /**
@@ -103,9 +104,11 @@ export function StatusCellEditor({
       {!canTransition && (
         <p className="px-2 py-1 text-xs text-(--text-subtle)">전환 권한이 없습니다.</p>
       )}
-      {transitions.map((t) => (
+      {transitions.map((t, index) => (
         <Button
-          key={t.key}
+          // ★`t.key` 를 그대로 쓰지 않는다 — 같은 (from, to) 쌍의 전환 둘이 같은 문자열을
+          //   갖고, 서버 계약상 null 일 수도 있다. 정본은 `@/lib/transition-key`.
+          key={transitionElementKey(t, index)}
           type="button"
           variant="ghost"
           size="sm"

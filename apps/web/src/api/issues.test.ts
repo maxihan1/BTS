@@ -4,6 +4,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import { http, HttpResponse } from 'msw'
+import { z } from 'zod'
 import { server } from '@/test/server'
 import {
   issueResponseSchema,
@@ -1896,5 +1897,47 @@ describe('createIssue — FR-UX-09 F2 신규 5필드', () => {
     })
 
     expect(body.get()['assigneeId']).toBe('33333333-3333-4333-8333-333333333333')
+  })
+})
+
+describe('issueTransitionSchema — `key` 는 서버 계약대로 nullable 이다 (장부 「전환 목록 스키마가 서버 계약보다 엄격해 응답 하나에 드롭다운이 통째로 사라진다」)', () => {
+  /**
+   * backend 정본 `shared-kernel/.../AvailableTransitionsResult.kt` 의 `TransitionItem` 은
+   * `val key: String? = null` 이고 「null 은 미계산 상태다」라고 적는다.
+   *
+   * ★이 스키마의 KDoc 이 이미 그 원칙을 세워 뒀다 — 「클라이언트를 서버 계약보다 엄격하게
+   * 만들면 서버가 보낸 정상 응답을 클라이언트가 거부하는 경로가 생긴다」. 형제 필드
+   * `transitionId`·`kind`·`toCategory` 는 그 원칙대로 nullable 인데 `key` 만 아니다.
+   *
+   * Zod 는 배열 원소 하나가 스키마에 어긋나면 **배열 전체**를 파싱 실패로 떨어뜨린다.
+   * 그래서 `key` 가 null 인 전환 하나에 전환 셀렉터가 통째로 사라지고, 서버는 규칙대로
+   * 답했으므로 서버 로그에는 아무것도 남지 않는다.
+   */
+  const BASE = {
+    name: '진행 시작',
+    fromStateKey: 'open',
+    toStateKey: 'in_progress',
+    toCategory: 'IN_PROGRESS',
+  }
+
+  it('`key` 가 null 인 전환을 받아들인다', () => {
+    const parsed = issueTransitionSchema.safeParse({ ...BASE, key: null })
+
+    expect(parsed.success).toBe(true)
+  })
+
+  it('`key` 가 아예 없는 전환도 받아들인다 — 기본값이 null 인 필드다', () => {
+    const parsed = issueTransitionSchema.safeParse(BASE)
+
+    expect(parsed.success).toBe(true)
+  })
+
+  it('null 하나가 섞여도 목록 전체가 살아남는다', () => {
+    const parsed = z
+      .array(issueTransitionSchema)
+      .safeParse([{ ...BASE, key: 'open__in_progress' }, { ...BASE, key: null }])
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.success && parsed.data).toHaveLength(2)
   })
 })

@@ -50,9 +50,12 @@ describe('IssueStateTransition', () => {
     )
     const user = userEvent.setup()
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    // 옵션 값은 `transitionId ?? key` 다. 이 픽스처는 `transitionId` 가 없어 `key` 로 떨어진다.
-    await user.selectOptions(select, 'open__in_progress')
-    expect(onSelectedValueChange).toHaveBeenCalledWith('open__in_progress')
+    // ★값 문자열을 리터럴로 쓰지 않는다 — 옵션 값의 형식은 `lib/transition-key.ts` 정본이
+    //   정하고 그 형식은 거기서 따로 고정한다. 여기서 재는 것은 「고른 옵션이 그대로
+    //   전달되는가」다. 형식을 여기에도 박으면 정본을 고칠 때마다 무관한 테스트가 깨진다.
+    const option = screen.getByRole('option', { name: transitionsFixture[0]!.name })
+    await user.selectOptions(select, option)
+    expect(onSelectedValueChange).toHaveBeenCalledWith((option as HTMLOptionElement).value)
     expect(onTransition).toHaveBeenCalledOnce()
     expect(onTransition).toHaveBeenCalledWith(transitionsFixture[0])
   })
