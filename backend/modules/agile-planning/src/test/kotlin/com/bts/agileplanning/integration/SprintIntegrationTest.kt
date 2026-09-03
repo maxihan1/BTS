@@ -4,6 +4,7 @@ package com.bts.agileplanning.integration
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.application.SprintAlreadyActiveException
 import com.bts.agileplanning.application.SprintApplicationService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
@@ -364,30 +365,44 @@ class SprintIntegrationTest {
         val entered = CountDownLatch(2)
         val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
-        val futures =
-            listOf(firstId, secondId).map { id ->
-                executor.submit<Result<Unit>> {
-                    SecurityContextHolder.getContext().authentication =
-                        UsernamePasswordAuthenticationToken(
-                            actorId.toString(),
-                            null,
-                            listOf(SimpleGrantedAuthority("ROLE_USER")),
-                        )
-                    entered.countDown()
-                    start.await()
-                    runCatching { sprintApplicationService.start(actorId, id) }.map { }
-                }
+        val results =
+            try {
+                val futures =
+                    listOf(firstId, secondId).map { id ->
+                        executor.submit<Result<Unit>> {
+                            SecurityContextHolder.getContext().authentication =
+                                UsernamePasswordAuthenticationToken(
+                                    actorId.toString(),
+                                    null,
+                                    listOf(SimpleGrantedAuthority("ROLE_USER")),
+                                )
+                            entered.countDown()
+                            start.await()
+                            runCatching { sprintApplicationService.start(actorId, id) }.map { }
+                        }
+                    }
+                assertThat(entered.await(10, TimeUnit.SECONDS))
+                    .`as`("두 스레드가 시작하지 못했다 — 경쟁이 재현되지 않았다")
+                    .isTrue()
+                start.countDown()
+                // 타임아웃 없는 get() 은 락이 안 풀렸을 때 red 가 아니라 **행**으로 나타난다 — CI 가 멈춘다.
+                futures.map { it.get(30, TimeUnit.SECONDS) }
+            } finally {
+                executor.shutdownNow()
             }
-        assertThat(entered.await(10, TimeUnit.SECONDS))
-            .`as`("두 스레드가 시작하지 못했다 — 경쟁이 재현되지 않았다")
-            .isTrue()
-        start.countDown()
-        executor.shutdown()
-        val results = futures.map { it.get() }
 
         assertThat(results.count { it.isSuccess })
             .`as`("동시 start 2건 중 성공이 %d 건이다 — 정확히 1건이어야 한다", results.count { it.isSuccess })
             .isEqualTo(1)
+
+        val failures = results.mapNotNull { it.exceptionOrNull() }
+        assertThat(failures)
+            .`as`(
+                "진 쪽이 %s 로 죽었다 — 계약은 409 AGILE_SPRINT_ALREADY_ACTIVE 하나뿐이다",
+                failures.map { it::class.qualifiedName },
+            )
+            .singleElement()
+            .isInstanceOf(SprintAlreadyActiveException::class.java)
 
         val active = sprintRepository.findByProject(projectKey).filter { it.status == SprintStatus.ACTIVE }
         assertThat(active)
