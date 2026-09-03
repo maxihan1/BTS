@@ -9,6 +9,7 @@ import com.bts.agileplanning.application.SprintDatesRequiredException
 import com.bts.agileplanning.application.SprintNotFoundException
 import com.bts.agileplanning.domain.InvalidSprintTransitionException
 import org.slf4j.LoggerFactory
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
 import org.springframework.http.converter.HttpMessageNotReadableException
@@ -16,6 +17,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.WebRequest
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.server.ResponseStatusException
 import java.net.URI
@@ -317,6 +319,71 @@ class SprintExceptionHandler {
         )
     }
 
+    // ── 503 UNAVAILABLE (advisory lock 예산 초과 · 부채 166 ② · 스펙 S4) ─────
+
+    /**
+     * [CannotAcquireLockException] — advisory lock 을 200ms 예산 안에 얻지 못했다 — 503.
+     *
+     * ### 어디서 오는가 (실측 · 2026-09-03)
+     * `AdvisoryLockBudget.acquireXactLockWithBudget` 가 `set_config('lock_timeout','200ms',true)` 를
+     * 건 뒤 `pg_advisory_xact_lock` 을 잡는다. 초과하면 PostgreSQL 이 SQLSTATE `55P03`
+     * (canceling statement due to lock timeout) 으로 statement 를 취소하고, jOOQ
+     * `JooqExceptionTranslator` 가 그것을 **이 타입**으로 옮긴다(cause 는 `PSQLException`).
+     * 타입은 추측이 아니라 `AdvisoryLockBudget.kt` KDoc 의 실측 기록이 정본이다.
+     *
+     * 이 advice 가 관할하는 락은 둘이다 — `sprint-start:<boardId>`(start) 와, 스프린트 **생성**이
+     * `SprintApplicationService.resolveTargetBoard` → `BoardApplicationService.ensureScrumBoard`
+     * 로 잡는 형제 락 `scrum-board:<projectKey>`. 형제 락은 보드 컨트롤러 경로로도 도달할 수 있어
+     * 같은 매핑이 [BoardExceptionHandler] 에도 있다 — 한쪽만 걸면 다른 쪽이 500 이다(스펙 E8).
+     *
+     * ### ★ 행 락은 이 타입을 낼 수 없다
+     * `acquireXactLockWithBudget` 는 락을 잡은 **직후** `lock_timeout` 을 `0`(무제한)으로 되돌린다
+     * (N6). 그래서 뒤따르는 `findActiveByBoard`·`updateStatus` 의 **행 락 대기는 예산 밖**이고,
+     * 이 503 은 오직 advisory lock 획득 실패에만 대응한다. 「행 락도 503 이 되나?」를 다음 사람이
+     * 다시 파헤치지 않도록 여기 적어 둔다 — 답은 **아니오**다.
+     *
+     * ### ★ 왜 도메인 예외로 감싸지 않았나 (설계 판단)
+     * Spring 예외를 web 계층에서 직접 잡는다. 감싸려면 예외가 **발생하는 자리**인
+     * `AdvisoryLockBudget`/리포지터리 또는 서비스가 변환해야 하는데, 그러면 이 매핑 하나를 위해
+     * 트랜잭션 경계 코드를 건드리게 된다. 이득은 「web 계층이 `org.springframework.dao` 를 모른다」
+     * 뿐이고, 손해는 락 획득 경로에 try/catch 를 심는 것이다 — 지금은 값이 안 맞는다.
+     *
+     * 나중에 감싸고 싶어지면 고칠 곳은 셋이다. ① `application/SprintExceptions.kt` 에
+     * `SprintLockTimeoutException`(또는 BC 공용 이름)을 만들고 ② 서비스가
+     * `catch (e: CannotAcquireLockException) { throw ... }` 로 변환하고 ③ 두 핸들러의
+     * `@ExceptionHandler` 타입을 바꾼다. 응답 계약(503 `AGILE_UNAVAILABLE`)은 그대로 둔다.
+     *
+     * ### ★ 좁게 잡는다 — 넓히지 마라
+     * 상위 `PessimisticLockingFailureException` 이 아니라 이 타입만 잡는다. 형제
+     * `DeadlockLoserDataAccessException`(`40P01`) · `CannotSerializeTransactionException`(`40001`) 은
+     * **안 잡힌다** — 의도한 좁힘이다. 데드락과 직렬화 실패는 「잠시 후 재시도」와 성격이 다르고
+     * 500 으로 남아 경보에 걸리는 편이 낫다.
+     *
+     * 다만 `@ExceptionHandler` 는 이 advice 가 관할하는 컨트롤러 **전역**이다. 현재 이 BC 에서
+     * 이 타입을 내는 곳은 advisory lock 예산뿐이지만(Task 6 실측), 나중에 다른 곳이 같은 타입을
+     * 던지면 그것도 503 으로 뭉뚱그려진다. 그때는 여기가 아니라 위 「감싸기」로 옮겨야 한다.
+     *
+     * 보안 — 락 키에 `boardId`·`projectKey` 가, 예외 메시지에 SQL 이 들어 있다. 둘 다 detail 에
+     * 노출하지 않는다. 로그에도 SQL 대신 **어느 엔드포인트에서 났는지**만 남긴다.
+     *
+     * @param ex 락 획득 실패 예외. 메시지에 SQL·락 키가 들어 있어 응답·로그 어디에도 싣지 않는다.
+     * @param request 실패 지점을 식별하기 위한 요청 정보. `uri=…` 만 로그에 남긴다.
+     */
+    @ExceptionHandler(CannotAcquireLockException::class)
+    fun handleLockTimeout(
+        @Suppress("UnusedParameter") ex: CannotAcquireLockException,
+        request: WebRequest,
+    ): ProblemDetail {
+        log.warn("AGILE_503 advisory_lock_timeout at='{}'", request.getDescription(false))
+        return problem(
+            status = HttpStatus.SERVICE_UNAVAILABLE,
+            type = "agile-unavailable",
+            title = "Service Unavailable",
+            errorCode = AGILE_UNAVAILABLE,
+            detail = "다른 작업이 처리 중이라 잠시 후 다시 시도해 주세요.",
+        )
+    }
+
     // ── ResponseStatusException 상태 전파 (catch-all 변질 차단) ─────────────
 
     /**
@@ -416,6 +483,7 @@ class SprintExceptionHandler {
         const val AGILE_SPRINT_BOARD_NOT_SCRUM = "AGILE_SPRINT_BOARD_NOT_SCRUM"
         const val AGILE_SPRINT_DATE_LOCKED = "AGILE_SPRINT_DATE_LOCKED"
         const val AGILE_SPRINT_DATES_REQUIRED = "AGILE_SPRINT_DATES_REQUIRED"
+        const val AGILE_UNAVAILABLE = "AGILE_UNAVAILABLE"
         const val AGILE_INTERNAL_ERROR = "AGILE_INTERNAL_ERROR"
     }
 }
