@@ -4,7 +4,8 @@ import { router } from '@/router'
 import {
   PROJECT_VIEW_TABS,
   resolveActiveTabIndex,
-  resolveBoardScopeSearch,
+  resolveBacklogTabSearch,
+  resolveBoardTabSearch,
   resolveTabHref,
   type ProjectViewTab,
 } from '@/components/project/project-view-tabs'
@@ -200,27 +201,48 @@ describe('resolveActiveTabIndex — 실 라우트 전수', () => {
   })
 })
 
-describe('resolveBoardScopeSearch — 편차 X7 승계', () => {
+describe('편차 X7 승계 — 보드 탭과 백로그 탭의 규칙이 다르다', () => {
   const SCRUM = { boardId: 'b-scrum', boardType: 'SCRUM' }
   const KANBAN = { boardId: 'b-kanban', boardType: 'KANBAN' }
 
-  it('스크럼 보드를 보고 있으면 `?board=` 를 싣는다', () => {
-    expect(resolveBoardScopeSearch([SCRUM, KANBAN], 'b-scrum')).toEqual({ board: 'b-scrum' })
+  describe('resolveBoardTabSearch — 보드 탭은 종류를 가리지 않는다', () => {
+    it('스크럼이든 칸반이든 보고 있던 보드로 되돌아간다', () => {
+      // 보드 화면은 두 종류를 다 연다. 가리면 칸반을 보다 탭을 다녀올 때 boards[0] 로 튄다.
+      expect(resolveBoardTabSearch('b-scrum')).toEqual({ board: 'b-scrum' })
+      expect(resolveBoardTabSearch('b-kanban')).toEqual({ board: 'b-kanban' })
+    })
+
+    it('보고 있는 보드가 미확정이면 싣지 않는다', () => {
+      expect(resolveBoardTabSearch(undefined)).toBeUndefined()
+    })
   })
 
-  it('칸반 보드면 싣지 않는다 — 스코프된 백로그의 스프린트는 어디에도 안 나타난다', () => {
-    expect(resolveBoardScopeSearch([SCRUM, KANBAN], 'b-kanban')).toBeUndefined()
-  })
+  describe('resolveBacklogTabSearch — 백로그 탭은 스크럼일 때만 받는다', () => {
+    it('스크럼 보드를 보고 있으면 `?board=` 를 싣는다', () => {
+      expect(resolveBacklogTabSearch([SCRUM, KANBAN], 'b-scrum')).toEqual({ board: 'b-scrum' })
+    })
 
-  it('보드 목록이 아직 로딩 중이면 싣지 않는다 (종류를 모르는 채 실으면 폴백을 부른다)', () => {
-    expect(resolveBoardScopeSearch(undefined, 'b-scrum')).toBeUndefined()
-  })
+    it('칸반 보드면 싣지 않는다 — 스코프된 백로그의 스프린트는 어디에도 안 나타난다', () => {
+      expect(resolveBacklogTabSearch([SCRUM, KANBAN], 'b-kanban')).toBeUndefined()
+    })
 
-  it('보고 있는 보드가 미확정이면 싣지 않는다', () => {
-    expect(resolveBoardScopeSearch([SCRUM], undefined)).toBeUndefined()
-  })
+    it('보드 목록이 아직 로딩 중이면 싣지 않는다 (종류를 모르는 채 실으면 폴백을 부른다)', () => {
+      expect(resolveBacklogTabSearch(undefined, 'b-scrum')).toBeUndefined()
+    })
 
-  it('목록에 없는 보드 id 면 싣지 않는다', () => {
-    expect(resolveBoardScopeSearch([SCRUM], 'b-unknown')).toBeUndefined()
+    it('보고 있는 보드가 미확정이면 싣지 않는다', () => {
+      expect(resolveBacklogTabSearch([SCRUM], undefined)).toBeUndefined()
+    })
+
+    it('목록에 없는 보드 id 면 싣지 않는다', () => {
+      expect(resolveBacklogTabSearch([SCRUM], 'b-unknown')).toBeUndefined()
+    })
+
+    it('두 함수는 칸반에서 갈린다 — 같은 판정이면 한쪽이 무의미하다', () => {
+      // 비-공허 짝. 둘이 늘 같은 값을 주면 분리한 이유가 사라진다.
+      expect(resolveBoardTabSearch('b-kanban')).not.toEqual(
+        resolveBacklogTabSearch([SCRUM, KANBAN], 'b-kanban'),
+      )
+    })
   })
 })

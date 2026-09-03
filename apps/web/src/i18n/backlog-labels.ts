@@ -61,14 +61,16 @@ const SPRINT_FORM_LABELS = {
  * 주의: 모든 값은 콜론으로 끝나지 않는다 (글로벌 §5).
  */
 export const backlogLabels = {
-  /** 백로그 페이지 — 헤더 및 접근 거부 메시지 */
+  /**
+   * 백로그 페이지 — 헤더 및 접근 거부 메시지.
+   *
+   * ★뷰 전환 링크 5종(보드·타임라인·벨로시티·누적 흐름도·사이클/리드 타임)이 여기 있었다.
+   * Jira 패리티 J5 로 탭바가 정본 9탭을 소유하면서 이 페이지의 인라인 nav 가 사라졌고,
+   * 그 라벨들도 함께 나갔다. 탭 라벨의 정본은 `i18n/project-view-labels.ts` 다.
+   * 리포트 3종은 탭이 아니므로 사이드바 트리(`ProjectTree`)의 라벨이 정본이다.
+   */
   page: {
     title: '백로그',
-    boardLink: '보드',
-    timelineLink: '타임라인',
-    velocityLink: '벨로시티',
-    cfdLink: '누적 흐름도',
-    cycleTimeLink: '사이클/리드 타임',
     accessDenied: '접근 권한이 없습니다',
     accessDeniedDetail: '해당 프로젝트의 백로그에 접근할 권한이 없습니다.',
   },

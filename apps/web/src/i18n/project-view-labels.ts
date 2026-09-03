@@ -21,6 +21,9 @@
  *    같은 이름의 링크가 있어 문서 전역 조회는 strict mode 위반이다.
  * ② `보드` 조회는 Playwright 에서 `exact: true` 가 **필수**다. 기본이 부분 일치라 같은 nav 안의
  *    `대시보드` 가 함께 잡힌다. Testing Library 의 `name` 은 기본이 완전 일치라 유닛은 안전하다.
+ * ③ `백로그` 조회도 Playwright 에서 `exact: true` 가 필수다 — 보드 화면의 스크럼 빈 상태에
+ *    `백로그로 이동`(`ScrumSprintEmptyState`)이 있고 탭바와 **한 화면에 공존**한다.
+ *    이 쌍은 탭바가 생기면서 새로 만들어졌다. 짝 판별식이 관계 자체를 얼려 둔다.
  */
 export const projectViewLabels = {
   /** 요약 탭 — 프로젝트 기본 착지 (Jira 패리티 J4) */

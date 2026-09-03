@@ -8,7 +8,6 @@ import {
   CycleTimeReportPage,
 } from '@/routes/projects.$projectKey.reports.cycle-time'
 import { cycleTimeLabels } from '@/i18n/cycle-time-labels'
-import { backlogLabels } from '@/i18n/backlog-labels'
 
 // TanStack Router useParams mock — RouteAdapter 단위 테스트용
 vi.mock('@tanstack/react-router', () => ({
@@ -115,12 +114,15 @@ describe('CycleTimeReportPage', () => {
     expect(report).toHaveAttribute('data-project-key', 'MYPROJECT')
   })
 
-  /**
-   * T-RP-D5. 백로그 nav 링크 라벨(cycleTimeLink)이 정의되어 있다 — backlog.tsx 링크 추가의 최소 커버.
-   * backlog.tsx 자체 렌더 테스트는 기존 projects.$projectKey.backlog.test.tsx 범위(파일 스코프 외)이므로
-   * 라벨 존재만 이 파일에서 검증한다.
+  /*
+   * T-RP-D5 (삭제 · Jira 패리티 J5). 「`backlogLabels.page.cycleTimeLink` 라벨이 정의되어 있다」.
+   *
+   * 그 라벨은 백로그 화면의 인라인 nav 가 쓰던 것인데, 탭바가 정본 9탭을 소유하면서 그 nav 가
+   * 사라졌고 라벨도 함께 나갔다(리포트는 탭이 아니다). 라벨이 없어졌으므로 「정의되어 있다」는
+   * 단언은 **지킬 대상이 없다** — 남겨 두려면 라벨을 되살려야 하고, 그러면 소비처 0 인 상수를
+   * 테스트가 붙잡는 꼴이 된다.
+   *
+   * 이 화면으로 가는 UI 경로는 사이드바 트리의 `리포트` 그룹이고, 그 도달성은
+   * `e2e/project-cycle-time.spec.ts` S1 이 클릭으로 잰다 — 라벨 존재 단언보다 강한 보증이다.
    */
-  it('T-RP-D5: backlogLabels.page.cycleTimeLink 라벨이 정의되어 있다', () => {
-    expect(backlogLabels.page.cycleTimeLink).toBeTruthy()
-  })
 })

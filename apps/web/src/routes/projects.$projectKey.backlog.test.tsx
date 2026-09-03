@@ -1,6 +1,6 @@
 // 백로그 라우트 페이지 단위 테스트 — RouteAdapter useParams/useSearch 추출 + BacklogPage canManage·URL 필터 전달 + 보드 스위처
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useAuthStore } from '@/auth/authStore'
@@ -239,51 +239,42 @@ describe('BacklogPage', () => {
   })
 
   /**
-   * T-BL-R4. 보드로 이동하는 링크가 존재한다.
+   * T-BL-R4 (재작성 · Jira 패리티 J5). 뷰 전환 nav 를 **페이지가 소유하지 않는다.**
+   *
+   * 옛 T-BL-R4·R4b·R4c·R4d 는 백로그 페이지가 인라인으로 심은 5링크(보드·타임라인·벨로시티·
+   * 누적 흐름도·사이클/리드 타임)를 각각 단언했다. 그 집합은 보드 페이지의 2링크와 달랐고,
+   * 타임라인·리포트·설정 화면에는 nav 가 아예 없었다 — 화면마다 다른 항법이 이 PR 이
+   * 없앤 결함이다.
+   *
+   * 지금 탭바는 `ShellLayout` 안의 `ProjectViewChrome` 이 소유하고 정본 9탭을 렌더한다.
+   * 그래서 **여기서는 부재를 단언한다** — 페이지가 다시 심으면 nav 가 두 개가 되어
+   * `getByRole('navigation')` 이 strict mode 로 죽는다.
+   *
+   * 옮겨간 보증의 자리.
+   * - 링크 집합·순서·href → `components/project/__tests__/ProjectNavTabs.test.tsx`
+   * - 마운트 조건·보드 스코프 승계 → `components/project/__tests__/ProjectViewChrome.test.tsx`
+   * - 죽은 링크 0·활성 판정 → `components/project/__tests__/project-view-tabs.test.ts`
    */
-  it('T-BL-R4: 보드 링크가 존재한다', () => {
+  it('T-BL-R4: 뷰 전환 nav 를 페이지가 렌더하지 않는다 (셸이 소유한다)', () => {
     renderPage('ATLAS')
 
-    const boardLink = screen.getByRole('link', { name: '보드' })
-    expect(boardLink).toBeInTheDocument()
-    expect(boardLink).toHaveAttribute('href', '/projects/ATLAS/board')
+    expect(screen.queryByRole('navigation', { name: '프로젝트 뷰 전환' })).not.toBeInTheDocument()
   })
 
   /**
-   * T-BL-R4b. 타임라인으로 이동하는 링크가 nav에 존재한다.
+   * T-BL-R4b (재작성). 옛 인라인 링크 5종이 페이지에 남아 있지 않다.
+   *
+   * 🛑 nav 부재만 단언하면 「nav 없이 링크만 뿌리는」 구현이 통과한다. 라벨 전수로 못 박는다.
    */
-  it('T-BL-R4b: 타임라인 링크가 nav에 존재한다', () => {
+  it('T-BL-R4b: 옛 인라인 뷰 전환 링크 5종이 페이지에 남아 있지 않다', () => {
     renderPage('ATLAS')
 
-    const nav = screen.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-    const timelineLink = within(nav).getByRole('link', { name: '타임라인' })
-    expect(timelineLink).toBeInTheDocument()
-    expect(timelineLink).toHaveAttribute('href', '/projects/ATLAS/timeline')
+    const orphans = ['보드', '타임라인', '벨로시티', '누적 흐름도', '사이클/리드 타임'].filter(
+      (label) => screen.queryByRole('link', { name: label }) !== null,
+    )
+    expect(orphans).toEqual([])
   })
 
-  /**
-   * T-BL-R4c. 벨로시티 보고로 이동하는 링크가 nav에 존재한다 (FR-RP-02 D6/D7 Task 5).
-   */
-  it('T-BL-R4c: 벨로시티 링크가 nav에 존재한다', () => {
-    renderPage('ATLAS')
-
-    const nav = screen.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-    const velocityLink = within(nav).getByRole('link', { name: '벨로시티' })
-    expect(velocityLink).toBeInTheDocument()
-    expect(velocityLink).toHaveAttribute('href', '/projects/ATLAS/reports/velocity')
-  })
-
-  /**
-   * T-BL-R4d. 누적 흐름도(CFD) 보고로 이동하는 링크가 nav에 존재한다 (FR-RP-03 D6/D7 Task 7).
-   */
-  it('T-BL-R4d: 누적 흐름도 링크가 nav에 존재한다', () => {
-    renderPage('ATLAS')
-
-    const nav = screen.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-    const cfdLink = within(nav).getByRole('link', { name: '누적 흐름도' })
-    expect(cfdLink).toBeInTheDocument()
-    expect(cfdLink).toHaveAttribute('href', '/projects/ATLAS/reports/cfd')
-  })
 })
 
 describe('BacklogRouteAdapter', () => {

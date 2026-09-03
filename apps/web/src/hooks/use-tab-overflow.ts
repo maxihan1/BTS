@@ -72,6 +72,16 @@ export interface TabOverflow {
   readonly visibleIndexes: readonly number[]
   /** 접힌 탭 인덱스 (오름차순) */
   readonly hiddenIndexes: readonly number[]
+  /**
+   * 「더 보기」 트리거를 렌더해야 하는가.
+   *
+   * 🛑 `hiddenIndexes.length > 0` 만으로 판정하면 **트리거 폭을 영영 못 잰다.** 첫 렌더는
+   * 전량 가시라 접힌 탭이 0 이고, 그러면 트리거가 없어 `moreWidth = 0` 으로 계산되어 탭이
+   * 한 개 더 들어간다고 오판한다(그 한 개가 트리거에 가려진다). 그래서 **측정이 끝나기
+   * 전까지는 무조건 렌더**해 재고, 끝난 뒤에 접힌 탭 유무로 판정한다.
+   * 측정은 `useLayoutEffect` 라 브라우저에서는 페인트 전에 끝나 깜빡임이 없다.
+   */
+  readonly shouldRenderMore: boolean
 }
 
 /**
@@ -99,6 +109,11 @@ export function useTabOverflow(tabCount: number, activeIndex: number): TabOverfl
   const moreWidthRef = useRef(0)
 
   const [containerWidth, setContainerWidth] = useState(0)
+  /**
+   * 첫 측정 시도가 끝났는가. **폭이 0 이어서 못 잰 경우에도 true 다** — 「시도했다」가 기준이다.
+   * 성공을 기준으로 두면 jsdom(폭 0)에서 영원히 false 라 트리거가 계속 렌더된다.
+   */
+  const [measured, setMeasured] = useState(false)
 
   const setContainer = useCallback((element: HTMLElement | null) => {
     containerRef.current = element
@@ -117,6 +132,7 @@ export function useTabOverflow(tabCount: number, activeIndex: number): TabOverfl
   }, [])
 
   useLayoutEffect(() => {
+    setMeasured(true)
     const container = containerRef.current
     if (container === null) return
 
@@ -154,7 +170,14 @@ export function useTabOverflow(tabCount: number, activeIndex: number): TabOverfl
     (index) => !visible.has(index),
   )
 
-  return { setContainer, setItem, setMore, visibleIndexes, hiddenIndexes }
+  return {
+    setContainer,
+    setItem,
+    setMore,
+    visibleIndexes,
+    hiddenIndexes,
+    shouldRenderMore: !measured || hiddenIndexes.length > 0,
+  }
 }
 
 /**

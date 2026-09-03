@@ -1146,11 +1146,15 @@ describe('BoardPage', () => {
   // ─────────────────────────────────────────────────────────────────────────────
 
   /**
-   * T-BD7-NAV-1. 보드 페이지에 백로그·타임라인 뷰 전환 nav가 렌더된다.
-   * 보드 1개 + 상세 로드 상태에서 nav[aria-label="프로젝트 뷰 전환"]이 존재하고
-   * 백로그 링크와 타임라인 링크가 올바른 href를 가진다.
+   * T-BD7-NAV-1 (재작성 · Jira 패리티 J5). 뷰 전환 nav 를 **페이지가 소유하지 않는다.**
+   *
+   * 옛 단언은 보드 페이지가 인라인으로 심은 2링크(백로그·타임라인)를 봤다. 백로그 페이지는
+   * 5링크였고 집합이 서로 달랐다 — 화면마다 다른 항법이 이 PR 이 없앤 결함이다.
+   * 지금은 `ShellLayout` 안의 `ProjectViewChrome` 이 정본 9탭을 소유한다.
+   *
+   * 페이지가 다시 심으면 nav 가 두 개가 되어 `getByRole('navigation')` 이 strict mode 로 죽는다.
    */
-  it('T-BD7-NAV-1: 보드 페이지에 백로그·타임라인 뷰 전환 nav가 렌더된다', async () => {
+  it('T-BD7-NAV-1: 뷰 전환 nav 를 페이지가 렌더하지 않는다 (셸이 소유한다)', async () => {
     mockUseBoards.mockReturnValue({
       data: [BOARD_A],
       isLoading: false,
@@ -1161,37 +1165,27 @@ describe('BoardPage', () => {
 
     await renderBoardPage()
 
-    const nav = await waitFor(() =>
-      screen.getByRole('navigation', { name: '프로젝트 뷰 전환' }),
-    )
-    expect(within(nav).getByRole('link', { name: '백로그' })).toHaveAttribute(
-      'href',
-      '/projects/ATLAS/backlog',
-    )
-    expect(within(nav).getByRole('link', { name: '타임라인' })).toHaveAttribute(
-      'href',
-      '/projects/ATLAS/timeline',
-    )
+    expect(screen.queryByRole('navigation', { name: '프로젝트 뷰 전환' })).not.toBeInTheDocument()
   })
 
   /**
-   * T-BD7-NAV-2 (★ 회귀 가드 · FR-BD-04 PR ⑥). 스크럼 보드에서는 nav 백로그 링크가
-   * 보드 스코프를 싣고, **보드 상세가 아직 로딩 중이어도** 싣는다.
+   * T-BD7-NAV-2 (이관 · FR-BD-04 PR ⑥ · 편차 X7). 보드 스코프 승계 판정이 **여기 없다.**
    *
-   * 🛑 두 가지를 한 번에 잠근다.
+   * 옛 단언은 `useBoardViewNavLinks` 가 `boards` 요약에서 종류를 읽어(상세가 아니라) 로딩
+   * 창에서도 `?board=` 를 싣는지를 봤다. 그 훅은 탭바가 인라인 nav 를 흡수하면서
+   * `project-view-tabs.ts` 의 `resolveBacklogTabSearch` 로 옮겨갔고, **판정 자체는 그대로**다
+   * (스크럼일 때만 · 목록 요약에서 읽는다).
    *
-   * ① 보드→백로그 방향에 판별식이 없었다. 형제 T-BD7-NAV-1 은 픽스처가 칸반이라
-   *    `boardType === 'SCRUM'` 분기를 한 번도 밟지 않고, E2E 에도 보드 화면의 nav
-   *    백로그 링크를 누르는 스텝이 없다. 즉 이 방향은 어느 계층에서도 무보증이었다.
+   * 옮겨간 보증의 자리 — 지우지 말 것.
+   * - 순수 판정(스크럼/칸반/로딩/미확정/미존재 5분기)
+   *   → `components/project/__tests__/project-view-tabs.test.ts` §편차 X7 승계
+   * - 배선(`?board=` 있을 때만 조회 · 두 탭에 각자 규칙대로 전달)
+   *   → `components/project/__tests__/ProjectViewChrome.test.tsx`
+   * - href 결과 → `components/project/__tests__/ProjectNavTabs.test.tsx`
    *
-   * ② 종류를 `boardDetail` 에서 읽으면 nav 가 상세를 기다리지 않고 렌더되므로
-   *    `useBoard` 가 in-flight 인 창에서 `boardType` 이 undefined 라 `search` 가 빠진다.
-   *    클릭하면 서버가 `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`)로 **첫 번째**
-   *    스크럼 보드에 폴백해, **이 PR 이 없애려는 바로 그 증상**이 로딩 중에 재현된다.
-   *    그래서 `useBoardViewNavLinks` 는 `boards` 요약에서 읽는다 — `isLoading: true` 로
-   *    그 창을 고정한다. 상세에서 읽는 구현으로 되돌리면 이 테스트가 red 다.
+   * 여기서는 **페이지가 그 일을 다시 하지 않는다**만 지킨다.
    */
-  it('T-BD7-NAV-2: 스크럼이면 상세 로딩 중에도 nav 백로그 링크가 보드 스코프를 싣는다', async () => {
+  it('T-BD7-NAV-2: 보드 스코프 링크를 페이지가 만들지 않는다 (판정은 탭바로 이관)', async () => {
     const scrumSummary: BoardSummary = { ...BOARD_A, boardType: 'SCRUM' }
     mockUseBoards.mockReturnValue({
       data: [scrumSummary],
@@ -1199,18 +1193,16 @@ describe('BoardPage', () => {
       error: null,
       isError: false,
     })
-    // 보드 상세는 아직 안 왔다 — 느린 네트워크·캐시 미스의 그 창.
     mockUseBoard.mockReturnValue({ data: undefined, isLoading: true })
 
     await renderBoardPage()
 
-    const nav = await waitFor(() =>
-      screen.getByRole('navigation', { name: '프로젝트 뷰 전환' }),
-    )
-    expect(within(nav).getByRole('link', { name: '백로그' })).toHaveAttribute(
-      'href',
-      `/projects/ATLAS/backlog?board=${scrumSummary.boardId}`,
-    )
+    // 🛑 라벨이 아니라 **href 모양**으로 본다. 이 화면에는 스크럼 빈 상태의 「백로그로 이동」
+    //    링크가 따로 있어 이름 조회는 그쪽을 잡거나 놓치며 의미가 흐려진다.
+    const scoped = screen
+      .queryAllByRole('link')
+      .filter((link) => (link.getAttribute('href') ?? '').includes('/backlog?board='))
+    expect(scoped).toEqual([])
   })
 
   /**

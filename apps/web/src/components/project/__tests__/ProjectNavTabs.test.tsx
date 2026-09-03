@@ -1,4 +1,4 @@
-// ProjectNavTabs 계약 테스트 — nav+Link 렌더, props.links 순서 보존, Radix Tabs 미사용 (FR-UX-06 PR12 Task 4)
+// ProjectNavTabs 계약 테스트 — nav+Link · 정본 9탭 통합 · Radix Tabs 미사용 (Jira 패리티 J5)
 import { describe, it, expect } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import {
@@ -8,112 +8,172 @@ import {
   createRootRoute,
   createMemoryHistory,
 } from '@tanstack/react-router'
-import { ProjectNavTabs, type ProjectNavTabLink } from '@/components/project/ProjectNavTabs'
+import { ProjectNavTabs } from '@/components/project/ProjectNavTabs'
+import { PROJECT_VIEW_TABS } from '@/components/project/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 테스트 헬퍼 — 격리된 최소 route tree(메모리 히스토리)에 ProjectNavTabs를 마운트한다.
-// board/backlog 실 라우트를 등록하지 않아도 Link href 해석에는 영향 없다(§inbox.test.tsx 관례).
+// 테스트 헬퍼 — 격리된 최소 route tree(메모리 히스토리)에 탭바를 마운트한다.
+//
+// 탭 목적지 라우트를 전부 등록하지는 않는다. `Link` 의 href 해석은 `to` 문자열 + params 로
+// 이뤄지고, 활성 판정은 라우터의 현재 location 과 비교하므로 **지금 있는 위치**만 실재하면 된다.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_LINKS: ProjectNavTabLink[] = [
-  { to: '/projects/$projectKey/backlog', label: '백로그' },
-  { to: '/projects/$projectKey/timeline', label: '타임라인' },
-]
-
-function renderProjectNavTabs(links: ProjectNavTabLink[] = DEFAULT_LINKS) {
+function renderTabs(
+  options: {
+    readonly pathname?: string
+    readonly boardScope?: {
+      readonly board?: Readonly<Record<string, string>>
+      readonly backlog?: Readonly<Record<string, string>>
+    }
+  } = {},
+) {
+  const pathname = options.pathname ?? '/projects/ATLAS'
   const rootRoute = createRootRoute()
-  const testRoute = createRoute({
+  const catchAllRoute = createRoute({
     getParentRoute: () => rootRoute,
-    path: '/test',
-    component: () => <ProjectNavTabs projectKey="ATLAS" links={links} />,
+    path: '$',
+    component: () => (
+      <ProjectNavTabs
+        projectKey="ATLAS"
+        pathname={pathname}
+        {...(options.boardScope === undefined ? {} : { boardScope: options.boardScope })}
+      />
+    ),
   })
-  const memoryHistory = createMemoryHistory({ initialEntries: ['/test'] })
   const testRouter = createRouter({
-    routeTree: rootRoute.addChildren([testRoute]),
-    history: memoryHistory,
+    routeTree: rootRoute.addChildren([catchAllRoute]),
+    history: createMemoryHistory({ initialEntries: [pathname] }),
     defaultPreload: false,
   })
 
   return render(<RouterProvider router={testRouter} />)
 }
 
+/**
+ * 렌더한 뒤 nav 안의 링크를 라벨→href 로 뽑는다.
+ *
+ * 🛑 렌더를 헬퍼 안에 둔다 — 밖에 두면 호출을 빠뜨렸을 때 「nav 를 못 찾는다」로 죽어
+ * 무엇이 틀렸는지가 안 보인다(실제로 이 파일에서 5건이 그렇게 죽었다).
+ */
+async function renderAndReadLinks(
+  options: Parameters<typeof renderTabs>[0] = {},
+): Promise<ReadonlyArray<readonly [string, string]>> {
+  renderTabs(options)
+  const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+  return within(nav)
+    .getAllByRole('link')
+    .map((link) => [link.textContent ?? '', link.getAttribute('href') ?? ''] as const)
+}
+
 describe('ProjectNavTabs', () => {
   it('aria-label="프로젝트 뷰 전환" nav를 렌더한다', async () => {
-    renderProjectNavTabs()
+    renderTabs()
 
     const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
     expect(nav).toBeInTheDocument()
   })
 
-  it('props.links 순서대로 Link를 렌더하고 projectKey가 href에 반영된다', async () => {
-    renderProjectNavTabs()
-
-    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
-    const links = within(nav).getAllByRole('link')
-    expect(links).toHaveLength(2)
-
-    const [firstLink, secondLink] = links
-    if (firstLink === undefined || secondLink === undefined) {
-      throw new Error('링크 2개가 렌더되어야 한다')
-    }
-    expect(firstLink).toHaveTextContent('백로그')
-    expect(firstLink).toHaveAttribute('href', '/projects/ATLAS/backlog')
-    expect(secondLink).toHaveTextContent('타임라인')
-    expect(secondLink).toHaveAttribute('href', '/projects/ATLAS/timeline')
-  })
-
-  /**
-   * 보드 스코프 전파 (FR-BD-04 PR ⑥ · 편차 X7 부분 해소).
-   *
-   * `search` 가 없는 링크는 지금 모양 그대로 두고, 있는 링크만 쿼리를 싣는다.
-   * 이 nav 는 board·backlog 말고도 여러 화면이 쓰므로 **옵셔널**이어야 한다.
-   */
-  it('링크에 search 가 있으면 href 에 쿼리로 실린다', async () => {
-    const boardId = 'b0a1c2d3-e4f5-4678-9abc-def012345678'
-    renderProjectNavTabs([
-      { to: '/projects/$projectKey/backlog', label: '백로그', search: { board: boardId } },
-      { to: '/projects/$projectKey/timeline', label: '타임라인' },
-    ])
-
-    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
-    const [withSearch, withoutSearch] = within(nav).getAllByRole('link')
-    if (withSearch === undefined || withoutSearch === undefined) {
-      throw new Error('링크 2개가 렌더되어야 한다')
-    }
-
-    expect(withSearch).toHaveAttribute('href', `/projects/ATLAS/backlog?board=${boardId}`)
-    // search 가 없는 링크는 쿼리가 붙지 않는다 — 기존 소비처 회귀 0
-    expect(withoutSearch).toHaveAttribute('href', '/projects/ATLAS/timeline')
-  })
-
-  it('links 순서를 바꾸면 렌더 순서도 그대로 따라간다', async () => {
-    renderProjectNavTabs([
-      { to: '/projects/$projectKey/timeline', label: '타임라인' },
-      { to: '/projects/$projectKey/backlog', label: '백로그' },
-    ])
-
-    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
-    const links = within(nav).getAllByRole('link')
-    const [firstLink, secondLink] = links
-    if (firstLink === undefined || secondLink === undefined) {
-      throw new Error('링크 2개가 렌더되어야 한다')
-    }
-    expect(firstLink).toHaveTextContent('타임라인')
-    expect(secondLink).toHaveTextContent('백로그')
-  })
-
   it('role="tablist"가 존재하지 않는다 — Radix Tabs가 아닌 nav+Link만 사용한다', async () => {
-    renderProjectNavTabs()
+    renderTabs()
 
     await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
-  it('빈 links 배열이면 nav만 렌더되고 링크는 없다', async () => {
-    renderProjectNavTabs([])
+  it('정본 9탭을 순서대로 렌더한다 — 화면마다 다른 집합을 넘기지 않는다', async () => {
+    // 옛 계약(`links` prop 으로 board 2 · backlog 5)을 대체하는 자리다.
+    const links = await renderAndReadLinks()
+    expect(links.map(([label]) => label)).toEqual(PROJECT_VIEW_TABS.map((tab) => tab.label))
+  })
+
+  it('프로젝트 스코프 탭의 href 에 projectKey 가 반영된다', async () => {
+    const links = new Map(await renderAndReadLinks())
+
+    expect(links.get('요약')).toBe('/projects/ATLAS')
+    expect(links.get('타임라인')).toBe('/projects/ATLAS/timeline')
+    expect(links.get('보드')).toBe('/projects/ATLAS/board')
+    expect(links.get('백로그')).toBe('/projects/ATLAS/backlog')
+    expect(links.get('컴포넌트')).toBe('/projects/ATLAS/settings/components')
+    expect(links.get('버전')).toBe('/projects/ATLAS/settings/versions')
+  })
+
+  it('전역 링크 2종(편차 X9)은 프로젝트 키가 붙지 않는다', async () => {
+    const links = new Map(await renderAndReadLinks())
+
+    expect(links.get('캘린더')).toBe('/calendar')
+    expect(links.get('대시보드')).toBe('/dashboards')
+  })
+
+  it('이슈 탭은 ?projectKey= 로 프로젝트를 좁힌다 (편차 X9)', async () => {
+    const links = new Map(await renderAndReadLinks())
+
+    expect(links.get('이슈')).toBe('/issues?projectKey=ATLAS')
+  })
+
+  it('보드·백로그 탭에 각자의 보드 스코프가 실린다 (편차 X7 승계)', async () => {
+    const scrumId = 'b0a1c2d3-e4f5-4678-9abc-def012345678'
+    const links = new Map(
+      await renderAndReadLinks({
+        boardScope: { board: { board: scrumId }, backlog: { board: scrumId } },
+      }),
+    )
+
+    expect(links.get('보드')).toBe(`/projects/ATLAS/board?board=${scrumId}`)
+    expect(links.get('백로그')).toBe(`/projects/ATLAS/backlog?board=${scrumId}`)
+    // 다른 탭에는 안 붙는다 — 스코프를 아무 데나 실으면 화면마다 다른 뜻이 된다.
+    expect(links.get('타임라인')).toBe('/projects/ATLAS/timeline')
+    expect(links.get('컴포넌트')).toBe('/projects/ATLAS/settings/components')
+  })
+
+  it('칸반이면 보드 탭만 스코프를 받고 백로그 탭은 안 받는다', async () => {
+    // 두 탭의 규칙이 갈리는 자리다 — 칸반 id 로 스코프된 백로그는 스프린트가 사라진다.
+    const kanbanId = 'c1b2a3d4-e5f6-4789-abcd-ef0123456789'
+    const links = new Map(await renderAndReadLinks({ boardScope: { board: { board: kanbanId } } }))
+
+    expect(links.get('보드')).toBe(`/projects/ATLAS/board?board=${kanbanId}`)
+    expect(links.get('백로그')).toBe('/projects/ATLAS/backlog')
+  })
+
+  it('보드 스코프가 없으면 두 탭 다 쿼리가 붙지 않는다', async () => {
+    const links = new Map(await renderAndReadLinks())
+
+    expect(links.get('보드')).toBe('/projects/ATLAS/board')
+    expect(links.get('백로그')).toBe('/projects/ATLAS/backlog')
+  })
+
+  it('요약 화면에서는 요약 탭만 aria-current 다', async () => {
+    renderTabs({ pathname: '/projects/ATLAS' })
 
     const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
-    expect(within(nav).queryAllByRole('link')).toHaveLength(0)
+    const current = within(nav)
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('aria-current') === 'page')
+      .map((link) => link.textContent)
+
+    expect(current).toEqual(['요약'])
+  })
+
+  it('하위 화면에서는 요약 탭이 aria-current 가 아니다 (exact 봉인)', async () => {
+    // 🛑 `/projects/ATLAS` 는 모든 하위 경로의 접두사다. exact 가 빠지면 여기서 2개가 된다.
+    renderTabs({ pathname: '/projects/ATLAS/board' })
+
+    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+    const current = within(nav)
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('aria-current') === 'page')
+      .map((link) => link.textContent)
+
+    expect(current).toEqual(['보드'])
+  })
+
+  it('레이아웃이 없는 환경(jsdom)에서는 접히지 않고 「더 보기」도 남지 않는다', async () => {
+    // `clientWidth` 가 0 이면 전량 가시다(`use-tab-overflow` 규칙 ①). 측정 시도가 끝나면
+    // 트리거는 사라진다 — 남아 있으면 접힌 탭 0 개짜리 빈 팝오버가 화면에 생긴다.
+    renderTabs()
+
+    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+    expect(within(nav).getAllByRole('link')).toHaveLength(PROJECT_VIEW_TABS.length)
+    expect(within(nav).queryByRole('button', { name: '더 보기' })).not.toBeInTheDocument()
   })
 })

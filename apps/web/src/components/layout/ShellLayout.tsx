@@ -7,6 +7,7 @@ import { useSidebarDrawer, useSidebarToggle, MOBILE_MEDIA_QUERY } from '@/hooks/
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { useCommandPaletteStore } from '@/components/command-palette/useCommandPalette'
+import { ProjectViewChrome } from '@/components/project/ProjectViewChrome'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 
@@ -166,6 +167,10 @@ export function ShellLayout(): JSX.Element {
           />
         )}
         <main className="min-w-0 flex-1 overflow-y-auto">
+          {/* 프로젝트 뷰 탭바 (Jira 패리티 J5) — 경로에 projectKey 가 있을 때만 스스로 마운트한다.
+              여기 한 줄이 프로젝트 하위 20여 화면 전부에 같은 탭을 준다. 페이지마다 심으면
+              하나 빠뜨린 화면만 탭이 없어지고, 실제로 그 상태였다(보드·백로그 둘만 있었다). */}
+          <ProjectViewChrome />
           <Outlet />
         </main>
       </div>

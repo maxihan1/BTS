@@ -183,16 +183,34 @@ export function resolveActiveTabIndex(
 }
 
 /**
- * 백로그 탭에 실을 보드 스코프 (편차 X7 승계 · FR-BD-04 PR ⑥ · #432).
+ * **보드 탭**에 실을 보드 스코프 (편차 X7 승계 · FR-BD-04 PR ⑥ · #432).
+ *
+ * 백로그 화면의 인라인 nav 가 보드 링크에 `?board=` 를 얹던 일을 이어받는다 — 없으면
+ * 백로그→보드 이동에서 스코프가 증발해 보드 화면이 `boards[0]` 으로 되돌아간다.
+ *
+ * **종류를 가리지 않는다.** 보드 화면은 칸반·스크럼을 다 열기 때문이다. 그래서 칸반 보드를
+ * 보다가 다른 탭에 다녀와도 그 보드로 돌아온다(보드 탭이 생기면서 새로 필요해진 보장이다).
+ *
+ * @param currentBoardId 지금 보고 있는 보드 UUID. 미확정이면 undefined
+ */
+export function resolveBoardTabSearch(
+  currentBoardId: string | undefined,
+): { readonly board: string } | undefined {
+  return currentBoardId === undefined ? undefined : { board: currentBoardId }
+}
+
+/**
+ * **백로그 탭**에 실을 보드 스코프 (편차 X7 승계 · FR-BD-04 PR ⑥ · #432).
  *
  * 원래 `routes/projects.$projectKey.board.tsx` 의 `useBoardViewNavLinks` 가 하던 일이다.
  * 탭바가 그 인라인 nav 를 흡수했으므로 판정도 함께 옮겼다 — 옮기지 않으면 보드→백로그
  * 이동에서 `?board=` 가 증발해 서버가 `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`)로
  * **첫 번째** 스크럼 보드에 폴백하고, 사용자는 왕복마다 스위처를 다시 눌러야 한다.
  *
- * 🛑 **스크럼일 때만 싣는다.** 백로그는 스크럼 보드만 연다(편차 X4 — 칸반은 백로그 없이 간다).
- *    칸반 id 를 실어 보내면 그 보드로 스코프된 백로그가 열리고, 거기서 만든 스프린트는
- *    `getBoard` 가 SCRUM 일 때만 활성 스프린트를 조회하므로 어느 화면에도 안 나타난다.
+ * 🛑 **스크럼일 때만 싣는다** — 여기가 {@link resolveBoardTabSearch} 와 갈리는 지점이다.
+ *    백로그는 스크럼 보드만 연다(편차 X4 — 칸반은 백로그 없이 간다). 칸반 id 를 실어 보내면
+ *    그 보드로 스코프된 백로그가 열리고, 거기서 만든 스프린트는 `getBoard` 가 SCRUM 일 때만
+ *    활성 스프린트를 조회하므로 어느 화면에도 안 나타난다.
  *
  * 🛑 종류를 **보드 목록 요약에서** 읽는다(상세가 아니다). 탭바는 상세를 기다리지 않고
  *    렌더되므로 상세에서 읽으면 로딩 창에서 `boardType` 이 undefined 라 `search` 가 안 붙고,
@@ -202,7 +220,7 @@ export function resolveActiveTabIndex(
  * @param currentBoardId 지금 보고 있는 보드 UUID. 미확정이면 undefined
  * @returns 실을 search. 스크럼이 아니거나 미확정이면 undefined
  */
-export function resolveBoardScopeSearch(
+export function resolveBacklogTabSearch(
   boards: readonly { readonly boardId: string; readonly boardType: string }[] | undefined,
   currentBoardId: string | undefined,
 ): { readonly board: string } | undefined {

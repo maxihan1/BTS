@@ -1,76 +1,166 @@
-// 프로젝트 뷰 전환 nav — board/backlog 인라인 nav를 추출한 공유 컴포넌트 (FR-UX-06 PR12 Task 4)
-import type { JSX } from 'react'
+// 프로젝트 뷰 전환 탭바 — 정본 9탭 + 폭 부족 시 「더 보기」 오버플로 (Jira 패리티 J5)
+import { useState, type JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 import { navLabels } from '@/i18n/nav-labels'
+import { projectViewLabels } from '@/i18n/project-view-labels'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useTabOverflow } from '@/hooks/use-tab-overflow'
+import {
+  PROJECT_VIEW_TABS,
+  resolveActiveTabIndex,
+  type ProjectViewTab,
+} from '@/components/project/project-view-tabs'
 
-/** 뷰 전환 nav 링크 공통 클래스 — board/backlog 인라인 nav 원본과 동일(추출 전후 시각 불변) */
-const PROJECT_NAV_TAB_LINK_CLASS = 'text-sm text-muted-foreground hover:text-foreground'
+/** 탭 링크 공통 스타일 — 활성 표시는 TanStack 이 붙이는 `.active` 클래스에 건다(사이드바 관례) */
+const TAB_LINK_CLASS =
+  'inline-flex whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-muted-foreground ' +
+  'hover:bg-accent hover:text-accent-foreground ' +
+  '[&.active]:font-semibold [&.active]:text-foreground'
 
-/**
- * {@link ProjectNavTabs} 링크 항목.
- *
- * `to`는 TanStack Router 라우트 경로 문자열(`$projectKey` 플레이스홀더 포함),
- * `label`은 화면에 노출되는 링크 텍스트 — 호출부의 i18n 라벨 상수(`boardLabels`·
- * `backlogLabels` 등)를 그대로 전달한다.
- */
-export interface ProjectNavTabLink {
-  /** 라우트 경로 (예: `/projects/$projectKey/board`) */
-  readonly to: string
-  /** 링크 텍스트 */
-  readonly label: string
-  /**
-   * URL search 파라미터. 생략하면 쿼리 없이 이동한다(기존 소비처 회귀 0).
-   *
-   * 보드 스코프(`?board=`)를 뷰 전환에서 잃지 않기 위한 것이다 (FR-BD-04 PR ⑥).
-   * 없으면 보드↔백로그 왕복마다 스코프가 풀려 사용자가 매번 스위처를 다시 눌러야 한다.
-   *
-   * **옵셔널인 것이 계약이다** — 이 nav 는 board·backlog 말고도 여러 화면이 쓰고,
-   * 그 화면들은 실을 스코프가 없다. 편차 X7 의 「공유 상태」는 여전히 범위 밖이고
-   * 이 필드는 **링크 전파**까지만 한다(호출부가 실을 값을 스스로 정한다).
-   */
-  readonly search?: Readonly<Record<string, string>>
-}
+/** 「더 보기」 트리거 스타일 — 탭과 같은 높이로 맞춘다 */
+const MORE_TRIGGER_CLASS =
+  'inline-flex shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-muted-foreground ' +
+  'hover:bg-accent hover:text-accent-foreground'
 
 /** {@link ProjectNavTabs} Props */
 export interface ProjectNavTabsProps {
-  /** 현재 프로젝트 키 — 모든 링크의 `$projectKey` param에 공통 적용 */
+  /** 현재 프로젝트 키 — `$projectKey` param 을 받는 탭에 공통 적용 */
   readonly projectKey: string
-  /** 렌더할 뷰 전환 링크 목록(순서대로 렌더) */
-  readonly links: ReadonlyArray<ProjectNavTabLink>
+  /**
+   * 현재 URL 의 pathname. **오버플로 핀 고정 전용**이다.
+   *
+   * 시각·ARIA 활성 표시는 `Link` 가 라우터에게 직접 묻는다 — 이 값으로 그리지 않는다.
+   * 두 층을 나눠 둔 이유와 그 둘이 어긋나지 않는다는 보증은 `project-view-tabs.ts` 의
+   * `resolveActiveTabIndex` JSDoc 과 그 짝 판별식에 있다.
+   */
+  readonly pathname: string
+  /**
+   * 보드 스코프 `?board=` 를 탭별로 실은 것 (편차 X7 · #432 승계).
+   *
+   * **탭마다 규칙이 다르다** — 보드 탭은 종류를 가리지 않고, 백로그 탭은 스크럼일 때만 받는다.
+   * 정본 판정은 `resolveBoardTabSearch`·`resolveBacklogTabSearch` 가 하고 이 컴포넌트는
+   * 싣기만 한다. 비어 있으면 쿼리 없이 이동한다.
+   */
+  readonly boardScope?: {
+    readonly board?: Readonly<Record<string, string>>
+    readonly backlog?: Readonly<Record<string, string>>
+  }
 }
 
 /**
- * 프로젝트 뷰 전환 nav — board/backlog 등 프로젝트 하위 페이지가 각자 링크 집합을
- * 전달해 재사용하는 공유 컴포넌트다.
+ * 탭 하나가 실을 URL search. 없으면 `undefined`.
+ *
+ * 이슈 탭은 `?projectKey=` 로만 프로젝트를 좁힐 수 있고(편차 X9), 보드·백로그 탭은 보드
+ * 스코프를 승계한다(편차 X7). 나머지는 경로에 프로젝트가 들어 있어 search 가 필요 없다.
+ */
+function tabSearch(
+  tab: ProjectViewTab,
+  projectKey: string,
+  boardScope: ProjectNavTabsProps['boardScope'],
+): Readonly<Record<string, string>> | undefined {
+  if (tab.projectKeySearchParam !== undefined) return { [tab.projectKeySearchParam]: projectKey }
+  if (tab.key === 'board') return boardScope?.board
+  if (tab.key === 'backlog') return boardScope?.backlog
+  return undefined
+}
+
+/** 탭 링크 1개 — 가시 목록과 오버플로 목록이 같은 것을 쓴다(두 벌로 갈리지 않게) */
+function ProjectViewTabLink(props: {
+  readonly tab: ProjectViewTab
+  readonly projectKey: string
+  readonly boardScope: ProjectNavTabsProps['boardScope']
+}): JSX.Element {
+  const { tab, projectKey, boardScope } = props
+  return (
+    <Link
+      to={tab.to}
+      {...(tab.usesProjectParam ? { params: { projectKey } } : {})}
+      search={tabSearch(tab, projectKey, boardScope)}
+      activeOptions={{ exact: tab.exact }}
+      activeProps={{ 'aria-current': 'page' }}
+      className={TAB_LINK_CLASS}
+    >
+      {tab.label}
+    </Link>
+  )
+}
+
+/**
+ * 프로젝트 안의 모든 화면이 공유하는 수평 탭바.
  *
  * 🔴 **Radix Tabs 금지** — `role="navigation"`(nav+Link)이 e2e 5건 + 유닛 5건의 계약이다.
- * 뷰 전환은 실제 라우트 이동(URL 변경, 뒤로가기 정상 동작)이므로 같은 라우트 안에서
- * 패널만 바뀌는 탭 위젯이 아니라 네비게이션이 정답이다
+ * 뷰 전환은 실제 라우트 이동(URL 변경, 뒤로가기 정상 동작)이므로 같은 라우트 안에서 패널만
+ * 바뀌는 탭 위젯이 아니라 네비게이션이 정답이다
  * (`frontend-nav-aria-label-e2e-contract` 학습 노트).
  *
- * `aria-label`은 `navLabels.projectViewNav`(🔒 e2e 계약 문자열 "프로젝트 뷰 전환")를
- * 그대로 사용한다 — 글자를 바꾸면 안 된다.
+ * 🔴 오버플로 목록에 `role="menu"`/`menuitem` 을 주지 않는다 — 라우트 이동이라 링크가
+ * 정답이고, menu role 은 `menuitem` 자식을 요구해 Link 시맨틱을 깬다.
  *
- * 이 컴포넌트는 **링크 집합을 통합하지 않는다** — board·backlog가 각자 기존 링크
- * 목록을 verbatim으로 전달하며, 여기서는 그대로 순서대로 렌더만 한다(회귀-무해).
+ * `aria-label` 은 `navLabels.projectViewNav`(🔒 e2e 계약 문자열 "프로젝트 뷰 전환")를 그대로
+ * 쓴다 — 글자를 바꾸면 안 된다.
  *
- * @param projectKey 현재 프로젝트 키
- * @param links 뷰 전환 링크 목록(호출부가 뷰 집합을 결정)
+ * ### 링크 집합을 이제 **통합한다**
+ * 한때 board·backlog 가 각자 다른 집합(2링크·5링크)을 prop 으로 넘겼다. Jira 는 스페이스의
+ * 모든 화면이 같은 탭을 공유하므로(J5) 정본 하나로 모으고 `links` prop 을 없앴다.
+ *
+ * ### Portal 을 nav 안으로 가둔다
+ * 오버플로 팝오버는 기본으로 `document.body` 에 그려진다. 그러면 링크가 `<nav>` **밖**에 있게
+ * 되어 `within(nav).getAllByRole('link')` 계열 계약이 접힌 탭을 못 본다. `PopoverContent` 의
+ * `container` prop(다이얼로그용으로 이미 있던 장치)에 nav 안쪽 노드를 준다.
+ *
+ * 🛑 그 노드는 `useState` **콜백 ref** 로 잡는다 — 첫 렌더에 `useRef` 는 `null` 이라 그 시점의
+ *    Portal 이 body 로 새고, ref 가 채워져도 재렌더가 없어 영영 그대로다.
  */
-export function ProjectNavTabs({ projectKey, links }: ProjectNavTabsProps): JSX.Element {
+export function ProjectNavTabs({
+  projectKey,
+  pathname,
+  boardScope,
+}: ProjectNavTabsProps): JSX.Element {
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null)
+  const activeIndex = resolveActiveTabIndex(pathname, projectKey)
+  const { setContainer, setItem, setMore, visibleIndexes, hiddenIndexes, shouldRenderMore } =
+    useTabOverflow(PROJECT_VIEW_TABS.length, activeIndex)
+
   return (
-    <nav aria-label={navLabels.projectViewNav} className="flex items-center gap-3">
-      {links.map((link) => (
-        <Link
-          key={link.to}
-          to={link.to}
-          params={{ projectKey }}
-          search={link.search}
-          className={PROJECT_NAV_TAB_LINK_CLASS}
-        >
-          {link.label}
-        </Link>
-      ))}
+    <nav
+      aria-label={navLabels.projectViewNav}
+      className="relative flex items-center gap-1 border-b border-border px-6"
+    >
+      <ul ref={setContainer} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+        {visibleIndexes.map((index) => {
+          const tab = PROJECT_VIEW_TABS[index]
+          if (tab === undefined) return null
+          return (
+            <li key={tab.key} ref={setItem(index)} className="shrink-0">
+              <ProjectViewTabLink tab={tab} projectKey={projectKey} boardScope={boardScope} />
+            </li>
+          )
+        })}
+      </ul>
+
+      {shouldRenderMore && (
+        <Popover>
+          <PopoverTrigger ref={setMore} className={MORE_TRIGGER_CLASS}>
+            {projectViewLabels.overflowTrigger}
+          </PopoverTrigger>
+          <PopoverContent container={portalHost} align="end" className="w-48 p-2">
+            <ul className="flex flex-col gap-1">
+              {hiddenIndexes.map((index) => {
+                const tab = PROJECT_VIEW_TABS[index]
+                if (tab === undefined) return null
+                return (
+                  <li key={tab.key}>
+                    <ProjectViewTabLink tab={tab} projectKey={projectKey} boardScope={boardScope} />
+                  </li>
+                )
+              })}
+            </ul>
+          </PopoverContent>
+        </Popover>
+      )}
+
+      {/* nav 안의 Portal 목적지 — 접힌 탭 링크가 nav 밖으로 새지 않게 한다 */}
+      <div ref={setPortalHost} />
     </nav>
   )
 }
