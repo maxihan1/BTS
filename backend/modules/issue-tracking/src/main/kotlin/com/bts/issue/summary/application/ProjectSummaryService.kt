@@ -229,6 +229,11 @@ class ProjectSummaryService(
      * **N+1.** [IssuePermissionResolver] 에 배치 API 가 없어 이슈마다 개별 호출이지만, 피드는 최대
      * `limit`(컨트롤러 상한 50)개 그룹이라 distinct 이슈도 그 이하다. 여기에 이슈 키 캐시를 더해
      * 같은 이슈가 여러 그룹으로 등장해도 판정은 1회다.
+     *
+     * **판정도 캐시 키도 [ProjectActivityRow.currentIssueKey] 다.** 표시용 `issueKey` 는 기록 시점
+     * 박제값이라 이슈가 다른 프로젝트로 이동(FR-MV-01)하면 조회 프로젝트와 접두사가 어긋난다.
+     * 그 값으로 물으면 이동 전 활동이 [canViewIssue] 의 접두사 가드에 전량 걸려 사라진다 —
+     * 어느 프로젝트 피드에서도 보이지 않고 사용자에게 누락 신호도 없는 조용한 데이터 소실이다.
      */
     private fun retainViewableRows(
         actorId: ActorId,
@@ -238,7 +243,7 @@ class ProjectSummaryService(
         if (rows.isEmpty()) return rows
         val decided = mutableMapOf<String, Boolean>()
         return rows.filter { row ->
-            decided.getOrPut(row.issueKey) { canViewIssue(actorId, projectKey, row.issueKey) }
+            decided.getOrPut(row.currentIssueKey) { canViewIssue(actorId, projectKey, row.currentIssueKey) }
         }
     }
 
@@ -248,6 +253,9 @@ class ProjectSummaryService(
      * 이슈 키 접두사는 소속 프로젝트 키와 같다는 불변식이 있고(DATA.md §1.1 이슈 키 영속성),
      * resolver 도 그 접두사로 프로젝트를 해석한다. 접두사가 조회 대상 프로젝트와 어긋나면 판정이
      * **다른 프로젝트 기준**으로 나가므로, 그 상황에서는 묻지 않고 거부한다(fail-closed).
+     *
+     * 그러므로 [issueKey] 에는 **현재** 키([ProjectActivityRow.currentIssueKey])를 넘겨야 한다 —
+     * 기록 시점 키를 넘기면 이동된 이슈가 이 가드에 정상적으로 걸려 통째로 사라진다.
      */
     private fun canViewIssue(
         actorId: ActorId,

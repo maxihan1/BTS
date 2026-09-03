@@ -2622,6 +2622,13 @@ class IssueRepository(
      * [fetchStatusChangesSinceForProject] 와 달리 필드를 `status` 로 한정하지 않고 라벨까지 싣는다.
      * [buildActiveSecureWhere] 를 재사용하므로 가시성 필터가 자동으로 걸린다.
      *
+     * ### 기록 시점 키와 현재 키를 함께 싣는다
+     * `issue_change_group.issue_key` 는 기록 시점에 한 번 쓰이고 이후 갱신되지 않는다 — 이슈가
+     * 다른 프로젝트로 이동(FR-MV-01)해도 그대로다. 반면 1단계 보안 술어는 **현재** `project_id` 를
+     * 걸므로 이동 전 그룹도 새 프로젝트 피드에 실린다. 그래서 2단계에서 `issues` 를 조인해
+     * 현재 키(`issues.key`)를 [ProjectActivityRow.currentIssueKey] 로 함께 내보낸다 — 이슈 단위
+     * 권한 판정은 이 값으로 해야 한다. 조인 대상이 PK 라 N:1 이므로 행 수는 늘지 않는다.
+     *
      * ### LIMIT 이 걸리는 단위 — **행이 아니라 그룹**
      * 행(변경 항목)에 `LIMIT` 을 걸면 경계에 걸친 그룹의 항목 일부만 실려 「담당자만 바꿨다」처럼
      * 사실과 다른 줄이 화면에 뜬다. 그래서 최신 그룹 id 를 서브쿼리로 [limit] 개 먼저 고르고,
@@ -2660,6 +2667,7 @@ class IssueRepository(
             ISSUE_CHANGE_GROUP.ID,
             ISSUE_CHANGE_GROUP.ISSUE_ID,
             ISSUE_CHANGE_GROUP.ISSUE_KEY,
+            ISSUES.KEY,
             ISSUE_CHANGE_GROUP.ACTOR_ID,
             ISSUE_CHANGE_GROUP.CREATED_AT,
             ISSUE_CHANGE_ITEM.FIELD,
@@ -2670,6 +2678,8 @@ class IssueRepository(
         )
             .from(ISSUE_CHANGE_GROUP)
             .join(ISSUE_CHANGE_ITEM).on(ISSUE_CHANGE_ITEM.GROUP_ID.eq(ISSUE_CHANGE_GROUP.ID))
+            // 현재 키를 싣기 위한 조인. `issue_id → issues.id` 는 PK 대상 N:1 이라 행이 늘지 않는다.
+            .join(ISSUES).on(ISSUES.ID.eq(ISSUE_CHANGE_GROUP.ISSUE_ID))
             .where(ISSUE_CHANGE_GROUP.ID.`in`(latestGroupIds))
             .orderBy(ISSUE_CHANGE_GROUP.CREATED_AT.desc(), ISSUE_CHANGE_GROUP.ID.desc(), ISSUE_CHANGE_ITEM.ID)
             .fetch { record ->
@@ -2683,10 +2693,9 @@ class IssueRepository(
                     issueKey =
                         record.get(ISSUE_CHANGE_GROUP.ISSUE_KEY)
                             ?: error("issue_change_group.issue_key must not be null"),
-                    // red seam — 아직 현재 키를 읽지 않는다(N1).
                     currentIssueKey =
-                        record.get(ISSUE_CHANGE_GROUP.ISSUE_KEY)
-                            ?: error("issue_change_group.issue_key must not be null"),
+                        record.get(ISSUES.KEY)
+                            ?: error("issues.key must not be null"),
                     actorId = record.get(ISSUE_CHANGE_GROUP.ACTOR_ID),
                     createdAt =
                         record.get(ISSUE_CHANGE_GROUP.CREATED_AT)?.toInstant()
