@@ -78,23 +78,26 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     expect(within(mainNav).getByRole('link', { name: '캘린더' })).toBeInTheDocument()
   })
 
-  it('isSystemAdmin=true — 관리 메뉴 nav가 기본 펼침 상태로 존재하고 6링크를 전부 포함한다', async () => {
+  it('isSystemAdmin=true — 관리 진입점이 상단바 링크 하나이고 nav 는 없다 (J9)', async () => {
     renderAuthenticatedShell(true)
 
-    const adminNav = await screen.findByRole('navigation', { name: '관리 메뉴' })
-    expect(within(adminNav).getByRole('link', { name: '워크플로우 스킴' })).toBeInTheDocument()
-    expect(within(adminNav).getByRole('link', { name: '감사 로그' })).toBeInTheDocument()
-    expect(within(adminNav).getByRole('link', { name: '전역 권한' })).toBeInTheDocument()
-    expect(within(adminNav).getByRole('link', { name: '알림 정책' })).toBeInTheDocument()
-    expect(within(adminNav).getByRole('link', { name: 'Webhook' })).toBeInTheDocument()
-    expect(within(adminNav).getByRole('link', { name: 'Slack 연결' })).toBeInTheDocument()
+    // 메인 메뉴가 그려질 때까지 기다려 라우터 마운트 완료를 보장한다
+    await screen.findByRole('navigation', { name: '메인 메뉴' })
+
+    // 진입점은 상단바 링크 — role 이 navigation 에서 link 로 옮겨갔다(문자열은 즉사 계약이라 동결)
+    const hub = screen.getByRole('link', { name: '관리 메뉴' })
+    expect(hub).toHaveAttribute('href', '/admin')
+
+    // 🛑 nav 는 없어야 한다. 둘 다 있으면 `getByRole` 조회가 갈리고 진입점이 이원화된다.
+    expect(screen.queryByRole('navigation', { name: '관리 메뉴' })).not.toBeInTheDocument()
   })
 
-  it('isSystemAdmin=false — 관리 메뉴 nav가 렌더되지 않는다', async () => {
+  it('isSystemAdmin=false — 관리 진입점이 아예 렌더되지 않는다', async () => {
     renderAuthenticatedShell(false)
 
-    // 메인 메뉴가 그려질 때까지 기다려 라우터 마운트 완료를 보장한 뒤 관리 nav 부재를 확인한다
+    // 메인 메뉴가 그려질 때까지 기다려 라우터 마운트 완료를 보장한 뒤 부재를 확인한다
     await screen.findByRole('navigation', { name: '메인 메뉴' })
+    expect(screen.queryByRole('link', { name: '관리 메뉴' })).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: '관리 메뉴' })).not.toBeInTheDocument()
   })
 
@@ -119,13 +122,12 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     expect(screen.queryByRole('button', { name: navLabels.search })).toBeNull()
   })
 
-  it('메인/관리 nav 영역에 <h1>이 없다 (e2e 34건 h1 level 1 의존 회귀 방지 — 현재 trivially true)', async () => {
+  it('메인 nav 영역에 <h1>이 없다 (e2e 34건 h1 level 1 의존 회귀 방지 — 현재 trivially true)', async () => {
     renderAuthenticatedShell(true)
 
+    // 관리 nav 는 J9 로 사라졌다 — 상단바 링크는 heading 을 품을 구조가 아니라 대상이 아니다.
     const mainNav = await screen.findByRole('navigation', { name: '메인 메뉴' })
-    const adminNav = await screen.findByRole('navigation', { name: '관리 메뉴' })
     expect(within(mainNav).queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
-    expect(within(adminNav).queryByRole('heading', { level: 1 })).not.toBeInTheDocument()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -157,9 +159,8 @@ describe('navigation-contract (aria-label 4종 회귀 가드)', () => {
     const mainNav = await screen.findByRole('navigation', { name: '메인 메뉴' })
     expect(within(mainNav).getByRole('link', { name: '대시보드' })).toBeInTheDocument()
 
-    // 관리 메뉴 — 기본 펼침 + 6링크 유지
-    const adminNav = await screen.findByRole('navigation', { name: '관리 메뉴' })
-    expect(within(adminNav).getByRole('link', { name: '워크플로우 스킴' })).toBeInTheDocument()
+    // 관리 메뉴 — J9 이후 상단바 링크다. 문자열은 그대로고 role 만 옮겨갔다
+    expect(screen.getByRole('link', { name: '관리 메뉴' })).toHaveAttribute('href', '/admin')
 
     // 프로젝트 nav — "모든 프로젝트" 링크가 새로 추가됐지만 nav 자체는 여전히 exact 매칭 단독 식별
     const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })

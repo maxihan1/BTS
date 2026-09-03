@@ -1,5 +1,6 @@
 // 초안·발행 MSW 의 인메모리 저장소 — 초안 · 버전 · 상태별 잔여 이슈를 한 출처로 둔다
 import type { DraftDefinition } from '@/api/workflows-draft.types'
+import { resetBulkOperationState } from './bulk-operation-handlers'
 
 /**
  * 워크플로우별 저장된 초안.
@@ -38,6 +39,11 @@ export function resetWorkflowDraftStore(): void {
   versionStore.clear()
   publicationStore.clear()
   pendingIssueStore.clear()
+  // 이 파일의 `POST /publish/migrate` 핸들러가 `bulk-operation-handlers.ts` 의 스토어에 이관
+  // 작업을 등록한다(registerStatusMigration) — `test/setup.ts` 는 그 스토어를 직접 모르므로
+  // (resetBulkOperationState 는 전용 테스트 파일만 부른다) 여기서 함께 비워야 이관 작업 id 가
+  // 다음 테스트로 새지 않는다.
+  resetBulkOperationState()
 
   // 픽스처 워크플로우의 시작 버전. 백엔드 `workflows.version` 에 해당한다.
   versionStore.set('software-default', 4)

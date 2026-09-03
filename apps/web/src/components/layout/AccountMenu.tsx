@@ -115,8 +115,9 @@ export function AccountMenu() {
           <DropdownMenuItem onSelect={() => { setStatusOpen(true) }}>상태 설정</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => { setOooOpen(true) }}>{oooLabels.accountMenuItem}</DropdownMenuItem>
           {/* 🛑 이 항목을 지우지 마라 — 모바일에서 설정 허브로 가는 **유일한** 길이다.
-              상단바 설정 톱니는 `max-md:hidden` 이고, 사이드바 관리 메뉴는 `isSystemAdmin`
-              전용이다. 아래 개별 링크는 허브 11개 중 7개만 덮으므로, 이 줄이 없으면
+              상단바 설정 톱니는 `max-md:hidden` 이고, 사이드바에는 관리 메뉴가 **없다**
+              (J9 로 상단바 관리 허브 링크로 옮겼고, 그것도 `/settings` 루트를 링크하지 않는다).
+              아래 개별 링크는 허브 11개 중 7개만 덮으므로, 이 줄이 없으면
               `notifications`·`sessions`·`password`·`account-links` 가 좁은 폭에서 도달
               불가가 된다(비밀번호 변경·세션 종료는 보안 기능이다).
               목록 맨 앞에 두는 것도 의도다 — 모바일에서는 이것이 4개 페이지의 유일한 경로라

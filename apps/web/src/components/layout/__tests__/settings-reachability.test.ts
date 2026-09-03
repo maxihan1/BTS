@@ -102,7 +102,9 @@ describe('설정 도달성 — 허브의 모든 항목이 모바일에서 UI 경
     //    `TopBar.tsx` 하나뿐이었고, 거기에 `max-md:hidden` 을 걸자 허브에만 있던
     //    `password`·`sessions`·`notifications`·`account-links` 4개가 모바일에서 통째로
     //    도달 불가가 됐다. 비밀번호 변경과 세션 종료는 보안 기능이다.
-    //    사이드바는 대체가 못 된다 — 관리 메뉴는 `isSystemAdmin` 전용이다.
+    //    사이드바는 대체가 못 된다 — J9 이후 사이드바에는 관리 메뉴 자체가 없고,
+    //    그것을 대신하는 상단바 관리 허브 링크도 `isSystemAdmin` 전용이며 `/settings` 를
+    //    링크하지 않는다.
     if (!topBarGearHiddenOnMobile()) return // 톱니가 모바일에서도 보이면 이 조건은 무의미하다
 
     const accountMenuLinks = settingsLinksIn(read('components/layout/AccountMenu.tsx'))

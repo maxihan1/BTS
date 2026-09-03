@@ -22,7 +22,15 @@ export const navLabels = {
   /** 사이드바 메인 nav aria-label (🔒 e2e 계약) */
   mainNav: '메인 메뉴',
 
-  /** 사이드바 관리 nav aria-label (🔒 e2e 계약) */
+  /**
+   * 관리 진입점 aria-label (🔒 e2e 계약).
+   *
+   * ★ Jira 패리티 J9 로 **역할이 바뀌었다** — 한때 사이드바 `<nav>` 의 이름이었고,
+   * 지금은 상단바 관리 허브 **링크**(`TopBar.tsx` → `/admin`)의 이름이다.
+   * 문자열은 그대로 두었다 — 즉사 계약 4종 중 하나라 글자를 바꾸면 e2e 가 함께 죽는다.
+   * 조회 role 만 `navigation` → `link` 로 옮겨갔고, 그 전환은
+   * `e2e/fixtures/admin-hub.ts` 한 곳이 흡수한다.
+   */
   adminNav: '관리 메뉴',
 
   /**
@@ -87,14 +95,20 @@ export const navLabels = {
   /** 상단바 만들기 버튼 라벨 */
   create: '만들기',
 
-  /** 사이드바 관리 nav 제목 라벨 */
-  admin: '관리',
-
   /** 사이드바 접기 토글 aria-label (펼침 상태) */
   collapseSidebar: '사이드바 접기',
 
   /** 사이드바 펼치기 토글 aria-label (접힘 상태) */
   expandSidebar: '사이드바 펼치기',
+
+  /**
+   * 사이드바 폭 조절 핸들 aria-label (Jira 패리티 J6).
+   *
+   * `role="separator"` 위젯의 접근 가능 이름이다. 기존 `collapseSidebar`·`expandSidebar`
+   * 어느 것과도 substring 관계가 아니라 `getByRole` 조회에서 토글 버튼과 섞이지 않는다
+   * (`nav-labels.test.ts` 전수 판별식이 이 관계를 계속 검사한다).
+   */
+  resizeSidebar: '사이드바 폭 조절',
 
   /**
    * 페이지 상단 탐색 경로(breadcrumb) nav aria-label (🔒 e2e 계약, FR-UX-06 PR13 PL-3 신규).

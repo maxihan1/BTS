@@ -14,7 +14,8 @@ import { useSidebarRailCollapsed } from '@/hooks/use-sidebar-drawer'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 그룹 헤더 — `Sidebar.tsx`의 관리 메뉴 헤더와 동일 타이포.
+ * 그룹 헤더 — 사이드바 그룹 제목의 표준 타이포.
+ * (한때 `Sidebar.tsx` 관리 메뉴 헤더와 짝이었으나 그 헤더는 J9 로 사라졌다.)
  * 사이드바 안에서 그룹 제목은 전부 이 모양이라 새 어휘를 만들지 않는다.
  */
 const SECTION_HEADER_CLASS =
