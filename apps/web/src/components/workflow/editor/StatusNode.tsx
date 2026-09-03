@@ -54,8 +54,28 @@ const HANDLE_BASE_CLASS = 'opacity-0 transition-opacity'
  */
 const HANDLE_HOVER_CLASS = 'group-hover:opacity-100'
 
+/**
+ * 선택된 노드에 얹는 링.
+ *
+ * **카테고리 색과 다른 축이라야 한다** (부채 169). 카테고리는 배경·테두리 *색*으로 말하므로
+ * 선택도 색으로 말하면 「선택된 진행 중」과 「선택 안 된 완료」가 화면에서 헷갈린다.
+ * 링은 테두리 바깥에 따로 그려져 색과 겹치지 않는다.
+ *
+ * `ring-offset` 을 주지 않는 이유. 캔버스 배경이 노드마다 달라(격자·간선이 지나간다)
+ * 오프셋 색을 하나로 못 고른다 — 붙은 링이 어느 배경에서나 읽힌다.
+ */
+const SELECTED_CLASS = 'ring-2 ring-primary'
+
 interface StatusNodeProps {
   data: StatusNodeData
+  /**
+   * xyflow 가 넘기는 선택 상태.
+   *
+   * ★ **DOM 의 `.selected` 클래스에 기대지 않는다.** xyflow 는 래퍼(`.react-flow__node`)에
+   * 그 클래스를 붙이지만 저장소에 그것을 그리는 CSS 규칙이 없다 — 커스텀 노드가 기본 스타일을
+   * 걷어내면서 함께 사라졌다. 프롭으로 받아 여기서 그려야 판정이 이 컴포넌트 안에 선다.
+   */
+  selected?: boolean
 }
 
 /**
@@ -69,7 +89,7 @@ interface StatusNodeProps {
  * 잠긴 워크플로우도 「보기는 된다」(E12)여야 하므로, 잠금은 `isConnectable=false` 와
  * hover 클래스 제거로만 표현하고 DOM 에서는 지우지 않는다.
  */
-function StatusNode({ data }: StatusNodeProps): React.JSX.Element {
+function StatusNode({ data, selected = false }: StatusNodeProps): React.JSX.Element {
   const connectable = !data.locked
   const handleClass = cn(HANDLE_BASE_CLASS, connectable && HANDLE_HOVER_CLASS)
 
@@ -78,6 +98,7 @@ function StatusNode({ data }: StatusNodeProps): React.JSX.Element {
       className={cn(
         'group relative flex min-h-11 min-w-36 max-w-52 items-center justify-center rounded-lg border px-3 py-2',
         CATEGORY_CLASS[data.category],
+        selected && SELECTED_CLASS,
       )}
     >
       <Handle type="target" position={Position.Left} isConnectable={connectable} className={handleClass} />
