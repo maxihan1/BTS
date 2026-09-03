@@ -1244,16 +1244,6 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 **처방.** 결정이 먼저다 — ① issue-tracking 삭제 이벤트를 pgmq 로 받아 지우거나 ② 주기 위생 잡으로 lookup 에 없는 `issue_key` 를 정리하거나 ③ 고아를 정상으로 보고 `issue_key` 의 전역 UNIQUE 를 재고한다. ①은 BC 간 이벤트 신설이라 T2 이상이다.
 
-## ⬜ agile-planning — 스크럼 보드가 활성 스프린트의 오래된 이슈를 조용히 잃는다 (신규 · 미착수 · T3)
-
-**쉬운 말.** 이슈가 많은 프로젝트에서 스프린트를 시작해도 보드가 **비어 보일 수 있다**. 스프린트에 담은 이슈가 오래 전에 만든 것이면 화면에 안 나오고, 안 나온다는 경고도 없다.
-
-**방치하면.** 사용자가 정상적으로 시작한 스프린트가 「고장난 빈 보드」로 보인다. 스크럼 보드는 활성 스프린트 이슈만 그리는 화면이라 다른 확인 경로가 없다 — 백로그로 되돌아가 이슈가 스프린트에 들어 있는 것을 확인해도 보드는 계속 비어 있다. 오늘 실제 피해 보고는 0 이지만 프로젝트 이슈가 1,000건을 넘는 순간 발생하고, **넘었다는 사실도 화면에 안 뜬다**(`truncated` 플래그가 스프린트 필터 뒤에 계산되어 false 로 나올 수 있다).
-
-**무엇.** 자르기와 거르기의 **순서가 뒤집혀 있다.** `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:813-814` 가 `.orderBy(ISSUES.CREATED_AT.desc())` → `.limit(BOARD_CARD_FETCH_LIMIT + 1)` 로 프로젝트 이슈를 **1,001건 먼저 자르고**, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt:264-268` 의 스프린트 필터(`page.issues.filter { it.key in sprintIssueKeys }`)가 **그 뒤**에 온다. 활성 스프린트 이슈의 `created_at` 이 상위 1,001건 밖이면 그 이슈는 포트를 빠져나오지 못한다. 기한이 이미 지난 부채다 — `docs/plans/2026-09-01-board-scrum-schema.md:384` 가 「**PR ③ 전에 닫는다**」로 못박았으나 PR ③(#424)은 닫는 대신 PR ④ 로 분리했고(`docs/plans/2026-09-02-scrum-board-screen.md:300-325`), 그 분리를 장부에 등재하는 task 가 실행되지 않아 2026-09-02 까지 **어느 목록에도 없었다**.
-
-**처방.** 스프린트 술어를 LIMIT **앞**으로 민다. `BoardCardFilter`(shared-kernel)에 서버 내부 전용 `issueKeys` 를 더하고 `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 조립하게 한다 — `statusKeys` 가 이미 같은 모양의 선례다(파서가 만들지도 직렬화하지도 않는 필드). 🛑 세 가지를 지킨다. ① `BacklogApplicationService` 에 같은 술어를 넣지 않는다 — 백로그는 **차집합**이라 술어가 반대로 작용해 백로그 칸이 전멸한다. ② `BoardApplicationService` 의 Kotlin 사후 필터를 지우지 않는다 — 포트 계약(`BoardIssueLookupPort.kt:71-82` CONCERN-1)이 구현체의 filter 드롭을 명시적으로 허용하므로 카드 정확성은 소비측 책임이다. ③ 스프린트 이슈 키가 0건이면 포트를 아예 호출하지 않는다 — 빈 목록은 VO 규약상 「무필터」라 그대로 넘기면 전량 조회 + 허위 `truncated` 가 된다. RED 는 **대상 이슈를 먼저(=오래된) 넣고** 비대상 1,001건을 뒤에 넣어야 성립한다 — 기존 `BoardIssueLookupAdapterTest` S9 처럼 대상을 나중에 넣으면 현재 코드로도 통과한다.
-
 ## ⬜ agile-planning — 칸반 보드에 매단 스프린트가 어느 화면에도 나타나지 않는다 (신규 · 미착수 · T2)
 
 **쉬운 말.** 칸반 보드를 지정해 스프린트를 만들면 서버가 그대로 받아 준다. 그런데 그 스프린트는 어느 보드 화면에도 안 보인다. 시작 버튼도 정상 동작하지만 화면에서는 아무 일도 일어나지 않는다.
@@ -3481,6 +3471,21 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 ---
 
 # 해소된 것
+
+## ✅ agile-planning — 스크럼 보드가 활성 스프린트의 오래된 이슈를 조용히 잃는다 (신규 · **해소** · T3)
+
+> **✅ 2026-09-03 해소 (#430).** `BoardCardFilter.issueKeys`(shared-kernel)를 더하고
+> `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 LIMIT **앞**에서 조립한다.
+> 처방의 🛑 세 가지를 그대로 지켰다 — `BacklogApplicationService` 무변경 · Kotlin 사후 필터 유지 ·
+> 스프린트 이슈 키 0건이면 포트 미호출. RED 는 대상 이슈를 **먼저**(=가장 오래된) 넣는 `S13` 이다.
+
+**쉬운 말.** 이슈가 많은 프로젝트에서 스프린트를 시작해도 보드가 **비어 보일 수 있다**. 스프린트에 담은 이슈가 오래 전에 만든 것이면 화면에 안 나오고, 안 나온다는 경고도 없다.
+
+**방치하면.** 사용자가 정상적으로 시작한 스프린트가 「고장난 빈 보드」로 보인다. 스크럼 보드는 활성 스프린트 이슈만 그리는 화면이라 다른 확인 경로가 없다 — 백로그로 되돌아가 이슈가 스프린트에 들어 있는 것을 확인해도 보드는 계속 비어 있다. 오늘 실제 피해 보고는 0 이지만 프로젝트 이슈가 1,000건을 넘는 순간 발생하고, **넘었다는 사실도 화면에 안 뜬다**(`truncated` 플래그가 스프린트 필터 뒤에 계산되어 false 로 나올 수 있다).
+
+**무엇.** 자르기와 거르기의 **순서가 뒤집혀 있다.** `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:813-814` 가 `.orderBy(ISSUES.CREATED_AT.desc())` → `.limit(BOARD_CARD_FETCH_LIMIT + 1)` 로 프로젝트 이슈를 **1,001건 먼저 자르고**, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt:264-268` 의 스프린트 필터(`page.issues.filter { it.key in sprintIssueKeys }`)가 **그 뒤**에 온다. 활성 스프린트 이슈의 `created_at` 이 상위 1,001건 밖이면 그 이슈는 포트를 빠져나오지 못한다. 기한이 이미 지난 부채다 — `docs/plans/2026-09-01-board-scrum-schema.md:384` 가 「**PR ③ 전에 닫는다**」로 못박았으나 PR ③(#424)은 닫는 대신 PR ④ 로 분리했고(`docs/plans/2026-09-02-scrum-board-screen.md:300-325`), 그 분리를 장부에 등재하는 task 가 실행되지 않아 2026-09-02 까지 **어느 목록에도 없었다**.
+
+**처방.** 스프린트 술어를 LIMIT **앞**으로 민다. `BoardCardFilter`(shared-kernel)에 서버 내부 전용 `issueKeys` 를 더하고 `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 조립하게 한다 — `statusKeys` 가 이미 같은 모양의 선례다(파서가 만들지도 직렬화하지도 않는 필드). 🛑 세 가지를 지킨다. ① `BacklogApplicationService` 에 같은 술어를 넣지 않는다 — 백로그는 **차집합**이라 술어가 반대로 작용해 백로그 칸이 전멸한다. ② `BoardApplicationService` 의 Kotlin 사후 필터를 지우지 않는다 — 포트 계약(`BoardIssueLookupPort.kt:71-82` CONCERN-1)이 구현체의 filter 드롭을 명시적으로 허용하므로 카드 정확성은 소비측 책임이다. ③ 스프린트 이슈 키가 0건이면 포트를 아예 호출하지 않는다 — 빈 목록은 VO 규약상 「무필터」라 그대로 넘기면 전량 조회 + 허위 `truncated` 가 된다. RED 는 **대상 이슈를 먼저(=오래된) 넣고** 비대상 1,001건을 뒤에 넣어야 성립한다 — 기존 `BoardIssueLookupAdapterTest` S9 처럼 대상을 나중에 넣으면 현재 코드로도 통과한다.
 
 ## ✅ apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · **해소** · T1)
 
