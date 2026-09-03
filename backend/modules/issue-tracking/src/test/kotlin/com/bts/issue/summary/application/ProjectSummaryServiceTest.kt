@@ -513,6 +513,119 @@ class ProjectSummaryServiceTest : DescribeSpec({
             verify { userLookupPort wasNot Called }
         }
     }
+    // ── 이슈 단위 VIEW 게이트 (B3) ────────────────────────────────────────────
+
+    describe("활동 피드의 이슈 단위 VIEW 게이트") {
+        val at = Instant.parse("2026-09-03T09:00:00Z")
+
+        fun stubTwoIssueFeed() {
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(1L, "SUMP-1", null, at, "status", "doing", "done", "진행 중", "완료"),
+                    activityRow(2L, "SUMP-2", null, at.minusSeconds(60), "status", "open", "doing", "할 일", "진행 중"),
+                )
+        }
+
+        it("BROWSE 만 있고 VIEW 가 없는 이슈의 항목은 피드에서 제거된다") {
+            stubBrowseAndAccess()
+            stubTwoIssueFeed()
+            // BROWSE_PROJECT 와 VIEW_ISSUE 는 독립 매트릭스 권한이다(FR-PM-05) — 포함 관계가 아니다.
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-1"))
+            } returns false
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-2"))
+            } returns true
+
+            val entries = sut.getActivity(actor, projectKey, 20)
+
+            // 마스킹이 아니라 제거다 — 단건 경로가 404 로 존재를 숨기는 의미와 맞춘다.
+            entries.map { it.issueKey } shouldContainExactly listOf("SUMP-2")
+        }
+
+        it("같은 픽스처에서 VIEW 를 열면 두 이슈가 모두 나온다") {
+            stubBrowseAndAccess()
+            stubTwoIssueFeed()
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-1"))
+            } returns true
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-2"))
+            } returns true
+
+            val entries = sut.getActivity(actor, projectKey, 20)
+
+            // 비-공허 짝 — 위 테스트가 "항상 빈 목록" 구현으로도 통과하지 않게 한다.
+            entries.map { it.issueKey } shouldContainExactly listOf("SUMP-1", "SUMP-2")
+        }
+
+        it("같은 이슈의 그룹이 여럿이어도 VIEW 판정은 이슈당 1회다") {
+            stubBrowseAndAccess()
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(1L, "SUMP-1", null, at, "status", "doing", "done", null, null),
+                    activityRow(2L, "SUMP-1", null, at.minusSeconds(60), "status", "open", "doing", null, null),
+                    activityRow(3L, "SUMP-1", null, at.minusSeconds(120), "priority", "3", "1", null, null),
+                )
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-1"))
+            } returns true
+
+            sut.getActivity(actor, projectKey, 20)
+
+            // resolver 에 배치 API 가 없어 개별 호출이지만, distinct 이슈 키로 캐싱해 N+1 을 막는다.
+            verify(exactly = 1) {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-1"))
+            }
+        }
+    }
+
+    // ── 창 경계 (T2) ──────────────────────────────────────────────────────────
+
+    describe("집계 창 경계") {
+        // 기준 2026-09-03T12:00Z → 최근 [08-28T00:00Z, 09-04T00:00Z) · 직전 [08-21T00:00Z, 08-28T00:00Z)
+        val recentFrom = Instant.parse("2026-08-28T00:00:00Z")
+        val recentTo = Instant.parse("2026-09-04T00:00:00Z")
+        val previousFrom = Instant.parse("2026-08-21T00:00:00Z")
+
+        it("recentFrom 정각은 최근 창에 포함되고 recentTo 정각은 제외된다") {
+            stubBrowseAndAccess()
+            stubTypesAndStates()
+            stubIssues(
+                listOf(
+                    summaryRow(UUID.randomUUID(), createdAt = recentFrom, updatedAt = recentFrom),
+                    summaryRow(UUID.randomUUID(), createdAt = recentTo, updatedAt = recentTo),
+                ),
+            )
+            stubChanges(emptyList())
+
+            val summary = sut.getSummary(actor, projectKey)
+
+            // 시작 inclusive · 끝 exclusive. 한쪽만 뒤집혀도 0 또는 2 가 된다.
+            summary.recent.created.current shouldBe 1
+            summary.recent.updated.current shouldBe 1
+            summary.recent.created.previous shouldBe 0
+        }
+
+        it("previousFrom 정각은 직전 창에 들어가고 두 창의 접점은 최근 창에만 센다") {
+            stubBrowseAndAccess()
+            stubTypesAndStates()
+            stubIssues(
+                listOf(
+                    summaryRow(UUID.randomUUID(), createdAt = previousFrom, updatedAt = previousFrom),
+                    // previousTo == recentFrom — 인접한 두 창의 접점은 한 번만 세어야 한다.
+                    summaryRow(UUID.randomUUID(), createdAt = recentFrom, updatedAt = recentFrom),
+                ),
+            )
+            stubChanges(emptyList())
+
+            val summary = sut.getSummary(actor, projectKey)
+
+            summary.recent.created.previous shouldBe 1
+            summary.recent.created.current shouldBe 1
+        }
+    }
+
 })
 
 /** project-workflow BC 내부 예외를 simpleName 으로 흉내 낸다 — 직접 import 불가. */
