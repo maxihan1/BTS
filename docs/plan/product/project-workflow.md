@@ -61,7 +61,7 @@
 - [x] D2. 명세 (책임. backend-engineer) — PR #18
 - [x] D3. 데이터 모델 — `workflow_schemes`, `project_workflow_scheme_map`, `scheme_issue_type_workflow` (책임. db-engineer) — PR #18
 - [x] D4. 백엔드 — Scheme 관리 API — REST 10 endpoint (Scheme CRUD 5 + Mapping 2 + Project assignment 2 + IssueType read 1) + 예외 핸들러 (책임. backend-engineer + security-engineer) — PR #18
-- [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속*
+- [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *종전 각주 「S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속」은 **2026-09-03 실측으로 닫는다** — 스킴 통합 테스트가 실재한다(`scheme/repository/` 3건 · `scheme/web/WorkflowSchemeControllerIntegrationTest.kt`). 「S1~S8」이라는 명명은 정의처가 없고, 이름이 겹치는 두 가지가 저장소에 따로 있다 — `integration/WorkflowIntegrationTest.kt` 의 S1~S7(FR-WF-01 Task 35)과 `apps/web/e2e/issue-transition.spec.ts` 의 S8(#398, §2.5 각주). 그 명명을 되살리지 않는다*
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
 
@@ -355,7 +355,7 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ (로드맵 PR 6) / D2·D5 ✅ (로드맵 PR 7 — 이관 실행) / D4 ✅ (로드맵 PR 7b — #417 결선) / D6·D7 ✅ #423·#427 (로드맵 PR 10a 초안 전환·발행·복원 · PR 10b 이관 마법사) / D8 ✅ #434 (로드맵 PR 9 — xyflow 다이어그램)** — **§2 FR-WF 는 전수 `[x]`**. 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ (로드맵 PR 6) / D2·D5 ✅ (로드맵 PR 7 — 이관 실행) / D4 ✅ (로드맵 PR 7b — #417 결선) / D6·D7 ✅ #423·#427 (로드맵 PR 10a 초안 전환·발행·복원 · PR 10b 이관 마법사) / D8 ✅ #434 (로드맵 PR 9 — xyflow 다이어그램)** — **§2 FR-WF 는 전수 `[x]`**. 후속. **Wave 6 와 C1 은 2026-09-03 실측으로 정리했다** — Wave 6 는 §2.2 D5 각주로(통합 테스트 실재 · 「S1~S8」 명명은 정의처 없음), `C1 detekt 정합` 은 **이 줄 말고 정의처가 저장소 어디에도 없어**(`grep` 0건) 유령 항목으로 판정하고 지운다. 되살리려면 무엇을 맞추는 일인지부터 적어야 한다. **남은 실질은 §NFR deferred trigger 도달 시 측정 하나다.**
 
 - [x] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
   **2026-08-26 재실측(PR #407 시점) — 미완은 §2.7 FR-WF-07 의 D1~D7 뿐이다.** WF-04·05·06 이 전부 닫혔다.
