@@ -16,6 +16,7 @@ import { CompleteSprintDialog } from './CompleteSprintDialog'
 import { BacklogFilterBar } from './BacklogFilterBar'
 import { BacklogEpicPanel } from './BacklogEpicPanel'
 import { cardFirstCollision } from './backlog-collision'
+import { sprintCreateErrorMessage } from './backlog-sprint-create-error'
 import { useBacklogCreateIssue } from './use-backlog-create-issue'
 import type { BacklogCreateIssue } from './use-backlog-create-issue'
 import { useBacklogDrag } from './use-backlog-drag'
@@ -400,7 +401,7 @@ export function BacklogBoard({
     (name: string) => {
       createSprintMutate(
         { projectKey, boardId, name },
-        { onError: () => toast.error(backlogLabels.moveFailedError) },
+        { onError: (error) => toast.error(sprintCreateErrorMessage(error)) },
       )
     },
     [createSprintMutate, projectKey, boardId],
