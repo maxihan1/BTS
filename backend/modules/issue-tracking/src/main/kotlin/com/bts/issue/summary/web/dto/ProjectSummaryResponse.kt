@@ -2,6 +2,7 @@
 
 package com.bts.issue.summary.web.dto
 
+import com.bts.issue.domain.IssuePriority
 import com.bts.issue.statushistory.StatusCategory
 import com.bts.issue.summary.domain.AssigneeSlice
 import com.bts.issue.summary.domain.PrioritySlice
@@ -144,15 +145,34 @@ data class StatusSliceResponse(
 /**
  * 우선순위 분포 한 조각.
  *
- * @property priority 우선순위 값(1~5). 표시 라벨은 프론트가 소유한다.
+ * 형제 분포 3종([StatusSliceResponse]·[TypeSliceResponse]·[AssigneeSliceResponse])과 마찬가지로
+ * 표시명을 함께 싣는다. 정수만 주면 화면이 1~5 라벨 맵을 따로 만들게 되고, 그 맵은
+ * [IssuePriority] 와 서로를 확인하지 않아 한쪽만 바뀌어도 아무도 모른다.
+ *
+ * @property priority 우선순위 값(1~5).
+ * @property priorityName [IssuePriority.displayName]. 범위 밖 값이면 키가 응답에서 빠진다.
  * @property count 이슈 수.
  */
+@JsonInclude(JsonInclude.Include.NON_NULL)
 data class PrioritySliceResponse(
     val priority: Int,
+    val priorityName: String?,
     val count: Long,
 ) {
     companion object {
-        fun from(slice: PrioritySlice): PrioritySliceResponse = PrioritySliceResponse(slice.priority, slice.count)
+        /**
+         * 도메인 조각을 응답 DTO 로 변환한다.
+         *
+         * 표시명은 [IssuePriority.fromNumberOrNull] 로 해석한다 — `fromNumber` 는 범위 밖에서
+         * 던지므로, `priority` 가 SMALLINT 제약을 벗어난 값이면 요약 화면 전체가 500 이 된다.
+         * 라벨 하나가 비는 것과 화면이 죽는 것은 다른 사고다.
+         */
+        fun from(slice: PrioritySlice): PrioritySliceResponse =
+            PrioritySliceResponse(
+                priority = slice.priority,
+                priorityName = IssuePriority.fromNumberOrNull(slice.priority)?.displayName,
+                count = slice.count,
+            )
     }
 }
 

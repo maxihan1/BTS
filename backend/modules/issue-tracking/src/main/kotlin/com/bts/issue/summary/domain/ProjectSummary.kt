@@ -92,7 +92,7 @@ data class StatusSlice(
 /**
  * 우선순위 분포 한 조각.
  *
- * @property priority 우선순위 값(1~5). 표시 라벨은 프론트가 소유한다.
+ * @property priority 우선순위 값(1~5). 표시명은 DTO 매퍼가 `IssuePriority` 로 해석해 싣는다.
  * @property count 이슈 수.
  */
 data class PrioritySlice(
