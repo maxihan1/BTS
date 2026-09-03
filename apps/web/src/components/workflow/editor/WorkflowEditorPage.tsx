@@ -93,6 +93,8 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   const [transitionFormOpen, setTransitionFormOpen] = React.useState(false)
   const [editingTransition, setEditingTransition] = React.useState<TargetTransition | null>(null)
   const [transitionToRemove, setTransitionToRemove] = React.useState<TargetTransition | null>(null)
+  /** 다이어그램에서 핸들을 끌어 만든 전환의 출발·도착 (FR-WF-07 D8) */
+  const [transitionPrefill, setTransitionPrefill] = React.useState<{ from: string; to: string } | null>(null)
 
   const gate = renderLoadGate(draft.isLoading || catalog.isPending, draft.loadError)
   if (gate !== null) {
@@ -214,13 +216,38 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         }}
         onAddTransition={() => {
           setEditingTransition(null)
+          setTransitionPrefill(null)
           setTransitionFormOpen(true)
         }}
         onEditTransition={(target) => {
           setEditingTransition(target)
+          setTransitionPrefill(null)
           setTransitionFormOpen(true)
         }}
         onRemoveTransition={setTransitionToRemove}
+        // ── 다이어그램 탭 (FR-WF-07 D8) ──────────────────────────────────────
+        canvasStates={editable.states}
+        canvasTransitions={editable.transitions}
+        // 잠금은 아직 화면에 실려 오지 않는다 — `workflows.is_locked` 를 응답에 싣는 것이
+        // 별도 과제라, 컴포넌트는 지원하되 지금은 항상 잠기지 않은 것으로 그린다.
+        locked={false}
+        onMoveState={(key, x, y) => {
+          draft.dispatch({ type: 'moveState', key, x, y })
+        }}
+        onCreateTransitionFromCanvas={(from, to) => {
+          // 사용자가 이미 출발·도착을 지정한 조작이다. 다시 고르게 하면 그 조작이 없던 일이 된다.
+          setEditingTransition(null)
+          setTransitionPrefill({ from, to })
+          setTransitionFormOpen(true)
+        }}
+        onEditTransitionByIndex={(index) => {
+          // 초안 전환에는 id 가 없어 배열 위치가 유일한 identity 다(발행 전이라 DB 행이 아니다).
+          const target = editable.transitions[index]
+          if (target === undefined) return
+          setEditingTransition({ localId: target.localId, name: target.name })
+          setTransitionPrefill(null)
+          setTransitionFormOpen(true)
+        }}
       />
 
       <WorkflowEditorDialogs
@@ -228,6 +255,7 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         catalog={catalogEntries}
         stateNames={stateNames}
         blockReason={blockReason}
+        transitionPrefill={transitionPrefill}
         pickerOpen={pickerOpen}
         onPickerOpenChange={setPickerOpen}
         onAddStatus={handleAddStatus}

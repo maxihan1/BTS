@@ -11,9 +11,9 @@ import type { BulkOperationResponse } from '@/api/bulk-operations'
 import type { DraftDefinition } from '@/api/workflows-draft.types'
 import type { MigrationSelection } from '@/lib/workflow-migration'
 
-const OPEN = { key: 'open', name: '열림', category: 'TODO', displayOrder: 1 } as const
-const DOING = { key: 'doing', name: '진행 중', category: 'IN_PROGRESS', displayOrder: 2 } as const
-const DONE = { key: 'done', name: '완료', category: 'DONE', displayOrder: 3 } as const
+const OPEN = { key: 'open', name: '열림', category: 'TODO', displayOrder: 1, layoutX: null, layoutY: null } as const
+const DOING = { key: 'doing', name: '진행 중', category: 'IN_PROGRESS', displayOrder: 2, layoutX: null, layoutY: null } as const
+const DONE = { key: 'done', name: '완료', category: 'DONE', displayOrder: 3, layoutX: null, layoutY: null } as const
 
 /** 발행본 — `doing`·`done` 을 포함한 3개 상태(빼면 사라진다). */
 function published(): DraftDefinition {

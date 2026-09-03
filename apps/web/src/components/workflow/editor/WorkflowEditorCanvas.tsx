@@ -1,8 +1,9 @@
 // 다이어그램 캔버스 — 초안을 그래프로 그리고 조작을 콜백으로 올린다 (FR-WF-07 D8)
 import * as React from 'react'
 import { ReactFlow, ReactFlowProvider, Background, Controls, Handle, Position } from '@xyflow/react'
-import type { Connection, Edge, Node, NodeProps } from '@xyflow/react'
+import type { Connection, Edge, Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
 import { autoLayout, edgeRoutes, START_NODE_ID } from '@/lib/workflow-layout'
@@ -181,15 +182,16 @@ function CanvasInner({
           <ul>
             {globals.map((g) => (
               <li key={g.transitionIndex}>
-                <button
-                  type="button"
-                  className="hover:text-primary text-left"
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto justify-start p-0 text-xs"
                   onClick={() => {
                     onEditTransition(g.transitionIndex)
                   }}
                 >
                   {g.name} → {g.to}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
