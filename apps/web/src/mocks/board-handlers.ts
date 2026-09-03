@@ -726,8 +726,12 @@ const updateBoardHandler = http.patch(
         projectKey: board.projectKey,
         name: board.name,
         swimlaneField: board.swimlaneField,
-        // FR-BD-04 PR ⑤ — 종류를 노출하는 응답 5개가 같은 계약을 쓴다.
-        boardType: board.boardType,
+        // FR-BD-04 PR ⑤ — 종류를 노출하는 응답들이 같은 계약을 쓴다.
+        // ★`?? DEFAULT_BOARD_TYPE` 이 필수다. StoredBoardDetail.boardType 은 optional 이라
+        //   시드가 빼먹어도 컴파일러가 못 잡고, JSON.stringify 가 undefined 키를 지운다 —
+        //   그러면 필수인 boardMetaSchema.boardType 이 ZodError 로 이름 변경을 하드 실패시킨다.
+        //   같은 파일의 다른 소비 지점 5곳(:174 :310 :387 :452 :458)이 전부 이 폴백을 쓴다.
+        boardType: board.boardType ?? DEFAULT_BOARD_TYPE,
       },
     })
   },
