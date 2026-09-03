@@ -1,8 +1,7 @@
 // 정상 로그인 E2E 시나리오 — alice/password(Local) → /dashboards 목록 페이지
 //
-// FR-AU-07 재조정: identifier-first 2단계 흐름 적용.
-// 1단계: 미매칭 도메인(example.com) 이메일 입력 → "계속" → 2단계 폼 진입
-// 2단계: provider 선택 + username + password 입력 → 로그인
+// FR-AU-07 재조정: 단일 화면 폼 적용.
+// provider 선택 + username + password 입력 → 로그인
 //
 // 교훈 반영.
 //   - playwright-getbyrole-exact-strict-mode: exact:true 로 버튼 한정
@@ -17,21 +16,18 @@ import { dashboardLabels } from '../src/i18n/dashboard-labels'
 test('S1 정상 로그인 — alice/password (Local) → /dashboards 목록 페이지', async ({ page }) => {
   await page.goto('/login')
 
-  // 1단계. 이메일 입력 + "계속" — example.com 은 routeStore 미등록 → matched:false → 2단계 진입
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계. 진입 대기 — provider 드롭다운이 나타날 때까지
+  // provider 드롭다운이 나타날 때까지
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
 
-  // 2단계. provider 드롭다운에서 "Local" 명시 선택
+  // provider 드롭다운에서 "Local" 명시 선택
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
 
-  // 2단계. username 필드 — 이메일로 프리필됨, alice 로 교체
+  // 식별자 입력 — @ 가 없어 도메인 조회는 일어나지 않는다
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
 

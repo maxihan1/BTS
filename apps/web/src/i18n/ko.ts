@@ -8,10 +8,11 @@ export const loginStrings = {
   providerLabel: '로그인 방식',
   submitButton: '로그인',
 
-  /** identifier-first 1단계 */
-  emailLabel: '이메일',
-  continueButton: '계속',
-  emailStepDescription: '이메일 주소로 로그인 방식을 확인합니다.',
+  /**
+   * 도메인이 SSO 로 라우팅될 때 SSO 버튼 아래에 붙는 안내.
+   * 자동 이동하지 않고 버튼만 띄우므로 왜 이 버튼이 나타났는지 설명이 필요하다.
+   */
+  ssoRoutedHint: '이 도메인은 SSO 로 로그인할 수 있습니다.',
 
   /** provider 드롭다운 옵션 표시 이름 */
   providerLocal: 'Local',

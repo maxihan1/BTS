@@ -149,10 +149,6 @@ async function loginAsAliceWithSeed(
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
   // /login 렌더 완료 → MSW 활성, Header 미마운트 → 이 시점이 시드 최적 시점
   await beforeLoginSeed()
-  // 1단계
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
-  // 2단계
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
@@ -175,10 +171,6 @@ async function loginAsBobWithSeed(
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
   await beforeLoginSeed()
-  // 1단계
-  await page.getByLabel(loginStrings.emailLabel).fill('bob@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
-  // 2단계
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()

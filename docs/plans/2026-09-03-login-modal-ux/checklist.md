@@ -6,59 +6,59 @@
 ## 0. 착수
 
 - [x] worktree `login-modal-ux` 생성
-- [ ] `pnpm install` 완료 · `node_modules/.bin` 확인
+- [x] `pnpm install` 완료 · `node_modules/.bin` 확인
 - [x] checklist · context-notes 생성
 
 ## 1. RED — `test:` 커밋 (D8 9건)
 
-- [ ] #1 `router.test.tsx` 미인증 `/` → `role="dialog"` name `BTS 로그인`
-- [ ] #2 `routeGuard.test.tsx` `redirectToStartPage` describe 신규
-- [ ] #3 `LoginForm.test.tsx` 초기 렌더에 username+password+로그인 동시 가시 · `계속` 부재
-- [ ] #4 `LoginForm.test.tsx` blur → `fetchRoute` → SSO 버튼 노출 · `location.assign` 미호출
-- [ ] #5 `api/interceptor.test.ts` refresh 401 → `sessionExpired === true`
-- [ ] #6 `api/interceptor.test.ts` 세션 없던 401 → 플래그 `false` 유지
-- [ ] #7 `auth/LoginDialog.test.tsx` 신규 — open 조건 · ESC 불변 · 오버레이 불변 · X 부재 · 만료 시 라우트 유지
-- [ ] #8 `auth/LoginDialog.test.tsx` — `routes/login.test.tsx:56-100` returnTo/startPage 5건 이관
-- [ ] #9 `i18n/__tests__/login-strings-usage.test.ts` e2e 전수 스캔 → 0건
-- [ ] **red 확인 (비-공허)** — 9건이 전부 실제로 빨간지 눈으로 본다
+- [x] #1 `router.test.tsx` 미인증 `/` → `role="dialog"` name `BTS 로그인`
+- [x] #2 `routeGuard.test.tsx` `redirectToStartPage` describe 신규
+- [x] #3 `LoginForm.test.tsx` 초기 렌더에 username+password+로그인 동시 가시 · `계속` 부재
+- [x] #4 `LoginForm.test.tsx` blur → `fetchRoute` → SSO 버튼 노출 · `location.assign` 미호출
+- [x] #5 `api/interceptor.test.ts` refresh 401 → `sessionExpired === true`
+- [x] #6 `api/interceptor.test.ts` 세션 없던 401 → 플래그 `false` 유지
+- [x] #7 `auth/LoginDialog.test.tsx` 신규 — open 조건 · ESC 불변 · 오버레이 불변 · X 부재 · 만료 시 라우트 유지
+- [x] #8 `auth/LoginDialog.test.tsx` — `routes/login.test.tsx:56-100` returnTo/startPage 5건 이관
+- [x] #9 `i18n/__tests__/login-strings-usage.test.ts` e2e 전수 스캔 → 0건
+- [x] **red 확인 (비-공허)** — 9건이 전부 실제로 빨간지 눈으로 본다
 
 ## 2. GREEN — 커밋 2 · dialog 프리미티브 가산
 
 - [ ] `DialogContent` 에 `overlayClassName?: string` · `showCloseButton?: boolean = true`
-- [ ] `dialog.test.tsx` 단독 초록 확인 (기본값 = 현재 동작)
+- [x] `dialog.test.tsx` 단독 초록 확인 (기본값 = 현재 동작)
 
 ## 3. GREEN — 커밋 3 · 401 프롬프트
 
-- [ ] `auth/loginPromptStore.ts` 신규 (비영속 zustand)
-- [ ] `api/client.ts:71-74` `hadSession` 가드 + `promptSessionExpired()`
-- [ ] #5 #6 초록
+- [x] `auth/loginPromptStore.ts` 신규 (비영속 zustand)
+- [x] `api/client.ts:71-74` `hadSession` 가드 + `promptSessionExpired()`
+- [x] #5 #6 초록
 
 ## 4. GREEN — 커밋 4 · 모달 + 배경
 
-- [ ] `auth/AuthBackdrop.tsx` 신규 (props 0 · hook 0 · fetch 0)
-- [ ] `auth/LoginDialog.tsx` 신규 · 3닫기경로 봉인
-- [ ] `routes/__root.tsx` 마운트
-- [ ] `routes/login.tsx` 축소 (`<main>` 유지 필수)
-- [ ] `routes/login.test.tsx` 축소
-- [ ] #7 #8 초록
+- [x] `auth/AuthBackdrop.tsx` 신규 (props 0 · hook 0 · fetch 0)
+- [x] `auth/LoginDialog.tsx` 신규 · 3닫기경로 봉인
+- [x] `routes/__root.tsx` 마운트
+- [x] `routes/login.tsx` 축소 (`<main>` 유지 필수)
+- [x] `routes/login.test.tsx` 축소
+- [x] #7 #8 초록
 
 ## 5. GREEN — 커밋 5 · 인덱스 라우트 가드
 
-- [ ] `routeGuard.ts` `redirectToStartPage` 신설
-- [ ] `router.ts` `indexRoute` 가드 + `component`·import 삭제
-- [ ] `routes/index.tsx` 삭제
-- [ ] #1 #2 초록
+- [x] `routeGuard.ts` `redirectToStartPage` 신설
+- [x] `router.ts` `indexRoute` 가드 + `component`·import 삭제
+- [x] `routes/index.tsx` 삭제
+- [x] #1 #2 초록
 
 ## 6. GREEN — 커밋 6 · 이메일 단계 제거 (★ e2e 동반)
 
-- [ ] `LoginForm.tsx` — `LoginStep1`·`emailSchema`·`handleEmailContinue` 삭제 · `step` 2값화
-- [ ] `LoginCredentialsForm` 개명 + blur/디바운스 훅 + `matchedRoute` SSO 버튼
-- [ ] `i18n/ko.ts` — `emailLabel`·`continueButton`·`emailStepDescription` 삭제 · 신규 2건 추가
-- [ ] `LoginForm.test.tsx` · `.saml.test.tsx` · `.oidc.test.tsx` 조정
-- [ ] **e2e 17 파일** 각 2줄 삭제
-- [ ] `e2e/login-modal.spec.ts` 신규 S1~S4
-- [ ] #3 #4 #9 초록
-- [ ] `grep -rn "loginStrings.continueButton\|loginStrings.emailLabel" apps/web/e2e` → 0건
+- [x] `LoginForm.tsx` — `LoginStep1`·`emailSchema`·`handleEmailContinue` 삭제 · `step` 2값화
+- [x] `LoginCredentialsForm` 개명 + blur/디바운스 훅 + `matchedRoute` SSO 버튼
+- [x] `i18n/ko.ts` — `emailLabel`·`continueButton`·`emailStepDescription` 삭제 · 신규 2건 추가
+- [x] `LoginForm.test.tsx` · `.saml.test.tsx` · `.oidc.test.tsx` 조정
+- [x] **e2e 17 파일** 각 2줄 삭제
+- [x] `e2e/login-modal.spec.ts` 신규 S1~S4
+- [x] #3 #4 #9 초록
+- [x] `grep -rn "loginStrings.continueButton\|loginStrings.emailLabel" apps/web/e2e` → 0건
 
 ## 7. 커밋 7 · e2e 헬퍼 통합
 

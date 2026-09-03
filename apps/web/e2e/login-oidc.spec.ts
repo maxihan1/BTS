@@ -3,11 +3,11 @@
 // 실제 IdP 왕복(Google OAuth2 리다이렉트)은 백엔드 통합테스트(T7)에 위임한다.
 // 프론트는 버튼 노출 확인 및 인증 URL 진입 시도까지만 검증한다.
 //
-// FR-AU-07 재조정: OIDC 버튼은 2단계 폼 안에 있다.
-// 1단계 미매칭 도메인 이메일 → "계속" → 2단계 폼 진입 후 OIDC 버튼 검증.
+// OIDC 버튼은 자격 증명 폼 하단에 상시 렌더된다.
+// 단계 전환 없이 폼 렌더 직후 OIDC 버튼을 검증한다.
 //
 // S1 — IdP 버튼 노출 + 클릭 시 OIDC 인증 경로로 네비게이션 시도.
-//   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//   Given  /login 진입 후 단일 화면 폼 제출
 //          (MSW 기본 핸들러가 Google provider 1개 반환)
 //   When   "Google 로 로그인" 버튼 클릭
 //   Then   /oauth2/authorization/google 로 네비게이션 시도 (page.route 인터셉트로 검증)
@@ -15,7 +15,7 @@
 // S5 — IdP 0개이면 OIDC 버튼 영역 미노출.
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_oidc_no_providers' = 'true' 설정
 //          (MSW 핸들러가 빈 providers 배열 반환)
-//          + 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//          + 단일 화면 폼 제출
 //   When   로그인 폼 로드 완료
 //   Then   OIDC 버튼("Google 로 로그인") 미노출 — SAML 버튼 영향 없음
 //
@@ -30,14 +30,12 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 import { E2E_OIDC_NO_PROVIDERS_KEY } from '../src/mocks/oidc-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 헬퍼 — 1단계 이메일 입력 + "계속" → 2단계 폼 진입 대기
+// 헬퍼 — 자격 증명 폼 렌더 대기
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function proceedToStep2(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
-  // 2단계 진입 확인 — 로그인 버튼이 나타날 때까지 대기
+  // 로그인 버튼이 나타나면 폼 준비 완료
   await expect(page.getByRole('button', { name: loginStrings.submitButton, exact: true })).toBeVisible()
 }
 
@@ -57,7 +55,7 @@ test.describe('OIDC SSO 로그인 진입 (FR-AU-04)', () => {
       void route.fulfill({ status: 200, body: '' })
     })
 
-    // Given. 로그인 페이지 진입 후 1단계 → 2단계 진입
+    // Given. 로그인 페이지 진입 후 폼 준비 대기
     // MSW 기본 핸들러가 Google provider 1개 반환
     await page.goto('/login')
     await proceedToStep2(page)
@@ -89,7 +87,7 @@ test.describe('OIDC SSO 로그인 진입 (FR-AU-04)', () => {
       window.localStorage.setItem(key, 'true')
     }, E2E_OIDC_NO_PROVIDERS_KEY)
 
-    // When. 로그인 페이지 진입 후 1단계 → 2단계 진입
+    // When. 로그인 페이지 진입 후 폼 준비 대기
     await page.goto('/login')
     await proceedToStep2(page)
 

@@ -32,18 +32,15 @@ async function loginAsAliceWithEnforcement(page: import('@playwright/test').Page
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
-  // 1단계: 미매칭 도메인 이메일 입력 → "계속"
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계: provider 드롭다운 로딩 대기 + Local 선택
+  // provider 드롭다운 로딩 대기 + Local 선택
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
 
-  // 2단계: username / password 입력
+  // username / password 입력
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('password')
   await page.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
@@ -210,8 +207,6 @@ test.describe('E2E-4 비강제 사용자 회귀 — 리다이렉트·배너 없�
       await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
 
       // When. 정상 로그인 흐름 (issue-fixtures.loginAsAlice 동형)
-      await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-      await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
       const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
       await expect(providerSelect).toBeVisible()

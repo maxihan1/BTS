@@ -34,14 +34,12 @@ const ACCOUNT_TRIGGER = /계정 메뉴$/
 const START_PAGE_COMBOBOX = '시작 페이지'
 
 /**
- * alice로 로그인 폼을 제출한다(identifier-first 2단계 흐름, `./fixtures/auth-fixtures.ts`의
+ * alice로 로그인 폼을 제출한다(단일 화면 폼, `./fixtures/auth-fixtures.ts`의
  * loginAsAlice와 동일한 스텝). 로그인 성공 후 도착 URL은 startPage 설정에 따라 달라지므로
  * 이 헬퍼는 URL을 기다리지 않는다 — 호출자가 기대하는 목적지를 직접 단언해야 한다.
  */
 async function submitAliceLogin(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()

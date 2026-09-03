@@ -1,19 +1,19 @@
 // FR-AU-06 다중 Provider 명시 선택 E2E — S1(Local 선택+성공) / S2(LDAP 선택+성공) / S3(LDAP 비활성 시 드롭다운 미표시)
 //
 // S1 — Local provider 선택 후 정상 로그인
-//   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//   Given  /login 진입 후 단일 화면 폼 제출
 //   When   드롭다운에서 "Local" 선택 → alice / password 입력 → 로그인
 //   Then   로그인 성공 (목적지는 FR-PF-02 startPage 매핑에 따르는 부수사항 — alice 기본값 /dashboards)
 //
 // S2 — LDAP provider 선택 후 정상 로그인
-//   Given  /login 진입 후 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//   Given  /login 진입 후 단일 화면 폼 제출
 //   When   드롭다운에서 "LDAP-corp" 선택 → alice / Test1234! 입력 → 로그인
 //   Then   로그인 성공 (목적지는 FR-PF-02 startPage 매핑에 따르는 부수사항 — alice 기본값 /dashboards)
 //
 // S3 — LDAP 비활성 시 드롭다운에 LDAP 항목 미표시
 //   Given  /login 진입 + addInitScript 로 localStorage '__bts_e2e_providers_local_only' = 'true' 설정
 //          (MSW 핸들러가 LOCAL만 반환)
-//          + 1단계 미매칭 이메일 입력 → "계속" → 2단계 폼 진입
+//          + 단일 화면 폼 제출
 //   When   로그인 폼 로드 완료
 //   Then   드롭다운에 "LDAP-corp" 항목 없고 "Local" 항목만 존재
 //
@@ -28,16 +28,13 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 import { E2E_PROVIDERS_LOCAL_ONLY_KEY } from '../src/mocks/auth-handlers'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 헬퍼 — 1단계 이메일 입력 + "계속" → 2단계 폼 진입 + 드롭다운 로딩 완료 대기
+// 헬퍼 — 폼 렌더 + provider 드롭다운 로딩 완료 대기
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function proceedToStep2(page: import('@playwright/test').Page) {
-  // 1단계. 이메일 입력 + "계속" — example.com 은 routeStore 미등록 → matched:false → 2단계 진입
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계. 진입 대기 — provider 드롭다운이 로딩 완료될 때까지
+  // provider 드롭다운이 로딩 완료될 때까지
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
@@ -52,7 +49,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
     // Given. 로그인 페이지 진입 — MSW 기본 핸들러가 LDAP+Local 반환 (LDAP이 기본값)
     await page.goto('/login')
 
-    // Given. 1단계 → 2단계 진입
+    // Given. 폼 준비 대기
     const providerSelect = await proceedToStep2(page)
 
     // When. 드롭다운에서 "Local" 선택
@@ -83,7 +80,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
     // Given. 로그인 페이지 진입 — MSW 기본 핸들러가 LDAP+Local 반환 (LDAP이 기본값)
     await page.goto('/login')
 
-    // Given. 1단계 → 2단계 진입
+    // Given. 폼 준비 대기
     const providerSelect = await proceedToStep2(page)
 
     // When. 드롭다운에서 "LDAP-corp" 선택
@@ -118,7 +115,7 @@ test.describe('다중 Provider 명시 선택 (FR-AU-06)', () => {
       window.localStorage.setItem(key, 'true')
     }, E2E_PROVIDERS_LOCAL_ONLY_KEY)
 
-    // When. 로그인 페이지 진입 + 1단계 → 2단계 진입
+    // When. 로그인 페이지 진입 + 폼 준비 대기
     await page.goto('/login')
     const providerSelect = await proceedToStep2(page)
 
