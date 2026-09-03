@@ -206,6 +206,7 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
   @Test fun `백필 후 board_column_states 행 수가 board_columns 행 수와 같다`()      // R2·N1
   @Test fun `백필된 state_key 값 집합이 board_columns 의 것과 완전히 같다`()          // R2·N1
   @Test fun `board_id state_key 유일 제약이 두 컬럼에 같은 상태를 막는다`()            // X1·D3
+  @Test fun `컬럼의 실제 소유 보드와 다른 board_id 를 쓰면 복합 FK 가 거부한다`()       // ★ceo-4
   @Test fun `column_id 전용 인덱스가 존재한다`()                                      // N3
   @Test fun `board_columns.state_key 가 NULL 을 허용한다`()                          // ★G1
   @Test fun `V508 SQL 을 JDBC 로 재실행해도 행이 늘지 않는다`()                        // E6
@@ -218,6 +219,9 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 - **서식 정본은 `V203__add_global_status_catalog.sql:36-60` 의 `workflow_statuses`** — 발명하지 않는다
 - `UNIQUE (board_id, state_key)` + `UNIQUE (column_id, state_key)` · FK 인덱스는 `column_id` 만
   따로(`board_id` 는 UNIQUE 의 leftmost prefix 가 덮는다 — `V500:36-38` 이 같은 판단을 적었다)
+- ★**복합 FK 로 `board_id` 정합을 DB 가 진다(ceo-4).** `board_columns` 에
+  `UNIQUE (id, board_id)` 를 더하고 `FOREIGN KEY (column_id, board_id)` 로 참조한다.
+  저장소 첫 사례이나 `DATA.md` 의 「DB 가 지킬 수 있는 불변식은 DB 가 진다」에 맞는다
 - 백필 `INSERT … SELECT id, board_id, state_key, 0 FROM board_columns` + `ON CONFLICT DO NOTHING`(E6)
 - `ALTER TABLE board_columns ALTER COLUMN state_key DROP NOT NULL` — **제약 완화라 무손실**
 - ⚠️ `board_columns.state_key` 를 **DROP 하지 않는다**(`DATA.md §4` 3단 분할)
@@ -229,6 +233,14 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
   (Task 6). 그런 컬럼이 하나라도 있으면 `state_key` 가 NULL 이라 **`SET NOT NULL` 이 실패한다.**
   정확한 서술은 「**상태 0개 컬럼이 하나도 없을 때만** 되돌릴 수 있다. 있으면 그 컬럼을 먼저
   처리해야 한다」다. #440 은 같은 자리가 반대로(비관적으로) 틀렸었다
+- ★**되돌리기 절에 「확인 쿼리」를 함께 적는다(ceo 리뷰 CONCERN-1).** 조건만 적고 확인 방법을
+  안 적으면 운영자가 그 조건을 잴 수 없다.
+  ```sql
+  -- 되돌리기 전 반드시 0 이어야 한다
+  SELECT count(*) FROM board_columns WHERE state_key IS NULL;
+  -- 0 이 아니면 그 컬럼들을 먼저 지우거나 상태를 매핑한다
+  SELECT id, board_id, name FROM board_columns WHERE state_key IS NULL;
+  ```
 
 **검증**: `./gradlew :modules:agile-planning:test --tests '*BoardColumnStatesMigrationTest'`
 (파이프 금지 — 종료 코드가 `tail` 것이 된다. 로그는 파일로 받고 `EXIT=$?` 로 읽는다)
@@ -593,11 +605,25 @@ N3 을 「검증 불가 · 코드 리뷰가 진다」로 낮춰 적어야 한다
 컬럼 응답이 `stateKeys: List<String>` → **`states: List<ColumnStateResponse>`**(`key`·`name`·`category`).
 키만 주면 프론트가 상태 메타를 따로 조회해야 하고 그것이 N+1 이다.
 
+### `/plan-ceo-review` (HOLD SCOPE) — **CONCERNS 5 · BLOCKER 0**
+
+데이터·운영 폭발 반경 6지점. **하나가 X1 을 조용히 무너뜨릴 수 있었다.**
+
+| # | 판정 | 요지 · 처리 |
+|---|---|---|
+| **ceo-4** 🔴 | CONCERN | **`board_id` 비정규화 자체가 갈릴 수 있다.** FK 두 개(`column_id`→`board_columns` · `board_id`→`boards`)만으로는 **둘 사이의 정합을 아무도 안 지킨다** — 애플리케이션이 컬럼의 실제 소유 보드와 다른 `board_id` 를 쓰면 `UNIQUE (board_id, state_key)` 가 **엉뚱한 것을 지키고 X1 이 조용히 무너진다.** → **복합 FK** 로 DB 가 지게 했다(`board_columns` 에 `UNIQUE (id, board_id)` + `FOREIGN KEY (column_id, board_id)`). 저장소 복합 FK 선례 **0건**이라 첫 사례이나 `DATA.md` 의 「DB 가 지킬 수 있는 불변식은 DB 가 진다」에 맞는다. Task 1 에 판별식 추가 |
+| **ceo-3** | CONCERN | **컬럼 삭제의 폭발 반경.** 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.** → 삭제 응답에 「이 삭제로 보드에서 사라지는 카드 수」를 싣는다(R10). 몇 장이 사라지는지 모르면 되돌릴 판단을 할 수 없다 |
+| **ceo-1** | CONCERN | **롤백 조건을 잴 방법이 없었다.** 「상태 0개 컬럼이 없을 때만 되돌릴 수 있다」고 조건만 적고 확인 방법을 안 적었다 → 되돌리기 절에 확인 쿼리 2개를 함께 적었다 |
+| **ceo-2** | CONCERN | **이중 기록 창이 영구히 열릴 수 있다.** `DATA.md §4` 3단 분할의 ③(DROP)이 「후속」이라고만 적혀 담당자가 없었다 → **부채 178 로 등재**했다. 지적은 「3단 분할이 틀렸다」가 아니라 「3단계가 등재되지 않았다」다 |
+| **ceo-6** | CONCERN (경미) | UI 없는 기간의 위험은 X3·R7·R12 가 이미 적었다. 추가 조치 불요 |
+| **ceo-5** | **PASS** | R13 회귀 감지는 Task 7 의 **두 테스트가 양방향을 고정**한다 — 「대상 상태가 DONE 이면 뜬다」와 「컬럼이 DONE 이어도 대상 상태가 아니면 안 뜬다」. 후자는 1:N 이후에만 존재하는 조합이라 오늘 만들 수 없다 |
+
 ## GSTACK REVIEW REPORT
 
 | Runs | Status | Findings |
 |---|---|---|
 | `/plan-eng-review` (7 흔들 지점 실측) | **CONCERNS (해소)** | BLOCKER 1 · CONCERN 4 · PASS 2 → **전부 반영** |
+| `/plan-ceo-review` (HOLD SCOPE · 6 폭발 반경) | **CONCERNS (해소)** | BLOCKER 0 · CONCERN 5 · PASS 1 → **전부 반영** |
 
 **VERDICT — 반영 완료. 게이트 1 진입 가능.**
 
@@ -608,5 +634,11 @@ BLOCKER-1 이 가장 무거웠고 지라 재조회가 그것을 풀었다. 진�
 문서 3종에 반영했다 — 스펙(J7~J9 근거 · R5 정정 · R11 확장 · R7 목적 · R13 신설 · X2 근거 정정 ·
 E5 「첫」 정의 · N3 낮춤) · ADR(D5 근거 정정 · **D7** 신설) · plan(Task 2·4·7 · 되돌리기 정정 ·
 Jira 매핑 J7·J8→T7 추가 · J9 범위 밖 사유).
+
+**ceo 렌즈가 더한 것.** eng 리뷰가 「사용자에게 도달하는 오작동」을 잡았다면 ceo 렌즈는
+**「조용히 무너지는 불변식」**을 잡았다(ceo-4). X1 을 DB 가 지게 만들어 놓고 그 DB 제약 자체가
+애플리케이션 실수에 열려 있었다 — 복합 FK 로 닫았다.
+
+부채 **178** 신설(이중 기록 창의 DROP 단계). 장부 판별식 20/20.
 
 NO UNRESOLVED DECISIONS

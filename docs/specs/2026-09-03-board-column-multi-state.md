@@ -102,7 +102,7 @@ Then 컬럼 구성·카드 배치가 **이전과 완전히 같다**. 컬럼당 �
 | **R7** | **하위 호환** — `toColumnId` 도 계속 받는다. 그 컬럼의 상태가 **정확히 1개**면 그 상태로 해석하고, **2개 이상이면 400** 으로 거부하며 「`toStateKey` 를 쓰라」고 알린다. X3 이 UI 를 후속으로 미루므로 이것이 없으면 머지 즉시 화면이 깨진다. ★**목적을 명시한다(Maxi 확정)** — 이것은 **외부 클라이언트 안전망**이고, R12 이후 **저장소 안에서 이 경로를 쓰는 코드는 0**이다(`toColumnId` 소비자 프론트 5파일을 R12 가 전부 바꾼다). 즉 테스트만 이 경로를 지킨다. 그 사실을 숨기지 않고 적는다 — 드롭존 UI PR 이 오기 전까지의 과도기 계약이다. |
 | **R8** | **미매핑 상태 목록**을 보드 조회 응답에 싣는다(J2). 워크플로우가 주는 상태 중 그 보드의 어느 컬럼에도 없는 것들을 `key`·`name`·`category` 와 함께 낸다. 기준 목록은 **`listStates(projectKey, null)`** — `createBoard:124` 가 시드에 쓰는 것과 **같은 호출**이다(이슈 타입별로 가르지 않는다). ❓G3 |
 | **R9** | **컬럼 관리 API** — 컬럼 생성 · 삭제 · 상태 매핑 변경(컬럼에 상태 추가/제거)을 제공한다. 이것이 없으면 1:N 을 쓸 방법이 없다. |
-| **R10** | 컬럼 삭제 시 그 컬럼의 상태들은 **미매핑으로 돌아간다**(J5). 이슈는 손대지 않는다. |
+| **R10** | 컬럼 삭제 시 그 컬럼의 상태들은 **미매핑으로 돌아간다**(J5). 이슈는 손대지 않는다. ★**삭제 응답에 「이 삭제로 보드에서 사라지는 카드 수」를 싣는다**(ceo 리뷰 CONCERN-3). 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.** 되돌리려면 컬럼을 다시 만들고 상태를 다시 매핑해야 하는데, 몇 장이 사라지는지 모르면 그 판단을 할 수 없다. |
 | **R11** | 응답 DTO 3종(`BoardColumnResponse` · `BoardColumnWithCardsResponse` · `ColumnMetaResponse`)의 `stateKey: String` 이 **`states: List<ColumnStateResponse>`**(`key`·`name`·`category`)가 된다. ★키 배열만으로는 부족하다 — **R13 이 대상 상태의 `category` 를 읽어야** resolution 을 판정한다. 키만 주면 프론트가 별도 조회를 해야 하고 그것이 N+1 이다. |
 | **R12** ❓G4 | **프론트가 신규 계약(`toStateKey`)을 쓰도록 최소 수정한다.** 드롭존 UI 없이 「컬럼에 떨구면 그 컬럼의 **첫 상태**로」 보낸다 — 상태가 1개인 오늘의 보드에서는 **동작이 완전히 같고**, 2개 이상인 컬럼에서는 UI PR(X3)이 드롭존을 만들 때까지의 과도기 동작이다. **이것이 없으면 사용자가 상태 2개를 묶는 순간 기존 화면이 R7 의 400 을 받는다** — 「기능은 있는데 쓰면 화면이 깨진다」가 된다. |
 | **R13** 🔴 | **해결 방안(resolution) 판정을 컬럼이 아니라 「카드가 가는 상태」로 옮긴다.** `board-drop.ts:322` 가 오늘 `toColumn.category === 'DONE'` 으로 분기하는데, 지라는 **전환**에 붙이고(J7·J8) BTS 백엔드도 이미 **대상 상태**로 판단한다(`IssueRepository.kt:373` · `:1917` `targetStateIsDone`). **어긋난 것은 프론트뿐이고, 1:N 이 그 불일치를 드러낸다.** 판정을 `toStateKey` 가 가리키는 상태의 `category` 로 바꾼다. |
@@ -183,6 +183,17 @@ CREATE TABLE board_column_states (
 - **`board_id` 비정규화가 X1 의 실질이다.** `column_id` 만 두면 「한 상태가 같은 보드의 두 컬럼에」를
   DB 가 못 막는다. `V500` 의 `UNIQUE (board_id, state_key)` 가 지키던 불변식을 **그대로 옮기는**
   것이고, 새 제약을 발명하는 것이 아니다.
+- ★**그 비정규화 자체가 갈릴 수 있다(ceo 리뷰 CONCERN-4).** FK 두 개(`column_id`→`board_columns` ·
+  `board_id`→`boards`)만으로는 **둘 사이의 정합을 아무도 안 지킨다** — 애플리케이션이 컬럼의 실제
+  소유 보드와 다른 `board_id` 를 쓰면 `UNIQUE (board_id, state_key)` 가 **엉뚱한 것을 지키고**
+  X1 이 조용히 무너진다. 처방은 **복합 FK** 다.
+  ```sql
+  ALTER TABLE board_columns ADD CONSTRAINT uq_board_columns_id_board UNIQUE (id, board_id);
+  -- board_column_states 에:
+  FOREIGN KEY (column_id, board_id) REFERENCES board_columns (id, board_id) ON DELETE CASCADE
+  ```
+  저장소에 복합 FK 선례가 **0건**이라 이것이 첫 사례다. 그래도 `DATA.md` 의 「DB 가 지킬 수 있는
+  불변식은 DB 가 진다」에 정면으로 맞고, 대안(애플리케이션 검증)은 그 원칙을 어긴다.
 - **FK 인덱스 2개**를 명시 생성한다 — `DATA.md §7`(PostgreSQL 은 FK 인덱스를 자동 생성하지 않는다).
   단 `UNIQUE (board_id, state_key)` 의 leftmost prefix 가 `board_id` 를 덮으므로 `column_id` 만
   따로 만든다(`V500:36-38` 이 같은 판단을 적어 뒀다).
