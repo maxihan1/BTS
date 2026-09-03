@@ -115,6 +115,20 @@ class ProjectSummaryServiceTest : DescribeSpec({
     }
 
     /**
+     * 활동 피드의 이슈 단위 VIEW 게이트를 허용으로 stub 한다.
+     *
+     * BROWSE 와 별도로 명시해야 한다 — 두 권한은 독립 매트릭스 권한이고(FR-PM-05), 한 번에 열어 주면
+     * 게이트를 지워도 테스트가 통과한다.
+     */
+    fun stubViewAllowed(vararg issueKeys: String) {
+        issueKeys.forEach { key ->
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(key))
+            } returns true
+        }
+    }
+
+    /**
      * 타입 카탈로그와 워크플로우 상태를 stub 한다.
      *
      * [IssueTypeKey] 는 value class 라 MockK 의 `any()` 가 `ValueClassAwareCaller` 에서 깨진다.
@@ -466,6 +480,7 @@ class ProjectSummaryServiceTest : DescribeSpec({
     describe("활동 피드") {
         it("같은 그룹의 항목을 한 줄로 묶고 이슈 키와 라벨을 싣는다") {
             stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1")
             val at = Instant.parse("2026-09-03T09:00:00Z")
             val who = UUID.randomUUID()
             every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
@@ -486,6 +501,7 @@ class ProjectSummaryServiceTest : DescribeSpec({
 
         it("시스템 자동 변경은 actorId 와 actorName 이 모두 null 이다") {
             stubBrowseAndAccess()
+            stubViewAllowed("SUMP-1")
             every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
                 listOf(
                     activityRow(
@@ -546,12 +562,7 @@ class ProjectSummaryServiceTest : DescribeSpec({
         it("같은 픽스처에서 VIEW 를 열면 두 이슈가 모두 나온다") {
             stubBrowseAndAccess()
             stubTwoIssueFeed()
-            every {
-                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-1"))
-            } returns true
-            every {
-                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-2"))
-            } returns true
+            stubViewAllowed("SUMP-1", "SUMP-2")
 
             val entries = sut.getActivity(actor, projectKey, 20)
 
@@ -567,9 +578,7 @@ class ProjectSummaryServiceTest : DescribeSpec({
                     activityRow(2L, "SUMP-1", null, at.minusSeconds(60), "status", "open", "doing", null, null),
                     activityRow(3L, "SUMP-1", null, at.minusSeconds(120), "priority", "3", "1", null, null),
                 )
-            every {
-                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-1"))
-            } returns true
+            stubViewAllowed("SUMP-1")
 
             sut.getActivity(actor, projectKey, 20)
 

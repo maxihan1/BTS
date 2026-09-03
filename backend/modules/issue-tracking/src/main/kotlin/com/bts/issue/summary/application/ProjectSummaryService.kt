@@ -139,9 +139,19 @@ class ProjectSummaryService(
     /**
      * 프로젝트 활동 피드를 최신순으로 조회한다.
      *
+     * ## 게이트가 두 겹인 이유
+     * 프로젝트 진입은 [IssuePermission.BROWSE] 로 막지만, 피드는 **이슈 단위 내용**(변경 전후 값·라벨)을
+     * 내보내므로 항목마다 [IssuePermission.VIEW] 를 다시 묻는다. 두 권한은 `BROWSE_PROJECT`/`VIEW_ISSUE`
+     * 라는 **독립 매트릭스 권한**에 각각 위임되며 포함 관계가 아니다(FR-PM-05). 집계만 내보내는
+     * [getSummary] 가 BROWSE 로 충분한 것과 대비된다.
+     *
+     * VIEW 를 통과하지 못한 이슈의 항목은 값만 가리지 않고 **제거**한다 — 단건 경로가 VIEW 미보유를
+     * `IssueNotFoundException`(404)으로 돌려 존재 자체를 숨기는 것과 의미를 맞춘다.
+     * 그래서 반환 항목 수는 [limit] 보다 적을 수 있다.
+     *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 대상 프로젝트 키.
-     * @param limit 반환할 최대 변경 그룹 수.
+     * @param limit 조회할 최대 변경 그룹 수. VIEW 게이트로 제거된 만큼 결과는 이보다 적을 수 있다.
      * @return 최신순 [ProjectActivityEntry] 목록.
      * @throws IssueAccessDeniedException [IssuePermission.BROWSE] 권한 미보유 시.
      */
@@ -154,7 +164,8 @@ class ProjectSummaryService(
         checkBrowsePermission(actorId, projectKey)
 
         val access = accessOf(actorId, projectKey)
-        val rows = issueRepository.fetchProjectActivity(projectKey, actorId.value, access, limit)
+        val fetched = issueRepository.fetchProjectActivity(projectKey, actorId.value, access, limit)
+        val rows = retainViewableRows(actorId, projectKey, fetched)
         if (rows.isEmpty()) return emptyList()
 
         val actorNames = resolveActorNames(rows.mapNotNull { it.actorId }.toSet())
@@ -195,6 +206,52 @@ class ProjectSummaryService(
         actorId: ActorId,
         projectKey: String,
     ): IssueSecurityAccess = securityDirectory.accessibleLevels(actorId.value, projectKey)
+
+    /**
+     * 활동 피드 행 중 [IssuePermission.VIEW] 를 통과한 이슈의 것만 남긴다.
+     *
+     * **왜 이슈 단위인가.** `BROWSE_PROJECT` 와 `VIEW_ISSUE` 는 독립 매트릭스 권한이라(FR-PM-05)
+     * 프로젝트를 둘러볼 수 있어도 이슈 내용을 볼 권한은 없을 수 있다. 한 변경 그룹의 행은 모두 같은
+     * 이슈에 속하므로 그룹이 반쪽만 남는 일은 없다.
+     *
+     * **N+1.** [IssuePermissionResolver] 에 배치 API 가 없어 이슈마다 개별 호출이지만, 피드는 최대
+     * `limit`(컨트롤러 상한 50)개 그룹이라 distinct 이슈도 그 이하다. 여기에 이슈 키 캐시를 더해
+     * 같은 이슈가 여러 그룹으로 등장해도 판정은 1회다.
+     */
+    private fun retainViewableRows(
+        actorId: ActorId,
+        projectKey: String,
+        rows: List<ProjectActivityRow>,
+    ): List<ProjectActivityRow> {
+        if (rows.isEmpty()) return rows
+        val decided = mutableMapOf<String, Boolean>()
+        return rows.filter { row ->
+            decided.getOrPut(row.issueKey) { canViewIssue(actorId, projectKey, row.issueKey) }
+        }
+    }
+
+    /**
+     * [issueKey] 이슈의 [IssuePermission.VIEW] 보유 여부를 판정한다. 불명은 거부다.
+     *
+     * 이슈 키 접두사는 소속 프로젝트 키와 같다는 불변식이 있고(DATA.md §1.1 이슈 키 영속성),
+     * resolver 도 그 접두사로 프로젝트를 해석한다. 접두사가 조회 대상 프로젝트와 어긋나면 판정이
+     * **다른 프로젝트 기준**으로 나가므로, 그 상황에서는 묻지 않고 거부한다(fail-closed).
+     */
+    private fun canViewIssue(
+        actorId: ActorId,
+        projectKey: String,
+        issueKey: String,
+    ): Boolean {
+        if (issueKey.substringBefore(ISSUE_KEY_SEPARATOR) != projectKey) {
+            log.warn(
+                "getActivity: issueKey prefix mismatch issueKey={} projectKey={} — VIEW 판정 불능이므로 거부",
+                issueKey,
+                projectKey,
+            )
+            return false
+        }
+        return permissionResolver.hasPermission(actorId.value, IssuePermission.VIEW, IssueScope.Issue(issueKey))
+    }
 
     // ── 워크플로우 카테고리 해석 ───────────────────────────────────────────────
 
@@ -447,5 +504,8 @@ class ProjectSummaryService(
     private companion object {
         /** project-workflow BC 내부 예외 simpleName — 직접 import 불가하므로 문자열로 식별. */
         const val WORKFLOW_SCHEME_NO_DEFAULT_EXCEPTION = "WorkflowSchemeNoDefaultException"
+
+        /** 이슈 키의 프로젝트 접두사 구분자(`BTS-1` → `BTS`). */
+        const val ISSUE_KEY_SEPARATOR = '-'
     }
 }
