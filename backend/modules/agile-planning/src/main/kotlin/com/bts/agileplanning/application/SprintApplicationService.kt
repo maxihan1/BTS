@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Isolation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
@@ -287,14 +288,15 @@ class SprintApplicationService(
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전환.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     fun start(
         actorId: UUID,
         sprintId: UUID,
     ): Sprint {
         val sprint = loadSprintWithPermission(actorId, sprintId, IssuePermission.CREATE)
         // 전환 자체가 무효면 락을 잡기 전에 죽는다 — 잘못된 요청이 남의 시작을 막아 세우지 않는다.
-        val started = sprint.start()
+        // 반환값은 버린다 — 실제로 영속할 status·version 은 락 뒤 재조회분이다.
+        sprint.start()
         // 소속 보드가 스크럼이 아니면 락을 잡기 전에 거부한다 (R8 · 부채 165). 못 찾은 보드도 거부다 —
         // 스크럼임을 확인하지 못했으면 fail-closed 이고, 스프린트는 존재하므로 404 를 쓰지 않는다.
         if (boardRepository.findById(sprint.boardId)?.boardType != BoardType.SCRUM) {
@@ -304,11 +306,13 @@ class SprintApplicationService(
         //    (memory `advisory-lock-bigint-toctou`). DB 는 이 유일성을 못 막는다 —
         //    `idx_sprints_board_active`(V506)가 선재 다중 ACTIVE 행 보존 때문에 UNIQUE 가 아니다.
         sprintRepository.acquireSprintStartLock(sprint.boardId)
+        // 락 앞 스냅샷은 이미 낡았다 — 락 뒤에 다시 읽은 status·version 만 영속에 쓴다 (R9 · E6 · E7).
+        val started = reloadAndRevalidateAfterLock(sprintId)
         if (sprintRepository.findActiveByBoard(sprint.boardId) != null) {
             throw SprintAlreadyActiveException()
         }
-        return sprintRepository.updateStatus(sprintId, started.status, sprint.version)
-            ?: resolveOccNull(sprintId, sprint)
+        return sprintRepository.updateStatus(sprintId, started.status, started.version)
+            ?: resolveOccNull(sprintId, started)
     }
 
     // ── complete ──────────────────────────────────────────────────────────────
@@ -539,6 +543,23 @@ class SprintApplicationService(
             log.warn("이슈 할당 UNIQUE 제약 위반(jOOQ) — sprintId={}", sprintId)
             throw SprintIssueConflictException()
         }
+
+    /**
+     * 락 획득 **후** 스프린트를 다시 읽고 전환 유효성을 재검증한다 (R9 · 부채 166 ①).
+     *
+     * 락 앞에서 읽은 스냅샷은 락을 기다리는 사이 낡는다. 격리 수준이 `REPEATABLE READ` 로 올라가면
+     * 락을 잡고도 앞선 트랜잭션의 커밋을 못 봐 서로 다른 행을 UPDATE 하고 **ACTIVE 2건이 커밋된다.**
+     * 재조회가 있으면 격리 수준이 무엇이든 안전하다 — [start] 의 격리 명시는 방어층일 뿐이다.
+     *
+     * @param sprintId 다시 읽을 스프린트 UUID.
+     * @return ACTIVE 로 전환된 사본. version 은 **재조회 시점** 값이라 그대로 OCC 조건에 쓴다.
+     * @throws SprintNotFoundException 404 — 락 대기 중 삭제됨 (E6).
+     * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 대기 중 이미 시작됨 (E7).
+     */
+    private fun reloadAndRevalidateAfterLock(sprintId: UUID): Sprint {
+        val current = sprintRepository.findById(sprintId) ?: throw SprintNotFoundException()
+        return current.start()
+    }
 
     /**
      * updateMeta / updateStatus 가 null 을 반환했을 때 존재 재확인 후 404 또는 409 를 결정한다.
