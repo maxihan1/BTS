@@ -83,8 +83,10 @@ export const LoginDialog = () => {
       >
         <DialogHeader>
           <DialogTitle>{loginPageStrings.heading}</DialogTitle>
+          {/* 만료 안내는 "보던 화면으로 돌아갑니다" 라고 약속한다. `/login` 에서는 그 약속을
+              지킬 수 없으므로(돌아갈 화면이 없어 start_page 로 간다) 일반 안내를 쓴다. */}
           <DialogDescription>
-            {sessionExpired
+            {sessionExpired && pathname !== '/login'
               ? loginPageStrings.sessionExpiredDescription
               : loginPageStrings.description}
           </DialogDescription>

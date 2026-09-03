@@ -118,11 +118,16 @@ test.describe('도메인 라우팅 (FR-AU-07)', () => {
     await expect(page.getByText(loginStrings.ssoRoutedHint)).toHaveCount(0)
   })
 
-  test('S4 @ 없는 입력 — alice 는 route 조회 없이 로컬 폼만 (LDAP 사용자명)', async ({ page }) => {
-    let routeCalls = 0
-    await page.route('**/api/v1/auth/route*', (route) => {
-      routeCalls += 1
-      void route.continue()
+  test('S4 @ 없는 입력 — alice 는 SSO 안내 없이 로컬 폼만 (LDAP 사용자명)', async ({ page }) => {
+    // 🛑 `page.route` 로 요청 수를 세지 마라. `/api/v1/auth/route` 는 MSW 핸들러라
+    //    서비스워커가 처리하고 네트워크로 나가지 않는다 — 카운터는 앱이 조회를 하든 말든
+    //    항상 0이라 단언을 지워도 통과하는 공허한 판정이 된다(커밋 75e010512 가 확립한 사실).
+    //    「조회를 안 한다」의 실제 검증은 MSW node 서버에서 카운트하는
+    //    `LoginForm.test.tsx` 의 "@ 가 없는 식별자는 route 조회를 하지 않는다" 가 맡는다.
+    //    여기서는 **관측 가능한 결과**만 잰다.
+    // 이 도메인이 매칭되도록 시드해 둔다 — 그래도 `@` 가 없으면 SSO 안내가 뜨지 않아야 한다.
+    await seedRouteStore(page, {
+      'partner.com': { type: 'SAML', registrationId: 'partner-saml', displayName: 'Partner SSO' },
     })
 
     await page.goto('/login')
@@ -132,7 +137,7 @@ test.describe('도메인 라우팅 (FR-AU-07)', () => {
       page.getByRole('button', { name: loginStrings.submitButton, exact: true }),
     ).toBeVisible()
     await expect(page.getByLabel(loginStrings.usernameLabel)).toHaveValue('alice')
-    expect(routeCalls).toBe(0)
+    await expect(page.getByText(loginStrings.ssoRoutedHint)).toHaveCount(0)
   })
 
   test('S5 SSO 로 라우팅된 도메인에서도 로컬 로그인 버튼이 살아 있다 (FR-07 S4 fail-safe)', async ({

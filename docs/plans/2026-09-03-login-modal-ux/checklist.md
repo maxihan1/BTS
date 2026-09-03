@@ -24,7 +24,7 @@
 
 ## 2. GREEN — 커밋 2 · dialog 프리미티브 가산
 
-- [ ] `DialogContent` 에 `overlayClassName?: string` · `showCloseButton?: boolean = true`
+- [x] `DialogContent` 에 `overlayClassName?: string` · `showCloseButton?: boolean = true`
 - [x] `dialog.test.tsx` 단독 초록 확인 (기본값 = 현재 동작)
 
 ## 3. GREEN — 커밋 3 · 401 프롬프트

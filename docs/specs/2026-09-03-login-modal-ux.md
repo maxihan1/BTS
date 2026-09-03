@@ -16,8 +16,13 @@
 `bts.maxihan.com` 에 미인증으로 접속하면 로그인 화면이 뜨지 않았다. 배포 번들
 (`/assets/index-DOByFogC.js`)에서 `홈 (T13 가드 추가 전 placeholder)` 문자열을 직접 확인했다.
 
-원인은 `apps/web/src/router.ts` 의 `indexRoute` 다. 60여 라우트 중 **이 하나만** `beforeLoad`
-가드가 없었고 `// T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정` TODO 만 남아 있었다.
+원인은 `apps/web/src/router.ts` 의 `indexRoute` 다. `beforeLoad` 가드가 없었고
+`// T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정` TODO 만 남아 있었다.
+
+**★게이트 2 정정.** 초안의 「이 하나만」은 틀렸다. 코드리뷰가 `workflowsKeyRoute`(`/workflows/$key`) 도
+같은 구멍임을 실측했다 — 미인증 진입 시 모달 없이 「워크플로우를 찾을 수 없습니다」가 렌더됐다.
+62개 라우트 중 가드 없는 것은 셋이었고, `shellRoute`(pathless 레이아웃)와
+`dashboardsSharedTokenRoute`(`requireAuth:false` 명시)를 빼면 **둘**이 진짜 구멍이었다.
 
 ## Jira 대조
 
@@ -74,10 +79,16 @@ Atlassian 계정처럼 전 세계 다중 테넌트를 상대하지 않아 identi
 - **When** `/` 진입
 - **Then** `redirectToStartPage` 가 `/inbox` 로 보낸다. 인덱스는 자체 화면을 갖지 않는다
 
-### S4 — 세션 만료 → 이동 없이 모달
+### S4 — 세션 만료 → 이동 없이 모달 (**살아 있는 SPA 세션 중**)
 - **Given** 인증 상태로 `/issues` 를 보는 중, refresh 토큰이 서버에서 만료
 - **When** API 401 → 인터셉터가 `/refresh` 호출 → 그것도 401
 - **Then** `clearSession()` + `sessionExpired` 플래그 → **URL 이 바뀌지 않고** 현재 화면 위에 모달
+
+> **★범위 한정 (게이트 2 실측).** 「이동하지 않는다」가 지키는 것은 **살아 있는 SPA 세션 중의 만료**다.
+> 만료된 세션으로 **새로고침**하면 앱이 처음부터 부팅하면서 라우트 진입의 `requireAuth` 가 먼저 잡아
+> `/login?returnTo=…` 로 보낸다 — 실측으로 확인했고, **그게 올바른 동작이다**. 이 요구의 목적은
+> 작성 중이던 이슈·댓글을 잃지 않는 것인데 새로고침에는 잃을 작성분이 없다.
+> e2e 는 그래서 `page.reload()` 가 아니라 창 포커스로 재조회를 유발한다(페이지를 떠나지 않는 유일한 트리거).
 
 ### S5 — 만료 재로그인 → 화면 회복
 - **Given** S4 상태에서 모달로 재로그인 성공

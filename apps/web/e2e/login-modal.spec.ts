@@ -64,9 +64,15 @@ test.describe('전역 로그인 모달', () => {
       window.localStorage.setItem(key, 'true')
     }, E2E_REFRESH_EXPIRED_KEY)
 
-    // 재조회를 유발한다. store 의 토큰은 살아 있어 requireAuth 는 통과하고,
-    // whoami 401 → refresh 401 → 만료 프롬프트 경로를 탄다.
-    await page.reload()
+    // 🛑 `page.reload()` 를 쓰지 마라. 새로고침은 앱을 처음부터 부팅하므로 라우트 진입에서
+    //    `requireAuth` 가 먼저 잡아 `/login?returnTo=%2Fissues` 로 보낸다(실측). 그리고 그건
+    //    **올바른 동작이다** — 만료된 세션으로 새로 여는 것은 로그인 화면이 맞다.
+    //    「이동하지 않는다」가 지키는 것은 **살아 있는 SPA 세션 중의 만료**다. 작성 중이던
+    //    이슈·댓글을 잃지 않는 것이 그 요구의 목적이고, 새로고침에는 잃을 작성분이 없다.
+    // 창 포커스로 React Query 재조회를 유발한다 — 페이지를 떠나지 않는 유일한 트리거다.
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
 
     await expect(page.getByRole('dialog', { name: loginPageStrings.heading })).toBeVisible()
     expect(page.url()).toContain('/issues')

@@ -1,5 +1,5 @@
 // 로그인 폼 컴포넌트 — 단일 화면 자격 증명 + MFA 2단계 (provider+id+pw → TOTP 코드)
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useMutation } from '@tanstack/react-query'
@@ -25,6 +25,7 @@ import { useLoginMutation } from './useLoginMutation'
 import { SamlIdpButtons } from './SamlIdpButtons'
 import { OidcIdpButtons } from './OidcIdpButtons'
 import { ssoEntryUrl } from './ssoEntryUrl'
+import { useDomainRouteLookup } from './useDomainRouteLookup'
 import { loginStrings, mfaStrings, mfaErrorMessage } from '@/i18n/ko'
 import { verifyMfa } from '@/api/mfa'
 import { ApiError, apiGet } from '@/api/client'
@@ -33,13 +34,11 @@ import { useAuthStore } from './authStore'
 import { fetchSamlIdps } from '@/api/saml'
 import { fetchOidcProviders } from '@/api/oidc'
 import { fetchProviders } from '@/api/providers'
-import { fetchRoute } from '@/api/route'
 import { authenticateWithSecurityKey } from '@/api/webauthn'
 import { browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import type { SamlIdp } from '@/api/saml'
 import type { OidcProvider } from '@/api/oidc'
 import type { ProviderEntry } from '@/api/providers'
-import type { RouteMatch } from '@/api/route'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 / 순수 헬퍼
@@ -100,9 +99,6 @@ interface CredentialsFormProps {
   oidcProviders: OidcProvider[]
 }
 
-/** 도메인 조회 디바운스 — 부분 도메인마다 요청이 나가는 것을 막는다 */
-const ROUTE_LOOKUP_DEBOUNCE_MS = 500
-
 /**
  * 로그인 자격 증명 폼. provider 드롭다운 + username + password + SSO 버튼을 **한 화면**에 렌더한다.
  *
@@ -128,81 +124,7 @@ const LoginCredentialsForm = ({
   oidcProviders,
 }: CredentialsFormProps) => {
   const mutation = useLoginMutation()
-
-  /** 도메인 매칭 결과 — null 이면 로컬/LDAP 폼만 보인다 */
-  const [matchedRoute, setMatchedRoute] = useState<RouteMatch | null>(null)
-  /** 같은 도메인을 두 번 조회하지 않기 위한 dedupe 키 */
-  const lastQueriedDomainRef = useRef('')
-  /** 늦게 도착한 응답이 최신 결과를 덮어쓰지 않게 하는 순번 */
-  const seqRef = useRef(0)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 언마운트 시 대기 중인 디바운스를 취소한다 — 사라진 컴포넌트의 setState 방지
-  useEffect(
-    () => () => {
-      if (debounceRef.current !== null) clearTimeout(debounceRef.current)
-    },
-    [],
-  )
-
-  /**
-   * 식별자에서 도메인을 뽑아 route 를 조회한다.
-   *
-   * `@` 가 없거나 도메인이 비면 조회하지 않는다 — LDAP 사용자명(`alice`)이 그 경우다.
-   * 조회 실패는 사용자를 막지 않고 `console.warn` 만 남긴다(FR-07 S4 fail-safe).
-   * 정상 운영(네트워크 일시 단절 등)에서도 발생할 수 있는 폴백 경로라 error 가 아닌 warn 이다.
-   */
-  function runRouteLookup(identifier: string) {
-    const atIndex = identifier.indexOf('@')
-    const domain = atIndex !== -1 ? identifier.slice(atIndex + 1) : ''
-
-    // `@` 를 지웠거나 도메인이 비면 조회하지 않는다 — LDAP 사용자명(`alice`)이 그 경우다.
-    // 🛑 이때 이전 매칭을 **반드시 지운다**. 안 지우면 식별자를 사용자명으로 바꿨는데
-    //    이전 도메인의 SSO 버튼이 남는다(stale 매칭).
-    if (domain === '') {
-      lastQueriedDomainRef.current = ''
-      setMatchedRoute(null)
-      return
-    }
-    if (domain === lastQueriedDomainRef.current) return
-
-    lastQueriedDomainRef.current = domain
-    const seq = ++seqRef.current
-    fetchRoute(domain)
-      .then((result) => {
-        if (seq !== seqRef.current) return
-        setMatchedRoute(result.matched ? result : null)
-      })
-      .catch((err: unknown) => {
-        // 🛑 dedupe 키를 되돌린다. 실패한 도메인이 키에 남으면 재조회가 **영구 차단**되고,
-        //    일시적 네트워크 장애 뒤 SSO 버튼이 영영 뜨지 않는다.
-        //    최신 조회일 때만 되돌린다 — 뒤늦게 실패한 옛 요청이 새 키를 지우면 안 된다.
-        if (seq === seqRef.current) {
-          lastQueriedDomainRef.current = ''
-        }
-        console.warn('[LoginForm] route 조회 실패 — 로컬 로그인으로 진행', err)
-      })
-  }
-
-  /** 타이핑 중 조회 — 부분 도메인 요청을 줄이기 위해 디바운스한다 */
-  function scheduleRouteLookup(identifier: string) {
-    if (debounceRef.current !== null) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => {
-      runRouteLookup(identifier)
-    }, ROUTE_LOOKUP_DEBOUNCE_MS)
-  }
-
-  /**
-   * 입력 종료 신호. 디바운스만으로는 필드를 떠나지 않고 Enter 로 제출하는 사용자를 놓치는데,
-   * 그게 정확히 NFR-A11Y-04(키보드만으로 로그인)가 보호하는 경로다.
-   */
-  function flushRouteLookup(identifier: string) {
-    if (debounceRef.current !== null) {
-      clearTimeout(debounceRef.current)
-      debounceRef.current = null
-    }
-    runRouteLookup(identifier)
-  }
+  const { matchedRoute, scheduleLookup, flushLookup } = useDomainRouteLookup()
 
   // providers[0]?.id가 이미 있으면 마운트 시 기본값으로 사용한다.
   // 없으면 '' — useEffect에서 채운다.
@@ -299,11 +221,11 @@ const LoginCredentialsForm = ({
                   {...field}
                   onChange={(e) => {
                     field.onChange(e)
-                    scheduleRouteLookup(e.target.value)
+                    scheduleLookup(e.target.value)
                   }}
                   onBlur={(e) => {
                     field.onBlur()
-                    flushRouteLookup(e.target.value)
+                    flushLookup(e.target.value)
                   }}
                 />
               </FormControl>

@@ -110,6 +110,8 @@ const workflowsKeyRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/workflows/$key',
   component: WorkflowDetailRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
 })
 
 /**

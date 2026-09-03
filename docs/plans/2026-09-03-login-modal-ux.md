@@ -28,8 +28,16 @@ loginPromptStore · AuthBackdrop) · `api/client.ts`(401 인터셉터) · `route
 `https://bts.maxihan.com/assets/index-DOByFogC.js` 를 받아 `grep -c "T13 가드 추가 전 placeholder"` → **1**.
 미인증 진입 시 `routes/index.tsx` 의 placeholder 가 실제로 렌더된다.
 
-원인은 `apps/web/src/router.ts:85-90` 의 `indexRoute` 다. 60여 라우트 중 **이 하나만**
-`beforeLoad` 가드가 없고 `// T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정` TODO 만 있었다.
+원인은 `apps/web/src/router.ts:85-90` 의 `indexRoute` 다. `beforeLoad` 가드가 없고
+`// T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정` TODO 만 있었다.
+
+> **★2026-09-03 게이트 2 정정.** 초안은 「60여 라우트 중 **이 하나만**」이라고 적었는데 **사실이 아니었다.**
+> 코드리뷰가 `workflowsKeyRoute`(`/workflows/$key`) 도 같은 구멍임을 실측으로 잡았다 — 미인증 진입 시
+> 모달 없이 「워크플로우를 찾을 수 없습니다」가 렌더됐다. 즉 이 PR 의 최상위 요구가 그 경로에서 깨져 있었다.
+> 인스턴스 2건을 다 고쳤고, 더 중요하게는 **판별식**을 세웠다
+> (`apps/web/src/router.guard-coverage.test.ts` — 모든 경로 라우트가 `beforeLoad` 를 갖거나
+> `staticData.requireAuth === false` 를 명시함을 목록 전수 비교로 강제).
+> 「라우트를 추가했는데 가드를 안 달아도 아무도 안 본다」가 지배 결함 양식이고, 인스턴스만 고치면 또 난다.
 
 배포본은 `last-modified: Mon, 24 Aug 2026` 로 8/24 자다 — 머지해도 재배포 전까지 반영되지 않는다
 (Maxi 확정: 이번 범위는 코드·PR 까지).
