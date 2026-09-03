@@ -606,6 +606,73 @@ class ProjectSummaryServiceTest : DescribeSpec({
         }
     }
 
+    // ── 이동된 이슈의 VIEW 게이트 (N1) ───────────────────────────────────────
+
+    describe("이동된 이슈의 활동 VIEW 게이트") {
+        val at = Instant.parse("2026-09-03T09:00:00Z")
+
+        /**
+         * TPRJ2 에서 SUMP 로 옮겨진 이슈. `issue_change_group.issue_key` 는 기록 시점 값이라
+         * 이동해도 갱신되지 않는다(FR-MV-01 `moveIssue` 는 `issues` 만 UPDATE).
+         */
+        fun stubMovedIssueFeed() {
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(
+                        1L, "OTHER-1", null, at, "status", "doing", "done", "진행 중", "완료",
+                        currentIssueKey = "SUMP-7",
+                    ),
+                )
+        }
+
+        it("기록 시점 키가 조회 프로젝트와 달라도 현재 키로 판정해 항목이 남는다") {
+            stubBrowseAndAccess()
+            stubMovedIssueFeed()
+            // 판정은 현재 키로 나간다 — 박제된 키로 물으면 접두사 불일치로 전량 제거된다(조용한 소실).
+            stubViewAllowed("SUMP-7")
+
+            val entries = sut.getActivity(actor, projectKey, 20)
+
+            entries.shouldHaveSize(1)
+            // 표시용 키는 이력의 박제값 그대로 — 응답 계약이다.
+            entries.single().issueKey shouldBe "OTHER-1"
+        }
+
+        it("같은 픽스처에서 현재 키의 VIEW 를 닫으면 항목이 사라진다") {
+            stubBrowseAndAccess()
+            stubMovedIssueFeed()
+            every {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-7"))
+            } returns false
+
+            // 비-공허 짝 — 위 테스트가 "게이트 없음" 구현으로 통과하지 않게 한다.
+            sut.getActivity(actor, projectKey, 20).shouldHaveSize(0)
+        }
+
+        it("이동 전후 그룹이 섞여도 VIEW 판정은 현재 키로 1회다") {
+            stubBrowseAndAccess()
+            every { issueRepository.fetchProjectActivity(projectKey, actor.value, unrestrictedAccess, 20) } returns
+                listOf(
+                    activityRow(
+                        1L, "SUMP-7", null, at, "status", "doing", "done", null, null,
+                        currentIssueKey = "SUMP-7",
+                    ),
+                    activityRow(
+                        2L, "OTHER-1", null, at.minusSeconds(60), "status", "open", "doing", null, null,
+                        currentIssueKey = "SUMP-7",
+                    ),
+                )
+            stubViewAllowed("SUMP-7")
+
+            sut.getActivity(actor, projectKey, 20).shouldHaveSize(2)
+
+            // 캐시 키도 현재 키여야 한다 — 박제 키로 캐싱하면 같은 이슈를 두 번 묻는다.
+            verify(exactly = 1) {
+                permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue("SUMP-7"))
+            }
+        }
+    }
+
     // ── 창 경계 (T2) ──────────────────────────────────────────────────────────
 
     describe("집계 창 경계") {
@@ -845,11 +912,13 @@ private fun activityRow(
     fromLabel: String?,
     toLabel: String?,
     issueId: UUID = FIXED_ISSUE_ID,
+    currentIssueKey: String = issueKey,
 ): ProjectActivityRow =
     ProjectActivityRow(
         groupId = groupId,
         issueId = issueId,
         issueKey = issueKey,
+        currentIssueKey = currentIssueKey,
         actorId = actorId,
         createdAt = createdAt,
         field = field,

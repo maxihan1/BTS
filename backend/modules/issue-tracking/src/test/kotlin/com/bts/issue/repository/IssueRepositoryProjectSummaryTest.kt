@@ -41,6 +41,7 @@ import java.util.UUID
  * - ACT-1. 활동 피드는 최신순이고 limit 을 지킨다.
  * - ACT-2. 활동 피드도 같은 보안 술어를 통과한다.
  * - ACT-3. 한 그룹의 여러 항목이 같은 그룹 id 로 묶여 나온다.
+ * - ACT-5. 이동된 이슈는 **기록 시점 키와 현재 키를 함께** 싣는다 — VIEW 게이트의 판정 근거.
  */
 class IssueRepositoryProjectSummaryTest : IssueTestcontainersBase() {
     /** V003 seed 의 task 타입 id — value class 는 lateinit 불가, nullable var 사용. */
@@ -310,6 +311,38 @@ class IssueRepositoryProjectSummaryTest : IssueTestcontainersBase() {
         assertThat(rows.single().actorId).isNull()
     }
 
+    /**
+     * Given  TPRJ2 에서 만들어져 이력이 쌓인 이슈를 TPRJ 로 이동(`issues.project_id`·`key` 만 갱신).
+     * When   TPRJ 활동 피드 조회.
+     * Then   `issueKey` 는 기록 시점 값(TPRJ2-1) 그대로이고 `currentIssueKey` 는 현재 키(TPRJ-9)다.
+     *
+     * `issue_change_group.issue_key` 는 기록 시점에 한 번 쓰이고 이후 갱신되지 않는다
+     * (`JdbcIssueChangeHistoryRepository:356` INSERT 뿐 · UPDATE 0건). 반면 1단계 조인은 **현재**
+     * `project_id` 를 걸므로, 이동 전 그룹이 새 프로젝트 피드에 정상적으로 실린다. 이때 서비스가
+     * 박제된 `issue_key` 로 VIEW 를 물으면 접두사가 어긋나 전량 제거된다(조용한 데이터 소실).
+     * 그래서 판정 근거가 될 **현재 키**를 원천에서 함께 실어야 한다.
+     *
+     * 행 부풀림 회귀도 함께 본다 — `ISSUE_CHANGE_GROUP.ISSUE_ID → ISSUES.ID` 는 N:1(PK)이라
+     * 조인을 더해도 항목 수가 늘면 안 된다.
+     */
+    @Test
+    fun `ACT-5 - 이동된 이슈는 기록 시점 키와 현재 키를 함께 싣는다`() {
+        val otherProjectId = insertOtherProject()
+        val issue = insertIssue(seq = 1L, projectId = otherProjectId, projectKeyPrefix = "TPRJ2")
+        val groupId = insertChangeGroup(issue, utc(2026, 9, 1).toInstant(), actorId = null)
+        insertChangeItem(groupId, "status", "open", "done", "열림", "완료")
+        moveIssue(issue.id.value, targetProjectId = testProjectId, newKey = "TPRJ-9")
+
+        val rows = repository.fetchProjectActivity("TPRJ", viewerId, unrestrictedAccess, limit = 20)
+
+        // 조인을 더해도 한 항목은 한 행이다.
+        assertThat(rows).hasSize(1)
+        // 이력의 박제값은 그대로 — 당시 키를 잃으면 감사 근거가 사라진다.
+        assertThat(rows.single().issueKey).isEqualTo("TPRJ2-1")
+        // VIEW 게이트가 물어야 할 값은 현재 키다.
+        assertThat(rows.single().currentIssueKey).isEqualTo("TPRJ-9")
+    }
+
     // ── 픽스처 헬퍼 ──────────────────────────────────────────────────────────
 
     private fun requireTypeId(): IssueTypeId = requireNotNull(taskTypeId) { "taskTypeId 미초기화 — resolveTaskTypeId 확인" }
@@ -421,6 +454,17 @@ class IssueRepositoryProjectSummaryTest : IssueTestcontainersBase() {
         it.setString(4, toValue)
         it.setString(5, fromLabel)
         it.setString(6, toLabel)
+    }
+
+    /** FR-MV-01 이슈 이동을 흉내 낸다 — `issues.project_id`·`key` 만 갱신하고 이력은 손대지 않는다. */
+    private fun moveIssue(
+        issueId: UUID,
+        targetProjectId: UUID,
+        newKey: String,
+    ) = exec("UPDATE issues SET project_id = ?, key = ? WHERE id = ?") {
+        it.setObject(1, targetProjectId)
+        it.setString(2, newKey)
+        it.setObject(3, issueId)
     }
 
     private fun insertStatusChange(

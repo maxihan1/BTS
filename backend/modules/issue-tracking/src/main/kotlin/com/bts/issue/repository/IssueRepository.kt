@@ -2683,6 +2683,10 @@ class IssueRepository(
                     issueKey =
                         record.get(ISSUE_CHANGE_GROUP.ISSUE_KEY)
                             ?: error("issue_change_group.issue_key must not be null"),
+                    // red seam — 아직 현재 키를 읽지 않는다(N1).
+                    currentIssueKey =
+                        record.get(ISSUE_CHANGE_GROUP.ISSUE_KEY)
+                            ?: error("issue_change_group.issue_key must not be null"),
                     actorId = record.get(ISSUE_CHANGE_GROUP.ACTOR_ID),
                     createdAt =
                         record.get(ISSUE_CHANGE_GROUP.CREATED_AT)?.toInstant()
