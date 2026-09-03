@@ -122,6 +122,19 @@ E2E 스펙 전수 실측 기반. **발생 수는 이 문서에 새기지 않는�
 | 목록/타입 조회 | `useProjects()` · `useIssueTypes()` · `useFavorites()` |
 | 다크 판정 | `lib/theme.ts` `resolveTheme` |
 | 빈 상태 | `components/ui/` `EmptyState` 프리미티브 (`DESIGN.md` §4) |
+| 프로젝트 요약 집계 | `GET /api/v1/projects/{key}/summary` — 카드 4종 + 분포 4종을 서버가 계산해 준다. 프론트에서 이슈를 끌어와 세지 않는다 |
+| 프로젝트 활동 피드 | `GET /api/v1/projects/{key}/activity?limit=` — 변경 그룹 단위. 이슈 단건 changelog 를 N번 부르지 않는다 |
+
+### 요약 화면(J4)의 확정된 집계 규칙
+
+Jira Cloud 실물 확인 결과다. 기억으로 다시 정하지 않는다.
+
+| 무엇 | 규칙 | 근거 |
+|---|---|---|
+| 상단 카드 4종 | 최근 7일 완료·업데이트·생성 + **향후** 7일 마감 | [summary view](https://support.atlassian.com/jira-software-cloud/docs/what-is-the-summary-view/) (Cloud, 2026-09-03 조회) |
+| 「최근 2주」 | **Status overview 의 Done 버킷에만** 적용 — 원문 "Only items that have been completed in the last two weeks will appear in Done" | 같은 문서 |
+| 우선순위·유형·담당자 분포 | 기간 제한 **없음**. 활성·가시 이슈 전량 | 같은 문서 + 목업 부제 「최근 7일 활동과 **현재** 작업 분포입니다」 |
+| 완료 판정 | 상태 이력의 **DONE 진입 시각**. `updated_at` 이 아니다 — BTS 에 `resolved_at` 컬럼이 없다 | 백엔드 판정 D1 |
 
 ## §5. 착수 전 사전 grep — 눈가리개 방지
 

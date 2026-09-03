@@ -6,6 +6,7 @@ import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTe
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.ChangelogGroupView
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.IssueChangeItemMasker
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.comment.repository.CommentRepository
@@ -184,8 +185,7 @@ class CommentEditDeleteHistoryE2EIntegrationTest {
                 issueApplicationService = issueApplicationService,
                 changeHistoryRepository = changeHistoryRepository,
                 userLookupPort = userLookupPort,
-                issueRepository = issueRepository,
-                commentRepository = commentRepository,
+                masker = IssueChangeItemMasker(issueRepository, commentRepository),
             )
     }
 

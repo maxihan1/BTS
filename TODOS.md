@@ -1155,6 +1155,26 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
+## ⬜ issue-tracking — 활동 피드 정렬을 받쳐 줄 프로젝트 스코프 인덱스가 없다 (신규 · 미착수 · T3)
+
+**쉬운 말.** 프로젝트 화면의 「최근 활동」은 그 프로젝트의 변경 이력 전체를 시간순으로 줄 세운 뒤 맨 앞 몇 건을 집는다. 지금 데이터베이스에 있는 색인은 「이슈 하나의 이력」을 찾는 용도라 이 줄 세우기를 바로 받아 주지 못한다.
+
+**방치하면.** 오늘 실제 피해 보고는 0 이고 **느리다고 단정할 근거도 아직 없다 — 아무도 재지 않았다.** 다만 `issue_change_group` 은 append-only 라 정리 정책이 없어(`V018__issue_change_history.sql` 이 「한 번 기록되면 수정/삭제 불가」로 못박았다) 행이 프로젝트 수명에 비례해 단조 증가한다. 지금 괜찮더라도 **시간이 지나면 한 방향으로만 나빠지는 축**이고, 나빠지는 시점을 알려 주는 신호가 지금 없다.
+
+**무엇.** `issue_change_group` 의 인덱스는 `idx_issue_change_group_issue (issue_id, created_at DESC, id DESC)` **하나뿐**이다(`backend/modules/issue-tracking/src/main/resources/db/migration/issue-tracking/V018__issue_change_history.sql:27`). 선행 열이 `issue_id` 라 이슈 단건 이력(`/issues/{key}/changelog`)에는 맞지만, `IssueRepository.fetchProjectActivity` 의 1단계는 프로젝트의 가시 이슈 **전체**를 `created_at DESC, id DESC` 로 정렬해 상위 N 개 그룹 id 를 고르므로(`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:2644-2652`) 이 인덱스로 직접 받을 수 없다. 그리고 **인덱스를 하나 더 만드는 것으로는 안 된다** — `project_id` 가 그 테이블에 없다(`V018:8-19`). 프로젝트 스코프는 `issues` 를 조인해서만 나온다.
+
+**처방.** ★**측정이 선행 조건이다.** `EXPLAIN (ANALYZE, BUFFERS)` 로 실제 계획을 보고, 가장 큰 실 프로젝트의 `issue_change_group` 행 수와 `GET /api/v1/projects/{key}/activity` p95 를 재기 전에는 아무 인덱스도 넣지 않는다 — 이것이 이 부채를 만든 PR 의 판정(`docs/plans/2026-09-03-project-summary-activity.md` D3)이다. 실측이 부담을 확인하면 선택지는 둘이다. ① `issue_change_group` 에 `project_id` 를 비정규화하고 `(project_id, created_at DESC, id DESC)` 인덱스를 건다 — append-only 테이블의 열 추가 + 백필이라 T3 다. ② 피드에 시간 창 하한을 도입해 스캔 범위를 자른다 — 스키마는 안 건드리지만 **API 계약이 바뀐다**. 어느 쪽도 「인덱스 한 줄 추가」가 아니라서 별건으로 판단한다.
+
+## ⬜ issue-tracking — 프로젝트 요약이 살아 있는 이슈를 매 요청마다 전량 올린다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 프로젝트 요약 화면의 숫자(상태·우선순위·유형·담당자 분포)를 만들 때 서버가 그 프로젝트의 삭제 안 된 이슈를 **전부** 메모리로 가져와 센다. 가져오는 양에 상한이 없고 결과를 저장해 두지도 않아 화면에 들어갈 때마다 같은 일을 처음부터 다시 한다.
+
+**방치하면.** 오늘 실제 피해 보고는 0 이고 **느리다고 단정할 근거도 아직 없다 — 아무도 재지 않았다.** 남는 위험은 둘이다. ① 비용이 프로젝트 이슈 수에 비례하는데 캐시가 없어 요청마다 전액을 낸다. ② 형제 조회들과 달리 **잘렸다는 신호를 낼 자리가 없다** — 나중에 상한을 도입하는 순간, 「전체」를 뜻하던 화면 숫자가 조용히 「일부」로 뜻이 바뀐다.
+
+**무엇.** `IssueRepository.fetchActiveVisibleIssuesForSummary`(`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:2529`)에 `LIMIT` 도 시간 하한도 상태 하한도 없다. 같은 파일의 형제 둘은 상한을 갖는다 — `listVisibleForTimeline`(`:883`)은 `TIMELINE_FETCH_LIMIT`(500 · `:1231`), 보드 카드 조회는 `BOARD_CARD_FETCH_LIMIT`(1000 · `:1225`)이고 둘 다 `LIMIT+1` 로 `truncated` 를 판정해 소비측에 전달한다(`:828-830` · `:926-928`). 요약에는 그 짝이 없다. `ProjectSummaryController` 와 그 서비스 어디에도 `@Cacheable` 이 없다. **다만 새로 생긴 패턴은 아니다** — 선례 `fetchActiveVisibleIssuesForCfd`(`:2450`)도 같은 모양으로 무제한이다. 즉 이 항목은 요약 하나가 아니라 **집계 계열 조회의 공통 축**이다.
+
+**처방.** ★**측정이 선행 조건이다.** 가장 큰 실 프로젝트의 이슈 행 수와 `GET /api/v1/projects/{key}/summary` p95 를 재고 `EXPLAIN (ANALYZE, BUFFERS)` 로 계획을 본 뒤에 판단한다 — 위 항목과 같은 판정(D3)에서 나온 부채다. 🛑 근거 없이 상한부터 넣으면 **정확한 집계가 조용히 부분 집계로 바뀐다.** 요약은 「전체」를 뜻하는 화면이라 잘림의 대가가 타임라인보다 크다. 부담이 확인되면 형제의 `LIMIT+1` + `truncated` 짝을 그대로 차용하고 응답 계약에 잘림 플래그를 싣는다. 🛑 요약만 고치고 `fetchActiveVisibleIssuesForCfd` 를 그대로 두면 같은 축이 두 벌로 갈린다 — 둘을 함께 판단한다.
+
 ## ⬜ identity-access — 응답 규약이 두 벌인데 한쪽이 `ResponseEntity<*>` 로 타입을 지운다 (신규 · 미착수 · T2)
 
 **쉬운 말.** 서버가 답을 돌려주는 형식이 두 가지인데, 한 곳은 그 형식을 코드에 안 적어 둔다.
@@ -1453,6 +1473,38 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 **무엇.** `DEVELOPMENT.md §2.1` 이 「함수 30줄 이내, 파일 300줄 이내」를 적는다. `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt` 는 **439줄**이다(2026-09-02 실측 · `wc -l`). PR #421 이 보드 종류·활성 스프린트 스키마를 실으면서 이 파일을 밀어 올렸다. 백엔드에는 `apps/web` 같은 줄수 래칫이 없어 초과가 기계로 잡히지 않는다. 장부 `65` 와 같은 규칙을 건드리지만 표면이 다르다 — 그쪽은 **계획 문서의 숫자가 실측과 갈렸다**는 지적이고 이쪽은 **이 파일을 쪼갠다**는 상환이다.
 
 **처방.** 조회 계열과 쓰기 계열을 갈라 파일을 나눈다. 나누기 전에 이 BC 의 다른 리포지터리가 어떤 축으로 갈라져 있는지부터 본다 — 축이 파일마다 다르면 그것 자체가 다음 부채다.
+
+---
+
+## ⬜ issue-tracking — 상태 개요가 이슈 유형을 가로질러 병합돼 이름·카테고리가 첫 행 기준으로 붙는다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 요약 화면의 「상태 개요」는 상태 키로만 묶는다. 그런데 이슈 유형마다 워크플로우가 다르게 배정될 수 있어 같은 이름의 상태가 유형에 따라 다른 뜻일 수 있다. 지금은 먼저 나온 이슈의 유형 기준으로 이름과 분류가 붙는다.
+
+**방치하면.** 화면의 상태 막대와 개수가 조용히 틀린다. 틀렸다는 신호가 없어 사용자가 숫자를 믿는다. 그 숫자를 그리는 프론트(캠페인 PR ④)가 나온 뒤 발견되면 백엔드 결함인지 화면 결함인지 가르는 데 시간이 든다. 오늘 실제 피해 보고는 0 이다 — 반례 스킴이 아직 없다.
+
+**무엇.** `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/summary/application/ProjectSummaryService.kt` 의 `buildStatusOverview` 가 `groupBy { it.currentStateKey }` 로 묶은 뒤 `rows.first().typeId` 로 `statusName`·`category` 를 해석한다. `task` 워크플로우의 `review` 가 IN_PROGRESS「검토 중」이고 `bug` 워크플로우의 `review` 가 DONE「검토 완료」면 두 유형의 이슈가 한 조각으로 합쳐지고 라벨은 먼저 온 행 것이 이긴다. 같은 메서드의 **DONE 2주 특례 판정도 그 잘못된 카테고리를 따른다.**
+
+**★전제가 어디에도 강제돼 있지 않다.** 「상태 키는 프로젝트 전역에서 유일하다」는 가정 위에 서 있는데 스키마에도 코드에도 그 제약이 없다. 워크플로우 스킴이 유형별 매핑을 허용하는 이상 반례를 만들 수 있다.
+
+**처방.** ① `(statusKey, category)` 로 묶거나 ② 전역 유일 전제를 KDoc 에 못 박고 반례 테스트 1건으로 고정한다. 어느 쪽이든 **유형 2개가 같은 키를 다른 카테고리로 쓰는 픽스처**로 red 를 먼저 본다.
+
+**출처.** PR #435 게이트 2 (2라운드) CONCERNS C1. Maxi 가 후속으로 미루기로 판단했다.
+
+---
+
+## ⬜ issue-tracking — 활동 피드의 표시 이슈 키가 기록 시점 값이라 이동된 이슈는 링크가 404 다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 활동 피드의 각 줄에는 이슈 키가 찍힌다. 이슈를 다른 프로젝트로 옮기면 키가 바뀌는데 피드는 **옮기기 전 키**를 보여준다. 그 키를 눌러 들어가면 없는 이슈다.
+
+**방치하면.** 이동은 실재하는 기능(FR-MV-01)이라 시간이 지날수록 죽은 링크가 쌓인다. 사용자는 「활동 피드가 가끔 깨진다」로만 인식하고 원인을 못 짚는다. 오늘 실제 피해 보고는 0 이다 — 활동 피드를 그리는 화면이 아직 없다.
+
+**무엇.** `ProjectActivityEntry.issueKey` 와 응답 `ProjectActivityEntryResponse.issueKey` 는 `issue_change_group.issue_key` — 기록 시점 박제값이다. 이슈 이동(`IssueRepository.moveIssue`)은 `issues.key` 만 갱신하고 이 열은 건드리지 않는다(저장소 전체에 쓰기 0건).
+
+**★박제값 자체는 옳다.** 이력은 「그때 무엇이었나」를 보존해야 하므로 이 열을 갱신하면 안 된다. 문제는 **표시·링크에 그 값만 주는 것**이다. 권한 판정은 이미 현재 키(`ProjectActivityRow.currentIssueKey`)로 고쳤다(PR #435 N1) — 응답에는 아직 안 실린다.
+
+**처방.** 응답에 현재 키를 **별도 필드**로 더한다(`issueKey` 기록 시점 · `currentIssueKey` 현재). 프론트는 표시에 전자, 링크에 후자를 쓴다. 리포지토리는 이미 `ISSUES.KEY` 를 조인해 들고 있으므로 DTO 한 줄이다.
+
+**출처.** PR #435 게이트 2 (2라운드). N1 수정 과정에서 드러났고 Maxi 가 후속으로 미루기로 판단했다.
 
 ---
 

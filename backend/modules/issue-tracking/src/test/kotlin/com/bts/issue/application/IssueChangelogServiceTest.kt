@@ -47,9 +47,12 @@ class IssueChangelogServiceTest : DescribeSpec({
             issueApplicationService = issueApplicationService,
             changeHistoryRepository = changeHistoryRepository,
             userLookupPort = userLookupPort,
-            issueRepository = issueRepository,
-            fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
-            commentRepository = commentRepository,
+            masker =
+                IssueChangeItemMasker(
+                    issueRepository = issueRepository,
+                    commentRepository = commentRepository,
+                    fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+                ),
         )
 
     val actor = ActorId(UUID.randomUUID())
@@ -357,9 +360,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 issueApplicationService = issueApplicationService,
                 changeHistoryRepository = changeHistoryRepository,
                 userLookupPort = userLookupPort,
-                issueRepository = issueRepository,
-                fieldPermissionResolver = descriptionInvisibleResolver,
-                commentRepository = commentRepository,
+                masker = IssueChangeItemMasker(issueRepository, commentRepository, descriptionInvisibleResolver),
             )
 
         fun groupWith(vararg items: IssueChangeItem): IssueChangeGroup =
@@ -438,9 +439,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     issueApplicationService = issueApplicationService,
                     changeHistoryRepository = changeHistoryRepository,
                     userLookupPort = userLookupPort,
-                    issueRepository = issueRepository,
-                    fieldPermissionResolver = assigneeInvisibleResolver,
-                    commentRepository = commentRepository,
+                    masker = IssueChangeItemMasker(issueRepository, commentRepository, assigneeInvisibleResolver),
                 )
 
             val assigneeItem =
@@ -494,9 +493,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     issueApplicationService = issueApplicationService,
                     changeHistoryRepository = changeHistoryRepository,
                     userLookupPort = userLookupPort,
-                    issueRepository = issueRepository,
-                    fieldPermissionResolver = customInvisibleResolver,
-                    commentRepository = commentRepository,
+                    masker = IssueChangeItemMasker(issueRepository, commentRepository, customInvisibleResolver),
                 )
 
             val secretItem =
@@ -547,9 +544,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     issueApplicationService = issueApplicationService,
                     changeHistoryRepository = changeHistoryRepository,
                     userLookupPort = userLookupPort,
-                    issueRepository = issueRepository,
-                    fieldPermissionResolver = denyAllResolver,
-                    commentRepository = commentRepository,
+                    masker = IssueChangeItemMasker(issueRepository, commentRepository, denyAllResolver),
                 )
 
             val statusItem = IssueChangeItem(field = "status", fromValue = "open", toValue = "closed")
@@ -617,10 +612,13 @@ class IssueChangelogServiceTest : DescribeSpec({
                 issueApplicationService = issueApplicationService,
                 changeHistoryRepository = changeHistoryRepository,
                 userLookupPort = userLookupPort,
-                issueRepository = issueRepository,
                 // 필드 권한 마스킹과 직교시킨다 — 여기서 가려지면 원인이 댓글 삭제인지 필드 권한인지 구분 못 한다.
-                fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
-                commentRepository = commentRepository,
+                masker =
+                    IssueChangeItemMasker(
+                        issueRepository = issueRepository,
+                        commentRepository = commentRepository,
+                        fieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
+                    ),
             )
 
         val activeCommentId = UUID.randomUUID()
@@ -665,7 +663,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 every {
                     changeHistoryRepository.findByIssuePaged(issueId, 20, 0)
                 } returns listOf(groupWith(activeItem, deletedItem))
-                every { commentRepository.findActiveIds(any(), issueId) } returns setOf(activeCommentId)
+                every { commentRepository.findActiveOwners(any()) } returns mapOf(activeCommentId to issueId)
             }
 
             it("삭제된 댓글의 이력 항목은 fromValue·toValue 가 마스킹된다") {
@@ -678,7 +676,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 masked.toLabel.shouldBeNull()
                 // N+1 금지 — 페이지 내 댓글 id 를 모아 단 한 번만 배치 조회해야 한다.
                 verify(exactly = 1) {
-                    commentRepository.findActiveIds(setOf(activeCommentId, deletedCommentId), issueId)
+                    commentRepository.findActiveOwners(mapOf(issueId to setOf(activeCommentId, deletedCommentId)))
                 }
             }
 
@@ -715,7 +713,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 every {
                     changeHistoryRepository.findByIssueCursor(issueId, null, null, 20)
                 } returns listOf(1L to groupWith(activeItem, deletedItem))
-                every { commentRepository.findActiveIds(any(), issueId) } returns setOf(activeCommentId)
+                every { commentRepository.findActiveOwners(any()) } returns mapOf(activeCommentId to issueId)
             }
 
             it("삭제된 댓글의 이력 항목은 fromValue·toValue 가 마스킹된다") {
@@ -728,7 +726,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                 masked.toLabel.shouldBeNull()
                 // N+1 금지 — offset 경로와 동일하게 페이지당 배치 조회 1회여야 한다.
                 verify(exactly = 1) {
-                    commentRepository.findActiveIds(setOf(activeCommentId, deletedCommentId), issueId)
+                    commentRepository.findActiveOwners(mapOf(issueId to setOf(activeCommentId, deletedCommentId)))
                 }
             }
 
@@ -770,7 +768,7 @@ class IssueChangelogServiceTest : DescribeSpec({
                     changeHistoryRepository.findByIssuePaged(issueId, 20, 0)
                 } returns listOf(groupWith(statusItem, assigneeItem, deletedItem))
                 // 모든 댓글이 삭제된 극단 — 그래도 댓글이 아닌 필드는 손대면 안 된다.
-                every { commentRepository.findActiveIds(any(), issueId) } returns emptySet()
+                every { commentRepository.findActiveOwners(any()) } returns emptyMap()
             }
 
             it("comment: 접두사가 아닌 기존 필드(status·assignee 등)는 영향받지 않는다") {
