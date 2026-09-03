@@ -76,20 +76,25 @@ function buildGraph(
   locked: boolean,
 ): { nodes: Node[]; edges: Edge[]; globals: ReturnType<typeof edgeRoutes>['globals'] } {
   const placed = autoLayout(states)
-  const nameByKey = new Map(states.map((s) => [s.key, s.name]))
+  // 키로 한 번만 색인한다. `placed` 의 모든 항목은 `states` 에서 나왔으므로 조회는 반드시 맞고,
+  // 배열 `find` 를 노드마다 도는 O(n²) 와 「못 찾으면 TODO」 같은 **도달 불가 폴백**을 함께 없앤다.
+  // 도달 불가 폴백은 지워도 아무 판정이 red 가 안 되므로, 두면 다음 사람이 그것을 실제 분기로 읽는다.
+  const byKey = new Map(states.map((s) => [s.key, s]))
   const routes = edgeRoutes(transitions)
 
-  const nodes: Node[] = placed.map((p) => ({
-    id: p.key,
-    type: 'status',
-    position: { x: p.x, y: p.y },
-    draggable: !locked,
-    data: {
-      name: nameByKey.get(p.key) ?? p.key,
-      category: states.find((s) => s.key === p.key)?.category ?? 'TODO',
-      locked,
-    },
-  }))
+  const nodes: Node[] = placed.flatMap((p) => {
+    const state = byKey.get(p.key)
+    if (state === undefined) return []
+    return [
+      {
+        id: p.key,
+        type: 'status',
+        position: { x: p.x, y: p.y },
+        draggable: !locked,
+        data: { name: state.name, category: state.category, locked },
+      },
+    ]
+  })
 
   if (routes.hasStartNode) {
     // 시작점은 첫 열보다 왼쪽에 둔다. 노드가 하나도 없으면 원점이다.
