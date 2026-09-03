@@ -11,6 +11,7 @@ import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
@@ -122,7 +123,9 @@ data class BoardCardMoveResult(
 @Service
 // 보드 CRUD(생성·조회·목록·갱신·삭제) + 카드 이동 + WIP + 스크럼 분기가 한 Aggregate 의 유스케이스라
 // 쪼개면 트랜잭션 경계가 갈린다. 형제 BoardController 도 같은 이유로 억제한다.
-@Suppress("TooManyFunctions")
+// LongParameterList: 의존 7개는 포트 3 + 리포지터리 4 다. VO 로 묶으면 어느 협력자가 바뀌었는지
+// 생성자에서 안 보이고, 테스트가 포트만 골라 교체하는 관용구(serviceWith)도 깨진다.
+@Suppress("TooManyFunctions", "LongParameterList")
 class BoardApplicationService(
     private val workflowStateCatalog: WorkflowStateCatalog,
     private val boardIssueLookupPort: BoardIssueLookupPort,
@@ -130,6 +133,7 @@ class BoardApplicationService(
     private val boardRepository: BoardRepository,
     private val boardQuickFilterRepository: BoardQuickFilterRepository,
     private val sprintRepository: SprintRepository,
+    private val columnStates: BoardColumnStateRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -591,6 +595,150 @@ class BoardApplicationService(
         val columnId: UUID,
         val stateKey: String,
     )
+
+    // ── 컬럼 관리 3종 (R9 · R10 · E7~E9 · J1 · J2 · J5) ────────────────────────
+
+    /**
+     * 보드에 컬럼을 만든다 (R9).
+     *
+     * 상태 0개로도 만들 수 있다(E1) — 지라는 컬럼을 먼저 만들고 **Unmapped statuses** 패널에서
+     * 상태를 끌어다 놓는다(J2). 그 중간 상태를 표현할 수 없으면 조작 자체가 성립하지 않는다.
+     *
+     * 컬럼의 `category` 는 담은 상태들의 최댓값이다(R5). 상태가 0개면 `TODO` 다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @param name 컬럼 표시 이름.
+     * @param stateKeys 처음부터 담을 상태 집합. 비어 있어도 된다.
+     * @param displayOrder 표시 순서. 안 주면 **맨 뒤**에 붙인다.
+     * @return 생성된 컬럼.
+     * @throws BoardNotFoundException 404 — 보드 미존재.
+     * @throws DuplicateStateKeysException 400 — [stateKeys] 에 중복(E9).
+     * @throws StateAlreadyMappedException 409 — 다른 컬럼이 쓰는 상태(E7 · X1).
+     */
+    @Transactional
+    fun createColumn(
+        boardId: UUID,
+        name: String,
+        stateKeys: List<String>,
+        displayOrder: Int? = null,
+    ): BoardColumn {
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        requireAssignableStates(board, columnId = null, stateKeys = stateKeys)
+
+        val column =
+            BoardColumn(
+                id = UUID.randomUUID(),
+                stateKeys = stateKeys,
+                name = name,
+                category = BoardCardPlacement.resolveCategory(categoriesOf(board.projectKey, stateKeys)),
+                displayOrder = displayOrder ?: ((board.columns.maxOfOrNull { it.displayOrder } ?: -1) + 1),
+            )
+        return columnStates.insertColumn(boardId, column)
+    }
+
+    /**
+     * 컬럼이 담는 상태 집합을 **통째로** 교체한다 (R9).
+     *
+     * 집합 전체를 받으므로 X1 위반을 **한 요청 안에서** 판정할 수 있다 — 추가·제거를 각각 두면
+     * 「지금 이 컬럼의 상태 집합」이 클라이언트와 서버 사이에서 갈린다.
+     *
+     * 컬럼 `category` 도 함께 다시 계산한다(R5) — 담은 상태가 바뀌면 최댓값이 바뀐다.
+     *
+     * @throws BoardNotFoundException 404 — 보드 미존재.
+     * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
+     * @throws DuplicateStateKeysException 400 — 중복(E9).
+     * @throws StateAlreadyMappedException 409 — 다른 컬럼이 쓰는 상태(E7 · X1).
+     */
+    @Transactional
+    fun replaceColumnStates(
+        boardId: UUID,
+        columnId: UUID,
+        stateKeys: List<String>,
+    ): BoardColumn {
+        val board = loadBoardWithColumn(boardId, columnId)
+
+        requireAssignableStates(board, columnId = columnId, stateKeys = stateKeys)
+        columnStates.replaceStates(boardId, columnId, stateKeys)
+        columnStates.updateColumnCategory(
+            columnId,
+            BoardCardPlacement.resolveCategory(categoriesOf(board.projectKey, stateKeys)),
+        )
+
+        return requireNotNull(boardRepository.findById(boardId)?.columns?.firstOrNull { it.id == columnId }) {
+            "방금 갱신한 컬럼이 재조회에서 사라졌다 — boardId=$boardId, columnId=$columnId"
+        }
+    }
+
+    /**
+     * 보드와 그 안의 컬럼이 둘 다 있는지 확인하고 보드를 돌려준다.
+     *
+     * [replaceColumnStates] 본문에서 뺀 이유는 그 함수의 throw 가 셋이 되기 때문이다
+     * (detekt `ThrowsCount`).
+     */
+    private fun loadBoardWithColumn(
+        boardId: UUID,
+        columnId: UUID,
+    ): Board {
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        board.columns.find { it.id == columnId }
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$columnId")
+        return board
+    }
+
+    /**
+     * 컬럼을 지운다 (R10 · J5).
+     *
+     * 담긴 상태는 미매핑으로 돌아가고(보드 조회의 `unmappedStates` 에 나타난다) **이슈는 그대로다.**
+     * 마지막 컬럼도 지울 수 있다(E8) — 컬럼 0개 보드는 [healColumnsIfEmpty] 가 다시 채운다.
+     *
+     * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
+     */
+    @Transactional
+    fun deleteColumn(
+        boardId: UUID,
+        columnId: UUID,
+    ) {
+        if (!columnStates.deleteColumn(boardId, columnId)) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$columnId")
+        }
+    }
+
+    /**
+     * 요청한 상태 집합이 이 컬럼에 배정 가능한지 본다 (E7 · E9 · X1).
+     *
+     * DB 제약이 최종 판정을 지되(경합은 코드로 못 막는다), **어느 컬럼이 쓰고 있는지**는 DB 오류가
+     * 말해 주지 않으므로 여기서 미리 찾는다. 그 정보 없이 409 만 내면 사용자가 풀 방법을 못 찾는다.
+     *
+     * @param columnId 자기 자신은 충돌로 세지 않는다. 생성 시에는 null.
+     */
+    private fun requireAssignableStates(
+        board: Board,
+        columnId: UUID?,
+        stateKeys: List<String>,
+    ) {
+        val duplicated = stateKeys.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        if (duplicated.isNotEmpty()) throw DuplicateStateKeysException(duplicated.toList())
+
+        val requested = stateKeys.toSet()
+        val owner =
+            board.columns.firstOrNull { it.id != columnId && it.stateKeys.any { key -> key in requested } }
+        if (owner != null) {
+            throw StateAlreadyMappedException(
+                stateKey = owner.stateKeys.first { it in requested },
+                ownerColumnId = owner.id,
+            )
+        }
+    }
+
+    /** 상태 키 목록을 카탈로그의 category 목록으로 바꾼다. 카탈로그에 없는 키는 `TODO` 로 센다(R5). */
+    private fun categoriesOf(
+        projectKey: String,
+        stateKeys: List<String>,
+    ): List<String> {
+        if (stateKeys.isEmpty()) return emptyList()
+        val byKey = stateCatalogOf(projectKey).associateBy { it.key }
+        return stateKeys.map { byKey[it]?.category ?: "TODO" }
+    }
 
     /**
      * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.

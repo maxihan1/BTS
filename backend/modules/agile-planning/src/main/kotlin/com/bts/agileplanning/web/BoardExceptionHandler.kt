@@ -4,11 +4,13 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardStateNotMappedException
 import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.DuplicateStateKeysException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.QuickFilterEmptyQueryException
 import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
+import com.bts.agileplanning.application.StateAlreadyMappedException
 import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardTypeInvalidException
 import org.slf4j.LoggerFactory
@@ -274,6 +276,26 @@ class BoardExceptionHandler {
         )
     }
 
+    /**
+     * [DuplicateStateKeysException] — 요청의 `stateKeys` 에 중복 — 400 (E9).
+     *
+     * DB 의 `UNIQUE (column_id, state_key)` 는 **경합**을 막는 제약이고 이건 요청 모양의 오류다.
+     * 409 로 내면 「다른 사람이 먼저 썼다」로 읽혀 원인을 오도한다.
+     *
+     * @param ex 중복 예외. 어느 키가 겹쳤는지 담고 있다.
+     */
+    @ExceptionHandler(DuplicateStateKeysException::class)
+    fun handleDuplicateStateKeys(ex: DuplicateStateKeysException): ProblemDetail {
+        log.info("AGILE_400 duplicate_state_keys keys='{}'", ex.duplicated)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = "stateKeys 에 중복이 있습니다: ${ex.duplicated.joinToString()}",
+        )
+    }
+
     // ── 403 ACCESS_DENIED ─────────────────────────────────────────────────────
 
     /**
@@ -386,6 +408,26 @@ class BoardExceptionHandler {
             title = "Quick Filter Name Conflict",
             errorCode = AGILE_QUICK_FILTER_NAME_CONFLICT,
             detail = "같은 이름의 퀵필터가 이미 있습니다.",
+        )
+    }
+
+    /**
+     * [StateAlreadyMappedException] — 그 상태를 이미 다른 컬럼이 쓰고 있다 — 409 (E7 · X1).
+     *
+     * detail 에 **어느 컬럼인지**를 싣는다. 컬럼 UUID 는 같은 보드 응답이 이미 노출하는 값이라
+     * 내부 사정 누설이 아니고, 이 정보가 없으면 사용자가 충돌을 풀 방법을 못 찾는다.
+     *
+     * @param ex 매핑 충돌 예외.
+     */
+    @ExceptionHandler(StateAlreadyMappedException::class)
+    fun handleStateAlreadyMapped(ex: StateAlreadyMappedException): ProblemDetail {
+        log.info("AGILE_409 state_already_mapped stateKey='{}'", ex.stateKey)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-state-already-mapped",
+            title = "State Already Mapped",
+            errorCode = AGILE_STATE_ALREADY_MAPPED,
+            detail = "상태 '${ex.stateKey}' 는 이미 다른 컬럼(${ex.ownerColumnId})이 쓰고 있습니다.",
         )
     }
 
@@ -560,6 +602,7 @@ class BoardExceptionHandler {
         const val AGILE_BOARD_TYPE_INVALID = "AGILE_BOARD_TYPE_INVALID"
         const val AGILE_BOARD_STATE_NOT_MAPPED = "AGILE_BOARD_STATE_NOT_MAPPED"
         const val AGILE_COLUMN_STATE_AMBIGUOUS = "AGILE_COLUMN_STATE_AMBIGUOUS"
+        const val AGILE_STATE_ALREADY_MAPPED = "AGILE_STATE_ALREADY_MAPPED"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
         const val AGILE_QUICK_FILTER_NAME_CONFLICT = "AGILE_QUICK_FILTER_NAME_CONFLICT"
         const val AGILE_QUICK_FILTER_LIMIT_EXCEEDED = "AGILE_QUICK_FILTER_LIMIT_EXCEEDED"

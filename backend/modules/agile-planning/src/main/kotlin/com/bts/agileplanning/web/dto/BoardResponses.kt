@@ -421,6 +421,35 @@ data class UpdateBoardRequest(
 )
 
 /**
+ * 컬럼 생성 요청 DTO (R9 · J2).
+ *
+ * `stateKeys` 는 **비어 있어도 된다** — 지라는 컬럼을 먼저 만들고 Unmapped 패널에서 상태를
+ * 끌어다 놓는다. 그 중간 상태를 표현할 수 없으면 조작 자체가 성립하지 않는다(E1).
+ *
+ * @property name 컬럼 표시 이름. 공백 불가.
+ * @property stateKeys 처음부터 담을 상태 키 목록. 순서가 곧 컬럼 안 드롭존 순서다. 미전송이면 빈 목록.
+ * @property displayOrder 표시 순서. 미전송이면 맨 뒤에 붙는다.
+ */
+data class CreateColumnRequest(
+    @field:NotBlank
+    val name: String?,
+    val stateKeys: List<String> = emptyList(),
+    val displayOrder: Int? = null,
+)
+
+/**
+ * 컬럼 상태 집합 교체 요청 DTO (R9).
+ *
+ * 집합 **전체**를 받는다 — 추가·제거를 각각의 엔드포인트로 두면 「지금 이 컬럼의 상태 집합」이
+ * 클라이언트와 서버 사이에서 갈리고, X1 위반을 한 요청 안에서 판정할 수 없다.
+ *
+ * @property stateKeys 새 상태 키 목록. 빈 목록이면 그 컬럼의 상태를 전부 뗀다(E1).
+ */
+data class ReplaceColumnStatesRequest(
+    val stateKeys: List<String> = emptyList(),
+)
+
+/**
  * 컬럼 WIP 제한 변경 응답 DTO.
  *
  * @property columnId 컬럼 UUID.

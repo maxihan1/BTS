@@ -48,3 +48,30 @@ class ColumnStateAmbiguousException(
     val columnId: UUID,
     val stateCount: Int,
 ) : RuntimeException("컬럼이 상태 ${stateCount}개를 담아 이동 대상을 정할 수 없습니다: columnId=$columnId")
+
+/**
+ * 요청한 상태를 이미 **다른 컬럼**이 쓰고 있다 — 409 `AGILE_STATE_ALREADY_MAPPED` (E7 · X1).
+ *
+ * 편차 X1(한 상태는 한 보드에서 한 컬럼에만)의 위반이다. 최종 판정은 DB 의
+ * `UNIQUE (board_id, state_key)` 가 지되, **어느 컬럼이 쓰고 있는지**는 DB 오류가 말해 주지
+ * 않으므로 서비스가 미리 찾아 담는다 — 그 정보가 없으면 사용자가 풀 방법을 못 찾는다.
+ *
+ * @property stateKey 이미 매핑된 상태 키.
+ * @property ownerColumnId 그 상태를 쓰고 있는 컬럼 UUID.
+ */
+class StateAlreadyMappedException(
+    val stateKey: String,
+    val ownerColumnId: UUID,
+) : RuntimeException("상태 '$stateKey' 는 이미 다른 컬럼이 쓰고 있습니다: ownerColumnId=$ownerColumnId")
+
+/**
+ * 요청의 `stateKeys` 에 같은 키가 두 번 이상 나왔다 — 400 `AGILE_VALIDATION_FAILED` (E9).
+ *
+ * DB 는 `UNIQUE (column_id, state_key)` 로 막지만 그건 **경합**을 막는 제약이고, 이건 요청
+ * 자체의 모양 오류다. 409 로 내면 「다른 사람이 먼저 썼다」로 읽혀 원인을 오도한다.
+ *
+ * @property duplicated 중복된 키 목록.
+ */
+class DuplicateStateKeysException(
+    val duplicated: List<String>,
+) : RuntimeException("stateKeys 에 중복이 있습니다: ${duplicated.joinToString()}")

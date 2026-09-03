@@ -136,6 +136,8 @@ class BoardApplicationServiceTest {
             boardRepository = repo,
             boardQuickFilterRepository = quickFilterRepo,
             sprintRepository = sprintRepo,
+            // 컬럼 관리(R9·R10)는 실물 DB 를 봐야 X1 제약과 CASCADE 가 판정에 들어온다.
+            columnStates = columnStateRepository,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────

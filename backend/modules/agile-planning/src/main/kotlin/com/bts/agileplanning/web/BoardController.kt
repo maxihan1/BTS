@@ -6,6 +6,7 @@ import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.web.dto.BoardColumnResponse
 import com.bts.agileplanning.web.dto.BoardDetailResponse
 import com.bts.agileplanning.web.dto.BoardMetaResponse
 import com.bts.agileplanning.web.dto.BoardResponse
@@ -13,9 +14,11 @@ import com.bts.agileplanning.web.dto.BoardSummaryResponse
 import com.bts.agileplanning.web.dto.ColumnMetaResponse
 import com.bts.agileplanning.web.dto.ColumnStateResponse
 import com.bts.agileplanning.web.dto.CreateBoardRequest
+import com.bts.agileplanning.web.dto.CreateColumnRequest
 import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
+import com.bts.agileplanning.web.dto.ReplaceColumnStatesRequest
 import com.bts.agileplanning.web.dto.UpdateBoardRequest
 import com.bts.agileplanning.web.dto.UpdateColumnWipLimitRequest
 import com.bts.shared.permission.IssuePermission
@@ -33,6 +36,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -354,6 +358,81 @@ class BoardController(
         val updatedColumn = service.updateColumnWipLimit(id, columnId, wipLimit)
         val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
         return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn, catalog)))
+    }
+
+    /**
+     * 보드에 컬럼을 추가한다 (R9 · J2).
+     *
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트 — 기존 `PATCH /{id}/columns/{columnId}` 의
+     * [loadBoardWithCreate] 게이트를 **승계**한다. 컬럼 구성 변경은 같은 무게의 조작이다.
+     *
+     * `stateKeys` 를 비워 보내면 상태 0개 컬럼이 만들어진다(E1) — 지라의 「컬럼 먼저, 상태는 드래그로」
+     * 흐름이 그것을 요구한다.
+     *
+     * @param id path variable 보드 UUID.
+     * @param request 컬럼 생성 요청(name 필수 · stateKeys · displayOrder 선택).
+     * @return 201 Created + [BoardColumnResponse].
+     */
+    @PostMapping("/{id}/columns")
+    fun createColumn(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: CreateColumnRequest,
+    ): ResponseEntity<DataResponse<BoardColumnResponse>> {
+        log.info("BoardController.createColumn id={} states={}", id, request.stateKeys)
+
+        val (_, board) = loadBoardWithCreate(id)
+        val name = request.name ?: error("name 은 @NotBlank 검증 통과 후 null 일 수 없습니다.")
+        val created = service.createColumn(id, name, request.stateKeys, request.displayOrder)
+        val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(DataResponse(BoardColumnResponse.from(created, catalog)))
+    }
+
+    /**
+     * 컬럼이 담는 상태 집합을 통째로 교체한다 (R9).
+     *
+     * `PUT` 인 이유는 집합 **전체**를 받아야 X1(한 상태는 한 컬럼에만) 위반을 한 요청 안에서
+     * 판정할 수 있어서다. 다른 컬럼이 쓰는 상태가 섞이면 409 이고 어느 컬럼인지 알려준다(E7).
+     *
+     * @param id path variable 보드 UUID.
+     * @param columnId path variable 컬럼 UUID.
+     * @param request 새 상태 집합.
+     * @return 200 OK + [ColumnMetaResponse](갱신된 states·category 반영).
+     */
+    @PutMapping("/{id}/columns/{columnId}/states")
+    fun replaceColumnStates(
+        @PathVariable id: UUID,
+        @PathVariable columnId: UUID,
+        @Valid @RequestBody request: ReplaceColumnStatesRequest,
+    ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
+        log.info("BoardController.replaceColumnStates id={} columnId={} states={}", id, columnId, request.stateKeys)
+
+        val (_, board) = loadBoardWithCreate(id)
+        val updated = service.replaceColumnStates(id, columnId, request.stateKeys)
+        val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
+        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updated, catalog)))
+    }
+
+    /**
+     * 컬럼을 삭제한다 (R10 · J5).
+     *
+     * 담긴 상태는 미매핑으로 돌아가고 **이슈는 손대지 않는다.** 돌려줄 표현이 없으므로 204 다 —
+     * 미매핑 목록은 보드 조회의 `unmappedStates` 가 이미 준다.
+     *
+     * @param id path variable 보드 UUID.
+     * @param columnId path variable 컬럼 UUID.
+     * @return 204 No Content.
+     */
+    @DeleteMapping("/{id}/columns/{columnId}")
+    fun deleteColumn(
+        @PathVariable id: UUID,
+        @PathVariable columnId: UUID,
+    ): ResponseEntity<Void> {
+        log.info("BoardController.deleteColumn id={} columnId={}", id, columnId)
+
+        loadBoardWithCreate(id)
+        service.deleteColumn(id, columnId)
+        return ResponseEntity.noContent().build()
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

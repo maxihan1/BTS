@@ -109,6 +109,84 @@ class BoardColumnStateRepository(
     }
 
     /**
+     * 컬럼 1개를 만들고 상태 집합을 함께 심는다 (R9).
+     *
+     * ### 왜 컬럼 CRUD 가 「상태」 리포지터리에 있나
+     * `board_columns` 는 본래 [BoardRepository] 소관이지만 그 파일은 이미 줄수 상한을 넘겼고(부채 157)
+     * N2 가 「더 늘리지 않는다」를 요구한다. 그리고 컬럼 생성·삭제는 **상태 매핑의 생애주기와 한 몸**
+     * 이다 — 만들면서 상태를 심고, 지우면 상태가 미매핑으로 돌아간다(R10). 여기 두는 편이 응집한다.
+     *
+     * @param boardId 소속 보드 UUID.
+     * @param column 만들 컬럼. `stateKeys` 가 비어 있어도 된다(E1) — V508 의 `DROP NOT NULL` 이 그것을 허용한다.
+     * @return 저장된 컬럼(입력 그대로).
+     */
+    @Transactional
+    fun insertColumn(
+        boardId: UUID,
+        column: BoardColumn,
+    ): BoardColumn {
+        log.debug("컬럼 생성 — boardId={}, columnId={}, states={}", boardId, column.id, column.stateKeys)
+
+        dsl.insertInto(BOARD_COLUMNS)
+            .set(BOARD_COLUMNS.ID, column.id)
+            .set(BOARD_COLUMNS.BOARD_ID, boardId)
+            .set(BOARD_COLUMNS.STATE_KEY, column.legacyStateKey)
+            .set(BOARD_COLUMNS.NAME, column.name)
+            .set(BOARD_COLUMNS.CATEGORY, column.category)
+            .set(BOARD_COLUMNS.DISPLAY_ORDER, column.displayOrder)
+            .set(BOARD_COLUMNS.WIP_LIMIT, column.wipLimit)
+            .execute()
+
+        replaceStates(boardId, column.id, column.stateKeys)
+        return column
+    }
+
+    /**
+     * 컬럼의 표시 카테고리를 갱신한다 (R5).
+     *
+     * 담은 상태가 바뀌면 최댓값(`DONE` > `IN_PROGRESS` > `TODO`)도 바뀐다. [replaceStates] 안에
+     * 넣지 않은 이유는 그 함수가 **상태 집합만** 책임지기 때문이다 — 카테고리 계산에는 워크플로우
+     * 카탈로그가 필요한데 리포지터리는 그것을 모른다(BC 격리).
+     *
+     * @param columnId 대상 컬럼 UUID.
+     * @param category `"TODO"` · `"IN_PROGRESS"` · `"DONE"` 중 하나.
+     */
+    @Transactional
+    fun updateColumnCategory(
+        columnId: UUID,
+        category: String,
+    ) {
+        dsl.update(BOARD_COLUMNS)
+            .set(BOARD_COLUMNS.CATEGORY, category)
+            .where(BOARD_COLUMNS.ID.eq(columnId))
+            .execute()
+    }
+
+    /**
+     * 컬럼을 지운다 (R10 · J5).
+     *
+     * 담긴 상태 행은 복합 FK 의 `ON DELETE CASCADE` 가 함께 지운다 — 그 상태들은 어느 컬럼에도
+     * 속하지 않게 되어 **미매핑 목록(R8)에 나타난다.** 지라도 같다.
+     * **이슈는 손대지 않는다** — `board_columns` 와 `issues` 사이에 FK 가 없고, 카드 배치는
+     * 조회 시점 계산이라 컬럼이 사라져도 이슈의 상태는 그대로다.
+     *
+     * @param boardId 소속 보드 UUID. 타 보드 컬럼을 지우지 못하게 술어에 함께 건다.
+     * @param columnId 지울 컬럼 UUID.
+     * @return 실제로 지워졌으면 true. 없거나 다른 보드 소속이면 false.
+     */
+    @Transactional
+    fun deleteColumn(
+        boardId: UUID,
+        columnId: UUID,
+    ): Boolean {
+        log.debug("컬럼 삭제 — boardId={}, columnId={}", boardId, columnId)
+        return dsl.deleteFrom(BOARD_COLUMNS)
+            .where(BOARD_COLUMNS.ID.eq(columnId))
+            .and(BOARD_COLUMNS.BOARD_ID.eq(boardId))
+            .execute() > 0
+    }
+
+    /**
      * [BoardColumnsRecord] 를 도메인 [com.bts.agileplanning.domain.BoardColumn] 으로 변환한다.
      *
      * 상태 목록의 정본이 이 클래스이므로 변환도 여기 둔다 — [BoardRepository] 에 두면 그 파일이
