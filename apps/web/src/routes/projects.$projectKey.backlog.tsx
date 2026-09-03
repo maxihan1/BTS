@@ -24,6 +24,9 @@ const BACKLOG_VIEW_NAV_LINKS: readonly ProjectNavTabLink[] = [
   { to: '/projects/$projectKey/reports/cycle-time', label: backlogLabels.page.cycleTimeLink },
 ]
 
+/** 뷰 전환 nav 의 보드 링크 경로 — 스코프를 얹을 대상을 문자열 비교로 고른다. */
+const BOARD_NAV_TO = '/projects/$projectKey/board'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // URL search 조립 + 무변경 판정 (FR-UX-13 F16-9 · FR-BD-04)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -196,6 +199,25 @@ export function BacklogPage({ projectKey, boardId, filter }: BacklogPageProps): 
    * `useCallback` — 이 함수는 `BacklogFilterBar`의 동기화 effect deps까지 흘러간다.
    * 매 렌더 새 참조면 그 effect가 렌더마다 재실행된다.
    */
+  /**
+   * 뷰 전환 nav 링크 — 보드 링크에만 보드 스코프를 얹는다 (FR-BD-04 PR ⑥ · 편차 X7 부분 해소).
+   *
+   * 없으면 백로그→보드 이동에서 `?board=` 가 증발해 보드 화면이 `boards[0]` 로 되돌아간다.
+   * 스위처가 스크럼만 노출하므로(`scrumBoards`) 여기 실리는 값은 항상 스크럼 보드다 —
+   * 보드 화면은 종류를 가리지 않으니 그대로 열린다.
+   *
+   * 리포트 3종과 타임라인은 그대로 둔다 — 보드 개념이 없는 화면이다.
+   */
+  const viewNavLinks = useMemo<readonly ProjectNavTabLink[]>(
+    () =>
+      BACKLOG_VIEW_NAV_LINKS.map((link) =>
+        link.to === BOARD_NAV_TO && boardId !== undefined
+          ? { ...link, search: { board: boardId } }
+          : link,
+      ),
+    [boardId],
+  )
+
   const handleFilterChange = useCallback(
     (next: BacklogFilter): void => {
       // ★`board`를 **함께** 실어 보낸다 (E5). 필터만 보내면 보고 있던 보드가 URL에서 사라져
@@ -248,7 +270,7 @@ export function BacklogPage({ projectKey, boardId, filter }: BacklogPageProps): 
             />
           )}
         </div>
-        <ProjectNavTabs projectKey={projectKey} links={BACKLOG_VIEW_NAV_LINKS} />
+        <ProjectNavTabs projectKey={projectKey} links={viewNavLinks} />
       </div>
 
       <BacklogBoard

@@ -81,6 +81,18 @@ export interface ScrumSprintEmptyStateProps {
   variant: ScrumEmptyVariant
   /** 백로그 링크에 실을 프로젝트 키 */
   projectKey: string
+  /**
+   * 백로그 링크에 실을 **보고 있던 보드** UUID.
+   *
+   * 🛑 **옵셔널이 아니다.** 옵셔널로 두면 호출부가 빠뜨려도 화면은 멀쩡히 뜨고, 서버가
+   * `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에
+   * 폴백해 **다른 보드의 백로그**가 열린다 — 조용히 잘못된 화면으로 데려간다.
+   * 필수로 두면 컴파일이 소비처를 전수 강제한다.
+   *
+   * 이 컴포넌트는 SCRUM 보드에서만 렌더되므로([resolveScrumEmptyVariant] 가 칸반이면 `null`)
+   * 백로그가 칸반 id 를 받을 경로는 없다.
+   */
+  boardId: string
   /** 컨테이너 여백/최소높이 override — 보드 화면은 `FilteredEmptyState` 와 같은 `min-h-48` 을 준다 */
   className?: string
 }
@@ -98,6 +110,7 @@ export interface ScrumSprintEmptyStateProps {
 export function ScrumSprintEmptyState({
   variant,
   projectKey,
+  boardId,
   className,
 }: ScrumSprintEmptyStateProps): JSX.Element {
   const copy =
@@ -119,7 +132,13 @@ export function ScrumSprintEmptyState({
         // ② 다크에서 `text-primary`(#0C66E4) 평문 링크는 어두운 배경 대비가 4.5:1 에 못 미친다.
         //    outline 은 글자가 `--foreground` 라 양쪽 테마에서 대비가 확보된다.
         <Button asChild variant="outline" size="sm">
-          <Link to="/projects/$projectKey/backlog" params={{ projectKey }}>
+          {/* ★`search` 로 보고 있던 보드를 함께 넘긴다 — 없으면 서버가 첫 스크럼 보드로 폴백해
+              다른 보드의 백로그가 열린다(FR-BD-04 PR ⑥). */}
+          <Link
+            to="/projects/$projectKey/backlog"
+            params={{ projectKey }}
+            search={{ board: boardId }}
+          >
             {scrumEmptyStateLabels.backlogLink}
           </Link>
         </Button>

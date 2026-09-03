@@ -102,12 +102,6 @@ function boardActionsTrigger(page: Page): Locator {
   return page.getByRole('button', { name: /보드 관리/ })
 }
 
-/** 스위처를 열어 보드를 고른다 — 보드 화면과 백로그 화면이 같은 컴포넌트를 쓴다 */
-async function switchToBoard(page: Page, boardName: string): Promise<void> {
-  await boardSwitcherTrigger(page).click()
-  await page.getByRole('menuitemradio', { name: boardName }).click()
-}
-
 /** 백로그 칸 locator — 백로그 칸은 이름이 고정이다 */
 function backlogColumn(page: Page): Locator {
   return page.getByRole('region', { name: new RegExp(`^${backlogLabels.backlogTitle} 칸`) })
@@ -200,8 +194,12 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
       page.getByRole('heading', { name: backlogLabels.page.title, exact: true }),
     ).toBeVisible()
 
-    // ── S4. 그 보드로 스코프 ───────────────────────────────────────────────
-    await switchToBoard(page, SCRUM_BOARD_NAME)
+    // ── S4. 그 보드로 **이미** 스코프돼 있다 ───────────────────────────────
+    //
+    // 🛑 여기 `switchToBoard` 수동 재선택이 있었다. 그것이 결함을 가리고 있었다 — CTA 가
+    //    `?board=` 를 안 실어 서버가 `findScrumBoardIdByProject`(created_at ASC LIMIT 1)로
+    //    **첫 번째** 스크럼 보드에 폴백했고, 재선택이 그 사실을 덮었다. 재선택을 지우는 것이
+    //    이 결함의 RED 다. 스위처 자체의 커버리지는 `board-manage.spec.ts` · `quick-filter.spec.ts`.
     await expect.poll(() => currentBoardParam(page)).toBe(scrumBoardId)
 
     // Then. 칸반 보드 소속 스프린트는 이 스코프에 없다. 다만 그 이슈는 **백로그 칸에 남는다**
@@ -264,8 +262,10 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await startSprintFromBacklog(page, SPRINT_NAME)
 
     // ── S7. **시작 후** — 보드가 그 스프린트를 보여준다 (J5 · J18) ───────────
+    // 🛑 여기도 `switchToBoard` 수동 재선택이 있었다. 뷰 전환 nav 가 `?board=` 를 안 실어
+    //    보드↔백로그 왕복마다 스코프가 풀렸고, 재선택이 그것을 덮었다(편차 X7 부분 해소).
     await viewNavLink(page, backlogLabels.page.boardLink).click()
-    await switchToBoard(page, SCRUM_BOARD_NAME)
+    await expect.poll(() => currentBoardParam(page)).toBe(scrumBoardId)
     await expect(boardSwitcherTrigger(page)).toContainText(SCRUM_BOARD_NAME)
 
     // Then. 무효화가 **실제로 재요청을 냈다**. 무효화가 빠지면 이 보드 상세는 S2 에서 받은

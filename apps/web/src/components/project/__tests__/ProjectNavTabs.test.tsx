@@ -62,6 +62,30 @@ describe('ProjectNavTabs', () => {
     expect(secondLink).toHaveAttribute('href', '/projects/ATLAS/timeline')
   })
 
+  /**
+   * 보드 스코프 전파 (FR-BD-04 PR ⑥ · 편차 X7 부분 해소).
+   *
+   * `search` 가 없는 링크는 지금 모양 그대로 두고, 있는 링크만 쿼리를 싣는다.
+   * 이 nav 는 board·backlog 말고도 여러 화면이 쓰므로 **옵셔널**이어야 한다.
+   */
+  it('링크에 search 가 있으면 href 에 쿼리로 실린다', async () => {
+    const boardId = 'b0a1c2d3-e4f5-4678-9abc-def012345678'
+    renderProjectNavTabs([
+      { to: '/projects/$projectKey/backlog', label: '백로그', search: { board: boardId } },
+      { to: '/projects/$projectKey/timeline', label: '타임라인' },
+    ])
+
+    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+    const [withSearch, withoutSearch] = within(nav).getAllByRole('link')
+    if (withSearch === undefined || withoutSearch === undefined) {
+      throw new Error('링크 2개가 렌더되어야 한다')
+    }
+
+    expect(withSearch).toHaveAttribute('href', `/projects/ATLAS/backlog?board=${boardId}`)
+    // search 가 없는 링크는 쿼리가 붙지 않는다 — 기존 소비처 회귀 0
+    expect(withoutSearch).toHaveAttribute('href', '/projects/ATLAS/timeline')
+  })
+
   it('links 순서를 바꾸면 렌더 순서도 그대로 따라간다', async () => {
     renderProjectNavTabs([
       { to: '/projects/$projectKey/timeline', label: '타임라인' },

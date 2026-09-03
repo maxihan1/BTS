@@ -26,14 +26,21 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => ({ projectKey: 'ATLAS' }),
   useSearch: () => ({}),
+  // 🛑 `search` 를 반드시 직렬화한다. 이 대역이 그것을 삼키면 컴포넌트가 보드 스코프를
+  //    버려도 유닛은 전부 초록이고 E2E 에서만 red 가 선다 — 이 저장소가 이미 밟은 양식
+  //    (memory `mock-swallowed-prop-is-invisible-to-unit-tests`).
+  //    실제로 밟았다. 이 대역이 삼키는 동안 T-BD04-1 이 「CTA href 에 ?board= 가 **없다**」를
+  //    계약으로 굳히고 있었고, 그것은 FR-BD-04 PR ⑥ 이 결함이라 판정한 바로 그 상태다.
   Link: ({
     to,
     params,
+    search,
     children,
     className,
   }: {
     to: string
     params?: Record<string, string>
+    search?: Record<string, string>
     children: React.ReactNode
     className?: string
   }) => {
@@ -45,7 +52,9 @@ vi.mock('@tanstack/react-router', () => ({
             to,
           )
         : to
-    return <a href={resolvedTo} className={className}>{children}</a>
+    const query =
+      search === undefined ? '' : `?${new URLSearchParams(Object.entries(search)).toString()}`
+    return <a href={`${resolvedTo}${query}`} className={className}>{children}</a>
   },
 }))
 
@@ -1166,6 +1175,45 @@ describe('BoardPage', () => {
   })
 
   /**
+   * T-BD7-NAV-2 (★ 회귀 가드 · FR-BD-04 PR ⑥). 스크럼 보드에서는 nav 백로그 링크가
+   * 보드 스코프를 싣고, **보드 상세가 아직 로딩 중이어도** 싣는다.
+   *
+   * 🛑 두 가지를 한 번에 잠근다.
+   *
+   * ① 보드→백로그 방향에 판별식이 없었다. 형제 T-BD7-NAV-1 은 픽스처가 칸반이라
+   *    `boardType === 'SCRUM'` 분기를 한 번도 밟지 않고, E2E 에도 보드 화면의 nav
+   *    백로그 링크를 누르는 스텝이 없다. 즉 이 방향은 어느 계층에서도 무보증이었다.
+   *
+   * ② 종류를 `boardDetail` 에서 읽으면 nav 가 상세를 기다리지 않고 렌더되므로
+   *    `useBoard` 가 in-flight 인 창에서 `boardType` 이 undefined 라 `search` 가 빠진다.
+   *    클릭하면 서버가 `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`)로 **첫 번째**
+   *    스크럼 보드에 폴백해, **이 PR 이 없애려는 바로 그 증상**이 로딩 중에 재현된다.
+   *    그래서 `useBoardViewNavLinks` 는 `boards` 요약에서 읽는다 — `isLoading: true` 로
+   *    그 창을 고정한다. 상세에서 읽는 구현으로 되돌리면 이 테스트가 red 다.
+   */
+  it('T-BD7-NAV-2: 스크럼이면 상세 로딩 중에도 nav 백로그 링크가 보드 스코프를 싣는다', async () => {
+    const scrumSummary: BoardSummary = { ...BOARD_A, boardType: 'SCRUM' }
+    mockUseBoards.mockReturnValue({
+      data: [scrumSummary],
+      isLoading: false,
+      error: null,
+      isError: false,
+    })
+    // 보드 상세는 아직 안 왔다 — 느린 네트워크·캐시 미스의 그 창.
+    mockUseBoard.mockReturnValue({ data: undefined, isLoading: true })
+
+    await renderBoardPage()
+
+    const nav = await waitFor(() =>
+      screen.getByRole('navigation', { name: '프로젝트 뷰 전환' }),
+    )
+    expect(within(nav).getByRole('link', { name: '백로그' })).toHaveAttribute(
+      'href',
+      `/projects/ATLAS/backlog?board=${scrumSummary.boardId}`,
+    )
+  })
+
+  /**
    * S7 — mutate onError 시 toast.error가 호출된다.
    */
   it('S7-B: mutate onError 시 toast.error가 호출된다', async () => {
@@ -1574,6 +1622,15 @@ describe('BoardPage', () => {
   /**
    * T-BD04-1 (E1). 스크럼 보드에 활성 스프린트가 없으면 빈 상태 + 백로그 링크가 뜨고
    * KanbanBoard 는 그 자리에서 물러난다 (FR-1).
+   *
+   * 🛑 CTA 는 **보고 있던 보드를 실어 나른다** (FR-BD-04 PR ⑥). 스코프가 빠지면 서버가
+   * `findScrumBoardIdByProject`(`created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에
+   * 폴백해, 두 번째 보드에서 안내를 따르면 **다른 보드의 백로그**가 열린다.
+   *
+   * 이 단언은 PR ⑥ 이전까지 `?board=` **없는** 값을 계약으로 굳히고 있었다 — 위 라우터
+   * 대역이 `search` 를 삼켜 그 상태가 초록이었기 때문이다. 대역을 고치자 이 테스트 하나가
+   * 정확히 red 였다(실측). 형제 T-BD7-NAV-1 은 칸반 픽스처라 `?board=` 미부착이 정답이고
+   * 그대로 초록이다 — 즉 이 쌍이 편차 X4(칸반 id 는 싣지 않는다)를 함께 잠근다.
    */
   it('T-BD04-1: 스크럼 · 활성 스프린트 없음이면 빈 상태와 백로그 링크가 뜬다', async () => {
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
@@ -1586,7 +1643,7 @@ describe('BoardPage', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: scrumEmptyStateLabels.backlogLink }),
-    ).toHaveAttribute('href', '/projects/ATLAS/backlog')
+    ).toHaveAttribute('href', `/projects/ATLAS/backlog?board=${SCRUM_BOARD_NO_SPRINT.boardId}`)
     expect(screen.queryByTestId(`kanban-board-${BOARD_A.boardId}`)).not.toBeInTheDocument()
   })
 
