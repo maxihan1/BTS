@@ -125,7 +125,12 @@ class SprintRepository(
      * 잠금 공간에 `sprint-start:` 접두를 붙여 형제 락(`scrum-board:<projectKey>`)과 공간을 가른다.
      * `hashtextextended(text, int8)` 가 bigint 를 반환해 `pg_advisory_xact_lock(bigint)` 와 정합한다.
      *
+     * ### 대기 상한 200ms (R10 · 부채 166 ②)
+     * 획득 자체는 [acquireXactLockWithBudget] 에 있다 — 예산을 걸고 잡은 뒤 곧바로 원복한다.
+     * 근거(`DATA.md §5` 예외 충족 · 실측 206ms · `55P03`)는 그 KDoc 이 정본이다.
+     *
      * @param boardId 대상 보드 UUID.
+     * @throws org.springframework.dao.CannotAcquireLockException 200ms 안에 락을 못 얻은 경우.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     fun acquireSprintStartLock(boardId: UUID) {

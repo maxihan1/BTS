@@ -132,7 +132,12 @@ class BoardRepository(
      * 정합한다(`(bigint, bigint)` 시그니처는 없다 — 같은 메모리). 해시 충돌은 무관한 두 프로젝트가
      * 잠깐 직렬화될 뿐이라 안전하다.
      *
+     * ### 대기 상한 200ms (R10 · 부채 166 ②)
+     * 획득 자체는 [acquireXactLockWithBudget] 에 있다 — 형제 락 [SprintRepository.acquireSprintStartLock]
+     * 과 **같은 예산**을 쓴다. 근거(`DATA.md §5` 예외 충족 · 실측 206ms · `55P03`)는 그 KDoc 이 정본이다.
+     *
      * @param projectKey 대상 프로젝트 키.
+     * @throws org.springframework.dao.CannotAcquireLockException 200ms 안에 락을 못 얻은 경우.
      */
     @Transactional(propagation = Propagation.MANDATORY)
     fun acquireProjectScrumBoardLock(projectKey: String) {
