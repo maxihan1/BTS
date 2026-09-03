@@ -79,23 +79,28 @@ class AdvisoryLockBudgetTest {
         assertLockBudgetExceeded(attempt)
     }
 
-    // ── N6 — 획득 직후 예산을 원복한다 ────────────────────────────────────────
+    // ── N6 — 획득 직후 예산을 **이전 값으로** 원복한다 ─────────────────────────
 
     @Test
-    fun `락 획득 후 lock_timeout 이 0 으로 원복된다`() {
-        val boardId = UUID.randomUUID()
+    fun `락 획득 후 lock_timeout 이 세션 기본값으로 원복된다`() {
+        // 오늘의 정상 경로 — 저장소 전역에 lock_timeout 설정이 0건이라(부채 166 ②) 이전 값이 곧 '0' 이다.
+        val restored = lockTimeoutAfterAcquire(preset = null)
 
-        // ★ 반드시 **같은 트랜잭션 안에서** 읽는다. set_config(..., true) 는 트랜잭션 스코프라
-        // 밖에서 읽으면 항상 '0' 이 나와 공허 통과한다 — 원복을 지워도 초록이 되는 판정이 된다.
-        val inTransaction =
-            txTemplate.execute {
-                sprintRepository.acquireSprintStartLock(boardId)
-                dsl.fetchValue("SHOW lock_timeout") as String?
-            }
-
-        assertThat(inTransaction)
-            .`as`("락 획득 뒤 lock_timeout 이 '%s' 로 남았다 — 뒤따르는 행 락 대기까지 끊긴다", inTransaction)
+        assertThat(restored)
+            .`as`("락 획득 뒤 lock_timeout 이 '%s' 로 남았다 — 뒤따르는 행 락 대기까지 끊긴다", restored)
             .isEqualTo("0")
+    }
+
+    @Test
+    fun `락 획득 후 lock_timeout 이 미리 걸려 있던 값으로 원복된다`() {
+        // ★ 하드코딩 '0' 으로 되돌리면 **원복이 아니라 「상한 없음」으로 덮어쓰기**다. 누가 ALTER ROLE 이나
+        //   전역 설정으로 상한을 걸어 두면 이 함수가 그것을 무한 대기로 바꿔 놓는데, 건 사람은 예외도 로그도
+        //   못 본다 — 부채 166 이 등재된 사유(느린 트랜잭션이 커넥션 풀을 말린다)와 같은 실패 양식이다.
+        val restored = lockTimeoutAfterAcquire(preset = PRESET_LOCK_TIMEOUT)
+
+        assertThat(restored)
+            .`as`("락 획득 뒤 lock_timeout 이 '%s' 다 — 미리 걸려 있던 상한이 조용히 사라졌다", restored)
+            .isEqualTo(PRESET_LOCK_TIMEOUT)
     }
 
     // ── N7 — MANDATORY 전파는 호출자 리포지터리에 남는다 ──────────────────────
@@ -115,6 +120,19 @@ class AdvisoryLockBudgetTest {
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
+
+    /**
+     * [preset] 을 미리 건 트랜잭션에서 락을 잡고 **같은 트랜잭션 안에서** `lock_timeout` 을 되읽는다.
+     *
+     * ★ 반드시 같은 트랜잭션이다. `set_config(..., true)` 는 트랜잭션 스코프라 밖에서 읽으면 언제나
+     *   세션 기본값이 나와 공허 통과한다 — 원복을 통째로 지워도 초록이 되는 판정이 된다.
+     */
+    private fun lockTimeoutAfterAcquire(preset: String?): String? =
+        txTemplate.execute {
+            preset?.let { dsl.fetch("SELECT set_config('lock_timeout', ?, true)", it) }
+            sprintRepository.acquireSprintStartLock(UUID.randomUUID())
+            dsl.fetchValue("SHOW lock_timeout") as String?
+        }
 
     /** [attemptUnderHolder] 한 회의 결과 — 던져진 예외(없으면 성공)와 소요 시간. */
     private data class LockAttempt(
@@ -200,6 +218,9 @@ class AdvisoryLockBudgetTest {
 
         /** 실제로 기다렸음을 확인하는 하한 — 즉시 실패하는 가짜 그린을 막는다. */
         const val MIN_WAIT_MS = 150L
+
+        /** 「원복」의 목적지가 하드코딩 '0' 이 아님을 재는 사전 설정값. 예산(200ms)과 확실히 다른 값이다. */
+        const val PRESET_LOCK_TIMEOUT = "5s"
 
         const val NANOS_PER_MILLI = 1_000_000L
 
