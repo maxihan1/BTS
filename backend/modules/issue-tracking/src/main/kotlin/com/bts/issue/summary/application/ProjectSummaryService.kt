@@ -153,6 +153,12 @@ class ProjectSummaryService(
      * `IssueNotFoundException`(404)으로 돌려 존재 자체를 숨기는 것과 의미를 맞춘다.
      * 그래서 반환 항목 수는 [limit] 보다 적을 수 있다.
      *
+     * ## 남은 항목은 단건 이력과 같은 마스킹을 받는다
+     * VIEW 를 통과했다고 모든 값을 볼 수 있는 건 아니다. [IssueChangeItemMasker] 가 필드 수준
+     * 권한(FR-PM-07)으로 가려진 필드와 삭제된 댓글의 본문(FR-CO-02)을 값·라벨 4종만 null 로
+     * 치환한다 — `GET /issues/{key}/changelog` 와 **같은 협력자·같은 판정**이다. 여기서 판정을
+     * 복사하면 한쪽에 마스킹 대상이 추가될 때 다른 쪽이 조용히 샌다.
+     *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 대상 프로젝트 키.
      * @param limit 조회할 최대 변경 그룹 수. VIEW 게이트로 제거된 만큼 결과는 이보다 적을 수 있다.
@@ -173,6 +179,8 @@ class ProjectSummaryService(
         if (rows.isEmpty()) return emptyList()
 
         val actorNames = resolveActorNames(rows.mapNotNull { it.actorId }.toSet())
+        // 조회 1벌 — 피드 전체 항목을 한 번에 넘겨 필드 권한 1회 + 활성 댓글 1회로 판정을 끝낸다.
+        val mask = masker.planFor(actorId, projectKey, rows.groupBy({ it.issueId }, { it.toChangeItem() }))
 
         // repository 가 created_at DESC, group id DESC 로 정렬해 반환하므로 groupBy 가 순서를 보존한다.
         return rows.groupBy { it.groupId }.map { (_, groupRows) ->
@@ -182,7 +190,7 @@ class ProjectSummaryService(
                 actorId = head.actorId,
                 actorName = head.actorId?.let { actorNames[it] },
                 createdAt = head.createdAt,
-                items = groupRows.map { it.toChangeItem() },
+                items = groupRows.map { mask.apply(it.issueId, it.toChangeItem()) },
             )
         }
     }

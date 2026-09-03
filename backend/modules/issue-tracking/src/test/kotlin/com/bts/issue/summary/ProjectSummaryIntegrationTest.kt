@@ -4,6 +4,8 @@
 package com.bts.issue.summary
 
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
+import com.bts.issue.application.IssueChangeItemMasker
+import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
 import com.bts.issue.repository.IssueRepository
@@ -103,6 +105,7 @@ import java.util.UUID
  * - I4. BROWSE 권한 없음 → 403 · 미인증 → 401.
  * - I5. 활동 피드 최신순 · 담당자 표시명 결선 · limit 상한 초과 → 400.
  * - I6. 워크플로우 스킴 미배정 → 200 + TODO 폴백(500 차단).
+ * - I7. 활동 피드의 이슈 단위 VIEW 게이트 — BROWSE 만으로는 이슈 내용이 나가지 않는다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [ProjectSummaryIntegrationTest.TestConfig::class])
@@ -111,13 +114,24 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @Suppress("TooManyFunctions", "LargeClass")
 class ProjectSummaryIntegrationTest {
-    /** 기본 BROWSE 허용. [denyBrowseForProject] 로 특정 프로젝트만 거부한다. */
+    /**
+     * 기본 전부 허용. [denyBrowseForProject]·[denyViewForIssue] 로 하나씩 닫는다.
+     *
+     * BROWSE 와 VIEW 를 **따로** 닫을 수 있어야 한다 — 둘은 독립 매트릭스 권한이고(FR-PM-05),
+     * 한 스위치로 묶으면 활동 피드의 이슈 단위 게이트를 지워도 테스트가 통과한다.
+     */
     class SwitchablePermissionResolver : IssuePermissionResolver {
         private val denyBrowseProject = ThreadLocal<String?>()
+        private val denyViewIssue = ThreadLocal<String?>()
 
         fun denyBrowseForProject(projectKey: String) = denyBrowseProject.set(projectKey)
 
-        fun resetPermissions() = denyBrowseProject.remove()
+        fun denyViewForIssue(issueKey: String) = denyViewIssue.set(issueKey)
+
+        fun resetPermissions() {
+            denyBrowseProject.remove()
+            denyViewIssue.remove()
+        }
 
         override fun hasPermission(
             actorId: UUID,
@@ -126,6 +140,9 @@ class ProjectSummaryIntegrationTest {
         ): Boolean {
             if (permission == IssuePermission.BROWSE && scope is IssueScope.Project) {
                 if (scope.key == denyBrowseProject.get()) return false
+            }
+            if (permission == IssuePermission.VIEW && scope is IssueScope.Issue) {
+                if (scope.key == denyViewIssue.get()) return false
             }
             return true
         }
@@ -166,7 +183,7 @@ class ProjectSummaryIntegrationTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     // 수동 @Bean 이 아니라 @Import — Spring 이 ProjectSummaryService 의 optional Clock 기본값을
     // 실제로 resolve 하는 프로덕션 배선 경로를 테스트가 태우게 한다.
-    @Import(ProjectSummaryService::class, ProjectSummaryController::class)
+    @Import(ProjectSummaryService::class, ProjectSummaryController::class, IssueChangeItemMasker::class)
     open class TestConfig : WebMvcConfigurer {
         /**
          * `@EnableWebMvc` 기본 Jackson 컨버터는 [java.time.Instant] 를 숫자로 직렬화한다.
@@ -222,6 +239,15 @@ class ProjectSummaryIntegrationTest {
 
         @Bean
         open fun issueTypeRepository(dsl: DSLContext): IssueTypeRepository = IssueTypeRepository(dsl)
+
+        /**
+         * 마스킹 협력자가 삭제 댓글을 판정할 때 쓴다.
+         *
+         * `IssueChangeItemMasker` 의 `fieldPermissionResolver` 는 Kotlin 기본값(allow-all)으로
+         * 남겨 둔다 — 이 테스트의 관심사는 배선과 이슈 단위 VIEW 게이트다.
+         */
+        @Bean
+        open fun commentRepository(dsl: DSLContext): CommentRepository = CommentRepository(dsl)
 
         @Bean
         open fun permissionResolver(): IssuePermissionResolver = TestConfig.permissionResolver
@@ -528,6 +554,33 @@ class ProjectSummaryIntegrationTest {
     fun `I5 활동 - limit 상한을 넘으면 400`() {
         mockMvc.perform(get("/api/v1/projects/$PROJECT_KEY/activity").param("limit", "51"))
             .andExpect(status().isBadRequest)
+    }
+
+    /**
+     * I7. BROWSE 는 있어도 VIEW 가 없는 이슈의 항목은 피드에서 사라진다.
+     *
+     * Given  같은 프로젝트의 이슈 2건에 각각 전환 1건
+     * When   ① 그대로 조회 → 2건 ② 한 이슈의 VIEW 만 거부하고 재조회 → 1건
+     * Then   같은 시드에서 권한만 바뀌어 2→1. BROWSE_PROJECT 로 이슈 내용을 내보내지 않는다.
+     */
+    @Test
+    fun `I7 활동 - VIEW 가 없는 이슈의 항목은 제거된다`() {
+        val (keyA, idA) = createIssue(daysAgo(5), stateKey = DONE_KEY)
+        val (keyB, idB) = createIssue(daysAgo(5), stateKey = DONE_KEY)
+        seedStatusChange(idA, keyA, daysAgo(1), IN_PROGRESS_KEY, DONE_KEY)
+        seedStatusChange(idB, keyB, daysAgo(2), IN_PROGRESS_KEY, DONE_KEY)
+
+        // 비-공허 짝 — 게이트를 지워도 통과하는 테스트가 되지 않게 먼저 2건을 확인한다.
+        mockMvc.perform(get("/api/v1/projects/$PROJECT_KEY/activity"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.entries.length()").value(2))
+
+        TestConfig.permissionResolver.denyViewForIssue(keyA)
+
+        mockMvc.perform(get("/api/v1/projects/$PROJECT_KEY/activity"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.entries.length()").value(1))
+            .andExpect(jsonPath("$.data.entries[0].issueKey").value(keyB))
     }
 
     @Test
