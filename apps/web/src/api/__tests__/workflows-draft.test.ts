@@ -52,7 +52,7 @@ const DEFINITION = {
   key: 'wf',
   name: '워크플로우',
   description: null,
-  states: [{ key: 'open', name: '열림', category: 'TODO', displayOrder: 1 }],
+  states: [{ key: 'open', name: '열림', category: 'TODO', displayOrder: 1, layoutX: null, layoutY: null }],
   transitions: [{ from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [] }],
 } satisfies DraftDefinition
 

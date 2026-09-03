@@ -63,6 +63,14 @@ export const workflowEditorLabels = {
     statusTab: '상태',
     /** 전환 탭 */
     transitionTab: '전환',
+    /**
+     * 다이어그램 탭 (FR-WF-07 D8).
+     *
+     * ★ `'상태'`·`'전환'` 을 substring 으로 품으면 안 된다. `getByRole('tab', { name })` 은
+     * 기본이 부분 일치라, 품는 순간 `e2e/workflow-editor.spec.ts:89` 가 두 탭을 잡아 즉사한다.
+     * `__tests__/workflow-editor-labels.test.ts` 가 양방향으로 대조한다.
+     */
+    diagramTab: '다이어그램',
     /** 이름·설명 저장 버튼 */
     save: '변경 사항 저장',
     /** 저장 성공 토스트 */
@@ -83,6 +91,29 @@ export const workflowEditorLabels = {
     catalogFailed: '상태 카탈로그를 불러오지 못해 상태를 편집할 수 없습니다',
     /** 카탈로그에 없는 상태가 섞여 있을 때 */
     unknownStatuses: '카탈로그에 없는 상태가 있어 순서를 바꿀 수 없습니다',
+  },
+
+  /**
+   * 다이어그램 캔버스 (FR-WF-07 D8 · 로드맵 PR 9).
+   *
+   * E2E 셀렉터 정본이다 — 화면과 spec 이 이 상수를 함께 읽는다. 문자열을 spec 에 베끼지 마라.
+   */
+  diagram: {
+    /** 캔버스 aria-label — 스크린 리더가 이 영역을 그래프로 인식하는 유일한 단서다 */
+    canvasLabel: '워크플로우 다이어그램 캔버스',
+    /** 전체 보기 버튼 */
+    fitView: '전체 보기',
+    /**
+     * 상태가 0개일 때. 상태 패널의 빈 상태와 **다른 문구**여야 한다 —
+     * 「상태가 하나도 없다」와 「캔버스에 그릴 것이 없다」는 사용자에게 다른 사실이다.
+     */
+    empty: '그릴 상태가 없습니다. 상태 탭에서 먼저 상태를 추가하세요',
+    /** 전역 전환 목록 패널 — 간선으로 그리지 않는다(모든 노드에서 선을 뽑으면 못 읽는다) */
+    globalPanel: '모든 상태에서',
+    /** 시작 노드 aria-label — mermaid 의 `[*]` 에 대응한다 */
+    initialNode: '이슈 생성 시작점',
+    /** 잠긴 워크플로우 안내 — 끌어도 안 움직이는 이유를 말한다 */
+    lockedHint: '잠긴 워크플로우라 배치를 바꿀 수 없습니다',
   },
 
   /** 상태 패널 */
@@ -136,6 +167,22 @@ export const workflowEditorLabels = {
     description: '전환 이름과 오갈 상태를 정합니다',
     /** 저장 버튼 */
     submit: '저장',
+    /**
+     * 전환 종류 라디오 그룹의 이름.
+     *
+     * ★위 KDoc 이 경고한 자리를 여기서 갚는다 — 종전에는 이 항목이 없어서 `GLOBAL` 전환을
+     * **만드는 경로 자체가 없었다**(고르는 컨트롤이 없어 생성은 항상 `NORMAL` 이었다).
+     * 뜻이 다른 문자열을 빌리는 대신 정본에 항목을 낸다.
+     */
+    kind: '전환 종류',
+    /** NORMAL — 출발 상태를 지정하는 보통 전환 */
+    kindNormal: '특정 상태에서',
+    /** NORMAL 설명 — 이름만으로는 두 종류를 가를 수 없다 */
+    kindNormalDescription: '고른 출발 상태에서만 쓸 수 있습니다',
+    /** GLOBAL — 어느 상태에서나 쓸 수 있는 전환 */
+    kindGlobal: '모든 상태에서',
+    /** GLOBAL 설명 */
+    kindGlobalDescription: '이슈가 어느 상태에 있든 쓸 수 있습니다',
   },
 
   /**

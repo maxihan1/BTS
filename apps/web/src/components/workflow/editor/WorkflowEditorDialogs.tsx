@@ -42,6 +42,8 @@ interface WorkflowEditorDialogsProps {
   /** 목록 패널 형태로 옮긴 전환들 — 폼이 수정 대상을 이 목록에서 찾는다 */
   panelTransitions: WorkflowView['transitions']
   editingTransition: TargetTransition | null
+  /** 다이어그램에서 끌어 만든 전환의 출발·도착 프리필 (FR-WF-07 D8). 수정 중에는 무시된다 */
+  transitionPrefill?: { from: string; to: string } | null
   onSubmitTransition: (input: TransitionDefinitionInput) => void
   transitionToRemove: TargetTransition | null
   onTransitionRemoveChange: (target: TargetTransition | null) => void
@@ -103,6 +105,7 @@ function WorkflowEditorDialogs({
   onTransitionFormOpenChange,
   panelTransitions,
   editingTransition,
+  transitionPrefill = null,
   onSubmitTransition,
   transitionToRemove,
   onTransitionRemoveChange,
@@ -163,6 +166,7 @@ function WorkflowEditorDialogs({
             ? null
             : (panelTransitions.find((t) => t.id === editingTransition.localId) ?? null)
         }
+        prefill={transitionPrefill}
         onSubmit={onSubmitTransition}
       />
 

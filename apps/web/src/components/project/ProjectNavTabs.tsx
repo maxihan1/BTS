@@ -18,6 +18,17 @@ export interface ProjectNavTabLink {
   readonly to: string
   /** 링크 텍스트 */
   readonly label: string
+  /**
+   * URL search 파라미터. 생략하면 쿼리 없이 이동한다(기존 소비처 회귀 0).
+   *
+   * 보드 스코프(`?board=`)를 뷰 전환에서 잃지 않기 위한 것이다 (FR-BD-04 PR ⑥).
+   * 없으면 보드↔백로그 왕복마다 스코프가 풀려 사용자가 매번 스위처를 다시 눌러야 한다.
+   *
+   * **옵셔널인 것이 계약이다** — 이 nav 는 board·backlog 말고도 여러 화면이 쓰고,
+   * 그 화면들은 실을 스코프가 없다. 편차 X7 의 「공유 상태」는 여전히 범위 밖이고
+   * 이 필드는 **링크 전파**까지만 한다(호출부가 실을 값을 스스로 정한다).
+   */
+  readonly search?: Readonly<Record<string, string>>
 }
 
 /** {@link ProjectNavTabs} Props */
@@ -54,6 +65,7 @@ export function ProjectNavTabs({ projectKey, links }: ProjectNavTabsProps): JSX.
           key={link.to}
           to={link.to}
           params={{ projectKey }}
+          search={link.search}
           className={PROJECT_NAV_TAB_LINK_CLASS}
         >
           {link.label}

@@ -73,4 +73,37 @@ class BoardCardFilterTest {
     fun `EMPTY 는 statusKeys 도 빈 목록`() {
         assertThat(BoardCardFilter.EMPTY.statusKeys).isEmpty()
     }
+
+    @Test
+    fun `issueKeys 가 비어있지 않으면 isEmpty 는 false`() {
+        val filter = BoardCardFilter(issueKeys = listOf("ATLAS-1"))
+        assertThat(filter.isEmpty()).isFalse()
+    }
+
+    /**
+     * ★이 케이스가 `IssueRepository.buildFilterCondition` 의 조기 return 에 대한 **유일한 방어**다.
+     *
+     * 그 함수는 `if (filter.isEmpty()) return null` 로 시작한다. `isEmpty()` 확장을 빠뜨리면
+     * `issueKeys` 만 실은 필터가 「빈 필터」로 판정되어 **술어가 통째로 드롭되고**, 스크럼 보드는
+     * 전량 조회로 되돌아간다 — 조회는 성공하므로 어느 테스트도 red 가 되지 않는다.
+     * 다른 필드를 명시적으로 비워 두는 것이 이 케이스의 요점이다(`statusKeys` 쌍둥이와 같은 이유).
+     */
+    @Test
+    fun `issueKeys 만 있어도(다른 필드 빈 상태) isEmpty 는 false`() {
+        val filter =
+            BoardCardFilter(
+                assigneeIds = emptyList(),
+                includeUnassigned = false,
+                labels = emptyList(),
+                componentIds = emptyList(),
+                statusKeys = emptyList(),
+                issueKeys = listOf("ATLAS-42"),
+            )
+        assertThat(filter.isEmpty()).isFalse()
+    }
+
+    @Test
+    fun `EMPTY 는 issueKeys 도 빈 목록`() {
+        assertThat(BoardCardFilter.EMPTY.issueKeys).isEmpty()
+    }
 }

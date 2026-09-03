@@ -64,6 +64,109 @@
 
 # 화면에서 보이는 것
 
+## ⬜ apps/web — FR-WF-07 D8 **다이어그램 눈확인 9항목 미실시** (신규 · 미착수 · T1)
+
+**쉬운 말.** 워크플로우 다이어그램 화면을 자동 검사로만 확인했고 사람 눈으로는 한 번도 안 봤다.
+색이 맞는지, 선이 겹치는지, 어두운 모드에서 안 깨지는지는 자동 검사가 못 재는 것들이다.
+
+**방치하면.** 화면이 이상해도 아무도 모른 채로 남는다. **이 PR 에서 정확히 그 일이 두 번 났다** —
+자동 검사는 전부 초록인데 게이트 2 리뷰가 코드를 읽고서야 ① 겹친 화살표와 자기 자신으로 도는
+전환이 **아예 안 그려지고 있었고** ② 노드를 끌면 커서만 가고 노드는 안 따라온다는 것을 잡았다.
+둘 다 고쳤지만, 「초록인데 화면은 다르다」가 이 기능의 성질이라는 뜻이다.
+
+PR #434(FR-WF-07 D8 xyflow 다이어그램 편집기)가 **머지 전 필수였던 브라우저 눈확인을 하지 않은 채
+머지됐다.** Maxi 결정(2026-09-03 — 게이트 2 에서 「승인 — 바로 머지」 선택)이고, plan 의 완료 기준
+문장도 같은 PR 에서 「머지 후로 이월」로 고쳐 계약과 실제를 맞췄다.
+
+**볼 것 — 라이트/다크 양쪽에서 9항목.**
+1. 노드 카테고리 색이 **mermaid 화면과 같은 색인가** — `/workflows/software-default` 와
+   `/admin/workflows/software-default` 다이어그램 탭을 나란히 열어 대조한다
+2. 엣지 라벨(전환 이름)이 읽히는가
+3. **self-loop 곡선이 노드에 안 가리는가** — 같은 상태로 돌아오는 전환을 하나 만들어 본다
+4. **다중 전환 간선이 벌어지는가** — 같은 상태쌍에 전환을 둘 만들어 본다
+5. hover 하면 연결 핸들이 보이는가
+6. `@xyflow/react` 기본 CSS 가 **다크에서 배경·간선을 침범하지 않는가**
+7. 상태 0개 초안의 빈 캔버스 문구
+8. 노드 선택 상태 표시가 보이는가
+9. `INITIAL` 시작 원과 `GLOBAL` 좌측 상단 패널이 mermaid 와 같은 의미로 읽히는가
+
+★ **③④는 목 픽스처로는 관찰이 불가능하다.** `mocks/workflow-fixtures.ts` 의 4개 워크플로우에
+self-loop 도 중복 쌍도 없다 — 손으로 만들어야 보인다. 이것이 이 항목의 핵심 가치다.
+
+**어떻게.** `cd apps/web && node_modules/.bin/vite` 로 dev 서버를 띄우고
+`/admin/workflows/software-default` 의 다이어그램 탭을 연다. MSW 가 켜져 있으므로 백엔드는 필요 없다.
+다크 모드는 브라우저 설정 또는 앱의 테마 토글로 바꾼다.
+
+**선행.** 없음. PR #434 는 머지됐다.
+
+**★2026-09-03 실시 — 9항목 중 6항목 판정 · 결함 2건 적발.** Playwright 로 라이트·다크 캔버스를
+받아 mermaid(`/workflows/software-default`)와 나란히 대조했다. 남은 3항목은 아래 사유로 못 봤다.
+
+- **① 카테고리 색 — 통과.** `Open` 회색 · `In Progress`·`In Review` 파랑 · `Done`·`Closed` 초록으로
+  mermaid 와 같다. 라이트·다크 둘 다.
+- **②④ 엣지 라벨 — 실패.** 결함으로 등재했다(아래 항목). 간선 자체는 X 자로 벌어지지만
+  라벨 셋이 한 좌표에 포개진다.
+- **⑤ hover 핸들 — 통과.** 노드 좌우에 연결 핸들 점이 나타난다.
+- **⑥ 다크 CSS — 통과.** `@xyflow/react` 기본 스타일이 배경·간선을 침범하지 않는다.
+- **⑧ 노드 선택 표시 — 실패.** 결함으로 등재했다(아래 항목).
+- **⑨ `INITIAL` 시작 원 — 통과.** 시작 원과 「이슈 생성」 라벨이 mermaid 와 같은 의미로 읽힌다.
+  **`GLOBAL` 좌측 상단 패널은 관측 불가** — 픽스처에 `GLOBAL` 전환이 없다.
+- **③ self-loop — 관측 불가.** 위 ★ 가 적은 그대로다. **다만 사유가 하나 더 있다** —
+  「손으로 만들어야 보인다」의 그 손이 없다. `TransitionFormDialog` 에 `kind` 컨트롤이 없어
+  `GLOBAL` 전환도 self-loop 도 **만들 방법 자체가 없다**(장부 「전환 종류를 고를 수 없어 전역
+  전환을 만들 방법이 없다」 항목). ③④⑨GLOBAL 은 그 항목이 닫힌 뒤에야 관측 가능하다.
+- **⑦ 빈 캔버스 문구 — 관측 미완.** 상태를 전부 빼면 확인 다이얼로그가 떠 다이어그램 탭에
+  닿지 못했다(3회 시도). 관측 경로를 다시 잡아야 한다.
+
+## ⬜ apps/web — 다이어그램 엣지 라벨 셋이 한 자리에 겹쳐 못 읽는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 워크플로우 그림에서 화살표에 붙은 이름 셋이 같은 자리에 포개져 글자가 서로를 가린다.
+
+**방치하면.** 그 그림을 보고 「어느 전환이 어디로 가는지」를 읽을 수 없다. 같은 화면의 옛 그림(mermaid)은
+멀쩡히 읽히므로, 새 편집기로 옮겨 온 것이 오히려 후퇴로 보인다.
+
+**무엇.** FR-WF-07 D8 눈확인(2026-09-03)에서 적발했다. `software-default` 픽스처의
+`in_progress ↔ in_review` 구간에서 `Submit for Review` · `Request Changes` · `Cancel` 세 라벨이
+같은 좌표에 그려져 화면에는 `Requ|Cancel|nges` 로 뭉개져 나온다. 라이트·다크 둘 다 같다.
+
+**★간선은 벌어진다 — 겹치는 것은 라벨뿐이다.** 눈확인 항목 ④(「다중 전환 간선이 벌어지는가」)의
+간선 축은 통과다. X 자로 교차하며 실제로 벌어진다. 즉 이것은 간선 배치 문제가 아니라 **라벨 배치가
+간선의 중점을 그대로 쓰는** 문제다. 세 간선의 중점이 거의 같은 자리에 모이면 라벨도 모인다.
+
+**대조군이 이미 있다.** 읽기 전용 `/workflows/{key}` 의 mermaid(`WorkflowDiagram.tsx`)는 같은
+픽스처에서 세 라벨을 전부 따로 읽히게 그린다. 라우트가 갈려 나란히 열어 비교할 수 있다.
+
+**처방 후보.** ① 라벨을 간선 중점이 아니라 간선별 오프셋 위치에 둔다 — 같은 상태쌍의 n 번째
+간선이면 중점에서 n 만큼 밀어낸다. ② 겹치면 라벨을 숨기고 hover 로만 보인다 — 정보가 사라지므로
+차선이다. ③ 라벨에 배경과 `z-index` 를 줘 앞의 것만 읽히게 한다 — **가장 나쁘다.** 뒤의 둘이
+있다는 사실 자체가 사라진다.
+
+**선행.** 없음.
+
+---
+
+## ⬜ apps/web — 다이어그램 노드 선택 표시가 hover 와 구분되지 않는다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 그림에서 상태 하나를 눌러 골라도 화면이 달라지지 않아서, 골랐는지 마우스만 올린 것인지 알 수 없다.
+
+**방치하면.** 여러 상태를 오가며 편집할 때 지금 무엇을 고른 상태인지 화면이 알려 주지 않는다.
+편집 대상이 헷갈리면 엉뚱한 상태를 고치고도 고친 줄 모른다.
+
+**무엇.** FR-WF-07 D8 눈확인(2026-09-03) 항목 ⑧ 이다. `open` 노드를 클릭한 뒤 캔버스를 받아
+hover 만 한 캔버스와 대조했더니 **차이가 연결 핸들 점의 유무뿐**이다. 테두리·그림자·배경 어느
+축에도 선택 상태가 없다. hover 해도 같은 점이 나오므로 두 상태가 화면에서 같다.
+
+**★`@xyflow/react` 는 `.selected` 클래스를 붙여 준다.** 즉 상태는 DOM 에 있고 그것을 그리는
+CSS 가 없는 것이다. 커스텀 노드가 기본 스타일을 걷어내면서 함께 사라졌을 가능성이 크다 —
+착수 시 `.react-flow__node.selected` 규칙이 실제로 존재하는지부터 본다.
+
+**처방.** 선택 상태에 카테고리 색과 **다른 축**을 준다(테두리 두께나 링). 색만 진하게 하면
+카테고리 색과 겹쳐 「선택된 진행 중」과 「선택 안 된 완료」가 헷갈린다.
+
+**선행.** 없음.
+
+---
+
 ## ⬜ apps/web — FR-WF-07 D6b **실서버 눈확인 5경로 미실시** (신규 · 미착수 · T1)
 
 **쉬운 말.** 상태 이관 마법사를 가짜 서버(테스트용 흉내 서버)로만 확인했고 진짜 서버로는 한 번도
@@ -402,9 +505,30 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 **무엇.** 두 결함이 한 파일에 있다.
 - `StatusCell.tsx:108` 이 `key={t.key}` 로 목록을 그린다. 전환 `key` 는 NORMAL 이 `from__to`,
   GLOBAL·INITIAL 이 `KIND__to` 라 **같은 상태쌍의 전환 둘이 같은 값**을 갖는다(FR-WF-05 가 연 바로 그 경우).
-  React 는 같은 `key` 의 형제 중 하나만 그린다.
+  ~~React 는 같은 `key` 의 형제 중 하나만 그린다.~~
+  **★2026-09-03 실측 정정 — 그 문장은 사실이 아니다.** 같은 key 를 갖는 전환 둘을
+  `StatusCellEditor` 에 주고 red 를 보려 했더니 **버튼 두 개가 모두 그려지고 경고도 나지 않았다**
+  (12 passed). React 는 중복 key 형제를 지우지 않는다 — 무너지는 것은 재조정 시 엘리먼트
+  재사용이고, 이 목록의 버튼은 로컬 상태가 없어 관측 가능한 피해가 없었다.
+  **처방은 그대로 유효하지만 근거가 다르다** — 「보이지 않는다」가 아니라 「고유하지 않은 값을
+  identity 로 쓴다」가 이유다. 여기에 서버 계약상 `key` 가 null 일 수 있다는 축이 겹친다.
 - 같은 파일에 409 `AMBIGUOUS_TRANSITION` 처리가 **0건**이다(`grep -n '409\|AMBIGUOUS\|candidate'` 0건).
   후보 선택 프롬프트 없이 요청이 실패로 끝난다.
+  **★2026-09-03 실측 보강 — 조용히 실패하는 것이 아니라 거짓말을 한다.**
+  `use-issue-list-cell-field.ts` 의 `resolveCellErrorMessage` 가 409 를 두 갈래
+  (`TRANSITION_NOT_ALLOWED` / 그 외)로만 가르므로, `AMBIGUOUS_TRANSITION` 은 **그 외**로 떨어져
+  「다른 사용자가 이미 수정했습니다」 토스트가 뜬다. 다른 사용자는 없고 사용자가 할 일은
+  후보를 고르는 것인데, 화면은 **하지 않아도 될 새로고침**을 시킨다.
+  ★재사용 자산이 이미 있다 — `useAmbiguousTransition`(mutation 과 분리된 상태 기계, KDoc 이
+  「이슈 상세·목록 셀·일괄 전환 셋 다 같다」고 적는다) · `AmbiguousTransitionDialog`(표현 전용).
+  목록 셀만 그 배선을 안 했다.
+
+**★분할 (2026-09-03).** 이 항목은 두 문장이라 두 PR 로 나눈다.
+- **identity 갈래 — 닫힘.** `key` 를 identity 로 쓰던 자리를 `lib/transition-key.ts` 정본으로
+  모으고 서버 계약대로 nullable 을 받아들였다. 「전환 목록 스키마가 서버 계약보다 엄격해…」
+  · 「전환 `key` 규칙 사본이 프론트에만 3벌…」과 같은 PR 이다.
+- **409 갈래 — 남는다.** `useIssueListCellField` 에 `transitionId` 를 실을 자리를 내고 목록 셀에
+  후보 프롬프트를 잇는 일이다. mutation 계약을 건드리므로 별건으로 둔다.
 
 **왜 지금 붙이기 쉬운가.** PR #395 Task 21·26 이 상세 화면의 409 배선을 **판정 · 훅 · 다이얼로그
 세 조각**으로 분리해 뒀다(`use-issue-transitions.ts` 의 훅 + `AmbiguousTransitionPrompt.tsx` 커넥터).
@@ -428,6 +552,12 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 
 **★셋째가 문제의 핵심이다.** 그 테스트 이름은 「모든 transition.key 가 backend
 `WorkflowTransition.key` 게터 규칙과 일치」인데, 실제로 대조하는 것은 **사본 A(픽스처)와 사본 B(인라인 재구현)**다.
+
+**★2026-09-03 실측 — 셋이 아니라 넷이었다.** 착수하며 전수로 훑으니 네 번째가 나왔다.
+`components/issue/meta/IssueStateTransition.tsx` 의 `optionValueOf` 가 `transitionId ?? key` 를
+자기 손으로 갖고 있었고, 그 KDoc 스스로 「React key 와 **같은 규칙**을 쓴다」고 적으면서
+그 규칙을 다시 구현했다. 제목의 「3벌」은 그대로 두되 실제 표면은 넷이다 —
+**개수를 세는 대신 전수로 훑어야 하는 이유가 이것이다.**
 백엔드는 이 판정의 시야 밖이라 게터를 바꿔도 red 가 나지 않는다 — 이름이 주장하는 것을 재지 않는
 `[[invariant-satisfied-by-helptext-not-logic]]` 양식이다.
 
@@ -635,36 +765,39 @@ PR #399 는 `settings/details` **하나가** 형제 11개 탭과 236px 어긋난
 
 ---
 
-## ⬜ apps/web — 전환 종류를 고를 수 없어 전역 전환을 만들 방법이 없다 (신규 · 미착수 · T1)
 
-**쉬운 말.** 「어느 상태에서든 쓸 수 있는 전환」을 만들 수 있다고 코드에는 적혀 있는데, 화면에 그것을 고르는 자리가 없다.
 
-**방치하면.** 그 기능이 있다고 믿고 찾다가 못 찾는다. 코드에는 처리 분기가 남아 있어 다음 사람이 「되는 기능」으로 읽고 그 위에 무언가를 쌓는다.
+## ⬜ apps/web — 다이어그램 self-loop 가 다른 노드를 관통하고 라벨이 캔버스 밖으로 달아난다 (신규 · 미착수 · T1)
 
-**무엇.** `components/workflow/editor/TransitionFormDialog.tsx` 의 `kind` state 를 바꾸는
-컨트롤이 없다. 생성은 항상 `NORMAL` 이고 수정은 기존 값을 보존한다. 결과로
-`TransitionListPanel` 의 `GLOBAL` 배지 분기와 `needsFromState` 의 비-NORMAL 갈래가
-**생성 경로로는 도달 불가**다(수정 경로로만 닿는다). 픽스처에도 `kind: 'GLOBAL'` 이 0건이라
-그 분기를 태우는 판정도 없다.
+**쉬운 말.** 같은 상태로 되돌아오는 전환을 그리면, 그 선이 옆의 다른 상태들을 뚫고 지나가고 전환 이름은 노드에서 한참 떨어진 자리에 뜬다.
 
-**처방.** FR-WF-04 D6 의 범위는 「전환 이름 편집」이라 이 PR 에서는 범위 밖으로 뒀다.
-로드맵 PR 9(다이어그램 편집기)가 전역 전환을 그려야 하므로 그때 함께 연다.
+**방치하면.** 되돌아오는 전환을 쓰는 워크플로우에서 그림을 읽을 수 없다. 선이 뚫고 지나간 노드가 그 전환과 관계있는 것처럼 보여 **없는 연결을 있는 것으로 읽는다.**
 
----
+**무엇.** 2026-09-03 실측이다. 전환 종류 컨트롤(#439)로 `In Progress → In Progress` self-loop 를
+만들어 다이어그램 탭을 열었더니 두 가지가 함께 나왔다.
+- **곡선이 `In Progress` 와 `In Review` 를 관통한다.** self-loop 반경이 노드 간격보다 커서
+  아래쪽 노드까지 원이 걸친다.
+- **라벨이 노드에서 멀리 떨어진다.** 「재작업」이 캔버스 위쪽 빈 자리에 홀로 떠 있어 어느
+  전환의 이름인지 알 수 없다.
 
-## ⬜ apps/web — 상태 순서 변경이 되돌아갔다 오고 표시 순서가 겹칠 수 있다 (신규 · 미착수 · T1)
+**★이 항목은 눈확인이 열어 준 것이다.** FR-WF-07 D8 눈확인 9항목 중 ③ 이 정확히 이것을
+겨냥했는데, **관찰 대상을 만들 손이 없어서**(전환 종류 컨트롤 부재) 그동안 볼 수 없었다.
+#439 가 그 손을 만들자마자 첫 관측에서 나왔다.
 
-**쉬운 말.** 상태를 끌어서 순서를 바꾸면 잠깐 원래 자리로 튀었다가 다시 제자리를 찾는다. 그리고 상태를 넣고 빼고를 반복하면 순서 번호가 겹친다.
+**대조 — ④ 다중 간선은 통과다.** 같은 상태쌍(`Open → In Progress`)에 전환을 하나 더 만드니
+`Start Work` 와 「빠른 착수」의 라벨이 위아래로 벌어져 **둘 다 읽힌다.** 즉 xyflow 의 간선
+분리 자체는 동작하고, 무너지는 것은 **self-loop 경로 계산**뿐이다.
 
-**방치하면.** 화면이 덜컹거려 저장이 안 된 것처럼 보인다. 번호가 겹치면 어느 것이 앞인지 서버가 정하지 못한다.
+**같이 볼 것.** 장부의 「다이어그램 엣지 라벨 셋이 한 자리에 겹쳐 못 읽는다」와 뿌리가 다르다.
+그쪽은 **서로 다른 상태쌍**의 간선 중점이 우연히 한 자리에 모이는 문제이고, 이쪽은 self-loop
+한 개의 경로·라벨 좌표가 애초에 노드를 고려하지 않는 문제다. 한 PR 로 묶더라도 판정은 둘이다.
 
-**무엇.**
-- `WorkflowEditorPage.tsx` 의 `useReorderWorkflowStatuses` 에 낙관적 업데이트가 없다. 드래그
-  직후 목록이 서버 값(옛 순서)으로 한 번 그려지고 refetch 뒤에야 새 순서가 온다.
-- 같은 파일이 새 상태의 `displayOrder` 를 `states.length + 1` 로 준다. 둘을 넣고 먼저 넣은
-  것을 뺀 뒤 다시 넣으면 기존 값과 겹친다. `Math.max(...orders, 0) + 1` 이 맞다.
+**처방 후보.** ① self-loop 를 노드 바깥쪽으로 도는 작은 원으로 그린다(xyflow 에 자체 경로
+계산이 없으므로 커스텀 엣지에서 `sourceX/Y`·`targetX/Y` 로 직접 그린다). ② 라벨을 그 원의
+바깥 접점에 붙인다. ③ 두 축을 판정으로 잠근다 — 라벨 좌표가 노드 경계 밖이고 원의 반경이
+노드 높이 이내인지.
 
-**처방.** `onMutate` 에서 상세 캐시를 새 순서로 미리 바꾸고 실패 시 롤백. displayOrder 는 최대값 기준으로.
+**선행.** 없음. #439 가 관찰 경로를 열었다.
 
 ---
 
@@ -687,16 +820,6 @@ PR #400 은 그 죽은 `nav` 블록을 **지웠다** — 소비처 없는 선언
 사실에 맞게 낮춘다. 지금은 선언과 실체가 갈려 있다.
 
 ---
-
-## ⬜ apps/web — 보고 있던 보드가 화면을 옮기면 증발한다 (신규 · 미착수 · T1)
-
-**쉬운 말.** 보드를 두 개 이상 만든 프로젝트에서 보드 화면과 백로그 화면을 오갈 때마다, 방금 보던 보드가 아니라 **맨 처음 만든 보드**로 되돌아간다. 갈 때마다 보드를 다시 골라야 한다.
-
-**방치하면.** 데이터는 안 망가진다. 다만 보드를 여러 개 쓰는 프로젝트에서 왕복 한 번마다 보드 선택이 풀려, 사용자가 「내가 넣은 이슈가 사라졌다」로 읽는다. 스크럼 보드의 「백로그로 이동」 안내를 눌렀을 때가 가장 나쁘다 — 안내를 따랐는데 **다른 보드의 백로그**가 열린다.
-
-**무엇.** 세 자리가 보드 스코프(`?board=`)를 버린다. ① `apps/web/src/components/board/ScrumSprintEmptyState.tsx:122` 의 CTA `<Link to="/projects/$projectKey/backlog" params={{ projectKey }}>` 에 `search` 가 없다. 서버는 `?board=` 가 없으면 `BoardRepository.findScrumBoardIdByProject`(`:256-266`, `created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에 폴백하므로 두 번째 보드에서 누르면 다른 보드가 열린다. ② `apps/web/src/components/project/ProjectNavTabs.tsx:16-21` 의 `ProjectNavTabLink` 이 `to`·`label` 2필드뿐이고 `:57-62` 의 `<Link>` 가 `search` 를 안 싣는다 — 뷰 전환 nav(`board.tsx:64-67` · `backlog.tsx:18-25`)가 양방향으로 스코프를 잃는다. E2E 가 이 결함을 우회하고 있다는 것이 증거다 — `e2e/scrum-board.spec.ts:198` CTA 클릭 직후 `:203` 이, `:257-258` 왕복 직후가 각각 `switchToBoard` 로 **수동 재선택**한다. ③ 편차 X7(`docs/plans/2026-09-02-scrum-board-screen.md:86`)이 「두 탭이 어긋날 수 있다」를 알려진 한계로 남긴 것이 이 상태의 근거다.
-
-**처방.** `ProjectNavTabLink` 에 옵셔널 `search` 를 더하고 `ProjectNavTabs` 가 그것을 `<Link>` 에 싣는다. 빈 상태 CTA 는 `boardId` 를 **필수 prop** 으로 받는다 — 옵셔널로 두면 호출부가 빠뜨려도 초록이다. 보드→백로그 링크는 현재 보드가 SCRUM 일 때만 `board` 를 싣는다(칸반 id 를 백로그에 넘기지 않는다). RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이다. 공유 상태(FR-UX-07 활성 프로젝트 컨텍스트와의 관계 정리)는 범위 밖으로 남긴다 — X7 을 통째로 뒤집는 것이 아니라 링크 전파까지만 해소한다.
 
 ## ⬜ apps/web — 「기본 보드」 규칙이 세 곳에서 서로 다르다 (신규 · 미착수 · T1)
 
@@ -1264,36 +1387,6 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 **처방.** 결정이 먼저다 — ① issue-tracking 삭제 이벤트를 pgmq 로 받아 지우거나 ② 주기 위생 잡으로 lookup 에 없는 `issue_key` 를 정리하거나 ③ 고아를 정상으로 보고 `issue_key` 의 전역 UNIQUE 를 재고한다. ①은 BC 간 이벤트 신설이라 T2 이상이다.
 
-## ⬜ agile-planning — 스크럼 보드가 활성 스프린트의 오래된 이슈를 조용히 잃는다 (신규 · 미착수 · T3)
-
-**쉬운 말.** 이슈가 많은 프로젝트에서 스프린트를 시작해도 보드가 **비어 보일 수 있다**. 스프린트에 담은 이슈가 오래 전에 만든 것이면 화면에 안 나오고, 안 나온다는 경고도 없다.
-
-**방치하면.** 사용자가 정상적으로 시작한 스프린트가 「고장난 빈 보드」로 보인다. 스크럼 보드는 활성 스프린트 이슈만 그리는 화면이라 다른 확인 경로가 없다 — 백로그로 되돌아가 이슈가 스프린트에 들어 있는 것을 확인해도 보드는 계속 비어 있다. 오늘 실제 피해 보고는 0 이지만 프로젝트 이슈가 1,000건을 넘는 순간 발생하고, **넘었다는 사실도 화면에 안 뜬다**(`truncated` 플래그가 스프린트 필터 뒤에 계산되어 false 로 나올 수 있다).
-
-**무엇.** 자르기와 거르기의 **순서가 뒤집혀 있다.** `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:813-814` 가 `.orderBy(ISSUES.CREATED_AT.desc())` → `.limit(BOARD_CARD_FETCH_LIMIT + 1)` 로 프로젝트 이슈를 **1,001건 먼저 자르고**, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt:264-268` 의 스프린트 필터(`page.issues.filter { it.key in sprintIssueKeys }`)가 **그 뒤**에 온다. 활성 스프린트 이슈의 `created_at` 이 상위 1,001건 밖이면 그 이슈는 포트를 빠져나오지 못한다. 기한이 이미 지난 부채다 — `docs/plans/2026-09-01-board-scrum-schema.md:384` 가 「**PR ③ 전에 닫는다**」로 못박았으나 PR ③(#424)은 닫는 대신 PR ④ 로 분리했고(`docs/plans/2026-09-02-scrum-board-screen.md:300-325`), 그 분리를 장부에 등재하는 task 가 실행되지 않아 2026-09-02 까지 **어느 목록에도 없었다**.
-
-**처방.** 스프린트 술어를 LIMIT **앞**으로 민다. `BoardCardFilter`(shared-kernel)에 서버 내부 전용 `issueKeys` 를 더하고 `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 조립하게 한다 — `statusKeys` 가 이미 같은 모양의 선례다(파서가 만들지도 직렬화하지도 않는 필드). 🛑 세 가지를 지킨다. ① `BacklogApplicationService` 에 같은 술어를 넣지 않는다 — 백로그는 **차집합**이라 술어가 반대로 작용해 백로그 칸이 전멸한다. ② `BoardApplicationService` 의 Kotlin 사후 필터를 지우지 않는다 — 포트 계약(`BoardIssueLookupPort.kt:71-82` CONCERN-1)이 구현체의 filter 드롭을 명시적으로 허용하므로 카드 정확성은 소비측 책임이다. ③ 스프린트 이슈 키가 0건이면 포트를 아예 호출하지 않는다 — 빈 목록은 VO 규약상 「무필터」라 그대로 넘기면 전량 조회 + 허위 `truncated` 가 된다. RED 는 **대상 이슈를 먼저(=오래된) 넣고** 비대상 1,001건을 뒤에 넣어야 성립한다 — 기존 `BoardIssueLookupAdapterTest` S9 처럼 대상을 나중에 넣으면 현재 코드로도 통과한다.
-
-## ⬜ agile-planning — 칸반 보드에 매단 스프린트가 어느 화면에도 나타나지 않는다 (신규 · 미착수 · T2)
-
-**쉬운 말.** 칸반 보드를 지정해 스프린트를 만들면 서버가 그대로 받아 준다. 그런데 그 스프린트는 어느 보드 화면에도 안 보인다. 시작 버튼도 정상 동작하지만 화면에서는 아무 일도 일어나지 않는다.
-
-**방치하면.** 오늘은 화면에서 도달할 수 없다 — 백로그 스위처가 스크럼 보드만 노출해 가리고 있기 때문이다. 즉 **프론트 필터 한 줄이 유일한 방어선**이고, 그 필터를 지우거나 API 를 직접 부르면 즉시 재현된다. 사용자에게는 「만들었는데 사라진 스프린트」가 되고, 그 행은 표에 남아 계속 쌓인다.
-
-**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt:427-437` 의 `resolveTargetBoard` 는 `projectKey` 일치 + `deleted_at IS NULL` 만 본다 — `boardType == SCRUM` 검사가 **없다**. 그래서 `POST /api/v1/sprints {boardId: <칸반 보드>}` 가 201 이고 `start` 도 200 이다. 그런데 `BoardApplicationService.getBoard:260` 은 `boardType == SCRUM` 일 때만 `findActiveByBoard` 를 부르므로 그 스프린트는 **영원히 조회되지 않는다.** 이 실패 양식은 이미 인지돼 있다 — `apps/web/src/routes/projects.$projectKey.backlog.tsx:153-161` 의 KDoc 이 그것을 그대로 적으면서 스크럼만 노출하는 이유로 삼는다. ADR 편차 X4(칸반 보드는 백로그 탭 없이 간다)가 이 비대칭의 근거다.
-
-**처방.** `resolveTargetBoard` 의 `takeIf` 에 `boardType == SCRUM` 을 더한다. 상태 코드는 **404** 를 유지한다 — 같은 함수의 KDoc 이 「403 이면 그 UUID 는 존재한다가 새어 나간다」를 이미 못박았다. 읽기 경로(`BacklogApplicationService.resolveBoardScope:233-243`)는 **건드리지 않는다** — 기존 시드 전량이 칸반 보드 소속 스프린트를 쓰고 있어(`apps/web/src/mocks/board-handlers.test.ts:1149-1155` 가 그 사실을 회귀 가드로 명시) 읽기까지 막으면 시드 마이그레이션이 딸려 온다. 기존 칸반 소속 행도 유지한다(V506 이 선재 다중 ACTIVE 행을 보존한 것과 같은 판단). **그 비대칭과 사유를 `resolveTargetBoard` KDoc 의 「읽기 경로와 같은 규약」 절에 적는다** — 안 적으면 그 KDoc 자체가 거짓이 된다.
-
-## ⬜ agile-planning — 활성 스프린트 1개 가드가 동시 시작 두 건을 다 통과시킨다 (신규 · 미착수 · T2)
-
-**쉬운 말.** 「한 보드에 진행 중인 스프린트는 하나」라는 규칙이 있는데, 두 사람이 거의 동시에 시작 버튼을 누르면 둘 다 통과할 수 있다.
-
-**방치하면.** 한 보드에 활성 스프린트가 둘이 되면 보드 화면이 어느 쪽을 그릴지가 조회 순서에 달린다. 1인 사용 중에는 거의 안 나지만, 재시도하는 클라이언트나 중복 클릭만으로도 열린다. 오늘 실제 피해 보고는 0 이다.
-
-**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt:290-296` 이 `findActiveByBoard` 로 읽고 `updateStatus` 로 쓰는 사이에 **락이 없다**(TOCTOU). DB 도 안 막는다 — `V506__sprint_board_id.sql:63-64` 의 부분 인덱스 `idx_sprints_board_active` 는 `:66-68` 에서 **선재 다중 ACTIVE 행을 보존하려고 의도적으로 UNIQUE 가 아니다.** 같은 BC 가 이 함정을 이미 아는 자리가 있다 — `BoardApplicationService.ensureScrumBoard:178` 은 `BoardRepository.acquireProjectScrumBoardLock`(`:104-142`)을 조회보다 먼저 잡는다.
-
-**처방.** `sprint-start:<boardId>` 키로 같은 형태의 advisory lock(`pg_advisory_xact_lock(hashtextextended(?, 0))`)을 `SprintRepository` 에 추가하고, 🛑 **락을 잡은 뒤에 `findActiveByBoard` 를 재조회**한다 — 락 밖에서 읽은 값으로 판단하면 락이 무력화된다(memory `advisory-lock-bigint-toctou`; `BoardRepository.kt:122-123` 이 같은 경고를 적는다). 인덱스를 UNIQUE 로 승격하는 길은 막혀 있다 — 선재 다중 ACTIVE 행이 있으면 마이그레이션 자체가 실패한다.
-
 ## ⬜ agile-planning — V506 을 되돌렸다 재적용하면 스크럼 보드가 중복 생성된다 (선재 · 미착수 · T1)
 
 **쉬운 말.** 데이터베이스 변경 이력을 사람이 손으로 지우고 같은 변경을 다시 적용하면, 자동 생성되는 스크럼 보드가 한 벌 더 만들어진다.
@@ -1313,6 +1406,36 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 **무엇.** 마이그레이션 `V506__sprint_board_id.sql` 의 보드 신설 SQL 과 `BoardApplicationService.ensureScrumBoard`(`:178~`)가 각자 이름 문자열을 든다. 두 목록이 서로를 검사하지 않는 이 저장소의 지배 결함 양식(memory `two-lists-never-check-each-other`)의 작은 판이다.
 
 **처방.** 등재만 한다. 상수를 한 곳에 두려면 SQL 쪽이 코드 상수를 볼 수 없으므로, 반대로 **마이그레이션이 만든 이름을 정본으로 삼고 코드가 그 값을 재사용**하는 방향이 맞다. 이름을 바꾸는 순간 기존 행과 갈리므로 마이그레이션 없이 코드만 고치면 안 된다.
+
+## ⬜ agile-planning — 칸반 보드에 붙은 스프린트가 start 200 을 받고도 안 나타난다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 예전에 칸반 보드에 만들어 둔 스프린트가 있으면, 시작 버튼이 정상 동작하고 성공했다고 나오는데 화면에는 아무 일도 일어나지 않는다.
+
+**방치하면.** 사용자는 「시작했는데 아무 일도 안 일어남」을 만나고 원인을 알 수 없다. 보드 스위처가 스크럼만 노출하므로 자기가 어느 보드에 있는지도 안 보인다. 도달 경로는 좁다 — `V506` 이후 ~ #431 사이에 명시 칸반 `boardId` 로 만든 행에만 남는다. `V506__sprint_board_id.sql:49-53` 이 선재 스프린트 **전 행을 스크럼 보드에 붙였으므로** 마이그레이션 직후에는 0건이다.
+
+**무엇.** #431 이 `SprintApplicationService.resolveTargetBoard` 에 `boardType == SCRUM` 을 넣어 **생성**을 막았지만, `start`(`SprintApplicationService.kt:286-303`)는 보드를 다시 읽지 않고 종류도 보지 않는다. 그래서 선재 칸반 소속 스프린트는 여전히 200 으로 ACTIVE 가 되고, `BoardApplicationService.getBoard` 는 `boardType == SCRUM` 일 때만 활성 스프린트를 조회하므로 어느 화면에도 안 나타난다. UI 도 막지 않는다 — `SprintColumnHeader.tsx:146` 은 `canManageSprint` 만 본다.
+
+**처방.** 결정이 먼저다 — ① `start` 에도 종류 술어를 넣어 선재 행을 시작 불가로 만들거나 ② 그 행들을 스크럼 보드로 옮기는 마이그레이션을 쓰거나 ③ 「있는 것은 둔다」를 유지하고 UI 에서 시작 버튼을 감춘다. ①은 「있는 것은 둔다」(Maxi 확정 2026-09-02)를 뒤집는 것이라 확인이 필요하다.
+
+## ⬜ agile-planning — 스프린트 시작 락이 격리 수준과 대기 상한을 가정만 한다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 스프린트를 동시에 시작하는 것을 막는 잠금 장치가, 데이터베이스 설정 두 가지가 지금 값 그대로라는 가정 위에 서 있다. 그 설정이 바뀌면 잠금이 조용히 무력해진다.
+
+**방치하면.** ① 격리 수준을 `REPEATABLE READ` 로 올리면 락을 잡고도 앞선 트랜잭션의 ACTIVE 를 못 보고 서로 다른 행을 UPDATE 하므로 **ACTIVE 2건이 커밋된다** — 모든 테스트가 초록인 채로 열리는 문이다. ② 락에 상한이 없어, 느린 트랜잭션이 스프린트 행 락을 쥐면 advisory lock 을 든 채 줄이 서고 연결 풀(기본 10, 9개 BC 공유)이 마르면 무관한 엔드포인트까지 죽는다.
+
+**무엇.** `SprintApplicationService.start`(`:291` vs `:298`)가 락 뒤에서 `findActiveByBoard` 만 재조회하고 **스프린트 자체는 락 앞 스냅샷**(`status`·`version`)을 쓴다. READ COMMITTED 에서만 안전한데 `agile-planning` 은 격리 수준을 어디에도 박지 않는다(identity-access 는 3곳에서 `Isolation.READ_COMMITTED` 를 명시한다). 그리고 `SprintRepository` 의 `pg_advisory_xact_lock` 은 **무한 대기**이고 저장소 전역에 `lock_timeout`·`statement_timeout`·`hikari.*` 설정이 0건이다.
+
+**처방.** ① `start` 에 `@Transactional(isolation = Isolation.READ_COMMITTED)` 를 박거나 락 뒤에서 스프린트를 재조회한다. ② 경계 있는 선례를 따른다 — `WorkflowCache.kt:162` 의 `pg_try_advisory_xact_lock` + 200ms 예산. 최소한 락 직전 `SET LOCAL lock_timeout` 후 55P03 을 409/503 으로 매핑한다. 형제 락 `acquireProjectScrumBoardLock` 도 같은 상태라 **선재 패턴의 확장**이다.
+
+## ⬜ agile-planning — PR ⑤ 가 세운 불변식 3개에 판별식이 없다 (신규 · 미착수 · T1)
+
+**쉬운 말.** #431 이 세운 규칙 세 가지가, 규칙을 지우거나 뒤집어도 테스트가 전부 통과한다.
+
+**방치하면.** 규칙이 조용히 썩는다. 다음 사람이 「두 경로를 대칭으로 맞추자」며 읽기 경로에 종류 술어를 더하면 칸반 보드 백로그가 통째로 404 가 되는데 그것을 잡는 테스트가 없다.
+
+**무엇.** ① `BacklogApplicationService.kt:177` 의 `boardId = sprint.boardId` 매핑이 **커버리지 0** 이다 — `sprint.id` 로 바꾸는 흔한 복붙 오타에도 백엔드·프론트 전량 초록이다(`BacklogControllerIntegrationTest` 는 서비스를 `mockk(relaxed=true)` 로 갈아 끼우고 값도 테스트가 직접 넣는다). ② `SprintIntegrationTest.kt:341` 의 동시성 테스트가 `runCatching` 으로 실패 **이유**를 삼키고 `count { it.isSuccess } == 1` 만 잰다 — 연결 타임아웃이든 MANDATORY 오설정이든 무엇으로 죽어도 초록이다. 게다가 `futures.map { it.get() }` 에 타임아웃이 없어 락이 안 풀리면 실패가 아니라 **행**으로 나타난다. ③ `BacklogApplicationServiceTest.kt:107` 의 `board()` 가 `boardType = SCRUM` 을 하드코딩해 파라미터가 없다 — 읽기 경로의 의도적 비대칭을 지키는 양성 테스트가 없다.
+
+**처방.** ① `BacklogApplicationServiceTest` 에 보드별 fixture 로 `assertThat(result.sprints.map { it.sprint.boardId })` 실 매핑 단언. ② 실패 타입 고정 — `assertThat(results.mapNotNull { it.exceptionOrNull() }).singleElement().isInstanceOf(SprintAlreadyActiveException::class.java)` + `it.get(30, SECONDS)` + try/finally `shutdownNow()`. ③ `board()` 에 `boardType` 파라미터를 주고 `?board=<칸반>` 이 200 으로 스코프되는 양성 테스트를 단다.
 
 ## ⬜ agile-planning — `BoardRepository.kt` 가 파일 줄수 상한을 크게 넘는다 (신규 · 미착수 · T1)
 
@@ -1899,7 +2022,9 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 
 **방치하면.** 상태에 이슈가 하나라도 남아 있으면 발행이 계속 막힌다. 관리자는 이슈를 손으로 전부 옮기기 전까지 워크플로우를 바꿀 수 없고, 만들어 둔 이관 경로는 코드로만 존재한다 — **사용자에게 보이는 변화가 0 이다.**
 
-**무엇.** 로드맵 PR 7 은 이관 실행 경로(`IssueStatusMigrationPort` 와 그 어댑터·워커)를 만들되 **호출자는 만들지 않는** 분할이었다. `WorkflowPublishService` 는 지금도 남은 이슈를 세어 409 로 막고 상태별 건수만 응답에 싣는다. 그 결선이 로드맵 **PR 7b** 이고, 이 항목이 그것의 장부 등재다.
+**무엇.** 로드맵 PR 7 은 이관 실행 경로(`IssueStatusMigrationPort` 와 그 어댑터·워커)를 만들되 **호출자는 만들지 않는** 분할이었다. 그 결선이 로드맵 **PR 7b** 이고, 이 항목이 그것의 장부 등재다.
+
+**★이 절은 #417 이전 배경이다 (2026-09-03 정정).** 결선 자체는 `#417` 로 끝났다 — `WorkflowPublishService.kt:218` 이 `enqueueStatusMigration` 을 실제로 부르고, PUBLISH 권한 검사(`:195`)가 그보다 앞이며, `countIssuesInStatus` 는 프로젝트 스코프로 좁혀졌다(`IssueStatusUsagePort.kt:33-36`). **「`WorkflowPublishService` 가 호출자를 갖지 못했다」를 현재형으로 읽지 마라.** 이 항목이 아직 ⬜ 인 이유는 아래 「★2026-08-31 갱신」의 **이월분(`cause` 소비자 필터)** 과 「PR 7 의 게이트 2 리뷰가 미룬 것」이 남아서다.
 
 **착수 조건의 정본은 `docs/plan/product/project-workflow.md` §2.7 의 「로드맵 PR 7b 착수 조건」 각주다.** 아래는 그 각주를 장부 쪽에서 편 것이고, 둘이 갈라지면 각주가 이긴다.
 
@@ -3533,6 +3658,137 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 ---
 
 # 해소된 것
+
+## ✅ apps/web — 전환 종류를 고를 수 없어 전역 전환을 만들 방법이 없다 (신규 · **해소** · T1)
+
+**쉬운 말.** 「어느 상태에서든 쓸 수 있는 전환」을 만들 수 있다고 코드에는 적혀 있는데, 화면에 그것을 고르는 자리가 없다.
+
+**방치하면.** 그 기능이 있다고 믿고 찾다가 못 찾는다. 코드에는 처리 분기가 남아 있어 다음 사람이 「되는 기능」으로 읽고 그 위에 무언가를 쌓는다.
+
+**무엇.** `components/workflow/editor/TransitionFormDialog.tsx` 의 `kind` state 를 바꾸는
+컨트롤이 없다. 생성은 항상 `NORMAL` 이고 수정은 기존 값을 보존한다. 결과로
+`TransitionListPanel` 의 `GLOBAL` 배지 분기와 `needsFromState` 의 비-NORMAL 갈래가
+**생성 경로로는 도달 불가**다(수정 경로로만 닿는다). 픽스처에도 `kind: 'GLOBAL'` 이 0건이라
+그 분기를 태우는 판정도 없다.
+
+**처방.** FR-WF-04 D6 의 범위는 「전환 이름 편집」이라 이 PR 에서는 범위 밖으로 뒀다.
+로드맵 PR 9(다이어그램 편집기)가 전역 전환을 그려야 하므로 그때 함께 연다.
+
+**★해소 2026-09-03 · #439.** ~~로드맵 PR 9 가 함께 연다~~ — **PR 9(#434)는 열지 않았다.**
+그리는 쪽(캔버스 렌더·`kind:'GLOBAL'` 픽스처)만 넣고 만드는 쪽은 그대로 뒀다. 그려지는데
+만들 수 없으니 이 항목이 지목한 「다음 사람이 되는 기능으로 읽는다」가 오히려 강해졌다.
+#439 가 전환 종류 라디오(`NORMAL`·`GLOBAL`)를 넣어 닫았다.
+
+- **`INITIAL` 은 선택지에 없다.** 워크플로우당 하나뿐이고 V207 백필이 심어서, 다른 종류로
+  바뀌면 이슈 생성 진입점이 사라진다. `INITIAL` 을 **수정할 때는 라디오 그룹 자체를 감춘다** —
+  두면 아무것도 선택되지 않은 그룹이 되고 무심코 고르는 순간 INITIAL 이 아니게 된다.
+- 라벨 `kind`·`kindNormal`·`kindGlobal` 과 설명 둘을 i18n 정본에 새로 냈다. 그 파일 KDoc 이
+  경고한 「없다고 뜻이 다른 문자열을 빌리면 화면에 거짓말이 뜬다」를 갚는 자리다.
+- red 4건을 먼저 봤다(6 중 4 실패). GLOBAL 저장 단언에 NORMAL 저장 단언을 짝으로 붙였다 —
+  없으면 「항상 GLOBAL 을 싣는다」와 구분되지 않아 공허하다.
+
+★**이 항목은 D8 눈확인 ③④의 선행이었다.** self-loop 도 다중 간선도 GLOBAL 전환을 만들 손이
+없으면 관찰 대상 자체가 없다. 이제 그 둘을 볼 수 있다.
+
+---
+
+## ✅ apps/web — 상태 순서 변경이 되돌아갔다 오고 표시 순서가 겹칠 수 있다 (신규 · **해소** · T1)
+
+**쉬운 말.** 상태를 끌어서 순서를 바꾸면 잠깐 원래 자리로 튀었다가 다시 제자리를 찾는다. 그리고 상태를 넣고 빼고를 반복하면 순서 번호가 겹친다.
+
+**방치하면.** 화면이 덜컹거려 저장이 안 된 것처럼 보인다. 번호가 겹치면 어느 것이 앞인지 서버가 정하지 못한다.
+
+**무엇.**
+- `WorkflowEditorPage.tsx` 의 `useReorderWorkflowStatuses` 에 낙관적 업데이트가 없다. 드래그
+  직후 목록이 서버 값(옛 순서)으로 한 번 그려지고 refetch 뒤에야 새 순서가 온다.
+- 같은 파일이 새 상태의 `displayOrder` 를 `states.length + 1` 로 준다. 둘을 넣고 먼저 넣은
+  것을 뺀 뒤 다시 넣으면 기존 값과 겹친다. `Math.max(...orders, 0) + 1` 이 맞다.
+
+**처방.** `onMutate` 에서 상세 캐시를 새 순서로 미리 바꾸고 실패 시 롤백. displayOrder 는 최대값 기준으로.
+
+**★해소 확인 2026-09-03 · #439 — 이 PR 이 고친 것이 아니라 #423 이 이미 닫아 둔 것이다.**
+착수하려고 열었더니 위 「무엇」이 지목한 **두 심볼이 저장소에 없었다**(`useReorderWorkflowStatuses`
+· `states.length + 1` 둘 다 `grep` 0건). 로드맵 PR 10a(#423)가 편집기를 초안 리듀서 기반으로
+갈아엎으면서 결함의 표면이 통째로 사라졌다.
+
+- **겹침** — `lib/workflow-draft.ts:165` 의 `renumber` 가 `displayOrder` 를 배열 위치로 **항상**
+  다시 매긴다. `addState`·`removeState`·`reorderStates` 세 갈래 전부에 걸려 있어 겹칠 수가 없다.
+  장부가 제안한 `Math.max(...orders, 0) + 1` 보다 강한 형태다 — 최대값 기준은 구멍(뺀 자리)을
+  남기지만 재번호는 남기지 않는다.
+- **되돌아감** — 초안 편집기는 리듀서 기반 **로컬 상태**라 서버 왕복이 없다. 낙관적 업데이트가
+  필요한 자리 자체가 없어졌다.
+
+**비-공허 확인.** GREEN 선커밋 뒤 `renumber` 를 항등 함수로 끊어 red 3건을 실제로 봤고(30 중 3
+실패) 원복했다. 판정이 살아 있다 — 「해소됐다」가 「아무도 안 본다」가 아니다.
+
+---
+
+## ✅ apps/web — 보고 있던 보드가 화면을 옮기면 증발한다 (신규 · **해소** · T1)
+
+> **✅ 2026-09-03 해소 (#432).** 처방 그대로다 — `ProjectNavTabLink` 에 **옵셔널** `search`,
+> 빈 상태 CTA 의 `boardId` 는 **필수** prop, 보드→백로그는 현재 보드가 SCRUM 일 때만 싣는다.
+> RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이었다.
+>
+> 🛑 **공유 상태(FR-UX-07 활성 프로젝트 컨텍스트 관계 정리)는 처방이 애초에 범위 밖으로**
+> **둔 것**이고 그대로다. X7 을 통째로 뒤집은 것이 아니라 **링크 전파까지만** 해소했다.
+>
+> 게이트 2 가 두 가지를 더 잡았다 — ① `projects.board.test.tsx` 의 라우터 대역이 `search` 를
+> 삼켜 `T-BD04-1` 이 「CTA href 에 `?board=` 가 **없다**」를 계약으로 굳히고 있었다(가짜 그린).
+> ② 종류를 `boardDetail` 에서 읽어, 상세가 in-flight 인 창에서 같은 증상이 재현됐다 —
+> `boards` 요약에서 읽도록 바꾸고 `T-BD7-NAV-2` 로 잠갔다.
+
+**쉬운 말.** 보드를 두 개 이상 만든 프로젝트에서 보드 화면과 백로그 화면을 오갈 때마다, 방금 보던 보드가 아니라 **맨 처음 만든 보드**로 되돌아간다. 갈 때마다 보드를 다시 골라야 한다.
+
+**방치하면.** 데이터는 안 망가진다. 다만 보드를 여러 개 쓰는 프로젝트에서 왕복 한 번마다 보드 선택이 풀려, 사용자가 「내가 넣은 이슈가 사라졌다」로 읽는다. 스크럼 보드의 「백로그로 이동」 안내를 눌렀을 때가 가장 나쁘다 — 안내를 따랐는데 **다른 보드의 백로그**가 열린다.
+
+**무엇.** 세 자리가 보드 스코프(`?board=`)를 버린다. ① `apps/web/src/components/board/ScrumSprintEmptyState.tsx:122` 의 CTA `<Link to="/projects/$projectKey/backlog" params={{ projectKey }}>` 에 `search` 가 없다. 서버는 `?board=` 가 없으면 `BoardRepository.findScrumBoardIdByProject`(`:256-266`, `created_at ASC LIMIT 1`)로 **첫 번째** 스크럼 보드에 폴백하므로 두 번째 보드에서 누르면 다른 보드가 열린다. ② `apps/web/src/components/project/ProjectNavTabs.tsx:16-21` 의 `ProjectNavTabLink` 이 `to`·`label` 2필드뿐이고 `:57-62` 의 `<Link>` 가 `search` 를 안 싣는다 — 뷰 전환 nav(`board.tsx:64-67` · `backlog.tsx:18-25`)가 양방향으로 스코프를 잃는다. E2E 가 이 결함을 우회하고 있다는 것이 증거다 — `e2e/scrum-board.spec.ts:198` CTA 클릭 직후 `:203` 이, `:257-258` 왕복 직후가 각각 `switchToBoard` 로 **수동 재선택**한다. ③ 편차 X7(`docs/plans/2026-09-02-scrum-board-screen.md:86`)이 「두 탭이 어긋날 수 있다」를 알려진 한계로 남긴 것이 이 상태의 근거다.
+
+**처방.** `ProjectNavTabLink` 에 옵셔널 `search` 를 더하고 `ProjectNavTabs` 가 그것을 `<Link>` 에 싣는다. 빈 상태 CTA 는 `boardId` 를 **필수 prop** 으로 받는다 — 옵셔널로 두면 호출부가 빠뜨려도 초록이다. 보드→백로그 링크는 현재 보드가 SCRUM 일 때만 `board` 를 싣는다(칸반 id 를 백로그에 넘기지 않는다). RED 는 E2E 의 수동 `switchToBoard` 재선택 2줄을 지우는 것이다. 공유 상태(FR-UX-07 활성 프로젝트 컨텍스트와의 관계 정리)는 범위 밖으로 남긴다 — X7 을 통째로 뒤집는 것이 아니라 링크 전파까지만 해소한다.
+
+## ✅ agile-planning — 칸반 보드에 매단 스프린트가 어느 화면에도 나타나지 않는다 (신규 · **해소** · T2)
+
+> **✅ 2026-09-03 해소 (#431).** `resolveTargetBoard` 의 `takeIf` 에 `boardType == SCRUM` 을 더했다.
+> 상태 코드는 **404** 유지 — 403 이면 「그 UUID 는 존재한다」가 샌다.
+> 🛑 **생성 경로만** 막았다. `start` 와 읽기 경로(`resolveBoardScope`)는 선재 행을 위해 열어 둔다 —
+> 그 비대칭과 남은 구멍(`start` 200 은 여전히 어느 화면에도 안 나타난다)은 별건으로 등재했다.
+
+**쉬운 말.** 칸반 보드를 지정해 스프린트를 만들면 서버가 그대로 받아 준다. 그런데 그 스프린트는 어느 보드 화면에도 안 보인다. 시작 버튼도 정상 동작하지만 화면에서는 아무 일도 일어나지 않는다.
+
+**방치하면.** 오늘은 화면에서 도달할 수 없다 — 백로그 스위처가 스크럼 보드만 노출해 가리고 있기 때문이다. 즉 **프론트 필터 한 줄이 유일한 방어선**이고, 그 필터를 지우거나 API 를 직접 부르면 즉시 재현된다. 사용자에게는 「만들었는데 사라진 스프린트」가 되고, 그 행은 표에 남아 계속 쌓인다.
+
+**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt:427-437` 의 `resolveTargetBoard` 는 `projectKey` 일치 + `deleted_at IS NULL` 만 본다 — `boardType == SCRUM` 검사가 **없다**. 그래서 `POST /api/v1/sprints {boardId: <칸반 보드>}` 가 201 이고 `start` 도 200 이다. 그런데 `BoardApplicationService.getBoard:260` 은 `boardType == SCRUM` 일 때만 `findActiveByBoard` 를 부르므로 그 스프린트는 **영원히 조회되지 않는다.** 이 실패 양식은 이미 인지돼 있다 — `apps/web/src/routes/projects.$projectKey.backlog.tsx:153-161` 의 KDoc 이 그것을 그대로 적으면서 스크럼만 노출하는 이유로 삼는다. ADR 편차 X4(칸반 보드는 백로그 탭 없이 간다)가 이 비대칭의 근거다.
+
+**처방.** `resolveTargetBoard` 의 `takeIf` 에 `boardType == SCRUM` 을 더한다. 상태 코드는 **404** 를 유지한다 — 같은 함수의 KDoc 이 「403 이면 그 UUID 는 존재한다가 새어 나간다」를 이미 못박았다. 읽기 경로(`BacklogApplicationService.resolveBoardScope:233-243`)는 **건드리지 않는다** — 기존 시드 전량이 칸반 보드 소속 스프린트를 쓰고 있어(`apps/web/src/mocks/board-handlers.test.ts:1149-1155` 가 그 사실을 회귀 가드로 명시) 읽기까지 막으면 시드 마이그레이션이 딸려 온다. 기존 칸반 소속 행도 유지한다(V506 이 선재 다중 ACTIVE 행을 보존한 것과 같은 판단). **그 비대칭과 사유를 `resolveTargetBoard` KDoc 의 「읽기 경로와 같은 규약」 절에 적는다** — 안 적으면 그 KDoc 자체가 거짓이 된다.
+
+## ✅ agile-planning — 활성 스프린트 1개 가드가 동시 시작 두 건을 다 통과시킨다 (신규 · **해소** · T2)
+
+> **✅ 2026-09-03 해소 (#431).** `sprint-start:<boardId>` advisory lock 을 형제
+> `acquireProjectScrumBoardLock` 과 같은 모양으로 더했다. 전파는 **MANDATORY** —
+> `REQUIRED` 면 트랜잭션 없이 불렸을 때 락이 그 자리에서 풀리는데 **조용히 성공한다**.
+> 락 → **재조회** → 쓰기 순서이고 그 순서를 `verifyOrder` 가 직접 잰다. RED 는 「성공이 2건」이었다.
+
+**쉬운 말.** 「한 보드에 진행 중인 스프린트는 하나」라는 규칙이 있는데, 두 사람이 거의 동시에 시작 버튼을 누르면 둘 다 통과할 수 있다.
+
+**방치하면.** 한 보드에 활성 스프린트가 둘이 되면 보드 화면이 어느 쪽을 그릴지가 조회 순서에 달린다. 1인 사용 중에는 거의 안 나지만, 재시도하는 클라이언트나 중복 클릭만으로도 열린다. 오늘 실제 피해 보고는 0 이다.
+
+**무엇.** `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintApplicationService.kt:290-296` 이 `findActiveByBoard` 로 읽고 `updateStatus` 로 쓰는 사이에 **락이 없다**(TOCTOU). DB 도 안 막는다 — `V506__sprint_board_id.sql:63-64` 의 부분 인덱스 `idx_sprints_board_active` 는 `:66-68` 에서 **선재 다중 ACTIVE 행을 보존하려고 의도적으로 UNIQUE 가 아니다.** 같은 BC 가 이 함정을 이미 아는 자리가 있다 — `BoardApplicationService.ensureScrumBoard:178` 은 `BoardRepository.acquireProjectScrumBoardLock`(`:104-142`)을 조회보다 먼저 잡는다.
+
+**처방.** `sprint-start:<boardId>` 키로 같은 형태의 advisory lock(`pg_advisory_xact_lock(hashtextextended(?, 0))`)을 `SprintRepository` 에 추가하고, 🛑 **락을 잡은 뒤에 `findActiveByBoard` 를 재조회**한다 — 락 밖에서 읽은 값으로 판단하면 락이 무력화된다(memory `advisory-lock-bigint-toctou`; `BoardRepository.kt:122-123` 이 같은 경고를 적는다). 인덱스를 UNIQUE 로 승격하는 길은 막혀 있다 — 선재 다중 ACTIVE 행이 있으면 마이그레이션 자체가 실패한다.
+
+## ✅ agile-planning — 스크럼 보드가 활성 스프린트의 오래된 이슈를 조용히 잃는다 (신규 · **해소** · T3)
+
+> **✅ 2026-09-03 해소 (#430).** `BoardCardFilter.issueKeys`(shared-kernel)를 더하고
+> `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 LIMIT **앞**에서 조립한다.
+> 처방의 🛑 세 가지를 그대로 지켰다 — `BacklogApplicationService` 무변경 · Kotlin 사후 필터 유지 ·
+> 스프린트 이슈 키 0건이면 포트 미호출. RED 는 대상 이슈를 **먼저**(=가장 오래된) 넣는 `S13` 이다.
+
+**쉬운 말.** 이슈가 많은 프로젝트에서 스프린트를 시작해도 보드가 **비어 보일 수 있다**. 스프린트에 담은 이슈가 오래 전에 만든 것이면 화면에 안 나오고, 안 나온다는 경고도 없다.
+
+**방치하면.** 사용자가 정상적으로 시작한 스프린트가 「고장난 빈 보드」로 보인다. 스크럼 보드는 활성 스프린트 이슈만 그리는 화면이라 다른 확인 경로가 없다 — 백로그로 되돌아가 이슈가 스프린트에 들어 있는 것을 확인해도 보드는 계속 비어 있다. 오늘 실제 피해 보고는 0 이지만 프로젝트 이슈가 1,000건을 넘는 순간 발생하고, **넘었다는 사실도 화면에 안 뜬다**(`truncated` 플래그가 스프린트 필터 뒤에 계산되어 false 로 나올 수 있다).
+
+**무엇.** 자르기와 거르기의 **순서가 뒤집혀 있다.** `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt:813-814` 가 `.orderBy(ISSUES.CREATED_AT.desc())` → `.limit(BOARD_CARD_FETCH_LIMIT + 1)` 로 프로젝트 이슈를 **1,001건 먼저 자르고**, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt:264-268` 의 스프린트 필터(`page.issues.filter { it.key in sprintIssueKeys }`)가 **그 뒤**에 온다. 활성 스프린트 이슈의 `created_at` 이 상위 1,001건 밖이면 그 이슈는 포트를 빠져나오지 못한다. 기한이 이미 지난 부채다 — `docs/plans/2026-09-01-board-scrum-schema.md:384` 가 「**PR ③ 전에 닫는다**」로 못박았으나 PR ③(#424)은 닫는 대신 PR ④ 로 분리했고(`docs/plans/2026-09-02-scrum-board-screen.md:300-325`), 그 분리를 장부에 등재하는 task 가 실행되지 않아 2026-09-02 까지 **어느 목록에도 없었다**.
+
+**처방.** 스프린트 술어를 LIMIT **앞**으로 민다. `BoardCardFilter`(shared-kernel)에 서버 내부 전용 `issueKeys` 를 더하고 `IssueRepository.buildFilterCondition` 이 `ISSUES.KEY.in(...)` 을 조립하게 한다 — `statusKeys` 가 이미 같은 모양의 선례다(파서가 만들지도 직렬화하지도 않는 필드). 🛑 세 가지를 지킨다. ① `BacklogApplicationService` 에 같은 술어를 넣지 않는다 — 백로그는 **차집합**이라 술어가 반대로 작용해 백로그 칸이 전멸한다. ② `BoardApplicationService` 의 Kotlin 사후 필터를 지우지 않는다 — 포트 계약(`BoardIssueLookupPort.kt:71-82` CONCERN-1)이 구현체의 filter 드롭을 명시적으로 허용하므로 카드 정확성은 소비측 책임이다. ③ 스프린트 이슈 키가 0건이면 포트를 아예 호출하지 않는다 — 빈 목록은 VO 규약상 「무필터」라 그대로 넘기면 전량 조회 + 허위 `truncated` 가 된다. RED 는 **대상 이슈를 먼저(=오래된) 넣고** 비대상 1,001건을 뒤에 넣어야 성립한다 — 기존 `BoardIssueLookupAdapterTest` S9 처럼 대상을 나중에 넣으면 현재 코드로도 통과한다.
 
 ## ✅ apps/web — 관리 메뉴 계약 가드가 링크 개수를 안 세어 새 링크가 영원히 안 걸린다 (신규 · **해소** · T1)
 

@@ -61,7 +61,7 @@
 - [x] D2. 명세 (책임. backend-engineer) — PR #18
 - [x] D3. 데이터 모델 — `workflow_schemes`, `project_workflow_scheme_map`, `scheme_issue_type_workflow` (책임. db-engineer) — PR #18
 - [x] D4. 백엔드 — Scheme 관리 API — REST 10 endpoint (Scheme CRUD 5 + Mapping 2 + Project assignment 2 + IssueType read 1) + 예외 핸들러 (책임. backend-engineer + security-engineer) — PR #18
-- [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속*
+- [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *종전 각주 「S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속」은 **2026-09-03 실측으로 닫는다** — 스킴 통합 테스트가 실재한다(`scheme/repository/` 3건 · `scheme/web/WorkflowSchemeControllerIntegrationTest.kt`). 「S1~S8」이라는 명명은 정의처가 없고, 이름이 겹치는 두 가지가 저장소에 따로 있다 — `integration/WorkflowIntegrationTest.kt` 의 S1~S7(FR-WF-01 Task 35)과 `apps/web/e2e/issue-transition.spec.ts` 의 S8(#398, §2.5 각주). 그 명명을 되살리지 않는다*
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
 
@@ -152,7 +152,7 @@
 - [x] D5. 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 이슈 상태 전량 이동 (책임. backend-engineer)
 - [x] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer) (로드맵 PR 10a — 초안 전환·발행·복원 · 로드맵 PR 10b — 이관 마법사)
 - [x] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer) (로드맵 PR 10a·10b)
-- [ ] D8. 프론트 — `@xyflow/react` 다이어그램 편집기 (책임. frontend-engineer)
+- [x] D8. 프론트 — `@xyflow/react` 다이어그램 편집기 (책임. frontend-engineer) (PR #434, 2026-09-03 — 로드맵 PR 9)
 
 > **D3 의 번호를 V207 → V208 로 정정했다** (2026-08-26). 계획 당시 예약해 둔 V207 을 FR-WF-05
 > (전환 identity, #395)가 먼저 가져갔다. 착수 시점 실측으로 확인해 다음 가용 번호로 바꿨다 —
@@ -313,6 +313,30 @@
 >   않으면 조용히 사라지고, 넣으면 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로 남아 **셀 수 있다**.
 >   프로젝트를 다시 활성화하면 그 이슈들이 워크플로우에 없는 상태에 남아 있는 것이 한계다
 
+> **D8 완료 — xyflow 다이어그램 편집기 (PR #434, 2026-09-03 · 로드맵 PR 9)**. 2026-08-26 에 신설한
+> 마커가 닫히며 §2.7 의 D 마커가 D1~D8 전수 `[x]` 가 됐고, 같은 시점에 **§2 의 FR-WF 도 전수 `[x]`**
+> 가 됐다(§NFR 「BC 완료 조건」의 2026-09-03 재실측이 그 전수를 적는다).
+> - **무엇을 냈나** — 편집기에 「다이어그램」 세 번째 탭을 얹었다. 초안의 상태가 노드로, 전환이
+>   화살표로 그려지고, 노드를 끌어 배치하며 노드 핸들에서 끌어 전환을 만든다. 기본 탭은 「상태」
+>   그대로다. 근거는 Jira Cloud 실물 조회 7행이고 정본은
+>   `docs/plans/2026-09-03-xyflow-fr-wf-07-d8-pr-9.md` 의 `## Jira 대조` 다.
+> - **★ 좌표가 사는 곳을 정정했다 (편차 X3)** — 로드맵(2026-08-18)은 「노드 좌표는
+>   `workflow_statuses.layout_x/y` 에 저장」을 전제했는데, 그 뒤 D1~D7 이 편집기를 초안(JSONB)
+>   기반으로 바꿔 **초안의 새 상태에는 그 테이블 행이 아직 없다**. 좌표는 초안에 싣고 **발행 시**
+>   정규 테이블로 내려쓰며, 초안을 새로 뜰 때 그 컬럼을 되읽는다. 로드맵 정본
+>   (`~/.claude/plans/cozy-hatching-otter.md` PR 9 절)도 같은 날 고쳤다 — 안 고치면 다음 사람이
+>   낡은 저장 위치를 그대로 믿는다.
+> - **★ 게이트 1 이 돌아오는 길을 잡았다** — 착수 스펙은 「초안 → 발행 → `workflow_statuses`」
+>   한 방향뿐이었다. 그러면 발행한 뒤 초안을 새로 뜰 때 배치가 조용히 사라지는데 「발행하면
+>   좌표가 실린다」 판정은 **그대로 통과**한다(`[[two-lists-never-check-each-other]]` 양식).
+>   `CurrentDefinitionReader` 가 편성 리포지토리로 좌표를 되읽는 경로를 같은 범위에 넣고 왕복
+>   판정을 붙였다.
+> - **마이그레이션 0** — `workflow_statuses.layout_x`·`layout_y` 는 V203 에 이미 있었고 이 PR 이
+>   **첫 소비자**다. 초안은 JSONB 라 DDL 이 없다.
+> - **손대지 않은 것** — `WorkflowDiagram.tsx`(mermaid)는 읽기 전용 상세 `/workflows/{key}` 에
+>   그대로 남는다. 편집기는 `/admin/workflows/{key}` 라 라우트가 갈려 충돌이 없다. 새
+>   `role="dialog"` 이름도 만들지 않았다 — 전환 생성은 기존 「전환 수정」 다이얼로그를 재사용한다.
+
 > **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환이 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 
 ## §NFR project-workflow BC 완료 게이트
@@ -331,9 +355,9 @@
 
 ### BC 완료 조건
 
-> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ (로드맵 PR 6) / D2·D5 ✅ (로드맵 PR 7 — 이관 실행) / D4 ✅ (로드맵 PR 7b — #417 결선) / D6 부분 (초안 전환·발행·복원 — 로드맵 PR 10a) / D7 부분 / D8 ⬜** — 후속. Wave 6(S1~S8 통합테스트 + ADR/SDD) · C1 detekt 정합 · §NFR deferred trigger 도달 시 측정
+> **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ (로드맵 PR 6) / D2·D5 ✅ (로드맵 PR 7 — 이관 실행) / D4 ✅ (로드맵 PR 7b — #417 결선) / D6·D7 ✅ #423·#427 (로드맵 PR 10a 초안 전환·발행·복원 · PR 10b 이관 마법사) / D8 ✅ #434 (로드맵 PR 9 — xyflow 다이어그램)** — **§2 FR-WF 는 전수 `[x]`**. 후속. **Wave 6 와 C1 은 2026-09-03 실측으로 정리했다** — Wave 6 는 §2.2 D5 각주로(통합 테스트 실재 · 「S1~S8」 명명은 정의처 없음), `C1 detekt 정합` 은 **이 줄 말고 정의처가 저장소 어디에도 없어**(`grep` 0건) 유령 항목으로 판정하고 지운다. 되살리려면 무엇을 맞추는 일인지부터 적어야 한다. **남은 실질은 §NFR deferred trigger 도달 시 측정 하나다.**
 
-- [ ] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
+- [x] §2 (FR-WF 7개) 모두 `[x]` 마킹 — **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
   **2026-08-26 재실측(PR #407 시점) — 미완은 §2.7 FR-WF-07 의 D1~D7 뿐이다.** WF-04·05·06 이 전부 닫혔다.
   **같은 날 재실측(초안·발행 PR 시점)** — §2.7 에 D8(xyflow 다이어그램)이 신설돼 마커가 8개가 됐고,
   그중 D1·D3 가 닫혔다. 미완은 **D2·D4·D5·D6·D7·D8** 여섯이며 D2·D4·D5 는 부분 완료다(잔여가 전부
@@ -342,6 +366,15 @@
   규칙)와 D5(이관 후 전량 이동)를 닫았다. 미완은 **D4·D6·D7·D8** 이고, 그중 D4 는 결선 한 자리만
   남은 부분 완료다 — 발행 경로가 이관 포트를 실제로 부르는 것은 **로드맵 PR 7b** 다. 전수는 §2.7
   각주에 적었다.
+  **2026-09-03 재실측(로드맵 PR 9 · xyflow 다이어그램 PR 시점)** — 로드맵 PR 10a·10b(#423·#427)가
+  D6·D7 을, 이 PR(#434)이 D8 을 닫았다. **미완 D 마커 0 — §2 의 FR-WF 가 전수 `[x]` 다.** 전수는
+  FR-WF-01 D1~D7 · FR-WF-02 D1~D7 · FR-WF-03 D1·D2·D4·D5(D3·D6·D7 비해당) · FR-WF-04 D1~D7 ·
+  FR-WF-05 D1~D7 · FR-WF-06 D1·D2·D4·D5·D6·D7(D3 비해당) · FR-WF-07 D1~D8 이다. **그래서 이 항목을
+  `[x]` 로 켠다** — 2026-07-27 에 한 번 닫혔다가 범위 확대로 열렸던 게이트가 두 번째로 닫혔다.
+  나머지 게이트 항목(§NFR 측정 · README §7 · Maxi 선언)은 그대로 `[ ]` 이므로 **BC 완료 선언은
+  아니다.** 같은 날 `docs/plan/README.md` §1 의 project-workflow 진척 열도 `☐ D단계 (WF-07)` →
+  `☑ D단계` 로 옮겼다 — `verify-master-plan.sh` 룰 H 가 미완 D 마커 0 과 그 열을 양방향으로 대조해,
+  한쪽만 고치면 EXIT 4 로 막는다.
   개수 대신 전수로 적는다 — 「N건」은 눈가리개이고, 실제로 `grep '^- \[ \] D'` 는 §1.2 의
   「**D**ATA.md … 숙지」 줄을 D 마커로 오탐한다
 - [ ] §NFR 측정표 모든 항목 임계 통과 (위 deferred trigger 충족 후) — 미측정. 측정표 5행 실측값이 전부 `___`. deferred trigger (b) 미충족 — `docs/adr/`·`docs/decisions/` 어디에도 `*-k6-load-testing.md`·`*-axe-accessibility.md` 없음 (2026-07-27 실측). k6 부하 · Playwright 렌더 · axe-core 5항목 측정 필요

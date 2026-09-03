@@ -8,11 +8,18 @@ import { describe, it, expect } from 'vitest'
  * 실측(전체 Tailwind 팔레트 패턴 grep) 결과 프로덕션 리터럴은 이 4파일에만 남아 있다.
  * `components/workflow/WorkflowDiagram.tsx`는 리터럴이 **주석 문자열**이고 mermaid가 var()를
  * 지원하지 않아 PR4가 이미 OUT으로 판정했으므로 목록에서 제외한다.
+ *
+ * ★ **이 배열은 명시 허용목록이다 — 여기 없는 파일은 스캔되지 않는다.**
+ * 범주색(카테고리별로 색이 갈리는 것)을 새로 그리는 파일을 만들면 **같은 커밋에서** 여기 등재하고,
+ * 일부러 리터럴을 하나 넣어 red 를 1회 본 뒤 되돌려라. 등재만 하고 발화를 안 보면
+ * 「목록에 있는데 안 잡는」 상태를 물려받는다 — 읽지 않는 열은 썩는다.
+ * `workflow/editor/StatusNode.tsx`(FR-WF-07 D8)가 그 절차로 들어온 행이다.
  */
 const CATEGORY_SOURCES = [
   'timeline/TimelineRow.tsx',
   'issue/EpicProgressBar.tsx',
   'favorite/FavoriteButton.tsx',
+  'workflow/editor/StatusNode.tsx',
 ] as const
 
 /** features/ 아래라 components/ 상대경로로 못 잡는 파일 */

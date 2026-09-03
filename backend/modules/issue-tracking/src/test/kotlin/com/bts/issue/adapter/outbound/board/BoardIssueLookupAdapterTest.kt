@@ -340,12 +340,16 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
      *
      * 단일 커넥션 + JDBC addBatch/executeBatch 로 왕복(round-trip) 최소화.
      * assigneeId 로 [otherAssignee] 를 주입해 필터에 "매칭 안 되는" 이슈 [count] 건을 삽입한다.
-     * key 는 `TPRJ-1` ~ `TPRJ-[count]` 형식 (호출 전 `cleanIssues()` 가 key_sequence=0 을 보장).
+     * key 는 `TPRJ-[startSeq]` 부터 [count] 건 (호출 전 `cleanIssues()` 가 key_sequence=0 을 보장).
+     *
+     * [startSeq] 는 **대상 이슈를 먼저 넣어야 하는 테스트**를 위한 것이다 (S13). 기본값 1 은 S9 의
+     * 기존 호출을 그대로 둔다 — S9 는 반대로 비매칭을 먼저 넣고 대상을 뒤에 넣는다.
      */
     @Suppress("NestedBlockDepth")
     private fun insertNonMatchingIssuesBatch(
         count: Int,
         otherAssignee: UUID,
+        startSeq: Int = 1,
     ) {
         val typeId = requireTaskTypeId().value
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -355,14 +359,16 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
                     "(id, key, project_id, type_id, summary, reporter_id, assignee_id, current_state_key, priority) " +
                     "VALUES (gen_random_uuid(), ?, ?, ?, ?, gen_random_uuid(), ?, 'open', 3)",
             ).use { stmt ->
-                for (seq in 1..count) {
+                for (seq in startSeq until startSeq + count) {
                     stmt.setString(1, "TPRJ-$seq")
                     stmt.setObject(2, testProjectId)
                     stmt.setLong(3, typeId)
                     stmt.setString(4, "non-match $seq")
                     stmt.setObject(5, otherAssignee)
                     stmt.addBatch()
-                    if (seq % 100 == 0) stmt.executeBatch()
+                    // ★flush 주기는 seq 절대값이 아니라 **삽입 순번**으로 잰다.
+                    //   seq 로 재면 startSeq 가 100 의 배수가 아닐 때 주기가 어긋난다.
+                    if ((seq - startSeq + 1) % 100 == 0) stmt.executeBatch()
                 }
                 stmt.executeBatch()
             }
@@ -879,5 +885,60 @@ class BoardIssueLookupAdapterTest : IssueTestcontainersBase() {
         val result = adapterWith(unrestricted()).isVisibleIssue("TPRJ", "TPRJ-1", viewer)
 
         assertThat(result).isFalse()
+    }
+
+    // ── S13. issueKeys 는 LIMIT **앞**에서 적용된다 (FR-BD-04 PR ④) ─────────────
+    //
+    // 🛑 이 테스트의 삽입 **순서가 판정 그 자체**다. S9(EC7)를 그대로 베끼면 안 된다 —
+    //    S9 는 대상 이슈를 **나중에**(=최신) 넣어서 `created_at DESC` LIMIT 창 안에 이미 들어온다.
+    //    그 모양으로는 「LIMIT 뒤 필터」 구현으로도 통과한다(가짜 GREEN).
+    //
+    //    여기서는 대상 3건을 **먼저**(=가장 오래된) 넣고 비대상 LIMIT+1 건을 뒤에 넣는다.
+    //    술어가 LIMIT 뒤에 오면 최신 LIMIT+1 건이 창을 다 채워 대상이 잘리고,
+    //    반환은 0건 · truncated=true 가 된다.
+
+    @Test
+    @Order(29)
+    fun `S13 - issueKeys 필터는 LIMIT 앞에서 적용된다 - 대상이 가장 오래됐고 비대상이 LIMIT+1건이어도 전량 반환된다`() {
+        val otherAssignee = UUID.randomUUID()
+
+        // (1) 대상 3건을 **먼저** 넣는다 — created_at 이 가장 이르다.
+        for (seq in 1L..3L) {
+            insertIssue(seq = seq, securityLevelId = null)
+        }
+
+        // (2) 비대상 LIMIT+1 건을 **뒤에** 넣는다 — 전부 대상보다 최신이다.
+        val nonMatchCount = IssueRepository.BOARD_CARD_FETCH_LIMIT + 1
+        insertNonMatchingIssuesBatch(nonMatchCount, otherAssignee, startSeq = 4)
+
+        val filter = BoardCardFilter(issueKeys = listOf("TPRJ-1", "TPRJ-2", "TPRJ-3"))
+        val result = adapterWithFilter(unrestricted(), filter)
+
+        // (a) 지정한 3건이 전부 살아 돌아온다 — 술어가 LIMIT 앞에 있다는 증거
+        assertThat(result.issues.map { it.key })
+            .containsExactlyInAnyOrder("TPRJ-1", "TPRJ-2", "TPRJ-3")
+        // (b) 필터 후 집합이 LIMIT 이하 → truncated=false
+        assertThat(result.truncated).isFalse()
+    }
+
+    // ── S14. visibility 는 issueKeys 보다 앞선다 (EC8 의 issueKeys 판) ──────────
+
+    @Test
+    @Order(30)
+    fun `S14 - viewer 가 볼 수 없는 보안 등급 이슈는 issueKeys 로 지정해도 제외된다`() {
+        val viewer = UUID.randomUUID()
+        val secretLevel = UUID.randomUUID()
+        insertIssue(seq = 1, assigneeId = viewer, securityLevelId = secretLevel) // 목록 안 · 비가시
+        insertIssue(seq = 2, assigneeId = viewer, securityLevelId = null) // 목록 안 · 가시
+        // 🛑 목록 **밖**의 가시 이슈. 이것이 없으면 화이트리스트가 아무것도 배제하지 않아
+        //    issueKeys 술어가 통째로 드롭돼도 이 테스트가 통과한다(가짜 그린).
+        insertIssue(seq = 3, assigneeId = viewer, securityLevelId = null)
+
+        val filter = BoardCardFilter(issueKeys = listOf("TPRJ-1", "TPRJ-2"))
+        val adapter = BoardIssueLookupAdapter(repository, StubSecurityDirectory(restricted()))
+        val result = adapter.listVisibleIssuesByProject("TPRJ", viewer, filter)
+
+        // TPRJ-1 은 visibility 가, TPRJ-3 은 issueKeys 가 뺀다 — 어느 술어가 드롭돼도 red 다.
+        assertThat(result.issues.map { it.key }).containsExactly("TPRJ-2")
     }
 }

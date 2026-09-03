@@ -76,16 +76,29 @@ data class WorkflowDraftDefinition(
 /**
  * 초안의 상태 항목.
  *
+ * ### 좌표는 편집기 전용 필드다
+ * [layoutX]·[layoutY] 는 다이어그램 편집기가 노드를 어디에 그릴지만 정한다. 도메인
+ * [WorkflowState] 로는 **넘기지 않는다** — 전환 계산 핫패스가 쓰지도 않는 값을 지고 다니게 되고,
+ * 그러자고 읽기 경로(`WorkflowRepository` · `WorkflowStateView`)를 넓히면 그 비용이 모든 전환
+ * 조회에 붙는다. 발행은 이 값을 `workflow_statuses.layout_x`·`layout_y` 로 내려쓰고, 초안 조회는
+ * [com.bts.workflow.application.CurrentDefinitionReader] 가 편성 테이블에서 따로 읽어 채운다.
+ *
  * @property key 상태 키. 전역 카탈로그 `statuses.key` 와 같은 값이다.
  * @property name 상태 이름.
  * @property category 카테고리 문자열 (TODO / IN_PROGRESS / DONE).
  * @property displayOrder 표시 순서. 작을수록 앞.
+ * @property layoutX 다이어그램 노드의 X 좌표. null 이면 편집기가 자동 배치한다 — 0.0 으로 접지
+ *   않는다. 「아직 배치한 적 없음」과 「원점에 두었음」은 다른 뜻이고, 접으면 배치한 적 없는
+ *   노드가 전부 원점에 겹쳐 그려진다.
+ * @property layoutY 다이어그램 노드의 Y 좌표. 위와 같다.
  */
 data class DraftStateDto(
     val key: String = "",
     val name: String = "",
     val category: String = "",
     val displayOrder: Int = 0,
+    val layoutX: Double? = null,
+    val layoutY: Double? = null,
 ) {
     /**
      * 도메인 [WorkflowState] 로 변환한다.

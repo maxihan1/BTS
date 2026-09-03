@@ -112,9 +112,11 @@ class BacklogControllerIntegrationTest {
         sprintId: UUID = UUID.randomUUID(),
         name: String = "Sprint 1",
         status: String = "PLANNED",
+        boardId: UUID = UUID.randomUUID(),
     ): SprintMetaResponse =
         SprintMetaResponse(
             sprintId = sprintId,
+            boardId = boardId,
             name = name,
             goal = null,
             status = status,
@@ -195,6 +197,8 @@ class BacklogControllerIntegrationTest {
             .andExpect(jsonPath("$.data.sprints[0].issues[0].key").value("BTS-2"))
             .andExpect(jsonPath("$.data.sprints[0].sprint.sprintId").value(sprintId.toString()))
             .andExpect(jsonPath("$.data.sprints[0].sprint.status").value("ACTIVE"))
+            // FR-BD-04 PR ⑤-3 — 백로그의 스프린트 메타도 소속 보드를 노출한다(SprintResponse 와 같은 계약).
+            .andExpect(jsonPath("$.data.sprints[0].sprint.boardId").exists())
     }
 
     // ── BC-3(양성): truncated 전파 ────────────────────────────────────────────

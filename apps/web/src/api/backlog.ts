@@ -67,6 +67,14 @@ export const backlogIssueSchema = z.object({
 export const sprintMetaSchema = z.object({
   /** 스프린트 UUID */
   sprintId: z.string().uuid(),
+  /**
+   * 소속 보드 UUID (FR-BD-04 PR ⑤).
+   *
+   * 스프린트는 프로젝트가 아니라 **보드**에 매달린다(ADR §D2). 이 필드가 없으면 클라이언트가
+   * 소속 보드를 알 방법이 없어 관측이 **요청 바디**로 밀린다 — 서버가 boardId 를 흘려도
+   * 화면이 멀쩡해 결함이 안 보인다. **optional 로 두지 않는 이유가 그것이다.**
+   */
+  boardId: z.string().uuid(),
   /** 스프린트 이름 */
   name: z.string(),
   /** 스프린트 목표. 미설정 시 null. nullish 방어 */

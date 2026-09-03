@@ -227,6 +227,11 @@ class WorkflowDraftDefinitionTest {
         assertThat(empty.states).isEmpty()
         assertThat(empty.transitions).isEmpty()
         assertThat(DraftStateDto().displayOrder).isZero()
+        // 좌표는 다이어그램 편집기가 뒤늦게 더한 필드다(FR-WF-07 D8). 기본값이 없으면 그 이전에
+        // 저장된 초안 JSONB 가 전부 읽히지 않는다 — 0.0 으로 접어도 안 된다. 「배치한 적 없음」과
+        // 「원점에 두었음」은 다른 뜻이고, 접으면 편집기가 모든 노드를 원점에 겹쳐 그린다.
+        assertThat(DraftStateDto().layoutX).isNull()
+        assertThat(DraftStateDto().layoutY).isNull()
         assertThat(DraftTransitionDto().kind).isEqualTo(TransitionKind.NORMAL.name)
         assertThat(DraftRuleDto().config).isEmpty()
     }

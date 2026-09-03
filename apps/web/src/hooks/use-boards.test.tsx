@@ -441,6 +441,7 @@ const MOCK_BOARD_META: BoardMeta = {
   projectKey: 'ATLAS',
   name: '바뀐 보드',
   swimlaneField: 'NONE',
+  boardType: 'KANBAN',
 }
 
 describe('useUpdateBoardName', () => {

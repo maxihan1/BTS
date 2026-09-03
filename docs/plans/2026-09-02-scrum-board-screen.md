@@ -83,7 +83,7 @@ ADR 3분할 표가 ③ 을 **T2** 로 지정했고, ②와 달리 **백엔드 `m
 | **X5** | 백로그 진입 시 보드 미지정 | **기본 보드로 폴백** | ADR 「결과」 절. **깨진 링크를 만들지 않는 것이 패리티보다 앞선다.** J17 이 「진입은 탭 하나」라 Jira 도 사용자에게 boardId 를 요구하지 않는다 — 폴백은 그 사용자 경험의 BTS 판이다 |
 | **X6** | URL 경로를 `/boards/{id}/backlog` 로 (J16 의 REST 계층을 화면 URL 에도) | **미채택 — 기존 `?board=` 규약 유지** | ADR 이 **「새 URL 체계를 만들지 않는다」**를 명시했다. 경로를 바꾸면 nav 링크·기존 공유 링크·`project-tree.spec.ts:39`(href 완전 일치) 가 전부 깨지고 ADR 수정이 선행돼야 한다. **모델은 옮기되 URL 체계는 안 건드린다** |
 | **X8** | 스프린트가 **두 보드에 동시에** 보이는 것(J20) | **미채택 — BTS 는 `board_id` 로 못박는다** | Jira 는 보드가 저장 필터라 같은 스프린트가 여러 보드에 걸린다. BTS 는 #421 이 `sprints.board_id` 를 넣어 **스프린트를 한 보드에 귀속**시켰다(ADR §D2). 그 결정을 뒤집지 않는다 — **다만 백로그 칸 계산은 J20 의 원리를 따른다**(E12) |
-| **X7** | 보드 탭과 백로그 탭의 board 공유 | **미채택 — 각 탭이 자기 `?board=` 를 든다** | Jira 는 보드를 고르면 백로그·활성 스프린트가 한 쌍으로 따라온다(J15). BTS 도 그렇게 하려면 공유 상태(활성 프로젝트 컨텍스트 FR-UX-07 과의 관계 정리)가 필요해 범위가 넘친다. **두 탭이 어긋날 수 있다는 것을 알려진 한계로 남긴다**(Maxi 확정 2026-09-02) |
+| **X7** | 보드 탭과 백로그 탭의 board 공유 | **미채택 → 2026-09-02 PR ⑥ 에서 부분 해소** | Jira 는 보드를 고르면 백로그·활성 스프린트가 한 쌍으로 따라온다(J15). BTS 도 그렇게 하려면 공유 상태(활성 프로젝트 컨텍스트 FR-UX-07 과의 관계 정리)가 필요해 범위가 넘친다. **두 탭이 어긋날 수 있다는 것을 알려진 한계로 남긴다**(Maxi 확정 2026-09-02). 🔄 **2026-09-02 PR ⑥ 이 링크 전파까지 해소했다** — 뷰 전환 nav 와 빈 상태 CTA 가 현재 보드를 `search` 로 실어 나른다(`ProjectNavTabLink.search`). 왕복 유실은 사라졌다. **공유 상태는 여전히 범위 밖이다** — 「마지막으로 본 보드」 기억이 없어 `?board=` 없이 들어오면 보드 탭은 `boards[0]`, 백로그·서버는 첫 스크럼 보드로 각자 폴백한다(장부 `apps/web — 「기본 보드」 규칙이 세 곳에서 서로 다르다`). Maxi 확정 2026-09-02 |
 
 ## 도메인 정리
 
@@ -297,7 +297,7 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 > 다. 「T2+ 에서 이 렌즈는 생략 불가」가 그 파일 주석의 못이다. Task 7 이 그 파일을 만진다.
 > 실제 변경은 `validateSearch` 에 `board?: string` 한 줄이라 렌즈는 짧게 끝나지만 **빠뜨리면 안 된다.**
 
-### 🔜 PR ④ 로 분리한 것 — `truncated` 부채 (FR-6 이었던 것)
+### ✅ PR ④ 로 분리한 것 — `truncated` 부채 (FR-6 이었던 것) · **2026-09-02 해소**
 
 **무엇** — `IssueRepository.kt:813-825` 가 `created_at DESC` 로 **1,000건을 먼저 자르고**
 스프린트 필터가 **그 뒤**에 온다(`BoardApplicationService.getBoard:252-268`). 활성 스프린트 이슈가
@@ -323,6 +323,38 @@ early-return 으로 만들면 `board-manage.spec.ts:162-171`(SCRUM 보드로 전
 
 **ADR·부채 장부 동기화** — ADR 3분할 표에 **④ 행 추가**가 필요하다. `fr-sync-checklist.md` 대상이므로
 **Task 9(문서 동기화)가 같은 PR 에서** 처리한다.
+
+---
+
+#### 🛑 2026-09-02 후일담 — 위 동기화 지시가 실행되지 않았다
+
+**이 PR 의 Task 9 는 문서 동기화가 아니라 E2E 였다**(`### Task 9. E2E — D7 신규 + 기존 회귀 (D7)`).
+문서 동기화 task 자체가 task 목록에 없었다. 그래서 ④ 는 ADR 표에도 `TODOS.md` 에도 등재되지 않고
+**이 문단 하나에만** 남았다 — 저장소의 어떤 목록도 세지 않는 상태로 2026-09-02 까지 왔다.
+`two-lists-never-check-each-other` 양식이고, 이 문단이 그것을 경계하면서 스스로 밟았다.
+
+**교훈.** 「Task N 이 처리한다」고 쓸 때 **그 Task 가 실재하는지**를 같은 자리에서 확인한다.
+지시와 task 목록이 갈리면 지시 쪽은 아무도 안 읽는다.
+
+복구는 PR ⓪(장부 동기화)이 했다 — ADR 6분할 표 · `TODOS.md` 7건 · 마스터 전수 매핑 158~164 ·
+`agile-planning.md` §2.4 Deviation.
+
+#### 🛑 인계 지침 3·4 는 실측에서 뒤집혔다 — PR ④ 는 정정본을 따랐다
+
+- **지침 3(abstract 로 전수 드러남)** — 성립하지 않는다. `mockk(relaxed = true)` **3곳**
+  (`BoardApplicationServiceTest.kt:116` · `BacklogApplicationServiceTest.kt:161` ·
+  `SprintApplicationServiceTest.kt:105`)이 조용히 통과한다. 게다가 abstract 화는
+  `BoardPortContractTest.kt:71,80` 의 `object : BoardIssueLookupPort {}` — **fail-safe default 의
+  존재 자체를 검증하는 테스트** — 를 컴파일 불가로 만든다. **새 메서드를 안 만들면 함정이 소멸한다.**
+- **지침 4(`const val` 이라 RED 를 못 만든다)** — 불필요하다. 1,001행 배치 헬퍼가 이미 있다
+  (`BoardIssueLookupAdapterTest.kt:346 insertNonMatchingIssuesBatch`). 가시성을 바꿔 얻는 것이 0 이다.
+- **대신 진짜 함정은 삽입 순서였다.** 기존 `S9`(EC7)는 대상 이슈를 **나중에**(=최신) 넣어
+  LIMIT 창 안에 이미 들어온다 — 그 모양을 베끼면 「LIMIT 뒤 필터」로도 통과한다(가짜 GREEN).
+
+채택안은 `BoardCardFilter.issueKeys`(서버 내부 전용 필드 · `statusKeys` 선례)이고
+포트 시그니처는 바뀌지 않았다. 정본은
+[spec](../specs/2026-09-02-board-sprint-scoped-lookup.md) ·
+[plan](2026-09-02-board-sprint-scoped-lookup.md).
 
 ### Task 1. 백엔드 — 보드 목록에 종류를 싣는다 (FR-5)
 
