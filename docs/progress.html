@@ -1661,13 +1661,23 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">125</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 94건 · 전체 219건</span>
+      <span class="big-pct" style="color:#9ca3af;">126</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 94건 · 전체 220건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 125건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">26건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 126건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">27건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — FR-WF-07 D8 <b>다이어그램 눈확인 9항목 미실시</b> (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 워크플로우 다이어그램 화면을 자동 검사로만 확인했고 사람 눈으로는 한 번도 안 봤다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 화면이 이상해도 아무도 모른 채로 남는다. <b>이 PR 에서 정확히 그 일이 두 번 났다</b> —</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — FR-WF-07 D8 **다이어그램 눈확인 9항목 미실시** (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p>색이 맞는지, 선이 겹치는지, 어두운 모드에서 안 깨지는지는 자동 검사가 못 재는 것들이다.</p><p>자동 검사는 전부 초록인데 게이트 2 리뷰가 코드를 읽고서야 ① 겹친 화살표와 자기 자신으로 도는 전환이 <b>아예 안 그려지고 있었고</b> ② 노드를 끌면 커서만 가고 노드는 안 따라온다는 것을 잡았다. 둘 다 고쳤지만, 「초록인데 화면은 다르다」가 이 기능의 성질이라는 뜻이다.</p><p>PR #434(FR-WF-07 D8 xyflow 다이어그램 편집기)가 <b>머지 전 필수였던 브라우저 눈확인을 하지 않은 채 머지됐다.</b> Maxi 결정(2026-09-03 — 게이트 2 에서 「승인 — 바로 머지」 선택)이고, plan 의 완료 기준 문장도 같은 PR 에서 「머지 후로 이월」로 고쳐 계약과 실제를 맞췄다.</p><p><b>볼 것 — 라이트/다크 양쪽에서 9항목.</b></p><ul class="md-list"><li>노드 카테고리 색이 <b>mermaid 화면과 같은 색인가</b> — <code>/workflows/software-default</code> 와 <code>/admin/workflows/software-default</code> 다이어그램 탭을 나란히 열어 대조한다</li><li>엣지 라벨(전환 이름)이 읽히는가</li><li><b>self-loop 곡선이 노드에 안 가리는가</b> — 같은 상태로 돌아오는 전환을 하나 만들어 본다</li><li><b>다중 전환 간선이 벌어지는가</b> — 같은 상태쌍에 전환을 둘 만들어 본다</li><li>hover 하면 연결 핸들이 보이는가</li><li><code>@xyflow/react</code> 기본 CSS 가 <b>다크에서 배경·간선을 침범하지 않는가</b></li><li>상태 0개 초안의 빈 캔버스 문구</li><li>노드 선택 상태 표시가 보이는가</li><li><code>INITIAL</code> 시작 원과 <code>GLOBAL</code> 좌측 상단 패널이 mermaid 와 같은 의미로 읽히는가</li></ul><p>★ <b>③④는 목 픽스처로는 관찰이 불가능하다.</b> <code>mocks/workflow-fixtures.ts</code> 의 4개 워크플로우에 self-loop 도 중복 쌍도 없다 — 손으로 만들어야 보인다. 이것이 이 항목의 핵심 가치다.</p><p><b>어떻게.</b> <code>cd apps/web &amp;&amp; node_modules/.bin/vite</code> 로 dev 서버를 띄우고 <code>/admin/workflows/software-default</code> 의 다이어그램 탭을 연다. MSW 가 켜져 있으므로 백엔드는 필요 없다. 다크 모드는 브라우저 설정 또는 앱의 테마 토글로 바꾼다.</p><p><b>선행.</b> 없음. PR #434 는 머지됐다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — FR-WF-07 D6b <b>실서버 눈확인 5경로 미실시</b> (신규 · 미착수 · T1)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 상태 이관 마법사를 가짜 서버(테스트용 흉내 서버)로만 확인했고 진짜 서버로는 한 번도</p>

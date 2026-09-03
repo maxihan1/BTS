@@ -1,6 +1,6 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (503건, 최신순)
+# 시간 축 인덱스 (504건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
