@@ -66,6 +66,9 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  *   OCC 충돌 문구와 구분)
  * - [QuickFilterNotFoundException] → 404 + AGILE_QUICK_FILTER_NOT_FOUND (퀵필터 미존재를 보드 미존재와 구분)
  * - [QuickFilterEmptyQueryException] → 400 + AGILE_QUICK_FILTER_EMPTY_QUERY (빈 필터 조건을 일반 검증 실패와 구분)
+ * - [CannotAcquireLockException] → 503 + AGILE_UNAVAILABLE (advisory lock 200ms 예산 초과, 부채 166 ②).
+ *   같은 매핑이 [SprintExceptionHandler] 에도 있다 — 형제 락 `scrum-board:<projectKey>` 가 두 경로에서
+ *   도달하므로 한쪽을 지우면 그 경로가 500 을 낸다(스펙 E8). 사유 전문은 [handleLockTimeout] KDoc.
  * - [ResponseStatusException] → 명시 상태 전파(401/404/409/422 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *

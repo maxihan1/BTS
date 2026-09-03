@@ -37,6 +37,10 @@ import java.time.Instant
  *
  * [InvalidSprintTransitionException] 은 [IllegalStateException] 을 상속하므로 명시 핸들러로 409 에 매핑한다.
  *
+ * [CannotAcquireLockException] 매핑은 [BoardExceptionHandler] 에도 **같이** 있어야 한다 — 형제 락
+ * `scrum-board:<projectKey>` 가 두 경로에서 도달하므로 한쪽을 지우면 그 경로가 500 을 낸다(스펙 E8).
+ * 사유 전문은 [handleLockTimeout] KDoc.
+ *
  * 에러 코드 접두사는 `AGILE_` 로 고정한다 (BTS 에러 코드 규칙).
  *
  * ### 매핑 규칙
@@ -50,6 +54,7 @@ import java.time.Instant
  * - [InvalidSprintTransitionException] → 409 + AGILE_CONFLICT
  * - [SprintBoardNotScrumException] → 409 + AGILE_SPRINT_BOARD_NOT_SCRUM (칸반 보드 소속 스프린트 start, 부채 165)
  * - [SprintDatesRequiredException] → 422 + AGILE_SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01)
+ * - [CannotAcquireLockException] → 503 + AGILE_UNAVAILABLE (advisory lock 200ms 예산 초과, 부채 166 ②)
  * - [ResponseStatusException] → 명시 상태 전파(401/403/404/409 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
  *
