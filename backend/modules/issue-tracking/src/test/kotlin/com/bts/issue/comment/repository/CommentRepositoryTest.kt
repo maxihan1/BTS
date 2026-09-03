@@ -485,6 +485,12 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
      * Then   빈 맵. 소속 대조가 `WHERE` 안에 있으므로 쌍이 어긋나면 아무것도 안 나온다.
      *
      * 대조군으로 올바른 쌍을 함께 확인한다 — 없으면 "항상 빈 맵" 구현도 위 단언을 통과한다.
+     *
+     * ### 다중 이슈 × 삭제 댓글 (리뷰 C-a)
+     * 술어는 `((A AND id IN ..) OR (B AND id IN ..)) AND deleted_at IS NULL` 이다. 괄호가 빠지면
+     * `AND` 가 `OR` 보다 강하게 묶여 `deleted_at` 이 **마지막 가지에만** 걸린다 — 앞 가지의 삭제
+     * 댓글이 샌다. jOOQ 가 중첩 `CombinedCondition` 을 자동 괄호 처리하므로 지금은 옳지만,
+     * 그 조합이 SQL 로 한 번도 실행된 적이 없어 봉인해 둔다. 두 가지를 각각 지워 확인한다.
      */
     @Test
     @Order(14)
@@ -511,6 +517,15 @@ class CommentRepositoryTest : IssueTestcontainersBase() {
         // 여러 이슈를 한 번에 물어도 각자 자기 소속만 나온다 — 프로젝트 활동 피드가 쓰는 경로다.
         assertThat(commentRepository.findActiveOwners(correct))
             .containsOnly(entry(commentA.id, issueA.id.value), entry(commentB.id, issueB.id.value))
+
+        // 첫 OR 가지의 삭제 — 괄호가 빠지면 여기서 commentA 가 샌다.
+        softDeleteComment(commentA.id)
+        assertThat(commentRepository.findActiveOwners(correct))
+            .containsOnly(entry(commentB.id, issueB.id.value))
+
+        // 마지막 OR 가지까지 지우면 남는 것이 없다.
+        softDeleteComment(commentB.id)
+        assertThat(commentRepository.findActiveOwners(correct)).isEmpty()
     }
 
     /**
