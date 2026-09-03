@@ -48,8 +48,10 @@ export interface StoredBoardDetail {
   swimlaneField: 'NONE' | 'ASSIGNEE' | 'PRIORITY' | 'EPIC'
   columns: Array<{
     columnId: string
-    stateKey: string
+    /** 이 컬럼에 매핑된 워크플로우 상태 목록(0개 이상 · display_order 순). R11. */
+    states: Array<{ key: string; name: string; category: 'TODO' | 'IN_PROGRESS' | 'DONE' }>
     name: string
+    /** 담은 상태들의 category 최댓값(R5). 개별 상태와 다를 수 있다 — 표시 전용이다. */
     category: 'TODO' | 'IN_PROGRESS' | 'DONE'
     displayOrder: number
     /** WIP 제한 수. null이면 무제한. 백엔드 FR-BD-03 D4 신호. */
@@ -274,21 +276,21 @@ export function createBoardInStore(
   const createdColumns: BoardCreated['columns'] = [
     {
       columnId: todoColumnId,
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
     },
     {
       columnId: inProgressColumnId,
-      stateKey: 'in_progress',
+      states: [{ key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' }],
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
     },
     {
       columnId: doneColumnId,
-      stateKey: 'done',
+      states: [{ key: 'done', name: 'DONE', category: 'DONE' }],
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,
@@ -374,7 +376,7 @@ export const DEFAULT_BOARD: BoardDetail = {
   columns: [
     {
       columnId: '20000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
@@ -415,7 +417,7 @@ export const DEFAULT_BOARD: BoardDetail = {
     },
     {
       columnId: '20000000-0000-4000-8000-000000000002',
-      stateKey: 'in_progress',
+      states: [{ key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' }],
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -439,7 +441,7 @@ export const DEFAULT_BOARD: BoardDetail = {
     },
     {
       columnId: '20000000-0000-4000-8000-000000000003',
-      stateKey: 'done',
+      states: [{ key: 'done', name: 'DONE', category: 'DONE' }],
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,
@@ -465,6 +467,8 @@ export const DEFAULT_BOARD: BoardDetail = {
   ],
   truncated: false,
   unplacedCount: 0,
+  // 이 시드는 모든 상태가 컬럼에 매핑돼 있다 — 미매핑은 없다(R8).
+  unmappedStates: [],
   quickFilters: [],
 }
 
@@ -507,7 +511,7 @@ export const FILTER_BOARD: StoredBoardDetail = {
   columns: [
     {
       columnId: '30000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
@@ -592,7 +596,7 @@ export const WIP_BOARD: StoredBoardDetail = {
   columns: [
     {
       columnId: '50000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
@@ -616,7 +620,7 @@ export const WIP_BOARD: StoredBoardDetail = {
     },
     {
       columnId: '50000000-0000-4000-8000-000000000002',
-      stateKey: 'in_progress',
+      states: [{ key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' }],
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -666,7 +670,7 @@ export const WIP_BOARD: StoredBoardDetail = {
     },
     {
       columnId: '50000000-0000-4000-8000-000000000003',
-      stateKey: 'done',
+      states: [{ key: 'done', name: 'DONE', category: 'DONE' }],
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,
@@ -699,7 +703,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
   columns: [
     {
       columnId: '60000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
@@ -736,7 +740,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
     },
     {
       columnId: '60000000-0000-4000-8000-000000000002',
-      stateKey: 'in_progress',
+      states: [{ key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' }],
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -746,7 +750,7 @@ export const SWIMLANE_BOARD: StoredBoardDetail = {
     },
     {
       columnId: '60000000-0000-4000-8000-000000000003',
-      stateKey: 'done',
+      states: [{ key: 'done', name: 'DONE', category: 'DONE' }],
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,
@@ -777,7 +781,7 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
   columns: [
     {
       columnId: '70000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
@@ -827,7 +831,7 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
     },
     {
       columnId: '70000000-0000-4000-8000-000000000002',
-      stateKey: 'in_progress',
+      states: [{ key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' }],
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -837,7 +841,7 @@ export const EPIC_SWIMLANE_BOARD: StoredBoardDetail = {
     },
     {
       columnId: '70000000-0000-4000-8000-000000000003',
-      stateKey: 'done',
+      states: [{ key: 'done', name: 'DONE', category: 'DONE' }],
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,
@@ -880,7 +884,7 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
   columns: [
     {
       columnId: 'a0000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,
@@ -930,7 +934,7 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
     },
     {
       columnId: 'a0000000-0000-4000-8000-000000000002',
-      stateKey: 'in_progress',
+      states: [{ key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' }],
       name: 'IN PROGRESS',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -940,7 +944,7 @@ export const REORDER_SWIMLANE_BOARD: StoredBoardDetail = {
     },
     {
       columnId: 'a0000000-0000-4000-8000-000000000003',
-      stateKey: 'done',
+      states: [{ key: 'done', name: 'DONE', category: 'DONE' }],
       name: 'DONE',
       category: 'DONE',
       displayOrder: 3,

@@ -56,7 +56,7 @@ const cardNoAssignee = {
 
 const columnTodo = {
   columnId: COLUMN_ID_TODO,
-  stateKey: 'todo',
+  states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
   name: '할 일',
   category: 'TODO' as const,
   displayOrder: 1,
@@ -67,7 +67,7 @@ const columnTodo = {
 
 const columnDone = {
   columnId: COLUMN_ID_DONE,
-  stateKey: 'done',
+  states: [{ key: 'done', name: '완료', category: 'DONE' }],
   name: '완료',
   category: 'DONE' as const,
   displayOrder: 3,
@@ -83,6 +83,7 @@ const boardDetailFixture = {
   columns: [columnTodo, columnDone],
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE' as const,
   // FR-BD-04 — 기본 픽스처는 칸반이라 activeSprint 가 항상 null 이다.
   boardType: 'KANBAN' as const,
@@ -104,7 +105,7 @@ const boardCreatedFixture = {
   columns: [
     {
       columnId: COLUMN_ID_TODO,
-      stateKey: 'todo',
+      states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
       name: '할 일',
       category: 'TODO' as const,
       displayOrder: 1,
@@ -142,7 +143,7 @@ describe('boardDetailSchema — 유효 픽스처 파싱', () => {
         columnTodo,
         {
           columnId: 'e5f6a7b8-c9d0-4234-8fab-234567890124',
-          stateKey: 'in_progress',
+          states: [{ key: 'in_progress', name: '진행 중', category: 'IN_PROGRESS' }],
           name: '진행 중',
           category: 'IN_PROGRESS' as const,
           displayOrder: 2,
@@ -393,12 +394,15 @@ describe('moveCard — POST /api/v1/boards/{boardId}/cards/{issueKey}/move', () 
       }),
     )
     const result = await moveCard(BOARD_ID, ISSUE_KEY, {
-      toColumnId: COLUMN_ID_DONE,
+      toStateKey: 'done',
       expectedVersion: 1,
     })
     expect(result.issueKey).toBe(ISSUE_KEY)
     expect(result.version).toBe(2)
-    expect((capturedBody as Record<string, unknown>)['toColumnId']).toBe(COLUMN_ID_DONE)
+    // R6·R12 — 요청은 컬럼이 아니라 **상태**를 지목한다. 지라도 컬럼 안의 각 상태를
+    // 드롭존으로 그려서 「컬럼으로 드롭」이라는 조작 자체가 없다(J3·J4).
+    expect((capturedBody as Record<string, unknown>)['toStateKey']).toBe('done')
+    expect(capturedBody).not.toHaveProperty('toColumnId')
     expect((capturedBody as Record<string, unknown>)['expectedVersion']).toBe(1)
     expect(capturedUrl).toContain('/move')
   })
@@ -413,7 +417,7 @@ describe('moveCard — POST /api/v1/boards/{boardId}/cards/{issueKey}/move', () 
       }),
     )
     await moveCard(BOARD_ID, ISSUE_KEY, {
-      toColumnId: COLUMN_ID_DONE,
+      toStateKey: 'done',
       expectedVersion: 1,
       resolutionId: RESOLUTION_ID,
     })
@@ -429,7 +433,7 @@ describe('moveCard — POST /api/v1/boards/{boardId}/cards/{issueKey}/move', () 
       }),
     )
     await moveCard(BOARD_ID, ISSUE_KEY, {
-      toColumnId: COLUMN_ID_DONE,
+      toStateKey: 'done',
       expectedVersion: 1,
       resolutionId: undefined,
     })
@@ -562,7 +566,7 @@ describe('boardColumnSchema — wipLimit/wipExceeded 파싱 (FR-BD-03 D4)', () =
     // wipLimit 필드를 포함하지 않은 컬럼 객체를 직접 구성
     const col: Record<string, unknown> = {
       columnId: COLUMN_ID_TODO,
-      stateKey: 'todo',
+      states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
@@ -577,7 +581,7 @@ describe('boardColumnSchema — wipLimit/wipExceeded 파싱 (FR-BD-03 D4)', () =
     // wipExceeded 필드를 포함하지 않은 컬럼 객체를 직접 구성
     const col: Record<string, unknown> = {
       columnId: COLUMN_ID_TODO,
-      stateKey: 'todo',
+      states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
@@ -642,6 +646,7 @@ describe('boardDetailSchema — swimlaneField 파싱 (FR-BD-03 D4)', () => {
       columns: [columnWithWip],
       truncated: false,
       unplacedCount: 0,
+      unmappedStates: [],
     }
     const result = boardDetailSchema.safeParse(board)
     expect(result.success).toBe(false)

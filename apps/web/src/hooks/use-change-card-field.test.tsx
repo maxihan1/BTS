@@ -44,12 +44,13 @@ const INITIAL_BOARD: BoardDetail = {
   activeSprint: null,
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'ASSIGNEE',
   quickFilters: [],
   columns: [
     {
       columnId: COL_A_ID,
-      stateKey: 'TODO',
+      states: [{ key: 'TODO', name: 'To Do', category: 'TODO' }],
       name: 'To Do',
       category: 'TODO',
       displayOrder: 1,
@@ -122,12 +123,13 @@ const EPIC_BOARD: BoardDetail = {
   activeSprint: null,
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'EPIC',
   quickFilters: [],
   columns: [
     {
       columnId: COL_A_ID,
-      stateKey: 'TODO',
+      states: [{ key: 'TODO', name: 'To Do', category: 'TODO' }],
       name: 'To Do',
       category: 'TODO',
       displayOrder: 1,

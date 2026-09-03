@@ -233,7 +233,10 @@ function withActiveSprintCards(stored: StoredBoardDetail): StoredBoardDetail {
 
   const columns = stored.columns.map((col) => ({
     ...col,
-    cards: issues.filter((i) => i.currentStateKey === col.stateKey).map(sprintIssueToCard),
+    // 컬럼이 담은 **모든** 상태의 카드를 모은다(R3). 1:1 시절의 `=== col.stateKey` 자리다.
+    cards: issues
+      .filter((i) => col.states.some((s) => s.key === i.currentStateKey))
+      .map(sprintIssueToCard),
   }))
   const placedCount = columns.reduce((sum, col) => sum + col.cards.length, 0)
 
@@ -293,6 +296,9 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
   const placed = withActiveSprintCards(stored)
   return {
     ...placed,
+    // mock 은 워크플로우 카탈로그를 모르므로 미매핑 목록을 계산할 수 없다. 빈 배열이 정직한 값이다 —
+    // 이 mock 의 시드는 모든 상태가 컬럼에 매핑돼 있다(R8 은 실제 카탈로그가 있어야 의미가 있다).
+    unmappedStates: [],
     columns: placed.columns.map((col) => ({
       ...col,
       cards: col.cards
@@ -606,7 +612,8 @@ const moveCardHandler = http.post(
     return HttpResponse.json({
       data: {
         issueKey,
-        currentStateKey: targetColumn.stateKey,
+        // 서버는 요청이 지목한 상태로 전환한다(R6). mock 은 컬럼의 첫 상태로 근사한다(E5).
+        currentStateKey: targetColumn.states[0]?.key ?? '',
         version: newVersion,
         columnId: toColumnId,
       },
@@ -1004,7 +1011,7 @@ export const QUICK_FILTER_PERM_SEED: StoredBoardDetail = {
   columns: [
     {
       columnId: '80000000-0000-4000-8000-000000000001',
-      stateKey: 'open',
+      states: [{ key: 'open', name: 'TODO', category: 'TODO' }],
       name: 'TODO',
       category: 'TODO',
       displayOrder: 1,

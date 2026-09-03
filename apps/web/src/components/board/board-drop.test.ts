@@ -68,12 +68,13 @@ const board: BoardDetail = {
   activeSprint: null,
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'ASSIGNEE',
   quickFilters: [],
   columns: [
     {
       columnId: COL_TODO,
-      stateKey: 'todo',
+      states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
@@ -88,7 +89,7 @@ const board: BoardDetail = {
     },
     {
       columnId: COL_INPROGRESS,
-      stateKey: 'in-progress',
+      states: [{ key: 'in-progress', name: '진행 중', category: 'IN_PROGRESS' }],
       name: '진행 중',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -98,7 +99,7 @@ const board: BoardDetail = {
     },
     {
       columnId: COL_DONE,
-      stateKey: 'done',
+      states: [{ key: 'done', name: '완료', category: 'DONE' }],
       name: '완료',
       category: 'DONE',
       displayOrder: 3,
@@ -139,6 +140,8 @@ describe('resolveDropAction — 셀 4분기 판정', () => {
       issueKey: 'ATLAS-1',
       fromColumnId: COL_TODO,
       toColumnId: COL_INPROGRESS,
+      // 서버가 읽는 값은 컬럼이 아니라 상태다(R6·R12). 컬럼의 첫 상태를 보낸다(E5).
+      toStateKey: 'in-progress',
       expectedVersion: 1,
     })
   })
@@ -150,6 +153,7 @@ describe('resolveDropAction — 셀 4분기 판정', () => {
       issueKey: 'ATLAS-1',
       fromColumnId: COL_TODO,
       toColumnId: COL_DONE,
+      toStateKey: 'done',
       expectedVersion: 1,
     })
   })
@@ -224,6 +228,8 @@ describe('resolveDropAction — 셀 4분기 판정', () => {
       issueKey: 'ATLAS-1',
       fromColumnId: COL_TODO,
       toColumnId: COL_INPROGRESS,
+      // 서버가 읽는 값은 컬럼이 아니라 상태다(R6·R12). 컬럼의 첫 상태를 보낸다(E5).
+      toStateKey: 'in-progress',
       expectedVersion: 1,
     })
   })
@@ -246,12 +252,13 @@ function buildFieldChangeBoard(swimlaneField: SwimlaneField, cards: BoardCard[])
     activeSprint: null,
     truncated: false,
     unplacedCount: 0,
+    unmappedStates: [],
     swimlaneField,
     quickFilters: [],
     columns: [
       {
         columnId: COL_TODO,
-        stateKey: 'todo',
+        states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
         name: '할 일',
         category: 'TODO',
         displayOrder: 1,
