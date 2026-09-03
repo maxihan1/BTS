@@ -2,7 +2,8 @@
 -- ⚠ V번호는 머지 직전 origin/main 의 agile-planning 최신 V번호를 재확인할 것 (동시 브랜치 Flyway checksum 충돌 회피, DATA.md §4.1).
 --
 -- 설계 정본. docs/specs/2026-09-03-kanban-sprint-move-and-lock-budget.md R1~R7 /
--- docs/adr/2026-09-01-board-type-and-active-sprint.md D2.
+-- docs/adr/2026-09-01-board-type-and-active-sprint.md D2(활성 스프린트 보드당 1개) /
+-- docs/adr/2026-09-03-kanban-sprint-move-and-lock-budget.md D2(ACTIVE 충돌은 이관 대상을 내린다 · 편차 X9).
 --
 -- 왜 필요한가. V506 ④ 는 **그때 존재하던** 스프린트를 전부 스크럼 보드에 붙였다. 그 뒤 스프린트 생성이
 -- `boardId` 를 그대로 받아들이면서(SprintApplicationService.resolveTargetBoard) 칸반 보드에 매달린
@@ -70,10 +71,14 @@ JOIN board_columns c ON c.board_id = src.id;
 --   같은 board_id 를 갖게 돼 SQL 로 구별할 수단이 사라진다. 단계 순서가 곧 판정의 재료다.
 -- ★ 옮기기 전 상태로 보기 때문에 `kb.board_type = 'KANBAN'` 하나로 대상이 「칸반에서 옮겨 오는 행」에
 --   묶인다. 기존 스크럼 보드의 원래 ACTIVE 는 이 UPDATE 에 아예 닿지 않는다(R6).
--- ★ 왜 상태를 바꾸나. SprintRepository.findActiveByBoard 는 orderBy(created_at asc).limit(1) 이다.
---   ACTIVE 를 유지한 채 옮기면 목표 보드에 ACTIVE 가 둘이 되고 화면은 먼저 만든 것 하나만 그린다 —
---   고치려던 결함이 자리만 옮긴다. 게다가 그 스프린트는 이미 ACTIVE 라 start 가 409 로 막혀 손댈 방법이
---   없고, 선행 스프린트를 완료하는 날 예고 없이 진행 중으로 나타난다.
+-- ★ 왜 상태를 바꾸나 — 근거 정본은 ADR 2026-09-03 `D2`(편차 `X9`).
+--   SprintRepository.findActiveByBoard 는 orderBy(created_at asc).limit(1) 이다. ACTIVE 를 유지한 채
+--   옮기면 목표 보드에 ACTIVE 가 둘이 되고 화면은 먼저 만든 것 하나만 그린다 — 고치려던 결함이 자리만
+--   옮긴다. 게다가 그 스프린트는 이미 ACTIVE 라 start 가 409 로 막혀 손댈 방법이 없고, 선행 스프린트를
+--   완료하는 날 예고 없이 진행 중으로 나타난다. Jira 는 이 충돌을 데이터로 막지 않고 표시로 흡수하지만
+--   (J18 · DC 전용) BTS 는 limit(1) 이라 흡수가 불가능하다 — 근거는 Jira 원문이 아니라 BTS 자체 일관성이다.
+--   V506:69-71 의 「마이그레이션이 기존 데이터를 조용히 바꾸지 않는다」에 대한 **명시적 예외**이고,
+--   ADR 이 그 예외를 「칸반에서 옮겨 오는 행」으로 한정해 승인했다. 아래 세 CTE 가 그 한정을 실제로 진다.
 -- ★ COMPLETED 는 안 건드린다(스펙 E4). `s.status = 'ACTIVE'` 가 그 경계다.
 WITH move_candidate AS (
     SELECT s.id AS sprint_id, s.created_at, tb.id AS target_board_id
@@ -92,25 +97,36 @@ WITH move_candidate AS (
       AND s.deleted_at IS NULL
       AND s.status = 'ACTIVE'
 ),
-keep_active AS (
-    -- 목표 보드에 기존 ACTIVE 가 없는 경우에만 한 건을 남긴다(R5). 있으면 이 CTE 가 그 보드에서 0행이라
-    -- 이관 대상이 전부 아래 UPDATE 에 걸린다(R4).
-    -- ★ inc 가 이관 대상 자신을 집을 일은 없다 — 아직 안 옮겼으므로 대상의 board_id 는 칸반이고
-    --   target_board_id 는 스크럼이다. ② 를 ③ 뒤로 옮기는 순간 이 성질이 깨진다.
-    -- ★ ORDER BY 는 `(created_at, id)` — created_at 동점이면 id 로 가른다. created_at 만 쓰면 살아남는
-    --   스프린트가 실행마다 갈려 규칙이 규칙이 아니게 된다(BoardRepository.kt:263-265 가 같은 규칙에
-    --   같은 주석을 단다).
-    SELECT DISTINCT ON (mc.target_board_id) mc.sprint_id
+-- R4. 목표 보드에 **원래** ACTIVE 가 있는가. 있으면 그 보드로 오는 이관 대상은 전부 내려간다.
+-- ★ inc 가 이관 대상 자신을 집을 일은 없다 — 아직 안 옮겼으므로 대상의 board_id 는 칸반이고
+--   target_board_id 는 스크럼이다. ② 를 ③ 뒤로 옮기는 순간 이 성질이 깨져 대상이 스스로를 「기존
+--   ACTIVE」로 보고 전부 내려간다(R5 가 통째로 사라진다).
+board_with_incumbent AS (
+    SELECT DISTINCT mc.target_board_id
     FROM move_candidate mc
-    WHERE NOT EXISTS (
+    WHERE EXISTS (
         SELECT 1
         FROM sprints inc
         WHERE inc.board_id = mc.target_board_id
           AND inc.status = 'ACTIVE'
           AND inc.deleted_at IS NULL
     )
+),
+-- R5. 기존 ACTIVE 가 없는 보드에서만 **1건**이 ACTIVE 를 유지한다.
+-- ★ ORDER BY 는 `(created_at, id)` — created_at 동점이면 id 로 가른다. created_at 만 쓰면 살아남는
+--   스프린트가 실행마다 갈려 규칙이 규칙이 아니게 된다(BoardRepository.kt:263-265 가 같은 규칙에
+--   같은 주석을 단다). DISTINCT ON 의 선두 열이 ORDER BY 선두와 같아야 하므로 보드로 먼저 묶는다.
+survivor AS (
+    SELECT DISTINCT ON (mc.target_board_id) mc.sprint_id
+    FROM move_candidate mc
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM board_with_incumbent bi
+        WHERE bi.target_board_id = mc.target_board_id
+    )
     ORDER BY mc.target_board_id, mc.created_at, mc.sprint_id
 )
+-- R3 사후 불변식은 두 CTE 의 곱이다 — 기존 ACTIVE 가 있으면 0건이 남고, 없으면 정확히 1건이 남는다.
 -- 내린 행만 version·updated_at 이 오른다. 안 내린 행은 ③ 이 board_id 만 바꾼 상태로 남는다.
 UPDATE sprints s
 SET status = 'PLANNED',
@@ -120,8 +136,8 @@ FROM move_candidate mc
 WHERE s.id = mc.sprint_id
   AND NOT EXISTS (
       SELECT 1
-      FROM keep_active ka
-      WHERE ka.sprint_id = mc.sprint_id
+      FROM survivor sv
+      WHERE sv.sprint_id = mc.sprint_id
   );
 
 -- ── ③ 칸반 소속 스프린트를 그 프로젝트의 활성 스크럼 보드로 옮긴다 ─────────────────────────────
