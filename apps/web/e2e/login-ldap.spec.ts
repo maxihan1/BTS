@@ -1,8 +1,7 @@
 // LDAP 로그인 E2E 시나리오 — S1-ldap 정상 로그인 (LDAP-corp provider) + S2-ldap 잘못된 비번 (401 한국어 에러)
 //
-// FR-AU-07 재조정: identifier-first 2단계 흐름 적용.
-// 1단계: 미매칭 도메인 이메일 입력 → "계속" → 2단계 폼 진입
-// 2단계: LDAP-corp 선택 + alice + Test1234! → 로그인
+// FR-AU-07 재조정: 단일 화면 폼 적용.
+// LDAP-corp 선택 + alice + Test1234! → 로그인
 //
 // 교훈 반영.
 //   - playwright-getbyrole-exact-strict-mode: exact:true 로 옵션/버튼 한정
@@ -13,7 +12,7 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 /**
  * S1-ldap — LDAP-corp provider 정상 로그인
  *
- * Given  /login 진입 후 1단계 미매칭 이메일 입력 → 2단계 폼 진입
+ * Given  /login 진입 후 단일 화면 폼
  * When   LDAP-corp 선택 → alice / Test1234! 입력 → 로그인 버튼 클릭
  * Then   로그인 성공(목적지는 startPage 설정에 따르는 부수 사항 — FR-PF-02, alice 기본값
  *        'dashboards'라 /dashboards 도착) + Header 계정 메뉴 버튼(displayName '김앨리스' 표시)
@@ -21,22 +20,19 @@ import { loginStrings, loginPageStrings } from '../src/i18n/ko'
 test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → 로그인 성공', async ({ page }) => {
   await page.goto('/login')
 
-  // 1단계. 이메일 입력 + "계속" — example.com 은 routeStore 미등록 → matched:false → 2단계 진입
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계. 진입 대기 — provider 드롭다운이 나타날 때까지
+  // provider 드롭다운이 나타날 때까지
   // (worktree-stale-base-rebase-and-e2e-msw-traps: 드롭다운 로딩 대기 필수)
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
 
-  // 2단계. provider 드롭다운 클릭 — LDAP-corp 선택
+  // provider 드롭다운 클릭 — LDAP-corp 선택
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLdapCorp, exact: true }).click()
 
-  // 2단계. username, password 입력
+  // username, password 입력
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
   await page.getByLabel(loginStrings.passwordLabel).fill('Test1234!')
 
@@ -56,31 +52,28 @@ test('S1-ldap LDAP-corp 정상 로그인 — alice/Test1234! → 로그인 성�
 /**
  * S2-ldap — LDAP-corp provider 잘못된 비밀번호
  *
- * Given  /login 진입 후 1단계 미매칭 이메일 입력 → 2단계 폼 진입
+ * Given  /login 진입 후 단일 화면 폼
  * When   LDAP-corp 선택 → alice / wrong 입력 → 로그인 버튼 클릭
  * Then   401 한국어 에러 메시지 표시 + URL /login 유지
  */
 test('S2-ldap LDAP-corp 잘못된 비밀번호 — alice/wrong → 401 한국어 에러 + URL /login 유지', async ({ page }) => {
   await page.goto('/login')
 
-  // 1단계. 이메일 입력 + "계속"
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
-  await page.getByLabel(loginStrings.emailLabel).fill('alice@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
 
-  // 2단계. 진입 대기 — provider 드롭다운이 나타날 때까지
+  // provider 드롭다운이 나타날 때까지
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()
 
-  // 2단계. provider 드롭다운 클릭 후 LDAP-corp 선택
+  // provider 드롭다운 클릭 후 LDAP-corp 선택
   await providerSelect.click()
   await page.getByRole('option', { name: loginStrings.providerLdapCorp, exact: true }).click()
 
-  // 2단계. username 입력
+  // username 입력
   await page.getByLabel(loginStrings.usernameLabel).fill('alice')
 
-  // 2단계. 잘못된 비밀번호 입력
+  // 잘못된 비밀번호 입력
   await page.getByLabel(loginStrings.passwordLabel).fill('wrong')
 
   // 로그인 버튼 클릭 (exact:true)

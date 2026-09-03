@@ -14,7 +14,7 @@ import { issueGraphHandlers } from './issue-graph-handlers'
 import { issueLinkHandlers } from './issue-link-handlers'
 import { adminUserHandlers } from './admin-user-handlers'
 import { auditLogHandlers } from './audit-log-handlers'
-import { authHandlers } from './auth-handlers'
+import { authHandlers, sessionExpiredGateHandlers } from './auth-handlers'
 import { bulkOperationHandlers } from './bulk-operation-handlers'
 import { changelogHandlers } from './changelog-handlers'
 import { componentHandlers } from './component-handlers'
@@ -83,6 +83,9 @@ import { globalPermissionHandlers } from './global-permission-handlers'
  * mock endpoint를 하나의 배열로 통합한다. 알파벳순 BC 그룹 정렬.
  */
 export const handlers = [
+  // 🛑 반드시 맨 앞. 세션 만료 시나리오 게이트는 도메인 핸들러보다 먼저 잡아야 한다.
+  //    플래그가 꺼져 있으면 undefined 를 돌려 다음 핸들러로 넘기므로 평시 동작은 불변이다.
+  ...sessionExpiredGateHandlers,
   ...backlogHandlers,
   ...burndownHandlers,
   ...velocityHandlers,

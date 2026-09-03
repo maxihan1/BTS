@@ -15,6 +15,13 @@ vi.mock('@/components/command-palette/CommandPalette', () => ({
   CommandPalette: () => null,
 }))
 
+// LoginDialog mock — 같은 사유. 내부에서 useRouterState/useNavigate 를 쓰므로 Outlet-only mock 과
+// 충돌한다. 이 파일의 관심사는 useNotificationStream 배선과 단축키이지 로그인 모달이 아니다 —
+// 모달 자체의 계약은 auth/LoginDialog.test.tsx 가 소유한다.
+vi.mock('@/auth/LoginDialog', () => ({
+  LoginDialog: () => null,
+}))
+
 // useKeymap mock — RootLayout이 마운트하는 useKeyboardShortcuts가 useKeymap(react-query)을 구독하므로
 // (FR-PF-03 Task-8), QueryClientProvider 없이 렌더하기 위해 mock. data undefined면 useKeyboardShortcuts가
 // DEFAULT_KEYMAP으로 폴백해 기존 '?' 도움말 동작이 무회귀한다.

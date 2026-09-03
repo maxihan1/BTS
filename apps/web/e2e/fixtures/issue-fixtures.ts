@@ -20,7 +20,7 @@ export { loginAsAlice } from './auth-fixtures'
 /**
  * Bob (dev seed LOCAL provider) 으로 로그인하고 /dashboard 진입까지 완료한다.
  *
- * identifier-first 2단계 흐름 (FR-AU-07 적용 이후).
+ * 단일 화면 폼 (FR-AU-07 적용 이후).
  * bob 은 MEMBER 역할 — SOFT_DELETE 권한 없음, UPDATE 권한 있음.
  *
  * @param page Playwright Page 객체
@@ -28,10 +28,6 @@ export { loginAsAlice } from './auth-fixtures'
 export async function loginAsBob(page: Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
-  // 1단계
-  await page.getByLabel(loginStrings.emailLabel).fill('bob@example.com')
-  await page.getByRole('button', { name: loginStrings.continueButton, exact: true }).click()
-  // 2단계
   const providerSelect = page.getByRole('combobox', { name: loginStrings.providerLabel })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()

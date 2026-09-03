@@ -6,6 +6,7 @@ package com.bts.issue.adapter.inbound.rest
 import com.bts.issue.adapter.inbound.rest.IssueControllerTransitionIntegrationTest.TestConfig
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.IssueChangeItemMasker
 import com.bts.issue.application.IssueChangelogService
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.history.IssueChangeHistoryRepository
@@ -242,10 +243,8 @@ class IssueChangelogControllerIntegrationTest {
                 issueApplicationService = issueApplicationService,
                 changeHistoryRepository = historyRepository,
                 userLookupPort = userLookupPort,
-                issueRepository = issueRepository,
-                fieldPermissionResolver = fieldPermissionResolver,
-                // 이 테스트의 이력 항목에는 댓글 변경(`comment:` 접두사)이 없어 조회가 일어나지 않는다.
-                commentRepository = mockk(relaxed = true),
+                // 이 테스트의 이력 항목에는 댓글 변경(`comment:` 접두사)이 없어 댓글 조회가 일어나지 않는다.
+                masker = IssueChangeItemMasker(issueRepository, mockk(relaxed = true), fieldPermissionResolver),
             )
 
         @Bean

@@ -1,6 +1,6 @@
 // TanStack Router 라우트 트리 정의 — code-based 패턴, 60개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
-import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards } from './auth/routeGuard'
+import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards, redirectToStartPage } from './auth/routeGuard'
 
 /** 대부분의 보호 라우트에 적용하는 기본 가드 체인 — 미인증 차단 + 비밀번호 변경 강제 + MFA 등록 강제 (FR-MF-04) */
 const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePasswordChanged, requireMfaEnrolled)
@@ -8,7 +8,6 @@ const requireAuthAndPasswordChanged = composeGuards(requireAuth, requirePassword
 const requireSystemAdminFull = composeGuards(requireAuth, requireSystemAdmin, requirePasswordChanged, requireMfaEnrolled)
 import { RootLayout } from './routes/__root'
 import { ShellLayout } from './components/layout/ShellLayout'
-import { IndexPage } from './routes/index'
 import { LoginPage } from './routes/login'
 import { DashboardPage } from './routes/dashboard'
 import { WorkflowDetailRouteAdapter } from './routes/workflows.$key'
@@ -82,11 +81,13 @@ const shellRoute = createRoute({
   component: ShellLayout,
 })
 
+// `/`는 자체 화면이 없다 — 가드가 항상 throw하므로 component를 두지 않는다.
+// 미인증이면 requireAuth가 /login으로, 인증 상태면 redirectToStartPage가 start_page로 보낸다.
 const indexRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/',
-  // T13 라우트 가드에서 dashboard / login 으로 리다이렉트 예정
-  component: IndexPage,
+  staticData: { requireAuth: true },
+  beforeLoad: composeGuards(requireAuthAndPasswordChanged, redirectToStartPage),
 })
 
 const loginRoute = createRoute({
@@ -109,6 +110,8 @@ const workflowsKeyRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/workflows/$key',
   component: WorkflowDetailRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
 })
 
 /**
