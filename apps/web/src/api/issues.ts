@@ -235,7 +235,22 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
  * 형제 필드 `toCategory` 가 같은 이유로 같은 모양이다.
  */
 export const issueTransitionSchema = z.object({
-  key: z.string().min(1),
+  /**
+   * 전환 키 (`from__to` 또는 `KIND__to`).
+   *
+   * ★**서버 계약이 `String?` 이므로 여기도 nullable 이다.** backend 정본
+   * `shared-kernel/.../AvailableTransitionsResult.kt` 의 `TransitionItem` 은
+   * `val key: String? = null` 이고 「null 은 미계산 상태다」라고 적는다. 종전에는 이 필드만
+   * `min(1)` 필수여서, 위 KDoc 이 세운 원칙(「클라이언트를 서버 계약보다 엄격하게 만들지
+   * 마라」)의 **유일한 예외**였다 — 형제 `transitionId`·`kind`·`toCategory` 는 전부 nullable 이다.
+   *
+   * Zod 는 배열 원소 하나가 어긋나면 배열 전체를 떨어뜨리므로, `key` 가 null 인 전환 하나에
+   * 전환 셀렉터가 통째로 사라졌다. 서버는 규칙대로 답했으니 서버 로그에는 아무것도 안 남는다.
+   *
+   * ★**이 값을 React `key` 로 쓰지 마라.** 같은 (from, to) 쌍에 전환이 여럿일 수 있어
+   * 고유하지 않고, 이제 null 일 수도 있다. 목록 렌더에는 {@link transitionElementKey} 를 쓴다.
+   */
+  key: z.string().min(1).nullable().optional(),
   name: z.string().min(1),
   fromStateKey: z.string().min(1),
   toStateKey: z.string().min(1),

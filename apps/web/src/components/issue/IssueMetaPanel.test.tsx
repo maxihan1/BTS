@@ -416,8 +416,11 @@ describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
     const user = userEvent.setup()
 
     const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    // 옵션 값은 `transitionId ?? key` 다. 이 픽스처는 `transitionId` 가 없어 `key` 로 떨어진다.
-    await user.selectOptions(select, 'open__in_progress')
+    // ★값 문자열을 리터럴로 쓰지 않는다 — 형식은 `lib/transition-key.ts` 정본 소관이다.
+    await user.selectOptions(
+      select,
+      screen.getByRole('option', { name: transitionsFixture[0]!.name }),
+    )
 
     expect(onTransition).toHaveBeenCalledOnce()
     expect(onTransition).toHaveBeenCalledWith(transitionsFixture[0])
