@@ -214,21 +214,22 @@ class BoardController(
         val (actor, _) = loadBoardWithBrowse(id)
 
         // @field:NotNull 검증 통과 후이므로 non-null. !! 금지 규칙에 따라 명시 체크.
-        val toColumnId =
-            request.toColumnId ?: error("toColumnId 는 @NotNull 검증 통과 후 null 일 수 없습니다.")
         val expectedVersion =
             request.expectedVersion ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
 
+        // toColumnId / toStateKey 는 그대로 넘긴다 — 「둘 중 정확히 하나」 판정은 서비스가 진다(R7).
+        // 여기서도 재검하면 같은 규칙이 두 곳이 되고, 언젠가 갈린다.
         val result =
             service.moveCard(
                 boardId = id,
                 issueKey = issueKey,
                 actorUserId = actor,
-                toColumnId = toColumnId,
+                toColumnId = request.toColumnId,
+                toStateKey = request.toStateKey,
                 expectedVersion = expectedVersion,
                 resolutionId = request.resolutionId,
             )
-        return ResponseEntity.ok(DataResponse(MoveCardResponse.of(result, toColumnId)))
+        return ResponseEntity.ok(DataResponse(MoveCardResponse.of(result)))
     }
 
     /**

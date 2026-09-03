@@ -69,6 +69,22 @@ data class BoardPlacementResult(
 }
 
 /**
+ * [BoardApplicationService.moveCard] 반환 VO — 전환 결과 + **서버가 해석한** 대상.
+ *
+ * 요청은 컬럼(하위 호환 · R7)이나 상태(R6) 중 하나로 오는데, 응답은 항상 컬럼 UUID 를 echo 한다.
+ * 그 해석을 컨트롤러가 다시 하면 규칙이 두 곳이 되므로 서비스가 결과에 실어 보낸다.
+ *
+ * @property transition 전환 포트가 돌려준 결과(issueKey · currentStateKey · version).
+ * @property columnId 카드가 놓인 컬럼 UUID. 상태로 지목한 요청에서는 그 상태를 담은 컬럼이다.
+ * @property stateKey 서버가 전환에 쓴 상태 키.
+ */
+data class BoardCardMoveResult(
+    val transition: BoardTransitionResult,
+    val columnId: UUID,
+    val stateKey: String,
+)
+
+/**
  * 보드 CRUD 및 카드 이동 위임 애플리케이션 서비스.
  *
  * cross-BC 통신은 shared-kernel 포트([WorkflowStateCatalog], [BoardIssueLookupPort], [IssueTransitionPort])만
@@ -430,12 +446,25 @@ class BoardApplicationService(
      * @param issueKey 이동할 이슈 키. 예: `"BTS-1"`. 형식 = `"PROJECT_KEY-NUMBER"`.
      * @param actorUserId 전환 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 전달한다
      *   (body/param 으로 받지 않음 — 위조 차단, sec codereview-fix P1).
-     * @param toColumnId 이동 대상 컬럼 UUID.
+     * ### 대상 지정은 상태가 진다 (R6 · J3 · J4)
+     *
+     * 지라는 컬럼 안의 **각 상태를 드롭존**으로 그린다 — 「컬럼으로 드롭」이라는 조작 자체가 없다.
+     * 그래서 서버가 상태를 추론할 일이 없고, 클라이언트가 [toStateKey] 를 지목한다.
+     * [toColumnId] 는 하위 호환 경로이며(R7) 그 컬럼의 상태가 **정확히 1개일 때만** 해석된다.
+     *
+     * @param boardId 이동 대상 보드 UUID.
+     * @param issueKey 이동할 이슈 키. 예: `"BTS-1"`. 형식 = `"PROJECT_KEY-NUMBER"`.
+     * @param actorUserId 전환 행위자 UUID. 컨트롤러가 SecurityContext 에서 추출해 전달한다
+     *   (body/param 으로 받지 않음 — 위조 차단, sec codereview-fix P1).
+     * @param toColumnId 하위 호환 — 이동 대상 컬럼 UUID. [toStateKey] 와 **둘 중 하나만** 준다.
+     * @param toStateKey 이동 대상 워크플로우 상태 키(R6). [toColumnId] 와 **둘 중 하나만** 준다.
      * @param expectedVersion 낙관적 락(OCC) 기대 버전.
      * @param resolutionId DONE 카테고리 전환 시 필요한 해결 방안 ID. 불필요하면 null.
-     * @return 전환 결과 VO.
-     * @throws ResponseStatusException 404 — 보드/컬럼 미존재.
-     * @throws ResponseStatusException 400 — E8 보드-이슈 프로젝트 정합 위반.
+     * @return 전환 결과 + 서버가 해석한 대상 컬럼·상태([BoardCardMoveResult]).
+     * @throws MoveTargetAmbiguousException 400 — 대상이 0개 또는 2개 지정됐다.
+     * @throws BoardStateNotMappedException 404 — [toStateKey] 가 이 보드의 어느 컬럼에도 없다(E4).
+     * @throws ColumnStateAmbiguousException 400 — [toColumnId] 의 컬럼이 상태를 2개 이상 담았다(R7).
+     * @throws ResponseStatusException 404 — 보드/컬럼 미존재. 400 — E8 보드-이슈 프로젝트 정합 위반.
      */
     @Transactional
     @Suppress("LongParameterList") // 카드 이동 커맨드 필드를 VO 없이 직접 받음 — 호출부 명료성 우선
@@ -443,11 +472,18 @@ class BoardApplicationService(
         boardId: UUID,
         issueKey: String,
         actorUserId: UUID,
-        toColumnId: UUID,
+        toColumnId: UUID? = null,
+        toStateKey: String? = null,
         expectedVersion: Long,
         resolutionId: UUID?,
-    ): BoardTransitionResult {
-        log.debug("카드 이동 — boardId={}, issueKey={}, toColumnId={}", boardId, issueKey, toColumnId)
+    ): BoardCardMoveResult {
+        log.debug(
+            "카드 이동 — boardId={}, issueKey={}, toColumnId={}, toStateKey={}",
+            boardId,
+            issueKey,
+            toColumnId,
+            toStateKey,
+        )
 
         val board =
             boardRepository.findById(boardId)
@@ -456,40 +492,105 @@ class BoardApplicationService(
         // E8: issueKey 형식 + 프로젝트 정합 검증
         validateIssueProject(issueKey, board.projectKey)
 
-        val targetColumn =
-            board.columns.find { it.id == toColumnId }
-                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$toColumnId")
+        val target = resolveMoveTarget(board, toColumnId, toStateKey)
 
-        // Task 5 가 이 도출을 `toStateKey` 직접 수용으로 바꾼다(R6·R7). 지금은 무회귀 유지 —
-        // 컬럼의 첫 상태가 곧 오늘의 유일한 상태다.
-        val toStateKey = requireMappedState(targetColumn)
-
-        return issueTransitionPort.transition(
-            BoardTransitionCommand(
-                actorUserId = actorUserId,
-                issueKey = issueKey,
-                toStateKey = toStateKey,
-                expectedVersion = expectedVersion,
-                resolutionId = resolutionId,
-            ),
-        )
+        val transition =
+            issueTransitionPort.transition(
+                BoardTransitionCommand(
+                    actorUserId = actorUserId,
+                    issueKey = issueKey,
+                    toStateKey = target.stateKey,
+                    expectedVersion = expectedVersion,
+                    resolutionId = resolutionId,
+                ),
+            )
+        return BoardCardMoveResult(transition = transition, columnId = target.columnId, stateKey = target.stateKey)
     }
 
     /**
-     * 컬럼이 담은 「첫 상태」를 돌려주고, 상태 0개 컬럼이면 400 으로 거부한다.
+     * 이동 요청을 「어느 컬럼의 어느 상태로」 하나로 푼다 (R6 · R7 · E4).
      *
-     * 상태 0개 컬럼은 V508 이후 표현 가능한 상태다(E1·N4) — 매핑을 옮기는 중간 창이거나
-     * Task 6 의 `POST /columns` 로 갓 만들어진 컬럼이다. 어느 쪽이든 「어느 상태로 가라」가 없으므로
-     * 서버가 전환을 지어낼 수 없다.
+     * [moveCard] 본문에서 뺀 이유는 두 가지다. ① 그 함수의 throw 가 셋을 넘는다(detekt `ThrowsCount`)
+     * ② 요청 해석과 전환 위임은 서로 다른 관심사다 — 해석 규칙이 늘어도 [moveCard] 는 그대로다.
      *
-     * [moveCard] 본문에서 뺀 이유는 그 함수의 throw 가 셋이 되기 때문이다(detekt `ThrowsCount`).
+     * 상태로 지목한 경우 **그 상태를 담은 컬럼**을 되찾아 응답 echo 에 쓴다. X1(한 상태는 한 보드에서
+     * 한 컬럼에만)이 DB 제약이라 후보는 항상 0개 또는 1개다.
      */
-    private fun requireMappedState(column: BoardColumn): String =
-        column.legacyStateKey
+    private fun resolveMoveTarget(
+        board: Board,
+        toColumnId: UUID?,
+        toStateKey: String?,
+    ): MoveTarget {
+        requireExactlyOneTarget(toColumnId, toStateKey)
+        return if (toStateKey != null) {
+            resolveByState(board, toStateKey)
+        } else {
+            resolveByColumn(board, toColumnId)
+        }
+    }
+
+    /** 「둘 중 정확히 하나」를 강제한다 (R7). `@NotNull` 로는 표현할 수 없어 여기서 진다. */
+    private fun requireExactlyOneTarget(
+        toColumnId: UUID?,
+        toStateKey: String?,
+    ) {
+        if ((toColumnId == null) == (toStateKey == null)) {
+            val what = if (toColumnId == null) "둘 다 없습니다." else "둘 다 있습니다."
+            throw MoveTargetAmbiguousException("toColumnId 와 toStateKey 중 정확히 하나를 보내야 합니다. 지금은 $what")
+        }
+    }
+
+    /**
+     * 상태로 지목한 요청을 푼다 (R6 · E4).
+     *
+     * 그 상태를 **담은 컬럼**을 되찾아 응답 echo 에 쓴다. X1(한 상태는 한 보드에서 한 컬럼에만)이
+     * DB 제약이라 후보는 항상 0개 또는 1개다.
+     */
+    private fun resolveByState(
+        board: Board,
+        toStateKey: String,
+    ): MoveTarget {
+        val owner =
+            board.columns.firstOrNull { toStateKey in it.stateKeys }
+                ?: throw BoardStateNotMappedException(toStateKey)
+        return MoveTarget(columnId = owner.id, stateKey = toStateKey)
+    }
+
+    /** 하위 호환 경로 — 컬럼으로 지목한 요청을 푼다 (R7). */
+    private fun resolveByColumn(
+        board: Board,
+        toColumnId: UUID?,
+    ): MoveTarget {
+        val column =
+            board.columns.find { it.id == toColumnId }
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$toColumnId")
+        return MoveTarget(columnId = column.id, stateKey = requireSingleState(column))
+    }
+
+    /**
+     * 하위 호환 경로에서 컬럼의 **유일한** 상태를 돌려준다 (R7).
+     *
+     * - 2개 이상이면 [ColumnStateAmbiguousException] — 서버가 하나를 고르면 사용자가 의도하지 않은
+     *   전환이 조용히 일어난다.
+     * - 0개면 400 — V508 이후 표현 가능한 상태다(E1·N4). 매핑을 옮기는 중간 창이거나 Task 6 의
+     *   `POST /columns` 로 갓 만들어진 컬럼이다. 어느 쪽이든 서버가 전환을 지어낼 수 없다.
+     */
+    private fun requireSingleState(column: BoardColumn): String {
+        if (column.stateKeys.size >= 2) {
+            throw ColumnStateAmbiguousException(columnId = column.id, stateCount = column.stateKeys.size)
+        }
+        return column.legacyStateKey
             ?: throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "AGILE_COLUMN_HAS_NO_STATE: 상태가 매핑되지 않은 컬럼으로는 이동할 수 없습니다.",
             )
+    }
+
+    /** [resolveMoveTarget] 의 결과 — 서버가 해석한 대상 컬럼과 상태. */
+    private data class MoveTarget(
+        val columnId: UUID,
+        val stateKey: String,
+    )
 
     /**
      * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.

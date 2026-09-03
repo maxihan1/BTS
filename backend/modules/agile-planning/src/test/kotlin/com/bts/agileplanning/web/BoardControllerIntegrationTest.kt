@@ -4,10 +4,10 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.application.BoardCardMoveResult
+import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.application.BoardStateNotMappedException
 import com.bts.agileplanning.application.ColumnStateAmbiguousException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
-import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
@@ -651,10 +651,16 @@ class BoardControllerIntegrationTest {
                 issueKey = "BTS-1",
                 actorUserId = actorId,
                 toColumnId = toColumnId,
+                toStateKey = null,
                 expectedVersion = 3L,
                 resolutionId = null,
             )
-        } returns BoardTransitionResult(issueKey = "BTS-1", currentStateKey = "in-progress", version = 4L)
+        } returns
+            BoardCardMoveResult(
+                transition = BoardTransitionResult(issueKey = "BTS-1", currentStateKey = "in-progress", version = 4L),
+                columnId = toColumnId,
+                stateKey = "in-progress",
+            )
 
         val body = mapOf("toColumnId" to toColumnId.toString(), "expectedVersion" to 3)
 
@@ -701,7 +707,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "version conflict")
 
@@ -723,7 +729,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "mismatch")
 

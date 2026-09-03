@@ -2,6 +2,9 @@
 
 package com.bts.agileplanning.web
 
+import com.bts.agileplanning.application.BoardStateNotMappedException
+import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.QuickFilterEmptyQueryException
 import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
@@ -228,6 +231,49 @@ class BoardExceptionHandler {
         )
     }
 
+    /**
+     * [MoveTargetAmbiguousException] — 이동 대상을 정확히 하나 지정하지 않았다 — 400 (R7).
+     *
+     * 전용 코드를 만들지 않고 [AGILE_VALIDATION_FAILED] 를 재사용한다 — 요청 **모양**의 오류이지
+     * 사용자가 마주할 도메인 상태가 아니라서, UI 가 분기할 이유가 없다. 클라이언트 버그다.
+     *
+     * @param ex 대상 지정 오류 예외. 메시지가 「둘 다 없음/둘 다 있음」을 구분한다.
+     */
+    @ExceptionHandler(MoveTargetAmbiguousException::class)
+    fun handleMoveTargetAmbiguous(ex: MoveTargetAmbiguousException): ProblemDetail {
+        log.info("AGILE_400 move_target_ambiguous cause='{}'", ex.message)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = ex.message,
+        )
+    }
+
+    /**
+     * [ColumnStateAmbiguousException] — 하위 호환 `toColumnId` 가 상태 2개 이상 컬럼을 가리켰다 — 400 (R7).
+     *
+     * ### 왜 [AGILE_VALIDATION_FAILED] 를 재사용하지 않는가
+     *
+     * 이건 클라이언트 버그가 아니라 **마이그레이션 신호**다. 요청은 1:1 시절 문법으로 옳았고,
+     * 보드가 1:N 이 되면서 해석이 불가능해졌다. 클라이언트는 이 코드를 보고 `toStateKey` 경로로
+     * 옮겨 가야 한다 — 일반 검증 실패와 섞이면 그 신호가 묻힌다.
+     *
+     * @param ex 모호 예외. 어느 컬럼이 상태 몇 개를 담았는지 담고 있다.
+     */
+    @ExceptionHandler(ColumnStateAmbiguousException::class)
+    fun handleColumnStateAmbiguous(ex: ColumnStateAmbiguousException): ProblemDetail {
+        log.info("AGILE_400 column_state_ambiguous stateCount={}", ex.stateCount)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-column-state-ambiguous",
+            title = "Column State Ambiguous",
+            errorCode = AGILE_COLUMN_STATE_AMBIGUOUS,
+            detail = "이 컬럼은 상태를 ${ex.stateCount}개 담고 있습니다. 이동할 상태를 toStateKey 로 지정하세요.",
+        )
+    }
+
     // ── 403 ACCESS_DENIED ─────────────────────────────────────────────────────
 
     /**
@@ -269,6 +315,31 @@ class BoardExceptionHandler {
             title = "Board Not Found",
             errorCode = AGILE_BOARD_NOT_FOUND,
             detail = "보드를 찾을 수 없습니다.",
+        )
+    }
+
+    /**
+     * [BoardStateNotMappedException] — `toStateKey` 가 이 보드의 어느 컬럼에도 없다 — 404 (E4).
+     *
+     * ### 보드 미존재와 코드를 나누는 이유
+     *
+     * 둘 다 404 라 상태 코드만으로는 구분이 안 되는데, 사용자가 할 수 있는 일이 다르다.
+     * 보드가 없으면 끝이고, 상태가 미매핑이면 **컬럼에 그 상태를 추가하면** 된다 —
+     * 보드 조회 응답의 `unmappedStates`(R8)가 그 목록을 이미 주고 있다.
+     *
+     * 상태 키는 워크플로우 정본 키라 내부 사정이 아니다. detail 에 담아 UI 가 바로 안내할 수 있게 한다.
+     *
+     * @param ex 미매핑 상태 예외.
+     */
+    @ExceptionHandler(BoardStateNotMappedException::class)
+    fun handleBoardStateNotMapped(ex: BoardStateNotMappedException): ProblemDetail {
+        log.info("AGILE_404 board_state_not_mapped stateKey='{}'", ex.stateKey)
+        return problem(
+            status = HttpStatus.NOT_FOUND,
+            type = "agile-board-state-not-mapped",
+            title = "Board State Not Mapped",
+            errorCode = AGILE_BOARD_STATE_NOT_MAPPED,
+            detail = "이 보드의 어느 컬럼에도 매핑되지 않은 상태입니다: ${ex.stateKey}",
         )
     }
 
@@ -487,6 +558,8 @@ class BoardExceptionHandler {
         const val AGILE_ACCESS_DENIED = "AGILE_ACCESS_DENIED"
         const val AGILE_BOARD_NOT_FOUND = "AGILE_BOARD_NOT_FOUND"
         const val AGILE_BOARD_TYPE_INVALID = "AGILE_BOARD_TYPE_INVALID"
+        const val AGILE_BOARD_STATE_NOT_MAPPED = "AGILE_BOARD_STATE_NOT_MAPPED"
+        const val AGILE_COLUMN_STATE_AMBIGUOUS = "AGILE_COLUMN_STATE_AMBIGUOUS"
         const val AGILE_CONFLICT = "AGILE_CONFLICT"
         const val AGILE_QUICK_FILTER_NAME_CONFLICT = "AGILE_QUICK_FILTER_NAME_CONFLICT"
         const val AGILE_QUICK_FILTER_LIMIT_EXCEEDED = "AGILE_QUICK_FILTER_LIMIT_EXCEEDED"

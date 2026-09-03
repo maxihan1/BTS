@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web.dto
 
+import com.bts.agileplanning.application.BoardCardMoveResult
 import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
@@ -9,7 +10,6 @@ import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.shared.board.BoardIssueView
-import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.workflow.WorkflowStateView
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
@@ -52,13 +52,21 @@ data class CreateBoardRequest(
  *
  * actor 는 body 로 받지 않는다 — SecurityContext 에서 추출한다(actor 위조 차단).
  *
- * @property toColumnId 이동 대상 컬럼 UUID. 필수.
+ * ## 대상은 상태로 지목한다 (R6 · J3 · J4)
+ *
+ * 지라는 컬럼 안의 **각 상태를 드롭존**으로 그린다 — 「컬럼으로 드롭」이라는 조작이 없다.
+ * 그래서 [toStateKey] 가 정본 경로이고 [toColumnId] 는 하위 호환이다(R7).
+ * **둘 중 정확히 하나**를 보내야 하며, 그 판정은 서비스가 진다 — `@NotNull` 로는
+ * 「둘 중 하나」를 표현할 수 없고, 컨트롤러에도 두면 같은 규칙이 두 곳이 된다.
+ *
+ * @property toColumnId 하위 호환 — 이동 대상 컬럼 UUID. 그 컬럼의 상태가 2개 이상이면 400.
+ * @property toStateKey 이동 대상 워크플로우 상태 키. 이 보드의 어느 컬럼에도 없으면 404.
  * @property expectedVersion 낙관적 락(OCC) 기대 버전. 0 이상 필수.
  * @property resolutionId DONE 카테고리 전환 시 필요한 해결 방안 ID. 불필요하면 null.
  */
 data class MoveCardRequest(
-    @field:NotNull
-    val toColumnId: UUID?,
+    val toColumnId: UUID? = null,
+    val toStateKey: String? = null,
     @field:NotNull
     @field:PositiveOrZero
     val expectedVersion: Long?,
@@ -501,20 +509,19 @@ data class MoveCardResponse(
 ) {
     companion object {
         /**
-         * 전환 결과([BoardTransitionResult])와 대상 컬럼 UUID 를 합쳐 응답을 만든다.
+         * 이동 결과([BoardCardMoveResult])를 응답으로 옮긴다.
          *
-         * @param result 전환 결과(issueKey/currentStateKey/version 출처).
-         * @param toColumnId 이동 대상 컬럼 UUID(응답 columnId echo).
+         * `columnId` 는 **서버가 해석한** 컬럼이다 — 요청이 상태만 지목했어도(R6) 그 상태를 담은
+         * 컬럼을 되돌려 주므로, 클라이언트가 컬럼을 다시 계산할 필요가 없다.
+         *
+         * @param result 이동 결과(전환 + 해석된 컬럼).
          */
-        fun of(
-            result: BoardTransitionResult,
-            toColumnId: UUID,
-        ): MoveCardResponse =
+        fun of(result: BoardCardMoveResult): MoveCardResponse =
             MoveCardResponse(
-                issueKey = result.issueKey,
-                currentStateKey = result.currentStateKey,
-                version = result.version,
-                columnId = toColumnId,
+                issueKey = result.transition.issueKey,
+                currentStateKey = result.transition.currentStateKey,
+                version = result.transition.version,
+                columnId = result.columnId,
             )
     }
 }
