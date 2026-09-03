@@ -131,3 +131,28 @@ describe('경로 형태 (F10 · F12)', () => {
     expect(radius).toBeGreaterThan(0)
   })
 })
+
+/** 라벨 상자의 `translate(...)` 문자열. 라벨이 실제로 어디 놓였는지 재는 유일한 관찰점이다. */
+function labelTransformOf(host: Element): string {
+  const box = host.firstElementChild
+  if (!(box instanceof HTMLElement)) throw new Error('라벨 상자를 찾지 못했다')
+  return box.style.transform
+}
+
+describe('라벨 자리 (부채 168)', () => {
+  it('labelOffset 을 받으면 라벨이 그만큼 밀린다', () => {
+    // ★ lib 이 겹침을 풀어도 컴포넌트가 그 값을 안 쓰면 화면은 그대로다. 그 사이를 재는 판정이다.
+    const plain = labelTransformOf(renderEdge('검토 요청').host)
+    const shifted = labelTransformOf(renderEdge('검토 요청', { labelOffset: { x: 40, y: -24 } }).host)
+
+    expect(shifted).not.toBe(plain)
+  })
+
+  it('labelOffset 이 없으면 라벨은 간선 중점 그대로다', () => {
+    // 굽힐 이유가 없는 라벨까지 밀면 어느 간선의 이름인지 흐려진다
+    const plain = labelTransformOf(renderEdge('검토 요청').host)
+    const zero = labelTransformOf(renderEdge('검토 요청', { labelOffset: { x: 0, y: 0 } }).host)
+
+    expect(zero).toBe(plain)
+  })
+})

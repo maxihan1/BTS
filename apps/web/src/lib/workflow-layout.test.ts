@@ -128,9 +128,20 @@ function edgeAt(result: EdgeRouteResult, transitionIndex: number): RoutedEdge {
   return found
 }
 
+/**
+ * 좌표를 빼고 경로만 재는 호출.
+ *
+ * `offset` · `selfLoop` · 시작 노드 판정은 노드가 어디 놓였는지와 무관하다. 배치를 빈 배열로
+ * 주면 라벨 겹침 해소만 쉬고(겹치는지 알 수 없으니 밀지 않는다) 나머지 계산은 그대로다.
+ * 좌표가 실제로 필요한 판정은 「라벨 겹침 해소」 뿐이라 그쪽만 `autoLayout` 결과를 넘긴다.
+ */
+function routesOf(transitions: readonly LayoutInputTransition[]): EdgeRouteResult {
+  return edgeRoutes(transitions, [])
+}
+
 describe('edgeRoutes', () => {
   it('self-loop 은 곡선 offset 을 받는다', () => {
-    const result = edgeRoutes([
+    const result = routesOf([
       makeTransition({ from: 'doing', to: 'doing', name: '재작업' }),
       makeTransition({ from: 'doing', to: 'doing', name: '담당자 변경' }),
       makeTransition({ from: 'todo', to: 'doing', name: '시작' }),
@@ -151,7 +162,7 @@ describe('edgeRoutes', () => {
 
   it('같은 상태쌍에 전환이 여럿이면 서로 다른 offset 을 받는다', () => {
     // FR-WF-05 가 같은 쌍의 다중 전환을 허용한다 — 겹쳐 그리면 어느 것을 고르는지 알 수 없다
-    const result = edgeRoutes([
+    const result = routesOf([
       makeTransition({ from: 'todo', to: 'doing', name: '시작' }),
       makeTransition({ from: 'todo', to: 'doing', name: '급행 시작' }),
       makeTransition({ from: 'todo', to: 'doing', name: '이관 시작' }),
@@ -166,7 +177,7 @@ describe('edgeRoutes', () => {
   })
 
   it('INITIAL 전환은 시작 노드에서 출발한다', () => {
-    const result = edgeRoutes([
+    const result = routesOf([
       makeTransition({ from: null, to: 'todo', name: '생성', kind: 'INITIAL' }),
     ])
 
@@ -176,12 +187,12 @@ describe('edgeRoutes', () => {
     expect(result.hasStartNode).toBe(true)
 
     // INITIAL 이 없으면 시작 노드를 그리지 않는다 — 늘 참이면 빈 원이 떠다닌다
-    const withoutInitial = edgeRoutes([makeTransition({ from: 'todo', to: 'doing', name: '시작' })])
+    const withoutInitial = routesOf([makeTransition({ from: 'todo', to: 'doing', name: '시작' })])
     expect(withoutInitial.hasStartNode).toBe(false)
   })
 
   it('GLOBAL 전환은 간선을 만들지 않는다', () => {
-    const result = edgeRoutes([
+    const result = routesOf([
       makeTransition({ from: null, to: 'done', name: '강제 종료', kind: 'GLOBAL' }),
       makeTransition({ from: 'todo', to: 'doing', name: '시작' }),
     ])
@@ -196,7 +207,7 @@ describe('edgeRoutes', () => {
   })
 
   it('from 이 null 이어도 이름이 null 인 노드를 만들지 않는다', () => {
-    const result = edgeRoutes([
+    const result = routesOf([
       makeTransition({ from: null, to: 'todo', name: '생성', kind: 'INITIAL' }),
       makeTransition({ from: null, to: 'done', name: '강제 종료', kind: 'GLOBAL' }),
       // 스키마상 NORMAL 의 from 도 nullable 이다 — 계약 위반 데이터가 들어와도 노드를 만들지 않는다
@@ -212,5 +223,65 @@ describe('edgeRoutes', () => {
     // 출발지 없는 전환이 통째로 사라져서도 안 된다 — 하나는 패널로, 둘은 시작 노드에서 간선으로
     expect(result.edges).toHaveLength(2)
     expect(result.globals).toHaveLength(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 라벨 겹침 (부채 168)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * `software-default` 픽스처와 같은 형태의 상태 5개.
+ *
+ * 카테고리 열 배치가 `open(0,0)` · `in_progress(260,0)` · `in_review(260,120)` ·
+ * `done(520,0)` · `closed(520,120)` 을 만든다. **`520 = 2 × 260` 이라** 아래 세 전환의
+ * 중점이 대수적으로 같은 한 점이 된다 — 우연이 아니라 이 배치의 항등이다.
+ */
+function softwareDefaultStates(): LayoutInputState[] {
+  return [
+    makeState({ key: 'open', category: 'TODO', displayOrder: 1 }),
+    makeState({ key: 'in_progress', category: 'IN_PROGRESS', displayOrder: 2 }),
+    makeState({ key: 'in_review', category: 'IN_PROGRESS', displayOrder: 3 }),
+    makeState({ key: 'done', category: 'DONE', displayOrder: 4 }),
+    makeState({ key: 'closed', category: 'DONE', displayOrder: 5 }),
+  ]
+}
+
+describe('라벨 겹침 해소', () => {
+  it('중점이 한 점에 모이는 간선들의 라벨이 서로 다른 방향으로 밀린다', () => {
+    // FR-WF-07 D8 눈확인 ②에서 `Requ|Cancel|nges` 로 뭉개져 나온 그 세 전환이다.
+    // 간선 자체는 X 자로 벌어진다(눈확인 ④ 통과) — 겹치는 것은 라벨뿐이다.
+    const placed = autoLayout(softwareDefaultStates())
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'in_progress', to: 'in_review', name: 'Submit for Review' }),
+        makeTransition({ from: 'in_review', to: 'in_progress', name: 'Request Changes' }),
+        makeTransition({ from: 'open', to: 'closed', name: 'Cancel' }),
+      ],
+      placed,
+    )
+
+    const shifted = [0, 1, 2].map((index) => {
+      const { x, y } = edgeAt(result, index).labelOffset
+      return `${x},${y}`
+    })
+
+    // 세 간선의 중점이 같은 점이므로, 오프셋이 서로 달라야만 라벨 셋이 따로 읽힌다
+    expect(new Set(shifted).size).toBe(3)
+  })
+
+  it('중점이 겹치지 않는 라벨은 밀지 않는다', () => {
+    // 굽힐 이유가 없는 라벨까지 밀면 선과 이름이 멀어져 어느 간선의 이름인지 알 수 없어진다
+    const placed = autoLayout(softwareDefaultStates())
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'open', to: 'in_progress', name: 'Start Work' }),
+        makeTransition({ from: 'in_review', to: 'done', name: 'Approve' }),
+      ],
+      placed,
+    )
+
+    expect(edgeAt(result, 0).labelOffset).toEqual({ x: 0, y: 0 })
+    expect(edgeAt(result, 1).labelOffset).toEqual({ x: 0, y: 0 })
   })
 })

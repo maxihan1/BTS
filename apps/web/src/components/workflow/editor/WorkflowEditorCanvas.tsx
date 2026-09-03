@@ -89,7 +89,7 @@ function buildGraph(
   // 배열 `find` 를 노드마다 도는 O(n²) 와 「못 찾으면 TODO」 같은 **도달 불가 폴백**을 함께 없앤다.
   // 도달 불가 폴백은 지워도 아무 판정이 red 가 안 되므로, 두면 다음 사람이 그것을 실제 분기로 읽는다.
   const byKey = new Map(states.map((s) => [s.key, s]))
-  const routes = edgeRoutes(transitions)
+  const routes = edgeRoutes(transitions, placed)
 
   const nodes: Node[] = placed.flatMap((p) => {
     const state = byKey.get(p.key)
@@ -123,7 +123,13 @@ function buildGraph(
     type: 'transition',
     source: e.source,
     target: e.target,
-    data: { name: e.label, transitionIndex: e.transitionIndex, offset: e.offset, selfLoop: e.selfLoop },
+    data: {
+      name: e.label,
+      transitionIndex: e.transitionIndex,
+      offset: e.offset,
+      selfLoop: e.selfLoop,
+      labelOffset: e.labelOffset,
+    },
   }))
 
   return { nodes, edges, globals: routes.globals }

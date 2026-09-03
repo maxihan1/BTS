@@ -11,6 +11,11 @@ interface TransitionEdgeData extends Record<string, unknown> {
   offset?: number
   /** 출발과 도착이 같은 전환인가. 참이면 베지에가 아니라 호를 그린다 */
   selfLoop?: boolean
+  /**
+   * 라벨을 중점에서 추가로 밀어낼 벡터(px). `lib/workflow-layout.ts` 가 **다른 상태쌍**의
+   * 간선끼리 중점이 한 자리에 모인 것을 풀어 준 결과다 — `offset` 과 다른 문제를 푼다.
+   */
+  labelOffset?: { x: number; y: number }
 }
 
 /**
@@ -130,6 +135,7 @@ function TransitionEdge({
 }: EdgeProps<TransitionEdgeType>): React.JSX.Element {
   const offset = typeof data?.offset === 'number' ? data.offset : 0
   const selfLoop = data?.selfLoop === true
+  const labelShift = data?.labelOffset ?? { x: 0, y: 0 }
 
   let path: string
   let labelX: number
@@ -156,7 +162,11 @@ function TransitionEdge({
     <>
       <BaseEdge id={id} path={path} markerEnd={markerEnd} />
       <EdgeLabelRenderer>
-        <TransitionEdgeLabel name={data?.name ?? ''} x={labelX} y={labelY} />
+        <TransitionEdgeLabel
+          name={data?.name ?? ''}
+          x={labelX + labelShift.x}
+          y={labelY + labelShift.y}
+        />
       </EdgeLabelRenderer>
     </>
   )

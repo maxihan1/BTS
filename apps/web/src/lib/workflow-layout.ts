@@ -132,6 +132,20 @@ export interface RoutedEdge {
   selfLoop: boolean
   /** 곡선을 중심선에서 얼마나 벌릴지(px). 0 이면 직선이다. */
   offset: number
+  /**
+   * 라벨을 간선 중점에서 추가로 밀어낼 거리(px).
+   *
+   * **`offset` 과 다른 문제를 푼다.** `offset` 은 *같은 상태쌍* 간선이 서로 겹치는 것을 막고,
+   * 이것은 *서로 다른 상태쌍* 간선의 중점이 한 자리에 모여 **라벨끼리** 겹치는 것을 막는다.
+   * 겹칠 이웃이 없으면 `{ x: 0, y: 0 }` 이다 — 굽힐 이유가 없는 라벨은 중점에 그대로 둔다.
+   */
+  labelOffset: LabelOffset
+}
+
+/** 라벨을 중점에서 밀어낼 벡터(px). 캔버스 좌표계 기준이다. */
+export interface LabelOffset {
+  x: number
+  y: number
 }
 
 /** 간선을 만들지 않고 「모든 상태에서」 패널에 나열할 전역 전환 (F11). */
@@ -162,6 +176,14 @@ const EDGE_BUNDLE_GAP_PX = 40
 
 /** self-loop 곡선의 기본 크기(px). 노드 밖으로 나올 만큼은 커야 한다. */
 const SELF_LOOP_BASE_OFFSET_PX = 60
+
+/**
+ * 라벨 앵커를 같은 자리로 볼 격자 크기(px).
+ *
+ * 정확히 같은 좌표만 묶으면 1px 어긋난 겹침을 놓친다 — 라벨 상자는 수십 px 이라
+ * 몇 px 차이는 눈에 겹쳐 보인다. 라벨 한 줄 높이 정도로 잡는다.
+ */
+const LABEL_CELL_PX = 24
 
 /** 쌍 키 구분자. 상태 키에 섞일 수 없는 문자라야 `a\0b`·`ab\0` 같은 충돌이 안 난다. */
 const PAIR_KEY_SEPARATOR = '\u0000'
@@ -235,6 +257,9 @@ function selfLoopOffset(index: number): number {
   return SELF_LOOP_BASE_OFFSET_PX + index * EDGE_BUNDLE_GAP_PX
 }
 
+/** 밀어낼 이웃이 없는 라벨의 오프셋. 매번 새 객체를 만들지 않는다. */
+const NO_LABEL_OFFSET: LabelOffset = { x: 0, y: 0 }
+
 /** 간선 하나를 만드는 데 필요한 자리 정보. */
 interface EdgeSlot {
   readonly transition: LayoutInputTransition
@@ -264,7 +289,83 @@ function routedEdge(slot: EdgeSlot): RoutedEdge {
     transitionIndex,
     selfLoop,
     offset: selfLoop ? selfLoopOffset(index) : bundleOffset(index, total),
+    labelOffset: NO_LABEL_OFFSET,
   }
+}
+
+/**
+ * 간선의 라벨이 놓일 자리를 노드 좌표만으로 근사한다.
+ *
+ * 노드 크기를 모르는 채로 **좌표만** 쓰는 것이 옳다 — 모든 노드가 같은 크기라 크기를 더하면
+ * 세 중점에 같은 상수가 얹힐 뿐이고, 겹치는지 여부는 그대로다.
+ *
+ * @returns 앵커. 두 끝 중 하나라도 배치에 없으면(가상 시작 노드) null 이다
+ */
+function labelAnchor(
+  edge: RoutedEdge,
+  byKey: Map<string, PlacedNode>,
+): { x: number; y: number } | null {
+  const source = byKey.get(edge.source)
+  const target = byKey.get(edge.target)
+  if (source === undefined || target === undefined) return null
+
+  return { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 }
+}
+
+/**
+ * 라벨 앵커가 같은 칸에 떨어지는 간선끼리 라벨을 서로 밀어낸다 (부채 168).
+ *
+ * **`bundleOffset` 이 못 푸는 문제다.** 그쪽은 같은 상태쌍 안에서만 벌리는데, 카테고리 열 배치는
+ * *서로 다른 상태쌍*의 중점을 한 점에 모은다 — `software-default` 에서 `open→closed` 의 중점과
+ * `in_progress↔in_review` 의 중점이 `520 = 2 × 260` 때문에 대수적으로 같다.
+ *
+ * 미는 방향은 **각 간선의 법선**이다. 공통 축(가로나 세로)으로 밀면 방향이 반대인 두 간선이
+ * 같은 쪽으로 가 다시 겹칠 수 있지만, 법선은 간선마다 다른 쪽을 가리킨다.
+ *
+ * self-loop 은 제외한다 — 그쪽 라벨 자리는 고리 경로가 정하고(부채 170), 중점이라는 개념이 없다.
+ *
+ * @param edges 간선 목록. **제자리에서 바꾸지 않고** 새 배열을 돌려준다
+ * @param placed 배치된 노드 좌표
+ */
+function spreadLabels(edges: readonly RoutedEdge[], placed: readonly PlacedNode[]): RoutedEdge[] {
+  const byKey = new Map(placed.map((node) => [node.key, node]))
+  const cells = new Map<string, RoutedEdge[]>()
+
+  for (const edge of edges) {
+    if (edge.selfLoop) continue
+    const anchor = labelAnchor(edge, byKey)
+    if (anchor === null) continue
+    const cell = `${Math.round(anchor.x / LABEL_CELL_PX)}${PAIR_KEY_SEPARATOR}${Math.round(anchor.y / LABEL_CELL_PX)}`
+    const bucket = cells.get(cell)
+    if (bucket === undefined) cells.set(cell, [edge])
+    else bucket.push(edge)
+  }
+
+  const shifts = new Map<string, LabelOffset>()
+  for (const bucket of cells.values()) {
+    // 이웃이 없으면 밀 이유가 없다. 굽힐 이유 없는 라벨까지 밀면 어느 간선의 이름인지 흐려진다.
+    if (bucket.length < 2) continue
+
+    bucket.forEach((edge, index) => {
+      const source = byKey.get(edge.source)
+      const target = byKey.get(edge.target)
+      if (source === undefined || target === undefined) return
+
+      const dx = target.x - source.x
+      const dy = target.y - source.y
+      const length = Math.hypot(dx, dy) || 1
+      const distance = bundleOffset(index, bucket.length)
+      shifts.set(edge.id, {
+        x: Math.round((-(dy / length)) * distance),
+        y: Math.round((dx / length) * distance),
+      })
+    })
+  }
+
+  return edges.map((edge) => {
+    const shift = shifts.get(edge.id)
+    return shift === undefined ? edge : { ...edge, labelOffset: shift }
+  })
 }
 
 /**
@@ -278,9 +379,14 @@ function routedEdge(slot: EdgeSlot): RoutedEdge {
  * `autoLayout` 과 같이 **입력을 변형하지 않는다** — 전환 목록도, 전환 객체도 그대로다.
  *
  * @param transitions 초안의 전환 목록. 배열 순서가 곧 전환의 identity 다(`transitionIndex`)
+ * @param placed 배치된 노드 좌표(`autoLayout` 의 결과). 라벨끼리 겹치는지 판정하는 데 쓴다 —
+ *   좌표를 모르면 겹침을 알 수 없으므로 그때는 라벨을 밀지 않는다
  * @returns 간선 · 전역 전환 목록 · 시작 노드 표시 여부
  */
-export function edgeRoutes(transitions: readonly LayoutInputTransition[]): EdgeRouteResult {
+export function edgeRoutes(
+  transitions: readonly LayoutInputTransition[],
+  placed: readonly PlacedNode[],
+): EdgeRouteResult {
   const totals = countByPair(transitions)
   const placedPerPair = new Map<string, number>()
   const edges: RoutedEdge[] = []
@@ -301,5 +407,9 @@ export function edgeRoutes(transitions: readonly LayoutInputTransition[]): EdgeR
   })
 
   // 시작 노드는 그것을 쓰는 간선이 있을 때만 그린다 — 늘 그리면 빈 원이 홀로 떠다닌다
-  return { edges, globals, hasStartNode: edges.some((edge) => edge.source === START_NODE_ID) }
+  return {
+    edges: spreadLabels(edges, placed),
+    globals,
+    hasStartNode: edges.some((edge) => edge.source === START_NODE_ID),
+  }
 }
