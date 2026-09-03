@@ -144,5 +144,5 @@ settings 안에 `Columns` 와 `Card layout` 을 따로 둔다. **부채 177 로 
 - `V203__add_global_status_catalog.sql:36-60` — 연결 테이블 서식 정본
 - `docs/adr/2026-08-18-workflow-global-status-catalog.md` — 상태 키 전역화(이 PR 의 전제)
 - `docs/specs/2026-06-20-fr-bd-01-kanban-board.md:10` — 1:1 을 못박은 원 스펙(Jira 대조 절 없음)
-- `docs/specs/2026-09-03-board-settings.md` — 형제 문서 · 부채 177
+- `TODOS.md` 부채 **177** — 보드 설정 표면 전체의 갭 실측 + 지라 근거 J7~J21
 - `BoardApplicationService.kt:392,413` · `BoardCardPlacement.kt` · `BoardRepository.kt`

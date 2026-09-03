@@ -4,8 +4,8 @@
 > 관련 FR — FR-BD-01(칸반 보드 · 원 스펙 `2026-06-20`)의 컬럼 모델 확장
 > plan `docs/plans/2026-09-03-board-column-multi-state.md` · ADR `docs/adr/2026-09-03-board-column-multi-state.md`
 >
-> **형제 문서** `docs/specs/2026-09-03-board-settings.md` — 보드 설정 표면 **전체**의 지라 대조와
-> 갭 실측(부채 **177**). 이 PR 은 지라 Board settings 7개 탭 중 **`Columns` 하나**를 담당하고,
+> **형제 작업 — 부채 177**(`TODOS.md`). 보드 설정 표면 **전체**의 갭 실측과 지라 근거 J7~J21 이
+> 그 항목 본문에 있다. 이 PR 은 지라 Board settings 7개 탭 중 **`Columns` 하나**를 담당하고,
 > 나머지 6개(스윔레인 UI · 카드 레이아웃 · 추정 · 근무일 · 이슈 상세 뷰 · 설정 화면 뼈대)는
 > **별도 PR** 이다(Maxi 확정 2026-09-03).
 

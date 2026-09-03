@@ -1479,11 +1479,31 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 **★갭 B 는 새 필드를 만드는 일이 아니다.** #346(FR-UX-14 B2)이 카드 응답에 유형·라벨·추정을 이미 실었고 #349(F14)가 화면 밀도를 했다. 카드가 **무엇을 담을 수 있는지**는 갖춰졌고, 없는 것은 **「무엇을 보일지 고르는 설정」**과 그 저장소다.
 
-**지라 근거는 확보돼 있다.** `docs/specs/2026-09-03-board-settings.md` 의 J7~J21 — 탭 7종의 원문 정의 · 카드 레이아웃 상한 3개 · 「백로그와 활성 스프린트가 서로 다른 설정을 갖는다」 · 고정 레이아웃 순서 · `Days in column` · 카드 색 기준. 착수 시 계약 §1-0 재사용 대상이다.
+### 지라 근거 (실물 조회 2026-09-03 · 착수 시 계약 §1-0 재사용 대상)
 
-**분할 제안(같은 문서 §3).** PR-S1 설정 화면 뼈대 + 갭 A·퀵필터 이전 → PR-S2 갭 B 카드 레이아웃 → PR-S3 갭 C·D·E. **뼈대가 먼저인 이유** — 설정 화면 없이 카드 레이아웃 API 만 만들면 그것도 「도달할 UI 가 없는 기능」이 되어 갭 A 를 반복한다.
+**여기 적어 두는 이유.** 조회는 이미 했으므로 적는 비용이 0 이고, 안 적으면 착수 시점에 같은 조회를 다시 한다. **설계는 적지 않는다** — 요구사항·스키마·PR 분할은 착수 시점에 `/bts` 체인이 만든다.
 
-**확정되지 않은 것 3건.** ① `Days in column` 의 컬럼 진입 시각을 어디서 얻나(이슈 전환 이력은 `issue-tracking` 소유라 포트가 필요할 수 있다) ② 카드 색의 JQL 기준은 `search` BC 소관이라 BC 격리상 배제 대상인지 ③ 퀵필터를 설정 화면으로 옮기면 칩이 한 번에 안 보여 UX 가 나빠질 수 있다(의도적 편차 후보).
+| # | 원문 인용 | 출처 · 구분 |
+|---|---|---|
+| **J7** | *"From your board, select **more** () then **Configure board**."* | [Configure a company-managed board](https://support.atlassian.com/jira-software-cloud/docs/configure-a-company-managed-board/) · Cloud |
+| **J8** | *"you must be either: a **space administrator** for the location of the board [or] a **board administrator** for the board itself"* | 동일 · Cloud |
+| **J9** | `Columns` — *"edit the mapping of workflow statuses to columns of a board"* | 동일 · Cloud |
+| **J10** | `Swimlanes` — *"Configure swimlanes on a board to help you distinguish tasks of different categories"* | 동일 · Cloud |
+| **J11** | `Quick filters` — *"Configure quick filters on a board to help you switch between work types"* | 동일 · Cloud |
+| **J12** | `Card layout` — *"Customize the layout, colors, and fields on the cards on your board"* | 동일 · Cloud |
+| **J13** | `Estimation and tracking` — *"Configure how you estimate work and track time"* | 동일 · Cloud |
+| **J14** | `Working days` — *"Configure the timezone, and your team's standard working and non-working days"* | 동일 · Cloud |
+| **J15** | `Issue detail view` — *"Customize the work item to show more fields, hide fields, and rearrange"* | 동일 · Cloud |
+| **J16** | 카드 레이아웃 경로 — *"…select **Board settings**. Expand **Layout** in the sidebar, then select **Card layout**."* | [Customize cards](https://support.atlassian.com/jira-software-cloud/docs/customize-cards/) · Cloud |
+| **J17** | **추가 필드 상한 3개** — *"You can configure cards on a board to display up to three additional fields."* | 동일 · Cloud |
+| **J18** | **백로그와 활성 스프린트가 서로 다른 설정을 갖는다** — *"The fields can be different for the backlog and Active sprints, if you are using a Scrum board."* | 동일 · Cloud |
+| **J19** | *"The work item summary is always at the top on the board and backlog. Any custom fields added to the card are next. Then details about the work item, including work type, priority, assignee, and estimate."* | 동일 · Cloud |
+| **J20** | *"You can also enable **Days in column** to visually indicate how long a work item's in a column."* | 동일 · Cloud |
+| **J21** | *"You can base your card colors on work types, priorities, assignees, or JQL."* | 동일 · Cloud |
+
+**착수 시 먼저 풀 것 3건.** ① `Days in column`(J20)의 컬럼 진입 시각을 어디서 얻나 — 이슈 전환 이력은 `issue-tracking` 소유라 BC 격리상 포트가 필요할 수 있다 ② 카드 색(J21)의 JQL 기준은 `search` BC 소관이라 배제 대상인지 ③ 퀵필터를 설정 화면으로 옮기면(J11) 칩이 한 번에 안 보여 오늘 UX 가 나빠질 수 있다 — 의도적 편차 후보.
+
+**분할은 착수 시점에 정한다.** 다만 **설정 화면 뼈대가 먼저**라는 것만은 갭 A 가 이미 증명한다 — 화면 없이 API 만 만들면 그것도 「도달할 UI 가 없는 기능」이 되어 같은 문제를 반복한다.
 
 ---
 
