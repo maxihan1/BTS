@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-03 | xyflow-fr-wf-07-d8-pr-9 | — | ✔ | — | — | FR-WF-07 |
+| 2026-09-03 | xyflow-fr-wf-07-d8-pr-9 | — | ✔ | — | — | FR-WF-05 FR-WF-07 |
 | 2026-09-02 | fr-wf-07-d6b-pr-10b | — | ✔ | — | — | FR-WF-07 |
 | 2026-09-02 | scrum-board-screen | — | ✔ | — | — | FR-BD-04 FR-UX-07 |
 | 2026-09-01 | board-scrum-schema | ✔ | ✔ | — | — | FR-BD-04 |
