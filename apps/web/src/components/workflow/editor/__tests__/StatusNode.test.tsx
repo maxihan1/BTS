@@ -1,5 +1,4 @@
 // 상태 노드 판정 — 이름 · 카테고리 색 · hover 핸들(J4) · 잠금(E12)
-import * as React from 'react'
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ReactFlowProvider } from '@xyflow/react'

@@ -38,8 +38,21 @@ function keyOf(params: Record<string, unknown>): string {
   return typeof params['key'] === 'string' ? params['key'] : ''
 }
 
+/**
+ * 발행본의 다이어그램 좌표 — 실서버 `workflow_statuses.layout_x`/`layout_y` 에 대응한다.
+ *
+ * ★ **이 저장소가 없으면 좌표 왕복이 목에서 끊긴다.** 프론트 `WorkflowView`(발행본)에는 좌표
+ * 필드가 없어서, 발행할 때 좌표가 증발하고 초안을 새로 뜰 때 되읽을 것이 없다. 그러면
+ * 「발행 뒤 재진입해도 그 자리」 시나리오가 **목 위에서 성립하지 않는다** — 목이 서버보다
+ * 부족하면 프로덕션이 아니라 E2E 가 그 자리에서 못 선다.
+ *
+ * 키는 워크플로우 키, 값은 상태 키 → 좌표.
+ */
+const publishedLayouts = new Map<string, Map<string, { x: number | null; y: number | null }>>()
+
 /** 발행된 정의를 초안 형태로 옮긴다. `GET /draft` 가 초안 없을 때 주는 값이다. */
 function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
+  const layouts = publishedLayouts.get(workflow.key)
   return {
     key: workflow.key,
     name: workflow.name,
@@ -49,6 +62,9 @@ function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
       name: s.name,
       category: s.category,
       displayOrder: s.displayOrder,
+      // 발행 시 실린 좌표를 되읽는다. 없으면 null 이고 캔버스가 자동 배치한다.
+      layoutX: layouts?.get(s.key)?.x ?? null,
+      layoutY: layouts?.get(s.key)?.y ?? null,
     })),
     transitions: workflow.transitions.map((t) => ({
       from: t.fromStateKey,
@@ -64,6 +80,12 @@ function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
 
 /** 초안 정의를 발행본(`WorkflowView`) 형태로 되돌린다. 발행이 정규 테이블을 교체하는 자리다. */
 function toWorkflowView(definition: DraftDefinition): WorkflowView {
+  // 좌표를 옆 저장소에 내려쓴다 — 실서버 `replaceDefinition` 이 `workflow_statuses` 에
+  // LAYOUT_X/LAYOUT_Y 를 함께 싣는 자리와 같다. 전량 교체라 이전 값은 남기지 않는다.
+  publishedLayouts.set(
+    definition.key,
+    new Map(definition.states.map((s) => [s.key, { x: s.layoutX, y: s.layoutY }])),
+  )
   return {
     key: definition.key,
     name: definition.name,

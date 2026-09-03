@@ -29,6 +29,18 @@ export const draftStateSchema = z
     name: z.string().min(1),
     category: stateCategorySchema,
     displayOrder: z.number().int(),
+    /**
+     * 다이어그램 노드 좌표 (FR-WF-07 D8). `null` 이면 자동 배치다.
+     *
+     * ★ **`.optional()` 을 쓰지 않는다.** 서버 `DraftStateDto` 가 기본값 `null` 로 항상 실어
+     * 보내므로, 필수-nullable 로 두면 「서버가 안 보냄」과 「좌표가 없음」이 구분된다. 선택 필드로
+     * 열면 백엔드가 필드를 빠뜨려도 화면이 조용히 자동 배치로 떨어져 아무도 모른다.
+     *
+     * 발행 시 `workflow_statuses.layout_x/layout_y` 로 내려가고, 초안을 새로 뜰 때
+     * `CurrentDefinitionReader` 가 그것을 되읽어 여기에 싣는다 — 그 왕복이 끊기면 배치가 사라진다.
+     */
+    layoutX: z.number().nullable(),
+    layoutY: z.number().nullable(),
   })
   .strict()
 
