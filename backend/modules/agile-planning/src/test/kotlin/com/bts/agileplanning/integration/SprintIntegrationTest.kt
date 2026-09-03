@@ -5,7 +5,11 @@ package com.bts.agileplanning.integration
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.application.SprintApplicationService
+import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardType
+import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.permission.IssuePermission
@@ -36,6 +40,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -64,7 +69,8 @@ import java.util.concurrent.TimeUnit
  * E1 잘못된 전환 → 409 / E2 미존재 → 404 / E3 미가시·타프로젝트·미존재 이슈 → 404 /
  * E5 COMPLETED 스프린트 할당 → 409 / E6 권한 없음 → 403 / E7 멱등 재할당 → 200(또는 201) /
  * E8 다른 스프린트 이슈 이동 / E9 없는 이슈 해제 멱등 → 204 /
- * E11 기간 역전 → 400 / E12 소프트삭제 후 sprint_issues 빈 목록.
+ * E11 기간 역전 → 400 / E12 소프트삭제 후 sprint_issues 빈 목록 /
+ * E13 칸반 보드 소속 스프린트 start → 409 AGILE_SPRINT_BOARD_NOT_SCRUM (상태는 PLANNED 유지).
  * T5-1 @NotBlank 검증: name="" → 400.
  */
 @SpringBootTest(
@@ -129,6 +135,10 @@ class SprintIntegrationTest {
 
     @Autowired
     lateinit var sprintRepository: SprintRepository
+
+    /** 칸반 보드를 직접 심기 위한 리포지터리 — API 생성 경로는 SCRUM 보드만 고른다(#431). */
+    @Autowired
+    lateinit var boardRepository: BoardRepository
 
     /**
      * Spring 이 프록시한 [SprintApplicationService] 빈.
@@ -209,6 +219,43 @@ class SprintIntegrationTest {
 
         return mapper.readTree(result.response.contentAsString)
             .get("data").get("sprintId").asText()
+    }
+
+    /**
+     * 칸반 보드와 그 보드에 소속된 `PLANNED` 스프린트를 리포지터리로 직접 심는다.
+     *
+     * API 경로로는 만들 수 없다 — #431 의 `boardType == SCRUM` 술어가 생성을 막는다.
+     * 재현 대상은 그 술어 이전에 들어간 선재 행이므로 리포지터리를 관측점 제작에만 쓴다.
+     *
+     * @param projectKey 격리된 프로젝트 키.
+     * @return 심어진 스프린트 UUID.
+     */
+    private fun plantSprintOnKanbanBoard(projectKey: String): UUID {
+        val board =
+            boardRepository.insert(
+                Board(
+                    id = UUID.randomUUID(),
+                    projectKey = projectKey,
+                    name = "$projectKey 칸반 보드",
+                    columns = emptyList(),
+                    createdAt = Instant.now(),
+                    updatedAt = Instant.now(),
+                    boardType = BoardType.KANBAN,
+                ),
+            )
+        return sprintRepository.insert(
+            Sprint(
+                id = UUID.randomUUID(),
+                projectKey = projectKey,
+                boardId = board.id,
+                name = "칸반 소속 스프린트",
+                goal = null,
+                status = SprintStatus.PLANNED,
+                startDate = null,
+                endDate = null,
+                version = 0L,
+            ),
+        ).id
     }
 
     // ── S1. 스프린트 생성 (201 + PLANNED) ──────────────────────────────────────
@@ -513,6 +560,36 @@ class SprintIntegrationTest {
         mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("AGILE_CONFLICT"))
+    }
+
+    // ── E13. 칸반 보드 소속 스프린트 start → 409 전용 코드 (S2 · 부채 165) ────
+
+    /**
+     * 칸반 보드에 소속된 PLANNED 스프린트는 시작되지 않는다 (스펙 S2).
+     *
+     * ### 왜 리포지터리로 직접 심는가
+     * #431 이 생성 경로(`SprintApplicationService.resolveTargetBoard`)에 `boardType == SCRUM`
+     * 술어를 넣어 **API 로는 칸반 소속 스프린트를 만들 수 없다.** 그런데 막아야 하는 것은
+     * 그 술어가 생기기 전에 이미 들어간 **선재 행**이라, 관측점을 만들려면 리포지터리를 직접 쓴다.
+     *
+     * ### 무엇을 재는가
+     * 409 라는 상태가 아니라 **구별되는 errorCode** 다. 상태만 재면 상태 전파 핸들러가 덮어쓴
+     * `AGILE_CONFLICT`(FSM 위반)와 구별하지 못해 「전환이 잘못됐다」로 오도된다.
+     * 상태가 `PLANNED` 그대로임을 함께 단언한다 — 200 을 받고 어느 화면에도 안 나타나던
+     * ACTIVE 로 넘어가지 않았음이 이 결함의 본체다.
+     */
+    @Test
+    fun `E13 칸반 보드 소속 스프린트 start 는 409 를 받고 상태가 PLANNED 그대로다`() {
+        val projectKey = uniqueProjectKey()
+        val sprintId = plantSprintOnKanbanBoard(projectKey)
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_BOARD_NOT_SCRUM"))
+
+        assertThat(sprintRepository.findById(sprintId)?.status)
+            .`as`("칸반 소속 스프린트가 시작됐다 — 어느 화면에도 나타나지 않는 ACTIVE 가 생긴다")
+            .isEqualTo(SprintStatus.PLANNED)
     }
 
     // ── E2. 미존재 스프린트 → 404 ────────────────────────────────────────────

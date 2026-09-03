@@ -4,6 +4,7 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.SprintAlreadyActiveException
 import com.bts.agileplanning.application.SprintApplicationService
+import com.bts.agileplanning.application.SprintBoardNotScrumException
 import com.bts.agileplanning.application.SprintDateLockedException
 import com.bts.agileplanning.application.SprintIssueConflictException
 import com.bts.agileplanning.application.SprintNotFoundException
@@ -524,6 +525,24 @@ class SprintControllerTest {
         mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_ALREADY_ACTIVE"))
+    }
+
+    // ── START-4. POST start 소속 보드가 스크럼 아님 → 409 전용 코드 ──────────
+    //
+    // ★ 이 테스트가 잡는 것도 「409 가 나는가」가 아니라 「구별되는 코드가 나는가」다.
+    // SprintBoardNotScrumException 역시 ResponseStatusException(CONFLICT) 상속이라
+    // 전용 @ExceptionHandler 가 없으면 상태 전파 핸들러가 AGILE_CONFLICT 로 덮어쓴다 —
+    // 형제 START-3 이 겪은 자리이고 SprintExceptions.kt 의 ★ 경고가 지목하는 지점이다.
+
+    @Test
+    fun `POST sprints id start 보드가 스크럼이 아니면 409 AGILE_SPRINT_BOARD_NOT_SCRUM 을 반환한다`() {
+        every {
+            sprintApplicationService.start(actorId, sprintId)
+        } throws SprintBoardNotScrumException()
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_BOARD_NOT_SCRUM"))
     }
 
     // ── COMPLETE-1. POST complete 정상 → 200 ─────────────────────────────────
