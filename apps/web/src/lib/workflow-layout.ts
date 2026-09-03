@@ -223,8 +223,13 @@ export interface RoutedEdge {
    * 자기 모델 안에서 겹침을 실제로 없앴는가」를 재고, `e2e/workflow-diagram.spec.ts` 의
    * D8-4 가 브라우저 좌표로 「화면에서 실제로 안 겹치는가」를 잰다. 어느 쪽도 다른 쪽을
    * 대신하지 못한다 — 모델이 맞아도 화면이 틀릴 수 있고, 그 반대도 그렇다.
+   *
+   * ★★ **자리를 못 정했으면 `null` 이다.** 처음에는 0×0 사각형을 두었는데, 폭이 0 이라
+   * 어떤 사각형과도 겹치지 않아 **겹침 해소에서 빠진 간선을 판정이 통과시켰다** —
+   * self-loop 을 해소에서 빼는 뮤테이션이 초록이었다. 없는 것을 「빈 것」으로 표현하면
+   * 판정이 그 차이를 못 본다.
    */
-  labelBox: LabelRect
+  labelBox: LabelRect | null
 
   /**
    * 라벨을 간선 중점에서 추가로 밀어낼 거리(px).
@@ -418,13 +423,7 @@ function selfLoopRadius(index: number, sourceWidth: number): number {
  */
 const NO_LABEL_OFFSET: LabelOffset = Object.freeze({ x: 0, y: 0 })
 
-/**
- * 좌표를 몰라 자리를 못 정한 라벨의 사각형.
- *
- * 폭·높이가 0 이라 **어떤 사각형과도 겹치지 않는다** — 좌표 없이 부른 호출(빈 배치)에서
- * 겹침 판정이 거짓 양성을 내지 않는다.
- */
-const UNPLACED_LABEL_BOX: LabelRect = Object.freeze({ x: 0, y: 0, width: 0, height: 0 })
+
 
 /** 간선 하나를 만드는 데 필요한 자리 정보. */
 interface EdgeSlot {
@@ -459,7 +458,7 @@ function routedEdge(slot: EdgeSlot): RoutedEdge {
     offset: selfLoop ? selfLoopRadius(index, sourceWidth) : bundleOffset(index, total),
     labelOffset: NO_LABEL_OFFSET,
     // 자리는 `spreadLabels` 가 채운다 — 노드 좌표를 알아야 셀 수 있어 여기서는 못 정한다
-    labelBox: UNPLACED_LABEL_BOX,
+    labelBox: null,
   }
 }
 

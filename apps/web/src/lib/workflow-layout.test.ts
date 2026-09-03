@@ -318,9 +318,18 @@ function softwareDefaultStates(): LayoutInputState[] {
  * 이름이 빈 전환은 상자를 그리지 않으므로 뺀다.
  */
 function expectNoLabelOverlap(result: EdgeRouteResult): void {
-  const boxes = result.edges
-    .filter((edge) => edge.label !== '')
-    .map((edge) => ({ name: edge.label, box: edge.labelBox }))
+  const named = result.edges.filter((edge) => edge.label !== '')
+
+  /*
+   * ★★ **먼저 「전부 자리를 받았는가」를 잰다.** 겹침만 재면 해소에서 **빠진** 간선을 못 잡는다 —
+   *    빠진 간선은 자리가 없으니 어떤 사각형과도 안 겹쳐 조용히 통과한다. 실제로 self-loop 을
+   *    해소에서 빼는 뮤테이션이 그 구멍으로 초록이었다. 두 판정은 다른 것을 잰다.
+   */
+  for (const edge of named) {
+    expect(edge.labelBox, `'${edge.label}' 라벨이 겹침 해소에서 빠졌다`).not.toBeNull()
+  }
+
+  const boxes = named.map((edge) => ({ name: edge.label, box: edge.labelBox! }))
 
   for (let i = 0; i < boxes.length; i += 1) {
     for (let j = i + 1; j < boxes.length; j += 1) {
