@@ -203,23 +203,13 @@ class KanbanSprintMoveMigrationTest {
             seedKhave(c)
 
             // KDEL — 칸반 소속 스프린트가 soft-deleted 뿐이라 옮길 것이 없다.
-            seedBoard(c, BoardSeed(kdelKanbanId, "KDEL", "KDEL 칸반", 15, boardType = "KANBAN", columns = listOf(ColumnSeed("d", "TODO"))))
+            seedBoard(c, kanban(kdelKanbanId, "KDEL", "KDEL 칸반", 15, columns = listOf(ColumnSeed("d", "TODO"))))
             seedSprint(c, SprintSeed(kdelDeletedSprintId, "KDEL", "PLANNED", deleted = true, boardId = kdelKanbanId))
 
             // KDEAD — 유일한 스크럼 보드가 soft-deleted 라 「있는 것」으로 치면 안 된다.
-            seedBoard(c, BoardSeed(kdeadKanbanId, "KDEAD", "KDEAD 칸반", 18, boardType = "KANBAN", columns = listOf(ColumnSeed("x", "TODO", 2))))
-            seedBoard(
-                c,
-                BoardSeed(
-                    kdeadDeletedScrumId,
-                    "KDEAD",
-                    "KDEAD 죽은 스크럼",
-                    12,
-                    deleted = true,
-                    boardType = "SCRUM",
-                    columns = listOf(ColumnSeed("y", "TODO")),
-                ),
-            )
+            val deadCols = listOf(ColumnSeed("y", "TODO"))
+            seedBoard(c, kanban(kdeadKanbanId, "KDEAD", "KDEAD 칸반", 18, columns = listOf(ColumnSeed("x", "TODO", 2))))
+            seedBoard(c, scrum(kdeadDeletedScrumId, "KDEAD", "KDEAD 죽은 스크럼", 12, deadCols).copy(deleted = true))
             seedSprint(c, SprintSeed(kdeadSprintId, "KDEAD", "PLANNED", boardId = kdeadKanbanId))
         }
 
@@ -227,28 +217,43 @@ class KanbanSprintMoveMigrationTest {
         private fun seedKmove(c: Connection) {
             val gone = listOf(ColumnSeed("gone", "DONE", 1))
             val newer = listOf(ColumnSeed("newer", "IN_PROGRESS", 9))
-            seedBoard(c, BoardSeed(kmoveDeletedKanbanId, "KMOVE", "KMOVE 삭제된 보드", 40, deleted = true, boardType = "KANBAN", columns = gone))
-            seedBoard(c, BoardSeed(kmoveSourceKanbanId, "KMOVE", "KMOVE 개발 보드", 30, boardType = "KANBAN", columns = kmoveSourceColumns))
-            seedBoard(c, BoardSeed(kmoveNewerKanbanId, "KMOVE", "KMOVE 새 보드", 10, boardType = "KANBAN", columns = newer))
-            seedSprint(c, SprintSeed(kmovePlannedSprintId, "KMOVE", "PLANNED", boardId = kmoveSourceKanbanId))
+            val src = kmoveSourceKanbanId
+            seedBoard(c, kanban(kmoveDeletedKanbanId, "KMOVE", "KMOVE 삭제된 보드", 40, gone).copy(deleted = true))
+            seedBoard(c, kanban(src, "KMOVE", "KMOVE 개발 보드", 30, columns = kmoveSourceColumns))
+            seedBoard(c, kanban(kmoveNewerKanbanId, "KMOVE", "KMOVE 새 보드", 10, columns = newer))
+            seedSprint(c, SprintSeed(kmovePlannedSprintId, "KMOVE", "PLANNED", boardId = src))
             seedSprint(c, SprintSeed(kmoveCompletedSprintId, "KMOVE", "COMPLETED", boardId = kmoveNewerKanbanId))
-            seedSprint(c, SprintSeed(kmoveDeletedSprintId, "KMOVE", "PLANNED", deleted = true, boardId = kmoveSourceKanbanId))
+            seedSprint(c, SprintSeed(kmoveDeletedSprintId, "KMOVE", "PLANNED", deleted = true, boardId = src))
         }
 
         /** KHAVE — 스크럼 보드가 이미 둘이다. 신설 금지(R7)와 목적지 선정(E3)을 동시에 잰다. */
         private fun seedKhave(c: Connection) {
-            seedBoard(c, BoardSeed(khaveKanbanId, "KHAVE", "KHAVE 칸반", 25, boardType = "KANBAN", columns = listOf(ColumnSeed("k", "TODO"))))
-            seedBoard(
-                c,
-                BoardSeed(khaveOldScrumId, "KHAVE", "KHAVE 스크럼 보드", 20, boardType = "SCRUM", columns = listOf(ColumnSeed("s1", "TODO"))),
-            )
-            seedBoard(
-                c,
-                BoardSeed(khaveNewScrumId, "KHAVE", "KHAVE 두 번째 스크럼", 5, boardType = "SCRUM", columns = listOf(ColumnSeed("s2", "TODO"))),
-            )
+            val oldScrumColumns = listOf(ColumnSeed("s1", "TODO"))
+            val newScrumColumns = listOf(ColumnSeed("s2", "TODO"))
+            seedBoard(c, kanban(khaveKanbanId, "KHAVE", "KHAVE 칸반", 25, columns = listOf(ColumnSeed("k", "TODO"))))
+            seedBoard(c, scrum(khaveOldScrumId, "KHAVE", "KHAVE 스크럼 보드", 20, columns = oldScrumColumns))
+            seedBoard(c, scrum(khaveNewScrumId, "KHAVE", "KHAVE 두 번째 스크럼", 5, columns = newScrumColumns))
             seedSprint(c, SprintSeed(khaveMovedSprintId, "KHAVE", "PLANNED", boardId = khaveKanbanId))
             seedSprint(c, SprintSeed(khaveStaySprintId, "KHAVE", "PLANNED", boardId = khaveNewScrumId))
         }
+
+        /** V507 시대 칸반 보드 시드 — `board_type` 을 매 줄에 적지 않게 줄인다. 삭제 상태는 `copy` 로 얹는다. */
+        private fun kanban(
+            id: UUID,
+            projectKey: String,
+            name: String,
+            daysAgo: Int,
+            columns: List<ColumnSeed> = emptyList(),
+        ) = BoardSeed(id, projectKey, name, daysAgo, boardType = "KANBAN", columns = columns)
+
+        /** V507 시대 스크럼 보드 시드 — [kanban] 과 짝을 이룬다. */
+        private fun scrum(
+            id: UUID,
+            projectKey: String,
+            name: String,
+            daysAgo: Int,
+            columns: List<ColumnSeed> = emptyList(),
+        ) = BoardSeed(id, projectKey, name, daysAgo, boardType = "SCRUM", columns = columns)
 
         /** 전용 컨테이너에 새 커넥션을 연다. 호출자가 `use` 로 닫는다. */
         fun conn(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -385,8 +390,6 @@ class KanbanSprintMoveMigrationTest {
     private fun boardIdOf(sprintId: UUID): UUID? =
         queryOne("SELECT board_id FROM sprints WHERE id = ?", sprintId) { it.getObject(1) as UUID? }
 
-    private fun statusOf(sprintId: UUID): String? = queryOne("SELECT status FROM sprints WHERE id = ?", sprintId) { it.getString(1) }
-
     // BoardRepository.findScrumBoardIdByProject 와 같은 규칙 — 활성 스크럼 중 (created_at, id) 최선두 (E3).
     private fun liveScrumBoardIdOf(projectKey: String): UUID? =
         queryOne(
@@ -407,7 +410,10 @@ class KanbanSprintMoveMigrationTest {
         boardId: UUID?,
         column: String,
     ): List<Any?> =
-        queryList("SELECT $column FROM board_columns WHERE board_id = ? ORDER BY display_order", boardId) { it.getObject(1) }
+        queryList(
+            "SELECT $column FROM board_columns WHERE board_id = ? ORDER BY display_order",
+            boardId,
+        ) { it.getObject(1) }
 
     // ── ① R1 · 칸반 소속 스프린트 이관 ─────────────────────────────────────────
 
@@ -422,7 +428,8 @@ class KanbanSprintMoveMigrationTest {
         assertThat(boardIdOf(kmoveCompletedSprintId)).isEqualTo(kmoveScrumId)
 
         // E4 — 이관은 board_id 만 옮긴다. 상태는 건드리지 않는다.
-        assertThat(statusOf(kmoveCompletedSprintId)).isEqualTo("COMPLETED")
+        val status = queryOne("SELECT status FROM sprints WHERE id = ?", kmoveCompletedSprintId) { it.getString(1) }
+        assertThat(status).isEqualTo("COMPLETED")
 
         // E5 — soft-deleted 스프린트는 대상이 아니다. 칸반 보드에 그대로 남는다.
         assertThat(boardIdOf(kmoveDeletedSprintId)).isEqualTo(kmoveSourceKanbanId)
@@ -527,7 +534,8 @@ class KanbanSprintMoveMigrationTest {
         assertThat(queryOne("SELECT name FROM boards WHERE id = ?", bkflScrumId) { it.getString(1) })
             .isEqualTo("BKFL 스크럼 보드")
         assertThat(columnValues(bkflScrumId, "state_key")).containsExactly("open", "in-progress", "closed")
-        assertThat(columnValues(bkflScrumId, "category")).containsExactlyElementsOf(bkflSourceColumns.map { it.category })
+        assertThat(columnValues(bkflScrumId, "category"))
+            .containsExactlyElementsOf(bkflSourceColumns.map { it.category })
         assertThat(boardIdOf(bkflActiveSprintId)).isEqualTo(bkflScrumId)
         assertThat(boardIdOf(bkflDeletedSprintId)).isEqualTo(bkflScrumId)
         assertThat(liveScrumBoardCountOf("BKFL")).isEqualTo(1)
