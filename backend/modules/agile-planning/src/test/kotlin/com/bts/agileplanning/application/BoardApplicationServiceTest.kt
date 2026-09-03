@@ -820,6 +820,108 @@ class BoardApplicationServiceTest {
             .isInstanceOf(MoveTargetAmbiguousException::class.java)
     }
 
+    // ── (d-3) 컬럼 관리 3종 — 생성 · 상태 교체 · 삭제 (R9 · R10 · E7~E9 · J5) ────
+
+    @Test
+    fun `컬럼을 상태 0개로 만들 수 있다`() {
+        // R9·E1 — 지라는 컬럼을 먼저 만들고 Unmapped 패널에서 상태를 끌어다 놓는다(J2).
+        //         그 중간 상태가 「상태 0개 컬럼」이고, V508 의 DROP NOT NULL 이 그것을 표현한다(G1).
+        val board = boardWithMergedColumn("COLA")
+
+        val created = serviceWith().createColumn(board.id, name = "대기", stateKeys = emptyList())
+
+        assertThat(created.stateKeys).isEmpty()
+        assertThat(created.category).isEqualTo("TODO")
+        val reloaded = requireNotNull(boardRepository.findById(board.id))
+        assertThat(reloaded.columns.map { it.id }).contains(created.id)
+        assertThat(reloaded.columns.last().id).isEqualTo(created.id)
+    }
+
+    @Test
+    fun `컬럼의 상태 집합을 통째로 교체한다`() {
+        // R9 — 추가·제거를 각각 두면 「지금 이 컬럼의 상태 집합」이 클라이언트와 서버에서 갈린다.
+        val board = boardWithMergedColumn("COLB")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        serviceWith().replaceColumnStates(board.id, target.id, listOf("open", "blocked"))
+
+        val reloaded = requireNotNull(boardRepository.findById(board.id))
+        assertThat(reloaded.columns.first { it.id == target.id }.stateKeys)
+            .containsExactly("open", "blocked")
+    }
+
+    @Test
+    fun `다른 컬럼이 쓰는 상태를 넣으면 409 이고 어느 컬럼인지 알려준다`() {
+        // E7·X1 — 「어느 컬럼이 쓰고 있는지」를 안 알려주면 사용자가 풀 방법을 못 찾는다.
+        val board = boardWithMergedColumn("COLC")
+        val merged = board.columns.first { it.stateKeys.size >= 2 }
+        val other = board.columns.first { it.stateKeys == listOf("open") }
+
+        val thrown =
+            runCatching {
+                serviceWith().replaceColumnStates(board.id, other.id, listOf("open", "closed"))
+            }.exceptionOrNull()
+
+        assertThat(thrown).isInstanceOf(StateAlreadyMappedException::class.java)
+        assertThat((thrown as StateAlreadyMappedException).stateKey).isEqualTo("closed")
+        assertThat(thrown.ownerColumnId).isEqualTo(merged.id)
+        // 원래 매핑은 그대로다 — 거부가 부분 적용을 남기지 않는다.
+        val reloaded = requireNotNull(boardRepository.findById(board.id))
+        assertThat(reloaded.columns.first { it.id == other.id }.stateKeys).containsExactly("open")
+    }
+
+    @Test
+    fun `stateKeys 에 중복이 있으면 400`() {
+        // E9 — DB 는 UNIQUE(column_id, state_key) 로 막지만, 요청 자체의 모양 오류라
+        //      409(경합)가 아니라 400(잘못된 요청)이어야 한다.
+        val board = boardWithMergedColumn("COLD")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        assertThatThrownBy {
+            serviceWith().replaceColumnStates(board.id, target.id, listOf("open", "open"))
+        }
+            .isInstanceOf(DuplicateStateKeysException::class.java)
+    }
+
+    @Test
+    fun `컬럼을 지우면 그 상태가 미매핑으로 돌아가고 이슈는 그대로다`() {
+        // R10·J5 — 지라도 컬럼을 지우면 그 상태들이 Unmapped 패널로 돌아간다. 이슈는 손대지 않는다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("COLE"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("COLE", "삭제 테스트 보드")
+        val victim = board.columns.first { it.legacyStateKey == "closed" }
+
+        service.deleteColumn(board.id, victim.id)
+
+        val result = service.getBoard(board.id, UUID.randomUUID())
+        assertThat(result.columns.map { it.column.id }).doesNotContain(victim.id)
+        assertThat(result.unmappedStates.map { it.key }).containsExactly("closed")
+    }
+
+    @Test
+    fun `마지막 컬럼도 지울 수 있다`() {
+        // E8 — 컬럼 0개 보드는 healColumnsIfEmpty 가 다시 채운다. 삭제를 막을 이유가 없다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("COLF"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("COLF", "전량 삭제 보드")
+
+        board.columns.forEach { service.deleteColumn(board.id, it.id) }
+
+        assertThat(requireNotNull(boardRepository.findById(board.id)).columns).isEmpty()
+    }
+
+    @Test
+    fun `없는 컬럼을 지우면 404`() {
+        val board = boardWithMergedColumn("COLG")
+
+        assertThatThrownBy { serviceWith().deleteColumn(board.id, UUID.randomUUID()) }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+    }
+
     // ── (e) E8: 보드-이슈 프로젝트 정합 ────────────────────────────────────────────
 
     @Test

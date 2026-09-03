@@ -7,7 +7,9 @@ import com.bts.agileplanning.application.BoardCardMoveResult
 import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.application.BoardStateNotMappedException
 import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.DuplicateStateKeysException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
+import com.bts.agileplanning.application.StateAlreadyMappedException
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
@@ -53,6 +55,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -841,6 +844,86 @@ class BoardControllerIntegrationTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    // ── COLUMN-1~4. 컬럼 관리 3종 (R9 · R10 · E7) ──────────────────────────────
+
+    @Test
+    fun `POST columns 는 201 과 생성된 컬럼을 내고 CREATE 권한으로 게이트된다`() {
+        val board = sampleBoard()
+        val created = BoardColumn(UUID.randomUUID(), emptyList(), "대기", "TODO", 3)
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.createColumn(board.id, "대기", emptyList(), null) } returns created
+        every { boardApplicationService.listWorkflowStates("BTS") } returns emptyList()
+
+        val body = mapOf("name" to "대기", "stateKeys" to emptyList<String>())
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/columns")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.columnId").value(created.id.toString()))
+            .andExpect(jsonPath("$.data.states").isEmpty)
+
+        // 컬럼 관리는 기존 PATCH columns/{columnId} 의 게이트를 승계한다 — CREATE on 보드 프로젝트.
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
+    }
+
+    @Test
+    fun `PUT states 가 다른 컬럼이 쓰는 상태를 받으면 409 AGILE_STATE_ALREADY_MAPPED`() {
+        // E7 — 어느 컬럼이 쓰고 있는지 detail 에 실어야 사용자가 풀 방법을 찾는다.
+        val board = sampleBoard()
+        val owner = board.columns[2]
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.replaceColumnStates(any(), any(), any())
+        } throws StateAlreadyMappedException(stateKey = "closed", ownerColumnId = owner.id)
+
+        val body = mapOf("stateKeys" to listOf("open", "closed"))
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/${board.columns[0].id}/states")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_STATE_ALREADY_MAPPED"))
+    }
+
+    @Test
+    fun `PUT states 의 stateKeys 에 중복이 있으면 400 AGILE_VALIDATION_FAILED`() {
+        // E9 — 요청 모양의 오류다. 경합(409)과 코드를 나눈다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.replaceColumnStates(any(), any(), any())
+        } throws DuplicateStateKeysException(listOf("open"))
+
+        val body = mapOf("stateKeys" to listOf("open", "open"))
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/${board.columns[0].id}/states")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    @Test
+    fun `DELETE columns 는 204 를 내고 본문이 없다`() {
+        // R10 — 담긴 상태는 미매핑으로 돌아가고 이슈는 그대로다. 돌려줄 표현이 없으므로 204 다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.deleteColumn(board.id, board.columns[0].id) } returns Unit
+
+        mockMvc.perform(delete("/api/v1/boards/${board.id}/columns/${board.columns[0].id}"))
+            .andExpect(status().isNoContent)
+
+        verify(exactly = 1) { boardApplicationService.deleteColumn(board.id, board.columns[0].id) }
     }
 
     // ── MOVE-5. POST move body 손상 → 400 (catch-all 변질 차단) ────────────────
