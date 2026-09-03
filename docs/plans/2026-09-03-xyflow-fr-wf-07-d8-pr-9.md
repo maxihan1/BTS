@@ -245,7 +245,19 @@ worktree 에서 `pnpm install` 을 돌리면 main 의 `node_modules/.modules.yam
 3. **기존 E2E 무손상** — `workflow.spec.ts`(mermaid 4건) · `workflow-editor.spec.ts`(4건) ·
    `workflow-publish.spec.ts`(5건, **P4b·D7 정본 포함**) 전량 통과
 4. `pnpm verify` · `pnpm test:workflow` · doc-index · `verify-master-plan` 초록 (**종료 코드로 판정**)
-5. **브라우저 눈확인 — 라이트/다크 양쪽.** 절대 규칙 14 ui 시각 검증 트랙. 볼 것 —
+5. **브라우저 눈확인 — 라이트/다크 양쪽.** ★ **머지 시점에 미실시.** Maxi 결정(2026-09-03 게이트 2
+   「승인 — 바로 머지」)으로 머지 후로 옮겼다. `TODOS.md` 의 「FR-WF-07 D8 다이어그램 눈확인 9항목
+   미실시」와 `docs/plans/2026-08-12-debt24-master.md` 26행에 담당 항목으로 등재했다.
+
+   > **이월이 특히 무거운 자리다.** 게이트 2 가 잡은 BLOCKER 2건이 정확히 「자동 검사는 초록인데
+   > 화면은 다른」 축이었다 — B1(겹친 간선·self-loop 이 안 그려짐)은 목 픽스처에 그 경우가 없어
+   > 눈확인으로도 관찰 불가였고, B2(드래그가 커서를 안 따라옴)는 E2E 가 `mouse.up` **뒤에** 재서
+   > 통과했다. 둘 다 고치고 판정을 붙였지만, 이 기능의 성질이 그렇다는 뜻이다.
+   >
+   > 특히 **③④(self-loop·다중 전환)는 목 픽스처로 관찰이 불가능하다** — `mocks/workflow-fixtures.ts`
+   > 의 4개 워크플로우에 self-loop 도 중복 쌍도 없어 **손으로 만들어야 보인다.**
+
+   절대 규칙 14 ui 시각 검증 트랙. 볼 것 —
    ① 노드 카테고리 색이 **mermaid 화면과 같은 색**인지(`/workflows/{key}` 와 나란히 열어 대조)
    ② 엣지 라벨 가독성 ③ self-loop 곡선이 노드에 안 가림 ④ 다중 전환 간선이 벌어짐
    ⑤ hover 핸들이 보임 ⑥ **xyflow 기본 CSS 가 다크에서 배경·간선을 침범하지 않는지**(N3)
