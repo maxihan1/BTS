@@ -42,6 +42,10 @@ import java.util.UUID
  * 통째로 죽는다([SprintBoardIdBackfillMigrationTest] `:30-31` 과 같은 이유). 3단계의 `506` 은 반대로
  * **고정이 본질**이다 — 「V506 직후 V507 직전」이 이 클래스가 재현하려는 상태 그 자체다.
  *
+ * ★ 4 와 5 **사이에서 이관 직전 스냅샷**을 찍는다([activeBefore]·[boardsBefore]). 완료 기준 2 는
+ * 「어느 보드에도 ACTIVE 2건 이상 없다」가 아니라 **「보드별 ACTIVE 증가가 0」**이라, 전 시점 값을
+ * 안 남기면 잴 수가 없다. 왜 두 번 좁혀졌는지는 `Order(9)` 테스트 주석에 적었다.
+ *
  * ★ 깨끗한 컨테이너에서 잰다. 공유 개발 DB 의 선재 행은 「마이그레이션이 안 넣었는데 데이터가 있는」
  * 가짜 그린을 만든다(memory: shared-dev-db-preexisting-rows-fake-green).
  *
@@ -53,7 +57,10 @@ import java.util.UUID
  * 이관은 `board_id` 만 옮기지 않는다. 목표 보드의 활성 스프린트가 둘이 되면 `findActiveByBoard` 가
  * `limit(1)` 이라 한쪽이 화면에서 사라지므로, **이관 대상**의 `status` 를 `PLANNED` 로 내린다
  * (ADR 2026-09-03 `D2`). 기존 스크럼 보드의 원래 ACTIVE 는 어떤 경우에도 안 건드린다(R6) — 그 경계를
- * 지키는지가 이 클래스의 후반부(Order 5~10)다.
+ * 지키는지가 이 클래스의 후반부(Order 5~11)다.
+ *
+ * ★ 그래서 **선재하는 다중 ACTIVE 는 `V507` 이 안 고친다**(`KDUAL` 픽스처 · Order 11). 「이관 후 어느
+ * 보드에도 ACTIVE 가 2건 이상 없다」는 `V507` 이 **지지 않는** 보장이다 — 잔여는 부채 168 이 진다.
  *
  * 참조. `docs/specs/2026-09-03-kanban-sprint-move-and-lock-budget.md` R1~R7 · E1~E5 · E10 · E11.
  */
@@ -195,6 +202,31 @@ class KanbanSprintMoveMigrationTest {
         /** 동점 조에서 id 가 큰 쪽 — PLANNED 로 내려간다. */
         private val ktieLoserId: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
 
+        // ── 선재 다중 ACTIVE 픽스처 (R3 의 경계 · 부채 168) ──────────────────────
+
+        /** `KDUAL` 의 선재 스크럼 보드 — 이관이 **닿는** 목적지이면서 ACTIVE 를 2건 쥐고 있다. */
+        private val kdualScrumId: UUID = UUID.randomUUID()
+
+        /** `KDUAL` 의 칸반 보드 — 여기 붙은 ACTIVE 하나가 위 보드로 옮겨 온다. */
+        private val kdualKanbanId: UUID = UUID.randomUUID()
+
+        /** 선재 ACTIVE ① — `V507` 이 건드리면 안 된다 (R6). */
+        private val kdualIncumbentAId: UUID = UUID.randomUUID()
+
+        /** 선재 ACTIVE ② — ① 과 같은 보드다. `V506:66-68` 이 인덱스를 UNIQUE 로 안 만들어 보존한 모양이다. */
+        private val kdualIncumbentBId: UUID = UUID.randomUUID()
+
+        /** 칸반에서 옮겨 오는 ACTIVE — 목표 보드에 기존 ACTIVE 가 있으므로 PLANNED 로 내려간다 (R4). */
+        private val kdualMovedActiveId: UUID = UUID.randomUUID()
+
+        // ── 이관 직전 스냅샷 (완료 기준 2) ───────────────────────────────────────
+
+        /** `V507` 적용 **직전**의 보드별 ACTIVE 건수. 「증가가 0」은 전후 두 값이 있어야 잴 수 있다. */
+        private lateinit var activeBefore: Map<UUID, Int>
+
+        /** `V507` 적용 직전에 존재하던 보드 id 전량 — 선재 보드와 `V507` 신설 보드를 가르는 기준선이다. */
+        private lateinit var boardsBefore: Set<UUID>
+
         private fun flyway(target: String?) =
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -219,6 +251,10 @@ class KanbanSprintMoveMigrationTest {
                 seedV507Era(c)
                 c.commit()
             }
+            // ★ 이관 **직전** 값을 남긴다. 이 두 줄이 없으면 「증가가 0」을 잴 수단이 사라져
+            //   「어느 보드에도 2건 이상 없다」 같은 **더 넓고 거짓인** 문장으로 되돌아가게 된다.
+            activeBefore = activeCountByBoard()
+            boardsBefore = allBoardIds()
             flyway(null).migrate()
         }
 
@@ -241,6 +277,7 @@ class KanbanSprintMoveMigrationTest {
             seedKmove(c)
             seedKhave(c)
             seedKtie(c)
+            seedKdual(c)
 
             // KDEL — 칸반 소속 스프린트가 soft-deleted 뿐이라 옮길 것이 없다.
             seedBoard(c, kanban(kdelKanbanId, "KDEL", "KDEL 칸반", 15, columns = listOf(ColumnSeed("d", "TODO"))))
@@ -297,6 +334,49 @@ class KanbanSprintMoveMigrationTest {
             seedSprint(c, SprintSeed(ktieLoserId, "KTIE", "ACTIVE", boardId = ktieKanbanId, daysAgo = 7))
             seedSprint(c, SprintSeed(ktieWinnerId, "KTIE", "ACTIVE", boardId = ktieKanbanId, daysAgo = 7))
         }
+
+        /**
+         * KDUAL — 선재 스크럼 보드가 ACTIVE 를 **2건** 쥔 채로 이관까지 받는 프로젝트.
+         *
+         * ★ 이 픽스처가 없으면 「이관 후 어느 board_id 에도 ACTIVE 가 2건 이상 없다」라는 **거짓 불변식**이
+         *   초록으로 통과한다 — `V507` 이 지지 않는 보장을 지는 것처럼 보인다. 강등은 ADR `D2` 가
+         *   「칸반에서 옮겨 오는 행」으로 한정했으므로 선재 2건은 그대로 남는다(PR #182 Deviation ⑤ ·
+         *   `V506:66-68`). 부채 **168** 의 존재 이유가 여기 테스트로 남는다.
+         * ★ 칸반 ACTIVE 를 하나 더 붙인다 — 그래서 이 보드는 「이관이 닿은 보드」이면서 2건이다.
+         *   1차 정정안 「이관이 닿은 보드에는 2건 이상 없다」도 이 픽스처가 red 로 무너뜨린다.
+         */
+        private fun seedKdual(c: Connection) {
+            seedBoard(c, kanban(kdualKanbanId, "KDUAL", "KDUAL 칸반", 21, listOf(ColumnSeed("kd", "TODO"))))
+            seedBoard(c, scrum(kdualScrumId, "KDUAL", "KDUAL 스크럼 보드", 19, listOf(ColumnSeed("sd", "TODO"))))
+            seedSprint(c, SprintSeed(kdualIncumbentAId, "KDUAL", "ACTIVE", boardId = kdualScrumId, daysAgo = 6))
+            seedSprint(c, SprintSeed(kdualIncumbentBId, "KDUAL", "ACTIVE", boardId = kdualScrumId, daysAgo = 5))
+            seedSprint(c, SprintSeed(kdualMovedActiveId, "KDUAL", "ACTIVE", boardId = kdualKanbanId, daysAgo = 3))
+        }
+
+        /** 보드별 ACTIVE(미삭제) 스프린트 수. 이관 전후로 두 번 찍어 **증가분**을 잰다. */
+        private fun activeCountByBoard(): Map<UUID, Int> =
+            conn().use { c ->
+                c.prepareStatement(
+                    "SELECT board_id, COUNT(*) FROM sprints" +
+                        " WHERE status = 'ACTIVE' AND deleted_at IS NULL GROUP BY board_id",
+                ).use { stmt ->
+                    val rs = stmt.executeQuery()
+                    val counts = mutableMapOf<UUID, Int>()
+                    while (rs.next()) counts[rs.getObject(1) as UUID] = rs.getInt(2)
+                    counts
+                }
+            }
+
+        /** 지금 존재하는 보드 id 전량 — 신설 보드는 「전 시점 0건」이 아니라 **비교 대상 밖**이다. */
+        private fun allBoardIds(): Set<UUID> =
+            conn().use { c ->
+                c.prepareStatement("SELECT id FROM boards").use { stmt ->
+                    val rs = stmt.executeQuery()
+                    val ids = mutableSetOf<UUID>()
+                    while (rs.next()) ids += rs.getObject(1) as UUID
+                    ids
+                }
+            }
 
         /** V507 시대 칸반 보드 시드 — `board_type` 을 매 줄에 적지 않게 줄인다. 삭제 상태는 `copy` 로 얹는다. */
         private fun kanban(
@@ -730,18 +810,31 @@ class KanbanSprintMoveMigrationTest {
         assertThat(versionOf(kmoveCompletedSprintId)).isZero()
     }
 
-    // ── ⑨ R3 · 사후 불변식 (완료 기준 2) ───────────────────────────────────────
+    // ── ⑨ R3 · 사후 불변식 — 보드별 ACTIVE 증가가 0 (완료 기준 2) ───────────────
 
     @Test
     @Order(9)
-    fun `이관 후 어느 board_id 에도 ACTIVE 가 2건 이상 없다`() {
-        // 완료 기준 2 의 SQL 을 그대로 단언한다. 특정 픽스처가 아니라 **DB 전체**를 훑는다.
-        val offenders =
-            queryList(
-                "SELECT board_id FROM sprints WHERE status = 'ACTIVE' AND deleted_at IS NULL" +
-                    " GROUP BY board_id HAVING COUNT(*) > 1",
-            ) { it.getObject(1) as UUID }
-        assertThat(offenders).isEmpty()
+    fun `이관 전후로 어느 선재 보드의 ACTIVE 건수도 늘지 않는다`() {
+        // ★ 「어느 board_id 에도 ACTIVE 가 2건 이상 없다」로 쓰면 안 된다 — 두 번 좁혀진 문장이다.
+        //   ① DB 전체에 2건 이상이 없다는 것은 V507 이 지지 않는 보장이다. ADR D2 가 강등을 「칸반에서
+        //      옮겨 오는 행」으로 한정했으므로 선재 다중 ACTIVE(KDUAL)는 그대로 남는다.
+        //   ② 「이관이 닿은 보드에는 없다」도 거짓이다 — KDUAL 스크럼 보드가 바로 닿은 보드이면서 2건이다.
+        //   지금 초록인 이유가 「픽스처에 그런 행이 없어서」가 되지 않도록 KDUAL 을 일부러 심었다(부채 168).
+        val after = activeCountByBoard()
+
+        val increased =
+            boardsBefore
+                .associateWith { (after[it] ?: 0) - (activeBefore[it] ?: 0) }
+                .filterValues { it > 0 }
+        assertThat(increased)
+            .`as`("이관이 선재 보드의 ACTIVE 를 늘렸다 (board_id → 증가분) — 강등(② CTE)이 새면 여기가 잡는다")
+            .isEmpty()
+
+        // 신설 보드는 전 시점에 없어 「증가」를 정의할 수 없다. 대신 R5 의 상한(보드당 1건)으로 잰다.
+        val newBoardOverflow = after.filterKeys { it !in boardsBefore }.filterValues { it > 1 }
+        assertThat(newBoardOverflow)
+            .`as`("V507 이 신설한 보드에 ACTIVE 가 2건 이상이다 — survivor CTE 의 DISTINCT ON 이 무너졌다")
+            .isEmpty()
     }
 
     // ── ⑩ R5 tie-break · created_at 동점은 id 로 가른다 ────────────────────────
@@ -764,5 +857,29 @@ class KanbanSprintMoveMigrationTest {
         // 재실행이 이미 내려간 행을 또 내리지 않는다 — 강등 대상이 칸반 소속으로 한정됐다는 증거다.
         assertThat(versionOf(ktieWinnerId)).isZero()
         assertThat(versionOf(ktieLoserId)).isEqualTo(1L)
+    }
+
+    // ── ⑪ R3 의 경계 · 선재 다중 ACTIVE 는 V507 이 안 고친다 (부채 168) ─────────
+
+    @Test
+    @Order(11)
+    fun `선재 ACTIVE 2건짜리 스크럼 보드는 이관이 닿아도 그대로 2건이다`() {
+        // 선재 두 행은 status·version 이 모두 그대로다. 강등이 「칸반에서 옮겨 오는 행」에 한정됐다는 증거.
+        assertThat(statusOf(kdualIncumbentAId)).isEqualTo("ACTIVE")
+        assertThat(statusOf(kdualIncumbentBId)).isEqualTo("ACTIVE")
+        assertThat(versionOf(kdualIncumbentAId)).isZero()
+        assertThat(versionOf(kdualIncumbentBId)).isZero()
+
+        // 이관 대상은 옮겨지되 내려간다(R4) — 그래서 2건이 3건이 되지 않는다. 「증가가 0」이 여기서 성립한다.
+        assertThat(boardIdOf(kdualMovedActiveId)).isEqualTo(kdualScrumId)
+        assertThat(statusOf(kdualMovedActiveId)).isEqualTo("PLANNED")
+        assertThat(versionOf(kdualMovedActiveId)).isEqualTo(1L)
+
+        // ★ 2건이 **남는다**. 이 줄이 부채 168 의 등재 사유다 — V507 은 유일성을 못박지 않는다.
+        assertThat(activeCountOf(kdualScrumId))
+            .`as`("선재 다중 ACTIVE 가 정리됐다 — ADR D2 의 한정을 넘어 기존 행까지 건드렸다는 뜻이다")
+            .isEqualTo(2)
+        // 스크럼 보드도 늘지 않는다 — 이미 살아있는 보드가 있으므로 ① 의 NOT EXISTS 가드가 막는다.
+        assertThat(liveScrumBoardCountOf("KDUAL")).isEqualTo(1)
     }
 }

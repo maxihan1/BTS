@@ -4,8 +4,14 @@ package com.bts.agileplanning.repository
 
 import org.jooq.DSLContext
 
-/** advisory lock 대기 상한. 초과하면 PostgreSQL 이 SQLSTATE `55P03` 으로 statement 를 취소한다. */
-private const val LOCK_WAIT_BUDGET = "200ms"
+/**
+ * advisory lock 대기 상한. 초과하면 PostgreSQL 이 SQLSTATE `55P03` 으로 statement 를 취소한다.
+ *
+ * `internal` 인 이유 — `AdvisoryLockBudgetTest` 가 **값 자체**를 못박는다. 시간 단언의 상한
+ * (`MAX_WAIT_MS = 2s`)은 CI 편차를 흡수하느라 넓어서 예산을 `"1900ms"` 로 바꿔도 전부 초록이다
+ * (게이트 2 리뷰 C5).
+ */
+internal const val LOCK_WAIT_BUDGET = "200ms"
 
 /**
  * [lockKey] 로 `pg_advisory_xact_lock` 을 **200ms 예산 안에서** 잡는다.

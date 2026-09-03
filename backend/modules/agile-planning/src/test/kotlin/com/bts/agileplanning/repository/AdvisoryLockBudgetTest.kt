@@ -103,6 +103,15 @@ class AdvisoryLockBudgetTest {
             .isEqualTo(PRESET_LOCK_TIMEOUT)
     }
 
+    // ── R10 값 고정 — 「200ms」라는 값 자체를 잡는 판정 ─────────────────────────
+
+    @Test
+    fun `대기 예산은 200ms 다`() {
+        // 위 시간 단언의 상한 MAX_WAIT_MS 는 CI 편차를 흡수하느라 2초까지 넓다 — 예산을 "1900ms" 로
+        // 바꿔도 전부 초록이고, 워커 타임아웃은 「무한이 아니다」까지만 잰다. 값은 여기서 못박는다.
+        assertThat(LOCK_WAIT_BUDGET).isEqualTo("200ms")
+    }
+
     // ── N7 — MANDATORY 전파는 호출자 리포지터리에 남는다 ──────────────────────
 
     @Test
