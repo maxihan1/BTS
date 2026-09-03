@@ -1,11 +1,13 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (501건, 최신순)
+# 시간 축 인덱스 (503건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-09-03 | login-modal-and-single-screen-form | — | — | ✔ | — | FR-AU-06 FR-AU-07 FR-AU-09 |
+| 2026-09-03 | login-modal-ux | ✔ | — | — | — | FR-AU-06 FR-AU-07 FR-AU-09 FR-MF-01 |
 | 2026-09-02 | fr-wf-07-d6b-pr-10b | — | ✔ | — | — | FR-WF-07 |
 | 2026-09-02 | scrum-board-screen | — | ✔ | — | — | FR-BD-04 FR-UX-07 |
 | 2026-09-01 | board-scrum-schema | ✔ | ✔ | — | — | FR-BD-04 |

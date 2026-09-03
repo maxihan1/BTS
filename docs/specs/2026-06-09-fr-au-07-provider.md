@@ -8,7 +8,10 @@
 > - 매칭 동작 = **자동 리다이렉트**, 미매칭 시 기존 전체 Provider 목록 fallback.
 > - 도메인 매칭 = **exact + UNIQUE + lowercase 정규화**. 서브도메인 매칭 후속 FR.
 > - 관리 = **DB/시드만**. 라우트 CRUD API/UI 후속 FR(현 Provider 관리 관례와 동일).
-> - 로그인 UX = **identifier-first 2단계**(Maxi 2026-06-09, brainstorming gap 해소). 1단계 이메일만 입력 → "계속" → 매칭 시 SSO 자동 진입 / 미매칭 시 2단계(기존 provider 드롭다운+username+password) 노출. Google/Microsoft 방식.
+> - ~~로그인 UX = **identifier-first 2단계**(Maxi 2026-06-09, brainstorming gap 해소). 1단계 이메일만 입력 → "계속" → 매칭 시 SSO 자동 진입 / 미매칭 시 2단계(기존 provider 드롭다운+username+password) 노출. Google/Microsoft 방식.~~
+>   **2026-09-03 폐기.** 로그인 UX = **단일 화면**. 식별자·비밀번호를 함께 받고 도메인 조회는 blur ‖ 디바운스 배경 조회로,
+>   매칭 시 자동 이동이 아니라 SSO 버튼 노출로 바뀌었다. 백엔드 계약은 불변.
+>   정본 `docs/specs/2026-09-03-login-modal-ux.md` · ADR `docs/decisions/2026-09-03-login-modal-and-single-screen-form.md`.
 > 선행. FR-AU-03(SAML) · FR-AU-04(OIDC) · FR-AU-06(다중 Provider 명시 선택, #101) 완료.
 > ADR. `docs/decisions/2026-06-09-domain-based-provider-routing.md`
 
@@ -27,29 +30,43 @@ FR-AU-06 이후 로그인 화면은 **모든** 활성 Provider를 동시에 보�
 
 ## 사용자 시나리오 (Given-When-Then)
 
-### S1 — 도메인 매칭 → SAML 자동 진입 (정상)
+> ⚠️ **2026-09-03 deviation.** S1~S4 의 UI 흐름은 `docs/specs/2026-09-03-login-modal-ux.md` 가 갱신했다.
+> **백엔드 계약(`GET /api/v1/auth/route`)과 매칭 규칙은 변경 없다.** 프론트만 바뀌었다.
+> - 1단계 이메일 입력 + "계속" 폐기 → **단일 화면**에서 식별자 blur ‖ 500ms 디바운스로 배경 조회
+> - 매칭 시 **자동 리다이렉트 폐기** → SSO 버튼을 비밀번호 위에 노출, 이동은 사용자 클릭
+> - "2단계 노출"·"username 프리필" 개념 소멸 — 폼이 처음부터 하나다
+> 근거. 단일 화면에서 조회 트리거가 blur/디바운스로 **수동적**이라, 자동 풀 네비게이션은
+> 타이핑 중이던 비밀번호와 함께 화면을 없앤다. ADR `2026-09-03-login-modal-and-single-screen-form` D5·D6.
+
+### S1 — 도메인 매칭 → SAML 진입 (정상)
 - **Given** `domain_provider_routes`에 `partner.com → (SAML registration "partnerSaml")` 등록, 해당 SAML config enabled=true.
-- **When** 로그인 화면에서 이메일 `alice@partner.com` 입력 후 "계속".
-- **Then** `GET /api/v1/auth/route?domain=partner.com` → `{matched:true, type:"SAML", registrationId:"partnerSaml", displayName:"Partner SSO"}`. 프론트가 `/saml2/authenticate/partnerSaml`로 자동 리다이렉트. 비밀번호 입력 없음(IdP에서 인증).
+- **When** 로그인 화면에서 식별자 `alice@partner.com` 입력 후 blur.
+- **Then** `GET /api/v1/auth/route?domain=partner.com` → `{matched:true, type:"SAML", registrationId:"partnerSaml", displayName:"Partner SSO"}`. 프론트가 SSO 버튼을 노출하고, 사용자가 클릭하면 `/saml2/authenticate/partnerSaml`로 이동한다. 비밀번호 입력 없음(IdP에서 인증).
 
-### S2 — 도메인 매칭 → OIDC 자동 진입 (정상)
+### S2 — 도메인 매칭 → OIDC 진입 (정상)
 - **Given** `acme.com → (OIDC registration "acmeOidc")`, enabled=true.
-- **When** `bob@acme.com` 입력 후 "계속".
-- **Then** `{matched:true, type:"OIDC", registrationId:"acmeOidc", ...}` → `/oauth2/authorization/acmeOidc` 자동 리다이렉트.
+- **When** `bob@acme.com` 입력 후 blur.
+- **Then** `{matched:true, type:"OIDC", registrationId:"acmeOidc", ...}` → SSO 버튼 노출 → 클릭 시 `/oauth2/authorization/acmeOidc` 이동.
 
-### S3 — 도메인 미매칭 → 2단계 폼 노출 (정상)
+### S3 — 도메인 미매칭 → 로컬 폼만 (정상)
 - **Given** `freelancer@gmail.com`의 `gmail.com`은 라우트 미등록.
-- **When** 1단계에서 이메일 입력 후 "계속".
-- **Then** `{matched:false}`. 자동 진입 없이 **2단계** 노출 — 기존 로그인 폼(LOCAL/LDAP 드롭다운 + username + password + SAML/OIDC 버튼 전체). 입력한 이메일은 username 칸에 프리필(수정 가능). 사용자가 직접 방식 선택(FR-AU-06 동작 보존).
+- **When** 식별자 입력 후 blur.
+- **Then** `{matched:false}`. SSO 버튼이 나타나지 않고 기존 로그인 폼(LOCAL/LDAP 드롭다운 + username + password + SAML/OIDC 버튼 전체)이 그대로 남는다. 사용자가 직접 방식 선택(FR-AU-06 동작 보존).
 
 ### S4 — 도메인은 등록됐으나 대상 SSO 비활성/삭제 → 미매칭 취급 (fail-safe)
 - **Given** `partner.com → providerX` 라우트는 있으나 그 SAML/OIDC config가 enabled=false(또는 LOCAL/LDAP provider를 가리킴).
-- **When** `alice@partner.com` 입력 후 "계속".
+- **When** `alice@partner.com` 입력 후 blur.
 - **Then** `{matched:false}` → 기존 폼 fallback. 끊긴 라우트가 사용자를 막지 않는다.
+  매칭된 경우에도 로컬 제출 버튼은 강등되되 enabled 로 남아 같은 원칙을 지킨다.
 
 ### S5 — 대소문자/공백 정규화 (정상)
 - **When** `Alice@Partner.COM ` 입력.
 - **Then** 도메인 `partner.com`으로 정규화 후 조회 → S1과 동일 매칭.
+
+### S6 — `@` 없는 식별자 → 조회 없음 (2026-09-03 추가)
+- **Given** LDAP 사용자명 `alice`.
+- **When** 입력 후 blur.
+- **Then** 도메인이 비므로 `GET /auth/route` 를 **호출하지 않는다**. 불필요한 왕복을 만들지 않는다.
 
 ## 기능 요구사항 (FR)
 
