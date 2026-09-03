@@ -19,6 +19,8 @@ import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.verify
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -27,6 +29,7 @@ import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.converter.HttpMessageConverter
@@ -77,6 +80,7 @@ import java.util.UUID
  * - DELETE-2. DELETE 미존재 → 404
  * - START-1. POST /api/v1/sprints/{id}/start 정상 → 200
  * - START-2. POST start 허용되지 않는 전환 → 409 AGILE_CONFLICT
+ * - START-5. POST start advisory lock 예산 초과 → 503 AGILE_UNAVAILABLE (부채 166 ② · 스펙 S4)
  * - COMPLETE-1. POST /api/v1/sprints/{id}/complete 정상 → 200
  * - COMPLETE-2. POST complete 허용되지 않는 전환 → 409 AGILE_CONFLICT
  * - ASSIGN-1. POST /api/v1/sprints/{id}/issues 정상(최초 할당) → 201
@@ -543,6 +547,36 @@ class SprintControllerTest {
         mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("AGILE_SPRINT_BOARD_NOT_SCRUM"))
+    }
+
+    // ── START-5. POST start advisory lock 예산(200ms) 초과 → 503 ─────────────
+    //
+    // ★ 이 테스트가 잡는 것은 「예외가 나는가」가 아니라 「503 AGILE_UNAVAILABLE 로 나가는가」다.
+    // [CannotAcquireLockException] 은 형제 START-3/4 와 달리 ResponseStatusException 상속이 **아니라**
+    // 상태 전파 핸들러가 잡지 못한다 — 전용 @ExceptionHandler 가 없으면 catch-all 이
+    // 500 AGILE_INTERNAL_ERROR 로 삼킨다.
+    //
+    // 예외 타입은 추측이 아니다 — `AdvisoryLockBudget.kt` KDoc 의 실측(2026-09-03)이 정본이다.
+    // PostgreSQL 이 `55P03`(canceling statement due to lock timeout) 으로 statement 를 취소하고
+    // jOOQ `JooqExceptionTranslator` 가 그것을 이 타입으로 옮긴다. stub 메시지도 그때 찍힌 원문을 쓴다.
+    //
+    // 보안 — 락 키(`sprint-start:<boardId>`)와 SQL 은 응답 detail 에 나오면 안 된다(DEVELOPMENT.md §2.1).
+    // 형제 START-3/4 가 지킨 규율과 같다.
+
+    @Test
+    fun `POST sprints id start 락 타임아웃이면 503 AGILE_UNAVAILABLE 을 반환한다`() {
+        every {
+            sprintApplicationService.start(actorId, sprintId)
+        } throws
+            CannotAcquireLockException(
+                "jOOQ; SQL [SELECT pg_advisory_xact_lock(hashtextextended(?, 0))]; " +
+                    "ERROR: canceling statement due to lock timeout",
+            )
+
+        mockMvc.perform(post("/api/v1/sprints/$sprintId/start"))
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_UNAVAILABLE"))
+            .andExpect(jsonPath("$.detail").value(not(containsString("pg_advisory_xact_lock"))))
     }
 
     // ── COMPLETE-1. POST complete 정상 → 200 ─────────────────────────────────

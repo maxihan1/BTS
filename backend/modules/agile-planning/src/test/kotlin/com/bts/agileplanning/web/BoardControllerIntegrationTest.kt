@@ -24,6 +24,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -31,6 +33,7 @@ import org.openapitools.jackson.nullable.JsonNullableModule
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.dao.CannotAcquireLockException
 import org.springframework.http.MediaType
 import org.springframework.http.converter.HttpMessageConverter
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter
@@ -109,6 +112,7 @@ import java.util.UUID
  * - DEL-3. DELETE 미존재 보드 → 404. 권한 판정에 도달하지 않는다(존재 검사가 먼저).
  * - DEL-4. DELETE 미인증 → 401 + 보드 조회 자체가 없다(존재 probe 차단).
  * - CANDEL-1. GET /boards/{id} 응답 canDelete 가 SOFT_DELETE 보유/미보유로 갈린다.
+ * - LOCK-1. 보드 경로에서 advisory lock 예산 초과 → 503 AGILE_UNAVAILABLE (스펙 E8 · 부채 166 ②).
  * - NULL-1. 카드 nullable 필드(originalEstimateSeconds/epicKey/rank)가 null 이어도
  *   응답 키 자체는 존재한다(프론트 Zod `.nullable()` 계약 가드, FR-UX-14 F14 후속).
  */
@@ -1571,5 +1575,38 @@ class BoardControllerIntegrationTest {
         mockMvc.perform(get("/api/v1/boards/${board.id}").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.canDelete").value(false))
+    }
+
+    // ── LOCK-1. 보드 경로 advisory lock 예산(200ms) 초과 → 503 (스펙 E8) ──────
+    //
+    // ★ 형제 락 `scrum-board:<projectKey>` 는 [BoardApplicationService.ensureScrumBoard] 가 잡는다.
+    // 그 메서드는 **보드 서비스의 public 메서드**라 보드 컨트롤러 경로에서도 예외가 이 advice 로
+    // 올라온다. [SprintExceptionHandler] 한쪽에만 매핑을 걸면 이쪽은 500 을 낸다(스펙 E8 · Sanity G3).
+    //
+    // [CannotAcquireLockException] 은 ResponseStatusException 상속이 **아니라** 상태 전파 핸들러가
+    // 잡지 못하고 catch-all 이 500 AGILE_INTERNAL_ERROR 로 삼킨다. 타입은 추측이 아니라
+    // `AdvisoryLockBudget.kt` KDoc 의 실측(2026-09-03 · `55P03` → `JooqExceptionTranslator`)이 정본이다.
+    //
+    // 보안 — 락 키에 `projectKey` 가 들어간다. 응답 detail 에 그것도 SQL 도 나오면 안 된다.
+
+    @Test
+    fun `보드 경로에서 락 타임아웃이면 503 AGILE_UNAVAILABLE 을 반환한다`() {
+        every { boardApplicationService.createBoard("BTS", "BTS 스크럼 보드", BoardType.SCRUM) } throws
+            CannotAcquireLockException(
+                "jOOQ; SQL [SELECT pg_advisory_xact_lock(hashtextextended(?, 0))]; " +
+                    "ERROR: canceling statement due to lock timeout [scrum-board:BTS]",
+            )
+
+        val body = mapOf("projectKey" to "BTS", "name" to "BTS 스크럼 보드", "boardType" to "SCRUM")
+
+        mockMvc.perform(
+            post("/api/v1/boards")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_UNAVAILABLE"))
+            .andExpect(jsonPath("$.detail").value(not(containsString("scrum-board"))))
+            .andExpect(jsonPath("$.detail").value(not(containsString("BTS"))))
     }
 }
