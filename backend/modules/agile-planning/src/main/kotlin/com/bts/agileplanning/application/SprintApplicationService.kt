@@ -266,12 +266,19 @@ class SprintApplicationService(
      * 도메인 Sprint.start() 에 전환 유효성을 위임한 뒤, **보드당 활성 스프린트 1개**를 강제한다.
      *
      * ### 판정 순서 — FSM 이 보드 가드보다 앞이다
-     * 404(존재) → 403(권한) → 409 FSM → **409 종류** → 락 → 409 활성 순이다.
+     * 404(존재) → 403(권한) → 409 FSM → **409 종류** → 락 → **재조회·재검증** → 409 활성 순이다.
      * ACTIVE 스프린트를 다시 start 하면 [findActiveByBoard] 가 **자기 자신**을 찾는다. 가드를
      * [Sprint.start] 앞에 두면 「전환 불가」가 「이미 활성이 있다」로 뒤바뀌어 원인이 흐려진다.
      * 그래서 FSM 을 먼저 통과시킨다 — 여기 도달한 스프린트는 PLANNED 였음이 보장된다.
      * 종류 가드도 같은 이유로 FSM **뒤**다. 대신 락 **앞**이다 — 거부가 확정된 요청이 advisory lock 을
      * 잡아 같은 보드의 정상 start 를 대기시키지 않는다.
+     *
+     * ### 락 앞뒤 판정 — 앞은 거부용, 뒤는 영속용 (R9 · ADR 2026-09-03 D5)
+     * 락 **앞** 판정은 「확실히 틀린 요청을 락 없이 되돌려보내는」 필터라 값이 낡아도 무해하다.
+     * 그러나 **영속에 쓰는 status·version 은 락 뒤 재조회분**이어야 한다 — 락 앞 스냅샷의 version 으로
+     * UPDATE 하면 격리 수준이 `REPEATABLE READ` 로 올라갔을 때 락을 잡고도 앞선 트랜잭션의 커밋을 못 봐
+     * 서로 다른 행을 갱신하고 ACTIVE 2건이 커밋된다. [Isolation.READ_COMMITTED] 명시는 방어층이고,
+     * 격리 수준과 무관한 실효 보장은 [reloadAndRevalidateAfterLock] 이 진다.
      *
      * ### 선행 결정 무효화 (2026-09-01)
      * `docs/plan/product/agile-planning.md §3.2` 의 Deviation(PR #182) ⑤ 「동시 ACTIVE 다중 허용」을
@@ -281,12 +288,13 @@ class SprintApplicationService(
      * @param actorId 행위자 UUID.
      * @param sprintId 시작할 스프린트 UUID.
      * @return ACTIVE 상태의 갱신된 스프린트.
-     * @throws SprintNotFoundException 404 — 스프린트 미존재 또는 soft-deleted.
+     * @throws SprintNotFoundException 404 — 미존재·soft-deleted, 또는 락 뒤 재조회에서 사라짐(E6).
      * @throws SprintBoardNotScrumException 409 — 소속 보드가 SCRUM 이 아님(R8 · 부채 165).
      * @throws SprintAlreadyActiveException 409 — 같은 보드에 이미 ACTIVE 스프린트가 있음.
      * @throws SprintVersionConflictException 409 — OCC 버전 충돌.
      * @throws ResponseStatusException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.domain.InvalidSprintTransitionException 409 — 허용되지 않는 전환.
+     *   락 뒤 재조회에서 이미 ACTIVE 인 경우도 여기다(E7) — 「이미 활성이 있다」가 아니라 「전환 불가」다.
      */
     @Transactional(isolation = Isolation.READ_COMMITTED)
     fun start(
