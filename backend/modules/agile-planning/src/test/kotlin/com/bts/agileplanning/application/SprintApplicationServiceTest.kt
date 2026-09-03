@@ -1083,6 +1083,76 @@ class SprintApplicationServiceTest {
         verify(exactly = 0) { repo.findActiveByBoard(any()) }
     }
 
+    // ── start 보드 종류 가드 (R8 · 부채 165) ────────────────────────
+    //
+    // #431 은 resolveTargetBoard 에 종류 술어를 넣어 **생성**만 막았다. 선재 칸반 소속 스프린트는
+    // start 200 을 받고 ACTIVE 가 되는데, BoardApplicationService.getBoard 가 SCRUM 일 때만
+    // findActiveByBoard 를 부르므로 그 스프린트는 어느 화면에도 나타나지 않는다.
+
+    @Test
+    fun `start 칸반 보드 소속 스프린트는 SprintBoardNotScrumException 을 던진다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+            }
+        val boardRepo = boardRepoOf(activeBoard(boardId, boardType = BoardType.KANBAN))
+
+        assertThatThrownBy {
+            makeService(repo = repo, boardRepository = boardRepo).start(actorId, sprintId)
+        }.isInstanceOf(SprintBoardNotScrumException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(409)
+
+        // 상태는 PLANNED 그대로다(S2). 락도 안 잡는다 — 거부가 확정된 요청이 남의 start 를 막지 않는다.
+        verify(exactly = 0) { repo.acquireSprintStartLock(any()) }
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
+    /**
+     * 판정 순서 계약을 직접 잰다 — 404 → 403 → 409 FSM → **409 종류** → 락 → 409 활성.
+     *
+     * 종류 가드를 락 **뒤**로 옮겨도 위 단건 테스트는 초록이다 — 예외 타입만 보므로 순서를 모른다.
+     * 그러나 순서가 뒤집히면 거부가 확정된 요청이 advisory lock 을 잡아 같은 보드의 정상
+     * start 를 대기시킨다 — 순서를 **직접** 재는 이유는 형제 테스트(락 → 활성 조회)와 같다.
+     */
+    @Test
+    fun `start 는 FSM 검증 뒤 종류 가드 뒤 락 순서로 판정한다`() {
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns plannedSprint
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+                every { it.findActiveByBoard(boardId) } returns null
+                every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 0L) } returns activeSprint
+            }
+        val boardRepo = boardRepoOf(activeBoard(boardId))
+
+        makeService(repo = repo, boardRepository = boardRepo).start(actorId, sprintId)
+
+        verifyOrder {
+            boardRepo.findById(boardId)
+            repo.acquireSprintStartLock(boardId)
+            repo.findActiveByBoard(boardId)
+            repo.updateStatus(sprintId, SprintStatus.ACTIVE, 0L)
+        }
+    }
+
+    @Test
+    fun `start FSM 위반은 종류 가드보다 먼저 판정된다`() {
+        // 칸반 소속 ACTIVE 스프린트를 다시 start 하면 「전환 불가」여야 한다. 종류 가드를
+        // sprint.start() 앞에 두면 그 구분이 「스크럼이 아니다」로 덮여 원인이 흐려진다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returns activeSprint
+            }
+        val boardRepo = boardRepoOf(activeBoard(boardId, boardType = BoardType.KANBAN))
+
+        assertThatThrownBy {
+            makeService(repo = repo, boardRepository = boardRepo).start(actorId, sprintId)
+        }.isInstanceOf(InvalidSprintTransitionException::class.java)
+
+        verify(exactly = 0) { boardRepo.findById(any()) }
+    }
+
     // ── complete ──────────────────────────────────────────────────────────────
 
     @Test
