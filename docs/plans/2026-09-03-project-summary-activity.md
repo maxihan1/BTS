@@ -125,6 +125,43 @@ shared-kernel 변경이라 T3 승격이므로, 피드가 최대 `limit`(50) 그�
 이슈 키 접두사가 조회 대상 프로젝트 키와 다르면 **묻지 않고 거부**한다 — resolver 가 접두사로 프로젝트를
 해석하므로 그대로 물으면 다른 프로젝트 기준 판정이 나온다(fail-closed).
 
+## 재리뷰 후속 — BLOCKER N1 (**해소**)
+
+### N1 — VIEW 게이트가 기록 시점 이슈 키로 판정한다
+
+**이 PR 이 스스로 못박은 불변식을 이 PR 의 코드가 위반했다.** `ProjectSummaryRows.kt:49` 가
+「`issueKey` 는 기록 시점 값이라 소속 판정의 근거가 되지 못한다」고 적어 놓고,
+`retainViewableRows` 는 캐시 키와 VIEW 판정을 둘 다 `issueKey` 로 만들었다.
+
+**재현 경로(프로덕션 기능으로 도달 가능).** `POST /api/v1/issues/{key}/move`(FR-MV-01)의
+`IssueRepository.moveIssue` 는 `issues.project_id`·`key` 만 갱신한다.
+`issue_change_group.issue_key` 는 `JdbcIssueChangeHistoryRepository` 의 INSERT 두 곳에서만
+쓰이고 **UPDATE 는 0건** — 이동해도 기록 시점 값 그대로다.
+
+1. `AAA-1` 에 이력이 쌓인다 → `issue_change_group.issue_key = 'AAA-1'`
+2. `BBB` 로 이동 → `issues.key = 'BBB-N'`, change group 은 `'AAA-1'` 유지
+3. `GET /projects/BBB/activity` 의 1단계 조인은 **현재** `project_id` 를 걸므로(`buildActiveSecureWhere`)
+   이동 전 그룹이 정상 반환된다. 행의 `issueKey` 는 `AAA-1`
+4. `canViewIssue(actor, "BBB", "AAA-1")` → 접두사 불일치 → 전량 제거 + 행마다 WARN
+
+**결과** — 이동된 이슈의 이동 **전** 활동이 어느 프로젝트 피드에서도 보이지 않는다.
+원 프로젝트 `AAA` 는 조인이 현재 `project_id` 라 애초에 나오지 않는다. 사용자에게 누락 신호가
+없고 `limit` 50 요청마다 WARN 이 최대 50줄 찍힌다 — **조용한 데이터 소실**이다.
+
+**접두사 가드 자체는 옳다.** resolver 가 `scope.key.substringBefore('-')` 로 프로젝트를 해석하므로
+어긋난 키를 그대로 물으면 fail-open 이다. 옳지 않은 것은 **가드에 먹이는 키**였다.
+
+**해소.** `fetchProjectActivity` 2단계에 `.join(ISSUES).on(ISSUES.ID.eq(ISSUE_CHANGE_GROUP.ISSUE_ID))`
+를 더해 현재 키 `ISSUES.KEY` 를 `ProjectActivityRow.currentIssueKey` 로 싣고, `canViewIssue` 와
+캐시 키를 그 값으로 바꿨다. **표시용 `issueKey`(기록 시점)는 그대로 둔다** — 이력의 박제값이라
+바꾸면 감사 근거가 사라지고 응답 계약도 깨진다.
+
+- red — ACT-5(원천이 현재 키를 싣지 않는다) + 서비스 2건(이동된 이슈 항목이 사라진다 ·
+  이동 전후 그룹이 섞이면 판정이 2회). EXIT=1, 45건 중 3건 실패
+- 비-공허 짝 — 같은 픽스처에서 **현재 키**의 VIEW 를 닫으면 그 항목이 사라진다
+- 행 부풀림 없음 — `ISSUES.ID` 는 PK(V001:34)이고 술어가 등가 비교라 그룹 행마다 매칭 최대 1건.
+  ACT-3(항목 2건 → 행 2건)·ACT-5(항목 1건 → 행 1건)로 실측 확인
+
 ## 리뷰 후속 — CONCERNS
 
 | # | 무엇 | 처방 |
@@ -139,6 +176,24 @@ shared-kernel 변경이라 T3 승격이므로, 피드가 최대 `limit`(50) 그�
 | S1 | `StatusHistoryRepository` companion 을 `public` → `internal` | 같은 BC 안 재사용은 되고 타 BC 컴파일 의존은 막힌다 |
 | T1 | `SUM-5` 의 labels 픽스처가 **도달 불가** — 그 쿼리는 조인이 없고 `labels` 는 배열 컬럼이라 막겠다는 결함이 구조적으로 불가능 | 근거를 「전방 회귀 가드」로 정정하거나 실제 조인 쿼리로 픽스처를 옮긴다 |
 | T2 | 창 경계(시작 inclusive / 끝 exclusive)를 서비스 수준에서 단언하는 테스트 없음 | **해소.** `ProjectSummaryServiceTest` 「집계 창 경계」 2건. `inRecent` 시작 배타화·`inPrevious` 끝 포함화 두 뮤테이션에서 각각 red 를 확인했다 |
+| C-a | `findActiveOwners` 의 `((A AND IN) OR (B AND IN)) AND deleted_at IS NULL` 에서 **괄호 우선순위가 실제로 걸리는 조합**(다중 이슈 × 삭제 댓글)이 SQL 로 한 번도 실행된 적 없음 | **해소.** Order(14) 픽스처에 두 OR 가지를 차례로 소프트 삭제하는 단언을 이어 붙였다. 뮤테이션(`deleted_at` 을 마지막 가지에만 결합)에서 red 확인 — 첫 가지의 삭제 댓글이 샌다 |
+| C-b | 창 끝 배타 단언이 **도달 불가 픽스처** 위에 있었다(기준 시각보다 12시간 뒤 이슈) — `unreachable-state-fixture-is-fake-green` | **해소.** import 주입 가능성을 먼저 확인했고 **불가능**했다(아래 근거). 시작 경계는 도달 가능한 픽스처(`recentFrom` 정각 / 1초 전)로 다시 세우고, 끝 경계 단언은 지우지 않고 **전방 회귀 가드**로 정직하게 다시 썼다. 접점 단언은 그대로 |
+| C-d | OpenAPI 가 「응답이 `limit` 보다 적을 수 있다」를 안 적는다 | **해소.** `@Parameter` description + 컨트롤러 KDoc 에 명시 |
+
+### C-b — 「이슈 `created_at` 에 미래 값을 주입할 수 있는가」 확인 결과: 불가능
+
+- `issues` 를 INSERT 하는 경로는 저장소 전체에서 `IssueRepository.insert` **하나**뿐이다
+  (`insertInto(ISSUES)` 전수 검색 → 1건). 그 경로가 쓰는 `Issue.toInsertRecord()` 는
+  `created_at`·`updated_at` 을 **SET 하지 않아** DB DEFAULT `NOW()` 가 채운다(V001:48-49).
+- `ISSUES.CREATED_AT` 을 `.set(...)` 하는 코드는 main 전체에 **0건**. `UPDATED_AT` 은 9곳 모두
+  `OffsetDateTime.now(UTC)` 다.
+- import 경로 `IssueImportAdapter` 는 원본(Jira) 시각을 **댓글·첨부에만** 보존하고
+  (`ImportComment.createdAt` · `importAttachment.createdAt`), 이슈는
+  `IssueApplicationService.createIssue` 를 그대로 탄다.
+
+따라서 `recentTo`(내일 UTC 자정) 이후 값을 가진 이슈는 프로덕션에 존재할 수 없다.
+지적은 유효했고, 단언은 「전방 회귀 가드」로 근거를 명시해 남겼다 — 이슈 원본 시각 보존이
+import 에 추가되는 순간 이 창은 실전에서 도달 가능해지기 때문이다.
 
 ## 검증
 
