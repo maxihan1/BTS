@@ -1159,4 +1159,69 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
       expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
     })
   })
+
+  it('조회가 한 번 실패해도 같은 도메인을 다시 조회할 수 있다 (dedupe 오염 금지)', async () => {
+    // dedupe 키를 조회 **시작 시점**에 세우면, 실패한 도메인이 키에 남아 재조회가
+    // 영구 차단된다. 일시적 네트워크 장애 뒤 SSO 버튼이 영영 안 뜨는 회귀다.
+    let calls = 0
+    server.use(
+      http.get('/api/v1/auth/route', () => {
+        calls += 1
+        if (calls === 1) return HttpResponse.error()
+        return HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        })
+      }),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    const identifier = screen.getByLabelText('사용자명')
+    await user.type(identifier, 'alice@okta.com')
+    await user.tab()
+    await waitFor(() => {
+      expect(calls).toBe(1)
+    })
+
+    // 같은 도메인으로 다시 blur — 재조회가 일어나고 이번엔 성공한다
+    await user.click(identifier)
+    await user.tab()
+
+    expect(await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })).toBeInTheDocument()
+  })
+
+  it('식별자에서 @ 를 지우면 SSO 버튼이 사라진다 (stale 매칭 금지)', async () => {
+    // `@` 가 없으면 조회를 건너뛰는데, 그때 이전 매칭 결과를 지우지 않으면
+    // LDAP 사용자명으로 바꿨는데 이전 도메인의 SSO 버튼이 남는다.
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    const identifier = screen.getByLabelText('사용자명')
+    await user.type(identifier, 'alice@okta.com')
+    await user.tab()
+    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+
+    await user.clear(identifier)
+    await user.type(identifier, 'alice')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Okta SSO 로 로그인' })).toBeNull()
+    })
+  })
 })

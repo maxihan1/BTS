@@ -205,6 +205,22 @@ describe('LoginDialog — 세션 만료 재로그인은 이동 없이 화면을 
     expect(invalidateSpy).toHaveBeenCalled()
   })
 
+  it('만료 플래그가 켜진 채 /login 에 있으면 로그인 후 목적지로 이동한다 (막다른 골목 금지)', async () => {
+    // 만료로 모달이 뜬 뒤 사용자가 뒤로가기 등으로 이동하면 requireAuth 가 /login 으로 보낸다.
+    // 그 상태에서 만료 분기를 타면 navigate 를 건너뛰어 AuthBackdrop 만 남은 /login 에 갇힌다.
+    routerMocks.pathname.current = '/login'
+    useLoginPromptStore.getState().promptSessionExpired()
+    useAuthStore.setState({ user: makeWhoami({ startPage: 'inbox' }) })
+
+    const user = userEvent.setup()
+    renderDialog()
+    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+
+    await user.click(screen.getByRole('button', { name: '성공 트리거' }))
+
+    expect(routerMocks.navigate).toHaveBeenCalledWith({ to: '/inbox' })
+  })
+
   it('성공 후 만료 플래그가 해제된다', async () => {
     routerMocks.pathname.current = '/issues/ATLAS-1'
     useLoginPromptStore.getState().promptSessionExpired()

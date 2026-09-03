@@ -48,11 +48,16 @@ export const LoginDialog = () => {
    * 판정은 {@link resolvePostLoginNav} 하나만 쓴다(중복 정의 금지).
    */
   function handleSuccess() {
-    if (sessionExpired) {
+    // 🛑 `/login` 에서는 만료 분기를 타지 않는다. 그 경로에는 돌아갈 화면이 없어서
+    //    navigate 를 건너뛰면 AuthBackdrop 만 남은 막다른 골목이 된다.
+    //    만료로 모달이 뜬 뒤 사용자가 이동하면 requireAuth 가 /login 으로 보내므로
+    //    「sessionExpired=true 이면서 pathname='/login'」 조합은 실제로 발생한다.
+    if (sessionExpired && pathname !== '/login') {
       resetPrompt()
       void queryClient.invalidateQueries()
       return
     }
+    resetPrompt()
     const rawReturnTo = new URLSearchParams(window.location.search).get('returnTo')
     const user = useAuthStore.getState().user
     void navigate(resolvePostLoginNav(rawReturnTo, user?.startPage, user?.userId))

@@ -155,7 +155,15 @@ const LoginCredentialsForm = ({
   function runRouteLookup(identifier: string) {
     const atIndex = identifier.indexOf('@')
     const domain = atIndex !== -1 ? identifier.slice(atIndex + 1) : ''
-    if (domain === '') return
+
+    // `@` 를 지웠거나 도메인이 비면 조회하지 않는다 — LDAP 사용자명(`alice`)이 그 경우다.
+    // 🛑 이때 이전 매칭을 **반드시 지운다**. 안 지우면 식별자를 사용자명으로 바꿨는데
+    //    이전 도메인의 SSO 버튼이 남는다(stale 매칭).
+    if (domain === '') {
+      lastQueriedDomainRef.current = ''
+      setMatchedRoute(null)
+      return
+    }
     if (domain === lastQueriedDomainRef.current) return
 
     lastQueriedDomainRef.current = domain
@@ -166,6 +174,12 @@ const LoginCredentialsForm = ({
         setMatchedRoute(result.matched ? result : null)
       })
       .catch((err: unknown) => {
+        // 🛑 dedupe 키를 되돌린다. 실패한 도메인이 키에 남으면 재조회가 **영구 차단**되고,
+        //    일시적 네트워크 장애 뒤 SSO 버튼이 영영 뜨지 않는다.
+        //    최신 조회일 때만 되돌린다 — 뒤늦게 실패한 옛 요청이 새 키를 지우면 안 된다.
+        if (seq === seqRef.current) {
+          lastQueriedDomainRef.current = ''
+        }
         console.warn('[LoginForm] route 조회 실패 — 로컬 로그인으로 진행', err)
       })
   }
