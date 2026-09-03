@@ -24,7 +24,7 @@ class BoardWipSwimlaneDomainTest {
     private fun baseColumn(wipLimit: Int? = null) =
         BoardColumn(
             id = UUID.randomUUID(),
-            stateKey = "open",
+            stateKeys = listOf("open"),
             name = "열림",
             category = "TODO",
             displayOrder = 1,

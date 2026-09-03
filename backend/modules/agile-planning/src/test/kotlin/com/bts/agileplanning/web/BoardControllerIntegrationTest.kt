@@ -237,9 +237,9 @@ class BoardControllerIntegrationTest {
             boardType = boardType,
             columns =
                 listOf(
-                    BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0),
-                    BoardColumn(UUID.randomUUID(), "in-progress", "진행 중", "IN_PROGRESS", 1),
-                    BoardColumn(UUID.randomUUID(), "closed", "완료", "DONE", 2),
+                    BoardColumn(UUID.randomUUID(), listOf("open"), "열림", "TODO", 0),
+                    BoardColumn(UUID.randomUUID(), listOf("in-progress"), "진행 중", "IN_PROGRESS", 1),
+                    BoardColumn(UUID.randomUUID(), listOf("closed"), "완료", "DONE", 2),
                 ),
             createdAt = Instant.parse("2026-06-20T00:00:00Z"),
             updatedAt = Instant.parse("2026-06-20T00:00:00Z"),
@@ -920,9 +920,9 @@ class BoardControllerIntegrationTest {
                 name = "BTS 보드",
                 columns =
                     listOf(
-                        BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0),
-                        BoardColumn(UUID.randomUUID(), "in-progress", "진행 중", "IN_PROGRESS", 1, wipLimit = 3),
-                        BoardColumn(UUID.randomUUID(), "closed", "완료", "DONE", 2),
+                        BoardColumn(UUID.randomUUID(), listOf("open"), "열림", "TODO", 0),
+                        BoardColumn(UUID.randomUUID(), listOf("in-progress"), "진행 중", "IN_PROGRESS", 1, wipLimit = 3),
+                        BoardColumn(UUID.randomUUID(), listOf("closed"), "완료", "DONE", 2),
                     ),
                 createdAt = Instant.parse("2026-06-22T00:00:00Z"),
                 updatedAt = Instant.parse("2026-06-22T00:00:00Z"),

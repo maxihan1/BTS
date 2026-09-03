@@ -38,7 +38,7 @@ class BoardResponsesTest {
     private fun column(wipLimit: Int? = null) =
         BoardColumn(
             id = UUID.randomUUID(),
-            stateKey = "open",
+            stateKeys = listOf("open"),
             name = "열림",
             category = "TODO",
             displayOrder = 1,
@@ -429,7 +429,7 @@ class BoardResponsesTest {
             val response = BoardColumnWithCardsResponse.from(placedColumn)
 
             assertThat(response.columnId).isEqualTo(col.id)
-            assertThat(response.stateKey).isEqualTo(col.stateKey)
+            assertThat(response.stateKey).isEqualTo(col.legacyStateKey)
             assertThat(response.name).isEqualTo(col.name)
             assertThat(response.category).isEqualTo(col.category)
             assertThat(response.displayOrder).isEqualTo(col.displayOrder)

@@ -138,7 +138,7 @@ class BoardApplicationServiceTest {
         val board = serviceWith(catalog = catalog).createBoard(projectKey = "BTS", name = "BTS 보드")
 
         assertThat(board.columns).hasSize(3)
-        assertThat(board.columns.map { it.stateKey })
+        assertThat(board.columns.map { it.legacyStateKey })
             .containsExactly("open", "in-progress", "closed")
         assertThat(board.columns.map { it.category })
             .containsExactly("TODO", "IN_PROGRESS", "DONE")
@@ -205,11 +205,11 @@ class BoardApplicationServiceTest {
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
-        val openPlaced = result.columns.first { it.column.stateKey == "open" }
+        val openPlaced = result.columns.first { it.column.legacyStateKey == "open" }
         assertThat(openPlaced.cards).hasSize(1)
         assertThat(openPlaced.cards.first().key).isEqualTo("PROJ-1")
 
-        val inProgressPlaced = result.columns.first { it.column.stateKey == "in-progress" }
+        val inProgressPlaced = result.columns.first { it.column.legacyStateKey == "in-progress" }
         assertThat(inProgressPlaced.cards).hasSize(1)
         assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
     }
@@ -370,7 +370,7 @@ class BoardApplicationServiceTest {
 
         assertThat(result.columns).hasSize(3)
         // ★ 영속이 핵심이다. 매 조회마다 다시 시드하면 컬럼 UUID 가 흔들려 카드 이동(toColumnId)이 깨진다.
-        assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
+        assertThat(boardRepository.findById(boardId)!!.columns.map { it.legacyStateKey })
             .containsExactly("open", "in-progress", "closed")
     }
 
@@ -443,7 +443,7 @@ class BoardApplicationServiceTest {
 
             transactionalBoardService.getBoard(boardId = boardId, viewerUserId = UUID.randomUUID())
 
-            assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
+            assertThat(boardRepository.findById(boardId)!!.columns.map { it.legacyStateKey })
                 .containsExactly("open", "in-progress", "closed")
         } finally {
             AgilePlanningTestcontainersConfig.EmptyWorkflowStateCatalogStub.states = emptyList()
@@ -569,7 +569,7 @@ class BoardApplicationServiceTest {
         every { catalog.listStates(ProjectKey.of("CARD"), null) } returns DEFAULT_STATES
         val board = serviceWith(catalog = catalog).createBoard("CARD", "이동 테스트 보드")
 
-        val inProgressColumn = board.columns.first { it.stateKey == "in-progress" }
+        val inProgressColumn = board.columns.first { it.legacyStateKey == "in-progress" }
         val cmdSlot = slot<BoardTransitionCommand>()
         val transition = mockk<IssueTransitionPort>()
         every { transition.transition(capture(cmdSlot)) } returns
@@ -822,7 +822,7 @@ class BoardApplicationServiceTest {
         val expectedColumn =
             BoardColumn(
                 id = columnId,
-                stateKey = "open",
+                stateKeys = listOf("open"),
                 name = "열림",
                 category = "TODO",
                 displayOrder = 0,
