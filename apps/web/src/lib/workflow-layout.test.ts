@@ -1,6 +1,13 @@
 // 워크플로우 다이어그램 자동 배치 순수 함수 단위 테스트 (FR-WF-07 D8)
 import { describe, it, expect } from 'vitest'
-import { autoLayout, edgeRoutes, START_NODE_ID } from './workflow-layout'
+import {
+  autoLayout,
+  edgeRoutes,
+  labelsOverlap,
+  COLUMN_GAP_PX,
+  NODE_HEIGHT_PX,
+  START_NODE_ID,
+} from './workflow-layout'
 import type {
   EdgeRouteResult,
   LayoutInputState,
@@ -15,6 +22,8 @@ import type {
 
 function makeState(overrides: Partial<LayoutInputState> & { key: string }): LayoutInputState {
   return {
+    // 이름 기본값은 키다 — 이름 길이가 노드 폭을 정하므로 빈 문자열이면 실제와 멀어진다
+    name: overrides.key,
     category: 'TODO',
     displayOrder: 0,
     layoutX: null,
@@ -75,7 +84,7 @@ describe('autoLayout', () => {
       makeState({ key: 'doing', category: 'IN_PROGRESS', displayOrder: 2 }),
     ])
 
-    expect(nodeOf(placed, 'moved')).toEqual({ key: 'moved', x: 512.5, y: -48 })
+    expect(nodeOf(placed, 'moved')).toMatchObject({ key: 'moved', x: 512.5, y: -48 })
 
     // 고정 좌표는 자동 열의 행을 차지하지 않는다 — 남은 자동 노드가 첫 행에서 시작한다
     expect(nodeOf(placed, 'fresh').y).toBe(nodeOf(placed, 'doing').y)
@@ -139,6 +148,15 @@ function routesOf(transitions: readonly LayoutInputTransition[]): EdgeRouteResul
   return edgeRoutes(transitions, [])
 }
 
+/** 한 상태에 매달린 self-loop 다섯. 상한에 걸려 고리가 포개지는지 재는 데 쓴다. */
+const FIVE_SELF_LOOPS: LayoutInputTransition[] = [
+  makeTransition({ from: 'doing', to: 'doing', name: '재작업' }),
+  makeTransition({ from: 'doing', to: 'doing', name: '담당자 변경' }),
+  makeTransition({ from: 'doing', to: 'doing', name: '반려' }),
+  makeTransition({ from: 'doing', to: 'doing', name: '보류' }),
+  makeTransition({ from: 'doing', to: 'doing', name: '재개' }),
+]
+
 describe('edgeRoutes', () => {
   it('self-loop 은 곡선 offset 을 받는다', () => {
     const result = routesOf([
@@ -162,20 +180,45 @@ describe('edgeRoutes', () => {
 
   it('self-loop 곡선이 아무리 늘어도 이웃 행까지 뻗지 않는다 (부채 170)', () => {
     // 옛 기본값 60 은 지름 120 으로 행 간격과 정확히 같아, 고리가 아래 행 노드에 걸쳤다.
-    const result = routesOf([
-      makeTransition({ from: 'doing', to: 'doing', name: '재작업' }),
-      makeTransition({ from: 'doing', to: 'doing', name: '담당자 변경' }),
-      makeTransition({ from: 'doing', to: 'doing', name: '반려' }),
-      makeTransition({ from: 'doing', to: 'doing', name: '보류' }),
-      makeTransition({ from: 'doing', to: 'doing', name: '재개' }),
-    ])
+    const result = routesOf(FIVE_SELF_LOOPS)
 
     for (const index of [0, 1, 2, 3, 4]) {
       const { offset } = edgeAt(result, index)
       // 노드 높이(min-h-11 = 44px)가 상한이다. 그보다 크면 이웃 행을 삼킨다
       expect(offset).toBeGreaterThan(0)
-      expect(offset).toBeLessThanOrEqual(44)
+      expect(offset).toBeLessThanOrEqual(NODE_HEIGHT_PX)
     }
+  })
+
+  it('★self-loop 이 다섯이어도 고리가 서로 포개지지 않는다', () => {
+    /*
+     * ★ 상한을 두면서 생긴 **되돌아온 겹침**을 잰다. 종전 계수(기본 20 · 증가 12 · 상한 44)는
+     *   `20, 32, 44, 44, 44` 를 내어 셋째부터 반지름이 같았다 — 고리 셋이 byte 단위로 같은
+     *   경로를 그려 화면에는 하나로 보였다. 부채 170 을 고치며 부채 168 을 되살린 셈이다.
+     *
+     * ★★ 종전 판정(`0 < offset <= 44`)은 그 겹침을 **통과시켰다.** 상한만 재고 서로 다름을
+     *    안 재면, 전부 상한에 붙어도 초록이다.
+     */
+    const result = routesOf(FIVE_SELF_LOOPS)
+
+    const radii = [0, 1, 2, 3, 4].map((index) => edgeAt(result, index).offset)
+    expect(new Set(radii).size).toBe(5)
+  })
+
+  it('self-loop 고리가 옆 열 노드까지 뻗지 않는다', () => {
+    /*
+     * 고리는 노드 오른쪽으로 **지름(2r)** 만큼 나간다. 세로 상한(44)만 보면 지름 88 인데,
+     * 이름이 긴 노드는 `max-w-52`(208px)까지 넓어져 `COLUMN_GAP_PX`(260)에서 남는 가로 여유가
+     * 52px 뿐이다 — 부채 170 과 같은 관통이 90도 돌아간 것이다.
+     */
+    const wide = autoLayout([
+      makeState({ key: 'long', name: '아주아주아주아주아주긴상태이름입니다', category: 'TODO' }),
+    ])
+    const source = nodeOf(wide, 'long')
+    const result = edgeRoutes([makeTransition({ from: 'long', to: 'long', name: '재작업' })], wide)
+
+    // 노드 오른쪽 끝에서 지름만큼 나간 자리가 다음 열(260)을 넘지 않아야 한다
+    expect(source.x + source.width + edgeAt(result, 0).offset * 2).toBeLessThanOrEqual(COLUMN_GAP_PX)
   })
 
   it('같은 상태쌍에 전환이 여럿이면 서로 다른 offset 을 받는다', () => {
@@ -265,8 +308,34 @@ function softwareDefaultStates(): LayoutInputState[] {
   ]
 }
 
+/**
+ * 어느 두 라벨도 포개지지 않는지 잰다.
+ *
+ * ★ **셈을 복제하지 않는다.** 라벨 자리는 `edgeRoutes` 가 `labelBox` 로 실어 보내는 값을
+ * 그대로 쓴다 — 테스트가 같은 공식을 다시 쓰면 공식이 틀렸을 때 **둘이 함께 틀려** 판정이
+ * 공허해진다. 겹침 판정 자체도 lib 이 쓰는 `labelsOverlap` 을 그대로 부른다.
+ *
+ * 이름이 빈 전환은 상자를 그리지 않으므로 뺀다.
+ */
+function expectNoLabelOverlap(result: EdgeRouteResult): void {
+  const boxes = result.edges
+    .filter((edge) => edge.label !== '')
+    .map((edge) => ({ name: edge.label, box: edge.labelBox }))
+
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const left = boxes[i]!
+      const right = boxes[j]!
+      expect(
+        labelsOverlap(left.box, right.box),
+        `'${left.name}' 과 '${right.name}' 라벨이 포개져 둘 다 못 읽는다`,
+      ).toBe(false)
+    }
+  }
+}
+
 describe('라벨 겹침 해소', () => {
-  it('중점이 한 점에 모이는 간선들의 라벨이 서로 다른 방향으로 밀린다', () => {
+  it('중점이 한 점에 모이는 간선들의 라벨이 서로 떨어진다', () => {
     // FR-WF-07 D8 눈확인 ②에서 `Requ|Cancel|nges` 로 뭉개져 나온 그 세 전환이다.
     // 간선 자체는 X 자로 벌어진다(눈확인 ④ 통과) — 겹치는 것은 라벨뿐이다.
     const placed = autoLayout(softwareDefaultStates())
@@ -279,16 +348,64 @@ describe('라벨 겹침 해소', () => {
       placed,
     )
 
-    const shifted = [0, 1, 2].map((index) => {
-      const { x, y } = edgeAt(result, index).labelOffset
-      return `${x},${y}`
-    })
-
-    // 세 간선의 중점이 같은 점이므로, 오프셋이 서로 달라야만 라벨 셋이 따로 읽힌다
-    expect(new Set(shifted).size).toBe(3)
+    expectNoLabelOverlap(result)
   })
 
-  it('중점이 겹치지 않는 라벨은 밀지 않는다', () => {
+  it('★self-loop 라벨과 같은 노드에서 나가는 간선 라벨이 겹치지 않는다', () => {
+    /*
+     * ★ 겹침 해소에서 self-loop 을 빼면 **이 둘은 영영 안 떨어진다.** 고리 라벨은 노드
+     *   오른쪽에 붙고, 같은 노드에서 오른쪽으로 나가는 일반 간선의 라벨도 그 근처다 —
+     *   `open` 의 고리 라벨과 `open → in_progress` 의 라벨이 8px 차이로 포개졌다.
+     */
+    const placed = autoLayout(softwareDefaultStates())
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'open', to: 'open', name: '재작업' }),
+        makeTransition({ from: 'open', to: 'in_progress', name: 'Start Work' }),
+      ],
+      placed,
+    )
+
+    expectNoLabelOverlap(result)
+  })
+
+  it('★시작 노드에서 나가는 간선 라벨도 서로 떨어진다', () => {
+    /*
+     * ★ 가상 시작 노드는 `autoLayout` 결과에 없다 — 캔버스가 따로 놓는다. 좌표 사전에서
+     *   빼면 그 간선들은 겹침 해소에서 **영구히 제외**되어, 한 점에서 뻗는 라벨들이 쌓인다.
+     */
+    const placed = autoLayout(softwareDefaultStates())
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL' }),
+        // 계약 위반 데이터(NORMAL 인데 from 이 없다)도 같은 시작 노드에 매달린다
+        makeTransition({ from: null, to: 'in_progress', name: '유입 불명' }),
+      ],
+      placed,
+    )
+
+    expectNoLabelOverlap(result)
+  })
+
+  it('여럿이 몰려도 전부 떨어진다', () => {
+    // 같은 상태쌍 다중 전환(bundleOffset)과 서로 다른 쌍의 겹침이 한 화면에 함께 있는 경우다
+    const placed = autoLayout(softwareDefaultStates())
+    const result = edgeRoutes(
+      [
+        makeTransition({ from: 'in_progress', to: 'in_review', name: 'Submit for Review' }),
+        makeTransition({ from: 'in_progress', to: 'in_review', name: '빠른 검토' }),
+        makeTransition({ from: 'in_review', to: 'in_progress', name: 'Request Changes' }),
+        makeTransition({ from: 'open', to: 'closed', name: 'Cancel' }),
+        makeTransition({ from: 'open', to: 'in_progress', name: 'Start Work' }),
+        makeTransition({ from: 'in_review', to: 'done', name: 'Approve' }),
+      ],
+      placed,
+    )
+
+    expectNoLabelOverlap(result)
+  })
+
+  it('겹치지 않는 라벨은 밀지 않는다', () => {
     // 굽힐 이유가 없는 라벨까지 밀면 선과 이름이 멀어져 어느 간선의 이름인지 알 수 없어진다
     const placed = autoLayout(softwareDefaultStates())
     const result = edgeRoutes(
@@ -301,5 +418,20 @@ describe('라벨 겹침 해소', () => {
 
     expect(edgeAt(result, 0).labelOffset).toEqual({ x: 0, y: 0 })
     expect(edgeAt(result, 1).labelOffset).toEqual({ x: 0, y: 0 })
+  })
+
+  it('같은 입력이면 같은 결과다', () => {
+    // 리렌더마다 라벨이 흔들리면 읽는 사람이 따라가지 못한다 — 배치는 결정론적이라야 한다
+    const placed = autoLayout(softwareDefaultStates())
+    const transitions = [
+      makeTransition({ from: 'in_progress', to: 'in_review', name: 'Submit for Review' }),
+      makeTransition({ from: 'in_review', to: 'in_progress', name: 'Request Changes' }),
+      makeTransition({ from: 'open', to: 'closed', name: 'Cancel' }),
+    ]
+
+    const first = edgeRoutes(transitions, placed).edges.map((edge) => edge.labelOffset)
+    const second = edgeRoutes(transitions, placed).edges.map((edge) => edge.labelOffset)
+
+    expect(first).toEqual(second)
   })
 })
