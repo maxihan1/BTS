@@ -14,6 +14,7 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.jooq.tables.WorkflowDrafts.Companion.WORKFLOW_DRAFTS
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.port.outbound.Scope
@@ -21,6 +22,7 @@ import com.bts.workflow.postaction.PostActionRepository
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.seed.StandardWorkflowDefaults
 import com.bts.workflow.seed.StateYamlDto
 import com.bts.workflow.seed.TransitionYamlDto
@@ -32,6 +34,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
+import org.jooq.JSONB
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -155,6 +158,8 @@ class WorkflowDraftServiceIntegrationTest {
                     cache,
                     ValidatorRepository(dsl, objectMapper),
                     PostActionRepository(dsl, objectMapper),
+                    WorkflowRepository(dsl),
+                    WorkflowStatusCompositionRepository(dsl),
                 ),
             standardDefaults = defaults,
             permissionResolver = permissions,
@@ -216,6 +221,32 @@ class WorkflowDraftServiceIntegrationTest {
     )
 
     private fun workflowId(key: String): UUID = publishRepository.findLiveByKey(key)!!.id
+
+    /**
+     * 좌표 필드가 **아예 없는** 초안 JSONB 를 심는다. [validDraft] 와 같은 정의이되 `layoutX`·`layoutY`
+     * 키가 없다 — 다이어그램 편집기가 생기기 전에 저장된 초안의 실제 모양이다.
+     *
+     * [WorkflowDraftRepository.upsert] 로 만들면 Jackson 이 그 두 키를 `null` 로 **써 넣어** 부재가
+     * 재현되지 않는다. 하위호환이 지켜야 하는 것은 값이 null 인 경우가 아니라 **키가 없는 경우**다.
+     */
+    private fun insertDraftWithoutLayoutKeys(
+        workflowId: UUID,
+        key: String,
+    ) {
+        val json =
+            """
+            {"key":"$key","name":"좌표 필드가 생기기 전에 저장된 초안","description":null,
+             "states":[{"key":"open","name":"열림 $key","category":"TODO","displayOrder":0}],
+             "transitions":[{"from":null,"to":"open","name":"이슈 생성","kind":"INITIAL",
+                             "validators":[],"postActions":[]}]}
+            """.trimIndent()
+
+        dsl.insertInto(WORKFLOW_DRAFTS)
+            .set(WORKFLOW_DRAFTS.WORKFLOW_ID, workflowId)
+            .set(WORKFLOW_DRAFTS.DEFINITION, JSONB.valueOf(json))
+            .set(WORKFLOW_DRAFTS.BASE_VERSION, 0L)
+            .execute()
+    }
 
     // ── 편집 시작점 ───────────────────────────────────────────────────────────
 
@@ -302,6 +333,44 @@ class WorkflowDraftServiceIntegrationTest {
 
         assertThatThrownBy { service.save(ACTOR, key, withCustomExpression, baseVersion = 0) }
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
+    // ── ★ 다이어그램 노드 좌표 (FR-WF-07 D8) ─────────────────────────────────
+    //
+    // 편집기에서 노드를 끌어 놓은 결과가 초안에 담긴다. 여기서 재는 것은 **저장 → 조회** 반쪽이고,
+    // 나머지 반쪽(발행 → 재조회)은 `WorkflowPublishServiceIntegrationTest` 가 잡는다.
+
+    @Test
+    fun `초안에 저장한 좌표가 그대로 돌아온다`() {
+        val key = seedWorkflow()
+        val base = validDraft(key)
+        val placed = base.copy(states = base.states.map { it.copy(layoutX = 120.5, layoutY = 240.25) })
+
+        service.save(ACTOR, key, placed, baseVersion = 0)
+
+        val state = service.get(ACTOR, key).definition.states.single()
+        assertThat(state.layoutX).isEqualTo(120.5)
+        assertThat(state.layoutY).isEqualTo(240.25)
+    }
+
+    /**
+     * ★ 좌표 필드가 없는 초안 JSONB 가 그대로 읽혀야 한다.
+     *
+     * 기본값 없는 필드를 더하면 이미 저장된 초안이 **그 순간 전부** 파싱에서 죽고
+     * ([WorkflowDraftRepository.findByWorkflowId] 는 파싱 실패를 빈 정의로 접지 않는다)
+     * 관리자에게는 편집하던 내용이 사라진 것으로 보인다.
+     */
+    @Test
+    fun `좌표가 없는 기존 초안은 null 로 돌아온다`() {
+        val key = seedWorkflow()
+        insertDraftWithoutLayoutKeys(workflowId(key), key)
+
+        val view = service.get(ACTOR, key)
+
+        assertThat(view.exists).isTrue()
+        val state = view.definition.states.single()
+        assertThat(state.layoutX).isNull()
+        assertThat(state.layoutY).isNull()
     }
 
     // ── ★ 받아 놓고 버리지 않는다 (절대 규칙 16) ──────────────────────────────

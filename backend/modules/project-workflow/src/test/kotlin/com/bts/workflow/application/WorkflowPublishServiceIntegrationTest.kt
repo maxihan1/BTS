@@ -24,6 +24,9 @@ import com.bts.workflow.domain.exception.WorkflowVersionConflictException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
+import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
+import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.port.outbound.Scope
@@ -32,6 +35,7 @@ import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublicationRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.scheme.repository.ProjectRef
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.testsupport.insertWorkflowStatus
@@ -316,6 +320,21 @@ class WorkflowPublishServiceIntegrationTest {
         )
 
     /**
+     * 발행이 내려쓴 좌표를 **초안 형태로 되읽는** 경로. 왕복의 후반부라 여기에 함께 둔다.
+     *
+     * 이 리더가 없으면 「발행하면 좌표가 실린다」만 초록이고, 편집기를 다시 열었을 때 좌표가
+     * 사라지는 것을 아무도 못 잡는다 — 쓰기만 재는 판정의 전형적인 구멍이다.
+     */
+    private val definitionReader =
+        CurrentDefinitionReader(
+            cache,
+            ValidatorRepository(dsl, objectMapper),
+            PostActionRepository(dsl, objectMapper),
+            WorkflowRepository(dsl),
+            WorkflowStatusCompositionRepository(dsl),
+        )
+
+    /**
      * 위조 차단 판정 전용 — 요청 본문이 **실제로 흐르는 경로**를 재현한다.
      *
      * 초안 서비스는 이 경로에 쓰이지 않으므로 목으로 둔다. 컨트롤러를 끼우는 이유는 하나다 —
@@ -403,6 +422,24 @@ class WorkflowPublishServiceIntegrationTest {
 
     private fun workflowId(key: String): UUID = publishRepository.findLiveByKey(key)!!.id
 
+    /**
+     * 편성 행에 **실제로 저장된** 좌표. 읽기 경로가 아니라 테이블을 직접 본다 —
+     * 재려는 것이 발행의 내려쓰기 그 자체라, 되읽는 경로로 재면 둘이 함께 틀려도 초록이 된다.
+     */
+    private fun layoutOf(
+        workflowKey: String,
+        statusKey: String,
+    ): Pair<Float?, Float?> =
+        dsl.select(WORKFLOW_STATUSES.LAYOUT_X, WORKFLOW_STATUSES.LAYOUT_Y)
+            .from(WORKFLOW_STATUSES)
+            .join(WORKFLOWS).on(WORKFLOWS.ID.eq(WORKFLOW_STATUSES.WORKFLOW_ID))
+            .join(STATUSES).on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID))
+            .where(WORKFLOWS.KEY.eq(workflowKey))
+            .and(STATUSES.KEY.eq(statusKey))
+            .fetchOne()
+            ?.let { it[WORKFLOW_STATUSES.LAYOUT_X] to it[WORKFLOW_STATUSES.LAYOUT_Y] }
+            ?: error("편성 행이 없다. workflow=$workflowKey status=$statusKey")
+
     /** `open` 만 남기고 `done` 을 빼는 초안. 상태를 지우는 편집의 최소 형태다. */
     private fun draftWithoutDone(key: String) =
         WorkflowDraftDefinition(
@@ -433,6 +470,26 @@ class WorkflowPublishServiceIntegrationTest {
                     ),
                 ),
         )
+
+    /**
+     * [draftKeepingBoth] 와 같은 정의에 `open` 노드의 다이어그램 좌표만 얹은 초안.
+     *
+     * `done` 은 일부러 비워 둔다 — 「배치한 적 없는 상태」가 null 로 남는지를 같은 발행에서 함께 잰다.
+     *
+     * ★ 좌표 값은 **float32 로 정확히 표현되는 수**만 쓴다. `workflow_statuses.layout_x` 는
+     *   `REAL`(float4)이라 120.7 같은 값은 왕복 뒤 120.69999694824219 가 되고, 그러면 판정이
+     *   기능이 아니라 반올림 사정에 매달린다.
+     */
+    private fun draftWithLayout(
+        key: String,
+        x: Double,
+        y: Double,
+    ): WorkflowDraftDefinition {
+        val base = draftKeepingBoth(key)
+        return base.copy(
+            states = base.states.map { if (it.key == "open") it.copy(layoutX = x, layoutY = y) else it },
+        )
+    }
 
     /**
      * `open`·`done` 을 그대로 두고 `완료하기` 전환에 **주어진 규칙만** 매단 초안.
@@ -709,6 +766,62 @@ class WorkflowPublishServiceIntegrationTest {
                 ),
             )
         assertThat(validators).isEqualTo(1)
+    }
+
+    // ── ★ 다이어그램 노드 좌표의 왕복 (FR-WF-07 D8) ──────────────────────────
+
+    @Test
+    fun `발행하면 좌표가 workflow_statuses 에 실린다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(workflowId(key), draftWithLayout(key, 120.5, 240.25), baseVersion = 0, updatedBy = null)
+
+        service.publish(ACTOR, key, baseVersion = 0)
+
+        assertThat(layoutOf(key, "open")).isEqualTo(120.5f to 240.25f)
+    }
+
+    /**
+     * ★ **왕복의 정본.** 이 판정이 없으면 「발행하면 좌표가 실린다」가 초록인 채로 기능이 깨진다.
+     *
+     * 읽기 경로(`WorkflowRepository` · `WorkflowStateView`)는 좌표를 싣지 않는다 — 전환 핫패스가
+     * 쓰지도 않는 값을 지고 다니지 않게 하려는 의도적 설계다. 그래서 초안 조회는
+     * [CurrentDefinitionReader] 가 편성 테이블에서 좌표를 **따로** 읽어야 하고, 그 한 줄이 빠지면
+     * 편집기를 다시 열 때마다 사용자가 배치한 다이어그램이 조용히 흐트러진다.
+     */
+    @Test
+    fun `발행한 뒤 초안을 새로 뜨면 그 좌표가 살아 있다`() {
+        val key = seedWorkflow()
+        draftRepository.upsert(workflowId(key), draftWithLayout(key, 120.5, 240.25), baseVersion = 0, updatedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
+
+        val reopened = definitionReader.read(key) ?: error("발행된 정의를 초안 형태로 읽지 못했다")
+
+        val open = reopened.states.single { it.key == "open" }
+        assertThat(open.layoutX).isEqualTo(120.5)
+        assertThat(open.layoutY).isEqualTo(240.25)
+        // 배치한 적 없는 상태는 null 로 남아야 한다 — 0 으로 접으면 편집기가 원점에 겹쳐 그린다.
+        assertThat(reopened.states.single { it.key == "done" }.layoutX).isNull()
+    }
+
+    /**
+     * 폐기는 **초안만** 버린다. 발행본은 정규 테이블에 있고 좌표도 그 일부다.
+     *
+     * 좌표가 초안 JSONB 에만 있으면 여기서 사라진다 — 「폐기했더니 다이어그램이 초기화됐다」가 된다.
+     */
+    @Test
+    fun `초안을 폐기해도 발행본의 좌표는 남는다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        draftRepository.upsert(id, draftWithLayout(key, 120.5, 240.25), baseVersion = 0, updatedBy = null)
+        service.publish(ACTOR, key, baseVersion = 0)
+
+        // 발행 뒤 노드를 다시 끌어 옮겼다가 그 편집을 통째로 버린다.
+        draftRepository.upsert(id, draftWithLayout(key, 900.0, 900.0), baseVersion = 1, updatedBy = null)
+        assertThat(draftRepository.deleteByWorkflowId(id)).isTrue()
+
+        val reopened = definitionReader.read(key) ?: error("발행된 정의를 초안 형태로 읽지 못했다")
+
+        assertThat(reopened.states.single { it.key == "open" }.layoutX).isEqualTo(120.5)
     }
 
     // ── 발행 이력 ─────────────────────────────────────────────────────────────
