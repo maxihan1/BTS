@@ -73,8 +73,14 @@ class StatusHistoryRepository(
             }
     }
 
-    private companion object {
-        /** status 전환만 대상으로 하는 `issue_change_item.field` 값. */
+    companion object {
+        /**
+         * status 전환만 대상으로 하는 `issue_change_item.field` 값.
+         *
+         * 같은 술어를 쓰는
+         * [com.bts.issue.repository.IssueRepository.fetchStatusChangesSinceForProject] 가
+         * 이 상수를 참조한다 — 복제하면 한쪽만 바뀌었을 때 다른 쪽이 조용히 0건을 반환한다.
+         */
         const val FIELD_STATUS = "status"
     }
 }

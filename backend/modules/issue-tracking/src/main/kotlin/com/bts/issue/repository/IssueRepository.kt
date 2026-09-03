@@ -14,12 +14,16 @@ import com.bts.issue.jooq.tables.records.IssuesRecord
 import com.bts.issue.jooq.tables.references.COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.ISSUE_AFFECTS_VERSIONS
+import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
+import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
 import com.bts.issue.jooq.tables.references.ISSUE_COMPONENTS
 import com.bts.issue.jooq.tables.references.ISSUE_FIX_VERSIONS
 import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.jooq.tables.references.VERSIONS
 import com.bts.issue.jooq.tables.references.WORKLOGS
+import com.bts.issue.statushistory.repository.StatusChangeRow
+import com.bts.issue.statushistory.repository.StatusHistoryRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
@@ -2502,6 +2506,193 @@ class IssueRepository(
                             .toInstant(),
                 )
             }
+
+    /**
+     * 프로젝트 요약 집계용 활성·가시 이슈 원천 메타를 조회한다 (Jira 패리티 캠페인 PR ③).
+     *
+     * [fetchActiveVisibleIssuesForCfd] 를 미러하되, 요약 화면이 필요로 하는 집계 축
+     * (우선순위·담당자·마감일·최종수정)을 추가로 select 한다.
+     * [buildActiveSecureWhere] 보안 술어를 **재사용**하므로 soft-deleted 이슈, 타 프로젝트 이슈,
+     * [viewerUserId] 가 접근 불가한 보안 등급 이슈는 자동으로 제외된다(복제 없음).
+     *
+     * ### 분포를 SQL 로 GROUP BY 하지 않는 이유
+     * status·priority·type·assignee 를 한 쿼리로 묶으면 다중 조인이 건수를 부풀리고
+     * (`IssueTypeRepository` PR#31 학습), 축마다 쿼리를 나누면 같은 보안 술어를 4번 반복하게 된다.
+     * 조인 없는 단일 SELECT 로 **행 하나 = 이슈 하나** 불변식을 보장하고, 집계는 서비스가 한다.
+     *
+     * @param projectKey 요약을 집계할 프로젝트 키.
+     * @param viewerUserId 가시성을 판단할 viewer UUID.
+     * @param access viewer 가 접근 가능한 보안 등급 집합.
+     * @return 활성·가시 이슈의 [SummaryIssueRow] 목록.
+     */
+    @Transactional(readOnly = true)
+    fun fetchActiveVisibleIssuesForSummary(
+        projectKey: String,
+        viewerUserId: UUID,
+        access: IssueSecurityAccess,
+    ): List<SummaryIssueRow> =
+        dsl.select(
+            ISSUES.ID,
+            ISSUES.TYPE_ID,
+            ISSUES.CURRENT_STATE_KEY,
+            ISSUES.PRIORITY,
+            ISSUES.ASSIGNEE_ID,
+            ISSUES.DUE_DATE,
+            ISSUES.CREATED_AT,
+            ISSUES.UPDATED_AT,
+        )
+            .from(ISSUES)
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(buildActiveSecureWhere(projectKey, viewerUserId, access))
+            .fetch { record ->
+                SummaryIssueRow(
+                    issueId = record.get(ISSUES.ID) ?: error("issues.id must not be null"),
+                    typeId = record.get(ISSUES.TYPE_ID) ?: error("issues.type_id must not be null"),
+                    currentStateKey =
+                        record.get(ISSUES.CURRENT_STATE_KEY)
+                            ?: error("issues.current_state_key must not be null"),
+                    // priority 는 SMALLINT(Short) — NOT NULL DEFAULT 3 이지만 !! 는 쓰지 않는다.
+                    priority = (record.get(ISSUES.PRIORITY) ?: error("issues.priority must not be null")).toInt(),
+                    assigneeId = record.get(ISSUES.ASSIGNEE_ID),
+                    dueDate = record.get(ISSUES.DUE_DATE),
+                    createdAt =
+                        (record.get(ISSUES.CREATED_AT) ?: error("issues.created_at must not be null"))
+                            .toInstant(),
+                    updatedAt =
+                        (record.get(ISSUES.UPDATED_AT) ?: error("issues.updated_at must not be null"))
+                            .toInstant(),
+                )
+            }
+
+    /**
+     * 프로젝트 스코프의 status 전환 이력을 [since] 이후로 조회한다 (Jira 패리티 캠페인 PR ③).
+     *
+     * [com.bts.issue.statushistory.repository.StatusHistoryRepository.fetchStatusChanges] 는
+     * 이슈 id 집합을 `IN` 절로 받지만, 프로젝트 전체를 대상으로 하면 `IN` 절이 이슈 수만큼 커진다.
+     * 여기서는 `issues`·`projects` 를 조인해 [buildActiveSecureWhere] 를 그대로 걸어 같은 결과를
+     * 얻는다 — **이력 경로가 보안 술어를 우회하지 않는 것이 핵심**이다.
+     *
+     * @param projectKey 이력을 조회할 프로젝트 키.
+     * @param viewerUserId 가시성을 판단할 viewer UUID.
+     * @param access viewer 가 접근 가능한 보안 등급 집합.
+     * @param since 조회 하한 시각(**inclusive**).
+     * @return `(issueId, changedAt, groupId)` 오름차순 [StatusChangeRow] 목록.
+     */
+    @Transactional(readOnly = true)
+    fun fetchStatusChangesSinceForProject(
+        projectKey: String,
+        viewerUserId: UUID,
+        access: IssueSecurityAccess,
+        since: OffsetDateTime,
+    ): List<StatusChangeRow> =
+        dsl.select(
+            ISSUE_CHANGE_GROUP.ISSUE_ID,
+            ISSUE_CHANGE_GROUP.CREATED_AT,
+            ISSUE_CHANGE_GROUP.ID,
+            ISSUE_CHANGE_ITEM.FROM_VALUE,
+            ISSUE_CHANGE_ITEM.TO_VALUE,
+        )
+            .from(ISSUE_CHANGE_GROUP)
+            .join(ISSUE_CHANGE_ITEM).on(ISSUE_CHANGE_ITEM.GROUP_ID.eq(ISSUE_CHANGE_GROUP.ID))
+            .join(ISSUES).on(ISSUES.ID.eq(ISSUE_CHANGE_GROUP.ISSUE_ID))
+            .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+            .where(buildActiveSecureWhere(projectKey, viewerUserId, access))
+            .and(ISSUE_CHANGE_ITEM.FIELD.eq(StatusHistoryRepository.FIELD_STATUS))
+            .and(ISSUE_CHANGE_GROUP.CREATED_AT.ge(since))
+            .orderBy(ISSUE_CHANGE_GROUP.ISSUE_ID, ISSUE_CHANGE_GROUP.CREATED_AT, ISSUE_CHANGE_GROUP.ID)
+            .fetch { record ->
+                StatusChangeRow(
+                    issueId =
+                        record.get(ISSUE_CHANGE_GROUP.ISSUE_ID)
+                            ?: error("issue_change_group.issue_id must not be null"),
+                    changedAt =
+                        record.get(ISSUE_CHANGE_GROUP.CREATED_AT)?.toInstant()
+                            ?: error("issue_change_group.created_at must not be null"),
+                    groupId =
+                        record.get(ISSUE_CHANGE_GROUP.ID)
+                            ?: error("issue_change_group.id must not be null"),
+                    fromValue = record.get(ISSUE_CHANGE_ITEM.FROM_VALUE),
+                    toValue = record.get(ISSUE_CHANGE_ITEM.TO_VALUE),
+                )
+            }
+
+    /**
+     * 프로젝트 스코프 활동 피드(변경 이력)를 최신순으로 조회한다 (Jira 패리티 캠페인 PR ③).
+     *
+     * [fetchStatusChangesSinceForProject] 와 달리 필드를 `status` 로 한정하지 않고 라벨까지 싣는다.
+     * [buildActiveSecureWhere] 를 재사용하므로 가시성 필터가 자동으로 걸린다.
+     *
+     * ### LIMIT 이 걸리는 단위 — **행이 아니라 그룹**
+     * 행(변경 항목)에 `LIMIT` 을 걸면 경계에 걸친 그룹의 항목 일부만 실려 「담당자만 바꿨다」처럼
+     * 사실과 다른 줄이 화면에 뜬다. 그래서 최신 그룹 id 를 서브쿼리로 [limit] 개 먼저 고르고,
+     * 그 그룹들의 항목을 **전부** 가져온다. 반환 행 수는 [limit] 보다 클 수 있다.
+     *
+     * @param projectKey 활동을 조회할 프로젝트 키.
+     * @param viewerUserId 가시성을 판단할 viewer UUID.
+     * @param access viewer 가 접근 가능한 보안 등급 집합.
+     * @param limit 조회할 최대 **변경 그룹** 수.
+     * @return `created_at DESC, group id DESC` 정렬된 [ProjectActivityRow] 목록.
+     */
+    @Transactional(readOnly = true)
+    fun fetchProjectActivity(
+        projectKey: String,
+        viewerUserId: UUID,
+        access: IssueSecurityAccess,
+        limit: Int,
+    ): List<ProjectActivityRow> {
+        // 1단계 — 가시 이슈의 최신 변경 그룹 id 를 limit 개 고른다(보안 술어는 여기서 건다).
+        val latestGroupIds =
+            dsl.select(ISSUE_CHANGE_GROUP.ID)
+                .from(ISSUE_CHANGE_GROUP)
+                .join(ISSUES).on(ISSUES.ID.eq(ISSUE_CHANGE_GROUP.ISSUE_ID))
+                .join(PROJECTS).on(ISSUES.PROJECT_ID.eq(PROJECTS.ID))
+                .where(buildActiveSecureWhere(projectKey, viewerUserId, access))
+                .orderBy(ISSUE_CHANGE_GROUP.CREATED_AT.desc(), ISSUE_CHANGE_GROUP.ID.desc())
+                .limit(limit)
+                .fetch(ISSUE_CHANGE_GROUP.ID)
+                .filterNotNull()
+
+        // jOOQ 빈 IN 절 방어 — 변경 이력이 하나도 없는 프로젝트.
+        if (latestGroupIds.isEmpty()) return emptyList()
+
+        // 2단계 — 고른 그룹의 항목을 전부 가져온다(그룹이 잘리지 않는다).
+        return dsl.select(
+            ISSUE_CHANGE_GROUP.ID,
+            ISSUE_CHANGE_GROUP.ISSUE_KEY,
+            ISSUE_CHANGE_GROUP.ACTOR_ID,
+            ISSUE_CHANGE_GROUP.CREATED_AT,
+            ISSUE_CHANGE_ITEM.FIELD,
+            ISSUE_CHANGE_ITEM.FROM_VALUE,
+            ISSUE_CHANGE_ITEM.TO_VALUE,
+            ISSUE_CHANGE_ITEM.FROM_LABEL,
+            ISSUE_CHANGE_ITEM.TO_LABEL,
+        )
+            .from(ISSUE_CHANGE_GROUP)
+            .join(ISSUE_CHANGE_ITEM).on(ISSUE_CHANGE_ITEM.GROUP_ID.eq(ISSUE_CHANGE_GROUP.ID))
+            .where(ISSUE_CHANGE_GROUP.ID.`in`(latestGroupIds))
+            .orderBy(ISSUE_CHANGE_GROUP.CREATED_AT.desc(), ISSUE_CHANGE_GROUP.ID.desc(), ISSUE_CHANGE_ITEM.ID)
+            .fetch { record ->
+                ProjectActivityRow(
+                    groupId =
+                        record.get(ISSUE_CHANGE_GROUP.ID)
+                            ?: error("issue_change_group.id must not be null"),
+                    issueKey =
+                        record.get(ISSUE_CHANGE_GROUP.ISSUE_KEY)
+                            ?: error("issue_change_group.issue_key must not be null"),
+                    actorId = record.get(ISSUE_CHANGE_GROUP.ACTOR_ID),
+                    createdAt =
+                        record.get(ISSUE_CHANGE_GROUP.CREATED_AT)?.toInstant()
+                            ?: error("issue_change_group.created_at must not be null"),
+                    field =
+                        record.get(ISSUE_CHANGE_ITEM.FIELD)
+                            ?: error("issue_change_item.field must not be null"),
+                    fromValue = record.get(ISSUE_CHANGE_ITEM.FROM_VALUE),
+                    toValue = record.get(ISSUE_CHANGE_ITEM.TO_VALUE),
+                    fromLabel = record.get(ISSUE_CHANGE_ITEM.FROM_LABEL),
+                    toLabel = record.get(ISSUE_CHANGE_ITEM.TO_LABEL),
+                )
+            }
+    }
 
     /**
      * ILIKE ESCAPE '\' 에서 안전하게 사용하기 위해 prefix 의 와일드카드 문자를 이스케이프한다.
