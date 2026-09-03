@@ -13,8 +13,9 @@
  * 치수는 실제 셸과 짝이다. `h-12` 는 `TopBar` 의 `h-12`(48px), `w-[264px]` 는 `Sidebar` 의
  * 모바일 드로어 폭과 같다 — 셸 치수를 바꾸면 여기도 같이 바꾼다.
  *
- * `animate-pulse` 는 쓰지 않는다. 이것은 로딩이 아니라 정적 장식이고,
- * `components/__tests__/skeleton-usage.test.ts` 가 인라인 재정의를 금지한다.
+ * 🛑 로딩 펄스 애니메이션을 넣지 마라. 이것은 로딩이 아니라 정적 장식이고,
+ * `components/__tests__/skeleton-usage.test.ts` 가 인라인 재정의를 소스 전수 스캔으로 금지한다
+ * (스캐너는 문자열 포함으로 판정하므로 **주석에 그 클래스명을 적는 것만으로도 걸린다** — 실측).
  */
 export const AuthBackdrop = () => (
   <div aria-hidden="true" className="flex h-screen flex-col">
