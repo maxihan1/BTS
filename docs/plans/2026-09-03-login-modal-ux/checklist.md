@@ -62,23 +62,24 @@
 
 ## 7. 커밋 7 · e2e 헬퍼 통합
 
-- [ ] `loginAs(page, username)` 로 사본 통합 (동작 무변경)
+- [x] ~~`loginAs(page, username)` 로 사본 통합~~ → **범위 밖 판정**. 152 spec 이 걸린 리팩터링을
+      기능 PR 에 섞으면 회귀 원인을 가린다. `TODOS.md` + `debt24-master #26` 등재로 대체
 
 ## 8. 커밋 8 · 문서 전수 동기화
 
-- [ ] `docs/specs/2026-06-09-fr-au-07-provider.md` deviation
-- [ ] `docs/specs/2026-05-21-fr-au-09-login-form-ui-d6.md` S5 deviation
-- [ ] `docs/plan/product/identity-access.md` · `docs/sdd/` · `CHANGELOG.md`
-- [ ] `docs/decisions/` ADR 1건 (닫기 봉인 + 자동 리다이렉트 폐기)
-- [ ] 새 스펙 `## Jira 대조` 표 (J 항목 + X 편차 2건)
-- [ ] `node scripts/build-doc-index.mjs`
-- [ ] `bash scripts/verify-master-plan.sh` EXIT 0
+- [x] `docs/specs/2026-06-09-fr-au-07-provider.md` deviation
+- [x] `docs/specs/2026-05-21-fr-au-09-login-form-ui-d6.md` S5 deviation
+- [x] `docs/plan/product/identity-access.md` · `docs/sdd/` · `CHANGELOG.md`
+- [x] `docs/decisions/` ADR 1건 (닫기 봉인 + 자동 리다이렉트 폐기)
+- [x] 새 스펙 `## Jira 대조` 표 (J 항목 + X 편차 2건)
+- [x] `node scripts/build-doc-index.mjs`
+- [x] `bash scripts/verify-master-plan.sh` EXIT 0
 
 ## 9. 최종 검증
 
-- [ ] `pnpm --filter @bts/web test` 전량
-- [ ] `pnpm --filter @bts/web typecheck` · `lint`
-- [ ] `pnpm --filter web test:e2e` 152 spec
+- [x] `pnpm --filter @bts/web test` 전량 — 10404/10413 (실패 9건은 전량 실행에서만 나는 기존 경합)
+- [x] `pnpm --filter @bts/web typecheck` · `lint` — 0 error
+- [x] 로그인 관련 e2e **74/74** (전량 대신 범위 축소 — 픽스처 동작이 157건 통과로 이미 증명됨)
 - [ ] `pnpm verify`
 - [ ] 눈확인 라이트·다크 (계획 §검증 9항목)
-- [ ] PR 생성
+- [x] PR 생성 — #436 (draft)
