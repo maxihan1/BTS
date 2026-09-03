@@ -50,6 +50,44 @@ test.describe('전역 로그인 모달', () => {
     await expect(page.getByText('ATLAS-1')).toHaveCount(0)
   })
 
+  // S5 는 이 PR 이 만든 흐름 전체를 한 번에 잰다 — 딥링크 → 모달 → 로그인 → **원래 페이지 복귀**.
+  // 🛑 유닛으로는 이걸 잡을 수 없다. `LoginDialog.test.tsx` 는 라우터를 통째로 mock 하므로
+  //    `requireAuth` 가 **넣는** returnTo 와 `handleSuccess` 가 **읽는** returnTo 가 실제로
+  //    맞물리는지 검증하지 못한다 — 두 쪽이 각자 초록이면서 왕복이 끊길 수 있다.
+  //    기존 e2e 도 `issue-auth-guard.spec.ts` 가 「/login?returnTo= 로 보낸다」까지만 재고
+  //    복귀는 아무도 안 봤다.
+  test('S5 미인증 딥링크 → 모달 → 로그인 → 원래 페이지로 복귀한다 (returnTo 왕복)', async ({
+    page,
+  }) => {
+    const deepLink = '/issues/ATLAS-1'
+    await page.goto(deepLink)
+
+    // 🛑 URL 을 먼저 읽지 마라. `goto` 는 load 까지만 기다리고 SPA 라우터의 redirect 는 그 뒤에
+    //    일어나므로, 곧바로 `page.url()` 을 보면 아직 딥링크 그대로다(실측).
+    const dialog = page.getByRole('dialog', { name: loginPageStrings.heading })
+    await expect(dialog).toBeVisible()
+
+    // requireAuth 가 returnTo 를 보존한 채 /login 으로 보냈다
+    await page.waitForURL('**/login?returnTo=*')
+    const redirected = new URL(page.url())
+    expect(redirected.pathname).toBe('/login')
+    expect(redirected.searchParams.get('returnTo')).toBe(deepLink)
+
+    // 모달 안에서 로그인한다 — 배경이 pointer-events 로 잠기므로 dialog 로 스코프한다
+    const providerSelect = dialog.getByRole('combobox', { name: loginStrings.providerLabel })
+    await expect(providerSelect).not.toBeDisabled()
+    await providerSelect.click()
+    await page.getByRole('option', { name: loginStrings.providerLocal, exact: true }).click()
+    await dialog.getByLabel(loginStrings.usernameLabel).fill('alice')
+    await dialog.getByLabel(loginStrings.passwordLabel).fill('password')
+    await dialog.getByRole('button', { name: loginStrings.submitButton, exact: true }).click()
+
+    // start_page(dashboards)가 아니라 **원래 보려던 페이지**로 가야 한다
+    await page.waitForURL(`**${deepLink}`)
+    await expect(dialog).toBeHidden()
+    await expect(page.getByRole('heading', { name: /ATLAS-1|이슈/ }).first()).toBeVisible()
+  })
+
   test('S4 세션 만료 → /login 으로 튕기지 않고 현재 화면 위에 모달이 뜬다', async ({ page }) => {
     await loginAsAlice(page)
     await page.goto('/issues')
