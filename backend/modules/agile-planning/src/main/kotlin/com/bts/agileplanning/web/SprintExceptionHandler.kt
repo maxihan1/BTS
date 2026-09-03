@@ -46,6 +46,7 @@ import java.time.Instant
  * - [SprintDateLockedException] → 400 + AGILE_SPRINT_DATE_LOCKED (COMPLETED 스프린트 기간 잠금, FR-BL-02)
  * - [SprintNotFoundException] → 404 + AGILE_SPRINT_NOT_FOUND
  * - [InvalidSprintTransitionException] → 409 + AGILE_CONFLICT
+ * - [SprintBoardNotScrumException] → 409 + AGILE_SPRINT_BOARD_NOT_SCRUM (칸반 보드 소속 스프린트 start, 부채 165)
  * - [SprintDatesRequiredException] → 422 + AGILE_SPRINT_DATES_REQUIRED (번다운 기간 미설정, FR-RP-01)
  * - [ResponseStatusException] → 명시 상태 전파(401/403/404/409 등, 일반 메시지)
  * - [Exception] (fallback) → 500 + AGILE_INTERNAL_ERROR
