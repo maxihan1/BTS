@@ -223,14 +223,14 @@ describe('ProjectListPage — 빈 상태 (EC-1)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ProjectListRouteAdapter — 행 클릭 네비게이션', () => {
-  it('활성 프로젝트 행 클릭 → /projects/{key}/board로 navigate한다', async () => {
+  it('활성 프로젝트 행 클릭 → /projects/{key} 요약으로 navigate한다 (J4)', async () => {
     const user = userEvent.setup()
     renderAdapter()
 
     const atlasLink = await screen.findByRole('link', { name: 'ATLAS' })
     await user.click(atlasLink)
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/ATLAS/board' })
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/projects/ATLAS' })
   })
 
   it('아카이브 프로젝트 행 클릭 → /projects/{key}/settings/details로 navigate한다 (G3)', async () => {

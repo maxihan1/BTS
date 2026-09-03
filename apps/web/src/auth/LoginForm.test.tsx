@@ -1,4 +1,4 @@
-// LoginForm 컴포넌트 통합 테스트 — identifier-first 2단계 흐름, RHF + Zod 검증, msw 응답 모킹, 접근성 검증
+// LoginForm 컴포넌트 통합 테스트 — 단일 화면 자격 증명 + MFA, RHF + Zod 검증, msw 응답 모킹, 접근성 검증
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -46,21 +46,23 @@ function renderLoginForm(onSuccess?: () => void) {
 }
 
 /**
- * 이메일 입력 후 "계속" 클릭으로 2단계(폼 로그인 화면)로 진입하는 헬퍼.
- * 매칭 없음(unmatched) 경로 — 2단계 UI가 노출될 때까지 대기한다.
+ * 자격 증명 폼이 준비되기를 기다리고 식별자를 채우는 헬퍼.
+ *
+ * 이메일 선입력 1단계가 폐기되면서 username 프리필도 사라졌다. 예전에는 1단계 입력이
+ * username 에 프리필돼 후속 테스트가 그것에 의존했으므로, 그 전제를 이 헬퍼가 대신 채운다.
  */
-async function goToStep2(user: ReturnType<typeof userEvent.setup>, email = 'alice@example.com') {
-  // route API가 미매칭 응답을 반환하도록 설정되어야 한다 (호출 측에서 세팅)
-  const emailInput = screen.getByLabelText('이메일')
-  await user.type(emailInput, email)
-  await user.click(screen.getByRole('button', { name: '계속' }))
-  // 2단계 폼(provider 드롭다운 또는 로그인 버튼)이 나타날 때까지 대기
+async function fillIdentifier(
+  user: ReturnType<typeof userEvent.setup>,
+  identifier = 'alice@example.com',
+) {
   await screen.findByRole('button', { name: '로그인' })
+  await user.clear(screen.getByLabelText('사용자명'))
+  await user.type(screen.getByLabelText('사용자명'), identifier)
 }
 
 /**
  * providers useQuery 로딩 완료를 기다리는 헬퍼.
- * 2단계 진입 후 provider 드롭다운이 enabled 상태가 되면 로딩 완료로 판단한다.
+ * provider 드롭다운이 enabled 상태가 되면 로딩 완료로 판단한다.
  */
 async function waitForProvidersLoaded() {
   await waitFor(() => {
@@ -106,167 +108,10 @@ afterEach(() => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1단계 — identifier-first 이메일 입력 화면
+// 폼 로그인 — provider + 식별자 + 비밀번호
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('LoginForm — 1단계 (identifier-first)', () => {
-  it('초기 렌더에 이메일 필드와 "계속" 버튼만 표시된다', async () => {
-    renderLoginForm()
-
-    expect(screen.getByLabelText('이메일')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '계속' })).toBeInTheDocument()
-
-    // provider 드롭다운, username, password 필드는 1단계에 없어야 한다
-    expect(screen.queryByRole('combobox', { name: '로그인 방식' })).toBeNull()
-    expect(screen.queryByLabelText('사용자명')).toBeNull()
-    expect(screen.queryByLabelText('비밀번호')).toBeNull()
-  })
-
-  it('이메일 입력 후 계속 → route 매칭(SAML) → window.location.assign으로 SAML 경로 이동', async () => {
-    const assignMock = vi.fn()
-    vi.spyOn(window, 'location', 'get').mockReturnValue({
-      ...window.location,
-      assign: assignMock,
-    } as unknown as Location)
-
-    server.use(
-      http.get('/api/v1/auth/route', () =>
-        HttpResponse.json({
-          matched: true,
-          type: 'SAML',
-          registrationId: 'okta',
-          displayName: 'Okta SSO',
-        }),
-      ),
-    )
-
-    const user = userEvent.setup({ delay: null })
-    renderLoginForm()
-
-    await user.type(screen.getByLabelText('이메일'), 'alice@okta.com')
-    await user.click(screen.getByRole('button', { name: '계속' }))
-
-    await waitFor(() => {
-      expect(assignMock).toHaveBeenCalledWith('/saml2/authenticate/okta')
-    })
-  })
-
-  it('이메일 입력 후 계속 → route 매칭(OIDC) → window.location.assign으로 OIDC 경로 이동', async () => {
-    const assignMock = vi.fn()
-    vi.spyOn(window, 'location', 'get').mockReturnValue({
-      ...window.location,
-      assign: assignMock,
-    } as unknown as Location)
-
-    server.use(
-      http.get('/api/v1/auth/route', () =>
-        HttpResponse.json({
-          matched: true,
-          type: 'OIDC',
-          registrationId: 'google',
-          displayName: 'Google',
-        }),
-      ),
-    )
-
-    const user = userEvent.setup({ delay: null })
-    renderLoginForm()
-
-    await user.type(screen.getByLabelText('이메일'), 'alice@google.com')
-    await user.click(screen.getByRole('button', { name: '계속' }))
-
-    await waitFor(() => {
-      expect(assignMock).toHaveBeenCalledWith('/oauth2/authorization/google')
-    })
-  })
-
-  it('registrationId에 특수문자가 있으면 encodeURIComponent가 적용된 경로로 이동한다', async () => {
-    const assignMock = vi.fn()
-    vi.spyOn(window, 'location', 'get').mockReturnValue({
-      ...window.location,
-      assign: assignMock,
-    } as unknown as Location)
-
-    server.use(
-      http.get('/api/v1/auth/route', () =>
-        HttpResponse.json({
-          matched: true,
-          type: 'SAML',
-          registrationId: 'corp/ad',
-          displayName: 'Corp AD',
-        }),
-      ),
-    )
-
-    const user = userEvent.setup({ delay: null })
-    renderLoginForm()
-
-    await user.type(screen.getByLabelText('이메일'), 'alice@corp.com')
-    await user.click(screen.getByRole('button', { name: '계속' }))
-
-    await waitFor(() => {
-      // encodeURIComponent('corp/ad') = 'corp%2Fad'
-      expect(assignMock).toHaveBeenCalledWith('/saml2/authenticate/corp%2Fad')
-    })
-  })
-
-  it('route 미매칭 → 2단계 폼(provider 드롭다운+username+password) 노출 + 이메일을 username에 프리필', async () => {
-    const user = userEvent.setup({ delay: null })
-    renderLoginForm()
-
-    await user.type(screen.getByLabelText('이메일'), 'alice@example.com')
-    await user.click(screen.getByRole('button', { name: '계속' }))
-
-    // 2단계 UI 대기
-    await screen.findByRole('button', { name: '로그인' })
-
-    expect(screen.getByRole('combobox', { name: '로그인 방식' })).toBeInTheDocument()
-    expect(screen.getByLabelText('사용자명')).toBeInTheDocument()
-    expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
-
-    // 입력한 이메일이 username 필드에 프리필되어야 한다 (사용자 수정 가능)
-    expect(screen.getByLabelText('사용자명')).toHaveValue('alice@example.com')
-  })
-
-  it('@가 없는 입력은 route 조회 없이 바로 2단계로 진행된다', async () => {
-    const user = userEvent.setup({ delay: null })
-    renderLoginForm()
-
-    // route API가 호출되면 실패하도록 — 실제로 호출되지 않아야 한다
-    server.use(
-      http.get('/api/v1/auth/route', () => HttpResponse.error()),
-    )
-
-    await user.type(screen.getByLabelText('이메일'), 'alice')
-    await user.click(screen.getByRole('button', { name: '계속' }))
-
-    // route 조회 없이 즉시 2단계 진입 — 에러 없이 로그인 버튼 노출
-    await screen.findByRole('button', { name: '로그인' })
-    // 'alice'가 username에 프리필
-    expect(screen.getByLabelText('사용자명')).toHaveValue('alice')
-  })
-
-  it('route 조회 실패(fetch 에러) 시 fail-safe로 2단계를 노출한다', async () => {
-    server.use(
-      http.get('/api/v1/auth/route', () => HttpResponse.error()),
-    )
-
-    const user = userEvent.setup({ delay: null })
-    renderLoginForm()
-
-    await user.type(screen.getByLabelText('이메일'), 'alice@error.com')
-    await user.click(screen.getByRole('button', { name: '계속' }))
-
-    // 에러여도 2단계 폼이 나타나야 한다 (사용자 막지 않음)
-    await screen.findByRole('button', { name: '로그인' })
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2단계 — 폼 로그인 (기존 케이스를 2단계 진입 프리스텝 포함으로 재조정)
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('LoginForm — 2단계 (폼 로그인)', () => {
+describe('LoginForm — 폼 로그인', () => {
   it('입력 + 제출 시 useLoginMutation.mutate가 호출된다', async () => {
     const user = userEvent.setup({ delay: null })
 
@@ -294,7 +139,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    await goToStep2(user, 'alice@example.com')
+    await fillIdentifier(user, 'alice@example.com')
     await waitForProvidersLoaded()
     // username 필드는 이메일로 프리필 — 그대로 두고 비밀번호만 입력
     await user.clear(screen.getByLabelText('사용자명'))
@@ -310,7 +155,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
     await waitForProvidersLoaded()
     // username 필드 비우고 비밀번호만 입력
     await user.clear(screen.getByLabelText('사용자명'))
@@ -331,7 +176,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
 
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
     await waitForProvidersLoaded()
     await user.type(screen.getByLabelText('비밀번호'), 'wrong')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -354,7 +199,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
 
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
     await waitForProvidersLoaded()
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -369,7 +214,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
 
     // providers API 응답 후 드롭다운이 렌더될 때까지 대기
     await waitFor(() => {
@@ -386,7 +231,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
 
     await waitFor(() => {
       const trigger = screen.getByRole('combobox', { name: '로그인 방식' })
@@ -398,7 +243,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
 
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
@@ -420,7 +265,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
     await screen.findByRole('button', { name: '로그인' })
   })
 
@@ -454,7 +299,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    await goToStep2(user)
+    await fillIdentifier(user)
 
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
@@ -500,7 +345,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    await goToStep2(user)
+    await fillIdentifier(user)
 
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
@@ -518,7 +363,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 
-  it('login mfa_required 응답 후 MFA step에서 "다시 로그인" 클릭 시 이메일 입력 1단계로 복귀한다', async () => {
+  it('login mfa_required 응답 후 MFA step에서 "다시 로그인" 클릭 시 자격 증명 폼으로 복귀한다', async () => {
     const user = userEvent.setup({ delay: null })
 
     server.use(
@@ -533,7 +378,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
 
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
     await waitForProvidersLoaded()
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -541,10 +386,10 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     // MFA step 진입 확인
     await screen.findByLabelText('인증 코드')
 
-    // "다시 로그인" 클릭 → 1단계(이메일 입력) 복귀
+    // "다시 로그인" 클릭 → 자격 증명 폼 복귀 (챌린지 토큰 폐기)
     await user.click(screen.getByRole('button', { name: '다시 로그인' }))
 
-    await screen.findByLabelText('이메일')
+    await screen.findByLabelText('비밀번호')
     expect(screen.queryByLabelText('인증 코드')).toBeNull()
   })
 
@@ -552,7 +397,7 @@ describe('LoginForm — 2단계 (폼 로그인)', () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
-    await goToStep2(user)
+    await fillIdentifier(user)
 
     const usernameInput = screen.getByLabelText('사용자명')
     const passwordInput = screen.getByLabelText('비밀번호')
@@ -590,7 +435,7 @@ async function goToMfaStep(user: ReturnType<typeof userEvent.setup>) {
       }),
     ),
   )
-  await goToStep2(user)
+  await fillIdentifier(user)
   await waitForProvidersLoaded()
   await user.type(screen.getByLabelText('비밀번호'), 'password')
   await user.click(screen.getByRole('button', { name: '로그인' }))
@@ -681,7 +526,7 @@ describe('LoginForm — MFA step (3단계)', () => {
     expect(refreshCallCount).toBe(0)
   })
 
-  it('MFA step에서 "다시 로그인" 클릭 시 이메일 입력 1단계로 복귀한다', async () => {
+  it('MFA step에서 "다시 로그인" 클릭 시 자격 증명 폼으로 복귀한다', async () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
@@ -689,7 +534,7 @@ describe('LoginForm — MFA step (3단계)', () => {
 
     await user.click(screen.getByRole('button', { name: '다시 로그인' }))
 
-    await screen.findByLabelText('이메일')
+    await screen.findByLabelText('비밀번호')
     expect(screen.queryByLabelText('인증 코드')).toBeNull()
   })
 })
@@ -954,7 +799,7 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
     expect(screen.getByLabelText('인증 코드')).toBeInTheDocument()
   })
 
-  it('EC-5: ApiError 401 mfa_challenge_expired → 로그인 1단계로 복귀(이메일 입력 화면)', async () => {
+  it('EC-5: ApiError 401 mfa_challenge_expired → 자격 증명 폼으로 복귀', async () => {
     const user = userEvent.setup({ delay: null })
     const { ApiError } = await import('@/api/client')
     const { authenticateWithSecurityKey } = await import('@/api/webauthn')
@@ -968,8 +813,8 @@ describe('LoginForm — MFA step 보안 키로 인증 (task-6)', () => {
 
     await user.click(screen.getByRole('button', { name: '보안 키로 인증' }))
 
-    // 로그인 1단계로 복귀 — 이메일 입력 화면
-    await screen.findByLabelText('이메일')
+    // 자격 증명 폼으로 복귀 — 챌린지 토큰이 만료됐으므로 처음부터 다시 한다
+    await screen.findByLabelText('비밀번호')
     expect(screen.queryByLabelText('인증 코드')).toBeNull()
   })
 
@@ -1183,6 +1028,200 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
         'challenge-token-xyz',
         true,
       )
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 단일 화면 폼 — 이메일 선입력 1단계 폐기 (FR-AU-07 deviation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () => {
+  it('초기 렌더에 식별자·비밀번호·로그인 버튼이 동시에 보이고 "계속" 버튼은 없다', async () => {
+    renderLoginForm()
+
+    // 식별자 필드는 username 하나로 유지한다 — LDAP 식별자는 이메일이 아니라 'alice' 라서
+    // 라벨을 '이메일'로 바꾸면 사실이 틀린다(D6).
+    expect(screen.getByLabelText('사용자명')).toBeInTheDocument()
+    expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '로그인' })).toBeInTheDocument()
+
+    // 1단계가 사라졌으므로 "계속" 버튼도 이메일 전용 필드도 없어야 한다
+    expect(screen.queryByRole('button', { name: '계속' })).toBeNull()
+  })
+
+  it('식별자 blur 시 도메인 route 를 조회해 SSO 버튼을 노출한다 — 자동 이동하지 않는다', async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice@okta.com')
+    await user.tab()
+
+    expect(await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })).toBeInTheDocument()
+    // 트리거가 blur 라는 수동적 이벤트이므로 풀 네비게이션을 걸면 안 된다(C7).
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+
+  it('SSO 매칭 후에도 로컬 로그인 버튼이 살아 있다 (FR-07 S4 fail-safe)', async () => {
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'OIDC',
+          registrationId: 'keycloak',
+          displayName: 'Keycloak',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice@corp.com')
+    await user.tab()
+
+    await screen.findByRole('button', { name: 'Keycloak 로 로그인' })
+    // 매칭 도메인에 LOCAL/LDAP 계정이 공존할 수 있다 — 끊긴 라우트가 사용자를 막지 않는다.
+    expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
+  })
+
+  it('blur 시점에 이미 입력된 비밀번호가 보존된다', async () => {
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('비밀번호'), 'secret1234')
+    await user.type(screen.getByLabelText('사용자명'), 'alice@okta.com')
+    await user.tab()
+
+    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('secret1234')
+  })
+
+  it('@ 가 없는 식별자는 route 조회를 하지 않는다 (LDAP 사용자명)', async () => {
+    let routeCalls = 0
+    server.use(
+      http.get('/api/v1/auth/route', () => {
+        routeCalls++
+        return HttpResponse.json({ matched: false })
+      }),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
+    })
+    expect(routeCalls).toBe(0)
+  })
+
+  it('route 조회가 실패해도 로컬 로그인이 막히지 않는다 (fail-safe)', async () => {
+    server.use(http.get('/api/v1/auth/route', () => HttpResponse.error()))
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice@unreachable.com')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
+    })
+  })
+
+  it('조회가 한 번 실패해도 같은 도메인을 다시 조회할 수 있다 (dedupe 오염 금지)', async () => {
+    // dedupe 키를 조회 **시작 시점**에 세우면, 실패한 도메인이 키에 남아 재조회가
+    // 영구 차단된다. 일시적 네트워크 장애 뒤 SSO 버튼이 영영 안 뜨는 회귀다.
+    let calls = 0
+    server.use(
+      http.get('/api/v1/auth/route', () => {
+        calls += 1
+        if (calls === 1) return HttpResponse.error()
+        return HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        })
+      }),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    const identifier = screen.getByLabelText('사용자명')
+    await user.type(identifier, 'alice@okta.com')
+    await user.tab()
+    await waitFor(() => {
+      expect(calls).toBe(1)
+    })
+
+    // 같은 도메인으로 다시 blur — 재조회가 일어나고 이번엔 성공한다
+    await user.click(identifier)
+    await user.tab()
+
+    expect(await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })).toBeInTheDocument()
+  })
+
+  it('식별자에서 @ 를 지우면 SSO 버튼이 사라진다 (stale 매칭 금지)', async () => {
+    // `@` 가 없으면 조회를 건너뛰는데, 그때 이전 매칭 결과를 지우지 않으면
+    // LDAP 사용자명으로 바꿨는데 이전 도메인의 SSO 버튼이 남는다.
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    const identifier = screen.getByLabelText('사용자명')
+    await user.type(identifier, 'alice@okta.com')
+    await user.tab()
+    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+
+    await user.clear(identifier)
+    await user.type(identifier, 'alice')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Okta SSO 로 로그인' })).toBeNull()
     })
   })
 })

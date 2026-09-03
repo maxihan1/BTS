@@ -231,7 +231,7 @@ export function ProjectCreateRouteAdapter(): JSX.Element {
   const navigate = useNavigate()
 
   function handleSuccess(key: string): void {
-    void navigate({ to: '/projects/$projectKey/board', params: { projectKey: key } })
+    void navigate({ to: '/projects/$projectKey', params: { projectKey: key } })
   }
 
   return <ProjectCreatePage onSuccess={handleSuccess} />

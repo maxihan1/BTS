@@ -15,7 +15,7 @@ import '@xyflow/react/dist/style.css'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
-import { autoLayout, edgeRoutes, START_NODE_ID } from '@/lib/workflow-layout'
+import { autoLayout, edgeRoutes, startNodeX, START_NODE_ID } from '@/lib/workflow-layout'
 import type { LayoutInputState, LayoutInputTransition } from '@/lib/workflow-layout'
 import { StatusNode } from './StatusNode'
 import { TransitionEdge } from './TransitionEdge'
@@ -89,7 +89,7 @@ function buildGraph(
   // 배열 `find` 를 노드마다 도는 O(n²) 와 「못 찾으면 TODO」 같은 **도달 불가 폴백**을 함께 없앤다.
   // 도달 불가 폴백은 지워도 아무 판정이 red 가 안 되므로, 두면 다음 사람이 그것을 실제 분기로 읽는다.
   const byKey = new Map(states.map((s) => [s.key, s]))
-  const routes = edgeRoutes(transitions)
+  const routes = edgeRoutes(transitions, placed)
 
   const nodes: Node[] = placed.flatMap((p) => {
     const state = byKey.get(p.key)
@@ -106,12 +106,12 @@ function buildGraph(
   })
 
   if (routes.hasStartNode) {
-    // 시작점은 첫 열보다 왼쪽에 둔다. 노드가 하나도 없으면 원점이다.
-    const leftmost = placed.reduce((min, p) => Math.min(min, p.x), 0)
+    // ★ 자리 계산은 `startNodeX` 가 정본이다. 여기서 따로 셈하면 라벨 겹침 판정이 보는 자리와
+    //   실제로 그리는 자리가 갈리고, 그러면 시작 간선의 라벨만 엉뚱한 곳에서 판정된다.
     nodes.unshift({
       id: START_NODE_ID,
       type: 'start',
-      position: { x: leftmost - 120, y: 0 },
+      position: { x: startNodeX(placed), y: 0 },
       draggable: false,
       selectable: false,
       data: {},
@@ -123,7 +123,13 @@ function buildGraph(
     type: 'transition',
     source: e.source,
     target: e.target,
-    data: { name: e.label, transitionIndex: e.transitionIndex, offset: e.offset, selfLoop: e.selfLoop },
+    data: {
+      name: e.label,
+      transitionIndex: e.transitionIndex,
+      offset: e.offset,
+      selfLoop: e.selfLoop,
+      labelOffset: e.labelOffset,
+    },
   }))
 
   return { nodes, edges, globals: routes.globals }
@@ -160,7 +166,19 @@ function CanvasInner({
   const [liveEdges, setLiveEdges, handleEdgesChange] = useEdgesState(edges)
 
   React.useEffect(() => {
-    setLiveNodes(nodes)
+    /*
+     * ★ **선택 상태를 살려서 갈아끼운다.** `nodes` 는 초안이 바뀔 때마다 새로 만들어지는데
+     *   그 결과에는 `selected` 가 없다 — 그대로 덮으면 **노드를 끌어 놓는 순간 선택 링이
+     *   사라진다.** 드래그는 `onNodeDragStop → onMoveState` 로 초안을 바꾸므로 이 효과가
+     *   반드시 뒤따르고, 그래서 「고른 것을 화면이 알려 준다」(부채 169)가 편집을 시작하는
+     *   순간 무너졌다. 선택은 xyflow 가 들고 있는 화면 상태이지 초안의 일부가 아니므로,
+     *   초안이 바뀌었다고 잃을 이유가 없다.
+     */
+    setLiveNodes((previous) => {
+      const selected = new Set(previous.filter((node) => node.selected).map((node) => node.id))
+      if (selected.size === 0) return nodes
+      return nodes.map((node) => (selected.has(node.id) ? { ...node, selected: true } : node))
+    })
   }, [nodes, setLiveNodes])
 
   React.useEffect(() => {

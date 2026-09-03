@@ -173,6 +173,25 @@ export function requireSystemAdmin(): void {
 }
 
 /**
+ * 인덱스 라우트(`/`) 전용 가드. **항상 throw한다.**
+ *
+ * `/`는 자체 화면을 갖지 않는다. 통과시키면 빈 화면이 남으므로 언제나 어딘가로 보낸다.
+ * 목적지는 {@link resolvePostLoginNav}가 정한다(start_page 매핑 > /dashboards).
+ *
+ * returnTo를 보지 않는 이유. 인덱스는 로그인 후 착지점이지 되돌아갈 곳이 아니다.
+ * 미인증 처리는 앞에 체인된 {@link requireAuth}가 이미 담당한다.
+ *
+ * 사용 예.
+ * ```ts
+ * beforeLoad: composeGuards(requireAuthAndPasswordChanged, redirectToStartPage)
+ * ```
+ */
+export function redirectToStartPage(): void {
+  const user = useAuthStore.getState().user
+  throw redirect(resolvePostLoginNav(null, user?.startPage, user?.userId))
+}
+
+/**
  * 여러 가드를 순차 실행하는 합성 헬퍼. 앞 가드가 redirect를 throw하면 뒤 가드는 실행되지 않는다.
  *
  * 사용 예.

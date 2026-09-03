@@ -10,6 +10,7 @@ import {
   requirePasswordChanged,
   requireSystemAdmin,
   requireMfaEnrolled,
+  redirectToStartPage,
 } from './routeGuard'
 import { makeWhoami } from '@/mocks/auth-fixtures'
 
@@ -420,5 +421,81 @@ describe('requireSystemAdmin', () => {
     expect(isRedirect(thrown)).toBe(true)
     const r = thrown as RedirectResponse
     expect(r.options.to).toBe('/dashboard')
+  })
+})
+
+// ─────────────────────────────────────────────
+// redirectToStartPage — 인덱스 라우트 전용 가드
+// ─────────────────────────────────────────────
+
+describe('redirectToStartPage', () => {
+  /** 인덱스 라우트는 자체 화면이 없다. 가드가 항상 throw 해야 placeholder 가 남지 않는다 */
+  function catchRedirect(): unknown {
+    try {
+      redirectToStartPage()
+    } catch (e) {
+      return e
+    }
+    return undefined
+  }
+
+  it('startPage="inbox" 이면 /inbox 로 redirect', () => {
+    useAuthStore.setState({
+      accessToken: 'tok',
+      user: makeWhoami({ startPage: 'inbox' }),
+    })
+
+    const thrown = catchRedirect()
+
+    expect(isRedirect(thrown)).toBe(true)
+    expect((thrown as RedirectResponse).options.to).toBe('/inbox')
+  })
+
+  it('startPage 가 없으면 /dashboards 로 redirect', () => {
+    useAuthStore.setState({ accessToken: 'tok', user: makeWhoami() })
+
+    const thrown = catchRedirect()
+
+    expect(isRedirect(thrown)).toBe(true)
+    expect((thrown as RedirectResponse).options.to).toBe('/dashboards')
+  })
+
+  it('startPage="my_issues" 이면 userId 를 실어 /issues?assignee=<userId> 로 redirect', () => {
+    // my_issues 는 resolveStartPageNav 가 유일하게 userId 를 주입하는 경로다.
+    const userId = '00000000-0000-4000-8000-000000000099'
+    useAuthStore.setState({
+      accessToken: 'tok',
+      user: makeWhoami({ startPage: 'my_issues', userId }),
+    })
+
+    const thrown = catchRedirect()
+
+    expect(isRedirect(thrown)).toBe(true)
+    expect((thrown as RedirectResponse).options.to).toBe('/issues')
+    expect((thrown as RedirectResponse).options.search).toEqual({ assignee: userId })
+  })
+
+  it('returnTo 쿼리는 보지 않는다 — 인덱스 진입은 항상 start_page 로 간다', () => {
+    // requireAuth 가 미인증을 이미 걸러내므로 이 가드에 returnTo 의미가 없다.
+    // resolvePostLoginNav 에 rawReturnTo=null 을 넘기는 것이 계약이다.
+    useAuthStore.setState({
+      accessToken: 'tok',
+      user: makeWhoami({ startPage: 'issues' }),
+    })
+
+    const thrown = catchRedirect()
+
+    expect((thrown as RedirectResponse).options.to).toBe('/issues')
+  })
+
+  it('user 가 null 이어도 throw 한다 (인덱스에 머무를 수 없다)', () => {
+    // 정상 흐름에서는 requireAuth 가 먼저 잡는다. 그래도 이 가드 단독으로 통과시키면
+    // 자체 화면이 없는 인덱스 라우트에 빈 화면이 남는다.
+    useAuthStore.setState({ accessToken: 'tok', user: null })
+
+    const thrown = catchRedirect()
+
+    expect(isRedirect(thrown)).toBe(true)
+    expect((thrown as RedirectResponse).options.to).toBe('/dashboards')
   })
 })

@@ -2,7 +2,7 @@
 //
 // 시나리오 개요.
 //   S1. 목록 노출        — 사이드바 nav[aria-label="프로젝트"](exact) 존재 + fixture 3건 name 오름차순 노출
-//   S2. 프로젝트명 클릭  — Atlas 프로젝트 링크 클릭 → /projects/ATLAS/board 이동
+//   S2. 프로젝트명 클릭  — Atlas 프로젝트 링크 클릭 → /projects/ATLAS 요약 이동 (Jira 패리티 J4)
 //   S3. 펼침 + 죽은 링크 0 — 디스클로저 클릭 → 직접링크3 + 리포트(4)·설정(11) 그룹 펼침, 전 서브링크 href 실 라우트 확인
 //   S4. 활성 프로젝트 자동 펼침 — /projects/ATLAS/board 직접 진입 시 Atlas만 자동 펼침 + aria-current="page"
 //   S5. 프로젝트 컨텍스트 밖 — /dashboards 진입 시 프로젝트 목록은 보이되 전부 접힘
@@ -83,14 +83,17 @@ test.describe('FR-UX-06 PR12 사이드바 프로젝트 트리', () => {
     }
   })
 
-  test('S2 Given alice 로그인 When Atlas 프로젝트 링크 클릭 Then /projects/ATLAS/board 이동', async ({ page }) => {
+  test('S2 Given alice 로그인 When Atlas 프로젝트 링크 클릭 Then /projects/ATLAS 요약 이동', async ({ page }) => {
     await loginAsAlice(page)
     await page.goto('/dashboards')
 
     const nav = page.getByRole('navigation', { name: '프로젝트', exact: true })
     await nav.getByRole('link', { name: ATLAS_PROJECT_NAME, exact: true }).click()
 
-    await page.waitForURL('**/projects/ATLAS/board')
+    // 목적지만 보면 「URL 은 맞는데 화면이 안 떴다」를 놓친다 — 요약 화면의 실 콘텐츠로 확정한다.
+    await page.waitForURL('**/projects/ATLAS')
+    expect(new URL(page.url()).pathname).toBe('/projects/ATLAS')
+    await expect(page.getByText('최근 7일 활동과 현재 작업 분포입니다.', { exact: true })).toBeVisible()
   })
 
   test('S3 Given alice 로그인 When Atlas 디스클로저 펼침 Then 직접링크3+리포트4+설정11 전 서브링크가 실 라우트 href로 노출(죽은 링크 0)', async ({

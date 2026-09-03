@@ -407,7 +407,7 @@ assertThat(results.mapNotNull { it.exceptionOrNull() })
 | **F3** | eng · 테스트 | **P1** (8/10) | `SprintBoardIdBackfillMigrationTest.kt:31-33` KDoc — *"★ 마지막 단계에 `target("506")` 을 쓰지 않는다 … V507 이 들어올 때"*. 그 설계 덕에 클래스는 안 죽지만 **V507 까지 돌게 된다** | **반영** — 엣지 `E10` 신설 · Task 1 에 「V507 적용 후에도 백필 6건이 초록」 회귀 테스트 추가 |
 | **F4** | eng · 테스트 | P2 (8/10) | Flyway 는 같은 버전을 두 번 적용하지 않는다. 「재적용 멱등」을 Flyway 로는 못 잰다 | **반영** — 엣지 `E11` 신설 · 멱등은 **JDBC 로 `V507` SQL 직접 재실행**으로 잰다 |
 | **F5** | eng · 코드품질 | P2 (9/10) | 장부 157 은 `BoardRepository.kt` 439줄만 적는데 실측은 `SprintRepository.kt` **491줄** · `SprintApplicationService.kt` **600줄** — 장부가 실제보다 작다 | **Maxi 결정 D8 = 「157 본문만 갱신」** — Task 9 에 반영. 쪼개기는 범위 밖 |
-| **F6** | ceo · HOLD SCOPE | P2 | 기각 대안 **A-6**(`limit(1)` 제거)이 ADR 표에만 있고 장부에 없다. 편차 `X9` 를 강제하는 구조적 한계가 추적되지 않는다 | **Maxi 결정 D9 = 「새 부채 168 등재」** — Task 9 에 반영 |
+| **F6** | ceo · HOLD SCOPE | P2 | 기각 대안 **A-6**(`limit(1)` 제거)이 ADR 표에만 있고 장부에 없다. 편차 `X9` 를 강제하는 구조적 한계가 추적되지 않는다 | **Maxi 결정 D9 = 「새 부채 176 등재」** — Task 9 에 반영 |
 
 ### 기각한 findings
 
@@ -433,7 +433,7 @@ assertThat(results.mapNotNull { it.exceptionOrNull() })
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | mode: HOLD_SCOPE, 0 critical gaps, 1 finding (A-6 → 부채 168) |
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 1 | CLEAR | mode: HOLD_SCOPE, 0 critical gaps, 1 finding (A-6 → 부채 176) |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 5 issues, 0 critical gaps (P1 3 반영 · P2 2 결정) |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | UI 변경 0 — 해당 없음 |

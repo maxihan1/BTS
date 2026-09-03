@@ -10,11 +10,11 @@ import type { StatusNodeData } from '../StatusNode'
  * `ReactFlowProvider` 가 그 provider 를 품고 있으므로 그것으로 감싸면 진짜 `Handle` 이 뜬다 —
  * `@xyflow/react` 를 mock 하면 핸들 클래스가 통째로 사라져 아래 판정이 공허해진다.
  */
-function renderNode(overrides: Partial<StatusNodeData> = {}) {
+function renderNode(overrides: Partial<StatusNodeData> = {}, selected = false) {
   const data: StatusNodeData = { name: '할 일', category: 'TODO', locked: false, ...overrides }
   const { container } = render(
     <ReactFlowProvider>
-      <StatusNode data={data} />
+      <StatusNode data={data} selected={selected} />
     </ReactFlowProvider>,
   )
   const root = container.firstElementChild
@@ -78,5 +78,32 @@ describe('StatusNode', () => {
       // xyflow 가 `isConnectable` 을 그대로 클래스로 내린다 — 연결을 시작할 수 없다는 뜻
       expect(handle.classList.contains('connectable')).toBe(false)
     }
+  })
+})
+
+describe('선택 표시 (부채 169)', () => {
+  it('고른 노드와 안 고른 노드가 화면에서 다르다', () => {
+    // D8 눈확인 ⑧ 실패. 두 캔버스의 차이가 연결 핸들 점 유무뿐이라 hover 와 구분되지 않았다.
+    const plain = renderNode().root.className
+    const picked = renderNode({}, true).root.className
+
+    expect(picked).not.toBe(plain)
+  })
+
+  it('선택은 카테고리 색과 다른 축으로 표시한다', () => {
+    // 색만 진하게 하면 「선택된 진행 중」과 「선택 안 된 완료」가 헷갈린다. 링은 색과 독립인 축이다.
+    const picked = renderNode({ category: 'IN_PROGRESS' }, true).root.className
+
+    expect(picked).toContain('ring-2')
+    expect(picked).toContain('ring-primary')
+
+    // 카테고리 색은 그대로 남는다 — 선택이 카테고리를 덮어쓰면 무슨 상태인지 못 읽는다
+    expect(picked).toContain('bg-primary/15')
+    expect(picked).toContain('border-primary')
+  })
+
+  it('안 고른 노드에는 링이 없다', () => {
+    // 늘 링이 있으면 그것은 선택 표시가 아니라 그냥 테두리다 — 판정이 공허해진다
+    expect(renderNode().root.className).not.toContain('ring-2')
   })
 })

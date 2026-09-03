@@ -67,8 +67,15 @@ const GROUP_DISCLOSURE_BUTTON_CLASS = `${DISCLOSURE_BUTTON_CLASS} w-full justify
 // 상수 — 서브링크 데이터 (router.ts 실측 실 라우트만, S3 죽은 링크 0)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 프로젝트 기본 뷰(보드) 라우트 경로 — 프로젝트명 링크·접힘레일 링크 공통 */
+/** 프로젝트 보드 라우트 경로 — 하위 직접 링크 「보드」 전용 */
 const PROJECT_BOARD_PATH = '/projects/$projectKey/board'
+
+/**
+ * 프로젝트 기본 착지 라우트 경로 — 프로젝트명 링크·접힘레일 링크 공통 (Jira 패리티 J4).
+ * 하위 「보드」 링크와 **다른 상수**다. 하나로 묶으면 요약으로 옮기는 순간 보드 링크가 함께
+ * 끌려가 하위 목록에서 보드로 갈 방법이 사라진다.
+ */
+const PROJECT_SUMMARY_PATH = '/projects/$projectKey'
 
 /** 프로젝트 목록 라우트 경로 — "모든 프로젝트" 진입 링크(G2) */
 const ALL_PROJECTS_PATH = '/projects'
@@ -209,7 +216,7 @@ function ProjectTreeCollapsedRow({
   return (
     <li>
       <Link
-        to={PROJECT_BOARD_PATH}
+        to={PROJECT_SUMMARY_PATH}
         params={{ projectKey: project.key }}
         aria-current={isActive ? 'page' : undefined}
         className={`${projectLinkClassName(isActive)} justify-center`}
@@ -289,7 +296,7 @@ function ProjectTreeRowHeader({ project, isActive, expanded, onToggle }: Project
         )}
       </Button>
       <Link
-        to={PROJECT_BOARD_PATH}
+        to={PROJECT_SUMMARY_PATH}
         params={{ projectKey: project.key }}
         aria-current={isActive ? 'page' : undefined}
         className={projectLinkClassName(isActive)}
@@ -339,9 +346,12 @@ function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
  * - nav 최상단에는 "모든 프로젝트" 링크(→ `/projects`, `/projects` 목록 진입점)를 항상 렌더한다
  *   (G2, FR-PJ PR-5 Task 7). "모든 프로젝트"는 nav aria-label "프로젝트"의 substring이 아니므로
  *   `getByRole('link', { name })` exact 매칭과 충돌하지 않는다.
- * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}/board`).
+ * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}` 요약).
  * - 펼침 시 직접 링크 3(보드·백로그·타임라인) + `리포트` 중첩그룹(4) + `프로젝트 설정` 중첩그룹(12,
- *   "일반"이 최상단 — FE-4). 모든 서브링크는 실재 라우트만 사용한다(요약은 라우트 부재로 미포함, S3).
+ *   "일반"이 최상단 — FE-4). 모든 서브링크는 실재 라우트만 사용한다(S3).
+ *   ★요약(`/projects/{key}`)은 라우트가 생겼지만(J4) 서브링크에 넣지 않는다 — 프로젝트명 링크
+ *   자체가 요약으로 가므로 같은 목적지가 두 줄이 되고, 캠페인 PR ⑨ 가 이 하위 목록을 보드 목록으로
+ *   통째로 갈아치운다. plan 의 X-J4-5 에 사유를 적었다.
  * - **자동 펼침의 근거는 URL이 담은 프로젝트 키다** — 경로 파라미터(`/projects/$projectKey/*`)
  *   우선, 없으면 검색 파라미터(`/issues?projectKey=` · `/search?projectKey=`). 둘 다 없으면
  *   (프로젝트 컨텍스트 밖) 자동 펼침이 일어나지 않는다. 검색 파라미터까지 보는 것은

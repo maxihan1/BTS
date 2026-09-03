@@ -16,6 +16,7 @@ import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModal
 // (meta/IssueCustomFieldsEdit.tsx의 isFieldHidden/isFieldDisabled 재사용 선례 동형).
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
+import { transitionElementKey } from '@/lib/transition-key'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -54,11 +55,16 @@ export interface IssueStateTransitionProps {
  * 규칙을 둘로 나누면 key 는 전환을 가르는데 value 는 못 가르는 상태가 생기고, 그때 화면은
  * 두 옵션을 그리면서 어느 쪽을 골라도 같은 값을 보낸다. 한 함수로 묶어 그 자리를 없앤다.
  *
- * `transitionId` 가 null 인 구 데이터는 `key`(`from__to`)로 떨어진다 — 같은 상태쌍이면 값이
- * 겹치므로 첫 전환이 선택되고 서버 409 후보 선택으로 이어진다. 그것이 폴백 경로다.
+ * ★**정본은 `@/lib/transition-key` 의 {@link transitionElementKey} 다.** 종전에는 이 파일이
+ * `transitionId ?? key` 를 자기 손으로 갖고 있었는데, 그 폴백은 두 군데서 무너진다 —
+ * 같은 상태쌍의 전환 둘은 `key` 가 서로 같고, 서버 계약상 `key` 는 null 일 수도 있다.
+ * 정본은 목록 위치를 최후 수단으로 덧붙여 형제 사이의 고유성을 보장한다.
+ *
+ * 위치가 섞이므로 **값을 렌더 밖으로 들고 나가면 안 된다.** 여기서는 같은 렌더의 같은
+ * `transitions` 배열로 옵션을 그리고 되찾으므로 일관된다.
  */
-function optionValueOf(transition: IssueTransition): string {
-  return transition.transitionId ?? transition.key
+function optionValueOf(transition: IssueTransition, index: number): string {
+  return transitionElementKey(transition, index)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -103,7 +109,7 @@ export function IssueStateTransition({
     const optionValue = e.target.value
     // placeholder 옵션 선택 무시
     if (optionValue === '') return
-    const selected = transitions.find((t) => optionValueOf(t) === optionValue)
+    const selected = transitions.find((t, i) => optionValueOf(t, i) === optionValue)
     // ★가드가 아니라 타입 좁히기다. 옵션은 같은 렌더의 같은 `transitions` 로 그려지므로
     //   `find` 가 빗나갈 수 없다 — 이 분기를 겨냥한 테스트를 쓰려면 도달 불가 상태를
     //   지어내야 하고, 그것이 곧 가짜 그린이다.
@@ -123,11 +129,11 @@ export function IssueStateTransition({
       <option value="" disabled>
         {issueDetailStrings.transitionSelectLabel}
       </option>
-      {transitions.map((t) => (
+      {transitions.map((t, i) => (
         // ★key 도 value 도 `optionValueOf` 하나를 쓴다. `key`(`from__to`)는 같은 상태쌍의
         //   전환 둘이 서로 **같은 값**이라(ADR 2026-08-18 로 UNIQUE 해제) 중복이 나고,
         //   value 가 `toStateKey` 이던 종전에는 어느 쪽을 골라도 같은 값이 나갔다.
-        <option key={optionValueOf(t)} value={optionValueOf(t)}>
+        <option key={optionValueOf(t, i)} value={optionValueOf(t, i)}>
           {t.name}
         </option>
       ))}

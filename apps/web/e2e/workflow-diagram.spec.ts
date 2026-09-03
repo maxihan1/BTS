@@ -12,7 +12,7 @@
 //   여기 쓰는 `.react-flow__node[data-id=...]` 는 xyflow 가 노드마다 붙이는 것이고,
 //   아래 첫 판정이 **그 전제 자체를 먼저 잰다** — 전제가 틀리면 시나리오보다 먼저 죽는다.
 import { test, expect } from '@playwright/test'
-import type { Page } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { loginAsSystemAdmin } from './fixtures/workflow-scheme-fixtures'
 import { gotoAdminPage } from './fixtures/admin-hub'
 
@@ -150,4 +150,94 @@ test('D8-3 관리 진입점에서 들어와도 다이어그램 탭이 있다', a
   await expect(page.getByRole('tab')).toHaveCount(3)
   await expect(page.getByRole('list', { name: '편성된 상태 목록' })).toBeVisible()
   await expect(page.getByRole('tab', { name: '다이어그램' })).toBeVisible()
+})
+
+/** 두 사각형이 실제로 포개지는가. 맞닿기만 한 것은 겹침이 아니다. */
+function overlaps(a: NonNullable<Awaited<ReturnType<Locator['boundingBox']>>>, b: typeof a): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
+}
+
+test('D8-4 한 자리에 모이는 전환 이름 셋이 서로 겹치지 않는다 (부채 168)', async ({ page }) => {
+  /*
+   * ★ 이 판정은 단위 테스트가 **낼 수 없다.** `lib/workflow-layout.ts` 는 노드 좌표만 알고
+   *   실제 라벨은 xyflow 가 주는 핸들 좌표에 그려지므로, lib 과 컴포넌트가 각각 초록이어도
+   *   실제 캔버스에서 겹칠 수 있다. 그 사이를 재는 것은 여기뿐이다.
+   *
+   * 픽스처의 세 전환은 중점이 대수적으로 같은 한 점이다 — 카테고리 열 배치가
+   * `open(0,0)` · `in_progress(260,0)` · `in_review(260,120)` · `closed(520,120)` 을 만들고
+   * `520 = 2 × 260` 이라 그렇다. 눈확인(2026-09-03)에서 `Requ|Cancel|nges` 로 뭉갰다.
+   */
+  await loginAsSystemAdmin(page)
+  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await openDiagramTab(page)
+
+  const names = ['Submit for Review', 'Request Changes', 'Cancel']
+  const boxes = []
+  for (const name of names) {
+    const label = page.getByText(name, { exact: true })
+    await expect(label).toBeVisible()
+    const box = await label.boundingBox()
+    expect(box, `'${name}' 라벨의 좌표를 못 읽었다`).not.toBeNull()
+    boxes.push({ name, box: box! })
+  }
+
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const left = boxes[i]!
+      const right = boxes[j]!
+      expect(
+        overlaps(left.box, right.box),
+        `'${left.name}' 과 '${right.name}' 라벨이 포개져 둘 다 못 읽는다`,
+      ).toBe(false)
+    }
+  }
+})
+
+test('D8-5 노드를 고르면 화면이 그것을 알려 준다 (부채 169)', async ({ page }) => {
+  /*
+   * ★ 배선까지 재는 판정이다. `StatusNode` 단위 테스트는 `selected` 를 **직접 넘겨서** 재므로,
+   *   캔버스가 그 프롭을 실제로 흘려보내는지는 못 본다. 눈확인 ⑧ 이 실패한 자리가 바로 거기다 —
+   *   상태는 DOM 에 있었고 그리는 쪽이 없었다.
+   */
+  await loginAsSystemAdmin(page)
+  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await openDiagramTab(page)
+
+  const target = node(page, 'open').locator('> div')
+  await expect(target).not.toHaveClass(/ring-2/)
+
+  await node(page, 'open').click()
+
+  // 카테고리 색(bg-muted)은 그대로 남고 링만 더해진다 — 선택이 카테고리를 덮으면 상태를 못 읽는다
+  await expect(target).toHaveClass(/ring-2/)
+  await expect(target).toHaveClass(/bg-muted/)
+})
+
+test('D8-6 고른 노드를 끌어 놓아도 선택 표시가 남는다 (부채 169)', async ({ page }) => {
+  /*
+   * ★ 실측으로 잡은 회귀다. 초안이 바뀌면 캔버스가 노드 배열을 새로 만들어 `setLiveNodes` 로
+   *   갈아끼우는데, 그 배열에는 `selected` 가 없다 — 드래그는 `onNodeDragStop → onMoveState`
+   *   로 초안을 바꾸므로 **놓는 순간 링이 사라졌다.** 부채 169 가 적은 목적("여러 상태를
+   *   오가며 편집할 때 지금 무엇을 고른 상태인지 알려 준다")이 편집을 시작하는 순간 무너진다.
+   *
+   * 단위 테스트는 이걸 못 잡는다 — `StatusNode` 에 `selected` 를 직접 넘겨서 재기 때문이다.
+   */
+  await loginAsSystemAdmin(page)
+  await page.goto(`/admin/workflows/${TARGET_KEY}`)
+  await openDiagramTab(page)
+
+  const wrapper = node(page, 'open')
+  const inner = wrapper.locator('> div')
+
+  await wrapper.click()
+  await expect(inner).toHaveClass(/ring-2/)
+
+  const box = await wrapper.boundingBox()
+  expect(box).not.toBeNull()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 + 120, box!.y + box!.height / 2 + 60, { steps: 10 })
+  await page.mouse.up()
+
+  await expect(inner).toHaveClass(/ring-2/)
 })

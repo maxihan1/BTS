@@ -16,7 +16,7 @@
 // - simple: 3 상태 + 4 전환 (INITIAL 1 + NORMAL 3)
 // - kanban-basic: 4 상태 + 4 전환 (INITIAL 1 + NORMAL 3)
 import type { WorkflowView } from '@/api/workflows'
-import { transitionKey } from '@/components/workflow/workflow.types'
+import { transitionKey, kindTransitionKey } from '@/lib/transition-key'
 
 /**
  * 픽스처 전용 결정적 전환 id 를 만든다.
@@ -34,19 +34,7 @@ function fixtureTransitionId(workflowNo: number, transitionNo: number): string {
   return `00000000-0000-4000-8000-${suffix}`
 }
 
-/**
- * 출발 상태가 없는 전환(GLOBAL·INITIAL)의 key 를 만든다.
- *
- * backend `WorkflowTransition.key` 게터가 이 두 종류를 `${kind}__${to}` 로 합성한다 — 그 규칙과 1:1.
- * NORMAL 은 종전대로 `transitionKey(from, to)` 를 쓴다.
- *
- * @param kind 전환 종류 (GLOBAL 또는 INITIAL)
- * @param toStateKey 도착 상태 키
- * @returns `KIND__toStateKey` 형식 문자열
- */
-function kindTransitionKey(kind: 'GLOBAL' | 'INITIAL', toStateKey: string): string {
-  return `${kind}__${toStateKey}`
-}
+// GLOBAL·INITIAL key 규칙은 `@/lib/transition-key` 가 정본이다 — 여기서 다시 구현하지 않는다.
 
 /** V207 ⑨ 백필이 심는 INITIAL 전환의 이름 — 마이그레이션 SQL 리터럴과 같은 문자열 */
 const INITIAL_TRANSITION_NAME = '이슈 생성'

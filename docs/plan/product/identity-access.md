@@ -126,10 +126,12 @@
 - [x] D3. 데이터 모델 — `domain_provider_routes(domain, provider_id)` (책임. db-engineer)
 - [x] D4. 백엔드 — 이메일 입력 → Provider 자동 선택 (책임. security-engineer)
 - [x] D5. 백엔드 테스트 (책임. security-engineer)
-- [x] D6. 프론트 UI — 이메일 입력 후 Provider 자동 진입 (책임. designer → frontend-engineer)
-- [x] D7. E2E (책임. qa-engineer)
+- [x] D6. 프론트 UI — 식별자 도메인 기반 Provider 안내 (책임. designer → frontend-engineer) — **2026-09-03 단일 화면 배경 조회로 재설계**
+- [x] D7. E2E (책임. qa-engineer) — **2026-09-03 blur → SSO 버튼 노출 기준으로 재작성**
 
 > **FR-AU-07 완료 (2026-06-09, PR #102)**. 이메일 도메인 기반 SSO 자동 라우팅(Home Realm Discovery). **라우팅 대상 SSO 전용(SAML/OIDC)** — LOCAL/LDAP는 authn_providers 시드 부재 + 비밀번호 오전달 위험으로 제외(FR-AU-06이 위임한 "똑똑한 자동 선택"을 안전하게 담당). 신규 테이블 `domain_provider_routes(domain UNIQUE, provider_id → authn_providers ON DELETE CASCADE)` V020(시드 없음, 환경 의존). 조회 `GET /api/v1/auth/route?domain=`(permitAll) — 매칭 판정은 **type 분기 2-step**(라우트→authn_providers.type→enabled SAML/OIDC config 단일조회, cartesian 회피). 매칭/미매칭 둘 다 200(계정 열거 0, 도메인만 판단·자격증명 미취급). fail-safe — 끊긴 라우트·비활성·LOCAL/LDAP 지시는 null→2단계 폼 fallback. 프론트 **identifier-first 2단계**(이메일 먼저→매칭 시 `ssoEntryUrl`로 SSO 자동 리다이렉트(encodeURIComponent), 미매칭 시 기존 폼+이메일 프리필). 도메인 **exact + lowercase 정규화**(Controller), 서브도메인 매칭·라우트 CRUD 관리 UI는 후속 FR. identity-access는 jdbc-only라 init_codegen 미러 불요. ADR `docs/decisions/2026-06-09-domain-based-provider-routing.md`.
+
+> **FR-AU-07 UI deviation (2026-09-03)**. **백엔드 계약·매칭 규칙은 그대로다.** 프론트만 바뀌었다. identifier-first 2단계(이메일 → "계속" → 매칭 시 자동 리다이렉트 / 미매칭 시 2단계 폼 + 프리필)를 폐기하고 **단일 화면**으로 통합했다 — 식별자·비밀번호를 함께 받고, 도메인 조회는 식별자 **blur ‖ 500ms 디바운스 배경 조회**(도메인 단위 dedupe + 순번 가드)로, 매칭 결과는 **자동 이동이 아니라 SSO 버튼 노출**로 바뀌었다. 자동 이동을 폐기한 이유는 단일 화면에서 트리거가 수동적(blur/디바운스)이라 풀 네비게이션이 타이핑 중이던 비밀번호와 함께 화면을 없애기 때문이다. 매칭돼도 로컬 제출 버튼은 강등되되 enabled 로 남아 S4 fail-safe 를 지킨다. `@` 없는 식별자(LDAP `alice`)는 조회 자체를 하지 않는다. 스펙 `docs/specs/2026-09-03-login-modal-ux.md` · ADR `docs/decisions/2026-09-03-login-modal-and-single-screen-form.md`.
 
 ### §2.8 FR-AU-08 — 계정 통합 (Account Linking)
 
