@@ -169,7 +169,7 @@
 | **E5** | 소프트 삭제된 스프린트(`deleted_at IS NOT NULL`) | 대상에서 제외한다 |
 | **E6** | `start` 락 획득 후 재조회했더니 스프린트가 사라졌다 | 404 `AGILE_SPRINT_NOT_FOUND` |
 | **E7** | 락 획득 후 재조회했더니 이미 `ACTIVE` | 409 `AGILE_CONFLICT`(FSM 위반) |
-| **E8** ❓ | 락 타임아웃이 형제 락(`ensureScrumBoard`)에서 났다 | 같은 503. `ensureScrumBoard` 는 **두 경로**에서 도달한다 — ① `SprintApplicationService.resolveTargetBoard`(스프린트 **생성** · `start` 아님) ② 보드 컨트롤러. 따라서 매핑을 `SprintExceptionHandler` 와 보드 쪽 핸들러 **양쪽**에 건다. 한쪽만 걸면 다른 경로가 500 을 낸다 |
+| **E8** ❓🔴 | 락 타임아웃이 형제 락(`ensureScrumBoard`)에서 났다 | 같은 503. 매핑을 `SprintExceptionHandler` 와 `BoardExceptionHandler` **양쪽**에 건다.<br>🔴 **초안의 사실 오류를 정정한다.** 초안은 「`ensureScrumBoard` 가 두 경로에서 도달한다」고 적었으나, 구현 중 Task 7 이 전수 grep 으로 확인한 결과 **main 호출자는 `SprintApplicationService.resolveTargetBoard`(스프린트 생성) 하나뿐**이다. `BoardController` 는 오늘 형제 락에 도달하지 않는다. `BoardExceptionHandler` 매핑은 **방어**다 — `ensureScrumBoard` 가 `BoardApplicationService` 의 public 메서드라 보드 컨트롤러가 언제든 부를 수 있고 그때 500 이 나기 때문이다. 그 결과 보드 쪽 테스트는 실제 락 경로가 아니라 **advice 매핑**을 잰다(`createBoard` stub 이 던지게 한다). 락을 잡는 보드 엔드포인트가 생기면 그쪽으로 옮기는 편이 낫다 |
 | **E9** ❓ | 마이그레이션 도중 구버전 인스턴스가 `start` 를 받아 칸반 소속 ACTIVE 를 새로 만든다 | **범위 밖.** 배포는 Naver Cloud **단일 호스트**라 롤링 무중단이 아니다. 무중단 배포를 도입하면 그때 재검토한다 |
 | **E10** 🔴 | **`V507` 추가가 기존 백필 테스트의 전제를 바꾼다** | `SprintBoardIdBackfillMigrationTest.kt:31-33` KDoc — *"★ 마지막 단계에 `target("506")` 을 쓰지 않는다. 버전을 숫자로 고정하면 나중에 V507 이 들어올 때 이 클래스가 통째로 죽는다."* 그 설계 덕에 클래스는 안 죽지만 **V507 까지 돌게 된다.** V506 ④ 가 전 스프린트를 스크럼에 붙이므로 V507 대상은 0건일 것이나 **가정하지 않고 그 6건이 여전히 초록임을 실측**한다 |
 | **E11** 🔴 | Flyway 는 같은 버전을 두 번 적용하지 않는다 — 「재적용」 멱등을 어떻게 재나 | 선례가 이미 답을 준다. 같은 테스트가 `Flyway.configure().target("504")` → seed → `migrate()` **3단**을 쓴다. 멱등은 Flyway 밖에서 **`V507` SQL 을 JDBC 로 직접 한 번 더 실행**해 `boards` 행 수가 안 늘어남을 잰다 |
@@ -193,7 +193,13 @@
 
 1. `V507` 적용 후 `SELECT count(*) FROM sprints s JOIN boards b ON b.id = s.board_id
    WHERE b.board_type = 'KANBAN' AND s.deleted_at IS NULL` **= 0**
-2. `V507` 적용 후 어느 `board_id` 에도 `status='ACTIVE' AND deleted_at IS NULL` 인 행이 **2건 이상 없다**
+2. `V507` 적용 후 **이관이 닿은 보드**에는 `status='ACTIVE' AND deleted_at IS NULL` 인 행이 2건 이상 없다.
+   🔴 **DB 전체로 확대해 읽지 마라.** ADR `D2` 가 상태를 바꾸는 범위를 「칸반에서 옮겨 오는 행」으로
+   한정했으므로, **선재하는 스크럼 보드의 다중 ACTIVE 는 `V507` 이 고치지 않는다.** 그 행들은 PR #182
+   Deviation ⑤ 가 명시적으로 허용했고 `V506:66-71` 이 인덱스를 일부러 UNIQUE 로 만들지 않아 보존한
+   것이다. 그것까지 정리하려면 `V506` 의 결정을 뒤집는 별개 판단이 필요하다 — 이 PR 범위 밖이고
+   부채 **168**(보드 화면이 다중 ACTIVE 를 흡수하지 못한다)이 그 진입점이다.
+   구현 중 Task 2 가 실측으로 지적해 정정했다(초안은 「어느 `board_id` 에도」였다).
 3. `V507` 을 되돌렸다 재적용해도 `boards` 행 수가 **늘지 않는다**
 4. 칸반 소속 스프린트에 `start` → **409 `AGILE_SPRINT_BOARD_NOT_SCRUM`**
 5. `start` 의 `@Transactional` 에 `isolation = Isolation.READ_COMMITTED` 가 있다
