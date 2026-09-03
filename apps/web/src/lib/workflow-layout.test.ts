@@ -160,6 +160,24 @@ describe('edgeRoutes', () => {
     expect(edgeAt(result, 2).offset).toBe(0)
   })
 
+  it('self-loop 곡선이 아무리 늘어도 이웃 행까지 뻗지 않는다 (부채 170)', () => {
+    // 옛 기본값 60 은 지름 120 으로 행 간격과 정확히 같아, 고리가 아래 행 노드에 걸쳤다.
+    const result = routesOf([
+      makeTransition({ from: 'doing', to: 'doing', name: '재작업' }),
+      makeTransition({ from: 'doing', to: 'doing', name: '담당자 변경' }),
+      makeTransition({ from: 'doing', to: 'doing', name: '반려' }),
+      makeTransition({ from: 'doing', to: 'doing', name: '보류' }),
+      makeTransition({ from: 'doing', to: 'doing', name: '재개' }),
+    ])
+
+    for (const index of [0, 1, 2, 3, 4]) {
+      const { offset } = edgeAt(result, index)
+      // 노드 높이(min-h-11 = 44px)가 상한이다. 그보다 크면 이웃 행을 삼킨다
+      expect(offset).toBeGreaterThan(0)
+      expect(offset).toBeLessThanOrEqual(44)
+    }
+  })
+
   it('같은 상태쌍에 전환이 여럿이면 서로 다른 offset 을 받는다', () => {
     // FR-WF-05 가 같은 쌍의 다중 전환을 허용한다 — 겹쳐 그리면 어느 것을 고르는지 알 수 없다
     const result = routesOf([

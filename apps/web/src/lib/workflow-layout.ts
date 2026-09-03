@@ -175,7 +175,19 @@ export const START_NODE_ID = '__start__'
 const EDGE_BUNDLE_GAP_PX = 40
 
 /** self-loop 곡선의 기본 크기(px). 노드 밖으로 나올 만큼은 커야 한다. */
-const SELF_LOOP_BASE_OFFSET_PX = 60
+const SELF_LOOP_BASE_OFFSET_PX = 20
+
+/** self-loop 이 여럿일 때 겹겹이 키우는 폭(px). */
+const SELF_LOOP_STEP_PX = 12
+
+/**
+ * self-loop 곡선의 상한(px). 노드 높이(`min-h-11` = 44px)와 같다.
+ *
+ * **상한이 없으면 고리가 이웃 행을 삼킨다** (부채 170). 옛 기본값 60 은 지름 120 으로
+ * `ROW_GAP_PX` 와 정확히 같아 아래 행 노드에 걸쳤다. 상한에 닿은 뒤로는 고리가 더 안 커지므로
+ * self-loop 이 아주 많으면 굵기가 같아진다 — 겹겹이 벌리는 것보다 이웃을 안 뚫는 쪽이 앞선다.
+ */
+const SELF_LOOP_MAX_OFFSET_PX = 44
 
 /**
  * 라벨 앵커를 같은 자리로 볼 격자 크기(px).
@@ -248,13 +260,13 @@ function bundleOffset(index: number, total: number): number {
  *
  * `bundleOffset` 과 달리 **0 이 나오면 안 된다.** self-loop 은 출발점과 도착점이 같은 자리라
  * 오프셋이 0 이면 노드 뒤에 완전히 숨어 전환이 있는지조차 보이지 않는다. 그래서 좌우 대칭이
- * 아니라 기본 반지름에서 바깥으로 겹겹이 키운다.
+ * 아니라 기본 반지름에서 바깥으로 겹겹이 키운다 — **`SELF_LOOP_MAX_OFFSET_PX` 까지만.**
  *
  * @param index 그 노드의 몇 번째 self-loop 인지 (0-based)
- * @returns 곡선 크기(px). 항상 0 보다 크다
+ * @returns 곡선 크기(px). 항상 0 보다 크고 상한 이하다
  */
 function selfLoopOffset(index: number): number {
-  return SELF_LOOP_BASE_OFFSET_PX + index * EDGE_BUNDLE_GAP_PX
+  return Math.min(SELF_LOOP_BASE_OFFSET_PX + index * SELF_LOOP_STEP_PX, SELF_LOOP_MAX_OFFSET_PX)
 }
 
 /** 밀어낼 이웃이 없는 라벨의 오프셋. 매번 새 객체를 만들지 않는다. */

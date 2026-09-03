@@ -132,6 +132,70 @@ describe('경로 형태 (F10 · F12)', () => {
   })
 })
 
+/** 경로 문자열에서 좌표쌍을 모두 뽑는다. `A rx,ry rot large sweep x,y` 의 끝 두 수만 좌표다. */
+function pointsOf(path: string): { x: number; y: number }[] {
+  const points: { x: number; y: number }[] = []
+  const move = /M (-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g
+  const arc = /A [\d.]+,[\d.]+ \d+ \d+ \d+ (-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g
+
+  for (const source of [move, arc]) {
+    for (const match of path.matchAll(source)) {
+      points.push({ x: Number(match[1]), y: Number(match[2]) })
+    }
+  }
+  if (points.length === 0) throw new Error(`경로에서 좌표를 못 뽑았다: ${path}`)
+  return points
+}
+
+/** 경로의 첫 `A` 명령이 쓴 반지름. */
+function radiusOf(path: string): number {
+  const found = /A (\d+(?:\.\d+)?),/.exec(path)
+  if (found === null) throw new Error(`경로에 호가 없다: ${path}`)
+  return Number(found[1])
+}
+
+describe('self-loop 자리 (부채 170)', () => {
+  it('고리가 출발 핸들의 오른쪽 바깥에만 있다', () => {
+    /*
+     * 2026-09-03 실측. 시계 방향 큰 호가 출발점에서 아래로 돌아 `In Progress` 와 `In Review`
+     * 를 관통했다 — 선이 뚫고 지난 노드가 그 전환과 관계있는 것처럼 읽힌다.
+     * 출발 핸들은 노드 오른쪽 중앙이므로, 고리가 그 x 보다 왼쪽으로 가지 않으면 노드를 안 뚫는다.
+     */
+    const loop = pathOf(renderEdge('재작업', { selfLoop: true, offset: 40 }).container)
+
+    // edgeProps 의 sourceX 는 0 이다 — 음수 x 가 하나라도 있으면 노드 쪽으로 넘어간 것이다
+    for (const point of pointsOf(loop)) {
+      expect(point.x).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('고리 반지름이 노드 높이를 넘지 않는다', () => {
+    // 반지름 60 은 지름 120 으로 행 간격(120)과 정확히 같아 아래 행 노드에 걸쳤다
+    const loop = pathOf(renderEdge('재작업', { selfLoop: true, offset: 200 }).container)
+
+    // min-h-11 = 44px. 그보다 큰 고리는 이웃 행까지 뻗는다
+    expect(radiusOf(loop)).toBeLessThanOrEqual(44)
+  })
+
+  it('라벨이 고리 바깥에 붙는다', () => {
+    /*
+     * 「재작업」이 캔버스 위쪽 빈 자리에 홀로 떠 어느 전환의 이름인지 알 수 없었다.
+     * 고리의 가장 바깥 점보다 멀리 두면 고리에 가리지 않고, 고리에 붙어 있어 주인이 읽힌다.
+     */
+    const { container, host } = renderEdge('재작업', { selfLoop: true, offset: 40 })
+    const radius = radiusOf(pathOf(container))
+    const transform = labelTransformOf(host)
+
+    const shifted = /translate\((-?\d+(?:\.\d+)?)px, (-?\d+(?:\.\d+)?)px\)/.exec(transform)
+    if (shifted === null) throw new Error(`라벨 좌표를 못 읽었다: ${transform}`)
+
+    // 고리는 sourceX(0) 에서 오른쪽으로 지름만큼 뻗는다. 라벨은 그 바깥이다.
+    expect(Number(shifted[1])).toBeGreaterThan(radius * 2)
+    // 세로로는 출발 핸들 높이를 크게 벗어나지 않는다 — 위로 달아나면 주인을 잃는다
+    expect(Math.abs(Number(shifted[2]))).toBeLessThanOrEqual(radius)
+  })
+})
+
 /** 라벨 상자의 `translate(...)` 문자열. 라벨이 실제로 어디 놓였는지 재는 유일한 관찰점이다. */
 function labelTransformOf(host: Element): string {
   const box = host.firstElementChild
