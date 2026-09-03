@@ -136,10 +136,9 @@ class BoardRepository(
      */
     @Transactional(propagation = Propagation.MANDATORY)
     fun acquireProjectScrumBoardLock(projectKey: String) {
-        // pg_advisory_xact_lock 은 void 를 반환한다 — 결과 행은 소비만 하고 버린다.
         // 잠금 공간에 접두를 붙여 형제 락(BacklogRankService 의 projectId 해시)과 공간을 가른다
         // — 선례 IssueRepository 의 "project:$projectKey" 와 같은 형태.
-        dsl.fetch("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "scrum-board:$projectKey")
+        dsl.acquireXactLockWithBudget("scrum-board:$projectKey")
     }
 
     // ── seedColumns ───────────────────────────────────────────────────────────

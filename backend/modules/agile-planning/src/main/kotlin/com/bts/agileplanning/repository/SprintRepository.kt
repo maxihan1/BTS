@@ -129,8 +129,7 @@ class SprintRepository(
      */
     @Transactional(propagation = Propagation.MANDATORY)
     fun acquireSprintStartLock(boardId: UUID) {
-        // pg_advisory_xact_lock 은 void 를 반환한다 — 결과 행은 소비만 하고 버린다.
-        dsl.fetch("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "sprint-start:$boardId")
+        dsl.acquireXactLockWithBudget("sprint-start:$boardId")
     }
 
     // ── findActiveByBoard ─────────────────────────────────────────────────────

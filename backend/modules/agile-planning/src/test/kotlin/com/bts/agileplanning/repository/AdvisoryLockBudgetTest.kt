@@ -140,15 +140,19 @@ class AdvisoryLockBudgetTest {
             }
             val executor = Executors.newSingleThreadExecutor()
             try {
-                val startedAt = System.nanoTime()
-                val future = executor.submit<Result<Unit>> { runCatching(attempt) }
-                val outcome =
-                    try {
-                        future.get(WORKER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                    } catch (timeout: TimeoutException) {
-                        Result.failure(timeout)
+                // ★ 시간은 **워커 안에서** 잰다. 스레드풀 생성·submit 지연을 포함하면 다른 세션이
+                // 같은 머신에서 빌드 중일 때 측정이 흔들려 예산과 무관한 이유로 red 가 된다.
+                val future =
+                    executor.submit<LockAttempt> {
+                        val startedAt = System.nanoTime()
+                        val outcome = runCatching(attempt)
+                        LockAttempt(outcome, (System.nanoTime() - startedAt) / NANOS_PER_MILLI)
                     }
-                return LockAttempt(outcome, (System.nanoTime() - startedAt) / NANOS_PER_MILLI)
+                return try {
+                    future.get(WORKER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                } catch (timeout: TimeoutException) {
+                    LockAttempt(Result.failure(timeout), WORKER_TIMEOUT_SECONDS * MILLIS_PER_SECOND)
+                }
             } finally {
                 executor.shutdown()
                 holder.rollback()
@@ -198,5 +202,7 @@ class AdvisoryLockBudgetTest {
         const val MIN_WAIT_MS = 150L
 
         const val NANOS_PER_MILLI = 1_000_000L
+
+        const val MILLIS_PER_SECOND = 1_000L
     }
 }
