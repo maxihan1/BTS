@@ -26,6 +26,8 @@
 import { test, expect } from '@playwright/test'
 import type { Locator, Page, Request } from '@playwright/test'
 import { loginAsAlice } from './fixtures/auth-fixtures'
+import { openTabIfOverflowed } from './fixtures/project-view-tabs'
+import { projectViewLabels } from '../src/i18n/project-view-labels'
 import {
   backlogSprintColumn,
   goToBoardNameStep,
@@ -34,7 +36,6 @@ import {
 } from './fixtures/board-helpers'
 import { backlogLabels } from '../src/i18n/backlog-labels'
 import { boardLabels } from '../src/i18n/board-labels'
-import { navLabels } from '../src/i18n/nav-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — 픽스처 미러 (직접 import 금지 · 출처를 함께 적는다)
@@ -108,15 +109,16 @@ function backlogColumn(page: Page): Locator {
 }
 
 /**
- * 프로젝트 뷰 전환 nav 안의 링크.
+ * 프로젝트 뷰 전환 탭바의 탭.
  *
  * 사이드바에도 같은 이름의 링크가 있어 전역 조회는 strict mode 로 깨진다 — nav 로 좁힌다
  * (`ProjectNavTabs` 의 `aria-label` 은 e2e 계약 문자열이다).
+ *
+ * 🛑 폭이 모자라면 탭이 「더 보기」로 접힌다(정본 9탭 · Jira 패리티 J5). 직접 조회하면
+ *    폭이 조금만 달라져도 깨지므로 `openTabIfOverflowed` 헬퍼에 위임한다.
  */
-function viewNavLink(page: Page, label: string): Locator {
-  return page
-    .getByRole('navigation', { name: navLabels.projectViewNav })
-    .getByRole('link', { name: label, exact: true })
+async function viewNavLink(page: Page, label: string): Promise<Locator> {
+  return openTabIfOverflowed(page, label)
 }
 
 /** 현재 URL 의 `?board=` 값 */
@@ -264,7 +266,7 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     // ── S7. **시작 후** — 보드가 그 스프린트를 보여준다 (J5 · J18) ───────────
     // 🛑 여기도 `switchToBoard` 수동 재선택이 있었다. 뷰 전환 nav 가 `?board=` 를 안 실어
     //    보드↔백로그 왕복마다 스코프가 풀렸고, 재선택이 그것을 덮었다(편차 X7 부분 해소).
-    await viewNavLink(page, backlogLabels.page.boardLink).click()
+    await (await viewNavLink(page, projectViewLabels.board)).click()
     await expect.poll(() => currentBoardParam(page)).toBe(scrumBoardId)
     await expect(boardSwitcherTrigger(page)).toContainText(SCRUM_BOARD_NAME)
 

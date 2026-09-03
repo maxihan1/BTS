@@ -27,6 +27,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { clickProjectViewTab, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — timeline-labels.ts / use-timeline-zoom.ts / timeline-fixtures.ts 동기화
@@ -114,11 +115,11 @@ async function loginAndNavigateToTimeline(
 
   // 백로그 진입 — nav는 항상 렌더됨
   await page.goto(BACKLOG_URL)
-  const nav = page.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-  await expect(nav).toBeVisible()
+  await expect(projectViewNav(page)).toBeVisible()
 
-  // "타임라인" 링크 클릭 — SPA 내부 이동 (reload 금지)
-  await nav.getByRole('link', { name: '타임라인', exact: true }).click()
+  // "타임라인" 탭 클릭 — SPA 내부 이동 (reload 금지).
+  // 🛑 탭이 9개라 폭에 따라 접힌다. 헬퍼가 접힘 여부를 흡수한다 (Jira 패리티 J5 · 위험 R1).
+  await clickProjectViewTab(page, '타임라인')
 
   // 타임라인 URL 진입 완료 대기
   await page.waitForURL(TIMELINE_URL_PATTERN)

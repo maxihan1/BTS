@@ -22,6 +22,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { openProjectReportFromSidebar, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts DEFAULT_BACKLOG / cycle-time-handlers.ts DEFAULT_CYCLE_TIME와 동기화
@@ -106,13 +107,21 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. "프로젝트 뷰 전환" nav 표시 확인 (컨테이너 한정 — board/timeline/velocity/cfd 링크와 텍스트 중복 회피)
-    const viewNav = page.getByRole('navigation', { name: '프로젝트 뷰 전환' })
+    // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
+    //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
+    //        그룹 하나다. 탭바에 그 링크가 없다는 사실도 여기서 함께 못 박는다.
+    const viewNav = projectViewNav(page)
     await expect(viewNav).toBeVisible()
+    await expect(
+      viewNav.getByRole('link', { name: labels.nav.cycleTimeLink, exact: true }),
+    ).toHaveCount(0)
 
-    // When. nav의 "사이클/리드 타임" 링크 클릭
-    const cycleTimeLink = viewNav.getByRole('link', { name: labels.nav.cycleTimeLink, exact: true })
-    await expect(cycleTimeLink).toBeVisible()
+    // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
+    const cycleTimeLink = await openProjectReportFromSidebar(
+      page,
+      'Atlas 프로젝트',
+      labels.nav.cycleTimeLink,
+    )
     await cycleTimeLink.click()
 
     // Then. URL이 Cycle Time 라우트로 이동

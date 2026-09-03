@@ -16,6 +16,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { openProjectReportFromSidebar, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts DEFAULT_BACKLOG / cfd-handlers.ts DEFAULT_CFD와 동기화
@@ -32,6 +33,15 @@ const EMPTY_PROJECT_KEY = 'PROJECT-EMPTY'
 
 /** 빈 CFD 프로젝트의 CFD 페이지 URL */
 const EMPTY_CFD_URL = `/projects/${EMPTY_PROJECT_KEY}/reports/cfd`
+
+/**
+ * 사이드바 트리 `리포트` 그룹의 CFD 링크 라벨 (`ProjectTree.tsx` `REPORT_LINKS` 미러).
+ *
+ * 아래 `labels.nav.cfdLink`(`누적 흐름도`)와 **다른 문자열**이다 — 옛 백로그 인라인 nav 와
+ * 사이드바가 각자 이름을 갖고 있었고, 인라인 쪽이 J5 로 없어지면서 사이드바 것만 남았다.
+ * 둘을 하나로 합치는 것은 이 PR 범위 밖이라 차이를 여기에 명시해 둔다.
+ */
+const SIDEBAR_CFD_LABEL = '누적 흐름도(CFD)'
 
 /** cfd-labels.ts cfdLabels / backlog-labels.ts backlogLabels 문자열 재노출 — E2E 셀렉터가 정본 참조 */
 const labels = {
@@ -68,13 +78,17 @@ test.describe('FR-RP-03 D6/D7 프로젝트 누적 흐름도(CFD)', () => {
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. "프로젝트 뷰 전환" nav 표시 확인 (컨테이너 한정 — board/timeline/velocity 링크와 텍스트 중복 회피)
-    const viewNav = page.getByRole('navigation', { name: '프로젝트 뷰 전환' })
+    // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
+    //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
+    //        그룹 하나다. 탭바에 그 링크가 없다는 사실도 여기서 함께 못 박는다.
+    const viewNav = projectViewNav(page)
     await expect(viewNav).toBeVisible()
+    await expect(viewNav.getByRole('link', { name: labels.nav.cfdLink, exact: true })).toHaveCount(0)
 
-    // When. nav의 "누적 흐름도" 링크 클릭
-    const cfdLink = viewNav.getByRole('link', { name: labels.nav.cfdLink, exact: true })
-    await expect(cfdLink).toBeVisible()
+    // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
+    // 🛑 사이드바 라벨은 `누적 흐름도(CFD)` 로 옛 인라인 nav 라벨(`누적 흐름도`)과 **다르다.**
+    //    두 목록이 각자 이름을 갖고 있었고, 인라인 쪽이 없어지면서 사이드바 것만 남았다.
+    const cfdLink = await openProjectReportFromSidebar(page, 'Atlas 프로젝트', SIDEBAR_CFD_LABEL)
     await cfdLink.click()
 
     // Then. URL이 CFD 라우트로 이동
