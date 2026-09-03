@@ -4,10 +4,12 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { apiFetch } from './client'
 import { useAuthStore } from '@/auth/authStore'
+import { useLoginPromptStore } from '@/auth/loginPromptStore'
 
 beforeEach(() => {
   // 각 테스트 전 store 초기화
   useAuthStore.setState({ accessToken: null, user: null })
+  useLoginPromptStore.getState().reset()
   // sessionStorage 정리
   sessionStorage.clear()
 })
@@ -113,5 +115,45 @@ describe('401 인터셉터', () => {
     expect(useAuthStore.getState().user).toBeNull()
 
     clearSessionSpy.mockRestore()
+  })
+})
+
+describe('세션 만료 프롬프트 — refresh 실패 시 로그인 모달 트리거', () => {
+  /** refresh 가 401 을 돌려주는 표준 배선 */
+  function stubExpiredRefresh() {
+    server.use(
+      http.get('/api/v1/protected', () =>
+        new HttpResponse(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+      http.post('/api/v1/auth/refresh', () =>
+        new HttpResponse(JSON.stringify({ error: 'Refresh token expired' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+  }
+
+  it('세션이 있던 요청의 refresh 가 실패하면 sessionExpired 가 true 가 된다', async () => {
+    stubExpiredRefresh()
+    useAuthStore.setState({ accessToken: 'old-token', user: null })
+
+    await expect(apiFetch('/api/v1/protected')).rejects.toThrow()
+
+    expect(useLoginPromptStore.getState().sessionExpired).toBe(true)
+  })
+
+  it('세션이 없던 요청의 refresh 가 실패하면 sessionExpired 는 false 로 남는다 (공개 라우트 방어)', async () => {
+    // dashboards/shared/$token 은 staticData:{requireAuth:false} 인 미인증 공개 라우트다.
+    // 세션이 애초에 없던 401 로 공개 페이지 위에 로그인 모달을 씌우면 안 된다.
+    stubExpiredRefresh()
+    useAuthStore.setState({ accessToken: null, user: null })
+
+    await expect(apiFetch('/api/v1/protected')).rejects.toThrow()
+
+    expect(useLoginPromptStore.getState().sessionExpired).toBe(false)
   })
 })

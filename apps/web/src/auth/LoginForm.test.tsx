@@ -1186,3 +1186,132 @@ describe('LoginForm — MFA step 신뢰 디바이스 체크박스 (task-6)', () 
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 단일 화면 폼 — 이메일 선입력 1단계 폐기 (FR-AU-07 deviation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () => {
+  it('초기 렌더에 식별자·비밀번호·로그인 버튼이 동시에 보이고 "계속" 버튼은 없다', async () => {
+    renderLoginForm()
+
+    // 식별자 필드는 username 하나로 유지한다 — LDAP 식별자는 이메일이 아니라 'alice' 라서
+    // 라벨을 '이메일'로 바꾸면 사실이 틀린다(D6).
+    expect(screen.getByLabelText('사용자명')).toBeInTheDocument()
+    expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '로그인' })).toBeInTheDocument()
+
+    // 1단계가 사라졌으므로 "계속" 버튼도 이메일 전용 필드도 없어야 한다
+    expect(screen.queryByRole('button', { name: '계속' })).toBeNull()
+  })
+
+  it('식별자 blur 시 도메인 route 를 조회해 SSO 버튼을 노출한다 — 자동 이동하지 않는다', async () => {
+    const assignMock = vi.fn()
+    vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      assign: assignMock,
+    } as unknown as Location)
+
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice@okta.com')
+    await user.tab()
+
+    expect(await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })).toBeInTheDocument()
+    // 트리거가 blur 라는 수동적 이벤트이므로 풀 네비게이션을 걸면 안 된다(C7).
+    expect(assignMock).not.toHaveBeenCalled()
+  })
+
+  it('SSO 매칭 후에도 로컬 로그인 버튼이 살아 있다 (FR-07 S4 fail-safe)', async () => {
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'OIDC',
+          registrationId: 'keycloak',
+          displayName: 'Keycloak',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice@corp.com')
+    await user.tab()
+
+    await screen.findByRole('button', { name: 'Keycloak 로 로그인' })
+    // 매칭 도메인에 LOCAL/LDAP 계정이 공존할 수 있다 — 끊긴 라우트가 사용자를 막지 않는다.
+    expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
+  })
+
+  it('blur 시점에 이미 입력된 비밀번호가 보존된다', async () => {
+    server.use(
+      http.get('/api/v1/auth/route', () =>
+        HttpResponse.json({
+          matched: true,
+          type: 'SAML',
+          registrationId: 'okta',
+          displayName: 'Okta SSO',
+        }),
+      ),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('비밀번호'), 'secret1234')
+    await user.type(screen.getByLabelText('사용자명'), 'alice@okta.com')
+    await user.tab()
+
+    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+    expect(screen.getByLabelText('비밀번호')).toHaveValue('secret1234')
+  })
+
+  it('@ 가 없는 식별자는 route 조회를 하지 않는다 (LDAP 사용자명)', async () => {
+    let routeCalls = 0
+    server.use(
+      http.get('/api/v1/auth/route', () => {
+        routeCalls++
+        return HttpResponse.json({ matched: false })
+      }),
+    )
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
+    })
+    expect(routeCalls).toBe(0)
+  })
+
+  it('route 조회가 실패해도 로컬 로그인이 막히지 않는다 (fail-safe)', async () => {
+    server.use(http.get('/api/v1/auth/route', () => HttpResponse.error()))
+
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice@unreachable.com')
+    await user.tab()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
+    })
+  })
+})
