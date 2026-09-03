@@ -1,7 +1,7 @@
 -- 칸반 보드에 소속된 스프린트를 그 프로젝트의 스크럼 보드로 이관 (부채 165 V507) — 데이터만 옮긴다
 -- ⚠ V번호는 머지 직전 origin/main 의 agile-planning 최신 V번호를 재확인할 것 (동시 브랜치 Flyway checksum 충돌 회피, DATA.md §4.1).
 --
--- 설계 정본. docs/specs/2026-09-03-kanban-sprint-move-and-lock-budget.md R1·R2·R7 /
+-- 설계 정본. docs/specs/2026-09-03-kanban-sprint-move-and-lock-budget.md R1~R7 /
 -- docs/adr/2026-09-01-board-type-and-active-sprint.md D2.
 --
 -- 왜 필요한가. V506 ④ 는 **그때 존재하던** 스프린트를 전부 스크럼 보드에 붙였다. 그 뒤 스프린트 생성이
@@ -65,14 +65,73 @@ JOIN LATERAL (
 ) src ON TRUE
 JOIN board_columns c ON c.board_id = src.id;
 
--- ── ② 칸반 소속 스프린트를 그 프로젝트의 활성 스크럼 보드로 옮긴다 ─────────────────────────────
+-- ── ② ACTIVE 충돌을 해소한다 — 이관 대상만 PLANNED 로 내린다 (스펙 R3·R4·R5·R6 · 편차 X9) ──────
+-- ★ ③ 보다 **먼저** 돈다. ③ 이 board_id 를 옮기고 나면 「이관 대상」과 「목표 보드에 원래 있던 행」이
+--   같은 board_id 를 갖게 돼 SQL 로 구별할 수단이 사라진다. 단계 순서가 곧 판정의 재료다.
+-- ★ 옮기기 전 상태로 보기 때문에 `kb.board_type = 'KANBAN'` 하나로 대상이 「칸반에서 옮겨 오는 행」에
+--   묶인다. 기존 스크럼 보드의 원래 ACTIVE 는 이 UPDATE 에 아예 닿지 않는다(R6).
+-- ★ 왜 상태를 바꾸나. SprintRepository.findActiveByBoard 는 orderBy(created_at asc).limit(1) 이다.
+--   ACTIVE 를 유지한 채 옮기면 목표 보드에 ACTIVE 가 둘이 되고 화면은 먼저 만든 것 하나만 그린다 —
+--   고치려던 결함이 자리만 옮긴다. 게다가 그 스프린트는 이미 ACTIVE 라 start 가 409 로 막혀 손댈 방법이
+--   없고, 선행 스프린트를 완료하는 날 예고 없이 진행 중으로 나타난다.
+-- ★ COMPLETED 는 안 건드린다(스펙 E4). `s.status = 'ACTIVE'` 가 그 경계다.
+WITH move_candidate AS (
+    SELECT s.id AS sprint_id, s.created_at, tb.id AS target_board_id
+    FROM sprints s
+    JOIN boards kb ON kb.id = s.board_id
+    JOIN LATERAL (
+        SELECT b.id
+        FROM boards b
+        WHERE b.project_key = s.project_key
+          AND b.board_type = 'SCRUM'
+          AND b.deleted_at IS NULL
+        ORDER BY b.created_at, b.id
+        LIMIT 1
+    ) tb ON TRUE
+    WHERE kb.board_type = 'KANBAN'
+      AND s.deleted_at IS NULL
+      AND s.status = 'ACTIVE'
+),
+keep_active AS (
+    -- 목표 보드에 기존 ACTIVE 가 없는 경우에만 한 건을 남긴다(R5). 있으면 이 CTE 가 그 보드에서 0행이라
+    -- 이관 대상이 전부 아래 UPDATE 에 걸린다(R4).
+    -- ★ inc 가 이관 대상 자신을 집을 일은 없다 — 아직 안 옮겼으므로 대상의 board_id 는 칸반이고
+    --   target_board_id 는 스크럼이다. ② 를 ③ 뒤로 옮기는 순간 이 성질이 깨진다.
+    -- ★ ORDER BY 는 `(created_at, id)` — created_at 동점이면 id 로 가른다. created_at 만 쓰면 살아남는
+    --   스프린트가 실행마다 갈려 규칙이 규칙이 아니게 된다(BoardRepository.kt:263-265 가 같은 규칙에
+    --   같은 주석을 단다).
+    SELECT DISTINCT ON (mc.target_board_id) mc.sprint_id
+    FROM move_candidate mc
+    WHERE NOT EXISTS (
+        SELECT 1
+        FROM sprints inc
+        WHERE inc.board_id = mc.target_board_id
+          AND inc.status = 'ACTIVE'
+          AND inc.deleted_at IS NULL
+    )
+    ORDER BY mc.target_board_id, mc.created_at, mc.sprint_id
+)
+-- 내린 행만 version·updated_at 이 오른다. 안 내린 행은 ③ 이 board_id 만 바꾼 상태로 남는다.
+UPDATE sprints s
+SET status = 'PLANNED',
+    version = s.version + 1,
+    updated_at = now()
+FROM move_candidate mc
+WHERE s.id = mc.sprint_id
+  AND NOT EXISTS (
+      SELECT 1
+      FROM keep_active ka
+      WHERE ka.sprint_id = mc.sprint_id
+  );
+
+-- ── ③ 칸반 소속 스프린트를 그 프로젝트의 활성 스크럼 보드로 옮긴다 ─────────────────────────────
 -- 목적지 선정도 `(created_at, id)` 다 — findScrumBoardIdByProject 와 같은 규칙이라야 「이 프로젝트의
 -- 스크럼 보드」가 앱과 마이그레이션에서 같은 보드를 가리킨다(스펙 E3 · 스크럼 보드가 둘 이상인 경우).
 -- ★ LATERAL 이 0행이면 그 스프린트는 조인에서 통째로 빠져 **갱신되지 않는다**. board_id 는 NOT NULL
 --   이므로 상관 서브쿼리로 짜면 NULL 대입이 되어 마이그레이션이 죽는다 — 조인 형태가 안전판을 겸한다.
 --   ① 이 대상 프로젝트마다 보드를 보장하므로 실제로 0행이 되는 경로는 없다.
 -- ★ `board_id` 만 바꾼다. version·updated_at 은 건드리지 않는다(V506 ④ 와 동일) — 이관은 사용자의
---   편집이 아니라 데이터 정정이다. 상태 조정(ACTIVE → PLANNED)은 별건이다(스펙 R4·R5).
+--   편집이 아니라 데이터 정정이다. 상태 조정(ACTIVE → PLANNED)은 ② 가 이미 끝냈다(스펙 R4·R5).
 -- ★ COMPLETED 스프린트도 옮긴다(스펙 E4). 상태와 무관하게 「어느 보드의 백로그에 속하나」의 문제다.
 WITH move_target AS (
     SELECT s.id AS sprint_id, tb.id AS board_id
@@ -99,3 +158,5 @@ WHERE t.sprint_id = s.id;
 -- ★ 자동 원복 경로가 없다. 이관은 원래 board_id 를 어디에도 기록하지 않으므로 「어느 칸반에서 왔는지」를
 --   되살릴 수 없다. 되돌려야 한다면 백업 복구가 유일한 수단이다(DATA.md 백업/복구 절차).
 -- ★ ① 이 만든 스크럼 보드는 남는다 — V506 과 같은 비대칭이다. 소프트 삭제 대상으로 다뤄야 한다.
+-- ★ ② 가 내린 status 도 자동 원복 경로가 없다. 어느 행이 원래 ACTIVE 였는지를 어디에도 기록하지 않는다.
+--   version 이 1 올라간 것이 유일한 흔적이고, 그것만으로는 이관 이전 상태를 복원할 수 없다.
