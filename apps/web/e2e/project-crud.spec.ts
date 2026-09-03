@@ -2,7 +2,7 @@
 //
 // 시나리오 개요.
 //   S1  목록 표시         — /projects 진입 → 활성 프로젝트(ATLAS·MIDDLE·ZETA)만 테이블 표시, 아카이브(NOVA)는 숨김
-//   S2  생성 성공         — "새 프로젝트" → /projects/new → key·name 입력 → 제출 → /projects/{key}/board 이동
+//   S2  생성 성공         — "새 프로젝트" → /projects/new → key·name 입력 → 제출 → /projects/{key} 요약 이동 (J4)
 //   S3  아카이브 토글     — "아카이브된 프로젝트 표시" 토글 → 아카이브 프로젝트(NOVA)만 표시로 전환
 //   S4  설정 name 변경    — 프로젝트 설정 details에서 이름 수정 → 저장 → 재조회로 반영 확정
 //   S5  아카이브/해제 왕복 — danger zone에서 아카이브 → 해제, 매 단계 최종 DOM 상태로 확정
@@ -137,10 +137,11 @@ test.describe('S2 프로젝트 생성 성공 (FR-PJ PR-5 Task 8)', () => {
     await page.getByLabel('프로젝트 이름').fill('QA 플로우 프로젝트')
     await page.getByRole('button', { name: '프로젝트 생성', exact: true }).click()
 
-    // Then. 생성된 프로젝트의 보드로 이동 + 보드 화면이 실제로 로드된다(빈 보드 CTA로 확정)
-    await page.waitForURL('**/projects/QAFLOW/board')
-    expect(new URL(page.url()).pathname).toBe('/projects/QAFLOW/board')
-    await expect(page.getByText('보드가 없습니다', { exact: true })).toBeVisible()
+    // Then. 생성된 프로젝트의 요약으로 이동 + 요약 화면이 실제로 로드된다(부제로 확정).
+    // 착지가 보드에서 요약으로 바뀌었다 (Jira 패리티 J4 · 캠페인 PR ④) — 목록·트리·즐겨찾기와 같은 곳으로 모았다.
+    await page.waitForURL('**/projects/QAFLOW')
+    expect(new URL(page.url()).pathname).toBe('/projects/QAFLOW')
+    await expect(page.getByText('최근 7일 활동과 현재 작업 분포입니다.', { exact: true })).toBeVisible()
   })
 })
 

@@ -215,7 +215,7 @@ describe('ProjectCreateRouteAdapter', () => {
     mockUseAuthUser.mockReturnValue(CAN_CREATE_USER)
   })
 
-  it('T11 (S3): 제출 성공 시 /projects/{key}/board로 navigate가 호출된다', async () => {
+  it('T11 (S3): 제출 성공 시 /projects/{key} 요약으로 navigate가 호출된다 (J4)', async () => {
     const user = userEvent.setup()
     renderRouteAdapter()
 
@@ -225,7 +225,7 @@ describe('ProjectCreateRouteAdapter', () => {
 
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({
-        to: '/projects/$projectKey/board',
+        to: '/projects/$projectKey',
         params: { projectKey: 'NEWPRJ' },
       }),
     )

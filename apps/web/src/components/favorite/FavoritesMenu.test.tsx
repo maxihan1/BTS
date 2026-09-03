@@ -222,7 +222,7 @@ describe('FavoritesMenu — S4 항목 Link 라우트', () => {
     expect(link).toHaveAttribute('href', '/dashboards/dash-abc')
   })
 
-  it('S4c: PROJECT 항목 링크가 /projects/{key}/board 경로를 갖는다', async () => {
+  it('S4c: PROJECT 항목 링크가 /projects/{key} 요약 경로를 갖는다 (J4)', async () => {
     const user = userEvent.setup()
     seedFavorites(ALICE_USER_ID, [
       { id: 'fav-p', targetType: 'PROJECT', targetId: 'MYPROJ', createdAt: '2024-01-01T00:00:00Z' },
@@ -232,7 +232,7 @@ describe('FavoritesMenu — S4 항목 Link 라우트', () => {
     await user.click(screen.getByRole('button', { name: favoriteLabels.dropdownTriggerAriaLabel }))
 
     const link = await screen.findByRole('link', { name: 'MYPROJ' })
-    expect(link).toHaveAttribute('href', '/projects/MYPROJ/board')
+    expect(link).toHaveAttribute('href', '/projects/MYPROJ')
   })
 })
 
