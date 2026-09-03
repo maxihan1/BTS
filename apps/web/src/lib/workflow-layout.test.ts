@@ -1,7 +1,13 @@
 // 워크플로우 다이어그램 자동 배치 순수 함수 단위 테스트 (FR-WF-07 D8)
 import { describe, it, expect } from 'vitest'
-import { autoLayout } from './workflow-layout'
-import type { LayoutInputState, PlacedNode } from './workflow-layout'
+import { autoLayout, edgeRoutes, START_NODE_ID } from './workflow-layout'
+import type {
+  EdgeRouteResult,
+  LayoutInputState,
+  LayoutInputTransition,
+  PlacedNode,
+  RoutedEdge,
+} from './workflow-layout'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 헬퍼
@@ -91,5 +97,118 @@ describe('autoLayout', () => {
 
     // 입력 배열 자체도 건드리지 않는다 — 제자리 정렬은 초안의 상태 순서를 뒤집는다
     expect(draftStates.map((state) => state.key)).toEqual(['done', 'todo', 'doing'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// edgeRoutes
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeTransition(
+  overrides: Partial<LayoutInputTransition> & { to: string },
+): LayoutInputTransition {
+  return {
+    from: null,
+    name: '전환',
+    kind: 'NORMAL',
+    ...overrides,
+  }
+}
+
+/**
+ * 경로 계산 결과에서 입력 위치로 간선을 집는다.
+ *
+ * `nodeOf` 와 같은 이유로 `?.` 를 쓰지 않는다 — 간선이 통째로 빠져도 판정이 조용히 통과한다.
+ */
+function edgeAt(result: EdgeRouteResult, transitionIndex: number): RoutedEdge {
+  const found = result.edges.find((edge) => edge.transitionIndex === transitionIndex)
+  if (found === undefined) throw new Error(`경로 결과에 입력 ${transitionIndex} 번 간선이 없다`)
+  return found
+}
+
+describe('edgeRoutes', () => {
+  it('self-loop 은 곡선 offset 을 받는다', () => {
+    const result = edgeRoutes([
+      makeTransition({ from: 'doing', to: 'doing', name: '재작업' }),
+      makeTransition({ from: 'doing', to: 'doing', name: '담당자 변경' }),
+      makeTransition({ from: 'todo', to: 'doing', name: '시작' }),
+    ])
+
+    // 직선(offset 0)이면 노드에 완전히 가려 사용자가 self-loop 이 있는지조차 모른다
+    expect(edgeAt(result, 0).selfLoop).toBe(true)
+    expect(edgeAt(result, 0).offset).not.toBe(0)
+    expect(edgeAt(result, 1).offset).not.toBe(0)
+
+    // self-loop 이 여럿이면 서로 다른 크기로 겹겹이 벌어진다
+    expect(edgeAt(result, 0).offset).not.toBe(edgeAt(result, 1).offset)
+
+    // 굽힐 이유가 없는 홑간선까지 휘게 만들지는 않는다
+    expect(edgeAt(result, 2).selfLoop).toBe(false)
+    expect(edgeAt(result, 2).offset).toBe(0)
+  })
+
+  it('같은 상태쌍에 전환이 여럿이면 서로 다른 offset 을 받는다', () => {
+    // FR-WF-05 가 같은 쌍의 다중 전환을 허용한다 — 겹쳐 그리면 어느 것을 고르는지 알 수 없다
+    const result = edgeRoutes([
+      makeTransition({ from: 'todo', to: 'doing', name: '시작' }),
+      makeTransition({ from: 'todo', to: 'doing', name: '급행 시작' }),
+      makeTransition({ from: 'todo', to: 'doing', name: '이관 시작' }),
+      makeTransition({ from: 'doing', to: 'done', name: '완료' }),
+    ])
+
+    const offsets = [0, 1, 2].map((index) => edgeAt(result, index).offset)
+    expect(new Set(offsets).size).toBe(3)
+
+    // 벌림은 쌍 단위다 — 쌍이 하나뿐인 전환은 그대로 직선이다
+    expect(edgeAt(result, 3).offset).toBe(0)
+  })
+
+  it('INITIAL 전환은 시작 노드에서 출발한다', () => {
+    const result = edgeRoutes([
+      makeTransition({ from: null, to: 'todo', name: '생성', kind: 'INITIAL' }),
+    ])
+
+    // mermaid 의 [*] 에 대응하는 가상 시작 노드. 출발지가 없다는 것이 INITIAL 의 정의다
+    expect(edgeAt(result, 0).source).toBe(START_NODE_ID)
+    expect(edgeAt(result, 0).target).toBe('todo')
+    expect(result.hasStartNode).toBe(true)
+
+    // INITIAL 이 없으면 시작 노드를 그리지 않는다 — 늘 참이면 빈 원이 떠다닌다
+    const withoutInitial = edgeRoutes([makeTransition({ from: 'todo', to: 'doing', name: '시작' })])
+    expect(withoutInitial.hasStartNode).toBe(false)
+  })
+
+  it('GLOBAL 전환은 간선을 만들지 않는다', () => {
+    const result = edgeRoutes([
+      makeTransition({ from: null, to: 'done', name: '강제 종료', kind: 'GLOBAL' }),
+      makeTransition({ from: 'todo', to: 'doing', name: '시작' }),
+    ])
+
+    // 모든 노드에서 선을 뽑으면 화면을 읽을 수 없다. 대신 「모든 상태에서」 패널 목록으로 돌려준다
+    expect(result.edges).toHaveLength(1)
+    expect(edgeAt(result, 1).source).toBe('todo')
+    expect(result.globals).toEqual([{ transitionIndex: 0, to: 'done', name: '강제 종료' }])
+
+    // GLOBAL 은 시작 노드도 부르지 않는다 — 시작 진입과 전역 전환은 다른 것이다
+    expect(result.hasStartNode).toBe(false)
+  })
+
+  it('from 이 null 이어도 이름이 null 인 노드를 만들지 않는다', () => {
+    const result = edgeRoutes([
+      makeTransition({ from: null, to: 'todo', name: '생성', kind: 'INITIAL' }),
+      makeTransition({ from: null, to: 'done', name: '강제 종료', kind: 'GLOBAL' }),
+      // 스키마상 NORMAL 의 from 도 nullable 이다 — 계약 위반 데이터가 들어와도 노드를 만들지 않는다
+      makeTransition({ from: null, to: 'doing', name: '유입 불명', kind: 'NORMAL' }),
+    ])
+
+    // ★ learnings.md:223 실측 사고. mermaid 에서 `${from} --> ${to}` 보간이 'null' 이라는 이름의
+    //   상태 노드를 만들어 노드 수 단언이 어긋났다. 같은 함정이 xyflow 식별자에도 있다.
+    const identifiers = result.edges.flatMap((edge) => [edge.id, edge.source, edge.target])
+    expect(identifiers.length).toBeGreaterThan(0)
+    expect(identifiers.filter((id) => id.includes('null'))).toEqual([])
+
+    // 출발지 없는 전환이 통째로 사라져서도 안 된다 — 하나는 패널로, 둘은 시작 노드에서 간선으로
+    expect(result.edges).toHaveLength(2)
+    expect(result.globals).toHaveLength(1)
   })
 })
