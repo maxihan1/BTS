@@ -185,6 +185,303 @@ filters) `V506` `V507`. `agile-planning` BC 범위는 V500–V599 이고 **V507 
 **흔들었으나 문제없던 것** — R5(컬럼 category)는 완료 판정을 안 흔든다. `category` 는 표시용
 스냅샷이고 `agile-planning` 의 참조 8곳이 전부 DTO 변환이다(`V500:27` 이 그렇게 적었고 실측 일치).
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+**분해 원칙.** Task 4·5·6 이 `BoardResponses.kt`·`BoardApplicationService.kt` 를 공유해 **파일 겹침으로
+자동 직렬화**된다(§2 메타 계약). 억지로 병렬화하면 wave 안에서 서로의 산출물을 덮으므로 그대로 둔다.
+
+### Task 1. V508 — `board_column_states` 신설 + 백필 + `state_key` NOT NULL 완화
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V508__board_column_states.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardColumnStatesMigrationTest.kt`]
+- depends-on: []
+- jira: [J1]
+
+**RED**:
+- 파일: `.../migration/BoardColumnStatesMigrationTest.kt` (신규)
+- 선례 `KanbanSprintMoveMigrationTest.kt`(#440) — **전용 컨테이너** + Flyway `target` 고정 다단계 + JDBC 직접 재실행으로 멱등 측정
+- 테스트:
+  ```kotlin
+  @Test fun `백필 후 board_column_states 행 수가 board_columns 행 수와 같다`()      // R2·N1
+  @Test fun `백필된 state_key 값 집합이 board_columns 의 것과 완전히 같다`()          // R2·N1
+  @Test fun `board_id state_key 유일 제약이 두 컬럼에 같은 상태를 막는다`()            // X1·D3
+  @Test fun `column_id 전용 인덱스가 존재한다`()                                      // N3
+  @Test fun `board_columns.state_key 가 NULL 을 허용한다`()                          // ★G1
+  @Test fun `V508 SQL 을 JDBC 로 재실행해도 행이 늘지 않는다`()                        // E6
+  @Test fun `컬럼을 지우면 board_column_states 행이 CASCADE 로 함께 지워진다`()        // R10 의 DB 층
+  ```
+- 실패 메시지 (예상): `relation "board_column_states" does not exist`
+
+**GREEN**:
+- 파일: `V508__board_column_states.sql`
+- **서식 정본은 `V203__add_global_status_catalog.sql:36-60` 의 `workflow_statuses`** — 발명하지 않는다
+- `UNIQUE (board_id, state_key)` + `UNIQUE (column_id, state_key)` · FK 인덱스는 `column_id` 만
+  따로(`board_id` 는 UNIQUE 의 leftmost prefix 가 덮는다 — `V500:36-38` 이 같은 판단을 적었다)
+- 백필 `INSERT … SELECT id, board_id, state_key, 0 FROM board_columns` + `ON CONFLICT DO NOTHING`(E6)
+- `ALTER TABLE board_columns ALTER COLUMN state_key DROP NOT NULL` — **제약 완화라 무손실**
+- ⚠️ `board_columns.state_key` 를 **DROP 하지 않는다**(`DATA.md §4` 3단 분할)
+
+**REFACTOR**:
+- 주석 밀도를 `V507` 에 맞춘다. 되돌리기 절을 반드시 적는다 — 이 마이그레이션은 **되돌릴 수 있다**
+  (신설 테이블 DROP + `SET NOT NULL` 복원). `V507` 과 달리 파괴적 변경이 0 이라는 사실을 명시한다
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*BoardColumnStatesMigrationTest'`
+(파이프 금지 — 종료 코드가 `tail` 것이 된다. 로그는 파일로 받고 `EXIT=$?` 로 읽는다)
+
+---
+
+### Task 2. 도메인 — 컬럼이 상태 **집합**을 갖는다 (`placeCards` · `seedColumns` · category 규칙)
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/BoardColumn.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/domain/BoardCardPlacement.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/domain/BoardCardPlacementTest.kt`]
+- depends-on: []
+- jira: [J1, J3]
+
+**RED**:
+- 파일: `BoardCardPlacementTest.kt` (기존 확장)
+- 순수 함수라 컨테이너가 필요 없다 — red 를 가장 싸게 본다
+- 테스트:
+  ```kotlin
+  @Test fun `컬럼이 상태 둘을 담으면 두 상태의 이슈가 모두 그 컬럼에 배치된다`()        // R3
+  @Test fun `어느 컬럼의 어느 상태에도 없는 이슈는 제외되고 unplacedCount 에 잡힌다`()   // R3·E2
+  @Test fun `상태 0개 컬럼은 카드 0장으로 배치된다`()                                  // E1·N4
+  @Test fun `컬럼 category 는 담은 상태들의 최댓값이다 DONE 이 IN_PROGRESS 를 이긴다`() // R5
+  @Test fun `seedColumns 는 여전히 상태 1개당 컬럼 1개를 만든다`()                     // R4
+  @Test fun `컬럼 내 카드 정렬은 rank NULLS LAST priority key 순서를 유지한다`()        // 무회귀
+  ```
+- 실패 메시지 (예상): `BoardColumn` 에 `stateKeys` 프로퍼티 없음
+
+**GREEN**:
+- `BoardColumn.stateKey: String` → **`stateKeys: List<String>`**
+- `placeCards` — `issues.groupBy { currentStateKey }` 는 유지하고, 컬럼별로 **자기 `stateKeys` 의
+  카드를 모아 합친 뒤** `CARD_COMPARATOR` 로 정렬. `knownStateKeys` 는 전 컬럼의 `stateKeys` 합집합
+- category 우선순위 `DONE > IN_PROGRESS > TODO` 를 상수 맵으로
+
+**REFACTOR**:
+- category 규칙을 `BoardColumn` 의 함수로 응집 + KDoc 에 R5·X2 근거(「`category` 는 표시용
+  스냅샷이고 로직 판정에 안 쓰인다 — `V500:27`」)를 적는다
+
+**뮤테이션 짝** (GREEN 선커밋 뒤): `placeCards` 가 `stateKeys.first()` 만 보게 되돌리면
+「상태 둘」 테스트 **1건만** red. ← 이 뮤테이션이 결함 지점(집합 매칭)을 실제로 지난다
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*BoardCardPlacementTest'`
+
+---
+
+### Task 3. 리포지터리 — 컬럼–상태 조인 읽기 + 이중 기록 쓰기
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardColumnStateRepository.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/repository/BoardColumnStateRepositoryTest.kt`]
+- depends-on: [1, 2]
+- jira: [J1]
+
+**RED**:
+- 파일: `BoardColumnStateRepositoryTest.kt` (신규)
+- 테스트:
+  ```kotlin
+  @Test fun `보드 조회가 컬럼별 상태 집합을 한 번의 조인으로 읽는다`()                  // N3
+  @Test fun `컬럼에 상태 둘을 쓰면 두 행이 생기고 display_order 가 보존된다`()          // R1
+  @Test fun `쓰기가 board_columns.state_key 에 첫 상태를 함께 남긴다`()                // E5 이중 기록
+  @Test fun `상태 0개 컬럼을 쓰면 board_columns.state_key 가 NULL 이 된다`()           // E1·G1
+  ```
+- 실패 메시지 (예상): `BoardColumnStateRepository` 클래스 없음
+
+**GREEN**:
+- **신규 파일** `BoardColumnStateRepository.kt` — ★**N2 를 지킨다.** `BoardRepository.kt` 는 443줄로
+  `DEVELOPMENT.md §2.1` 상한을 이미 넘었다(부채 157). 새 쿼리를 거기 넣지 않는다
+- `BoardRepository` 는 **호출 위임만** 추가한다. 줄수 증가를 0 에 가깝게 유지하고, 늘어난 줄수를
+  검증에서 실측한다
+- 이중 기록(E5)은 **같은 트랜잭션**에서. 컬럼 상태가 2개 이상이면 레거시 컬럼에는 첫 상태를 쓴다
+
+**REFACTOR**:
+- 조인 쿼리에 KDoc — 「읽기는 신규 테이블만 본다. 레거시 `state_key` 는 롤백 대비 사본일 뿐」
+
+**검증**:
+- `./gradlew :modules:agile-planning:test --tests '*BoardColumnStateRepositoryTest'`
+- `wc -l BoardRepository.kt` ≤ **443** (N2 실측)
+
+---
+
+### Task 4. 응답 계약 — `stateKeys` 배열 + 미매핑 상태 목록
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/dto/BoardResponsesTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`]
+- depends-on: [2, 3]
+- jira: [J1, J2]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `BoardColumnResponse 가 stateKeys 배열을 낸다`()                          // R11
+  @Test fun `BoardColumnWithCardsResponse 와 ColumnMetaResponse 도 배열을 낸다`()      // R11
+  @Test fun `보드 조회가 어느 컬럼에도 없는 상태를 unmappedStates 로 낸다`()            // R8·J2
+  @Test fun `unmappedStates 기준이 listStates projectKey null 이다`()                 // R8·G3
+  @Test fun `모든 상태가 매핑됐으면 unmappedStates 가 빈 배열이다`()                    // R8
+  ```
+- 실패 메시지 (예상): `stateKeys` 프로퍼티 없음 / `unmappedStates` 없음
+
+**GREEN**:
+- DTO 3종 `stateKey: String` → `stateKeys: List<String>`
+- `getBoard` 가 `listStates(projectKey, null)` 결과에서 매핑된 키를 빼 `unmappedStates` 를 만든다
+  — **`createBoard:124` 와 같은 호출**이어야 한다(G3)
+
+**REFACTOR**:
+- `unmappedStates` 계산을 `BoardCardPlacement` 의 순수 함수로 뺀다(테스트 가능성 · N5 유지)
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*BoardResponsesTest' --tests '*BoardApplicationServiceTest'`
+
+---
+
+### Task 5. `moveCard` — `toStateKey` 수용 + `toColumnId` 하위 호환
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BoardApplicationServiceTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- depends-on: [4]
+- jira: [J3, J4]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `toStateKey 로 옮기면 그 상태로 전환된다`()                                // R6
+  @Test fun `toStateKey 가 그 보드의 어느 컬럼에도 없으면 404`()                        // E4
+  @Test fun `같은 컬럼 안 다른 상태로도 옮길 수 있다`()                                 // E3
+  @Test fun `toColumnId 만 보내고 그 컬럼의 상태가 1개면 성공한다`()                     // R7
+  @Test fun `toColumnId 만 보내고 그 컬럼의 상태가 2개 이상이면 400`()                   // R7
+  @Test fun `둘 다 없으면 400 · 둘 다 있으면 400`()                                    // R7
+  ```
+- 실패 메시지 (예상): `MoveCardRequest` 에 `toStateKey` 없음
+
+**GREEN**:
+- `MoveCardRequest` — `toColumnId: UUID?` + `toStateKey: String?` 둘 다 nullable, **둘 중 정확히
+  하나**를 요구하는 검증을 서비스가 진다(`@NotNull` 로는 「둘 중 하나」를 표현 못 한다)
+- 신규 코드 상수 `AGILE_COLUMN_STATE_AMBIGUOUS`(400) · `AGILE_BOARD_STATE_NOT_MAPPED`(404)
+- 예외 핸들러는 `assignableTypes` 로 **스코프를 좁힌다** — 과거 「401→500 변질」 사고의 처방
+
+**REFACTOR**:
+- 요청 해석(`toStateKey` 도출)을 private 헬퍼로. `moveCard` 본문은 전환 위임에 집중
+
+**뮤테이션 짝**: 「상태가 그 보드에 매핑됐는지」 검증을 지우면 **404 테스트 1건만** red
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*BoardApplicationServiceTest' --tests '*BoardControllerIntegrationTest'`
+
+---
+
+### Task 6. 컬럼 관리 API 3종 — 생성 · 삭제 · 상태 집합 교체
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`]
+- depends-on: [5]
+- jira: [J1, J2, J5]
+
+**RED**:
+- 테스트:
+  ```kotlin
+  @Test fun `POST columns 로 상태 0개 컬럼을 만들 수 있다`()                           // R9·E1
+  @Test fun `PUT states 로 컬럼의 상태 집합을 통째로 교체한다`()                        // R9
+  @Test fun `다른 컬럼이 쓰는 상태를 PUT 하면 409 이고 어느 컬럼인지 알려준다`()          // E7·X1
+  @Test fun `stateKeys 에 중복이 있으면 400`()                                        // E9
+  @Test fun `DELETE 하면 그 컬럼의 상태가 미매핑으로 돌아가고 이슈는 그대로다`()          // R10·J5
+  @Test fun `마지막 컬럼도 지울 수 있다`()                                            // E8
+  @Test fun `권한 없는 actor 는 기존 컬럼 API 와 같은 코드로 거부된다`()                 // 권한 승계
+  ```
+- 실패 메시지 (예상): 404 (엔드포인트 없음)
+
+**GREEN**:
+- 3 엔드포인트. 권한 게이트는 `PATCH /{id}/columns/{columnId}` 의 `loadBoardWithCreate`(`:344`)를 **승계**
+- `PUT states` 를 고른 이유는 스펙에 있다 — 집합 전체를 받아야 X1 위반을 **한 요청 안에서** 판정한다
+
+**REFACTOR**:
+- `BoardController` 줄수 확인. 늘어나면 요청 검증을 DTO `init` 블록으로 옮긴다
+
+**검증**: `./gradlew :modules:agile-planning:test --tests '*BoardControllerIntegrationTest'`
+
+---
+
+### Task 7. 프론트 최소 수정 — `stateKeys` 정합 + `toStateKey` 전송
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/boards.ts`, `apps/web/src/api/boards.test.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/board-fixtures.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/workflow-draft-handlers.ts`, `apps/web/src/components/board/BoardColumn.tsx`, `apps/web/src/components/board/BoardColumn.test.tsx`, `apps/web/src/components/board/KanbanBoard.test.tsx`, `apps/web/src/components/board/ScrumSprintEmptyState.test.tsx`, `apps/web/src/components/board/board-drop.ts`, `apps/web/src/components/board/board-drop.test.ts`, `apps/web/src/hooks/use-move-card.test.tsx`, `apps/web/src/hooks/use-reorder-card.test.tsx`, `apps/web/src/hooks/use-change-card-field.test.tsx`, `apps/web/src/lib/backlog-completion.test.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/routes/__tests__/projects.board.test.tsx`]
+- depends-on: [4, 5]
+- jira: [J3]
+
+**RED**:
+- ★**learning 2026-05-30 「Zod 응답 스키마 강화가 산재한 인라인 mock 을 깬다」(PR #46)의 양식이다.**
+  `stateKey: string` → `stateKeys: string[]` 이 정확히 그것이고, 예방 4항목을 그대로 적용한다 —
+  ①`stateKey` 사용 **17파일 전수**를 위 `files` 에 넣었다 ②산재한 인라인 리터럴은 공용 fixture 로
+  모을 수 있는지 본다 ③**`tsc --noEmit` 동반 필수**(vitest 는 타입체크를 안 해 `z.parse` 런타임에서만
+  터진다) ④RED 에 **기존 mock 회귀 검증**을 포함
+- 테스트:
+  ```ts
+  it('boardColumnSchema 가 stateKeys 배열을 파싱한다')                    // R11
+  it('카드 이동 요청이 toStateKey 를 보낸다')                              // R12
+  it('상태가 여럿인 컬럼에 떨구면 첫 상태를 보낸다')                        // R12 과도기 동작
+  it('기존 보드 픽스처가 새 스키마로도 파싱된다')                           // ④ 회귀
+  ```
+
+**GREEN**:
+- Zod `stateKey: z.string()` → `stateKeys: z.array(z.string())` (2곳)
+- `board-drop.ts` 가 드롭 대상 컬럼의 `stateKeys[0]` 을 `toStateKey` 로 보낸다
+- **드롭존 UI 는 만들지 않는다**(X3). 화면 구조 무변경
+
+**REFACTOR**:
+- 인라인 mock 이 3곳 이상 같은 모양이면 `makeBoardColumn(overrides)` fixture 로 모은다(learning ②)
+
+**검증**:
+- `apps/web/node_modules/.bin/vitest run` (worktree 에서 `pnpm` 래퍼는 죽는다 — 바이너리 직접 호출)
+- **`node_modules/.bin/tsc -p apps/web/tsconfig.app.json --noEmit`** ← ③. 루트 `tsconfig.json` 은
+  `files: []` 라 **0개 파일을 검사하고 종료 0** 이다(#431 실측 — 이전 세션이 한 번 속았다)
+- 기존 E2E: `scrum-board` · `board-manage` · `quick-filter` (E11 · 표적 실행)
+
+---
+
+### Task 8. 무회귀 실측 — 선행 마이그레이션 테스트와 E2E
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/SprintBoardIdBackfillMigrationTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/KanbanSprintMoveMigrationTest.kt`]
+- depends-on: [1, 6, 7]
+- jira: []
+
+**RED**: 이 task 는 **판정만** 한다 — 새 테스트를 쓰지 않고 기존 것이 여전히 초록인지 실측한다.
+초록이면 그대로, red 면 그 자리가 회귀다.
+
+**측정 대상**:
+1. `SprintBoardIdBackfillMigrationTest` · `KanbanSprintMoveMigrationTest` — ★**`target` 을 안 고정한
+   테스트는 V508 까지 돈다.** #440 이 같은 함정(E10)을 실측했다. 초록이 아니면 `target` 고정이 필요
+2. `agile-planning` 모듈 **전량** — 공유 컨테이너 1개·DB 1개(`AgilePlanningTestcontainersConfig.kt:73,78`)
+   라 다른 클래스가 V508 의 영향을 받을 수 있다
+3. E2E 표적 — `scrum-board` · `board-manage` · `quick-filter` · `backlog`
+4. 판별식 전량 — `debt-ledger-mapping` 포함(장부를 안 건드렸으므로 계속 초록이어야 한다)
+
+**GREEN**: 회귀가 나오면 원인을 지목해 해당 task 로 되돌린다. **이 task 에서 소스를 고치지 않는다.**
+
+**검증**:
+- `./gradlew :modules:agile-planning:test --rerun-tasks` (로그는 파일로 · `EXIT=$?` 로 판정)
+- `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`
+- `./gradlew ktlintCheck detekt --rerun-tasks`
+
+## Plan 메타
+
+- **task 수** 8 (각 TDD 사이클 1개) · **예상 wave** 6
+- **wave 배치** — ① T1·T2(파일 무교집합, 병렬) → ② T3 → ③ T4 → ④ T5 → ⑤ T6 → ⑥ T7·T8
+  Task 4·5·6 은 `BoardResponses.kt`·`BoardApplicationService.kt` 를 공유해 **파일 겹침 자동 직렬화**
+  된다(§2). 억지 병렬은 서로의 산출물을 덮으므로 그대로 둔다
+- **구현 규율** TDD red→green→refactor. `test:` 커밋이 `feat:` 보다 먼저 — CI 판별식 ①d 가 대조한다
+- **추가 검증** ktlintCheck · detekt(둘 다 `--rerun-tasks`) · `tsc -p tsconfig.app.json --noEmit` ·
+  vitest · Playwright 표적 4 spec · 판별식 전량 · `node scripts/build-doc-index.mjs --check`
+- **Jira 매핑** — J1→T1·T2·T3·T4·T6 · J2→T4·T6 · J3→T2·T5·T7 · J4→T5 · J5→T6 · **J6 기각(X2 — 완료
+  판정을 위치 기반으로 옮기지 않는다)**. 채택 5건 전부 최소 1개 task 에 물렸다 — **차집합 0**
+- **뮤테이션 짝 2건 예고** — T2(집합 매칭을 `first()` 로 되돌리면 그 1건만 red) ·
+  T5(보드 매핑 검증을 지우면 404 1건만 red). 둘 다 **결함이 사는 자리를 실제로 지난다**
+- **장부** 이 PR 은 부채를 닫지 않는다. 157 은 N2 로 「더 늘리지 않는다」만 지키고 본문 갱신 대상이
+  아니다. 177 은 등재 완료이고 범위 밖이다 — **장부 갱신 task 없음**
+
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
