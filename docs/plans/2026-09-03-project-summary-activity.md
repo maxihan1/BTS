@@ -63,7 +63,7 @@ Jira Cloud 실물 조회로 확정한 규칙. 기억으로 다시 정하지 않�
 
 ---
 
-## 리뷰 후속 — BLOCKER 3건 (게이트 2 에서 확정)
+## 리뷰 후속 — BLOCKER 3건 (게이트 2 에서 확정 · **3건 모두 해소**)
 
 **공통 진단.** 같은 `issue_change_item` 행을 읽는 **새 경로가 기존 방어선 3겹을 우회한다.**
 `/issues/{key}/changelog` 가 이미 하고 있는 것을 `/projects/{key}/activity` 가 하지 않는다.
@@ -82,6 +82,10 @@ Jira Cloud 실물 조회로 확정한 규칙. 기억으로 다시 정하지 않�
 - red — 「가려진 필드를 가진 뷰어의 activity 항목 값 4종이 null」
 - 비-공허 짝 — 같은 픽스처에서 필드 권한만 열면 원문이 보인다
 
+**해소.** `IssueChangeItemMasker`(`com.bts.issue.application`)로 추출하고 두 서비스가 주입받는다.
+`IssueChangelogService` 는 의존 3개(issueRepository·fieldPermissionResolver·commentRepository)가
+전부 마스킹 전용이었으므로 masker 1개로 대체됐다. projectId 미해석 시 원본 유지 폴백은 보존.
+
 ### B2 — 삭제된 댓글 본문 마스킹(FR-CO-02) 미적용
 
 `fetchProjectActivity` 는 `field` 를 한정하지 않아 `comment:<uuid>` 항목이 함께 실린다.
@@ -92,6 +96,16 @@ Jira Cloud 실물 조회로 확정한 규칙. 기억으로 다시 정하지 않�
 프로젝트 피드용으로 **이슈별 배치**로 확장해야 한다 — `findActiveIds` 를 이슈당 1회가 아니라
 피드 1회로 묶는다(N+1 회피). 확장이 어려우면 `comment:` 항목을 피드에서 제외하고
 그 사실을 응답 계약에 명시한다. **조용히 흘리는 선택지는 없다.**
+
+**해소 — 제외가 아니라 마스킹을 골랐다.**
+제외하면 「삭제된 댓글이 수정된 적 있다」는 감사 사실까지 사라져 단건 이력과 비대칭이 되고,
+활성 댓글의 정상 수정 이력마저 피드에서 빠진다. 대신 `CommentRepository.findActiveIds(ids, issueId)`
+→ `findActiveOwners(idsByIssue): Map<댓글id, 이슈id>` 로 바꿔 **이슈가 여럿이어도 쿼리 1회**를 지키면서
+소속 대조를 `WHERE` 안에 남겼다 — `(issue_id = A AND id IN (..)) OR (issue_id = B AND id IN (..))`.
+집합이 아니라 맵을 돌려주는 이유도 같다. 호출자가 항목마다 자기 이슈와 다시 대조해야 타 이슈의
+활성 댓글 id 가 섞여 마스킹을 뚫는 경로가 막힌다(`CommentRepository` 클래스 KDoc 의 원칙 유지).
+피드 원천에는 `ProjectActivityRow.issueId`(`ISSUE_CHANGE_GROUP.ISSUE_ID`)를 추가했다 —
+`issueKey` 는 기록 시점 값이라 소속 판정의 근거가 못 된다.
 
 ### B3 — VIEW_ISSUE 게이트를 BROWSE_PROJECT 로 대체
 
@@ -106,27 +120,34 @@ Jira Cloud 실물 조회로 확정한 규칙. 기억으로 다시 정하지 않�
 
 - red — 「BROWSE 는 있고 VIEW 는 없는 뷰어의 activity 에 그 이슈 항목이 0건」
 
+**해소.** 이슈 키 캐시로 판정 1회/이슈. `IssuePermissionResolver` 에 배치 API 가 없고 그 추가는
+shared-kernel 변경이라 T3 승격이므로, 피드가 최대 `limit`(50) 그룹이라는 근거로 개별 호출 + 캐시를 택했다.
+이슈 키 접두사가 조회 대상 프로젝트 키와 다르면 **묻지 않고 거부**한다 — resolver 가 접두사로 프로젝트를
+해석하므로 그대로 물으면 다른 프로젝트 기준 판정이 나온다(fail-closed).
+
 ## 리뷰 후속 — CONCERNS
 
 | # | 무엇 | 처방 |
 |---|---|---|
 | C1 | `buildStatusOverview` 가 `groupBy { currentStateKey }` 뒤 `rows.first().typeId` 로 이름·카테고리를 해석 — 타입별로 같은 키가 다른 카테고리일 수 있다 | `(statusKey, category)` 로 묶거나 상태 키 전역 유일 전제를 KDoc 에 못 박고 테스트로 고정 |
-| C2 | `priorityBreakdown` 만 표시명이 없다 — 형제 3종은 이름을 싣고 `IssueResponse.kt:93-94` 도 `priority`+`priorityName` 을 준다 | DTO 매퍼에서 `priorityName` 을 채운다. `IssuePriority.fromNumber` 는 범위 밖 throw 라 방어적으로 감싼다 |
+| C2 | `priorityBreakdown` 만 표시명이 없다 — 형제 3종은 이름을 싣고 `IssueResponse.kt:93-94` 도 `priority`+`priorityName` 을 준다 | **해소.** DTO 매퍼가 `priorityName: String?` 을 채운다. `IssuePriority.fromNumberOrNull` 을 단일 출처에 추가해 예외를 삼키지 않고 "값 없음" 을 타입으로 표현 — 범위 밖이면 키만 빠지고 200 유지 |
 | C4 | D3 의 성능 부채가 원장에 미등재 | `TODOS.md` 에 ① 인덱스 부재 ② 무제한 fetch 두 건 등재 |
 | C5 | 계획이 저장소 밖이라 `jira-research-guard` 가 공허 통과 | **이 파일로 해소.** `## Jira 대조` 절 포함 |
 | A1 | OpenAPI 에 `limit` 계약 미기재(기본 20 · 1~50 · 범위 밖 400) | `@Parameter` + `@Schema(minimum/maximum/defaultValue)` |
 | A2 | `Instant` ISO-8601 직렬화가 실조립 Jackson 으로 미검증 | `WorkflowReadContractProdBootTest` 동형 prod-boot 계약 테스트 추가 |
-| A3 | NON_NULL 5필드는 ④의 Zod 가 `.nullish()` 여야 한다 | ④ 스펙에 계약으로 전달 |
+| A3 | NON_NULL **6필드**(C2 로 `priorityName` 추가)는 ④의 Zod 가 `.nullish()` 여야 한다 | ④ 스펙에 계약으로 전달 |
 | S1 | `StatusHistoryRepository` companion 을 `public` → `internal` | 같은 BC 안 재사용은 되고 타 BC 컴파일 의존은 막힌다 |
 | T1 | `SUM-5` 의 labels 픽스처가 **도달 불가** — 그 쿼리는 조인이 없고 `labels` 는 배열 컬럼이라 막겠다는 결함이 구조적으로 불가능 | 근거를 「전방 회귀 가드」로 정정하거나 실제 조인 쿼리로 픽스처를 옮긴다 |
-| T2 | 창 경계(시작 inclusive / 끝 exclusive)를 서비스 수준에서 단언하는 테스트 없음 | `recentFrom` 정각 = 포함, `recentTo` 정각 = 제외 테스트 추가 |
+| T2 | 창 경계(시작 inclusive / 끝 exclusive)를 서비스 수준에서 단언하는 테스트 없음 | **해소.** `ProjectSummaryServiceTest` 「집계 창 경계」 2건. `inRecent` 시작 배타화·`inPrevious` 끝 포함화 두 뮤테이션에서 각각 red 를 확인했다 |
 
 ## 검증
 
 ```bash
 cd backend
-./gradlew :modules:issue-tracking:test --tests '*ProjectSummary*' --tests '*SummaryWindows*' \
-  --tests '*IssueChangelog*'                     # 마스킹 협력자 추출로 기존 경로 회귀 확인 필수
+# 창 경계 단언은 ProjectSummaryServiceTest 안에 있다(별도 클래스 아님).
+./gradlew :modules:issue-tracking:test --tests '*ProjectSummary*' --tests '*IssueChangelog*' \
+  --tests '*ChangelogCursorMode*' --tests '*CommentRepositoryTest*' \
+  --tests '*CommentEditDeleteHistory*'           # 마스킹 협력자 추출로 기존 경로 회귀 확인 필수
 ./gradlew :modules:issue-tracking:ktlintCheck
 ./gradlew :modules:issue-tracking:detekt --rerun-tasks   # 캐시가 위반을 가린다
 ./gradlew :modules:app:test --tests '*BtsApplicationContextTest*'
