@@ -197,6 +197,16 @@ const SELF_LOOP_MAX_OFFSET_PX = 44
  */
 const LABEL_CELL_PX = 24
 
+/**
+ * 겹친 라벨을 세로로 벌리는 간격(px).
+ *
+ * ★ **세로다.** 처음에는 간선의 법선 방향으로 `EDGE_BUNDLE_GAP_PX`(40) 만큼 밀었는데
+ * E2E 가 red 였다 — `Submit for Review` 는 폭이 100px 를 넘어 **가로 40px 분리로는 여전히
+ * 포개진다.** 라벨은 가로로 길고 세로로 짧으므로(한 줄, 약 22px) 세로로 벌리는 편이
+ * 같은 간격으로 훨씬 확실하게 떨어진다. 한 줄 높이보다 넉넉하게 잡는다.
+ */
+const LABEL_SPREAD_GAP_PX = 32
+
 /** 쌍 키 구분자. 상태 키에 섞일 수 없는 문자라야 `a\0b`·`ab\0` 같은 충돌이 안 난다. */
 const PAIR_KEY_SEPARATOR = '\u0000'
 
@@ -331,8 +341,9 @@ function labelAnchor(
  * *서로 다른 상태쌍*의 중점을 한 점에 모은다 — `software-default` 에서 `open→closed` 의 중점과
  * `in_progress↔in_review` 의 중점이 `520 = 2 × 260` 때문에 대수적으로 같다.
  *
- * 미는 방향은 **각 간선의 법선**이다. 공통 축(가로나 세로)으로 밀면 방향이 반대인 두 간선이
- * 같은 쪽으로 가 다시 겹칠 수 있지만, 법선은 간선마다 다른 쪽을 가리킨다.
+ * 미는 방향은 **세로**다. 라벨은 가로로 길고 세로로 짧아, 같은 간격이면 세로가 훨씬 확실하게
+ * 떨어진다 — 법선 방향으로 40px 밀었더니 폭 100px 짜리 `Submit for Review` 가 여전히 포개져
+ * E2E 가 red 였다. 세로 계단은 그룹 안에서 y 가 반드시 서로 달라 겹침이 구조적으로 사라진다.
  *
  * self-loop 은 제외한다 — 그쪽 라벨 자리는 고리 경로가 정하고(부채 170), 중점이라는 개념이 없다.
  *
@@ -359,18 +370,9 @@ function spreadLabels(edges: readonly RoutedEdge[], placed: readonly PlacedNode[
     if (bucket.length < 2) continue
 
     bucket.forEach((edge, index) => {
-      const source = byKey.get(edge.source)
-      const target = byKey.get(edge.target)
-      if (source === undefined || target === undefined) return
-
-      const dx = target.x - source.x
-      const dy = target.y - source.y
-      const length = Math.hypot(dx, dy) || 1
-      const distance = bundleOffset(index, bucket.length)
-      shifts.set(edge.id, {
-        x: Math.round((-(dy / length)) * distance),
-        y: Math.round((dx / length) * distance),
-      })
+      // 가운데를 0 으로 두고 위아래로 대칭 분산한다 — 총수가 홀수면 하나는 제자리다.
+      const step = index - (bucket.length - 1) / 2
+      shifts.set(edge.id, { x: 0, y: Math.round(step * LABEL_SPREAD_GAP_PX) })
     })
   }
 
