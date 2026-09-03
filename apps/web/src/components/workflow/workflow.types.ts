@@ -43,16 +43,9 @@ export type WorkflowTransitionView = z.infer<typeof workflowTransitionViewSchema
 /**
  * 두 state key 를 backend `WorkflowTransition.key` 의 **NORMAL 분기**와 같은 형식으로 합성한다.
  *
- * 적용 범위가 NORMAL 뿐인 이유. backend 게터는 종류마다 다른 규칙을 쓴다 —
- * NORMAL 은 `from__to`, GLOBAL·INITIAL 은 `KIND__to` 다. 출발 상태가 없는 전환의 키를
- * 프론트에서 합성하려 들면 규칙을 두 번째로 구현하게 되고, 그 순간 backend 게터와 서로를
- * 검사하지 않는 두 벌이 다시 생긴다. **응답에 실린 `key` 를 그대로 쓰는 것이 정답이고**
- * 이 함수는 MSW fixture 처럼 NORMAL 전환만 만들어 내는 자리에서만 쓴다.
- *
- * @param fromStateKey 출발 상태 키 (NORMAL 전환이므로 항상 존재)
- * @param toStateKey 도착 상태 키
- * @returns `from__to` 형식 문자열
+ * ★**규칙 정본은 `@/lib/transition-key` 하나다.** 종전에는 이 파일이 NORMAL 규칙을,
+ * `mocks/workflow-fixtures.ts` 가 GLOBAL·INITIAL 규칙을, 그리고 그 픽스처의 테스트가 둘을
+ * **인라인으로 다시** 갖고 있었다 — 셋 중 어느 둘을 대조해도 프론트 사본끼리의 대조라
+ * 규칙이 통째로 틀려도 초록이었다. 여기서는 정본을 다시 내보내기만 한다.
  */
-export function transitionKey(fromStateKey: string, toStateKey: string): string {
-  return `${fromStateKey}__${toStateKey}`
-}
+export { transitionKey } from '@/lib/transition-key'

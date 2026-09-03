@@ -437,9 +437,30 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 **무엇.** 두 결함이 한 파일에 있다.
 - `StatusCell.tsx:108` 이 `key={t.key}` 로 목록을 그린다. 전환 `key` 는 NORMAL 이 `from__to`,
   GLOBAL·INITIAL 이 `KIND__to` 라 **같은 상태쌍의 전환 둘이 같은 값**을 갖는다(FR-WF-05 가 연 바로 그 경우).
-  React 는 같은 `key` 의 형제 중 하나만 그린다.
+  ~~React 는 같은 `key` 의 형제 중 하나만 그린다.~~
+  **★2026-09-03 실측 정정 — 그 문장은 사실이 아니다.** 같은 key 를 갖는 전환 둘을
+  `StatusCellEditor` 에 주고 red 를 보려 했더니 **버튼 두 개가 모두 그려지고 경고도 나지 않았다**
+  (12 passed). React 는 중복 key 형제를 지우지 않는다 — 무너지는 것은 재조정 시 엘리먼트
+  재사용이고, 이 목록의 버튼은 로컬 상태가 없어 관측 가능한 피해가 없었다.
+  **처방은 그대로 유효하지만 근거가 다르다** — 「보이지 않는다」가 아니라 「고유하지 않은 값을
+  identity 로 쓴다」가 이유다. 여기에 서버 계약상 `key` 가 null 일 수 있다는 축이 겹친다.
 - 같은 파일에 409 `AMBIGUOUS_TRANSITION` 처리가 **0건**이다(`grep -n '409\|AMBIGUOUS\|candidate'` 0건).
   후보 선택 프롬프트 없이 요청이 실패로 끝난다.
+  **★2026-09-03 실측 보강 — 조용히 실패하는 것이 아니라 거짓말을 한다.**
+  `use-issue-list-cell-field.ts` 의 `resolveCellErrorMessage` 가 409 를 두 갈래
+  (`TRANSITION_NOT_ALLOWED` / 그 외)로만 가르므로, `AMBIGUOUS_TRANSITION` 은 **그 외**로 떨어져
+  「다른 사용자가 이미 수정했습니다」 토스트가 뜬다. 다른 사용자는 없고 사용자가 할 일은
+  후보를 고르는 것인데, 화면은 **하지 않아도 될 새로고침**을 시킨다.
+  ★재사용 자산이 이미 있다 — `useAmbiguousTransition`(mutation 과 분리된 상태 기계, KDoc 이
+  「이슈 상세·목록 셀·일괄 전환 셋 다 같다」고 적는다) · `AmbiguousTransitionDialog`(표현 전용).
+  목록 셀만 그 배선을 안 했다.
+
+**★분할 (2026-09-03).** 이 항목은 두 문장이라 두 PR 로 나눈다.
+- **identity 갈래 — 닫힘.** `key` 를 identity 로 쓰던 자리를 `lib/transition-key.ts` 정본으로
+  모으고 서버 계약대로 nullable 을 받아들였다. 「전환 목록 스키마가 서버 계약보다 엄격해…」
+  · 「전환 `key` 규칙 사본이 프론트에만 3벌…」과 같은 PR 이다.
+- **409 갈래 — 남는다.** `useIssueListCellField` 에 `transitionId` 를 실을 자리를 내고 목록 셀에
+  후보 프롬프트를 잇는 일이다. mutation 계약을 건드리므로 별건으로 둔다.
 
 **왜 지금 붙이기 쉬운가.** PR #395 Task 21·26 이 상세 화면의 409 배선을 **판정 · 훅 · 다이얼로그
 세 조각**으로 분리해 뒀다(`use-issue-transitions.ts` 의 훅 + `AmbiguousTransitionPrompt.tsx` 커넥터).
@@ -463,6 +484,12 @@ projectKey 가 바뀌면 두 쿼리가 새 queryKey 로 pending 이 되어 자�
 
 **★셋째가 문제의 핵심이다.** 그 테스트 이름은 「모든 transition.key 가 backend
 `WorkflowTransition.key` 게터 규칙과 일치」인데, 실제로 대조하는 것은 **사본 A(픽스처)와 사본 B(인라인 재구현)**다.
+
+**★2026-09-03 실측 — 셋이 아니라 넷이었다.** 착수하며 전수로 훑으니 네 번째가 나왔다.
+`components/issue/meta/IssueStateTransition.tsx` 의 `optionValueOf` 가 `transitionId ?? key` 를
+자기 손으로 갖고 있었고, 그 KDoc 스스로 「React key 와 **같은 규칙**을 쓴다」고 적으면서
+그 규칙을 다시 구현했다. 제목의 「3벌」은 그대로 두되 실제 표면은 넷이다 —
+**개수를 세는 대신 전수로 훑어야 하는 이유가 이것이다.**
 백엔드는 이 판정의 시야 밖이라 게터를 바꿔도 red 가 나지 않는다 — 이름이 주장하는 것을 재지 않는
 `[[invariant-satisfied-by-helptext-not-logic]]` 양식이다.
 

@@ -339,3 +339,47 @@ describe('StatusCell — 종료 전환 성공 경로 (리뷰 C6)', () => {
     expect(vi.mocked(transitionIssue).mock.calls[0]?.[1]?.resolutionId).toBeUndefined()
   })
 })
+
+describe('StatusCellEditor — 같은 상태쌍 전환 둘 (장부 「목록 인라인 상태 편집이 React key 중복과 409 미처리를 함께 갖는다」)', () => {
+  /**
+   * 백엔드 `WorkflowTransition.key` 게터는 NORMAL 을 `from__to` 로 합성한다. 같은
+   * (from, to) 쌍에 전환이 둘이면 **서로 다른 전환인데 key 문자열이 같다** — FR-WF-05 가
+   * 전환 ID 식별자를 연 이유가 그것이고, 서버가 409 `AMBIGUOUS_TRANSITION` 을 내는 상황과
+   * 같은 조합이다.
+   *
+   * 픽스처에 이 조합이 없어서 지금까지 초록이었다.
+   */
+  const SAME_PAIR: IssueTransition[] = [
+    {
+      key: 'open__done',
+      name: '승인 완료',
+      fromStateKey: 'open',
+      toStateKey: 'done',
+      toCategory: 'DONE',
+    },
+    {
+      key: 'open__done',
+      name: '강제 완료',
+      fromStateKey: 'open',
+      toStateKey: 'done',
+      toCategory: 'DONE',
+    },
+  ]
+
+  it('같은 key 를 갖는 전환 둘을 모두 버튼으로 노출한다', () => {
+    render(
+      <StatusCellEditor
+        transitions={SAME_PAIR}
+        unavailableReason={null}
+        canTransition
+        isSaving={false}
+        isLoading={false}
+        onTransition={vi.fn()}
+        onDoneTransition={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '승인 완료' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '강제 완료' })).toBeInTheDocument()
+  })
+})
