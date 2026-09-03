@@ -1153,6 +1153,81 @@ class SprintApplicationServiceTest {
         verify(exactly = 0) { boardRepo.findById(any()) }
     }
 
+    // ── start 락 뒤 재조회 (R9 · E6 · E7 · 부채 166 ①) ─────────────────────────
+    //
+    // 락 앞 스냅샷의 version 으로 UPDATE 하면, 격리 수준이 REPEATABLE READ 로 올라갔을 때 락을
+    // 잡고도 앞선 트랜잭션의 ACTIVE 를 못 보고 서로 다른 행을 갱신해 **ACTIVE 2건이 커밋된다**(S3).
+    // 격리 명시(N1)는 방어층일 뿐이다 — 자기 파일을 읽어 애너테이션을 단언하는 검사는 리뷰에서만
+    // 도는 약한 판정이라(memory `self-reading-guard-needs-helper-level-tests`) 실효 판정은
+    // 아래 재조회 3건이 진다(ADR D5).
+
+    /**
+     * 락 뒤 재조회의 판별식 — `findById` 가 락 앞 `version = 0L` / 락 뒤 `version = 1L` 로 갈라 답한다.
+     *
+     * 두 답을 같은 값으로 두면 어느 스냅샷을 썼는지 구분이 사라져 **공허 통과**한다. 값을 갈라 두면
+     * 재조회를 지우고 락 앞 스냅샷으로 되돌렸을 때 `updateStatus(…, 0L)` 이 되어 이 1건만 red 다.
+     */
+    @Test
+    fun `start 는 락 뒤에 스프린트를 재조회해 그 version 으로 갱신한다`() {
+        val refreshed = plannedSprint.copy(version = 1L)
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, refreshed)
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+                every { it.findActiveByBoard(boardId) } returns null
+                every { it.updateStatus(sprintId, SprintStatus.ACTIVE, 1L) } returns activeSprint
+            }
+
+        val result = makeService(repo = repo).start(actorId, sprintId)
+
+        assertThat(result.status).isEqualTo(SprintStatus.ACTIVE)
+        verify(exactly = 2) { repo.findById(sprintId) }
+        verify(exactly = 1) { repo.updateStatus(sprintId, SprintStatus.ACTIVE, 1L) }
+        verifyOrder {
+            repo.acquireSprintStartLock(boardId)
+            repo.findById(sprintId)
+            repo.updateStatus(sprintId, SprintStatus.ACTIVE, 1L)
+        }
+    }
+
+    @Test
+    fun `start 락 뒤 재조회에서 스프린트가 사라졌으면 404 다`() {
+        // E6 — 락을 기다리는 사이 다른 트랜잭션이 스프린트를 소프트 삭제했다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, null)
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).start(actorId, sprintId)
+        }.isInstanceOf(SprintNotFoundException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
+
+        // 재검증이 활성 조회보다 앞이다 — 사라진 스프린트로 보드 활성 여부를 묻지 않는다.
+        verify(exactly = 0) { repo.findActiveByBoard(any()) }
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
+    @Test
+    fun `start 락 뒤 재조회에서 이미 ACTIVE 면 전환 위반이다`() {
+        // E7 — 락을 기다리는 사이 앞선 트랜잭션이 바로 이 스프린트를 시작했다. 「이미 활성이 있다」가
+        // 아니라 「전환 불가」다. findActiveByBoard 는 자기 자신을 찾아 원인을 흐릴 뿐이다.
+        val repo =
+            mockk<SprintRepository>().also {
+                every { it.findById(sprintId) } returnsMany listOf(plannedSprint, activeSprint)
+                every { it.acquireSprintStartLock(boardId) } returns Unit
+            }
+
+        assertThatThrownBy {
+            makeService(repo = repo).start(actorId, sprintId)
+        }.isInstanceOf(InvalidSprintTransitionException::class.java)
+
+        verify(exactly = 0) { repo.findActiveByBoard(any()) }
+        verify(exactly = 0) { repo.updateStatus(any(), any(), any()) }
+    }
+
     // ── complete ──────────────────────────────────────────────────────────────
 
     @Test
