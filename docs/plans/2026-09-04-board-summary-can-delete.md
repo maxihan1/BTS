@@ -433,8 +433,13 @@ LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔�
 **REFACTOR** — **일부러 끊기 1회.** `data-testid` 값을 오타로 바꿔 두 spec 이 red 인지 보고 원복.
 함정 「표면을 없애면 판별자도 사라진다」의 처방이고, 이 task 의 red 관측 지점이다.
 
-**검증**:
-- 기존 E2E: `apps/web/e2e/board-manage.spec.ts` · `apps/web/e2e/scrum-board.spec.ts`
+**검증**: `(cd apps/web && node_modules/.bin/playwright test board-manage.spec.ts scrum-board.spec.ts)`
+
+★ **명령을 이 줄에 인라인으로 둔다.** `select-test-scope.ts:191` 의 추출 정규식이
+`**검증**:` **같은 줄**의 뒤쪽만 읽는다. 다음 줄부터 산문으로 쓰면 **0건으로 추출되고**,
+`bts-impl` Step 1 이 그것을 「검증 칸이 비었다」로 보아 **BLOCKED** 를 낸다.
+`pnpm` 은 worktree 에서 죽으므로 바이너리를 직접 부르고, `apps/web` 을 cwd 로 둔다.
+
 - 🛑 **worktree 밖(main 체크아웃)에서 돌린다.** 판정 전
   `grep -c 'outside of Vite serving allow list' <log>` 가 0 이 아니면 그 실행은 무효다.
 - 눈확인: 불필요 — `data-testid` 는 렌더에 영향이 없다. 시각 회귀 0.
