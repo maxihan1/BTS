@@ -34,9 +34,16 @@ function renderBoth() {
   )
 }
 
-/** 사이드패널 영역 — `complementary` 가 아니라 `region` 이다(아래 P5 주석). */
+/**
+ * 사이드패널 영역 — `complementary` 가 아니라 `region` 이다(아래 P5 주석).
+ *
+ * ★`hidden: true` 가 필수다. Radix `Dialog` 는 열릴 때 **형제 노드에 `aria-hidden` 을 건다** —
+ * 기본 조회는 접근성 트리만 보므로, 배타가 깨져 모달과 패널이 함께 렌더돼도 패널이 조회에서
+ * 빠져 「패널 없음」이 통과한다. 뮤테이션 프로브가 이 공허를 실제로 잡아냈다(패널 배타를 끊고도
+ * 전 판정 GREEN). 여기서 재려는 것은 「눈에 보이나」가 아니라 「DOM 에 아예 없나」다.
+ */
 function sidePanel() {
-  return screen.queryByRole('region', { name: issueDetailStrings.sidePanelLabel })
+  return screen.queryByRole('region', { name: issueDetailStrings.sidePanelLabel, hidden: true })
 }
 
 describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () => {
@@ -85,7 +92,7 @@ describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () =
 
     // ★ 패널 **안쪽**으로 좁힌다. 전역 조회로 두면 배타가 깨져 모달이 함께 떠 있어도
     //   모달 쪽 본문이 잡혀 초록이 된다 — 지키려던 것을 못 지키는 가짜 그린이다.
-    const panel = screen.getByRole('region', { name: issueDetailStrings.sidePanelLabel })
+    const panel = screen.getByRole('region', { name: issueDetailStrings.sidePanelLabel, hidden: true })
     const body = within(panel).getByTestId('issue-detail-body')
     expect(body).toHaveAttribute('data-variant', 'pane')
     expect(body).toHaveAttribute('data-issue-key', 'ATLAS-7')
