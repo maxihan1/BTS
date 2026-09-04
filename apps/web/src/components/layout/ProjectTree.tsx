@@ -286,10 +286,23 @@ interface ProjectBoardListProps {
  *   그 문구가 한 프레임 스쳐 지나간다.
  * - 삭제 뒤 이동이 필요 없어 `onDeleted` 는 비어 있다 — 목록 캐시 무효화로 행이 사라진다.
  *   보고 있던 보드를 지운 경우의 이동은 보드 화면(`projects.$projectKey.board.tsx`)이 맡는다.
- * - `canDelete` 가 두 항목을 함께 게이팅한다. 사이드바에는 프로젝트별 권한 응답이 없고
- *   (행마다 `useProjectPermissions` 를 부르면 요청이 펼친 개수만큼 또 늘어난다),
- *   `undefined` 를 「못 함」으로 읽는 것이 유일하게 안전한 기본값이다 — `boardSummarySchema`
- *   의 `canDelete` JSDoc 이 적은 fail-closed 계약 그대로다.
+ *
+ * ### 🛑 사이드바 `⋯` 는 **삭제만** 한다 (Maxi 확정 2026-09-04, PR ⑩ 코드리뷰 CONCERNS-1)
+ * `canRename` 에 `false` 를 **상수로** 넘긴다. 「권한을 몰라서 닫는다」가 아니라 **이 자리에는
+ * 그 기능을 두지 않는다**는 뜻이다.
+ *
+ * 근거. 사이드바가 가진 유일한 권한 신호는 목록 응답의 `canDelete` 인데 그것은
+ * `IssuePermission.SOFT_DELETE` 판정이고(`BoardController.kt:204`), 보드 이름 변경은
+ * **`IssuePermission.CREATE`** 다(`BoardController.kt:58`). 두 권한은 독립이며 기본 스킴의
+ * MEMBER 는 `CREATE_ISSUE` 만 갖는다(`V008…:67` + `IdentityAccessIssuePermissionResolver.kt:183`).
+ * 그래서 `canDelete` 를 이름 변경의 근사로 쓰면 **권한이 있는 사용자에게서 기능을 빼앗는다** —
+ * fail-closed 가 아니라 오판이다. 정확한 판정을 하려면 펼친 프로젝트마다
+ * `useProjectPermissions` 를 또 조회해야 하는데(요청이 두 배), 이름 변경은 보드 화면 헤더가
+ * 이미 **정확한 권한으로** 제공하므로 그 비용을 치를 이유가 없다.
+ *
+ * 삭제만 남으므로 `canDelete === true` 하나가 트리거 노출을 정한다 — `BoardActionsMenu` 의
+ * `if (!canRename && !canDelete) return null` 이 그것을 그대로 집행한다. `undefined` 는
+ * 「못 함」이고, 그것이 `boardSummarySchema` 의 `canDelete` JSDoc 이 적은 fail-closed 계약이다.
  */
 function ProjectBoardList({ projectKey, boards }: ProjectBoardListProps): JSX.Element | null {
   if (boards === undefined) return null
@@ -301,7 +314,8 @@ function ProjectBoardList({ projectKey, boards }: ProjectBoardListProps): JSX.El
   return (
     <>
       {boards.map((board) => {
-        const manageable = board.canDelete === true
+        // 목록 응답이 주는 유일한 권한 신호. `undefined` 는 「못 함」이다(fail-closed).
+        const deletable = board.canDelete === true
         return (
           <li key={board.boardId} className="flex min-w-0 items-center gap-1">
             <Link
@@ -316,8 +330,10 @@ function ProjectBoardList({ projectKey, boards }: ProjectBoardListProps): JSX.El
               projectKey={projectKey}
               boardId={board.boardId}
               boardName={board.name}
-              canRename={manageable}
-              canDelete={manageable}
+              // 🛑 상수 false — 이 자리에는 이름 변경을 두지 않는다(위 JSDoc). 권한 근사로
+              //    `deletable` 을 넣으면 CREATE 권한만 가진 사용자에게서 기능을 빼앗는다.
+              canRename={false}
+              canDelete={deletable}
               onDeleted={() => { /* 목록 캐시 무효화로 이 행이 사라진다 — 이동할 곳이 없다 */ }}
               triggerSize="icon-xs"
             />

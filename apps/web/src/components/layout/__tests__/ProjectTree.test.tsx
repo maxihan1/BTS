@@ -19,6 +19,7 @@ import { useActiveProject } from '@/hooks/use-active-project'
 import { useRecentProjects } from '@/hooks/use-recent-projects'
 import { useAuthStore } from '@/auth/authStore'
 import { navLabels } from '@/i18n/nav-labels'
+import { boardLabels } from '@/i18n/board-labels'
 import { ProjectTree } from '../ProjectTree'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -558,6 +559,27 @@ describe('ProjectTree', () => {
       // ★ 필드 부재를 「삭제 가능」으로 읽으면 여기가 red 다
       expect(
         within(nav).queryByRole('button', { name: `보드 관리, ${boardWithoutCanDelete.name}` }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('★ 사이드바 `⋯` 는 삭제만 낸다 — 이름 변경은 보드 화면 헤더의 몫이다', async () => {
+      const user = userEvent.setup()
+      stubBoards({ ATLAS: [scrumBoard] })
+      renderProjectTree()
+
+      const nav = await findProjectNav()
+      await user.click(await findAtlasToggle(nav))
+      await user.click(
+        await within(nav).findByRole('button', { name: `보드 관리, ${scrumBoard.name}` }),
+      )
+
+      expect(await screen.findByRole('menuitem', { name: boardLabels.actions.deleteItem })).toBeInTheDocument()
+      // ★ 판별식 (Maxi 확정 2026-09-04, 코드리뷰 CONCERNS-1).
+      //   `canRename` 에 `canDelete` 근사를 다시 물리면 여기가 red 다. 사이드바가 가진 유일한
+      //   권한 신호는 SOFT_DELETE 판정이고 이름 변경은 CREATE 권한이라, 근사로 열면 CREATE 만
+      //   가진 사용자(기본 스킴 MEMBER)에게서 기능을 빼앗는 방향으로 틀린다.
+      expect(
+        screen.queryByRole('menuitem', { name: boardLabels.actions.renameItem }),
       ).not.toBeInTheDocument()
     })
   })
