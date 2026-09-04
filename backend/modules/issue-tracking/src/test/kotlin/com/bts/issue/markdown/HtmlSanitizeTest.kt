@@ -138,6 +138,25 @@ class HtmlSanitizeTest : DescribeSpec({
                 result shouldNotContain "etc/passwd"
             }
 
+            it("a[href] 는 attachment 스킴을 통과시키지 않는다 — allowUrlProtocols 는 정책 전역") {
+                // ★`allowUrlProtocols("attachment")` 는 img 전용이 아니다. OWASP 는 허용 스킴을
+                //   **정책 단위**로 모아 두므로, img 를 위해 연 스킴이 a[href] 에도 그대로 열린다.
+                //   UUID 술어는 img[src] 에만 걸려 있어 a 로 들어온 임의 경로는 아무도 막지 않았다 —
+                //   `attachment:../../etc/passwd` 가 그대로 통과했다(실측). href 에도 스킴 술어를 건다.
+                val result = MarkdownRenderer.sanitizeHtml("""<a href="attachment:../../etc/passwd">x</a>""")
+                result shouldNotContain "etc/passwd"
+                result shouldNotContain "attachment:"
+            }
+
+            it("a[href] 의 http·https·mailto 는 그대로 통과한다 — 비-공허 짝") {
+                val result =
+                    MarkdownRenderer.sanitizeHtml(
+                        """<a href="https://ok.example/a">1</a><a href="mailto:x@y.z">2</a>""",
+                    )
+                result shouldContain "https://ok.example/a"
+                result shouldContain "mailto:x"
+            }
+
             it("img onerror 를 제거한다") {
                 val uuid = "3f8a1c2e-5b6d-4e7f-9a0b-1c2d3e4f5a6b"
                 val result =
