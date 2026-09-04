@@ -57,6 +57,7 @@ import { ProjectVelocityReportRouteAdapter } from './routes/projects.$projectKey
 import { ProjectCfdReportRouteAdapter } from './routes/projects.$projectKey.reports.cfd'
 import { ProjectCycleTimeReportRouteAdapter } from './routes/projects.$projectKey.reports.cycle-time'
 import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
+import { BoardSettingsRouteAdapter } from './routes/projects.$projectKey.board.settings'
 import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
 import { DashboardsRouteAdapter } from './routes/dashboards'
 import { DashboardDetailRouteAdapter } from './routes/dashboards.$dashboardId'
@@ -342,6 +343,25 @@ const projectBoardRoute = createRoute({
       : typeof search['component'] === 'string'
         ? search['component']
         : undefined,
+  }),
+})
+
+/**
+ * 보드 설정 라우트 — /projects/$projectKey/board/settings, requireAuth (부채 177 · J7·J22).
+ *
+ * ★보드를 **`?board=` 로만** 지목한다. 없으면 화면이 보드 화면으로 돌려보내고 기본 보드를
+ * 스스로 고르지 않는다 — 「기본 보드」 규칙이 이미 세 곳에서 서로 다르고(부채 164) 여기서
+ * 네 번째를 만들지 않기 위해서다. `projectBoardRoute` 와 같은 방식으로 스코프를 실어 나르므로
+ * 두 화면 사이 이동에서 보드가 증발하지 않는다(편차 X7 해소 PR #432 와 같은 축).
+ */
+const projectBoardSettingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/board/settings',
+  component: BoardSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): { board?: string } => ({
+    board: typeof search['board'] === 'string' ? search['board'] : undefined,
   }),
 })
 
@@ -900,6 +920,7 @@ export const routeTree = rootRoute.addChildren([
     projectBacklogRoute,
     // agile-planning BC — 프로젝트 칸반 보드 (FR-BD-01)
     projectBoardRoute,
+    projectBoardSettingsRoute,
     // agile-planning BC — 프로젝트 타임라인(Gantt) (FR-TL-01)
     projectTimelineRoute,
     // agile-planning BC — 스프린트 번다운/번업 차트 (FR-RP-01 D6/D7)
