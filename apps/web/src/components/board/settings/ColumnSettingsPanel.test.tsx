@@ -151,7 +151,77 @@ describe('Columns 탭 — 카드 수 (eng 리뷰 BLOCKER-1)', () => {
     renderPanel(board({ columns: [withCards], truncated: true }))
 
     // ★잘린 목록의 길이는 거짓이다. 「카드 0개」라고 적으면 1000장 넘는 보드에서 거짓말이 된다.
-    expect(screen.getByText(new RegExp(boardLabels.settings.cardCountTruncated))).toBeInTheDocument()
+    expect(screen.getAllByText(new RegExp(boardLabels.settings.cardCountTruncated)).length).toBeGreaterThan(0)
     expect(screen.queryByText(new RegExp(boardLabels.settings.cardCount(0)))).not.toBeInTheDocument()
+  })
+})
+
+describe('Columns 탭 — 컬럼 추가 (R6 · J23 · X1)', () => {
+  it('T-CP-9: 권한이 있으면 추가 버튼이 보인다', () => {
+    renderPanel(board())
+
+    expect(screen.getByRole('button', { name: boardLabels.settings.addColumn })).toBeInTheDocument()
+  })
+
+  it('T-CP-10: 권한이 없으면 추가 버튼이 없다', () => {
+    renderPanel(board(), false)
+
+    expect(
+      screen.queryByRole('button', { name: boardLabels.settings.addColumn }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('T-CP-11: 컬럼 0개일 때도 추가 버튼이 빈 상태 안에 있다', () => {
+    renderPanel(board({ columns: [] }))
+
+    // 행동 유도 빈 상태의 「행동」이 실제로 있어야 한다. 문구만 있고 버튼이 없으면
+    // 사용자는 어디서 만드는지 모른 채 화면을 떠난다.
+    expect(screen.getByText(boardLabels.settings.columnsEmpty)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: boardLabels.settings.addColumn })).toBeInTheDocument()
+  })
+})
+
+describe('Columns 탭 — 삭제 게이팅 (R7 · Sanity G1 · 부채 179)', () => {
+  it('T-CP-12: 컬럼이 1개뿐이면 삭제가 비활성이고 사유가 붙는다', () => {
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '유일' })
+    renderPanel(board({ columns: [only] }))
+
+    const button = screen.getByRole('button', {
+      name: boardLabels.settings.deleteColumnTitle('유일'),
+    })
+    // ★이 판정을 지우면 부채 179(컬럼 0개 조회 500)로 가는 클릭 한 번짜리 경로가 열린다.
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', boardLabels.settings.lastColumnLocked)
+  })
+
+  it('T-CP-13: 컬럼이 2개 이상이면 삭제가 활성이다', () => {
+    renderPanel(
+      board({
+        columns: [
+          column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '첫째' }),
+          column({ columnId: 'c3d4e5f6-a7b8-4012-9cde-f01234567892', name: '둘째' }),
+        ],
+      }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: boardLabels.settings.deleteColumnTitle('첫째') }),
+    ).toBeEnabled()
+  })
+
+  it('T-CP-14: 권한이 없으면 컬럼이 여럿이어도 삭제가 비활성이다', () => {
+    renderPanel(
+      board({
+        columns: [
+          column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '첫째' }),
+          column({ columnId: 'c3d4e5f6-a7b8-4012-9cde-f01234567892', name: '둘째' }),
+        ],
+      }),
+      false,
+    )
+
+    expect(
+      screen.getByRole('button', { name: boardLabels.settings.deleteColumnTitle('첫째') }),
+    ).toBeDisabled()
   })
 })
