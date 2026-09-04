@@ -137,7 +137,9 @@ export function BoardSettingsPage({ projectKey, boardId }: BoardSettingsPageProp
         />
       )}
 
-      {boardQuery.data !== undefined && <ColumnSettingsPanel board={boardQuery.data} />}
+      {boardQuery.data !== undefined && (
+        <ColumnSettingsPanel board={boardQuery.data} canConfigure={canConfigure} />
+      )}
     </div>
   )
 }

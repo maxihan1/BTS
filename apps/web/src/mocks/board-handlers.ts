@@ -244,6 +244,20 @@ function withActiveSprintCards(stored: StoredBoardDetail): StoredBoardDetail {
   return { ...stored, columns, unplacedCount: issues.length - placedCount }
 }
 
+/** 이 mock 이 아는 워크플로우 상태 전량. 미매핑 목록의 모집단이다. */
+const STATE_CATALOG = [
+  { key: 'open', name: 'TODO', category: 'TODO' as const },
+  { key: 'in_progress', name: 'IN PROGRESS', category: 'IN_PROGRESS' as const },
+  { key: 'done', name: 'DONE', category: 'DONE' as const },
+  { key: 'review', name: 'REVIEW', category: 'IN_PROGRESS' as const },
+]
+
+/** 카탈로그에서 어느 컬럼에도 없는 상태를 고른다. 백엔드 `unmappedStates` 와 같은 규칙. */
+function deriveUnmapped(board: { columns: { states: { key: string }[] }[] }) {
+  const mapped = new Set(board.columns.flatMap((c) => c.states.map((s) => s.key)))
+  return STATE_CATALOG.filter((s) => !mapped.has(s.key))
+}
+
 /**
  * store 카드 한 장을 응답 DTO(`BoardCard`)로 옮긴다.
  *
@@ -297,9 +311,12 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
   const placed = withActiveSprintCards(stored)
   return {
     ...placed,
-    // mock 은 워크플로우 카탈로그를 모르므로 미매핑 목록을 계산할 수 없다. 빈 배열이 정직한 값이다 —
-    // 이 mock 의 시드는 모든 상태가 컬럼에 매핑돼 있다(R8 은 실제 카탈로그가 있어야 의미가 있다).
-    unmappedStates: [],
+    // ★부채 177 이 이 줄을 바꿨다. 종전에는 「mock 이 카탈로그를 몰라 계산할 수 없다」며
+    //   빈 배열을 냈는데, 그러면 보드 설정 화면의 미매핑 패널이 **영원히 비어** 드래그
+    //   시나리오가 mock 위에서 성립하지 않는다. STATE_CATALOG 를 세우고 파생으로 바꿨다.
+    //   저장하지 않고 매번 도출한다 — 저장하면 컬럼과 갈려 「목록은 비었는데 컬럼에도 없는
+    //   상태」가 조용히 생긴다(백엔드 BoardPlacementResult.unmappedStates 와 같은 이유).
+    unmappedStates: deriveUnmapped(placed),
     columns: placed.columns.map((col) => ({
       ...col,
       cards: col.cards
@@ -1085,6 +1102,240 @@ if (import.meta.env.MODE !== 'test') {
 // export
 // ─────────────────────────────────────────────────────────────────────────────
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 컬럼 관리 5종 — 생성 · 삭제 · 이름/WIP 갱신 · 상태 집합 교체 · 순서 (부채 177)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// stateful 이다 — boardStore 를 직접 변이해 이후 GET 상세에 즉시 반영된다
+// (msw-mutation-stateful-refetch 관례). 상태를 store 밖에 두면 무효화 재조회가
+// 옛 값으로 되돌려 「눌렀는데 안 바뀐다」가 된다.
+//
+// ★`unmappedStates` 는 파생이다. 컬럼이 담지 않은 상태를 카탈로그에서 뺀 것 —
+//   저장하면 컬럼과 갈려 「목록은 비었는데 컬럼에도 없는 상태」가 생긴다.
+
+/** 담은 상태들의 category 최댓값 — 백엔드 `resolveCategory` 와 같은 규칙(빈 목록은 TODO). */
+function resolveCategory(keys: string[]): 'TODO' | 'IN_PROGRESS' | 'DONE' {
+  const rank = { TODO: 0, IN_PROGRESS: 1, DONE: 2 } as const
+  let best: 'TODO' | 'IN_PROGRESS' | 'DONE' = 'TODO'
+  for (const key of keys) {
+    const found = STATE_CATALOG.find((s) => s.key === key)
+    if (found !== undefined && rank[found.category] > rank[best]) best = found.category
+  }
+  return best
+}
+
+/** 보드를 꺼내고 없으면 404 를 만든다. */
+function boardOr404(boardId: string) {
+  const board = boardStore.get(boardId)
+  if (board === undefined) {
+    return {
+      board: undefined,
+      error: HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: `보드를 찾을 수 없습니다: ${boardId}` },
+        { status: 404 },
+      ),
+    }
+  }
+  return { board, error: undefined }
+}
+
+/** 컬럼 응답 DTO 로 변환 — 카드는 싣지 않는다(백엔드 `ColumnMetaResponse` 와 같다). */
+function toColumnMeta(col: {
+  columnId: string
+  states: { key: string; name: string; category: 'TODO' | 'IN_PROGRESS' | 'DONE' }[]
+  name: string
+  category: 'TODO' | 'IN_PROGRESS' | 'DONE'
+  displayOrder: number
+  wipLimit: number | null
+}) {
+  return {
+    columnId: col.columnId,
+    states: col.states,
+    name: col.name,
+    category: col.category,
+    displayOrder: col.displayOrder,
+    wipLimit: col.wipLimit,
+  }
+}
+
+/** POST /api/v1/boards/:id/columns — 상태 0개 컬럼을 맨 뒤에 만든다 (R6 · J23). */
+const createColumnHandler = http.post('/api/v1/boards/:id/columns', async ({ params, request }) => {
+  const { board, error } = boardOr404(params['id'] as string)
+  if (error !== undefined) return error
+
+  const body = (await request.json()) as { name?: string }
+  const name = body.name?.trim() ?? ''
+  if (name === '') {
+    return HttpResponse.json(
+      { errorCode: 'AGILE_VALIDATION_FAILED', message: 'name 은 공백일 수 없습니다.' },
+      { status: 400 },
+    )
+  }
+
+  const created = {
+    columnId: generateUUID(),
+    states: [],
+    name,
+    category: 'TODO' as const,
+    displayOrder: board.columns.length,
+    wipLimit: null,
+    wipExceeded: false,
+    cards: [],
+  }
+  board.columns = [...board.columns, created]
+  return HttpResponse.json({ data: toColumnMeta(created) }, { status: 201 })
+})
+
+/** DELETE /api/v1/boards/:id/columns/:columnId — 담긴 상태는 미매핑으로 돌아간다 (J28). */
+const deleteColumnHandler = http.delete(
+  '/api/v1/boards/:id/columns/:columnId',
+  ({ params }) => {
+    const { board, error } = boardOr404(params['id'] as string)
+    if (error !== undefined) return error
+
+    const columnId = params['columnId'] as string
+    const target = board.columns.find((c) => c.columnId === columnId)
+    if (target === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: '컬럼을 찾을 수 없습니다.' },
+        { status: 404 },
+      )
+    }
+
+    const removedCardCount = target.cards.length
+    board.columns = board.columns
+      .filter((c) => c.columnId !== columnId)
+      .map((c, index) => ({ ...c, displayOrder: index }))
+      return HttpResponse.json({ data: { removedCardCount } })
+  },
+)
+
+/** PATCH /api/v1/boards/:id/columns/:columnId — 이름·WIP 부분 갱신 (R8 · R9). */
+const updateColumnHandler = http.patch(
+  '/api/v1/boards/:id/columns/:columnId',
+  async ({ params, request }) => {
+    const { board, error } = boardOr404(params['id'] as string)
+    if (error !== undefined) return error
+
+    const target = board.columns.find((c) => c.columnId === (params['columnId'] as string))
+    if (target === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: '컬럼을 찾을 수 없습니다.' },
+        { status: 404 },
+      )
+    }
+
+    const body = (await request.json()) as Record<string, unknown>
+    // ★키의 **존재**가 의미다 — 없으면 무변경, null 이면 해제. 백엔드 3-state 와 같다.
+    if (!('name' in body) && !('wipLimit' in body)) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_VALIDATION_FAILED', message: 'name 또는 wipLimit 중 하나는 전송해야 합니다.' },
+        { status: 400 },
+      )
+    }
+    if ('name' in body) {
+      const name = typeof body['name'] === 'string' ? body['name'].trim() : ''
+      if (name === '') {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_VALIDATION_FAILED', message: 'name 은 공백일 수 없습니다.' },
+          { status: 400 },
+        )
+      }
+      target.name = name
+    }
+    if ('wipLimit' in body) {
+      const raw = body['wipLimit']
+      if (raw !== null && (typeof raw !== 'number' || raw < 1)) {
+        return HttpResponse.json(
+          { errorCode: 'AGILE_VALIDATION_FAILED', message: 'wipLimit 는 1 이상이어야 합니다.' },
+          { status: 400 },
+        )
+      }
+      target.wipLimit = raw as number | null
+    }
+    return HttpResponse.json({ data: toColumnMeta(target) })
+  },
+)
+
+/** PUT /api/v1/boards/:id/columns/:columnId/states — 집합 통째 교체. X1 위반은 409 (R5 · J27). */
+const replaceColumnStatesHandler = http.put(
+  '/api/v1/boards/:id/columns/:columnId/states',
+  async ({ params, request }) => {
+    const { board, error } = boardOr404(params['id'] as string)
+    if (error !== undefined) return error
+
+    const columnId = params['columnId'] as string
+    const target = board.columns.find((c) => c.columnId === columnId)
+    if (target === undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_BOARD_NOT_FOUND', message: '컬럼을 찾을 수 없습니다.' },
+        { status: 404 },
+      )
+    }
+
+    const body = (await request.json()) as { stateKeys?: string[] }
+    const stateKeys = body.stateKeys ?? []
+
+    // ★한 상태는 한 컬럼에만 속한다(#444 X1). 다른 컬럼이 쓰는 키가 오면 409 —
+    //   화면이 「빼기 먼저」 순서를 지키는지 이 판정이 잰다.
+    const takenElsewhere = board.columns
+      .filter((c) => c.columnId !== columnId)
+      .flatMap((c) => c.states.map((s) => s.key))
+    const conflict = stateKeys.find((k) => takenElsewhere.includes(k))
+    if (conflict !== undefined) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_STATE_ALREADY_MAPPED', message: `이미 매핑된 상태입니다: ${conflict}` },
+        { status: 409 },
+      )
+    }
+
+    target.states = stateKeys.flatMap((key) => {
+      const found = STATE_CATALOG.find((s) => s.key === key)
+      return found === undefined ? [] : [found]
+    })
+    target.category = resolveCategory(stateKeys)
+      return HttpResponse.json({ data: toColumnMeta(target) })
+  },
+)
+
+/** PUT /api/v1/boards/:id/columns/order — 전 컬럼 순서 교체. 집합이 다르면 400 (R10 · J25). */
+const reorderColumnsHandler = http.put(
+  '/api/v1/boards/:id/columns/order',
+  async ({ params, request }) => {
+    const { board, error } = boardOr404(params['id'] as string)
+    if (error !== undefined) return error
+
+    const body = (await request.json()) as { columnIds?: string[] }
+    const columnIds = body.columnIds ?? []
+    const actual = board.columns.map((c) => c.columnId)
+
+    // 누락·중복·외부 id 세 결함이 한 판정에 들어온다 — 백엔드와 같은 규칙이다.
+    if (columnIds.length !== actual.length || new Set(columnIds).size !== actual.length ||
+        !columnIds.every((id) => actual.includes(id))) {
+      return HttpResponse.json(
+        { errorCode: 'AGILE_VALIDATION_FAILED', message: 'columnIds 는 전 컬럼을 담아야 합니다.' },
+        { status: 400 },
+      )
+    }
+
+    board.columns = columnIds.map((id, index) => {
+      const found = board.columns.find((c) => c.columnId === id)
+      if (found === undefined) throw new Error('unreachable — 집합 일치를 위에서 확인했다')
+      return { ...found, displayOrder: index }
+    })
+    return HttpResponse.json({
+      data: {
+        boardId: board.boardId,
+        projectKey: board.projectKey,
+        name: board.name,
+        swimlaneField: board.swimlaneField,
+        boardType: board.boardType,
+      },
+    })
+  },
+)
+
 /**
  * 칸반 보드 BC MSW 핸들러 배열.
  *
@@ -1104,4 +1355,9 @@ export const boardHandlers = [
   createQuickFilterHandler,
   updateQuickFilterHandler,
   deleteQuickFilterHandler,
+  createColumnHandler,
+  deleteColumnHandler,
+  updateColumnHandler,
+  replaceColumnStatesHandler,
+  reorderColumnsHandler,
 ]
