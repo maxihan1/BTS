@@ -1,5 +1,5 @@
 // 칸반 보드 조회·생성 TanStack Query 훅 (FR-BD-01/02)
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { fetchBoards, fetchBoard, createBoard, updateBoardName, deleteBoard } from '@/api/boards'
 import type { BoardCreated, BoardMeta, BoardCardFilterParams, BoardType } from '@/api/boards'
 import { withDeleteTimeout } from '@/lib/delete-timeout'
@@ -123,6 +123,12 @@ export function useBoard(boardId: string | undefined, filter?: BoardCardFilterPa
     },
     staleTime: 30_000,
     enabled: boardId !== undefined && boardId.length > 0,
+    // ★필터를 바꾸면 쿼리 키가 바뀌어 데이터가 잠시 `undefined` 가 된다. 보드 화면은
+    //   `{boardDetail !== undefined && <BoardFilterBar/>}` 로 필터 바를 조건부 렌더하므로
+    //   그 순간 필터 바가 **통째로 언마운트**되고, 드롭다운으로 바뀐 뒤로는 열려 있던 팝오버가
+    //   같이 사라져 값 하나 고를 때마다 다시 열어야 했다(실브라우저로 확인). 이전 데이터를
+    //   들고 있으면 언마운트가 없어지고, 덤으로 필터할 때마다 보드가 비었다 차는 깜빡임도 없다.
+    placeholderData: keepPreviousData,
   })
 }
 
