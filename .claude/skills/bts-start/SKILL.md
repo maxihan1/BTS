@@ -26,7 +26,7 @@ classify=$(node --experimental-strip-types scripts/workflow/classify-task.ts \
 
 ## Step 2. 신규 아이디어 게이트 (T2+ · 조건부)
 
-**T2/T3 이고** 입력이 「새 기능을 만들어 달라」이며 명세가 모호할 때만 `office-hours` (builder mode) 로 사전 검증한다. 산출물 `docs/specs/_idea-<slug>.md`. "만들 가치 없음" 결론이면 Maxi 확인 후 중단.
+**T2/T3 이고** 입력이 「새 기능을 만들어 달라」이며 명세가 모호할 때만 `office-hours` (builder mode) 로 사전 검증한다. 산출물 `docs/specs/_idea-<slug>.md`. "만들 가치 없음" 결론이면 `AskUserQuestion` 으로 확인 후 중단.
 명세가 명확하거나 T0/T1 이면 스킵.
 
 ## Step 3. git worktree 생성
@@ -100,6 +100,6 @@ PR 본문 템플릿. [file-templates.md](file-templates.md) §2
 
 ## 실패 / 엣지 케이스
 
-- **uncommitted 변경**. main 워크스페이스에 uncommitted 있으면 worktree 생성 차단. Maxi 에게 옵션 제시(stash / discard / 별도 worktree)
+- **uncommitted 변경**. main 워크스페이스에 uncommitted 있으면 worktree 생성 차단. `AskUserQuestion` 으로 3지선다(stash / discard / 별도 worktree)
 - **slug 충돌**. 같은 slug worktree 이미 존재 시 `-2` 접미사
 - **gh push 실패**(rate limit / 인증). Maxi 에게 보고, worktree 는 유지

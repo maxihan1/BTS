@@ -36,7 +36,7 @@ TIER=$(jq -r '.tier' .bts-cache/classify.json)
 | `TYPE == "backend"` | `/plan-eng-review` (UI 포함 시 `/plan-design-review` 추가) |
 | `TYPE == "feature"` | `/plan-eng-review` |
 | `TYPE ∈ {bugfix, chore, qa}` | `/plan-eng-review` |
-| **그 외 (표에 없는 타입)** | `/plan-eng-review` + **Maxi 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
+| **그 외 (표에 없는 타입)** | `/plan-eng-review` + **`AskUserQuestion` 확인** — 분기 미정의 상태로 조용히 지나가지 않는다 |
 
 > **행을 지우지도, 비우지도, 줄이지도 말 것.** `scripts/workflow/skill-type-coverage.test.ts` 가 이 표를 CI 에서 강제한다. ① 타입 토큰과 `types.ts` 의 `TaskType` 유니온의 **차집합 0** ② 행 파서가 타입 전량을 행에 물릴 것(비-공허 짝) ③ 각 행의 **렌즈 집합이 판별식의 기대 집합과 정확히 일치**할 것 — 렌즈를 줄이거나 이름을 오타 내면 여기서 걸린다 ④ 행에 `T0`~`T3`·「미진입」 **문자열**이 없을 것 ⑤ 위 「T2/T3 만 진입한다」 선언이 본문에 남아 있을 것.
 >
@@ -55,7 +55,8 @@ Skill({ skill: "plan-ceo-review", args: "docs/plans/<date>-<slug>.md" })
 
 ## Step 4. BLOCKER 처리
 
-BLOCKER 가 하나라도 있으면 **중단**하고 Maxi 개입을 요청한다 — ① plan 수정 후 `/bts-plan` 재호출 ② 위험 인정하고 진행 ③ 작업 중단.
+BLOCKER 가 하나라도 있으면 **중단**하고 `AskUserQuestion` 으로 낸다 — ① plan 수정 후 `/bts-plan` 재호출 ② 위험 인정하고 진행 ③ 작업 중단.
+**산문 3지선다 금지.** 선택지가 셋으로 정해져 있으면 그 자리가 도구 자리다.
 **`auth`/`migration` 의 BLOCKER 는 무시 옵션이 없다**(절대 규칙).
 
 ## Step 5. plan 갱신 + 게이트 1 진입
@@ -72,4 +73,4 @@ BLOCKER 가 하나라도 있으면 **중단**하고 Maxi 개입을 요청한다 
 ## 실패 / 엣지 케이스
 
 - **여러 렌즈가 모두 BLOCKER**. 작업 자체를 재검토 — `/bts-spec` loop back 또는 분할 제안
-- **리뷰 스킬 호출 실패**. 렌즈 부재를 게이트 1 요약에 명시하고 진행 여부를 Maxi 에게 묻는다 (조용히 0종으로 통과시키지 않는다)
+- **리뷰 스킬 호출 실패**. 렌즈 부재를 게이트 1 요약에 명시하고 진행 여부를 `AskUserQuestion` 으로 묻는다 (조용히 0종으로 통과시키지 않는다)
