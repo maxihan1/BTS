@@ -88,6 +88,8 @@ object MarkdownRenderer {
      * 첨부 식별자(UUID v4 형태)까지 정확히 되잰다. 스킴만 검사하면 `attachment:../../etc/passwd`
      * 같은 경로가 통과해 프론트의 blob 치환 로직에 임의 문자열이 흘러든다.
      */
+    private const val ATTACHMENT_SCHEME = "attachment:"
+
     private val ATTACHMENT_SRC =
         Regex("^attachment:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
@@ -154,7 +156,15 @@ object MarkdownRenderer {
             .allowElements("a")
             // allowUrlProtocols: OWASP 내장 스킴 필터 — http/https/mailto 외 javascript:/data: 등 거부
             .allowUrlProtocols("http", "https", "mailto")
-            .allowAttributes("href").onElements("a")
+            // ★`attachment` 는 위에서 `img` 를 위해 열었지만 `allowUrlProtocols` 는 **정책 전역**이다 —
+            //   요소별이 아니라 정책 하나에 허용 스킴이 모인다. 그래서 img 를 위해 연 스킴이 `a[href]`
+            //   에도 그대로 열렸고, UUID 술어는 `img[src]` 에만 걸려 있어 `a` 로 들어온 임의 경로를
+            //   아무도 막지 않았다 — `<a href="attachment:../../etc/passwd">` 가 통과했다(실측).
+            //   href 는 첨부 참조를 쓸 일이 없으므로 그 스킴만 되잰다. 상대 경로·앵커·http(s)·mailto 는
+            //   종전대로 통과한다(실측 대조).
+            .allowAttributes("href")
+            .matching { v: String -> !v.startsWith(ATTACHMENT_SCHEME, ignoreCase = true) }
+            .onElements("a")
             // span[class=mention]: MentionNodeRenderer 생성 마크업 전용.
             // 정확히 "mention" 문자열만 허용 — "mention evil" 등 복합 class 거부(EC8).
             // class 허용을 onElements("span") 으로 span 에만 한정(CONCERN-S1).
