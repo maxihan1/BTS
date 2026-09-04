@@ -189,7 +189,13 @@ class BoardController(
         val actor = currentActorId()
         requirePermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
 
-        val boards = service.listBoards(projectKey).map(BoardSummaryResponse::from)
+        // 프로젝트 스코프 근사(편차 X3)라 판정 1회로 N건을 덮는다.
+        // per-board 관리자가 도입되면 이 줄과 LIST-6 을 반드시 함께 고쳐야 한다 —
+        // 안 그러면 전 보드가 첫 보드의 답을 받는다.
+        val canDelete =
+            permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(projectKey))
+
+        val boards = service.listBoards(projectKey).map { BoardSummaryResponse.from(it, canDelete) }
         return ResponseEntity.ok(DataResponse(boards))
     }
 

@@ -157,21 +157,39 @@ data class BoardResponse(
  * @property name 보드 표시 이름.
  * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). 보드 스위처가 종류를 표시하는 유일한 출처다 —
  *   스위처는 목록만 읽고 항목마다 상세를 조회하지 않으므로 이 필드가 없으면 종류를 알 방법이 없다(FR-BD-04).
+ * @property canDelete 요청자가 이 보드를 삭제할 수 있는지. 단건 조회 [BoardDetailResponse.canDelete] 와
+ *   **같은 술어**(SOFT_DELETE on Project)라 두 응답이 같은 사용자·같은 보드에 대해 갈리지 않는다.
+ *   목록만 읽는 화면(사이드바 보드 행)이 삭제 메뉴를 감추는 유일한 근거다 — 이 필드가 없으면 항목마다
+ *   상세를 조회해야 하고, 그러면 권한을 알기 위해 N 번 더 부르게 된다(FR-BD-01 · Jira 대조 J5).
+ *   저장되지 않고 요청 시점에 계산된다 — 권한은 시간에 따라 바뀌므로 영속하면 거짓이 된다.
  */
 data class BoardSummaryResponse(
     val boardId: UUID,
     val projectKey: String,
     val name: String,
     val boardType: String,
+    val canDelete: Boolean,
 ) {
     companion object {
-        /** 도메인 [Board] 를 [BoardSummaryResponse](메타만) 로 변환한다. */
-        fun from(board: Board): BoardSummaryResponse =
+        /**
+         * 도메인 [Board] 를 [BoardSummaryResponse](메타만) 로 변환한다.
+         *
+         * @param board 변환할 보드 도메인 객체.
+         * @param canDelete 호출자가 판정한 SOFT_DELETE 권한. **기본값을 주지 않는다** — 주는 순간
+         *   호출부가 인자를 빠뜨려도 그대로 컴파일돼 응답이 전량 false 로 나가고 컴파일러도 detekt 도
+         *   침묵한다. 기본값 부재가 그 실수를 컴파일 에러로 바꾼다.
+         * @return 목록 항목 응답 DTO.
+         */
+        fun from(
+            board: Board,
+            canDelete: Boolean,
+        ): BoardSummaryResponse =
             BoardSummaryResponse(
                 boardId = board.id,
                 projectKey = board.projectKey,
                 name = board.name,
                 boardType = board.boardType.name,
+                canDelete = canDelete,
             )
     }
 }
