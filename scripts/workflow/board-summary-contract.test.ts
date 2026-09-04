@@ -50,6 +50,14 @@
 //     그것은 zod·MSW 어느 쪽이 바뀌든 `vitest related` 로 딸려 온다.
 //   - **값의 옳음.** 키 집합만 본다. `canDelete` 가 **맞는 값**인지는 백엔드
 //     `BoardControllerIntegrationTest` 와 위 MSW 테스트가 진다.
+//   - **★타입 정합.** 키 **이름만** 비교하고 타입은 안 본다. 그래서 백엔드가 `val n: Int` 인데
+//     zod 가 `n: z.string()` 이면 세 집합의 이름이 완전히 일치해 **차집합 0 으로 초록**이고,
+//     런타임에는 목록 응답 전건이 zod 파싱에 실패해 보드 스위처·백로그 헤더·`ProjectViewChrome`
+//     탭바가 **동시에 죽는다** — 스펙 C-2 가 `.optional()` 로 피하려던 바로 그 파국이다.
+//     ⇒ **이 판별식을 「계약이 맞다」의 증명으로 과신하지 마라.** 이름 축만 갚는다.
+//     넓히려면 추출기가 타입 토큰을 함께 잡아 `Boolean↔z.boolean` · `String↔z.string` ·
+//     `UUID↔z.string().uuid` 소형 매핑표로 단언한다. 지금 필드(`canDelete: Boolean` ↔
+//     `z.boolean()`)는 `boards.test.ts` T-BD-21d(비-boolean 거부)가 별도로 지킨다.
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'

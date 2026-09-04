@@ -155,7 +155,7 @@
 | # | 요구사항 |
 |---|---|
 | **FR-1** | `GET /api/v1/boards?projectKey=` 응답의 각 항목이 `canDelete: Boolean` 을 싣는다 |
-| **FR-2** | `canDelete` 의 값은 **단건 조회와 같은 술어**다 — `hasPermission(actor, SOFT_DELETE, Project(projectKey))`. 두 응답이 같은 사용자·같은 보드에 대해 갈리지 않는다 |
+| **FR-2** | `canDelete` 의 값은 **단건 조회와 같은 술어**다 — `hasPermission(actor, SOFT_DELETE, Project(projectKey))`. 두 응답이 같은 사용자·같은 보드에 대해 갈리지 않는다. ⚠️ **백엔드 판별자는 없다**(코드리뷰 지적 5) — 두 줄이 같은 술어인지는 **소스 대조로만** 지킨다. 프론트 쪽은 `board-handlers.test.ts` 의 세 번째 분기가 같은 store 를 목록·상세로 읽어 짝 단언으로 잡는다. 넓히려면 LIST-4 에 `getBoard` 를 이어 붙여 두 응답의 `canDelete` 를 한 줄로 대조한다 |
 | **FR-3** | 판정은 요청당 **정확히 1회**다. 보드 개수와 무관하다 |
 | **FR-4** | 보드가 0건이어도 판정을 수행한다 — 데이터 유무가 권한 호출 횟수를 바꾸지 않는다 |
 | **FR-5** | 프론트 `boardSummarySchema` 가 `canDelete` 를 파싱하고, 없는 응답도 **파싱에 성공**한다 |
@@ -208,7 +208,7 @@ GET /api/v1/boards?projectKey={key}
 | **E3** | 같은 프로젝트 안에서 보드마다 값이 다를 수 있나 | **없다.** 프로젝트 스코프 근사(X10)의 귀결. 목록 전체가 한 값이다 |
 | **E4** | 백엔드가 필드를 안 보냄(롤백·구버전) | 프론트 파싱 성공 + `undefined` → `=== true` 가 false → 삭제 UI 미노출. fail-closed 유지 |
 | **E5** | MSW store 에 `canDelete` 미정의 | `?? true` 로 상세 조립부(`toResponseDetail`)와 **같은 기본값**. 두 조립부가 갈리면 스위처가 목록 파싱에서 죽는다(`board-handlers.ts` 주석이 경고한 그 결함) |
-| **E6** | `data-testid` 오타·삭제 | 🛑 **침묵사 지점.** `getByTestId(...).getByRole(...)` 이 count 0 이 되고 `board-manage.spec.ts:183` 의 `toHaveCount(0)` 은 **그대로 통과**한다(실측 확인). 컨테이너 실재 단언 2줄이 이것만을 막는다 |
+| **E6** | `data-testid` 오타·삭제 | 🛑 **침묵사 지점.** `getByTestId(...).getByRole(...)` 이 count 0 이 되고 `toHaveCount(0)` 류 **부재 단언은 그대로 통과**한다(실측 확인). 🔧 **정정(코드리뷰 지적 4)** — 「컨테이너 실재 단언이 **이것만을** 막는다」는 과장이었다. 실제 spec 순서상 그보다 앞에 **스코프된 존재 단언**(`board-manage.spec.ts` 의 `toContainText(DEFAULT_BOARD_NAME)` · `scrum-board.spec.ts` 의 `toContainText(KANBAN_BOARD_NAME)`)이 있어 오타는 그쪽에서 먼저 red 다. 실재 단언의 실익은 **실패 메시지 가독성 + 양성 단언이 앞서지 않는 경로가 생겼을 때의 보험**이다. 「가드가 있으니 앞의 양성 단언을 걷어내도 된다」로 읽지 마라 — 반대다 |
 | **E7** | 테스트 중간에 보드 이름이 바뀜 (S3 rename) | 셀렉터의 **정규식을 유지**해야 산다. 접근성 이름이 `보드 관리, {name}` 이라 `exact` 로 굳히면 rename 뒤 못 찾는다 |
 | **E8** | 보드가 1건뿐인 테스트 픽스처 | 🛑 **판별식이 공허해진다.** N=1 이면 「1회」와 「N회」가 구분되지 않는다. LIST-4·LIST-6 은 **보드 2건 이상**을 쓴다 |
 
@@ -423,7 +423,10 @@ LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔�
 
 > ★ 이게 없으면 testid 오타 시 `getByTestId(...).getByRole(...)` 이 **count 0** 이 되고,
 > `board-manage.spec.ts:183` 의 `toHaveCount(0)` 은 **그대로 통과한다**(실측 확인함, 스펙 E6).
-> 스코프가 조용히 죽는 유일한 자리를 이 2줄이 막는다.
+> 스코프가 조용히 죽는 자리를 이 2줄이 막는다. 🔧 **단 「유일한」은 아니다**(코드리뷰 지적 4) —
+> 두 spec 모두 부재 단언보다 **앞에** 스코프된 존재 단언(`toContainText`)이 있어 오타는 그쪽에서
+> 먼저 red 다. 이 2줄의 실익은 실패 메시지 가독성과 **양성 단언이 앞서지 않는 경로가 생겼을 때의
+> 보험**이다.
 
 **GREEN**.
 - `projects.$projectKey.board.tsx` — 보드 헤더 행에 `data-testid="board-header"`.
