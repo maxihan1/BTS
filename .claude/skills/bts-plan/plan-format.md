@@ -28,7 +28,7 @@
 **REFACTOR**:
 - 정규식을 상수로 추출 + KDoc
 
-**검증**: `./gradlew :backend:issue-tracking:test --tests MentionParserTest`
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*MentionParserTest')`
 
 ### Task 2. <제목>
 
