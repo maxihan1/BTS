@@ -27,7 +27,13 @@ BTS 모든 코드 작업의 **단일 진입점**. 티어를 판정하고 7단계
 이전 세션이 중단된 채 남긴 worktree / draft PR 을 감지. 발견되면 사용자 확인 없이 진행 금지.
 
 ```bash
-ACTIVE_WORKTREES=$(ls -d .worktrees/*/ 2>/dev/null)
+# ★git 에게 묻는다. 디렉터리 훑기는 위치를 놓친다 —
+#   `ls -d .worktrees/*/` 만 보던 종전 판정은 하네스가 만든 `.claude/worktrees/` 아래를
+#   전혀 못 봤다. 2026-09-04 실측으로 **중단된 작업방 3개가 있는데 0건**을 냈다.
+#   위치를 목록으로 유지하면 그 목록이 또 하나의 썩는 두 번째 목록이 된다.
+MAIN_TREE=$(dirname "$(git rev-parse --git-common-dir)")
+ACTIVE_WORKTREES=$(git worktree list --porcelain | awk '/^worktree /{print $2}' \
+  | grep -vx "$MAIN_TREE" | grep -vx "$(git rev-parse --show-toplevel)")
 ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefName 2>/dev/null)
 ```
 

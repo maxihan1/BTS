@@ -625,4 +625,41 @@ describe('worktree 훅 배선 정합', () => {
         `입력을 바꾸는 PR 에서 판별식이 안 돈다.`,
     );
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // A-0 활성 작업 감지 — 위치를 손으로 유지하지 않는다
+  //
+  // 2026-09-04 실측. `/bts` A-0 이 `ls -d .worktrees/*/` 만 봤고, 하네스가 만드는
+  // `.claude/worktrees/` 아래는 전혀 못 봤다 — **중단된 작업방 3개가 있는데 0건**이었다.
+  // 「이전 세션이 남긴 작업을 감지한다」는 절차가 감지 대상 전부를 지나쳤다.
+  //
+  // 처방은 위치 목록을 늘리는 것이 아니라 **git 에게 묻는 것**이다. 목록을 손으로 유지하면
+  // 그 목록 자체가 또 하나의 썩는 두 번째 목록이 된다.
+  // ─────────────────────────────────────────────────────────────────────
+
+  const activeWorktreeLine = (): string | undefined =>
+    fs
+      .readFileSync(path.join(REPO_ROOT, '.claude/skills/bts/SKILL.md'), 'utf8')
+      .split('\n')
+      .find((l) => l.includes('ACTIVE_WORKTREES='));
+
+  test('★A-0 이 git 에게 물어서 감지한다', () => {
+    const line = activeWorktreeLine();
+    assert.ok(line !== undefined, '.claude/skills/bts/SKILL.md 에 ACTIVE_WORKTREES 배선이 없다');
+    assert.match(
+      line!,
+      /worktree list/,
+      `A-0 이 git 에게 묻지 않는다:\n    ${line!.trim()}\n` +
+        '  디렉터리 훑기는 하네스가 만드는 .claude/worktrees/ 아래를 못 본다.',
+    );
+  });
+
+  test('★A-0 이 디렉터리 훑기로 되돌아가지 않는다', () => {
+    const line = activeWorktreeLine();
+    assert.doesNotMatch(
+      line!,
+      /ls\s+-d/,
+      '디렉터리 훑기로 되돌아갔다 — 감지 범위가 한 위치로 좁아진다',
+    );
+  });
 });

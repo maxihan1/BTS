@@ -8,7 +8,7 @@
 # (`steps=0` · 어노테이션 "recent account payments have failed or your spending limit needs to be
 # increased"). self-hosted 러너는 이 차단을 받지 않는다 — 확인 사격 run 30508738275 에서 실증.
 # 러너 신원과 복구 절차. docs/runbooks/self-hosted-runner.md
-# 이 파일의 `runs-on` 을 되돌리면 scripts/workflow/ci-runner-label-alignment.test.ts 가 차단한다.
+# ★되돌림을 막는 기계 장치는 없다 (판별식 삭제됨, eca4a9c7f). 사람이 지킨다.
 name: frontend-ci
 
 # ★2026-08-21 — 자동 실행을 껐다. `workflow_dispatch` 로만 돈다.
