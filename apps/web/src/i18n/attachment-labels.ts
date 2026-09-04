@@ -120,6 +120,18 @@ export const attachmentLabels = {
 
   /** 미리보기 모달 닫기 버튼 */
   previewClose: '닫기',
+
+  /** 갤러리 이전 — 좌우 이동 버튼의 접근성 이름 */
+  previewPrevious: '이전 첨부',
+  /** 갤러리 다음 */
+  previewNext: '다음 첨부',
+  /**
+   * 갤러리 위치 — 「2 / 5」.
+   *
+   * 세는 대상은 **미리보기 가능한 첨부**다. 목록 전체를 세면 이동으로 닿을 수 없는 번호가
+   * 생겨 「5 중 3인데 다음이 없다」가 된다.
+   */
+  previewPosition: (current: number, total: number) => `${current} / ${total}`,
 } as const
 
 /** 라벨 const 추론 타입 */

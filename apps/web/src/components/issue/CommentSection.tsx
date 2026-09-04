@@ -21,6 +21,8 @@ import { commentStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { TextLengthCounter } from '@/components/editor/TextLengthCounter'
+import { COMMENT_BODY_MAX_LENGTH } from '@/lib/issue-text-constraints'
 import { htmlToPlainText, escapeHtml } from '@/lib/html-text'
 import { AttachmentHtml } from './AttachmentHtml'
 
@@ -66,7 +68,13 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
     },
   })
 
-  const isSubmitDisabled = plain === '' || isPending
+  /**
+   * 상한 초과 — 댓글은 서버가 **평문**을 잰다
+   * (`CommentApplicationService.validateBody(body)` · body 는 raw 텍스트).
+   * 본문(HTML 기준)과 재는 문자열이 다르다.
+   */
+  const isOverLimit = plain.length > COMMENT_BODY_MAX_LENGTH
+  const isSubmitDisabled = plain === '' || isPending || isOverLimit
 
   return (
     <div className="space-y-2">
@@ -89,6 +97,11 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
           contentRef={focusRef}
         />
       </div>
+      <TextLengthCounter
+        length={plain.length}
+        max={COMMENT_BODY_MAX_LENGTH}
+        testId="comment-add-length-counter"
+      />
       <Button
         type="button"
         size="sm"
@@ -146,7 +159,8 @@ function CommentEditForm({
   const seedHtml = initialBodyHtml ?? (initialBody === '' ? '' : `<p>${escapeHtml(initialBody)}</p>`)
   const [draftHtml, setDraftHtml] = useState(seedHtml)
   const draftPlain = htmlToPlainText(draftHtml)
-  const isSaveDisabled = draftPlain === '' || isPending
+  const isEditOverLimit = draftPlain.length > COMMENT_BODY_MAX_LENGTH
+  const isSaveDisabled = draftPlain === '' || isPending || isEditOverLimit
 
   return (
     <div className="space-y-2">
@@ -159,6 +173,11 @@ function CommentEditForm({
         autoFocus
         ariaLabel={commentStrings.commentEditBodyLabel}
         imageIssueKey={issueKey}
+      />
+      <TextLengthCounter
+        length={draftPlain.length}
+        max={COMMENT_BODY_MAX_LENGTH}
+        testId="comment-edit-length-counter"
       />
       <div className="flex gap-2">
         <Button

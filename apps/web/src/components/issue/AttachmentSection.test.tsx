@@ -340,16 +340,28 @@ describe('DropZone — 키보드 접근성', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // AttachmentPreviewModal을 mock해 실제 Blob 다운로드 없이 모달 열림만 검증한다.
+//
+// ★대역이 `attachments`·`startIndex` 를 **실제로 쓴다**. 이름만 받고 버리면 섹션이 갤러리
+//   목록을 잘못 넘겨도 유닛이 전부 초록이 된다
+//   (`mock-swallowed-prop-is-invisible-to-unit-tests`). 열린 파일명을 목록+위치로 계산해
+//   `aria-label` 에 실으면, 배선이 틀리는 순간 여기가 깨진다.
 vi.mock('./AttachmentPreviewModal', () => ({
   AttachmentPreviewModal: ({
     open,
-    attachment,
+    attachments,
+    startIndex,
   }: {
     open: boolean
-    attachment: { filename: string }
+    attachments: readonly { filename: string }[]
+    startIndex: number
   }) =>
     open ? (
-      <div role="dialog" aria-label={`${attachment.filename} 미리보기`}>
+      <div
+        role="dialog"
+        aria-label={`${attachments[startIndex]?.filename ?? '(없음)'} 미리보기`}
+        data-gallery-size={attachments.length}
+        data-start-index={startIndex}
+      >
         mock-preview-modal
       </div>
     ) : null,
@@ -452,5 +464,81 @@ describe('AttachmentSection — 100MB 초과 파일 사전 검증', () => {
 
     // upload mutate 미호출
     expect(mockMutate).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (h) 미리보기 갤러리 목록 계약 (J6 — 좌우 이동)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 갤러리에 넘기는 목록의 계약.
+ *
+ * ## 왜 따로 재나
+ *
+ * 모달의 좌우 이동 판별식(`AttachmentPreviewModal.test.tsx` TC-7)은 **넘겨받은 목록** 안에서만
+ * 잰다. 섹션이 목록을 잘못 만들어도 그쪽은 전부 초록이다 — 실제로 이 판별식을 세우기 전,
+ * `previewable` 을 전체 목록으로 바꾸는 뮤테이션이 **잡히지 않았다**.
+ *
+ * 계약은 둘이다.
+ *   ① 목록에는 **미리보기 가능한 첨부만** 담긴다. 그래야 이동으로 닿을 수 없는 자리가 없고
+ *      위치 표시(「2 / 5」)가 거짓말을 하지 않는다.
+ *   ② `startIndex` 는 **그 목록 안에서** 누른 첨부를 가리킨다. 전체 목록 기준 위치를 넘기면
+ *      엉뚱한 파일이 열린다.
+ */
+describe('AttachmentSection — (h) 미리보기 갤러리 목록', () => {
+  const ZIP = {
+    id: 'aa000000-0000-4000-a000-00000000000a',
+    filename: 'archive.zip',
+    contentType: 'application/zip',
+    sizeBytes: 512,
+    uploadedBy: 'bb000000-0000-4000-b000-000000000001',
+    createdAt: '2026-06-15T11:00:00Z',
+  }
+  const PNG = {
+    id: 'aa000000-0000-4000-a000-00000000000b',
+    filename: 'shot.png',
+    contentType: 'image/png',
+    sizeBytes: 2048,
+    uploadedBy: 'bb000000-0000-4000-b000-000000000001',
+    createdAt: '2026-06-15T12:00:00Z',
+  }
+
+  it('미리보기 불가 첨부는 갤러리 목록에서 빠진다', async () => {
+    // zip · pdf · png 셋 중 갤러리에 실려야 하는 것은 pdf 와 png 둘이다.
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ZIP, ATTACHMENT_1, PNG]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+    const user = userEvent.setup()
+    renderSection('ATLAS-1', false)
+
+    await waitFor(() => { expect(screen.getByText('shot.png')).toBeInTheDocument() })
+    const row = screen.getByRole('row', { name: /shot\.png/ })
+    await user.click(
+      within(row).getByRole('button', { name: new RegExp(attachmentLabels.previewButton) }),
+    )
+
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveAttribute('data-gallery-size', '2')
+  })
+
+  it('startIndex 가 갤러리 목록 기준으로 누른 첨부를 가리킨다 — 전체 목록 기준이 아니다', async () => {
+    vi.mocked(useAttachmentList).mockReturnValue(
+      listStub([ZIP, ATTACHMENT_1, PNG]) as unknown as ReturnType<typeof useAttachmentList>,
+    )
+    const user = userEvent.setup()
+    renderSection('ATLAS-1', false)
+
+    await waitFor(() => { expect(screen.getByText('shot.png')).toBeInTheDocument() })
+    const row = screen.getByRole('row', { name: /shot\.png/ })
+    await user.click(
+      within(row).getByRole('button', { name: new RegExp(attachmentLabels.previewButton) }),
+    )
+
+    const dialog = await screen.findByRole('dialog')
+    // 전체 목록에서 png 는 3번째(index 2)지만, 갤러리(zip 제외)에서는 2번째(index 1)다.
+    expect(dialog).toHaveAttribute('data-start-index', '1')
+    // 대역이 목록+위치로 계산한 이름이 실제 누른 파일이어야 한다.
+    expect(dialog).toHaveAccessibleName('shot.png 미리보기')
   })
 })

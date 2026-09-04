@@ -1,8 +1,10 @@
 // AttachmentPreviewModal 단위 테스트 — 렌더/revoke/prop 전환/cleanup 검증
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { AttachmentResponse } from '@/api/attachments'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
+import { attachmentLabels } from '@/i18n/attachment-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // downloadAttachment mock
@@ -57,6 +59,12 @@ interface RenderProps {
   onOpenChange?: (o: boolean) => void
 }
 
+/**
+ * 첨부 1건짜리 갤러리로 감싸 렌더한다.
+ *
+ * 갤러리 도입(D) 전의 테스트들은 「이 첨부 하나」를 재던 것이므로 목록 1건이 같은 의미다.
+ * 좌우 이동 자체는 아래 TC-7 이 여러 건으로 따로 잰다.
+ */
 function renderModal({
   attachment = makeAttachment(),
   open = true,
@@ -65,7 +73,8 @@ function renderModal({
   return render(
     <AttachmentPreviewModal
       issueKey="ATLAS-1"
-      attachment={attachment}
+      attachments={[attachment]}
+      startIndex={0}
       open={open}
       onOpenChange={onOpenChange}
     />,
@@ -192,7 +201,8 @@ describe('TC-5: 닫기 시 revoke', () => {
     const { rerender } = render(
       <AttachmentPreviewModal
         issueKey="ATLAS-1"
-        attachment={attachment}
+        attachments={[attachment]}
+        startIndex={0}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -207,7 +217,8 @@ describe('TC-5: 닫기 시 revoke', () => {
     rerender(
       <AttachmentPreviewModal
         issueKey="ATLAS-1"
-        attachment={attachment}
+        attachments={[attachment]}
+        startIndex={0}
         open={false}
         onOpenChange={vi.fn()}
       />,
@@ -238,7 +249,8 @@ describe('TC-6: C1 prop 전환', () => {
     const { rerender } = render(
       <AttachmentPreviewModal
         issueKey="ATLAS-1"
-        attachment={attachment1}
+        attachments={[attachment1]}
+        startIndex={0}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -252,7 +264,8 @@ describe('TC-6: C1 prop 전환', () => {
     rerender(
       <AttachmentPreviewModal
         issueKey="ATLAS-1"
-        attachment={attachment2}
+        attachments={[attachment2]}
+        startIndex={0}
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -282,5 +295,289 @@ describe('TC-7: 언마운트 cleanup', () => {
     unmount()
 
     expect(revokeSpy).toHaveBeenCalledWith('blob:mock')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TC-7: 갤러리 좌우 이동 (J6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 갤러리 이동 판별식.
+ *
+ * ## 경계 처리가 왜 없나
+ *
+ * 호출부(`AttachmentSection`)가 **미리보기 가능한 첨부만** 걸러 넘긴다. 그래서 「미리보기
+ * 안 되는 항목을 건너뛸까」라는 분기가 아예 없다 — 건너뛸 것이 목록에 없다. 이 계약이
+ * 깨지면 이동으로 닿을 수 없는 자리가 생기고 위치 표시(「2 / 5」)가 거짓말을 한다.
+ * 그 계약은 `AttachmentSection.test.tsx` 의 대역이 `attachments`·`startIndex` 를 실제로 써서
+ * 지킨다.
+ */
+describe('TC-7: 갤러리 좌우 이동', () => {
+  const first = makeAttachment({
+    id: '11111111-1111-4111-8111-111111111111',
+    filename: 'first.png',
+  })
+  const second = makeAttachment({
+    id: '22222222-2222-4222-8222-222222222222',
+    filename: 'second.png',
+  })
+  const third = makeAttachment({
+    id: '33333333-3333-4333-8333-333333333333',
+    filename: 'third.png',
+  })
+
+  function renderGallery(startIndex = 0) {
+    return render(
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachments={[first, second, third]}
+        startIndex={startIndex}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+  }
+
+  it('startIndex 가 가리키는 첨부부터 연다 — 누른 썸네일이 뜬다', async () => {
+    renderGallery(1)
+    expect(await screen.findByRole('img', { name: 'second.png' })).toBeInTheDocument()
+  })
+
+  it('현재 위치를 보여준다 — 세는 대상은 미리보기 가능한 첨부다', async () => {
+    renderGallery(1)
+    await screen.findByRole('img', { name: 'second.png' })
+
+    expect(screen.getByTestId('attachment-preview-position')).toHaveTextContent(
+      attachmentLabels.previewPosition(2, 3),
+    )
+  })
+
+  it('다음 버튼이 다음 첨부로 넘긴다', async () => {
+    const user = userEvent.setup()
+    renderGallery(0)
+    await screen.findByRole('img', { name: 'first.png' })
+
+    await user.click(screen.getByRole('button', { name: attachmentLabels.previewNext }))
+
+    expect(await screen.findByRole('img', { name: 'second.png' })).toBeInTheDocument()
+  })
+
+  it('이전 버튼이 앞 첨부로 돌아간다', async () => {
+    const user = userEvent.setup()
+    renderGallery(2)
+    await screen.findByRole('img', { name: 'third.png' })
+
+    await user.click(screen.getByRole('button', { name: attachmentLabels.previewPrevious }))
+
+    expect(await screen.findByRole('img', { name: 'second.png' })).toBeInTheDocument()
+  })
+
+  it('→ 키가 다음으로 넘긴다', async () => {
+    const user = userEvent.setup()
+    renderGallery(0)
+    await screen.findByRole('img', { name: 'first.png' })
+
+    await user.keyboard('{ArrowRight}')
+
+    expect(await screen.findByRole('img', { name: 'second.png' })).toBeInTheDocument()
+  })
+
+  it('← 키가 앞으로 돌아간다', async () => {
+    const user = userEvent.setup()
+    renderGallery(2)
+    await screen.findByRole('img', { name: 'third.png' })
+
+    await user.keyboard('{ArrowLeft}')
+
+    expect(await screen.findByRole('img', { name: 'second.png' })).toBeInTheDocument()
+  })
+
+  it('첫 장에서는 이전 버튼이 잠기고 다음은 열려 있다', async () => {
+    renderGallery(0)
+    await screen.findByRole('img', { name: 'first.png' })
+
+    expect(screen.getByRole('button', { name: attachmentLabels.previewPrevious })).toBeDisabled()
+    expect(screen.getByRole('button', { name: attachmentLabels.previewNext })).toBeEnabled()
+  })
+
+  it('마지막 장에서는 다음이 잠기고 이전은 열려 있다', async () => {
+    renderGallery(2)
+    await screen.findByRole('img', { name: 'third.png' })
+
+    expect(screen.getByRole('button', { name: attachmentLabels.previewNext })).toBeDisabled()
+    expect(screen.getByRole('button', { name: attachmentLabels.previewPrevious })).toBeEnabled()
+  })
+
+  it('첫 장에서 ← 를 눌러도 넘어가지 않는다 — 경계를 감싸지 않는다', async () => {
+    const user = userEvent.setup()
+    renderGallery(0)
+    await screen.findByRole('img', { name: 'first.png' })
+
+    await user.keyboard('{ArrowLeft}')
+
+    expect(screen.getByRole('img', { name: 'first.png' })).toBeInTheDocument()
+  })
+
+  // ── ←/→ 가 남의 기본동작을 빼앗지 않는다 (리뷰 BLOCKER-1) ────────────────────
+  //
+  // 이동 핸들러는 `DialogContent` 에 걸려 있어 **모달 안의 모든 키가 여기로 버블한다.**
+  // 조건 없이 `preventDefault` 하면 포커스를 가진 자식의 기본동작을 통째로 빼앗는다.
+  //
+  // `<video controls>` 의 ←/→ 는 5초 되감기·빨리감기다. 첨부가 하나뿐이라 이동 UI 조차
+  // 안 그려지는 경우에도 되감기가 죽고, 둘 이상이면 되감기 대신 다른 첨부로 넘어가면서
+  // blob 이 revoke 되어 **재생 위치를 통째로 잃는다.**
+  describe('←/→ 가 자식의 기본동작을 빼앗지 않는다', () => {
+    const video = makeAttachment({
+      id: '44444444-4444-4444-8444-444444444444',
+      filename: 'clip.mp4',
+      contentType: 'video/mp4',
+    })
+
+    /** 지정한 요소에서 키를 올려 보내고 기본동작이 취소됐는지 돌려준다. */
+    function dispatchKey(el: Element, key: string): boolean {
+      const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      el.dispatchEvent(ev)
+      return ev.defaultPrevented
+    }
+
+    it('비디오에 포커스가 있으면 ← 를 가로채지 않는다 — 5초 되감기를 지킨다', async () => {
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[video]}
+          startIndex={0}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const el = await screen.findByTestId('preview-video')
+
+      expect(dispatchKey(el, 'ArrowLeft')).toBe(false)
+      expect(dispatchKey(el, 'ArrowRight')).toBe(false)
+    })
+
+    it('갤러리가 여럿이어도 비디오 위에서는 이동하지 않는다 — 재생 위치를 잃지 않는다', async () => {
+      const second = makeAttachment({
+        id: '55555555-5555-4555-8555-555555555555',
+        filename: 'clip2.mp4',
+        contentType: 'video/mp4',
+      })
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[video, second]}
+          startIndex={0}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const el = await screen.findByTestId('preview-video')
+
+      expect(dispatchKey(el, 'ArrowRight')).toBe(false)
+      expect(screen.getByTestId('attachment-preview-position')).toHaveTextContent(
+        attachmentLabels.previewPosition(1, 2),
+      )
+    })
+
+    it('첨부가 하나뿐이면 ← 를 가로채지 않는다 — 이동할 곳이 없다', async () => {
+      const only = makeAttachment({ filename: 'solo.png' })
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[only]}
+          startIndex={0}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const img = await screen.findByRole('img', { name: 'solo.png' })
+
+      expect(dispatchKey(img, 'ArrowLeft')).toBe(false)
+    })
+
+    it('이미지 갤러리에서는 여전히 ← 를 잡는다 — 위 단언들의 비-공허 짝', async () => {
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[first, second, third]}
+          startIndex={1}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const img = await screen.findByRole('img', { name: 'second.png' })
+
+      expect(dispatchKey(img, 'ArrowLeft')).toBe(true)
+    })
+  })
+
+  it('첨부가 하나뿐이면 이동 UI 를 그리지 않는다 — 늘 비활성인 버튼을 남기지 않는다', async () => {
+    render(
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachments={[first]}
+        startIndex={0}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: 'first.png' })
+
+    expect(
+      screen.queryByRole('button', { name: attachmentLabels.previewNext }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('attachment-preview-position')).not.toBeInTheDocument()
+  })
+
+  it('이동하면 이전 blob 을 해제하고 새로 받는다 — 넘겨 볼수록 blob 이 쌓이지 않는다', async () => {
+    const user = userEvent.setup()
+    renderGallery(0)
+    await screen.findByRole('img', { name: 'first.png' })
+    expect(createSpy).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: attachmentLabels.previewNext }))
+    await screen.findByRole('img', { name: 'second.png' })
+
+    expect(revokeSpy).toHaveBeenCalledWith('blob:mock')
+    expect(createSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('닫았다 다시 열면 startIndex 로 돌아간다 — 지난번 넘겨 본 자리에서 열리지 않는다', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachments={[first, second, third]}
+        startIndex={0}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+    await screen.findByRole('img', { name: 'first.png' })
+    await user.click(screen.getByRole('button', { name: attachmentLabels.previewNext }))
+    await screen.findByRole('img', { name: 'second.png' })
+
+    const closed = (
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachments={[first, second, third]}
+        startIndex={0}
+        open={false}
+        onOpenChange={vi.fn()}
+      />
+    )
+    rerender(closed)
+    rerender(
+      <AttachmentPreviewModal
+        issueKey="ATLAS-1"
+        attachments={[first, second, third]}
+        startIndex={0}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    )
+
+    expect(await screen.findByRole('img', { name: 'first.png' })).toBeInTheDocument()
   })
 })
