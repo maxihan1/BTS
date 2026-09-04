@@ -185,8 +185,9 @@ API 경로로 치환하므로 그대로 두면 경로 조작 표면이 된다.
 - [x] 미저장 변경 확인 패널이 HTML 비교로 동작한다 (`IssueDescription` 8건)
 - [x] 댓글도 같은 컴포넌트를 쓴다
 - [x] **red 확인 (비-공허)** — 굵게 명령을 끊어 정확히 1건 red 확인
-- [ ] 멘션 `@` 가 후보를 띄우고 `span.mention` 을 만든다 — **단위 판별식 미작성**.
-      jsdom 에서 suggestion 팝업이 좌표에 기대 재현되지 않는다. e2e 몫으로 남긴다
+- [x] 멘션 `@` 가 후보를 띄우고 `span.mention` 을 만든다 — 단위 판별식은 여전히 없다
+      (jsdom 에서 suggestion 팝업이 좌표에 기대 재현되지 않는다). **e2e 4건이 증인이다** —
+      후보 표시 · 클릭 선택 · 키보드 선택 · Escape.
 - [ ] 에디터 포커스 중 `i` 가 담당자 변경을 발화하지 않는다 — **회귀 가드 미작성**.
       `isEditableTarget` 이 `isContentEditable` 을 이미 보므로 동작은 하지만 가드가 없다
 
@@ -208,9 +209,34 @@ API 경로로 치환하므로 그대로 두면 경로 조작 표면이 된다.
 - [x] `pnpm typecheck && pnpm lint && pnpm test`
 - [x] `IssueDescription.test.tsx` 재작성 — 살릴 계약(폐기 확인·권한·클릭 진입) 이관 완료
 - [x] 부채 감소 2건 — `EditMode` 가 200줄 밑으로(래칫 항목 삭제) · 원시 `<button>` 2건 소멸
-- [ ] 멘션 e2e 2종 (`issue-mention-autocomplete` · `issue-mention-render`) — **미갱신**.
-      Write 탭 셀렉터에 의존하므로 TipTap 기준으로 다시 써야 한다
+- [x] 멘션 e2e 2종 (`issue-mention-autocomplete` · `issue-mention-render`) **갱신 완료**.
+      돌려 보니 10건이 전부 red 였고, **예고 목록에 없던 `inline-edit` 4건도 같은 원인**으로
+      깨져 있었다. 셋을 합쳐 16/16 초록. 바뀐 축은 여섯이다 —
+      Write/Preview 탭 소멸 · 접근성 이름(`본문 편집` → `본문 편집기`) ·
+      contenteditable(`fill`/`inputValue`/`toHaveValue` 불가) · `tablist` 컨테이너 소멸 ·
+      testid(`description-preview-content` → `description-body`) ·
+      PATCH 필드(`description` → `descriptionHtml`).
+      툴바에 '취소선' 이 생겨 '취소' 조회에 `exact: true` 가 필요해진 것도 함께 잡았다
+- [x] **e2e 가 잡은 실질 결함 2건** (§3.4)
 - [ ] 눈확인 — 툴바 15종 각각 — **미실행**
+
+### 3.4 e2e 가 잡은 실질 결함 2건
+
+둘 다 유닛은 초록인 채로 숨어 있었다. 「유닛 전부 초록인데 e2e 를 쓰자마자 red」의 서명이다.
+
+**① 멘션 후보가 떠 있을 때 `Escape` 가 편집을 취소했다.** 후보를 닫으려고 누른 키가
+작성 중인 본문을 통째로 버렸다. `mention-extension` 의 suggestion 은 「팝업만 닫는다」로
+처리하고 있었지만 그 코드가 **영영 불리지 않았다** — ProseMirror `someProp` 이 view props
+(`editorProps.handleKeyDown`)를 플러그인보다 **먼저** 훑기 때문이다.
+suggestion 키를 직접 지정해 상태를 조회하고, 후보가 떠 있으면 에디터가 Escape 를 넘긴다.
+
+**② MSW PATCH 가 `descriptionHtml` 을 삼켰다.** 에디터는 그 필드로 보내는데 핸들러는
+`body.description` 만 봤다 — PATCH 는 200 을 주는데 저장된 것이 없었다. 저장 직후 재조회에서
+본문이 사라지고(`inline-edit` S4·S5), 멘션 추출도 `description` 기준이라 **알림 파생이 통째로
+끊겼다**(`issue-mention-render` S3·S5). 두 지점 모두 HTML 경로를 함께 보게 했다.
+
+- [x] ① Escape 가 멘션 팝업의 것일 때 에디터가 넘긴다
+- [x] ② MSW 가 `descriptionHtml` 을 저장하고 그 평문에서 멘션을 추출한다
 
 ---
 
