@@ -31,11 +31,14 @@ import { useIssueDetailModalStore } from './issueDetailModalStore'
  */
 export function IssueDetailModal(): JSX.Element | null {
   const openKey = useIssueDetailModalStore((s) => s.openKey)
+  const presentation = useIssueDetailModalStore((s) => s.presentation)
   const close = useIssueDetailModalStore((s) => s.close)
   const open = useIssueDetailModalStore((s) => s.open)
   const navigate = useNavigate()
 
-  if (openKey === null) return null
+  // 표시 방식이 사이드바면 `IssueDetailSidePanel` 이 대신 그린다. 둘 다 스토어의 같은
+  // `openKey` 를 보므로 이 분기가 없으면 **같은 이슈가 두 곳에 동시에 그려진다**(J1).
+  if (openKey === null || presentation !== 'modal') return null
 
   return (
     <Dialog

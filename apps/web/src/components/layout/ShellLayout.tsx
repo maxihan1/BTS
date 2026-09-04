@@ -10,6 +10,7 @@ import { useCommandPaletteStore } from '@/components/command-palette/useCommandP
 import { ProjectViewChrome } from '@/components/project/ProjectViewChrome'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
+import { IssueDetailSidePanel } from '@/components/issue/IssueDetailSidePanel'
 
 /**
  * `_shell` pathless 라우트의 컴포넌트 — 앱 크롬(상단바+사이드바) 조립을 담당한다.
@@ -173,6 +174,11 @@ export function ShellLayout(): JSX.Element {
           <ProjectViewChrome />
           <Outlet />
         </main>
+        {/* 이슈 상세 사이드패널 (Jira 패리티 J1) — `<main>` 의 **형제**라야 flex 가 본문을
+            밀어내 목록·보드와 나란히 보인다. 오버레이로 덮으면 「옆에서 같이 본다」는 목적이
+            사라진다. 모달 쪽 껍데기는 `__root.tsx` 가 들고, 둘 중 어느 쪽이 뜰지는 스토어의
+            `presentation` 하나가 정한다. */}
+        <IssueDetailSidePanel />
       </div>
     </div>
   )
