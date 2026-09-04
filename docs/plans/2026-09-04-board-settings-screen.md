@@ -369,14 +369,32 @@ T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 �
 컬럼 삭제 → 권한 없음 → `?board=` 없음.
 
 **무회귀 실측**(이 task 의 절반은 측정이다).
-- `agile-planning` 모듈 전량 `--rerun-tasks`
-- `apps/web` vitest 전량 · `tsc -p tsconfig.app.json --noEmit` (★루트 tsconfig 는 `files: []` 라 0개를 검사한다)
-- 표적 E2E 5 spec — `board-settings`(신규) · `board-manage` · `board-kanban` · `board-wip-swimlane` · `board-reorder`
-- 판별식 전량 — ★**`pnpm test:workflow` 를 쓰지 마라.** worktree 에서 pnpm 스크립트는 전부 죽는다
+
+★**전량 명령을 여기 적지 않는다.** 2026-09-04 하네스 변경(#451)이 `bts-impl` Step 4 를
+범위 계산기로 바꿨고, 「명령을 다시 적으면 사람이 그쪽을 복사해 쓰고 계산기가 장식이 된다」를
+사유로 못박았다. 범위는 **계산기가 낸 블록**을 그대로 실행한다.
+
+```bash
+node --experimental-strip-types scripts/workflow/select-test-scope.ts \
+  --plan docs/plans/2026-09-04-board-settings-screen.md
+```
+
+계산기가 읽는 셋 — ①브랜치 diff 의 백엔드 모듈 폐포 ②바뀐 소스를 import 하는 프론트 테스트
+(`vitest related`) ③**이 plan 의 task 마다 적힌 `**검증**:` 명령 전량**. 그래서 위 Task 1~8 의
+`**검증**:` 칸이 비면 Step 1 이 BLOCKED 로 멈춘다 — 전량으로 대체하지 않는다.
+
+★**기준 ref 함정.** 계산기는 브랜치 upstream(`@{u}`)을 기준으로 삼는다. 리베이스 직후에는
+원격이 아직 옛 갈래라 merge-base 가 뒤로 밀려 **main 의 남의 커밋까지 「내 변경」으로 잡고
+9모듈 전량으로 넓어진다.** 오작동이 아니라 안전측 넓힘이고, 푸시하면 좁아진다.
+
+계산기 범위와 무관하게 **조건 없이 전량**인 것.
+- 판별식 — `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`.
+  ★**`pnpm test:workflow` 를 쓰지 마라.** worktree 에서 pnpm 스크립트는 전부 죽는다
   (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` — 심볼릭 `node_modules` 를 pnpm 의 deps check 가
   불일치로 보고 install 을 트리거한다. learning `worktree-run-binaries-not-pnpm` · 10/10 · 2026-09-03).
-  **바이너리를 직접 부른다** — `node --experimental-strip-types --test scripts/**/*.test.ts`.
   ★**실행 건수를 함께 읽는다.** #444 가 `backend/` 에서 돌렸다가 「0건 실행 · EXIT=0」을 초록으로 오독할 뻔했다
+- 타입체크 — `apps/web/node_modules/.bin/tsc -p apps/web/tsconfig.app.json --noEmit`
+  (★루트 tsconfig 는 `files: []` 라 0개를 검사한다)
 - `build-doc-index --check` · `verify-master-plan.sh`
 - **뮤테이션 짝 3건** — ①T2 집합 일치 판정 제거 → 400 판정 1건만 red ②G1 컬럼 1개 비활성 제거 → 1건만 red ③G2 「모든 실패에서 되돌림」을 409 한정으로 좁힘 → 1건만 red.
   ★**GREEN 선커밋 뒤에 돌린다** — 미커밋 원복은 소실이다(함정 정본).
