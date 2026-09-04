@@ -16,6 +16,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { openProjectReportFromSidebar, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts DEFAULT_BACKLOG / cfd-handlers.ts DEFAULT_CFD와 동기화
@@ -33,7 +34,22 @@ const EMPTY_PROJECT_KEY = 'PROJECT-EMPTY'
 /** 빈 CFD 프로젝트의 CFD 페이지 URL */
 const EMPTY_CFD_URL = `/projects/${EMPTY_PROJECT_KEY}/reports/cfd`
 
-/** cfd-labels.ts cfdLabels / backlog-labels.ts backlogLabels 문자열 재노출 — E2E 셀렉터가 정본 참조 */
+/**
+ * 사이드바 트리 `리포트` 그룹의 CFD 링크 라벨 (`ProjectTree.tsx` `REPORT_LINKS` 미러).
+ *
+ * 아래 `labels.nav.cfdLink`(`누적 흐름도`)와 **다른 문자열**이다 — 옛 백로그 인라인 nav 와
+ * 사이드바가 각자 이름을 갖고 있었고, 인라인 쪽이 J5 로 없어지면서 사이드바 것만 남았다.
+ * 둘을 하나로 합치는 것은 이 PR 범위 밖이라 차이를 여기에 명시해 둔다.
+ */
+const SIDEBAR_CFD_LABEL = '누적 흐름도(CFD)'
+
+/**
+ * 화면 문구 미러.
+ *
+ * ★`nav.cfdLink` 의 정본이 **바뀌었다.** 옛 정본 `backlogLabels.page.cfdLink` 는 Jira 패리티
+ * J5 로 백로그 인라인 nav 가 사라지며 함께 지워졌다. 사이드바 라벨은 `누적 흐름도(CFD)` 로
+ * 이 값과 **다르므로** 위 `SIDEBAR_CFD_LABEL` 을 따로 둔다 — 이 값은 페이지 문구 전용이다.
+ */
 const labels = {
   page: {
     title: '누적 흐름도',
@@ -68,13 +84,16 @@ test.describe('FR-RP-03 D6/D7 프로젝트 누적 흐름도(CFD)', () => {
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. "프로젝트 뷰 전환" nav 표시 확인 (컨테이너 한정 — board/timeline/velocity 링크와 텍스트 중복 회피)
-    const viewNav = page.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-    await expect(viewNav).toBeVisible()
+    // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
+    //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
+    //        그룹 하나다. 여기서는 탭바가 떠 있는 것만 확인한다 — 「탭바에 리포트 링크가
+    //        없다」는 정본 9탭 순서 단언(`project-view-tabs.test.ts`)이 더 강하게 지킨다.
+    await expect(projectViewNav(page)).toBeVisible()
 
-    // When. nav의 "누적 흐름도" 링크 클릭
-    const cfdLink = viewNav.getByRole('link', { name: labels.nav.cfdLink, exact: true })
-    await expect(cfdLink).toBeVisible()
+    // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
+    // 🛑 사이드바 라벨은 `누적 흐름도(CFD)` 로 옛 인라인 nav 라벨(`누적 흐름도`)과 **다르다.**
+    //    두 목록이 각자 이름을 갖고 있었고, 인라인 쪽이 없어지면서 사이드바 것만 남았다.
+    const cfdLink = await openProjectReportFromSidebar(page, 'Atlas 프로젝트', SIDEBAR_CFD_LABEL)
     await cfdLink.click()
 
     // Then. URL이 CFD 라우트로 이동

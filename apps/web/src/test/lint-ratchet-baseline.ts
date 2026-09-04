@@ -65,6 +65,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   // ⚠️ 갱신 전에 래칫이 실제로 무는지 red 를 **두 번** 봤다(446 요구 → 추출 후 426 요구).
   //    숫자만 맞추면 그 래칫은 그 뒤로 아무것도 지키지 않는다.
   // 상환 후보로 이 항목은 그대로 남는다 — 위 `projectFavoriteHeader` 추출 논의와 함께 읽을 것.
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 426,
+  // 426 → 420 (Jira 패리티 J5) — 뷰 전환 nav 를 셸(`ProjectViewChrome`)로 옮기며 6줄이 빠졌다.
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 420,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }

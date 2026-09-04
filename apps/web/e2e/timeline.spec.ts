@@ -23,6 +23,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { clickProjectViewTab, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — timeline-fixtures.ts / timeline-labels.ts / GanttChart.tsx와 동기화
@@ -115,11 +116,11 @@ async function loginAndNavigateToTimeline(
   await page.goto(BACKLOG_URL)
 
   // nav 렌더 대기 (프로젝트 뷰 전환 nav)
-  const nav = page.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-  await expect(nav).toBeVisible()
+  await expect(projectViewNav(page)).toBeVisible()
 
-  // "타임라인" 링크 클릭 — SPA 내부 이동 (reload 금지)
-  await nav.getByRole('link', { name: '타임라인', exact: true }).click()
+  // "타임라인" 탭 클릭 — SPA 내부 이동 (reload 금지).
+  // 🛑 탭이 9개라 폭에 따라 접힌다. 헬퍼가 접힘 여부를 흡수한다 (Jira 패리티 J5 · 위험 R1).
+  await clickProjectViewTab(page, '타임라인')
 
   // 타임라인 URL 진입 완료 대기
   await page.waitForURL(TIMELINE_URL_PATTERN)
@@ -146,11 +147,10 @@ test.describe('FR-TL-01 타임라인 Gantt 뷰 (happy path 실렌더)', () => {
 
     // Given. 백로그 진입
     await page.goto(BACKLOG_URL)
-    const nav = page.getByRole('navigation', { name: '프로젝트 뷰 전환' })
-    await expect(nav).toBeVisible()
+    await expect(projectViewNav(page)).toBeVisible()
 
-    // When. "타임라인" 링크 클릭 (SPA 내부 이동)
-    await nav.getByRole('link', { name: '타임라인', exact: true }).click()
+    // When. "타임라인" 탭 클릭 (SPA 내부 이동). 접혔으면 헬퍼가 「더 보기」를 연다.
+    await clickProjectViewTab(page, '타임라인')
 
     // Then. URL 타임라인으로 변경됨
     await page.waitForURL(TIMELINE_URL_PATTERN)
