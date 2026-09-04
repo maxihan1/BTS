@@ -429,6 +429,33 @@ export const boardLabels = {
      */
     lastColumnLocked: '마지막 컬럼은 지울 수 없습니다.',
 
+    /**
+     * 컬럼 이름 편집 입력의 접근성 이름 (J24).
+     *
+     * @param columnName 지금 이름
+     */
+    renameColumnLabel: (columnName: string): string => `컬럼 이름 변경: ${columnName}`,
+
+    /**
+     * WIP 제한 입력의 접근성 이름 (J29 · 편차 X2).
+     *
+     * ★**최대치 하나뿐이다.** 지라는 *"you can enter a minimum or maximum value"* 로 둘을
+     * 받지만 BTS 스키마에 최소치 칸이 없다. 이름에 「최대」를 박아 두 번째 입력이 없는 것이
+     * 누락이 아니라 결정임을 화면에서도 읽히게 한다.
+     *
+     * @param columnName 대상 컬럼
+     */
+    wipLimitInputLabel: (columnName: string): string => `${columnName} 최대 카드 수`,
+
+    /** 컬럼 순서 드래그 핸들의 접근성 이름 (J25) */
+    reorderHandleLabel: (columnName: string): string => `컬럼 순서 변경: ${columnName}`,
+
+    /** 컬럼 갱신(이름·WIP) 실패 */
+    updateColumnFailed: '컬럼을 바꾸지 못했습니다.',
+
+    /** 컬럼 순서 변경 실패 */
+    reorderFailed: '컬럼 순서를 바꾸지 못했습니다.',
+
     /** WIP 제한 표시 — 무제한일 때 */
     wipUnlimited: 'WIP 제한 없음',
 

@@ -13,10 +13,11 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useBoardDragSensors } from '../board-drag-sensors'
 import { useReplaceColumnStates, isStateConflict } from '@/hooks/use-replace-column-states'
 import { useCreateColumn, useDeleteColumn } from '@/hooks/use-column-crud'
+import { useUpdateColumn, useReorderColumns } from '@/hooks/use-update-column'
 import { ColumnSettingsCard } from './ColumnSettingsCard'
 import { UnmappedStatesPanel } from './UnmappedStatesPanel'
 import { AddColumnDialog } from './AddColumnDialog'
-import { planStateDrop } from './state-mapping-drop'
+import { planStateDrop, planColumnReorder } from './state-mapping-drop'
 
 /** ColumnSettingsPanel props */
 export interface ColumnSettingsPanelProps {
@@ -50,6 +51,8 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
   const replaceStates = useReplaceColumnStates(board.boardId)
   const createColumn = useCreateColumn(board.boardId)
   const deleteColumn = useDeleteColumn(board.boardId)
+  const updateColumn = useUpdateColumn(board.boardId)
+  const reorder = useReorderColumns(board.boardId)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState<string | undefined>(undefined)
@@ -65,10 +68,24 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
    */
   const canDeleteAny = canConfigure && board.columns.length > 1
 
+  /**
+   * 드래그 두 축을 한 컨텍스트에서 가른다.
+   *
+   * ★plan 은 「dnd context 를 분리한다」고 적었는데 **구현이 그것을 바꿨다.** `DndContext` 를
+   * 중첩하면 이벤트가 바깥까지 올라가 어느 쪽이 처리했는지 모호해진다. 대신 끌리는 쪽이
+   * `data.kind` 를 싣고 여기서 분기한다 — 「상태를 컬럼 헤더에 떨어뜨리는」 잘못된 조합은
+   * `kind` 가 갈라 주므로 컨텍스트를 나눌 이유가 사라진다.
+   */
   function handleDragEnd(event: DragEndEvent): void {
     const data = event.active.data.current as
-      | { stateKey?: string; fromColumnId?: string | null }
+      | { kind?: string; stateKey?: string; fromColumnId?: string | null; columnId?: string }
       | undefined
+
+    if (data?.kind === 'column' && data.columnId !== undefined) {
+      handleColumnReorder(data.columnId, event)
+      return
+    }
+
     const stateKey = data?.stateKey
     if (stateKey === undefined) return
 
@@ -89,6 +106,22 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
             ? boardLabels.settings.stateConflict
             : boardLabels.settings.stateChangeFailed,
         )
+      },
+    })
+  }
+
+  /** 컬럼 순서 드래그 — 전 컬럼 순서를 만들어 한 번에 보낸다 (R10 · J25). */
+  function handleColumnReorder(draggedColumnId: string, event: DragEndEvent): void {
+    const next = planColumnReorder(
+      draggedColumnId,
+      event.over === null ? null : String(event.over.id),
+      board.columns,
+    )
+    if (next === null) return
+
+    reorder.mutate(next, {
+      onError: () => {
+        toast.error(boardLabels.settings.reorderFailed)
       },
     })
   }
@@ -198,6 +231,28 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
               onRequestDelete={() => {
                 setDeleteError(undefined)
                 setDeleteTarget(column)
+              }}
+              onRenameCommit={(name) => {
+                // ★`wipLimit` 키를 싣지 않는다. 실으면 이름만 바꾸려는 요청이 WIP 제한을
+                //   함께 덮는다(백엔드 3-state · Task 1 이 그 구멍을 막은 이유).
+                updateColumn.mutate(
+                  { columnId: column.columnId, patch: { name } },
+                  {
+                    onError: () => {
+                      toast.error(boardLabels.settings.updateColumnFailed)
+                    },
+                  },
+                )
+              }}
+              onWipLimitCommit={(wipLimit) => {
+                updateColumn.mutate(
+                  { columnId: column.columnId, patch: { wipLimit } },
+                  {
+                    onError: () => {
+                      toast.error(boardLabels.settings.updateColumnFailed)
+                    },
+                  },
+                )
               }}
             />
           ))}

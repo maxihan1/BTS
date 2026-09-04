@@ -74,6 +74,36 @@ export function planStateDrop(
   }
 }
 
+/**
+ * 컬럼 하나를 다른 컬럼 자리로 옮긴 뒤의 **전체 순서**를 만든다 (R10 · J25).
+ *
+ * 서버가 부분 이동 명령을 받지 않으므로(`PUT …/columns/order` 는 전 컬럼을 요구한다) 여기서
+ * 최종 배열을 만든다. 제자리·미지목·모르는 id 는 `null` 이고, 호출자는 아무 요청도 보내지 않는다.
+ *
+ * @param draggedColumnId 끌던 컬럼 UUID.
+ * @param overColumnId 놓은 자리의 컬럼 UUID. 허공이면 `null`.
+ * @param columns 현재 보드의 컬럼 전량(표시 순서).
+ * @returns 새 순서의 컬럼 UUID 전량. 바뀌는 것이 없으면 `null`.
+ */
+export function planColumnReorder(
+  draggedColumnId: string,
+  overColumnId: string | null,
+  columns: readonly { columnId: string }[],
+): string[] | null {
+  if (overColumnId === null || overColumnId === draggedColumnId) return null
+
+  const ids = columns.map((c) => c.columnId)
+  const from = ids.indexOf(draggedColumnId)
+  const to = ids.indexOf(overColumnId)
+  // 둘 중 하나라도 이 보드 것이 아니면 아무 일도 하지 않는다 — 던지면 드래그가 화면을 죽인다.
+  if (from === -1 || to === -1) return null
+
+  const next = [...ids]
+  next.splice(from, 1)
+  next.splice(to, 0, draggedColumnId)
+  return next
+}
+
 /** 그 컬럼의 상태 집합에서 `stateKey` 를 뺀 목록. 컬럼이 없으면 빈 목록. */
 function keysWithout(
   columns: readonly BoardColumn[],
