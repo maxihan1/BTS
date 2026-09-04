@@ -1,6 +1,6 @@
 // FilterBar 공유 코어 컴포넌트 단위 테스트 — 담당자·라벨·컴포넌트·칩·초기화(공통) FR-UX-06 PR17 Task 2
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -159,9 +159,26 @@ function renderBar(
 // S1. 담당자 typeahead
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 필터 드롭다운을 연다.
+ *
+ * 지라 기본 검색과 같은 가로 필터 바로 바뀌면서 상태·담당자·라벨·컴포넌트 컨트롤이 각자
+ * 드롭다운 **안**으로 들어갔다. 열기 전에는 DOM 에 없으므로, 컨트롤을 조작하는 판정은
+ * 먼저 이 헬퍼를 부른다.
+ */
+async function openFilter(label: string): Promise<void> {
+  // ★`fireEvent` 를 쓴다. `userEvent.setup()` 은 제 타이머를 세우는데, 디바운스 판정처럼
+  //   가짜 타이머를 쓰는 블록에서는 그 둘이 맞물려 15초 타임아웃으로 죽는다.
+  fireEvent.click(screen.getByRole('button', { name: `${label} 필터` }))
+  // 대기하지 않는다 — Radix 는 클릭에 동기로 열리고, 가짜 타이머를 쓰는 블록에서 대기를
+  // 걸면 타이머가 멈춰 있어 15초 타임아웃으로 죽는다(백로그 디바운스 판정에서 실측).
+  await Promise.resolve()
+}
+
 describe('FilterBar — S1 담당자 typeahead', () => {
-  it('S1a: 담당자 input이 idPrefix 기반 id를 갖는다', () => {
+  it('S1a: 담당자 input이 idPrefix 기반 id를 갖는다', async () => {
     renderBar()
+    await openFilter('담당자')
     const input = screen.getByRole('textbox', { name: /담당자/ })
     expect(input).toHaveAttribute('id', 'test-filter-assignee-input')
   })
@@ -170,6 +187,7 @@ describe('FilterBar — S1 담당자 typeahead', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: /담당자/ })
     await user.click(input)
@@ -186,6 +204,7 @@ describe('FilterBar — S1 담당자 typeahead', () => {
   it('S1c: 이미 선택된 담당자는 검색 결과 후보에서 제외된다 (중복 무시)', async () => {
     const user = userEvent.setup()
     renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001'] })
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: /담당자/ })
     await user.click(input)
@@ -199,6 +218,7 @@ describe('FilterBar — S1 담당자 typeahead', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('담당자')
 
     const unassignedCheckbox = screen.getByRole('checkbox', { name: /미배정/ })
     await user.click(unassignedCheckbox)
@@ -208,7 +228,7 @@ describe('FilterBar — S1 담당자 typeahead', () => {
     )
   })
 
-  it('S1e: 선택된 담당자 이름이 useUsersByIds로 안정적으로 표시된다 (검색어가 비어도 유지)', () => {
+  it('S1e: 선택된 담당자 이름이 useUsersByIds로 안정적으로 표시된다 (검색어가 비어도 유지)', async () => {
     vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
       { data: [], isLoading: false } as unknown as ReturnType<typeof useUsersModule.useUsers>,
     )
@@ -220,6 +240,7 @@ describe('FilterBar — S1 담당자 typeahead', () => {
     )
 
     renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001'] })
+    await openFilter('담당자')
 
     expect(screen.getByText('김앨리스')).toBeInTheDocument()
     expect(screen.queryByText('user-uuid-0001')).not.toBeInTheDocument()
@@ -231,17 +252,23 @@ describe('FilterBar — S1 담당자 typeahead', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FilterBar — S2 라벨 자동완성', () => {
-  it('S2a: 라벨 label의 htmlFor가 idPrefix 기반이다', () => {
+  /**
+   * 종전에는 `<label htmlFor>` 의 id 규약을 쟀다. 그 label 은 드롭다운 트리거와 텍스트가
+   * 똑같아져(둘 다 「라벨」) `getByText` 를 strict 위반으로 만들었고, 입력 자신이
+   * `aria-label="라벨 자동완성"` 을 갖고 있어 지우는 편이 접근성 손실이 없었다.
+   * 남은 계약은 「열면 이름 있는 입력이 나온다」다.
+   */
+  it('S2a: 라벨 드롭다운을 열면 접근 가능한 이름을 가진 입력이 나온다', async () => {
     renderBar()
-    const label = screen.getByText(filterBarLabels.filter.labelLabel)
-    expect(label.tagName).toBe('LABEL')
-    expect(label).toHaveAttribute('for', 'test-filter-label-input')
+    await openFilter('라벨')
+    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
   })
 
   it('S2b: 라벨 input에 값 입력 후 드롭다운에서 라벨 선택 → onChange(labels 포함)가 호출된다', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('라벨')
 
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
@@ -255,8 +282,9 @@ describe('FilterBar — S2 라벨 자동완성', () => {
     )
   })
 
-  it('S2c: 라벨 선택 후 칩이 표시된다', () => {
+  it('S2c: 라벨 선택 후 칩이 표시된다', async () => {
     renderBar({ ...emptyFilter, labels: ['bug'] })
+    await openFilter('라벨')
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     expect(within(chipList).getByText('bug')).toBeInTheDocument()
   })
@@ -264,6 +292,7 @@ describe('FilterBar — S2 라벨 자동완성', () => {
   it('S2d: 이미 추가된 라벨은 드롭다운 후보에서 제외된다 (중복 무시)', async () => {
     const user = userEvent.setup()
     renderBar({ ...emptyFilter, labels: ['bug'] })
+    await openFilter('라벨')
 
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
@@ -280,6 +309,7 @@ describe('FilterBar — S2 라벨 자동완성', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({ ...emptyFilter, labels: ['bug'] }, onChange)
+    await openFilter('라벨')
 
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
@@ -295,8 +325,9 @@ describe('FilterBar — S2 라벨 자동완성', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('FilterBar — S3 컴포넌트 멀티셀렉트', () => {
-  it('S3a: useComponents 결과가 체크박스로 렌더된다', () => {
+  it('S3a: useComponents 결과가 체크박스로 렌더된다', async () => {
     renderBar()
+    await openFilter('컴포넌트')
     expect(screen.getByRole('checkbox', { name: '프론트엔드' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: '백엔드' })).toBeInTheDocument()
   })
@@ -305,6 +336,7 @@ describe('FilterBar — S3 컴포넌트 멀티셀렉트', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('컴포넌트')
 
     const checkbox = screen.getByRole('checkbox', { name: '프론트엔드' })
     await user.click(checkbox)
@@ -325,8 +357,9 @@ describe('FilterBar — S4 활성 필터 칩', () => {
     expect(screen.queryByRole('list', { name: '적용된 필터' })).not.toBeInTheDocument()
   })
 
-  it('S4b: 담당자 칩 제거 버튼의 aria-label은 "{name} 제거" 형식이다', () => {
+  it('S4b: 담당자 칩 제거 버튼의 aria-label은 "{name} 제거" 형식이다', async () => {
     renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001'] })
+    await openFilter('담당자')
 
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     const removeBtn = within(chipList).getByRole('button', {
@@ -342,6 +375,7 @@ describe('FilterBar — S4 활성 필터 칩', () => {
       { ...emptyFilter, assigneeIds: ['user-uuid-0001', 'user-uuid-0002'] },
       onChange,
     )
+    await openFilter('담당자')
 
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     const removeBtn = within(chipList).getByRole('button', {
@@ -358,6 +392,7 @@ describe('FilterBar — S4 활성 필터 칩', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({ ...emptyFilter, labels: ['bug', 'feature'] }, onChange)
+    await openFilter('라벨')
 
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     const removeBtn = within(chipList).getByRole('button', {
@@ -388,11 +423,12 @@ describe('FilterBar — S5 leadingSection / leadingChips 슬롯', () => {
     expect(screen.queryByTestId('leading-slot')).not.toBeInTheDocument()
   })
 
-  it('S5c: leadingChips가 담당자/라벨 칩보다 앞에 렌더된다', () => {
+  it('S5c: leadingChips가 담당자/라벨 칩보다 앞에 렌더된다', async () => {
     const leadingChips: FilterChipData[] = [
       { id: 'status-open', label: 'Open', onRemove: vi.fn() },
     ]
     renderBar({ ...emptyFilter, assigneeIds: ['user-uuid-0001'] }, vi.fn(), { leadingChips })
+    await openFilter('담당자')
 
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     const chipTexts = within(chipList).getAllByRole('listitem').map((el) => el.textContent)
@@ -441,6 +477,9 @@ describe('FilterBar — S6 초기화 버튼', () => {
       componentIds: ['comp-uuid-0001'],
     }
     renderBar(value, onChange)
+    await openFilter('담당자')
+    await openFilter('라벨')
+    await openFilter('컴포넌트')
 
     await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
 
@@ -482,6 +521,7 @@ describe('FilterBar — S6 초기화 버튼', () => {
   it('S6d: onReset 미전달 시 초기화 클릭 → 담당자 검색 입력이 비워진다', async () => {
     const user = userEvent.setup()
     renderBar()
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: /담당자/ })
     await user.click(input)
@@ -490,12 +530,17 @@ describe('FilterBar — S6 초기화 버튼', () => {
 
     await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
 
-    expect(input).toHaveValue('')
+    // 초기화는 드롭다운 **밖**의 버튼이라 누르는 순간 팝오버가 닫힌다 — 값을 다시 보려면
+    // 열어야 하고, 다시 연 입력은 새 노드다(옛 참조는 detach 된다).
+    await openFilter('담당자')
+
+    expect(screen.getByRole('textbox', { name: /담당자/ })).toHaveValue('')
   })
 
   it('S6e: onReset 미전달 시 초기화 클릭 → 라벨 검색 입력이 비워진다', async () => {
     const user = userEvent.setup()
     renderBar()
+    await openFilter('라벨')
 
     const labelInput = screen.getByTestId('label-autocomplete-input')
     await user.click(labelInput)
@@ -504,7 +549,11 @@ describe('FilterBar — S6 초기화 버튼', () => {
 
     await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
 
-    expect(labelInput).toHaveValue('')
+    // 초기화는 드롭다운 **밖**의 버튼이라 누르는 순간 팝오버가 닫힌다 — 값을 다시 보려면
+    // 열어야 하고, 다시 연 입력은 새 노드다(옛 참조는 detach 된다).
+    await openFilter('라벨')
+
+    expect(screen.getByTestId('label-autocomplete-input')).toHaveValue('')
   })
 
   it('S6f: onReset 전달 시(이슈 필터 시뮬레이션)에도 초기화 클릭 → 담당자 검색 입력이 비워진다 (회귀 방지)', async () => {
@@ -520,6 +569,7 @@ describe('FilterBar — S6 초기화 버튼', () => {
       />,
       { wrapper: makeWrapper() },
     )
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: /담당자/ })
     await user.click(input)
@@ -528,7 +578,11 @@ describe('FilterBar — S6 초기화 버튼', () => {
 
     await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
 
-    expect(input).toHaveValue('')
+    // 초기화는 드롭다운 **밖**의 버튼이라 누르는 순간 팝오버가 닫힌다 — 값을 다시 보려면
+    // 열어야 하고, 다시 연 입력은 새 노드다(옛 참조는 detach 된다).
+    await openFilter('담당자')
+
+    expect(screen.getByRole('textbox', { name: /담당자/ })).toHaveValue('')
     expect(onReset).toHaveBeenCalledTimes(1)
   })
 
@@ -545,6 +599,7 @@ describe('FilterBar — S6 초기화 버튼', () => {
       />,
       { wrapper: makeWrapper() },
     )
+    await openFilter('라벨')
 
     const labelInput = screen.getByTestId('label-autocomplete-input')
     await user.click(labelInput)
@@ -553,7 +608,11 @@ describe('FilterBar — S6 초기화 버튼', () => {
 
     await user.click(screen.getByRole('button', { name: filterBarLabels.filter.reset }))
 
-    expect(labelInput).toHaveValue('')
+    // 초기화는 드롭다운 **밖**의 버튼이라 누르는 순간 팝오버가 닫힌다 — 값을 다시 보려면
+    // 열어야 하고, 다시 연 입력은 새 노드다(옛 참조는 detach 된다).
+    await openFilter('라벨')
+
+    expect(screen.getByTestId('label-autocomplete-input')).toHaveValue('')
     expect(onReset).toHaveBeenCalledTimes(1)
   })
 })
@@ -568,23 +627,28 @@ describe('FilterBar — S7 활성 필터 카운트', () => {
     expect(screen.queryByText(/개 적용/)).not.toBeInTheDocument()
   })
 
-  it('S7b: 담당자 1 + 라벨 1 + 컴포넌트 1 = "3개 적용 중"', () => {
+  it('S7b: 담당자 1 + 라벨 1 + 컴포넌트 1 = "3개 적용 중"', async () => {
     renderBar({
       assigneeIds: ['user-uuid-0001'],
       includeUnassigned: false,
       labels: ['bug'],
       componentIds: ['comp-uuid-0001'],
     })
+    await openFilter('담당자')
+    await openFilter('라벨')
+    await openFilter('컴포넌트')
     expect(screen.getByText(/3개 적용 중/)).toBeInTheDocument()
   })
 
-  it('S7c: includeUnassigned도 카운트에 포함된다', () => {
+  it('S7c: includeUnassigned도 카운트에 포함된다', async () => {
     renderBar({ ...emptyFilter, includeUnassigned: true })
+    await openFilter('담당자')
     expect(screen.getByText(/1개 적용 중/)).toBeInTheDocument()
   })
 
-  it('S7d: extraActiveCount가 activeCount에 가산된다', () => {
+  it('S7d: extraActiveCount가 activeCount에 가산된다', async () => {
     renderBar({ ...emptyFilter, labels: ['bug'] }, vi.fn(), { extraActiveCount: 2 })
+    await openFilter('라벨')
     // 라벨 1개 + extraActiveCount 2 = 3개
     expect(screen.getByText(/3개 적용 중/)).toBeInTheDocument()
   })
@@ -612,13 +676,13 @@ describe('FilterBar — S8 hiddenSections 섹션 가시성', () => {
     expect(screen.getByText(filterBarLabels.filter.componentLabel)).toBeInTheDocument()
   })
 
-  it('S8b: hiddenSections로 감추면 라벨·컴포넌트 섹션이 DOM에서 사라진다', () => {
+  it('S8b: hiddenSections로 감추면 라벨·컴포넌트 섹션이 DOM에서 사라진다', async () => {
     renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true, components: true } })
     expect(screen.queryByText(filterBarLabels.filter.labelLabel)).not.toBeInTheDocument()
     expect(screen.queryByText(filterBarLabels.filter.componentLabel)).not.toBeInTheDocument()
   })
 
-  it('S8c: 라벨만 감출 수 있다 — 컴포넌트는 남는다', () => {
+  it('S8c: 라벨만 감출 수 있다 — 컴포넌트는 남는다', async () => {
     renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true } })
     expect(screen.queryByText(filterBarLabels.filter.labelLabel)).not.toBeInTheDocument()
     expect(screen.getByText(filterBarLabels.filter.componentLabel)).toBeInTheDocument()
@@ -630,13 +694,14 @@ describe('FilterBar — S8 hiddenSections 섹션 가시성', () => {
     expect(screen.queryByText(filterBarLabels.filter.componentLabel)).not.toBeInTheDocument()
   })
 
-  it('S8e: 감춰도 담당자 섹션과 초기화는 그대로 동작한다', () => {
+  it('S8e: 감춰도 담당자 섹션과 초기화는 그대로 동작한다', async () => {
     renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true, components: true } })
+    await openFilter('담당자')
     expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: filterBarLabels.filter.reset })).toBeInTheDocument()
   })
 
-  it('S8f: 감춰도 activeCount 계산식은 바뀌지 않는다 — 가시성은 표시 문제이지 집계 문제가 아니다', () => {
+  it('S8f: 감춰도 activeCount 계산식은 바뀌지 않는다 — 가시성은 표시 문제이지 집계 문제가 아니다', async () => {
     // 값에 labels가 들어 있는 상태로 섹션만 감춘다. 카운트가 줄어들면 감추기가
     // 조용히 집계까지 바꾼 것이고, 보드·이슈 소비처의 카운트 계약을 흔든다.
     renderBar({ ...emptyFilter, labels: ['bug'] }, vi.fn(), { hiddenSections: { labels: true } })

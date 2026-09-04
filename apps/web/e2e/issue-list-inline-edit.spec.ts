@@ -186,8 +186,8 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     // When 편집 대상이 아닌 요약 셀을 클릭한다
     await page.getByTestId(`issue-summary-${TARGET_KEY}`).click()
 
-    // Then 기존대로 상세(split 선택)가 열린다
-    await expect(page).toHaveURL(new RegExp(`selected=${TARGET_KEY}`))
+    // Then 기존대로 상세가 열린다 — 표시 방식 기본이 모달이라 URL 대신 dialog 로 도착지를 잰다(J1)
+    await expect(page.getByRole('dialog', { name: `이슈 상세 ${TARGET_KEY}` })).toBeVisible()
   })
 
   test('S4 행 여백(수정일 셀) 클릭도 기존대로 상세를 연다', async ({ page }) => {
@@ -198,8 +198,8 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     const row = page.getByRole('row').filter({ has: page.getByTestId(`issue-summary-${TARGET_KEY}`) })
     await row.getByRole('cell').last().click()
 
-    // Then 기존대로 상세(split 선택)가 열린다
-    await expect(page).toHaveURL(new RegExp(`selected=${TARGET_KEY}`))
+    // Then 기존대로 상세가 열린다 — 표시 방식 기본이 모달이라 URL 대신 dialog 로 도착지를 잰다(J1)
+    await expect(page.getByRole('dialog', { name: `이슈 상세 ${TARGET_KEY}` })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────

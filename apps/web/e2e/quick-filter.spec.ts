@@ -35,6 +35,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { quickFilterLabels } from '../src/i18n/quick-filter-labels'
+import { openFilterDropdown } from './fixtures/filter-bar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — board-fixtures.ts / board-handlers.ts / project-permission-handlers.ts와 인라인 동기화
@@ -95,6 +96,7 @@ async function selectAssigneeFromTypeahead(
   query: string,
   displayName: string,
 ): Promise<void> {
+  await openFilterDropdown(page, '담당자')
   const input = page.locator('#board-filter-assignee-input')
   await input.fill(query)
   const dropdownList = page.locator('#board-filter-assignee-input + ul').or(
@@ -272,6 +274,7 @@ test.describe('FR-UX-01 보드 퀵필터 (저장·적용·해제·삭제·권한
 
     // When. 필터바에서 "미배정" 체크박스를 수동으로 체크(칩과 무관한 직접 조작)
     // role=checkbox로 한정 — 카드 summary에 "미배정" 텍스트가 포함되어 strict-mode 방지 필요.
+    await openFilterDropdown(page, '담당자')
     await page.getByRole('checkbox', { name: '미배정', exact: true }).check()
 
     // Then. 칩 비활성화 — 더 이상 그 퀵필터의 조건과 일치한다는 보장이 없으므로 해제된다.

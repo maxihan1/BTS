@@ -1,6 +1,6 @@
 // BoardFilterBar 컴포넌트 단위 테스트 — 담당자/라벨/컴포넌트 필터 + 칩 + 초기화 (FR-BD-02 Task-5)
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -140,6 +140,22 @@ function renderBar(
 // S1. 담당자 typeahead
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 필터 드롭다운을 연다.
+ *
+ * 지라 기본 검색과 같은 가로 필터 바로 바뀌면서 상태·담당자·라벨·컴포넌트 컨트롤이 각자
+ * 드롭다운 **안**으로 들어갔다. 열기 전에는 DOM 에 없으므로, 컨트롤을 조작하는 판정은
+ * 먼저 이 헬퍼를 부른다.
+ */
+async function openFilter(label: string): Promise<void> {
+  // ★`fireEvent` 를 쓴다. `userEvent.setup()` 은 제 타이머를 세우는데, 디바운스 판정처럼
+  //   가짜 타이머를 쓰는 블록에서는 그 둘이 맞물려 15초 타임아웃으로 죽는다.
+  fireEvent.click(screen.getByRole('button', { name: `${label} 필터` }))
+  // 대기하지 않는다 — Radix 는 클릭에 동기로 열리고, 가짜 타이머를 쓰는 블록에서 대기를
+  // 걸면 타이머가 멈춰 있어 15초 타임아웃으로 죽는다(백로그 디바운스 판정에서 실측).
+  await Promise.resolve()
+}
+
 describe('BoardFilterBar — S1 담당자 typeahead', () => {
   // 담당자 접근성 라벨(FilterBar S1a)·미배정 토글(FilterBar S1d)은 FilterBar.test에 동등 커버됨.
   // 이 케이스는 board-filter idPrefix 경로로 담당자 위임이 실제로 동작함을 확인하는 위임 스모크로 유지.
@@ -147,6 +163,7 @@ describe('BoardFilterBar — S1 담당자 typeahead', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: /담당자/ })
     await user.click(input)
@@ -173,6 +190,7 @@ describe('BoardFilterBar — S2 라벨 자동완성', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('라벨')
 
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
@@ -198,7 +216,7 @@ describe('BoardFilterBar — S2 라벨 자동완성', () => {
 
 describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersByIds)', () => {
   // 담당자 칩 라벨 안정 표시(useUsersByIds, FilterBar S1e)는 FilterBar.test에 동등 커버되어 제거됨.
-  it('S8b: useUsersByIds가 로딩 중일 때 칩이 크래시하지 않고 렌더된다', () => {
+  it('S8b: useUsersByIds가 로딩 중일 때 칩이 크래시하지 않고 렌더된다', async () => {
     // useUsers 빈 배열, useUsersByIds는 로딩 중
     vi.mocked(useUsersModule.useUsers).mockReturnValueOnce(
       { data: [], isLoading: false } as unknown as ReturnType<typeof useUsersModule.useUsers>,
@@ -213,6 +231,7 @@ describe('BoardFilterBar — S8 담당자 칩 라벨 안정 표시 (useUsersById
       assigneeIds: ['user-uuid-0001'],
     }
     renderBar(value)
+    await openFilter('담당자')
 
     // 로딩 중에는 칩이 크래시하지 않고 렌더되어야 한다
     const chips = screen.getByRole('list', { name: '적용된 필터' })
@@ -237,6 +256,9 @@ describe('BoardFilterBar — S5 초기화 버튼', () => {
       componentIds: ['comp-uuid-0001'],
     }
     renderBar(value, onChange)
+    await openFilter('담당자')
+    await openFilter('라벨')
+    await openFilter('컴포넌트')
 
     await user.click(screen.getByRole('button', { name: '초기화' }))
 

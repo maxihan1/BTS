@@ -31,6 +31,7 @@
 //     필요한 상수를 인라인 정의.
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { openFilterDropdown } from './fixtures/filter-bar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — board-fixtures.ts / user-fixtures.ts와 인라인 동기화
@@ -118,6 +119,7 @@ async function selectAssigneeFromTypeahead(
   query: string,
   displayName: string,
 ): Promise<void> {
+  await openFilterDropdown(page, '담당자')
   // id 직접 한정 — getByLabel('담당자')는 카드 aria-label="담당자: ..." 포함 요소와 strict-mode 충돌
   const input = page.locator('#board-filter-assignee-input')
   await input.fill(query)
@@ -150,6 +152,7 @@ async function selectLabelFromAutocomplete(
   query: string,
   labelName: string,
 ): Promise<void> {
+  await openFilterDropdown(page, '라벨')
   // data-testid 직접 한정 — getByLabel('라벨')는 카드 aria-label="... 라벨 ..." 포함 요소와 충돌
   const input = page.getByTestId('label-autocomplete-input')
   await input.fill(query)
@@ -223,6 +226,7 @@ test.describe('FR-BD-02 보드 카드 필터 (담당자/미배정/라벨/컴포�
 
     // When. "미배정" 체크박스 체크
     // aria-label="미배정"이 카드 summary에도 포함되므로 role=checkbox로 한정 (strict-mode 방지)
+    await openFilterDropdown(page, '담당자')
     await page.getByRole('checkbox', { name: '미배정', exact: true }).check()
 
     // Then. FILTER-4만 표시
@@ -296,6 +300,7 @@ test.describe('FR-BD-02 보드 카드 필터 (담당자/미배정/라벨/컴포�
     expect(beforeCount).toBe(4)
 
     // Given. 컴포넌트 체크박스 렌더 대기 (useComponents 쿼리 완료 후)
+    await openFilterDropdown(page, '컴포넌트')
     const componentACheckbox = page.getByRole('checkbox', { name: '컴포넌트A', exact: true })
     await expect(componentACheckbox).toBeVisible()
 
@@ -382,6 +387,7 @@ test.describe('FR-BD-02 보드 카드 필터 (담당자/미배정/라벨/컴포�
 
     // Given. 미배정 필터 적용 → 1개로 감소 확인
     // role=checkbox로 한정 — card summary "미배정" + aria-label "담당자 미배정" strict-mode 방지
+    await openFilterDropdown(page, '담당자')
     await page.getByRole('checkbox', { name: '미배정', exact: true }).check()
     const filteredCount = await countCards(page)
     expect(filteredCount).toBe(1)

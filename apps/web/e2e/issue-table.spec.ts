@@ -41,6 +41,7 @@ import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { LS_KEY_PAGINATION_EXTRA_ISSUES } from '../src/mocks/issue-handlers'
 import { issueAtlas1Fixture } from '../src/mocks/issue-fixtures'
+import { openFilterDropdown } from './fixtures/filter-bar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -269,6 +270,7 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
     await waitForDefaultFourIssues(page)
 
     // Given. "미배정" 필터 적용 → ATLAS-1, ATLAS-5 2건만 남음
+    await openFilterDropdown(page, '담당자')
     await page.getByRole('checkbox', { name: '미배정', exact: true }).check()
     await expect(page.getByTestId('issue-summary-ATLAS-1')).toBeVisible()
     await expect(page.getByTestId('issue-summary-ATLAS-5')).toBeVisible()
