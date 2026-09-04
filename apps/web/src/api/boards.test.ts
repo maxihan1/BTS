@@ -868,7 +868,8 @@ describe('updateBoardSwimlane', () => {
 // boardDetailSchema — canDelete 파싱 (FR-BD-01-2d)
 //
 // 백엔드 BoardDetailResponse.canDelete = IssuePermission.SOFT_DELETE 판정 결과.
-// 목록(BoardSummaryResponse)에는 없고 단건 조회 응답에만 실린다.
+// 목록(BoardSummaryResponse)에도 함께 실린다 — 소비처는 캠페인 PR ⑨ 의 사이드바 보드 `⋯` 다.
+// 목록 쪽 판정은 아래 T-BD-21 이 별도로 잰다 (조립부가 서로 다르기 때문이다).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('boardDetailSchema — canDelete 파싱 (FR-BD-01-2d)', () => {

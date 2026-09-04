@@ -40,6 +40,28 @@ export const boardSummarySchema = z.object({
    * 백엔드 `BoardSummaryResponse.boardType` 이 non-null String 이라 필수로 둔다.
    */
   boardType: boardTypeSchema,
+  /**
+   * 이 보드를 삭제할 수 있는지 여부 (FR-BD-01-2d).
+   * 백엔드 `BoardSummaryResponse.canDelete` — `IssuePermission.SOFT_DELETE` 판정 결과이며
+   * 프로젝트 스코프 근사라 같은 프로젝트의 보드가 전부 같은 값을 갖는다.
+   * 소비처는 캠페인 PR ⑨ 의 사이드바 보드 `⋯` 다. 상세 스키마의 같은 이름 필드가 선례다
+   * ({@link boardDetailSchema}).
+   *
+   * ★ 바로 위 `boardType` 과 **필수성이 갈리는 이유**.
+   * `boardType` 은 값이 비면 그 자체가 결함이고, 기본값으로 때우면 스크럼 보드가 칸반으로
+   * 오인돼 활성 스프린트 헤더가 조용히 사라진다 — 안전한 기본값이 존재하지 않는다.
+   * `canDelete` 는 값이 비면 「삭제 못 함」이 옳은 해석이라 **기본값이 fail-closed 와 일치하는
+   * 유일한 필드**다. 그래서 여기만 `.optional()` 이 안전한 쪽이다.
+   *
+   * 필수로 두면 치르는 대가 두 가지.
+   * 1. 필드를 뺀 응답 1건에 목록 파싱이 통째로 죽고, 그것이 보드 스위처 · 백로그 헤더 ·
+   *    `ProjectViewChrome` 탭바 3곳을 **동시에** 지운다.
+   * 2. `.default(false)` 로 둬도 출력 타입에서 필수가 되어 `BoardSummary` 로 선언된 인라인
+   *    픽스처가 전부 타입 에러가 된다 (`quickFilters` `.default([])` 가 그 전례다).
+   *
+   * 소비자는 `canDelete === true` 로만 삭제 UI 를 연다 — undefined 는 fail-closed 다.
+   */
+  canDelete: z.boolean().optional(),
 })
 
 /**
@@ -203,7 +225,8 @@ export const boardDetailSchema = z.object({
   /**
    * 이 보드를 삭제할 수 있는지 여부 (FR-BD-01-2d).
    * 백엔드 `BoardDetailResponse.canDelete` — `IssuePermission.SOFT_DELETE` 판정 결과다.
-   * 목록 응답(`BoardSummaryResponse`)에는 없고 단건 조회에만 실린다.
+   * 목록 응답(`BoardSummaryResponse`)에도 함께 실린다 — 소비처는 캠페인 PR ⑨ 의 사이드바 보드 `⋯` 다
+   * ({@link boardSummarySchema}).
    *
    * `.optional()` 인 이유 두 가지.
    * 1. 필수로 두면 필드를 생략하는 응답 하나에 파싱이 통째로 실패해 보드 화면 전체가 죽는다.

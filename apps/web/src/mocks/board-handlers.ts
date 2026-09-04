@@ -384,13 +384,16 @@ const getBoardsHandler = http.get('/api/v1/boards', ({ request }) => {
   const summaries = boardIds
     .map((boardId) => boardStore.get(boardId))
     .filter((b): b is NonNullable<typeof b> => b !== undefined)
-    // boardType 은 상세와 **다른 조립부**다 — 상세만 고치면 보드 스위처가 목록 파싱에서 죽는다
+    // 목록은 상세와 **다른 조립부**다 — 상세만 고치면 보드 스위처가 목록 파싱에서 죽는다
     // (boardSummarySchema.boardType 필수 · FR-BD-04).
-    .map(({ boardId, projectKey: pk, name, boardType }) => ({
+    // canDelete 의 기본값은 상세 조립부(toResponseDetail)와 **같은 true** 여야 한다. 두 조립부의
+    // 기본값이 갈리면 같은 store 를 목록/상세로 읽었을 때 삭제 가능 여부가 달라진다 (스펙 E5).
+    .map(({ boardId, projectKey: pk, name, boardType, canDelete }) => ({
       boardId,
       projectKey: pk,
       name,
       boardType: boardType ?? DEFAULT_BOARD_TYPE,
+      canDelete: canDelete ?? true,
     }))
 
   return HttpResponse.json({ data: summaries })
