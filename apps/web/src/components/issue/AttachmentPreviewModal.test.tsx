@@ -393,7 +393,7 @@ describe('TC-7: 갤러리 좌우 이동', () => {
     expect(await screen.findByRole('img', { name: 'second.png' })).toBeInTheDocument()
   })
 
-  it('첫 장에서는 이전이 잠기고 다음은 열려 있다', async () => {
+  it('첫 장에서는 이전 버튼이 잠기고 다음은 열려 있다', async () => {
     renderGallery(0)
     await screen.findByRole('img', { name: 'first.png' })
 
