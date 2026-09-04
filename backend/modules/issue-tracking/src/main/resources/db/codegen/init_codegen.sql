@@ -810,3 +810,45 @@ CREATE EXTENSION IF NOT EXISTS pgmq CASCADE;
 
 -- 큐 생성 — q_automation_events
 SELECT pgmq.create('q_automation_events');
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- V039: 본문·댓글 HTML 저장 전환 + 검색용 평문 파생 컬럼 (Jira 패리티 PR①)
+-- 원본: db/migration/issue-tracking/V039__description_html.sql
+-- 주의: description_plain 은 STORED generated 라 codegen excludes 대상이다(search_vector 와 동형).
+--       여기 DDL 은 남겨 둔다 — 인덱스가 그 컬럼을 참조하므로 생성 자체는 필요하다.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE issues ADD COLUMN description_html TEXT;
+
+-- 본문 평문 추출의 단일 출처. PostgreSQL 이 generated → generated 참조를 금지하므로
+-- description_plain 과 search_vector 가 이 함수를 각각 호출한다(식 복사 금지).
+CREATE FUNCTION issue_body_plain(html TEXT, md TEXT) RETURNS TEXT
+    LANGUAGE sql
+    IMMUTABLE
+    PARALLEL SAFE
+AS $$ SELECT regexp_replace(coalesce(html, md, ''), '<[^>]*>', '', 'g') $$;
+
+ALTER TABLE issues
+    ADD COLUMN description_plain TEXT
+        GENERATED ALWAYS AS (issue_body_plain(description_html, description)) STORED;
+
+-- search_vector 재작성 — 평문 색인 (generated 식은 ALTER 불가, DROP 후 재생성)
+DROP INDEX IF EXISTS idx_issues_search_vector;
+ALTER TABLE issues DROP COLUMN search_vector;
+
+ALTER TABLE issues
+    ADD COLUMN search_vector tsvector
+        GENERATED ALWAYS AS (
+            to_tsvector(
+                'simple',
+                coalesce(summary, '') || ' ' || issue_body_plain(description_html, description)
+            )
+        ) STORED;
+
+CREATE INDEX idx_issues_search_vector ON issues USING gin (search_vector);
+
+-- [B1] lower(description_plain) 표현식 trigram — 백엔드 raw DSL 조건과 정확 일치(coalesce 없음).
+DROP INDEX IF EXISTS idx_issues_description_trgm;
+CREATE INDEX idx_issues_description_trgm ON issues USING gin (lower(description_plain) gin_trgm_ops);
+
+ALTER TABLE comments ADD COLUMN body_html TEXT;

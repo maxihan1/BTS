@@ -157,6 +157,9 @@ sealed interface SecurityLevelPatch {
  * @param typeId 새 이슈 유형 식별자 VO. null 이면 변경하지 않는다. non-null 이면 활성 타입 존재 검증.
  * @param expectedVersion 낙관적 잠금 버전. 읽은 version 값과 일치해야 업데이트가 성공한다.
  * @param description Markdown 설명. null=무변경, ""=클리어, 값=설정.
+ *   서비스가 flexmark 로 렌더해 `description_html` 에 함께 저장한다 — 읽기 fallback 이 필요 없어진다.
+ * @param descriptionHtml 정화된 HTML 설명 (리치 에디터 경로). [description] 과 같은 3-상태.
+ *   REST 층이 두 필드의 동시 전달을 400 으로 막으므로 여기서는 둘 중 하나만 non-null 이다.
  * @param priority 우선순위 1..5. null=무변경.
  * @param labels 라벨 목록. null=무변경, []=전체 제거, 값=교체.
  * @param environment 재현 환경 설명. null=무변경, ""=클리어, 값=설정.
@@ -181,6 +184,7 @@ data class UpdateIssueRequest(
     val typeId: IssueTypeId? = null,
     val expectedVersion: Long,
     val description: String? = null,
+    val descriptionHtml: String? = null,
     val priority: Int? = null,
     val labels: List<String>? = null,
     val environment: String? = null,

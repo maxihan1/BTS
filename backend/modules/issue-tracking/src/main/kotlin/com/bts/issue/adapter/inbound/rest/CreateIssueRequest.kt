@@ -3,6 +3,7 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.issue.domain.IssueLabelConstraints
+import com.bts.issue.domain.IssueTextConstraints
 import com.fasterxml.jackson.annotation.JsonIgnore
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.AssertTrue
@@ -46,8 +47,11 @@ data class CreateIssueRequest(
     @field:Positive(message = "typeId 는 양수여야 합니다.")
     val typeId: Long? = null,
     @field:NotBlank(message = "summary는 비어 있을 수 없습니다.")
-    @field:Size(max = 200, message = "summary는 200자 이하여야 합니다.")
+    @field:Size(max = IssueTextConstraints.SUMMARY_MAX, message = "summary는 255자 이하여야 합니다.")
     val summary: String,
+    // 착수 시점에 이 필드에는 @Size 가 **없었다** — 수정 경로만 상한을 막고 있어, 상한 없이
+    // 생성된 본문이 나중에 수정 시점에 400 을 맞아 편집 불가가 되는 비대칭이 있었다.
+    @field:Size(max = IssueTextConstraints.DESCRIPTION_MAX, message = "description은 32767자 이하여야 합니다.")
     val description: String? = null,
     // ★기본값이 있는 non-null Kotlin 프로퍼티는 springdoc 이 required 로 판정한다(실측).
     //   아래 assigneeId 와 같은 함정이며 봉인 방법도 같다. 실측 required 는

@@ -12,6 +12,7 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
+import com.bts.issue.domain.IssueTextConstraints
 import com.bts.issue.event.IssueCommentDeleted
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
@@ -102,9 +103,17 @@ class CommentApplicationService(
         actor: ActorId,
         issueKey: IssueKey,
         body: String,
+        bodyHtml: String? = null,
     ): Comment {
         validateBody(body)
-        return insertComment(actor = actor, issueKey = issueKey, body = body, authorId = actor, createdAt = null)
+        return insertComment(
+            actor = actor,
+            issueKey = issueKey,
+            body = body,
+            authorId = actor,
+            createdAt = null,
+            bodyHtml = bodyHtml?.let { MarkdownRenderer.sanitizeHtml(it) },
+        )
     }
 
     /**
@@ -190,6 +199,7 @@ class CommentApplicationService(
         issueKey: IssueKey,
         commentId: UUID,
         body: String,
+        bodyHtml: String? = null,
     ): Comment {
         validateBody(body)
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
@@ -211,8 +221,12 @@ class CommentApplicationService(
         }
 
         val now = Instant.now(clock)
+        // body 와 body_html 은 **항상 짝으로** 간다 (V039). 에디터가 보낸 HTML 이면 정화한 것을,
+        // 마크다운 경로면 렌더한 것을 쓴다 — insertComment 와 같은 규칙이다.
+        val resolvedHtml =
+            bodyHtml?.let { MarkdownRenderer.sanitizeHtml(it) } ?: MarkdownRenderer.renderSafe(body)
         // 동시 삭제 레이스 방어 — findActive 통과 후 다른 트랜잭션이 삭제를 커밋한 경우 0 행이 돌아온다.
-        if (commentRepository.updateBody(commentId, issue.id.value, body, now) == 0) {
+        if (commentRepository.updateBody(commentId, issue.id.value, body, resolvedHtml, now) == 0) {
             throw CommentNotFoundException(commentId)
         }
 
@@ -391,6 +405,7 @@ class CommentApplicationService(
         body: String,
         authorId: ActorId,
         createdAt: Instant?,
+        bodyHtml: String? = null,
     ): Comment {
         checkPermission(actor, issueKey, IssuePermission.UPDATE)
         archiveGuard.checkByIssue(issueKey)
@@ -404,6 +419,10 @@ class CommentApplicationService(
                 issueId = issue.id.value,
                 authorId = authorId.value,
                 body = body,
+                // ★신규 댓글은 **반드시** HTML 을 함께 저장한다 (V039). 에디터가 보낸 HTML 이면
+                // 정화한 것을, 마크다운 경로면 렌더한 것을 쓴다. 그래서 CommentView.of 의
+                // fallback 은 V039 이전에 쌓인 옛 행에만 걸린다.
+                bodyHtml = bodyHtml ?: MarkdownRenderer.renderSafe(body),
                 createdAt = effectiveCreatedAt,
                 updatedAt = effectiveCreatedAt,
             )
@@ -456,10 +475,13 @@ class CommentApplicationService(
         /**
          * 사람이 작성하는 댓글 본문의 최대 **문자 수** (바이트 아님 — 한글은 UTF-8 3바이트라 약 96KB).
          *
-         * Jira Cloud 의 댓글 상한(32,767자)과 같은 급으로 잡았다. 상한을 두는 이유는 목록 조회가
+         * Jira Cloud 의 댓글 상한(32,767자)과 **같은 값**이다. 상한을 두는 이유는 목록 조회가
          * 페이지네이션 없이 전량을 `renderSafe` HTML 로 렌더하기 때문이다 — 대용량 1건이 그 이슈
          * 화면을 사용 불가로 만든다. [createImported] 는 원본 보존을 위해 이 상한을 적용하지 않는다.
+         *
+         * 2026-09-04 이전에는 32,000 이었다. 주석은 「Jira 와 같은 급」이라 말하면서 값은 767 만큼
+         * 좁았다 — 근거와 숫자가 어긋난 상태였다. [IssueTextConstraints] 를 단일 출처로 삼아 맞췄다.
          */
-        const val MAX_BODY_LENGTH: Int = 32_000
+        const val MAX_BODY_LENGTH: Int = IssueTextConstraints.COMMENT_BODY_MAX
     }
 }

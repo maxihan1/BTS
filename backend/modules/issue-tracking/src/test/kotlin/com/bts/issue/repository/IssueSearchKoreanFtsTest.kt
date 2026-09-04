@@ -160,7 +160,7 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
                   AND (
                     i.search_vector @@ plainto_tsquery('simple', ?)
                     OR lower(i.summary) LIKE ?
-                    OR lower(i.description) LIKE ?
+                    OR lower(i.description_plain) LIKE ?
                   )
                 """.trimIndent(),
             ).use { stmt ->
@@ -586,6 +586,10 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
     // SET enable_seqscan=off 금지 — 5000행 시드 + ANALYZE 로 플래너가 자연히 인덱스 선택.
     // explainQuery 의 SQL 은 production SQL(DSL.lower(col).like()) 과 동일한 lower(col) LIKE ? 형태.
     // B1 수정 후 production/explainQuery 양쪽이 lower(col) LIKE 로 통일됐으므로 drift 없음.
+    // ★V039 — 본문 컬럼이 description → description_plain 으로 바뀌었다. explainQuery 는 손으로 쓴
+    //   SQL 이라 production 과 **자동으로 함께 움직이지 않는다**. 실제로 한쪽만 고쳤을 때 인덱스 없는
+    //   컬럼을 OR 항에 남겨 플랜 전체가 Seq Scan 으로 떨어졌고, 엉뚱하게 summary 단언이 먼저 깨졌다.
+    //   두 SQL 을 같이 고칠 것.
     // (1) idx_issues_summary_trgm: summary trigram 경로 가드 (B1 fix).
     // (2) idx_issues_description_trgm: description trigram 경로 가드 (B1 fix).
     // (3) idx_issues_search_vector: FTS GIN 회귀 가드.
@@ -604,7 +608,7 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
             .describedAs("EXPLAIN 플랜에 idx_issues_summary_trgm 이 나타나야 한다")
             .contains("idx_issues_summary_trgm")
 
-        // (2) description trigram GIN 인덱스 (B1 수정 회귀 가드: lower(description) LIKE)
+        // (2) description trigram GIN 인덱스 (B1 수정 회귀 가드 + V039: lower(description_plain) LIKE)
         assertThat(plan)
             .describedAs("EXPLAIN 플랜에 idx_issues_description_trgm 이 나타나야 한다")
             .contains("idx_issues_description_trgm")
@@ -681,15 +685,18 @@ class IssueSearchKoreanFtsTest : IssueTestcontainersBase() {
             )
             .contains("""lower("public"."issues"."summary") like""")
 
-        // (3) description trigram 경로 박제 — lower("public"."issues"."description") like ?
-        //     DSL.lower(ISSUES.DESCRIPTION).like(...) 가 이 형태를 렌더해야
-        //     idx_issues_description_trgm(gin(lower(description) gin_trgm_ops)) 표현식 인덱스를 사용할 수 있다.
+        // (3) description trigram 경로 박제 — lower(issues.description_plain) like ?
+        //     ★V039 로 본문이 HTML 저장으로 바뀌면서 검색 대상이 description → description_plain 이 됐다.
+        //     원본 컬럼에는 태그가 섞이므로 태그를 벗긴 파생 컬럼을 색인·조회한다.
+        //     description_plain 은 STORED generated 라 jOOQ codegen 에서 제외돼 있어(search_vector 와
+        //     같은 함정) 타입 안전 필드가 없다 — 그래서 raw SQL 이고, 인용 형태도 다르다.
+        //     이 문자열이 V039 의 gin(lower(description_plain) gin_trgm_ops) 와 어긋나면 인덱스가 죽는다.
         assertThat(allSql)
             .describedAs(
-                "production SQL 에 lower(\"public\".\"issues\".\"description\") like 표현식이 있어야 한다 " +
-                    "(DSL.lower(ISSUES.DESCRIPTION).like() — idx_issues_description_trgm 표현식 인덱스 호환)",
+                "production SQL 에 lower(issues.description_plain) like 표현식이 있어야 한다 " +
+                    "(V039 raw DSL — idx_issues_description_trgm 표현식 인덱스 호환)",
             )
-            .contains("""lower("public"."issues"."description") like""")
+            .contains("""lower(issues.description_plain) like""")
     }
 
     // ── S4 보안: BROWSE 게이트 + visibility 술어 필터 ───────────────────────────

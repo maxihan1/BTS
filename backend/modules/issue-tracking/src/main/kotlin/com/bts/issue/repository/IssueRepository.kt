@@ -133,6 +133,12 @@ data class IssueFieldPatch(
     val summary: String? = null,
     val typeId: IssueTypeId? = null,
     val description: String? = null,
+    /**
+     * 정화된 HTML 본문 (V039). [description] 과 **짝으로 움직인다** — 서비스가 둘을 함께 세팅하므로
+     * 하나만 바뀌는 상태가 없다. 마크다운 경로면 서비스가 렌더한 결과가, 에디터 경로면 정화된
+     * 입력이 들어온다.
+     */
+    val descriptionHtml: String? = null,
     val priority: Int? = null,
     val labels: List<String>? = null,
     val environment: String? = null,
@@ -311,6 +317,14 @@ class IssueRepository(
             .apply { if (patch.summary != null) set(ISSUES.SUMMARY, patch.summary) }
             .apply { if (patch.typeId != null) set(ISSUES.TYPE_ID, patch.typeId.value) }
             .apply { if (patch.description != null) set(ISSUES.DESCRIPTION, patch.description.ifBlank { null }) }
+            // ★description 과 **같은 조건**으로 움직인다(V039). 둘 중 하나만 갱신되면 원문과 HTML 이
+            // 다른 내용을 가리키고, description_plain 이 HTML 쪽을 우선하므로 검색이 옛 본문을 긁는다.
+            // 서비스가 마크다운 경로에서도 렌더 결과를 함께 실어 보내므로 여기서는 그대로 쓴다.
+            .apply {
+                if (patch.descriptionHtml != null) {
+                    set(ISSUES.DESCRIPTION_HTML, patch.descriptionHtml.ifBlank { null })
+                }
+            }
             .apply { if (patch.priority != null) set(ISSUES.PRIORITY, patch.priority.toShort()) }
             .apply { if (patch.labels != null) set(ISSUES.LABELS, patch.labels.toDbArray()) }
             .apply { if (patch.environment != null) set(ISSUES.ENVIRONMENT, patch.environment.ifBlank { null }) }
@@ -599,6 +613,16 @@ class IssueRepository(
                         ),
                     parent = parentSummaryDto,
                     epic = epicSummaryDto,
+                ).copy(
+                    // ★DB 의 description_html 원본을 **단건 경로에서만** 싣는다 (V039).
+                    //
+                    // 렌더가 아니라 컬럼 전달이라 「렌더 생산 지점 1개」 계약(IssueResponse.from KDoc)과
+                    // 충돌하지 않는다. 목록 경로(listWithType)는 이 값을 싣지 않는다 — N건 payload 를
+                    // 키우지 않기 위해서이고, 목록이 본문 HTML 을 쓰지 않는다는 기존 판단 그대로다.
+                    //
+                    // 여기 값이 null 이면 아직 HTML 로 저장된 적 없는 옛 행이고,
+                    // IssueApplicationService.withSingleDetail() 이 마크다운을 렌더해 채운다.
+                    descriptionHtml = issueRecord.descriptionHtml,
                 )
             }
     }
@@ -2919,10 +2943,10 @@ class IssueRepository(
      *    V032 STORED generated tsvector(summary + description 결합) + GIN 인덱스 활용.
      *    `simple` 설정은 조사 분리 없이 토큰화한다(zero-dep, SDD 10.2).
      *
-     * 2. **trigram 경로** — `DSL.lower(ISSUES.SUMMARY).like(lowerPattern, '\\') OR ...DESCRIPTION...`.
+     * 2. **trigram 경로** — `DSL.lower(ISSUES.SUMMARY).like(lowerPattern, '\\') OR ...DESCRIPTION_PLAIN...`.
      *    `DSL.lower(col).like(pattern.lowercase(), '\\')` 는 `lower("col") like ? escape '\'` 를 렌더한다.
-     *    V031(`gin(lower(summary) gin_trgm_ops)`)·V032(`gin(lower(description) gin_trgm_ops)`) 표현식 인덱스와
-     *    표현식이 정확히 일치해 Bitmap Index Scan 으로 실행된다.
+     *    V031(`gin(lower(summary) gin_trgm_ops)`)·V039(`gin(lower(description_plain) gin_trgm_ops)`) 표현식
+     *    인덱스와 표현식이 정확히 일치해 Bitmap Index Scan 으로 실행된다.
      *    **주의**: `likeIgnoreCase` 는 native ILIKE(`~~*`)를 렌더하며, `~~*` 는 bare 컬럼 연산자라
      *    `lower(col)` 표현식 인덱스를 사용하지 못해 Seq Scan 이 발생한다 (B1 수정 근거, EXPLAIN 실측).
      *    조사 변형("이슈를"↔"이슈")·부분 문자열 매칭을 보완한다.
@@ -2957,7 +2981,21 @@ class IssueRepository(
         // likeIgnoreCase 는 native ILIKE(~~*) 를 렌더해 표현식 인덱스를 사용하지 못한다 (B1 수정).
         val lowerPattern = likePattern.lowercase()
         val summaryTrigram = DSL.lower(ISSUES.SUMMARY).like(lowerPattern, '\\')
-        val descriptionTrigram = DSL.lower(ISSUES.DESCRIPTION).like(lowerPattern, '\\')
+        // ★description 이 아니라 description_plain 이다(V039). 본문이 HTML 로 저장되면서 원본
+        // 컬럼에는 태그가 섞이므로, 태그를 벗긴 파생 컬럼을 검색 대상으로 삼는다.
+        //
+        // ★raw SQL 인 이유. description_plain 은 STORED generated 라 search_vector 와 같은 이유로
+        // jOOQ codegen 에서 제외돼 있다(build.gradle.kts excludes) — 포함시키면 record 기반
+        // INSERT 가 "cannot insert a non-DEFAULT value" 로 죽는다. 그래서 타입 안전 필드가 없다.
+        //
+        // ★렌더 형태를 바꾸지 말 것. V039 의 인덱스가 `gin(lower(description_plain) gin_trgm_ops)` 라
+        // 이 문자열이 그것과 **정확히** 일치해야 플래너가 인덱스를 고른다. 어긋나면 인덱스가 죽고
+        // seq scan 이 되는데 **테스트는 그대로 통과한다** — 짝으로 붙은 EXPLAIN 단언이 그것을 잰다.
+        val descriptionTrigram =
+            DSL.condition(
+                "lower(issues.description_plain) like {0} escape '\\'",
+                DSL.`val`(lowerPattern),
+            )
         return ftsCondition.or(summaryTrigram).or(descriptionTrigram)
     }
 

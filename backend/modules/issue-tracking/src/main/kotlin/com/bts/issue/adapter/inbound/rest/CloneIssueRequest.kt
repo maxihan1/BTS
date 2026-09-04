@@ -2,6 +2,7 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.domain.IssueTextConstraints
 import jakarta.validation.constraints.Size
 
 /**
@@ -14,6 +15,6 @@ import jakarta.validation.constraints.Size
  */
 data class CloneIssueRequest(
     val includeAssignee: Boolean = true,
-    @field:Size(max = 255, message = "summaryOverride는 255자 이하여야 합니다.")
+    @field:Size(max = IssueTextConstraints.SUMMARY_MAX, message = "summaryOverride는 255자 이하여야 합니다.")
     val summaryOverride: String? = null,
 )

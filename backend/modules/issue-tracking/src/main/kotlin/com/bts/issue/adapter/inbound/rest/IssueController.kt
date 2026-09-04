@@ -395,6 +395,7 @@ class IssueController(
                 typeId = request.typeId?.let { IssueTypeId(it) },
                 expectedVersion = request.expectedVersion,
                 description = request.description,
+                descriptionHtml = request.descriptionHtml,
                 priority = request.priority,
                 labels = request.labels,
                 environment = request.environment,
