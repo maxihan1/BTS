@@ -328,6 +328,53 @@ export const boardLabels = {
 
     /** CREATE 권한이 없는 사용자에게 보이는 사유 */
     readOnlyReason: '보드를 설정할 권한이 없습니다.',
+
+    /** 미매핑 상태 패널 제목 — 지라 `Unmapped statuses` 대응 */
+    unmappedHeading: '미매핑 상태',
+
+    /**
+     * 미매핑이 0건일 때.
+     *
+     * ★**경고가 아니라 안심이다.** 미매핑 0 은 정상 상태다 — 모든 워크플로우 상태가 컬럼에
+     * 배정됐다는 뜻이다. 회색 「없음」으로 그리면 사용자가 정상을 결손으로 읽는다.
+     */
+    unmappedEmpty: '모든 상태가 컬럼에 배정됐습니다.',
+
+    /** 미매핑 패널 설명 — 무엇을 하는 곳인지 */
+    unmappedDescription: '어느 컬럼에도 속하지 않은 상태입니다. 그 상태의 이슈는 보드에 나타나지 않습니다.',
+
+    /** 컬럼이 하나도 없을 때 — 행동 유도가 필요한 빈 상태다 */
+    columnsEmpty: '이 보드에 컬럼이 없습니다. 컬럼을 만들면 상태를 끌어다 놓을 수 있습니다.',
+
+    /** 상태 0개 컬럼의 표시 — 미완성임을 명시한다(E1). 그냥 비워 두면 정상으로 보인다 */
+    columnNoStates: '상태 없음',
+
+    /**
+     * 컬럼 카드의 카드 수 표기.
+     *
+     * @param count 이 컬럼의 카드 수
+     * @returns "카드 {count}개"
+     */
+    cardCount: (count: number): string => `카드 ${String(count)}개`,
+
+    /**
+     * 카드 수가 조회 상한에 잘렸을 때의 표기 (eng 리뷰 BLOCKER-1).
+     *
+     * 보드 조회는 `BOARD_CARD_FETCH_LIMIT`(1000)에서 잘린다. 잘린 목록의 길이를 정확한 수인 양
+     * 보이면 거짓말이 되므로 **수를 주장하지 않는다.**
+     */
+    cardCountTruncated: '카드 1000개 이상',
+
+    /** WIP 제한 표시 — 무제한일 때 */
+    wipUnlimited: 'WIP 제한 없음',
+
+    /**
+     * WIP 제한 표시.
+     *
+     * @param limit 설정된 상한
+     * @returns "WIP 제한 {limit}"
+     */
+    wipLimitLabel: (limit: number): string => `WIP 제한 ${String(limit)}`,
   },
 } as const
 

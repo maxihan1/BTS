@@ -8,6 +8,7 @@ import { boardLabels } from '@/i18n/board-labels'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ColumnSettingsPanel } from '@/components/board/settings/ColumnSettingsPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -135,6 +136,8 @@ export function BoardSettingsPage({ projectKey, boardId }: BoardSettingsPageProp
           }
         />
       )}
+
+      {boardQuery.data !== undefined && <ColumnSettingsPanel board={boardQuery.data} />}
     </div>
   )
 }
