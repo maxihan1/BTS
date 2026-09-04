@@ -25,7 +25,6 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //      없는 줄을 찾게 되므로 여기 적어 둔다.
   'src/components/import/mapping/ImportMappingWizard.tsx::Arrow function': 289,
   "src/components/issue-templates/IssueTemplateFormDialog.tsx::Function 'FormBody'": 259,
-  "src/components/issue/IssueDescription.tsx::Function 'EditMode'": 337,
   "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 317,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,

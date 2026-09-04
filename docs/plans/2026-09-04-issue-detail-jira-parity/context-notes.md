@@ -101,6 +101,126 @@ flexmark 는 제거하지 않는다 — CSV import(`ParsedImportRow.description`
 `goto` 형태가 46건이나 되는 것이 다행이다. 모달 전환의 e2e 파손 위험을 크게 줄인다 — 계획 단계에서
 가장 컸던 리스크가 실측으로 내려갔다.
 
+## 2026-09-04 · PR① 설계 변경 — 백필을 없앴다
+
+### 계획은 Flyway Java migration 이었다. 안 쓴다
+
+계획서는 `issues.description` 을 markdown → HTML 로 **in-place 변환**하는 Flyway Java(Kotlin)
+migration 을 두기로 했다. 착수하며 두 가지가 걸렸다.
+
+1. **선례가 0건이다.** 저장소의 마이그레이션은 전부 순수 SQL 이다
+2. **등록 지점이 둘이다.** 조립 앱은 `FlywayAssemblyConfig` 가 `Flyway.configure()` 로 직접 돌고,
+   issue-tracking 단독 테스트는 `application-test.yml` 의 Spring auto-config 로 돈다. Java migration 을
+   쓰면 **두 곳에 각각 등록**해야 하고, 한쪽을 빠뜨리면 조립 앱에서 백필이 조용히 안 돈다 —
+   `two-lists-never-check-each-other` 그 자체다
+
+### 대신 — 컬럼 추가 + 읽기 fallback
+
+`issues.description`(markdown)은 **그대로 두고** `description_html` 을 새로 둔다.
+
+- **쓰기** — 새 경로는 `description_html` 만 채운다
+- **읽기** — `descriptionHtml = description_html ?: renderSafe(description)`
+- **검색** — `description_plain` 생성 컬럼이 둘 중 있는 쪽에서 유도한다
+
+```sql
+GENERATED ALWAYS AS (
+  regexp_replace(coalesce(description_html, description, ''), '<[^>]*>', '', 'g')
+) STORED
+```
+
+HTML 이면 태그를 벗기고, markdown 이면 태그가 없으니 그대로 통과한다. **식 하나가 두 경우를 다 덮는다.**
+
+얻는 것.
+
+- 마이그레이션이 **순수 SQL** — 컬럼 추가와 인덱스 재작성뿐이다
+- **백필이 없다.** 기존 이슈는 편집될 때 자연스럽게 HTML 로 옮겨간다
+- markdown 원문이 보존된다 — 계획의 `description_md_backup` 컬럼이 필요 없어졌다. 원본 컬럼이 곧 백업이다
+- 롤백이 쉽다. 새 컬럼을 버리면 원래 동작으로 돌아간다
+
+### 왜 두 컬럼이 「두 목록」 결함이 아닌가
+
+두 목록 결함은 **같은 사실을 두 곳이 각자 적고 서로 검사하지 않을 때** 생긴다. 여기서는 읽기 규칙이
+`description_html ?: renderSafe(description)` **한 줄**이고, 그 한 줄이 있는 곳도 하나다 —
+`IssueApplicationService.withSingleDetail()`(`:2106`). 2026-07-27 에 「렌더 생산 지점을 1개로 굳혔다」고
+주석까지 달아 둔 바로 그 지점이다. 그 설계 덕분에 fallback 이 한 줄로 끝난다.
+
+댓글도 같다 — `comments.body`(markdown) + `body_html`(신규), 읽기는 `CommentView.of`(`:49`) 한 곳.
+
+## 2026-09-04 · PR② 설계 — 새 variant 를 만들지 않았다
+
+계획은 `IssueDetailPage` 에 `variant='modal'` 을 더하는 것이었다. 착수해 보니 기존
+`variant='pane'`(FR-UX-06 PR20)이 모달에 필요한 것을 **전부** 하고 있었다 — 헤더 닫기 버튼 ·
+`Escape` 닫기 · 제목을 `<h2>` 로 강등(문서 `<h1>` 단일 계약) · redirect/삭제를 콜백에 위임.
+
+`'modal'` 을 새로 만들면 같은 분기가 두 벌이 되고, 한쪽만 고치는 순간 「페인에서는 되는데
+모달에서는 안 되는」 차이가 조용히 생긴다. 그래서 `IssueDetailModal` 은 `Dialog` 껍데기만
+대고 안쪽은 `pane` 을 그대로 쓴다. `showCloseButton={false}` 로 X 중복만 없앴다.
+
+### 진입점을 13곳이 아니라 11곳만 바꿨다
+
+- `issue-columns.ts`(이슈 목록 셀)는 `ctx.onNavigate()` 로 **목록의 split view 에 위임**한다.
+  split view 는 유지 결정이고, Jira 의 sidebar 모드에 해당해 기능적으로 온전하다.
+- `TopBar` 의 이슈 생성 토스트는 「방금 만든 이슈로 가기」라 전체 페이지 이동이 자연스럽다.
+
+Jira 가 말하는 modal↔sidebar 토글(J1 "persist across Jira views within the same session")은
+스토어에 `presentation` 필드만 두고 **UI 는 미구현**이다. 목록 split view 와 연동해야 하는데
+`issues.index.tsx` 가 크고 e2e 의존이 많아 별도 작업으로 남겼다.
+
+### 래칫이 잡은 것
+
+활동 탭을 grid 밖에서 본문 컬럼 안으로 옮기자 `IssueDetailPage` 가 1013 → 1019줄이 됐다.
+베이스라인을 올리는 것은 부채를 늘리는 쪽이라, 래칫이 요구한 대로 `buildChangelogRefs` 를
+함수 밖으로 빼 **1011줄로 2줄 줄였다**. 베이스라인도 함께 낮췄다.
+
+## 2026-09-04 · PR③ 설계 — TipTap
+
+### 멘션을 없앨 수 없었다
+
+TipTap 전환으로 textarea 기반 멘션 자동완성(`use-mention-autocomplete`)이 통째로 무력해졌다.
+그건 FR-MN-02 의 기능 퇴행이라 「후속 작업」으로 미룰 수 없다 — 사용자가 쓰던 기능이 사라진다.
+그래서 같은 PR 에서 `@tiptap/extension-mention` + suggestion 으로 이식했다.
+
+**UI 는 새로 만들지 않았다.** `MentionDropdown` 은 props 만 받는 순수 컴포넌트라(candidates ·
+activeIndex · onSelect) textarea 훅에 묶여 있지 않았고, `MentionList` 가 TipTap 접점(키 위임 ·
+선택 커밋)만 더해 감쌌다. 항목 생김새 · ARIA(`role="listbox"`/`option`) · 키보드 관례가 보존된다.
+
+★서버가 만드는 마크업은 `<span class="mention">@username</span>` 이고 sanitize 는 **정확히**
+`class="mention"` 인 span 만 통과시킨다(EC8 — `"mention evil"` 은 거부). 그래서 확장의
+`renderHTML` 도 그 한 클래스만 붙인다. `data-*` 를 남기면 저장 → 정화 → 재조회 왕복에서
+사라져 「있다가 없어지는」 혼란만 만든다.
+
+### jsdom 이 ProseMirror 를 재현하지 못한다
+
+ProseMirror 는 좌표(`elementFromPoint`·`getBoundingClientRect`)에 기대므로 jsdom 에서
+**타이핑이 재현되지 않는다**. 대응을 세 갈래로 나눴다.
+
+| 무엇 | 어떻게 |
+|---|---|
+| 에디터 자체 | `RichTextEditor.test.tsx` 26건 — 툴바 명령으로 변경을 일으켜 결과 HTML 을 본다 |
+| 에디터를 쓰는 화면 | `test/rich-text-editor-mock.tsx` 대역 — textarea 로 갈음 |
+| 실제 타이핑 경로 | e2e |
+
+★대역은 **prop 을 삼키지 않는다**. 이 저장소에 이름까지 붙은 결함 양식이 있다
+(`mock-swallowed-prop-is-invisible-to-unit-tests`) — mock 이 prop 서명을 삼키면 유닛은 전부
+초록인데 e2e 만 빨강이 된다. 그래서 대역이 `ariaLabel`·`initialHtml`·`onChange`·`onSubmit`·
+`onCancel`·`editable`·`placeholder`·`contentRef` 를 전부 실제로 쓴다. 하나라도 이름이 바뀌면
+거기서 깨진다.
+
+`document.elementFromPoint` 폴리필을 `test/setup.ts` 에 넣었다. 없으면 에디터를 렌더하는 모든
+테스트가 TypeError 를 콘솔에 쏟아 진짜 신호를 묻는다. **좌표에 의존하는 동작을 이 폴리필로
+검증하지 말 것** — null 을 돌려줄 뿐이다.
+
+### 단축키 `m` 의 대상이 바뀌었다
+
+댓글 입력이 textarea → contenteditable 이라 `focusRef` 타입 사슬 3곳(`CommentSection` ·
+`IssueActivityTabs` · `issues.$key.tsx`)이 `HTMLDivElement` 로 따라갔다. `aria-keyshortcuts` 는
+**래퍼로 옮겼다** — TipTap 이 contenteditable 속성을 소유해 임의 속성이 에디터 재생성 때 사라진다.
+
+### 부채를 두 건 갚았다
+
+- `EditMode` 가 337줄 → 200줄 미만. 래칫 항목 자체를 지웠다(Write/Preview 탭 소멸)
+- 원시 `<button role="tab">` 2건 소멸 → `button-primitive-usage` 기대 목록에서 제거
+
 ## 미해결 · 착수 중 판단할 것
 
 - `IssueDescription.test.tsx` 1,005줄이 지키던 계약 중 무엇을 새 파일로 옮길지는 PR③ 착수 시 훑고 정한다

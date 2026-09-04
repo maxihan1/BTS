@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { ReactNode, RefObject } from 'react'
 import { createRef } from 'react'
-import { render, screen, waitFor, within, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -23,6 +23,12 @@ vi.mock('@/hooks/use-users', () => ({
   useUsersByIds: vi.fn(),
 }))
 import { useUsersByIds } from '@/hooks/use-users'
+
+// RichTextEditor 대역 — jsdom 에서 ProseMirror 타이핑이 재현되지 않아 textarea 로 갈음한다.
+// 대역이 prop 을 삼키지 않는 이유와 목록은 `@/test/rich-text-editor-mock` KDoc 참조.
+vi.mock('@/components/editor/RichTextEditor', async () => ({
+  RichTextEditor: (await import('@/test/rich-text-editor-mock')).RichTextEditorMock,
+}))
 import type { CommentResponse } from '@/api/comments'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -362,7 +368,9 @@ describe('CommentSection — (e) 인라인 편집', () => {
     await user.click(within(item).getByRole('button', { name: commentStrings.commentEditButton }))
 
     const textarea = screen.getByLabelText(commentStrings.commentEditBodyLabel)
-    expect(textarea).toHaveValue(myComment.body)
+    // ★편집기에는 **HTML** 이 들어간다(V039). 서버가 준 bodyHtml 을 그대로 seed 하므로
+    //   평문이 아니라 마크업이 보이는 것이 정상이다.
+    expect(textarea).toHaveValue(myComment.bodyHtml)
     await user.clear(textarea)
     await user.type(textarea, '버릴 초안')
     await user.click(screen.getByRole('button', { name: commentStrings.commentEditCancelButton }))
@@ -380,7 +388,9 @@ describe('CommentSection — (e) 인라인 편집', () => {
 
     // 다시 열면 버린 초안이 아니라 원문이 들어 있다
     await user.click(within(item).getByRole('button', { name: commentStrings.commentEditButton }))
-    expect(screen.getByLabelText(commentStrings.commentEditBodyLabel)).toHaveValue(myComment.body)
+    expect(screen.getByLabelText(commentStrings.commentEditBodyLabel)).toHaveValue(
+      myComment.bodyHtml,
+    )
   })
 
   it('인라인 편집 — 저장하면 목록에 반영된다', async () => {
@@ -511,7 +521,7 @@ describe('CommentSection — (g) 수정됨 표시 / bodyHtml 렌더', () => {
  * @param canUpdate 쓰기 권한 여부
  */
 function renderSectionWithFocusRef(
-  focusRef: RefObject<HTMLTextAreaElement | null>,
+  focusRef: RefObject<HTMLDivElement | null>,
   canUpdate = true,
 ): void {
   const queryClient = new QueryClient({
@@ -527,44 +537,36 @@ function renderSectionWithFocusRef(
 }
 
 describe('CommentSection — (e) FR-UX-10 F11 단축키 `m` 손잡이', () => {
-  it('focusRef 로 댓글 작성 textarea 에 포커스를 줄 수 있다', async () => {
-    const focusRef = createRef<HTMLTextAreaElement>()
+  it('focusRef 가 댓글 편집기 DOM 노드를 잡는다', async () => {
+    // ★WYSIWYG 전환으로 포커스 대상이 textarea 에서 contenteditable 컨테이너가 됐다.
+    //   `m` 단축키는 이 ref 로 `.focus()` 를 부른다 — contenteditable 도 포커스를 받는다.
+    const focusRef = createRef<HTMLDivElement>()
     renderSectionWithFocusRef(focusRef)
 
-    const textarea = await screen.findByLabelText(commentStrings.commentBodyLabel)
-    // ref 가 실제 DOM 노드를 잡았는지 먼저 본다 — `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다
+    await screen.findByLabelText(commentStrings.commentBodyLabel)
+    // `?.` 가 null 을 삼켜 공허 통과하는 것을 막는다 — 배선이 끊기면 여기서 걸린다.
     expect(focusRef.current).not.toBeNull()
-    act(() => {
-      focusRef.current?.focus()
-    })
-    expect(textarea).toHaveFocus()
   })
 
-  it('focusRef 가 연결되면 textarea 가 aria-keyshortcuts="m" 을 알린다', async () => {
-    const focusRef = createRef<HTMLTextAreaElement>()
+  it('focusRef 가 연결되면 aria-keyshortcuts="m" 을 알린다', async () => {
+    const focusRef = createRef<HTMLDivElement>()
     renderSectionWithFocusRef(focusRef)
 
-    expect(await screen.findByLabelText(commentStrings.commentBodyLabel)).toHaveAttribute(
-      'aria-keyshortcuts',
-      'm',
-    )
+    // 속성은 편집기를 감싼 래퍼가 갖는다 — contenteditable 자체는 TipTap 이 소유해
+    // 임의 속성을 붙이면 에디터 재생성 때 사라진다.
+    const editor = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    expect(editor.closest('[aria-keyshortcuts]')).toHaveAttribute('aria-keyshortcuts', 'm')
   })
 
   it('focusRef 가 없으면 aria-keyshortcuts 를 붙이지 않는다', async () => {
     renderSection()
 
-    expect(await screen.findByLabelText(commentStrings.commentBodyLabel)).not.toHaveAttribute(
-      'aria-keyshortcuts',
-    )
+    const editor = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    expect(editor.closest('[aria-keyshortcuts]')).toBeNull()
   })
 
-  it('작성 textarea 에 포커스 표시가 있다 — `m` 은 화면 다른 곳에서 점프해 오는 이동이다 (F-1)', async () => {
-    // 담당자 검색(focus:ring-2)·라벨 입력(focus-visible:ring-3)과 달리 이 textarea 만
-    // 포커스 표시가 없었다. 브라우저 기본 outline 은 다크 모드 대비가 보장되지 않는다.
-    renderSection()
-
-    const textarea = await screen.findByLabelText(commentStrings.commentBodyLabel)
-    expect(textarea).toHaveClass('focus-visible:ring-3')
-    expect(textarea).toHaveClass('focus-visible:border-ring')
-  })
+  // ★「작성 입력에 포커스 표시가 있다」(F-1) 단언은 여기서 지웠다.
+  //   포커스 링은 이제 `RichTextEditor` 의 컨테이너가 `focus-within:ring-2` 로 소유한다 —
+  //   이 파일은 그 컴포넌트를 mock 으로 대체하므로 클래스를 볼 수 없고, 봐도 mock 의 것이라
+  //   가짜 그린이 된다. 표시 자체는 브라우저 눈확인과 e2e 의 몫이다.
 })

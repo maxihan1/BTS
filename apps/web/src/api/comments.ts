@@ -127,10 +127,17 @@ export async function fetchComments(key: string): Promise<CommentResponse[]> {
  * @throws ApiError(404) 이슈 없음
  * @throws ApiError(409) 아카이브된 프로젝트
  */
-export async function addComment(key: string, body: string): Promise<CommentResponse> {
+export async function addComment(
+  key: string,
+  body: string,
+  bodyHtml?: string,
+): Promise<CommentResponse> {
+  // ★`body`(평문/마크다운)를 **함께** 보낸다 — 검색·알림·이력이 평문 표현을 쓰기 때문이다.
+  //   `bodyHtml` 은 서버가 정화해 `body_html` 에 저장한다(V039). 본문(description)과 달리
+  //   둘이 배타가 아니다 — 댓글은 원문이 서식과 별개로 계속 쓰인다.
   const res = await apiFetch(commentsPath(key), {
     method: 'POST',
-    body: { body },
+    body: bodyHtml === undefined ? { body } : { body, bodyHtml },
   })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))
@@ -183,10 +190,12 @@ export async function updateComment(
   key: string,
   commentId: string,
   body: string,
+  bodyHtml?: string,
 ): Promise<CommentResponse> {
+  // `bodyHtml` 규칙은 [addComment] 와 같다 — 평문과 함께 보낸다.
   const res = await apiFetch(commentItemPath(key, commentId), {
     method: 'PATCH',
-    body: { body },
+    body: bodyHtml === undefined ? { body } : { body, bodyHtml },
   })
   if (!res.ok) {
     const errorBody: unknown = await res.json().catch(() => ({}))

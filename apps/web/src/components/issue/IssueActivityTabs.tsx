@@ -73,7 +73,7 @@ export interface IssueActivityTabsProps {
   /** 탭 전환 콜백 — `value` 와 짝으로만 의미가 있다 */
   onValueChange?: (value: ActivityTabValue) => void
   /** 댓글 작성 textarea 로 통과시킬 ref — 단축키 `m` 의 포커스 대상 */
-  commentInputRef?: RefObject<HTMLTextAreaElement | null>
+  commentInputRef?: RefObject<HTMLDivElement | null>
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

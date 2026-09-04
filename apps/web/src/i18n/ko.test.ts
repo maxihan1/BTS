@@ -9,13 +9,13 @@ import { attachmentLabels } from './attachment-labels'
 type IssueDetailStrings = typeof issueDetailStrings
 
 describe('issueDetailStrings — 본문/메타필드 신규 키 존재 검증', () => {
-  // ── 본문(description) 탭/버튼 ──────────────────────────────────────
-  it('descriptionWriteTab 키가 존재한다', () => {
-    expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionWriteTab')
-  })
-
-  it('descriptionPreviewTab 키가 존재한다', () => {
-    expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionPreviewTab')
+  // ── 본문(description) 버튼 ─────────────────────────────────────────
+  //
+  // ★`descriptionWriteTab`/`descriptionPreviewTab` 단언은 2026-09-04 에 지웠다.
+  //   WYSIWYG 전환으로 Write/Preview 탭 자체가 사라졌고, 키가 없는데 존재를 단언하면
+  //   타입 에러가 난다. 되살리려면 탭 UI 부터 되살려야 한다 — 이유는 ko.ts 주석 참조.
+  it('descriptionEditLabel 키가 존재한다', () => {
+    expectTypeOf<IssueDetailStrings>().toHaveProperty('descriptionEditLabel')
   })
 
   it('descriptionEmpty 키가 존재한다', () => {

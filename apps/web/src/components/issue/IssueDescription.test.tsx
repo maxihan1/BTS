@@ -1,1005 +1,363 @@
-// IssueDescription 컴포넌트 단위 테스트 — Write/Preview 탭, 저장/취소 흐름, .mention 강조 검증
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
-import type { ReactNode, JSX } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { server } from '@/test/server'
-import { userHandlers } from '@/mocks/user-handlers'
+// IssueDescription 단위 테스트 — 읽기 진입 · 저장/취소 · 작성분 폐기 확인 · 필드 권한
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { issueDetailStrings } from '@/i18n/ko'
+import { editorLabels } from '@/i18n/editor-labels'
 import { IssueDescription } from './IssueDescription'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 멘션 테스트용 wrapper 팩토리 — QueryClientProvider 제공
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * QueryClient wrapper 생성 팩토리.
+ * `IssueDescription` 판별식.
  *
- * IssueDescription의 EditMode는 useMentionAutocomplete → useUsers(TanStack Query)를
- * 내부 호출하므로, 편집 모드로 진입하는 모든 테스트에 QueryClientProvider가 필요하다.
- * 테스트마다 독립된 QueryClient 인스턴스를 생성해 캐시가 테스트 간 공유되지 않게 한다.
+ * ## 무엇을 재고 무엇을 안 재나
+ *
+ * 2026-09-04 WYSIWYG 전환으로 **서식·단축키·저장 포맷은 `RichTextEditor` 의 몫**이 됐다.
+ * 그쪽 판별식(`components/editor/__tests__/RichTextEditor.test.tsx`)이 26건으로 덮으므로
+ * 여기서 다시 재지 않는다 — 두 벌로 재면 한쪽만 고쳐도 다른 쪽이 초록이라 계약이 갈라진다.
+ *
+ * 여기 남는 것은 `IssueDescription` **고유**의 계약이다.
+ *
+ * - 읽기 모드 진입 규칙(클릭 · 선택 중 미진입 · 링크 우선 · 권한)
+ * - 작성분 폐기 확인 패널(편차 D-1) 전체
+ * - 필드 권한 3종(`canEdit` · `restrictedFields` · `noneditableFields`)
+ *
+ * ## 사라진 테스트
+ *
+ * Write/Preview 탭 · textarea 포커스/커서 · IME keyCode 229 · Ctrl+Enter 저장 — 전부
+ * 그 대상이 없어졌거나 `RichTextEditor` 로 옮겨갔다. 멘션 배선 테스트도 뺐다(TipTap Mention
+ * 이식은 후속 작업이며, 그때 그쪽 판별식으로 되살린다).
+ *
+ * ## jsdom 제약
+ *
+ * ProseMirror 는 좌표에 기대므로 jsdom 에서 **타이핑이 재현되지 않는다**. 초안을 바꿔야 하는
+ * 테스트는 툴바 버튼으로 변경을 일으킨다 — 사용자 조작이라는 점은 같고, 재현 가능하다.
  */
-function makeWrapper(): ({ children }: { children: ReactNode }) => JSX.Element {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  }
-}
 
-describe('IssueDescription', () => {
-  const defaultProps = {
-    descriptionHtml: '<p>본문 HTML</p>',
-    description: '본문 마크다운',
+const HTML_BODY = '<p>본문 HTML</p>'
+
+function baseProps() {
+  return {
+    descriptionHtml: HTML_BODY,
     onSave: vi.fn(),
     isSaving: false,
   }
+}
 
-  // ── Preview 탭 (읽기 모드) ────────────────────────────────────────────────
+/** 편집 모드로 들어간 뒤 에디터 본문을 돌려준다. */
+async function enterEditMode(user: ReturnType<typeof userEvent.setup>): Promise<HTMLElement> {
+  await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
+  return await screen.findByRole('textbox', { name: issueDetailStrings.descriptionEditLabel })
+}
 
-  it('Preview 탭에서 descriptionHtml을 렌더한다', () => {
-    render(<IssueDescription {...defaultProps} />)
-    // dangerouslySetInnerHTML으로 삽입된 HTML 내용 확인
-    const content = screen.getByTestId('description-preview-content')
-    expect(content.innerHTML).toBe('<p>본문 HTML</p>')
+/** 초안을 실제로 바꾼다 — 툴바 글머리 목록 토글. jsdom 에서 타이핑이 안 되기 때문이다. */
+async function mutateDraft(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('button', { name: editorLabels.bulletList }))
+}
+
+describe('IssueDescription — 읽기 모드', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('descriptionHtml 을 렌더한다', () => {
+    render(<IssueDescription {...baseProps()} />)
+    expect(screen.getByTestId('description-body')).toHaveTextContent('본문 HTML')
   })
 
-  it('description=null이면 descriptionEmpty placeholder를 표시한다', () => {
-    render(
-      <IssueDescription
-        descriptionHtml={null}
-        description={null}
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-    )
-    expect(screen.getByText('본문이 없습니다.')).toBeInTheDocument()
-    // dangerouslySetInnerHTML 분기가 호출되지 않아야 함
-    expect(screen.queryByTestId('description-preview-content')).not.toBeInTheDocument()
+  it('descriptionHtml=null 이면 placeholder 를 표시한다', () => {
+    render(<IssueDescription {...baseProps()} descriptionHtml={null} />)
+    expect(screen.getByTestId('description-empty')).toHaveTextContent(issueDetailStrings.descriptionEmpty)
   })
 
-  it('descriptionHtml=null이면 descriptionEmpty placeholder를 표시한다', () => {
-    render(
-      <IssueDescription
-        descriptionHtml={null}
-        description="원본 마크다운"
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-    )
-    expect(screen.getByText('본문이 없습니다.')).toBeInTheDocument()
+  it('본문을 클릭하면 편집 모드로 진입한다', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await user.click(screen.getByTestId('description-body'))
+
+    expect(
+      await screen.findByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).toBeInTheDocument()
   })
 
-  // ── 편집 모드 진입 ────────────────────────────────────────────────────────
+  it('본문이 비어 있어도 placeholder 클릭으로 진입한다', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} descriptionHtml={null} />)
 
-  it('본문 편집 버튼 클릭 시 Write 탭 textarea에 raw description이 표시된다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    expect(textarea).toHaveValue('본문 마크다운')
-  })
+    await user.click(screen.getByTestId('description-empty'))
 
-  it('편집 모드에서 Write/Preview 탭이 표시된다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    expect(screen.getByRole('tab', { name: '편집' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '미리보기' })).toBeInTheDocument()
-  })
-
-  // ── 본문 클릭 진입 (FR-UX-11 F8 Task 3 / FR4) ─────────────────────────────
-  //
-  // 진입 경로가 늘어난 만큼 **열리면 안 되는 경우**를 함께 고정한다.
-  // 특히 텍스트 선택 중 진입은 Jira Cloud 의 미해결 결함(JRA-64389 · JRA-29063)이라
-  // 편차 D-2 로 의도적으로 배제했다 — 이 테스트가 그 결함의 복제를 막는 가드다.
-
-  it('본문을 클릭하면 편집 모드로 진입한다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByTestId('description-preview-content'))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
-  })
-
-  it('본문이 비어 있어도 placeholder 클릭으로 편집 모드에 진입한다', () => {
-    render(
-      <IssueDescription
-        descriptionHtml={null}
-        description={null}
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-      { wrapper: makeWrapper() },
-    )
-    fireEvent.click(screen.getByText('본문이 없습니다.'))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).toBeInTheDocument()
   })
 
   it('텍스트를 선택 중이면 본문 클릭이 편집을 열지 않는다 (편차 D-2)', () => {
-    // 드래그로 본문을 복사하려는 상태를 재현 — Selection.isCollapsed=false
-    const selectionSpy = vi
-      .spyOn(window, 'getSelection')
-      .mockReturnValue({ isCollapsed: false } as Selection)
-    try {
-      render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-      fireEvent.click(screen.getByTestId('description-preview-content'))
-      expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
-    } finally {
-      // setup.ts에 restoreMocks 설정이 없으므로 전역 spy를 이 테스트 안에서 직접 원복한다
-      selectionSpy.mockRestore()
-    }
+    render(<IssueDescription {...baseProps()} />)
+    // 드래그로 텍스트를 고르는 중에 편집이 열리면 선택이 날아간다.
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      toString: () => '고른 글자',
+    } as unknown as Selection)
+
+    fireEvent.click(screen.getByTestId('description-body'))
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).not.toBeInTheDocument()
   })
 
   it('본문 안 링크를 클릭하면 편집이 열리지 않는다', () => {
     render(
       <IssueDescription
-        {...defaultProps}
-        descriptionHtml='<p><a href="/x">링크</a></p>'
+        {...baseProps()}
+        descriptionHtml='<p><a href="https://example.test">링크</a></p>'
       />,
-      { wrapper: makeWrapper() },
     )
+
     fireEvent.click(screen.getByRole('link', { name: '링크' }))
-    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).not.toBeInTheDocument()
   })
 
   it('수정 권한이 없으면 본문 클릭이 편집을 열지 않는다', () => {
-    render(<IssueDescription {...defaultProps} canEdit={false} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByTestId('description-preview-content'))
-    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
-  })
+    render(<IssueDescription {...baseProps()} canEdit={false} />)
 
-  // ── 저장 흐름 ─────────────────────────────────────────────────────────────
-
-  it('저장 버튼 클릭 시 onSave(rawMarkdown)을 호출한다', () => {
-    const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '수정된 내용' } })
-    fireEvent.click(screen.getByRole('button', { name: '저장' }))
-    expect(onSave).toHaveBeenCalledWith('수정된 내용')
-  })
-
-  it('빈 입력 저장 시 onSave("")를 호출한다 (클리어)', () => {
-    const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '' } })
-    fireEvent.click(screen.getByRole('button', { name: '저장' }))
-    expect(onSave).toHaveBeenCalledWith('')
-  })
-
-  // ── 진입 시 포커스 (스펙 S4) ─────────────────────────────────────────────
-  //
-  // "본문 영역을 클릭한다 → 편집기가 열리고 포커스가 입력 영역에 놓인다".
-  // 포커스가 없으면 한 번 더 클릭해야 타이핑이 시작돼 클릭 진입의 의미가 반감된다.
-  // E2E 는 locator.press() 가 자동 포커스하므로 이 결함을 못 잡는다 — 유닛이 증인이다.
-
-  it('본문 클릭으로 진입하면 textarea 가 포커스를 갖는다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByTestId('description-preview-content'))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
-  })
-
-  it('본문 편집 버튼으로 진입해도 textarea 가 포커스를 갖는다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
-  })
-
-  it('빈 본문 placeholder 클릭으로 진입해도 textarea 가 포커스를 갖는다', () => {
-    render(
-      <IssueDescription
-        descriptionHtml={null}
-        description={null}
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-      { wrapper: makeWrapper() },
-    )
-    fireEvent.click(screen.getByText('본문이 없습니다.'))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveFocus()
-  })
-
-  /**
-   * 진입 시 커서가 **본문 끝**에 놓인다 — 이어 쓰는 것이 자연스럽고 제목 편집(FR1)과도 같다.
-   * 맨 앞이면 타이핑한 글자가 기존 본문 앞에 끼어들고, 전체 선택이면 첫 타건에 원문이 지워진다.
-   */
-  it('진입 시 커서가 본문 끝에 놓인다 (이어 쓰기)', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByTestId('description-preview-content'))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
-    expect(textarea.value).toBe('본문 마크다운')
-    // 접혀 있고(start===end) 그 위치가 끝이어야 "커서가 끝"이다 — 전체 선택이면 start 가 0 이라 걸린다
-    expect(textarea.selectionStart).toBe(textarea.value.length)
-    expect(textarea.selectionEnd).toBe(textarea.value.length)
-  })
-
-  // ── 키보드 저장 (FR-UX-11 F8 Task 4 / FR5) ───────────────────────────────
-  //
-  // 본문은 여러 줄 마크다운 편집기다. 맨 Enter 를 저장에 쓰면 개행을 할 수 없으므로
-  // 저장은 수식키(Ctrl/Cmd)를 요구하고 맨 Enter 는 줄바꿈으로 남긴다.
-
-  it('본문 편집 중 Ctrl+Enter 로 저장한다', () => {
-    const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '새 본문' } })
-    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
-    expect(onSave).toHaveBeenCalledWith('새 본문')
-  })
-
-  it('본문 편집 중 Cmd+Enter(metaKey) 로도 저장한다 (mac)', () => {
-    const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '맥에서 저장' } })
-    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
-    expect(onSave).toHaveBeenCalledWith('맥에서 저장')
-  })
-
-  it('본문 편집 중 맨 Enter 는 저장하지 않는다 (줄바꿈)', () => {
-    const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '첫 줄' } })
-    fireEvent.keyDown(textarea, { key: 'Enter' })
-    expect(onSave).not.toHaveBeenCalled()
-  })
-
-  it('한글 IME 조합 확정 중의 Ctrl+Enter 는 저장하지 않는다 (keyCode 229)', () => {
-    const onSave = vi.fn()
-    render(<IssueDescription {...defaultProps} onSave={onSave} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '한글' } })
-    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true, keyCode: 229 })
-    expect(onSave).not.toHaveBeenCalled()
-  })
-
-  // ── 취소 흐름 ─────────────────────────────────────────────────────────────
-
-  it('취소 버튼 클릭 시 편집 모드가 닫힌다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '취소' }))
-    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
-  })
-
-  // ── Esc 취소 + 작성분 확인 (FR-UX-11 F8 Task 5 / FR6 · 편차 D-1) ─────────
-  //
-  // Jira 는 Esc 에 확인 없이 작성분을 버리고 Atlassian 이 개선 거부를 공표했다
-  // (JRACLOUD-36670 · JRACLOUD-41814). BTS 는 확인을 거친다.
-
-  it('변경분이 없으면 Esc 가 즉시 편집을 닫는다 (S8)', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.keyDown(textarea, { key: 'Escape' })
-    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-  })
-
-  it('변경분이 있으면 Esc 가 확인을 먼저 띄운다 (S7)', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' })
-    fireEvent.change(textarea, { target: { value: '아까운 초안' } })
-    fireEvent.keyDown(textarea, { key: 'Escape' })
-    expect(screen.getByText(issueDetailStrings.descriptionDiscardConfirm)).toBeInTheDocument()
-    // 아직 편집 모드다 — 확인 전에는 아무것도 버리지 않는다
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
-  })
-
-  it('확인을 거부(계속 편집)하면 편집 모드와 초안이 유지된다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    fireEvent.change(screen.getByRole('textbox', { name: '본문 편집' }), {
-      target: { value: '아까운 초안' },
-    })
-    fireEvent.keyDown(screen.getByRole('textbox', { name: '본문 편집' }), { key: 'Escape' })
-    fireEvent.click(
-      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
-    )
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('아까운 초안')
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-  })
-
-  it('확인을 수락(편집 그만두기)하면 편집이 닫힌다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    fireEvent.change(screen.getByRole('textbox', { name: '본문 편집' }), {
-      target: { value: '버릴 초안' },
-    })
-    fireEvent.keyDown(screen.getByRole('textbox', { name: '본문 편집' }), { key: 'Escape' })
-    fireEvent.click(
-      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardConfirmButton }),
-    )
-    expect(screen.queryByRole('textbox', { name: '본문 편집' })).not.toBeInTheDocument()
-  })
-
-  // ── 확인 패널 잔류 방지 (리뷰 R-1) ────────────────────────────────────────
-  //
-  // confirmDiscard 를 내리는 경로가 패널 버튼 2개뿐이면, isEditing 이 꺼지지 않는 경로
-  // (저장 · 타이핑 · 탭 전환)에서 패널이 남는다. 특히 저장 후에는 버릴 것이 없는데도
-  // "작성 중인 내용이 사라집니다" 가 계속 떠 있어 **문구가 거짓말**이 된다.
-
-  /** 편집 진입 → 초안 변경 → Esc 로 확인 패널을 띄운 상태까지 만든다. */
-  function openDiscardConfirm(draft: string): HTMLTextAreaElement {
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: draft } })
-    fireEvent.keyDown(textarea, { key: 'Escape' })
-    expect(screen.getByText(issueDetailStrings.descriptionDiscardConfirm)).toBeInTheDocument()
-    return textarea
-  }
-
-  it('저장되어 초안이 원본과 같아지면 확인 패널이 사라진다', () => {
-    const { rerender } = render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    openDiscardConfirm('저장할 내용')
-
-    // 저장 성공 → invalidate → refetch 로 description prop 이 초안과 같아진 상태를 모사
-    rerender(<IssueDescription {...defaultProps} description="저장할 내용" />)
-
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-    // 편집은 계속 열려 있어야 한다 — 패널만 사라지는 것이다
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
-  })
-
-  it('확인 패널이 뜬 뒤 계속 타이핑하면 패널이 사라진다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    const textarea = openDiscardConfirm('쓰던 내용')
-
-    fireEvent.change(textarea, { target: { value: '쓰던 내용 더' } })
-
-    // 빨간 경고 아래에서 계속 작성하게 두지 않는다
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('쓰던 내용 더')
-  })
-
-  it('확인 패널이 뜬 뒤 미리보기 탭으로 전환하면 패널이 보이지 않는다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    openDiscardConfirm('쓰던 내용')
-
-    fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-
-    // 쓰기 탭으로 돌아와도 되살아나지 않는다 (플래그까지 내렸는지 확인)
-    fireEvent.click(screen.getByRole('tab', { name: '편집' }))
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-  })
-
-  it('확인 패널이 뜨면 포커스가 계속 편집 버튼으로 이동한다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    openDiscardConfirm('쓰던 내용')
+    fireEvent.click(screen.getByTestId('description-body'))
 
     expect(
-      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
-    ).toHaveFocus()
-  })
-
-  it('확인 문구에 role=alert 가 붙어 스크린리더에 알려진다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    openDiscardConfirm('쓰던 내용')
-
-    const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent(issueDetailStrings.descriptionDiscardConfirm)
-  })
-
-  // ── 확인 중 상단 저장/취소 잠금 (리뷰 C-1 3행 / M-5) ──────────────────────
-  //
-  // 확인을 띄워 놓고 위쪽 `취소` 로 확인 없이 버릴 수 있으면 UI 모순이다.
-  // 버튼에 확인을 덧붙이는 대신 **확인 중에만 잠근다** — 확인이 없는 평상시 `취소` 동작은
-  // 그대로라 저장 후 `취소` 로 읽기 모드에 나가는 기존 E2E(issue-body-meta)에 영향이 없다.
-
-  it('평상시에는 상단 저장·취소가 활성이다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-
-    expect(screen.getByRole('button', { name: '저장' })).not.toBeDisabled()
-    expect(screen.getByRole('button', { name: '취소' })).not.toBeDisabled()
-  })
-
-  it('확인 패널이 뜬 동안 상단 저장·취소가 비활성이다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    openDiscardConfirm('아까운 초안')
-
-    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
-  })
-
-  /**
-   * ★ 잠금이 영구화되지 않는다는 증인 — 이게 없으면 "잠그고 안 풀리는" 회귀를 못 잡는다.
-   */
-  it('계속 편집으로 패널을 닫으면 상단 저장·취소가 다시 활성이 된다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    openDiscardConfirm('아까운 초안')
-
-    fireEvent.click(
-      screen.getByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
-    )
-
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '저장' })).not.toBeDisabled()
-    expect(screen.getByRole('button', { name: '취소' })).not.toBeDisabled()
-  })
-
-  // ── 확인 패널의 Escape (리뷰 R-2) ─────────────────────────────────────────
-
-  /**
-   * ★ 확인 패널이 뜬 상태의 `Escape` 는 **패널만** 닫고 상위 pane 닫기로 새면 안 된다.
-   *
-   * `usePaneEscapeClose` 는 document 전역 리스너이고 `e.defaultPrevented` 만 존중한다.
-   * 패널 버튼에 키 핸들러가 없으면 아무도 preventDefault 를 하지 않아 **pane 이 닫히고
-   * 작성분이 사라진다** — 확인 패널이 지키기로 한 바로 그것을 못 지킨다.
-   * 그 전역 리스너의 계약을 여기서 그대로 모사해 검증한다.
-   */
-  it('확인 패널이 뜬 상태의 Esc 는 패널만 닫고 pane 닫기로 새지 않는다', () => {
-    const onPaneClose = vi.fn()
-    function paneListener(e: KeyboardEvent): void {
-      if (e.key === 'Escape' && !e.defaultPrevented) onPaneClose()
-    }
-    document.addEventListener('keydown', paneListener)
-
-    try {
-      render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-      openDiscardConfirm('아까운 초안')
-
-      // 패널이 뜨면 포커스는 '계속 편집' 에 있다 — 그 지점에서 Esc 를 누른다
-      const keepEditing = screen.getByRole('button', {
-        name: issueDetailStrings.descriptionDiscardCancelButton,
-      })
-      fireEvent.keyDown(keepEditing, { key: 'Escape' })
-
-      // 패널만 닫힌다
-      expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-      // 편집 모드와 초안은 유지된다
-      expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('아까운 초안')
-      // ★ pane 은 닫히지 않는다
-      expect(onPaneClose).not.toHaveBeenCalled()
-    } finally {
-      document.removeEventListener('keydown', paneListener)
-    }
-  })
-
-  it('확인 패널이 뜬 상태에서 textarea 의 두 번째 Esc 도 패널을 닫는다 (죽은 키 방지)', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    const textarea = openDiscardConfirm('아까운 초안')
-
-    // 예전에는 이미 true 인 플래그를 다시 true 로 세워 화면이 전혀 변하지 않았다
-    fireEvent.keyDown(textarea, { key: 'Escape' })
-
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toHaveValue('아까운 초안')
-  })
-
-  /**
-   * ★ 리뷰 F-2 회귀 가드 — 확인 패널이 떠도 '취소'/'저장' 문자열은 화면에 하나뿐이어야 한다.
-   * 둘이 되면 E2E 의 getByRole('button', { name: '취소' }) 가 strict mode violation 으로
-   * 터진다 — 이 화면에서 실제로 난 사고다(learnings.md:631, PR #47 「저장」 버튼 3개).
-   */
-  it('확인 패널이 떠도 취소·저장 문자열 버튼이 화면에 둘 이상 생기지 않는다', () => {
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    fireEvent.change(screen.getByRole('textbox', { name: '본문 편집' }), {
-      target: { value: '중복 검사용 초안' },
-    })
-    fireEvent.keyDown(screen.getByRole('textbox', { name: '본문 편집' }), { key: 'Escape' })
-    // 확인 패널이 실제로 떠 있는 상태에서 세는 것이 전제다 (공허한 초록 방지)
-    expect(screen.getByText(issueDetailStrings.descriptionDiscardConfirm)).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: '취소' })).toHaveLength(1)
-    expect(screen.getAllByRole('button', { name: '저장' })).toHaveLength(1)
-  })
-
-  // ── isSaving 상태 ─────────────────────────────────────────────────────────
-
-  it('isSaving=true이면 저장/취소 버튼이 disabled된다', () => {
-    render(<IssueDescription {...defaultProps} isSaving={true} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    expect(screen.getByRole('button', { name: '저장' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '취소' })).toBeDisabled()
-  })
-
-  // ── 보안 NFR1/NFR2: raw description은 표시 경로에 절대 렌더 금지 ─────────
-
-  it('Preview 탭에서 raw description 텍스트가 직접 노출되지 않는다', () => {
-    render(
-      <IssueDescription
-        descriptionHtml="<p>HTML 본문</p>"
-        description="raw_마크다운_절대_노출금지"
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-    )
-    // 편집 모드가 아닌 상태에서 raw 텍스트가 DOM에 없어야 함
-    expect(screen.queryByText('raw_마크다운_절대_노출금지')).not.toBeInTheDocument()
-  })
-
-  // ── canEdit 게이트 (FR-PM-02 C1) ─────────────────────────────────────────
-
-  it('canEdit=false이면 편집 버튼이 disabled된다', () => {
-    render(<IssueDescription {...defaultProps} canEdit={false} />)
-    const editBtn = screen.getByRole('button', { name: '본문 편집' })
-    expect(editBtn).toBeDisabled()
-  })
-
-  it('canEdit=false이면 편집 버튼에 수정 권한 없음 title이 붙는다', () => {
-    render(<IssueDescription {...defaultProps} canEdit={false} />)
-    const editBtn = screen.getByRole('button', { name: '본문 편집' })
-    expect(editBtn).toHaveAttribute('title', '수정 권한이 없습니다')
-  })
-
-  it('canEdit=true(기본값)이면 편집 버튼이 활성화된다', () => {
-    render(<IssueDescription {...defaultProps} canEdit={true} />)
-    const editBtn = screen.getByRole('button', { name: '본문 편집' })
-    expect(editBtn).not.toBeDisabled()
-  })
-
-  // ── restrictedFields — 본문 열람 차단 (FR-PM-07 Task 6 보강) ─────────
-
-  it('restrictedFields에 "description"이 포함되면 본문 대신 열람 불가 placeholder가 표시된다', () => {
-    render(
-      <IssueDescription
-        {...defaultProps}
-        restrictedFields={['description']}
-      />,
-    )
-    expect(screen.getByTestId('description-restricted')).toBeInTheDocument()
-    expect(screen.queryByTestId('description-preview-content')).not.toBeInTheDocument()
-    expect(screen.queryByText('본문이 없습니다.')).not.toBeInTheDocument()
-  })
-
-  it('restrictedFields에 "description"이 포함되면 편집 버튼이 렌더되지 않는다', () => {
-    render(
-      <IssueDescription
-        {...defaultProps}
-        restrictedFields={['description']}
-      />,
-    )
-    expect(screen.queryByRole('button', { name: '본문 편집' })).not.toBeInTheDocument()
-  })
-
-  it('restrictedFields가 빈 배열이면 본문이 정상 렌더된다', () => {
-    render(<IssueDescription {...defaultProps} restrictedFields={[]} />)
-    expect(screen.getByTestId('description-preview-content')).toBeInTheDocument()
-    expect(screen.queryByTestId('description-restricted')).not.toBeInTheDocument()
-  })
-
-  // ── noneditableFields — 편집 비활성 AND 조합 (FR-PM-07 Task 6 보강) ──
-
-  it('noneditableFields에 "description"이 포함되면 편집 버튼이 disabled된다', () => {
-    render(
-      <IssueDescription
-        {...defaultProps}
-        canEdit={true}
-        noneditableFields={['description']}
-      />,
-    )
-    expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
-  })
-
-  it('canEdit=true + noneditableFields=[] 이면 편집 버튼이 활성이다', () => {
-    render(
-      <IssueDescription
-        {...defaultProps}
-        canEdit={true}
-        noneditableFields={[]}
-      />,
-    )
-    expect(screen.getByRole('button', { name: '본문 편집' })).not.toBeDisabled()
-  })
-
-  it('canEdit=false + noneditableFields=[] 이면 편집 버튼이 disabled된다 (canEdit이 막음)', () => {
-    render(
-      <IssueDescription
-        {...defaultProps}
-        canEdit={false}
-        noneditableFields={[]}
-      />,
-    )
-    expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
-  })
-
-  it('canEdit=true + noneditableFields=["description"] 이면 편집 버튼이 disabled된다 (noneditableFields가 막음)', () => {
-    render(
-      <IssueDescription
-        {...defaultProps}
-        canEdit={true}
-        noneditableFields={['description']}
-      />,
-    )
-    expect(screen.getByRole('button', { name: '본문 편집' })).toBeDisabled()
+      screen.queryByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).not.toBeInTheDocument()
   })
 })
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 멘션 자동완성 배선 테스트 — FR-MN-02 Task 3
-// ─────────────────────────────────────────────────────────────────────────────
+describe('IssueDescription — 저장', () => {
+  beforeEach(() => { vi.clearAllMocks() })
 
-describe('IssueDescription — 멘션 자동완성 배선', () => {
-  const defaultProps = {
-    descriptionHtml: '<p>본문 HTML</p>',
-    description: '본문 마크다운',
-    onSave: vi.fn(),
-    isSaving: false,
-  }
-
-  /**
-   * 편집 모드 진입 헬퍼 — 편집 버튼 클릭 후 textarea를 반환한다.
-   * wrapper 포함 렌더가 필요하므로 미리 server.use(userHandlers)를 호출한 상태에서 사용할 것.
-   */
-  function enterEditMode() {
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    return screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
-  }
-
-  it('@al 입력 후 debounce 완료 시 멘션 드롭다운(role=listbox)이 노출된다', async () => {
-    server.use(...userHandlers)
-    render(
-      <IssueDescription {...defaultProps} />,
-      { wrapper: makeWrapper() },
-    )
-
-    const textarea = enterEditMode()
-
-    // @al 입력 — selectionStart를 3으로 맞춰 caret 위치를 시뮬레이션한다
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    // debounce(250ms) + useUsers 응답 대기
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-  })
-
-  /**
-   * FR-UX-11 F8 Task 4 / E10 — 멘션 팝업이 키를 먼저 소비한다.
-   *
-   * 드롭다운이 열린 상태의 Enter 는 **후보 선택**이지 저장이 아니다.
-   * use-mention-autocomplete 의 onKeyDown 이 preventDefault() 하므로
-   * handleEditorKeyDown 은 defaultPrevented 를 보고 손을 뗀다.
-   * 이 순서가 깨지면 자동완성 확정이 그대로 저장으로 새는 회귀가 된다.
-   */
-  it('멘션 팝업이 열린 상태의 Ctrl+Enter 는 저장으로 새지 않는다', async () => {
-    server.use(...userHandlers)
-    const onSave = vi.fn()
-    render(
-      <IssueDescription {...defaultProps} onSave={onSave} />,
-      { wrapper: makeWrapper() },
-    )
-
-    const textarea = enterEditMode()
-
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    // 드롭다운 노출 대기 — 이 상태에서만 훅이 Enter 를 가로챈다
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
-    expect(onSave).not.toHaveBeenCalled()
-  })
-
-  /**
-   * 스펙 S4 부작용 가드 — **커서를 끝에 두고도** 멘션 감지가 깨어나면 안 된다.
-   *
-   * 본문이 `@이름` 으로 끝나는 이슈에서 진입 커서를 끝에 놓으면 `setSelectionRange` 가
-   * select 이벤트를 낳고, 억제가 없으면 **열지도 않은 자동완성이 진입 직후 떠 있는** 상태가 된다.
-   * 그 상태에서는 첫 `Enter` 가 줄바꿈이 아니라 후보 선택, 첫 `Esc` 가 취소가 아니라 팝업 닫기가
-   * 되어 FR5·FR6 이 첫 타건에 무력화된다. `suppressNextSelect()` 가 그것을 막는다.
-   */
-  it('본문이 @이름 으로 끝나도(커서가 끝이어도) 진입 직후 멘션 드롭다운이 열리지 않는다', async () => {
-    server.use(...userHandlers)
-    render(
-      <IssueDescription
-        descriptionHtml="<p>안녕 @al</p>"
-        description="안녕 @al"
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-      { wrapper: makeWrapper() },
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    const textarea = screen.getByRole('textbox', { name: '본문 편집' }) as HTMLTextAreaElement
-    expect(textarea).toHaveFocus()
-    // 전제 강화 — 커서가 실제로 `@al` 바로 뒤(끝)에 있는 상태에서 검사한다.
-    // 이게 없으면 커서가 0 이라 드롭다운이 안 뜬 것인지 억제가 동작한 것인지 구별되지 않는다.
-    expect(textarea.selectionStart).toBe('안녕 @al'.length)
-
-    // debounce(250ms) + 응답 시간을 충분히 넘겨도 드롭다운이 없어야 한다
-    await new Promise((resolve) => { setTimeout(resolve, 700) })
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-  })
-
-  /**
-   * ★ 억제 과잉 방지 — 진입 억제가 **사용자 타이핑까지** 삼키면 안 된다.
-   * `suppressNextSelect` 는 정확히 1회만 소비되어야 하고, 그 뒤 사용자가 `@al` 을 치면
-   * 드롭다운이 종전대로 떠야 한다. 이 수정의 최대 위험(자동완성이 아예 안 뜸)을 막는 증인이다.
-   */
-  it('진입 억제 뒤에도 사용자가 직접 @al 을 타이핑하면 드롭다운이 뜬다', async () => {
-    server.use(...userHandlers)
-    render(
-      <IssueDescription
-        descriptionHtml="<p>안녕 @al</p>"
-        description="안녕 @al"
-        onSave={vi.fn()}
-        isSaving={false}
-      />,
-      { wrapper: makeWrapper() },
-    )
-
-    const textarea = enterEditMode()
-
-    // 진입 직후에는 안 뜬다
-    await new Promise((resolve) => { setTimeout(resolve, 400) })
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-
-    // 사용자가 실제로 타이핑하면 뜬다
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-  })
-
-  /**
-   * ★ stale blur 타이머 회귀 가드 — E2E 가 잡아낸 실제 회귀의 증인.
-   *
-   * 진입 포커스(S4) 이후 사용자가 탭 등 다른 요소를 눌러 textarea 가 blur 되면
-   * `handleBlur` 가 150ms 지연 닫기를 예약한다. 그 뒤 입력칸으로 **돌아와** 타이핑해
-   * 드롭다운을 열면, 예약이 살아 있는 한 150ms 뒤 그 드롭다운이 죽는다.
-   * 실브라우저에서 정확히 그 증상(+150ms 에 listbox 소멸)이 관측됐다.
-   */
-  it('blur 로 닫기가 예약된 뒤 다시 타이핑하면 드롭다운이 150ms 뒤에도 살아 있다', async () => {
-    server.use(...userHandlers)
-    render(<IssueDescription {...defaultProps} />, { wrapper: makeWrapper() })
-
-    const textarea = enterEditMode()
-
-    // 다른 곳을 눌러 blur — 지연 닫기가 예약된다
-    act(() => { fireEvent.blur(textarea) })
-
-    // 입력칸으로 돌아와 타이핑 — 예약은 무효가 되어야 한다
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    // blur 타이머(150ms)를 넉넉히 넘겨도 살아 있어야 한다
-    await new Promise((resolve) => { setTimeout(resolve, 400) })
-    expect(screen.getByRole('listbox')).toBeInTheDocument()
-  })
-
-  /**
-   * FR-UX-11 F8 Task 5 / E10 — 멘션 팝업이 Escape 도 먼저 소비한다.
-   *
-   * Escape 취소(FR6)가 붙은 뒤로 이 순서가 깨지면, 자동완성을 물리려던 Escape 가
-   * **편집 취소 확인 패널**을 띄우는 회귀가 된다. 기존 Escape 테스트는 값 유지만 보므로
-   * 확인 패널 부재를 여기서 따로 단언한다.
-   */
-  it('멘션 팝업이 열린 상태의 Escape 는 팝업만 닫고 취소 확인을 띄우지 않는다', async () => {
-    server.use(...userHandlers)
-    render(
-      <IssueDescription {...defaultProps} />,
-      { wrapper: makeWrapper() },
-    )
-
-    const textarea = enterEditMode()
-
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    fireEvent.keyDown(textarea, { key: 'Escape' })
-
-    await waitFor(() => {
-      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    })
-    // 편집은 그대로 — 취소 확인 패널이 뜨면 안 된다
-    expect(screen.queryByText(issueDetailStrings.descriptionDiscardConfirm)).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '본문 편집' })).toBeInTheDocument()
-  })
-
-  it('드롭다운 후보 클릭(onMouseDown) 시 textarea 값에 @<username> 공백이 반영된다', async () => {
-    server.use(...userHandlers)
-    render(
-      <IssueDescription {...defaultProps} />,
-      { wrapper: makeWrapper() },
-    )
-
-    const textarea = enterEditMode()
-
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    // 드롭다운 노출 대기
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    // alice 항목 클릭 — onMouseDown으로 선택
-    const aliceOption = screen.getByTestId('mention-option-alice')
-    fireEvent.mouseDown(aliceOption)
-
-    // textarea 값에 @alice 공백 반영 확인
-    await waitFor(() => {
-      expect(textarea).toHaveValue('@alice ')
-    })
-  })
-
-  it('CR2: Preview → Write 복귀 시 멘션 상태가 초기화되어 드롭다운이 재출현하지 않는다', async () => {
-    /**
-     * Write 탭에서 @al 입력으로 open=true 만든 뒤 Preview로 전환하면
-     * 훅의 open 상태가 reset()으로 초기화되어야 한다.
-     * Write 탭으로 돌아왔을 때 listbox가 즉시 재출현하면 reset 미적용 증거.
-     *
-     * 캐시 시드(staleTime: Infinity)를 사용해 Write 복귀 즉시 드롭다운 여부를 동기로 확인한다.
-     * reset이 없으면 open=true 잔존 → Write 복귀 시 즉시 listbox 재출현 → 실패.
-     */
-    server.use(...userHandlers)
-    const qc = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
-    })
-    const aliceResult = [
-      { id: 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5', username: 'alice', displayName: '앨리스', email: null as string | null },
-    ]
-
-    render(
-      <IssueDescription {...defaultProps} />,
-      { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider> },
-    )
-
-    const textarea = enterEditMode()
-
-    // 캐시 시드 — useUsers('al') 즉시 반환
-    act(() => { qc.setQueryData(['users', 'al'], aliceResult) })
-
-    // @al 입력
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    // 드롭다운 노출 대기
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    // Preview 탭으로 전환 → listbox DOM에서 사라짐(조건부 렌더)
-    act(() => {
-      fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
-    })
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-
-    // Write 탭으로 복귀 — reset이 없으면 open=true 잔존 → listbox 즉시 재출현
-    act(() => {
-      fireEvent.click(screen.getByRole('tab', { name: '편집' }))
-    })
-
-    // reset()이 호출되었다면 open=false → listbox 없음
-    // reset() 미호출이라면 open=true 잔존 → candidates 있으면 즉시 재출현 → 실패
-    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-  })
-
-  it('Escape 키 입력 시 드롭다운이 닫히고 textarea 값은 유지된다', async () => {
-    server.use(...userHandlers)
-    render(
-      <IssueDescription {...defaultProps} />,
-      { wrapper: makeWrapper() },
-    )
-
-    const textarea = enterEditMode()
-
-    act(() => {
-      Object.defineProperty(textarea, 'selectionStart', { value: 3, configurable: true })
-      fireEvent.change(textarea, { target: { value: '@al' } })
-    })
-
-    // 드롭다운 노출 대기
-    await waitFor(() => {
-      expect(screen.getByRole('listbox')).toBeInTheDocument()
-    }, { timeout: 2000 })
-
-    // Escape 키 입력
-    fireEvent.keyDown(textarea, { key: 'Escape' })
-
-    // 드롭다운 닫힘 확인
-    await waitFor(() => {
-      expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    })
-
-    // textarea 값 유지 확인
-    expect(textarea).toHaveValue('@al')
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-// .mention 강조 스타일 검증 — FR-MN-01 D6 Task 2
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('IssueDescription — .mention 강조 (FR-MN-01 D6)', () => {
-  /** 백엔드가 마크업한 멘션 span을 포함하는 샘플 HTML */
-  const mentionHtml = '<p><span class="mention">@alice</span> 확인</p>'
-  const props = {
-    descriptionHtml: mentionHtml,
-    description: '@alice 확인',
-    onSave: vi.fn(),
-    isSaving: false,
-  }
-
-  /**
-   * index.css 파일 내용을 직접 읽어 .mention 규칙 존재를 검증한다.
-   * jsdom은 CSS를 적용하지 않으므로 computed style 검증 대신 CSS 소스 검사를 사용한다.
-   *
-   * - import.meta.dirname: 이 테스트 파일의 절대 디렉토리(components/issue) 기준으로
-   *   경로를 계산해 process.cwd() 의존을 제거한다.
-   * - 블록 주석(/* ... *‌/) 제거 후 .mention { ... } 선언 블록이 실재하는지 확인해
-   *   주석 내 .mention 텍스트를 오매칭하지 않는다.
-   * - 블록 내 강조 속성(color/background/font-weight) 최소 1개 존재를 추가 단언해
-   *   빈 규칙셋이 통과하는 가짜 그린을 차단한다.
-   */
-  it('index.css에 .mention 강조 스타일 규칙이 정의되어 있다', () => {
-    // 테스트 파일(components/issue/) 기준 상대경로로 src/index.css 도달
-    const cssPath = resolve(import.meta.dirname, '../../index.css')
-    const css = readFileSync(cssPath, 'utf-8')
-
-    // 블록 주석 제거 — /* .mention */ 같은 주석이 단언에 매칭되는 것 방지
-    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '')
-
-    // .mention { ... } 선언 블록 실재 확인
-    const ruleMatch = stripped.match(/\.mention\s*\{([^}]+)\}/)
-    expect(ruleMatch).not.toBeNull()
-
-    // 강조 속성(color / background-color / font-weight) 최소 1개 포함 확인
-    const block = ruleMatch?.[1] ?? ''
-    expect(block).toMatch(/\b(?:color|background(?:-color)?|font-weight)\s*:/)
-  })
-
-  it('읽기 모드에서 .mention 클래스 요소가 prose 컨테이너 안에 존재한다', () => {
+  it('저장 버튼이 onSave 에 **HTML** 을 넘긴다 — 마크다운이 아니다', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
     render(<IssueDescription {...props} />)
-    const container = screen.getByTestId('description-preview-content')
-    const mentionEl = container.querySelector('.mention')
-    expect(mentionEl).toBeInTheDocument()
-    expect(mentionEl?.textContent).toBe('@alice')
+
+    await enterEditMode(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
+
+    expect(props.onSave).toHaveBeenCalledOnce()
+    const saved = props.onSave.mock.calls[0]?.[0] as string
+    expect(saved).toContain('<p>')
+    expect(saved).toContain('본문 HTML')
   })
 
-  it('편집 모드 미리보기 탭에서도 .mention 요소가 prose 컨테이너 안에 존재한다', () => {
-    render(<IssueDescription {...props} />, { wrapper: makeWrapper() })
-    fireEvent.click(screen.getByRole('button', { name: '본문 편집' }))
-    fireEvent.click(screen.getByRole('tab', { name: '미리보기' }))
-    // 편집 모드 미리보기 컨테이너(.prose)에서 .mention 요소 검색
-    const proseDivs = document.querySelectorAll('.prose')
-    let mentionEl: Element | null = null
-    for (const div of proseDivs) {
-      const el = div.querySelector('.mention')
-      if (el !== null) { mentionEl = el; break }
-    }
-    expect(mentionEl).toBeInTheDocument()
-    expect(mentionEl?.textContent).toBe('@alice')
+  it('isSaving=true 이면 저장/취소 버튼이 잠긴다', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    rerender(<IssueDescription {...baseProps()} isSaving />)
+
+    expect(screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton })).toBeDisabled()
+    expect(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton })).toBeDisabled()
+  })
+})
+
+describe('IssueDescription — 작성분 폐기 확인 (편차 D-1)', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('변경분이 없으면 취소가 즉시 편집을 닫는다 (S8)', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('변경분이 있으면 취소가 확인을 먼저 띄운다 (S7)', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      issueDetailStrings.descriptionDiscardConfirm,
+    )
+    // 아직 편집은 열려 있다 — 확인 없이 버리지 않는다.
+    expect(
+      screen.getByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).toBeInTheDocument()
+  })
+
+  it('계속 편집을 고르면 편집 모드가 유지된다', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+    await user.click(
+      await screen.findByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
+    )
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).toBeInTheDocument()
+  })
+
+  it('편집 그만두기를 고르면 편집이 닫힌다', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+    await user.click(
+      await screen.findByRole('button', { name: issueDetailStrings.descriptionDiscardConfirmButton }),
+    )
+
+    expect(
+      screen.queryByRole('textbox', { name: issueDetailStrings.descriptionEditLabel }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('확인 패널이 뜬 동안 상단 저장·취소가 잠긴다 (리뷰 C-1)', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+      ).toBeDisabled()
+    })
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }),
+    ).toBeDisabled()
+  })
+
+  it('계속 편집으로 패널을 닫으면 상단 버튼이 다시 활성이다 — 위 잠금의 비-공허 짝', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+    await user.click(
+      await screen.findByRole('button', { name: issueDetailStrings.descriptionDiscardCancelButton }),
+    )
+
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+    ).toBeEnabled()
+  })
+
+  it('확인 패널이 뜨면 포커스가 계속 편집 버튼으로 간다 (R-2·R-3)', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+
+    const keepEditing = await screen.findByRole('button', {
+      name: issueDetailStrings.descriptionDiscardCancelButton,
+    })
+    await waitFor(() => { expect(keepEditing).toHaveFocus() })
+  })
+
+  it('확인 패널의 Escape 는 패널만 닫고 위로 새지 않는다', async () => {
+    const user = userEvent.setup()
+    // ★전역 Escape 리스너(usePaneEscapeClose)가 pane 을 닫아 작성분이 날아가는 것을 막는
+    //   preventDefault 계약. 이것이 없으면 확인 패널이 지키기로 한 바로 그것을 못 지킨다.
+    const onDocumentEscape = vi.fn()
+    document.addEventListener('keydown', (e) => { if (!e.defaultPrevented) onDocumentEscape() })
+
+    render(<IssueDescription {...baseProps()} />)
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+
+    const keepEditing = await screen.findByRole('button', {
+      name: issueDetailStrings.descriptionDiscardCancelButton,
+    })
+    onDocumentEscape.mockClear()
+    fireEvent.keyDown(keepEditing, { key: 'Escape' })
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(onDocumentEscape).not.toHaveBeenCalled()
+  })
+
+  it('확인 패널이 떠도 취소·저장 문자열 버튼이 둘 이상 생기지 않는다 (리뷰 F-2)', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+
+    await enterEditMode(user)
+    await mutateDraft(user)
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.descriptionCancelButton }))
+    await screen.findByRole('alert')
+
+    // e2e strict mode violation 방지 — 같은 이름의 버튼이 둘이면 셀렉터가 터진다.
+    expect(
+      screen.getAllByRole('button', { name: issueDetailStrings.descriptionCancelButton }),
+    ).toHaveLength(1)
+    expect(
+      screen.getAllByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+    ).toHaveLength(1)
+  })
+})
+
+describe('IssueDescription — 필드 권한', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('canEdit=false 면 편집 버튼이 비활성이다', () => {
+    render(<IssueDescription {...baseProps()} canEdit={false} />)
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    ).toBeDisabled()
+  })
+
+  it('canEdit=true(기본값)이면 편집 버튼이 활성이다', () => {
+    render(<IssueDescription {...baseProps()} />)
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    ).toBeEnabled()
+  })
+
+  it('restrictedFields 에 description 이 있으면 열람 불가 placeholder 를 표시한다 (FR-PM-07 §3.1)', () => {
+    render(<IssueDescription {...baseProps()} restrictedFields={['description']} />)
+
+    expect(screen.getByTestId('description-restricted')).toHaveTextContent(
+      issueDetailStrings.descriptionRestricted,
+    )
+    // 본문도 편집 버튼도 없다 — 열람 자체가 막힌 상태다.
+    expect(screen.queryByTestId('description-body')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('restrictedFields 가 빈 배열이면 본문이 정상 렌더된다 — 위 차단의 비-공허 짝', () => {
+    render(<IssueDescription {...baseProps()} restrictedFields={[]} />)
+    expect(screen.getByTestId('description-body')).toBeInTheDocument()
+  })
+
+  it('noneditableFields 에 description 이 있으면 편집 버튼이 비활성이다 (FR-PM-07 §3.2)', () => {
+    render(<IssueDescription {...baseProps()} noneditableFields={['description']} />)
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    ).toBeDisabled()
+  })
+
+  it('canEdit=true + noneditableFields=[] 이면 활성이다 — AND 조합의 비-공허 짝', () => {
+    render(<IssueDescription {...baseProps()} canEdit noneditableFields={[]} />)
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
+    ).toBeEnabled()
   })
 })

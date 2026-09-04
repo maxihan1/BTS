@@ -31,6 +31,7 @@ import { softwareDefaultFixture } from './workflow-fixtures'
 import { userListFixture } from './user-fixtures'
 import { ISSUE_SORT_FIELDS } from '@/api/issues'
 import type { IssueResponse, IssuePage, IssueSortField } from '@/api/issues'
+import { htmlToPlainText } from '@/lib/html-text'
 
 /**
  * 이슈 생성 성공 응답 픽스처.
@@ -702,7 +703,16 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
   }
 
   // (4) 성공 — 5필드 merge-patch 적용
-  const resolvedDescription = applyNullableStringPatch(found.description, body.description)
+  //
+  // ★2026-09-04 TipTap 전환(J8). 에디터는 `description`(마크다운)이 아니라
+  //   `descriptionHtml`(정화된 HTML)을 보낸다. 이 핸들러가 그 필드를 **무시하고 있었다** —
+  //   PATCH 는 200 을 주는데 저장된 것이 없어, 저장 직후 재조회에서 본문이 사라졌다.
+  //   백엔드(V039)와 같은 모양으로 맞춘다. 스토어는 마크다운 한 벌만 갖고 있으므로
+  //   HTML 이 오면 평문으로 낮춰 담고, 단건 GET 이 그 HTML 을 그대로 돌려준다.
+  const patchedHtml = typeof body.descriptionHtml === 'string' ? body.descriptionHtml : null
+  const resolvedDescription = patchedHtml !== null
+    ? htmlToPlainText(patchedHtml)
+    : applyNullableStringPatch(found.description, body.description)
   const resolvedPriority = body.priority ?? found.priority
   const resolvedLabels = body.labels !== undefined && body.labels !== null
     ? body.labels
@@ -785,8 +795,13 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
 
   // FR-MN-01 D7 — description 변경 시 @멘션 추출 → 언급된 사용자 Inbox 파생
   // msw-derived-behavior-shared-store-e2e 교훈: 파생 알림은 공유 inboxStore 경유
-  if ('description' in body && typeof body.description === 'string') {
-    const mentionedUsernames = extractMentionedUsernames(body.description)
+  // ★`descriptionHtml` 경로도 함께 본다 — 에디터가 그 필드로 보내므로, `description` 만 보면
+  //   TipTap 전환 이후 멘션 알림이 통째로 끊긴다(2026-09-04 실측).
+  const mentionSource = typeof body.descriptionHtml === 'string'
+    ? htmlToPlainText(body.descriptionHtml)
+    : (typeof body.description === 'string' ? body.description : null)
+  if (mentionSource !== null) {
+    const mentionedUsernames = extractMentionedUsernames(mentionSource)
     const actorUserId = resolveActorUserIdFromRequest(request)
 
     for (const username of mentionedUsernames) {

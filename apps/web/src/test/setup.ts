@@ -26,6 +26,19 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   }
 }
 
+// jsdom 은 `document.elementFromPoint` 를 구현하지 않는다.
+// ProseMirror(TipTap)가 마우스 위치로 문서 좌표를 푸는 데 쓰므로, 없으면 에디터를 렌더하는
+// 모든 테스트가 TypeError 를 콘솔에 쏟는다(단언은 통과해도 출력이 묻힌다).
+// 좌표 기반 동작 자체는 jsdom 에 레이아웃이 없어 어차피 재현되지 않으므로 null 을 돌려준다 —
+// **좌표에 의존하는 동작을 이 폴리필로 검증하지 말 것**. 그런 것은 e2e 의 몫이다.
+// ★`typeof document` 가드가 필수다. 이 setup 은 `// @vitest-environment node` 를 선언한
+// 파일에도 로드되고(예: `api/schemas.test.ts`), 거기서는 `document` 자체가 없어
+// 「ReferenceError: document is not defined」로 **파일 전체가 수집 실패**한다 —
+// 테스트 0건 실패인데 파일은 빨간, 원인을 찾기 어려운 형태가 된다.
+if (typeof document !== 'undefined' && typeof document.elementFromPoint !== 'function') {
+  document.elementFromPoint = (): Element | null => null
+}
+
 /**
  * ★`process.on('unhandledRejection', …)` 를 여기에 **추가하지 말 것.**
  *

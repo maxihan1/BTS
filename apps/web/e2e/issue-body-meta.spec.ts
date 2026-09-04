@@ -27,7 +27,7 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
    * When    '본문 편집' 버튼 클릭 → Write 탭 textarea 에 Markdown 입력 → '저장' 클릭
    * Then    description-preview-content 에 렌더된 본문 표시 (placeholder 사라짐)
    */
-  test('E1 본문 작성 → 저장 → preview 렌더', async ({ page }) => {
+  test('E1 본문 작성 → 저장 → 읽기 모드 렌더', async ({ page }) => {
     // Given. ATLAS-1 상세 진입 — 본문 없음 상태
     await page.goto('/issues/ATLAS-1')
     const editButton = page.getByRole('button', {
@@ -35,37 +35,34 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
     })
     await expect(editButton).toBeVisible()
 
-    // When. 본문 편집 버튼 클릭 → Write 탭 활성화
+    // When. 본문 편집 버튼 클릭 → WYSIWYG 편집기 진입.
+    // ★2026-09-04 WYSIWYG 전환으로 Write/Preview 탭이 사라졌다 — 쓰는 화면이 곧 결과다.
     await editButton.click()
-    const writeTab = page.getByRole('tab', { name: i18nLabels.issueDetail.descriptionWriteTab })
-    await expect(writeTab).toBeVisible()
-    await writeTab.click()
+    const editor = page.getByRole('textbox', { name: i18nLabels.issueDetail.descriptionEditLabel })
+    await expect(editor).toBeVisible()
 
-    // When. Markdown 입력 — aria-label '본문 편집' 로 textbox 특정 (strict mode — 페이지에 환경/라벨 textbox 도 존재)
-    const textarea = page.getByRole('textbox', { name: i18nLabels.issueDetail.descriptionEditButton })
-    await textarea.fill('**테스트 본문** — E1 시나리오')
+    // When. 본문 입력 — contenteditable 이라 fill 이 아니라 실제 타이핑이다.
+    await editor.click()
+    await editor.pressSequentially('테스트 본문 — E1 시나리오')
 
-    // When. 저장 버튼 클릭 — tablist 를 직접 자식으로 가진 컨테이너 안에서 한정 (strict mode 방지).
-    // CSS :has(> ...) 로 직접 자식 tablist 를 가진 div 만 선택 → IssueDescription EditMode 한정.
-    // environment-section / labels-section 의 저장 버튼과 구별 가능.
-    const descriptionEditor = page.locator('div:has(> [role="tablist"])')
+    // When. 저장. 편집기 컨테이너 안으로 한정한다 — 환경/라벨 섹션에도 같은 이름의 저장 버튼이 있다.
+    const descriptionEditor = page.locator('div:has(> [role="toolbar"])')
     const saveBtn = descriptionEditor.getByRole('button', {
       name: i18nLabels.issueDetail.descriptionSaveButton,
     })
     await saveBtn.click()
 
-    // When. mutation 완료 대기 — 저장 버튼이 다시 활성화되면 PATCH 완료 (isSaving=false).
-    // 구현상 저장 성공 후 편집 모드가 자동으로 닫히지 않으므로 취소로 ReadMode 전환.
+    // When. mutation 완료 대기 — 저장 버튼이 다시 활성화되면 PATCH 완료(isSaving=false).
+    // 저장 성공 후 편집 모드가 자동으로 닫히지 않으므로 취소로 읽기 모드 전환.
     await expect(saveBtn).toBeEnabled()
     await descriptionEditor.getByRole('button', {
       name: i18nLabels.issueDetail.descriptionCancelButton,
     }).click()
 
-    // Then. description-preview-content 에 본문 노출 (ReadMode 전환 + refetch 후 descriptionHtml 반영)
-    const previewContent = page.getByTestId('description-preview-content')
-    await expect(previewContent).toBeVisible()
-    // 입력한 본문 내용이 실제로 반영됐는지 검증 (refetch 후 descriptionHtml 정합 — 가짜 그린 방지)
-    await expect(previewContent).toContainText('테스트 본문')
+    // Then. 읽기 모드 본문에 저장 내용이 보인다 (refetch 후 descriptionHtml 정합 — 가짜 그린 방지)
+    const body = page.getByTestId('description-body')
+    await expect(body).toBeVisible()
+    await expect(body).toContainText('테스트 본문')
     // placeholder 는 사라져야 함
     await expect(page.getByText(i18nLabels.issueDetail.descriptionEmpty)).not.toBeVisible()
   })

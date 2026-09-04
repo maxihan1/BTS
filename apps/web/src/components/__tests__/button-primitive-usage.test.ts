@@ -140,8 +140,9 @@ const EXPECTED_OUT = [
   'components/filters/FilterBar.tsx::P5',
   'components/global-permissions/GlobalPermissionFormDialog.tsx::P5',
   'components/issue/IssueChangelog.tsx::P6',
-  'components/issue/IssueDescription.tsx::P4',
-  'components/issue/IssueDescription.tsx::P4',
+  // ★`IssueDescription.tsx::P4` 2건이 2026-09-04 에 사라졌다 — WYSIWYG 전환으로 Write/Preview
+  //   탭 자체가 없어졌고, 그 원시 <button role="tab"> 둘이 함께 없어졌다. 부채를 갚은 것이라
+  //   목록에서 지운다. 남겨 두면 유령 키가 되어 이 판별식이 「초과」로 red 를 낸다.
   'components/ooo/OooModal.tsx::P5',
   // FR-UX-11 F8 T1 — 제목 인라인 편집 진입면. `w-full text-left` 보유로 판정식상 OUT이며
   // DashboardTile(타일 제목 인라인 편집)과 동형이라 같은 P6로 분류한다.

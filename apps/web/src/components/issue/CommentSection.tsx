@@ -20,6 +20,8 @@ import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModal
 import { commentStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { htmlToPlainText, escapeHtml } from '@/lib/html-text'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 작성 폼
@@ -29,7 +31,7 @@ interface CommentAddFormProps {
   /** 대상 이슈 키 */
   issueKey: string
   /** 본문 textarea 로 가는 ref — 단축키 `m` 이 포커스를 준다 (`CommentSectionProps.focusRef` 참조) */
-  focusRef?: RefObject<HTMLTextAreaElement | null>
+  focusRef?: RefObject<HTMLDivElement | null>
 }
 
 /**
@@ -44,15 +46,18 @@ interface CommentAddFormProps {
  * @param focusRef 본문 textarea 로 가는 ref (단축키 `m`)
  */
 function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Element {
-  const [body, setBody] = useState('')
+  const [html, setHtml] = useState('')
   const queryClient = useQueryClient()
 
+  /** 평문 — 검색·알림·멘션이 쓴다. 빈 댓글 판정도 이 값으로 한다(빈 `<p>` 는 내용이 아니다). */
+  const plain = htmlToPlainText(html)
+
   const { mutate, isPending } = useMutation({
-    mutationFn: () => addComment(issueKey, body.trim()),
+    mutationFn: () => addComment(issueKey, plain, html),
     onSuccess: () => {
       toast.success(commentStrings.commentAddSuccess)
       void queryClient.invalidateQueries({ queryKey: commentQueryKey(issueKey) })
-      setBody('')
+      setHtml('')
     },
     onError: () => {
       toast.error(commentStrings.commentAddError)
@@ -60,31 +65,28 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
     },
   })
 
-  const isSubmitDisabled = body.trim() === '' || isPending
+  const isSubmitDisabled = plain === '' || isPending
 
   return (
     <div className="space-y-2">
-      <label htmlFor="comment-body" className="block text-sm font-medium text-foreground">
-        {commentStrings.commentBodyLabel}
-      </label>
-      <textarea
-        ref={focusRef}
-        id="comment-body"
-        aria-label={commentStrings.commentBodyLabel}
-        // 단축키 존재를 알 경로가 `?` 도움말 모달뿐이라 표준 속성으로도 알린다.
-        // 키 문자 정본은 CONTEXT_SHORTCUTS(FR-UX-10 F11) — 재배치하면 여기도 같이 고친다.
-        // 시각 툴팁은 만들지 않는다(신규 UI 0 제약 + 툴팁은 키보드 사용자에게 닿지 않는다).
-        aria-keyshortcuts={focusRef !== undefined ? 'm' : undefined}
-        placeholder={commentStrings.commentBodyPlaceholder}
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={3}
-        // ★포커스 표시는 선택이 아니다 — `m` 은 화면 다른 곳에서 **점프해 오는** 이동이라
-        //   "내가 지금 어디 있나"를 표시가 대신 말해줘야 한다. 브라우저 기본 outline 은
-        //   다크 모드 대비가 보장되지 않고 옆 두 필드(담당자 검색·라벨 입력)와 모양도 다르다.
-        //   라벨 입력(LabelAutocompleteInput)과 같은 표기로 맞춘다.
-        className="w-full rounded border border-border bg-background p-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-      />
+      <p className="block text-sm font-medium text-foreground">{commentStrings.commentBodyLabel}</p>
+      {/*
+        ★`m` 단축키의 포커스 대상이 textarea 에서 contenteditable 로 바뀌었다.
+        `focusRef` 타입도 HTMLDivElement 로 따라간다 — 그 ref 를 들고 `.focus()` 를 부르는
+        쪽(issues.$key.tsx)은 그대로 동작한다. contenteditable 도 포커스를 받는다.
+        `aria-keyshortcuts` 는 에디터 본문에 붙어 단축키 존재를 스크린리더에 알린다.
+      */}
+      <div aria-keyshortcuts={focusRef !== undefined ? 'm' : undefined}>
+        <RichTextEditor
+          initialHtml={html}
+          onChange={setHtml}
+          onSubmit={() => { if (!isSubmitDisabled) mutate() }}
+          editable={!isPending}
+          placeholder={commentStrings.commentBodyPlaceholder}
+          ariaLabel={commentStrings.commentBodyLabel}
+          contentRef={focusRef}
+        />
+      </div>
       <Button
         type="button"
         size="sm"
@@ -106,10 +108,12 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
 interface CommentEditFormProps {
   /** 편집 시작 시점의 원문 Markdown */
   initialBody: string
+  /** 편집 시작 시점의 정화된 HTML. null 이면 옛 댓글이라 [initialBody] 를 평문으로 넣는다. */
+  initialBodyHtml: string | null
   /** 저장 진행 중 여부 */
   isPending: boolean
-  /** 저장 클릭 시 호출 — 편집된 본문 전달 */
-  onSave: (body: string) => void
+  /** 저장 클릭 시 호출 — 편집된 평문과 HTML 을 함께 전달 */
+  onSave: (body: string, bodyHtml: string) => void
   /** 취소 클릭 시 호출 */
   onCancel: () => void
 }
@@ -128,23 +132,27 @@ interface CommentEditFormProps {
  */
 function CommentEditForm({
   initialBody,
+  initialBodyHtml,
   isPending,
   onSave,
   onCancel,
 }: CommentEditFormProps): JSX.Element {
-  const [draft, setDraft] = useState(initialBody)
-  const isSaveDisabled = draft.trim() === '' || isPending
+  // 옛 댓글(HTML 컬럼이 빈 행)은 평문을 문단 하나로 감싸 편집기에 넣는다 — V039 이전 데이터.
+  const seedHtml = initialBodyHtml ?? (initialBody === '' ? '' : `<p>${escapeHtml(initialBody)}</p>`)
+  const [draftHtml, setDraftHtml] = useState(seedHtml)
+  const draftPlain = htmlToPlainText(draftHtml)
+  const isSaveDisabled = draftPlain === '' || isPending
 
   return (
     <div className="space-y-2">
-      <textarea
-        aria-label={commentStrings.commentEditBodyLabel}
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value)
-        }}
-        rows={3}
-        className="w-full rounded border border-border bg-background p-2 text-sm"
+      <RichTextEditor
+        initialHtml={seedHtml}
+        onChange={setDraftHtml}
+        onSubmit={() => { if (!isSaveDisabled) onSave(draftPlain, draftHtml) }}
+        onCancel={onCancel}
+        editable={!isPending}
+        autoFocus
+        ariaLabel={commentStrings.commentEditBodyLabel}
       />
       <div className="flex gap-2">
         <Button
@@ -152,7 +160,7 @@ function CommentEditForm({
           size="xs"
           disabled={isSaveDisabled}
           onClick={() => {
-            onSave(draft)
+            onSave(draftPlain, draftHtml)
           }}
           aria-label={commentStrings.commentEditSaveButton}
           className="min-h-[32px]"
@@ -327,7 +335,8 @@ function CommentRow({
   const isEdited = comment.updatedAt !== comment.createdAt
 
   const { mutate: updateMutate, isPending: isUpdating } = useMutation({
-    mutationFn: (body: string) => updateComment(issueKey, comment.id, body),
+    mutationFn: ({ body, bodyHtml }: { body: string; bodyHtml: string }) =>
+      updateComment(issueKey, comment.id, body, bodyHtml),
     onSuccess: () => {
       toast.success(commentStrings.commentEditSuccess)
       void queryClient.invalidateQueries({ queryKey: commentQueryKey(issueKey) })
@@ -361,9 +370,11 @@ function CommentRow({
       {isEditing ? (
         <CommentEditForm
           initialBody={comment.body}
+          // 서버는 항상 bodyHtml 을 채워 준다(옛 행은 읽기 fallback 이 렌더한다) — 그대로 seed 한다.
+          initialBodyHtml={comment.bodyHtml}
           isPending={isUpdating}
-          onSave={(body) => {
-            updateMutate(body)
+          onSave={(body, bodyHtml) => {
+            updateMutate({ body, bodyHtml })
           }}
           onCancel={() => {
             setIsEditing(false)
@@ -430,7 +441,7 @@ interface CommentSectionProps {
    * 이 ref 의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다 —
    * "손잡이를 연결한 화면에만 단축키가 있다" (`IssueAssigneeSelect` 와 같은 규칙).
    */
-  focusRef?: RefObject<HTMLTextAreaElement | null>
+  focusRef?: RefObject<HTMLDivElement | null>
 }
 
 /**

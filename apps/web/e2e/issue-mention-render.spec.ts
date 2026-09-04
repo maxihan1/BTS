@@ -1,7 +1,7 @@
 // FR-MN-01 D7 E2E — 본문 @멘션 강조 표시 + 멘션→Inbox 도착 시나리오
 //
 // 교훈 반영.
-//   - playwright-getbyrole-exact-strict-mode: .mention 셀렉터는 description-preview-content 컨테이너로 한정
+//   - playwright-getbyrole-exact-strict-mode: .mention 셀렉터는 description-body 컨테이너로 한정
 //   - msw-mutation-stateful-refetch: MSW inboxStore stateful — 멘션 저장 후 SPA 이동으로 검증
 //   - msw-derived-behavior-shared-store-e2e: PATCH 시 멘션 파생 알림은 공유 inboxStore 경유
 //   - e2e-msw-serviceworker-block: serviceWorkers:'block' 절대 금지 — playwright.config.ts 그대로
@@ -77,20 +77,32 @@ async function editAndSaveDescription(
   await expect(editButton).toBeVisible()
   await editButton.click()
 
-  // Write 탭 활성화
-  const writeTab = page.getByRole('tab', {
-    name: i18nLabels.issueDetail.descriptionWriteTab,
-  })
-  await writeTab.click()
+  // ★2026-09-04 TipTap 전환(J8). Write/Preview 탭이 사라졌고(마크다운 원문을 보여줄 이유가
+  //   없어졌다) 입력 대상이 `<textarea>` 가 아니라 contenteditable 이다. 접근성 이름도
+  //   `descriptionEditLabel`('본문 편집기')로 바뀌었다 — 옛 `descriptionEditButton` 이 아니다.
+  //   `descriptionWriteTab` 은 i18n 키 자체가 `ko.ts` 에서 삭제됐다.
 
-  // textarea 입력 — aria-label '본문 편집'으로 strict mode 구별
+  // 에디터 입력 — aria-label '본문 편집기'로 strict mode 구별
   const textarea = page.getByRole('textbox', {
-    name: i18nLabels.issueDetail.descriptionEditButton,
+    name: i18nLabels.issueDetail.descriptionEditLabel,
   })
-  await textarea.fill(text)
+  // ★`fill` 은 contenteditable 에서 값을 지우지 못한다(value 가 없다). 전체 선택 후 입력해야
+  //   ProseMirror 문서가 실제로 교체된다.
+  await textarea.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.press('Delete')
+  await textarea.pressSequentially(text)
 
-  // 저장 — tablist 직접 자식 div 컨테이너로 저장 버튼 한정 (issue-body-meta E1 패턴)
-  const descriptionEditor = page.locator('div:has(> [role="tablist"])')
+  // 저장 — 편집 영역으로 저장 버튼 한정 (tablist 는 사라졌다)
+  // ★컨테이너를 `div:has(> [role="textbox"])` 로 잡으면 안 된다. TipTap 의 `EditorContent` 가
+  //   wrapper div 를 하나 더 만들어서 그 직계 자식 div 에는 **저장 버튼이 없다**.
+  //   에디터와 저장 버튼을 **함께** 가진 div 중 가장 안쪽(`.last()`)을 잡는다 — 조상들이
+  //   DOM 순서상 먼저 나오므로 마지막이 가장 가까운 공통 조상이다.
+  const descriptionEditor = page
+    .locator('div')
+    .filter({ has: page.getByRole('textbox', { name: i18nLabels.issueDetail.descriptionEditLabel }) })
+    .filter({ has: page.getByRole('button', { name: i18nLabels.issueDetail.descriptionSaveButton }) })
+    .last()
   const saveBtn = descriptionEditor.getByRole('button', {
     name: i18nLabels.issueDetail.descriptionSaveButton,
   })
@@ -137,7 +149,7 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
   // Given  ATLAS-MENTION 이슈 (description: '@alice 확인 부탁드립니다. ...')
   //        MSW GET handler → renderDescriptionHtml → <span class="mention">@alice</span>
   // When   이슈 상세 페이지를 연다
-  // Then   description-preview-content 내 .mention 요소가 표시되고 텍스트는 '@alice'
+  // Then   description-body 내 .mention 요소가 표시되고 텍스트는 '@alice'
   // ───────────────────────────────────────────────────────────────────────────
   test('S1 멘션 강조 — @alice 텍스트가 .mention 클래스로 표시됨', async ({ page }) => {
     await loginAsAlice(page)
@@ -146,11 +158,11 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
     await page.goto(`/issues/${MENTION_ISSUE_KEY}`)
 
     // Given. description 컨테이너 확인 (non-null description → ReadMode 즉시 노출)
-    const descPreview = page.getByTestId('description-preview-content')
+    const descPreview = page.getByTestId('description-body')
     await expect(descPreview).toBeVisible()
 
     // Then. .mention 요소가 보이고 텍스트 '@alice' 확인
-    // (description-preview-content 한정 — 다른 영역 .mention과 strict mode 충돌 방지)
+    // (description-body 한정 — 다른 영역 .mention과 strict mode 충돌 방지)
     const mention = descPreview.locator('.mention')
     await expect(mention).toBeVisible()
     await expect(mention).toHaveText('@alice')
@@ -162,14 +174,14 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
   // Given  ATLAS-MENTION 이슈 (description에 `@code` 코드스팬 + user@example.com 이메일 포함)
   //        MSW renderDescriptionHtml → 코드스팬·이메일 @ 는 <span class="mention"> 미적용
   // When   이슈 상세 페이지를 연다
-  // Then   description-preview-content 내 .mention 개수 정확히 1 (코드·이메일 제외 검증)
+  // Then   description-body 내 .mention 개수 정확히 1 (코드·이메일 제외 검증)
   // ───────────────────────────────────────────────────────────────────────────
   test('S2 코드스팬·이메일 제외 — .mention 개수 정확히 1 (@alice만)', async ({ page }) => {
     await loginAsAlice(page)
 
     await page.goto(`/issues/${MENTION_ISSUE_KEY}`)
 
-    const descPreview = page.getByTestId('description-preview-content')
+    const descPreview = page.getByTestId('description-body')
     await expect(descPreview).toBeVisible()
 
     // Then. .mention 개수 = 정확히 1 (@alice만 강조, `@code`·user@example.com 제외)
