@@ -339,6 +339,83 @@ describe('useKeyboardShortcuts — 컨텍스트 단축키 폴백 (FR-UX-10 F10)'
     expect(onCursorMove).not.toHaveBeenCalled()
   })
 
+  // ── contenteditable 가드 배선 (TipTap 전환 #448 이후) ──────────────────────────
+  //
+  // 🛑 `shortcuts.test.ts` 의 `shouldIgnoreEvent` 단위 테스트만으로는 이 층이 안 지켜진다.
+  // 그건 **술어**가 옳은지만 보고, `useKeyboardShortcuts.ts` 의 `handleKeyDown` 이 그 술어를
+  // **실제로 부르는지**는 안 본다. 가드 호출을 지워도 술어 테스트는 그대로 초록이다.
+  //
+  // 기존 배선 테스트(E4 `c` · E10 `j`)는 `<input>` 만 쓴다. TipTap 전환 전에는 본문이
+  // `textarea` 라 그것으로 충분했지만, 지금 본문·댓글은 **contenteditable** 이다.
+  // `isEditableTarget` 의 contenteditable 분기가 그때 활성 경로가 됐는데 판별자는 따라오지
+  // 않았다 — 그 분기를 지워도 red 가 되는 테스트가 하나도 없었다.
+  //
+  // `i`(assign-to-me)를 대표로 잡는 이유. 이 키는 다이얼로그를 띄우지 않고 **담당자 PATCH 를
+  // 즉시 발행한다**. 본문을 쓰다 `i` 를 누르면 글자 대신 담당자가 바뀐다. 되돌릴 화면이 없다.
+  describe('contenteditable 포커스 가드 — 본문·댓글 에디터 (TipTap)', () => {
+    /** TipTap 본문 에디터를 흉내 낸 contenteditable div 를 body 에 붙인다 */
+    function mountContentEditable(): HTMLDivElement {
+      const editor = document.createElement('div')
+      // TipTap 이 실제로 거는 형태 — 속성. jsdom 은 `isContentEditable` 프로퍼티를
+      // 신뢰할 수 없어(`shortcuts.ts` 주석) 속성 분기가 여기서 유효한 경로다.
+      editor.setAttribute('contenteditable', 'true')
+      document.body.appendChild(editor)
+      return editor
+    }
+
+    it('본문 에디터 포커스 중 i 는 담당자 변경을 발화하지 않는다 (assign-to-me 즉시 PATCH 차단)', () => {
+      const onAssignToMe = vi.fn()
+      renderHook(() => useContextShortcuts('issue-detail', { onAssignToMe }))
+      renderShortcuts(true)
+
+      const editor = mountContentEditable()
+      dispatchKey('i', editor)
+      editor.remove()
+
+      expect(onAssignToMe).not.toHaveBeenCalled()
+    })
+
+    it('본문 에디터 밖에서 i 는 정상 발화한다 (가드가 키 자체를 죽이지 않는다)', () => {
+      const onAssignToMe = vi.fn()
+      renderHook(() => useContextShortcuts('issue-detail', { onAssignToMe }))
+      renderShortcuts(true)
+
+      dispatchKey('i')
+
+      expect(onAssignToMe).toHaveBeenCalledOnce()
+    })
+
+    it('본문 에디터 포커스 중 issue-detail 컨텍스트 키 전종이 무동작이다', () => {
+      const handlers = {
+        onAssignToMe: vi.fn(),
+        onFocusAssignee: vi.fn(),
+        onFocusComment: vi.fn(),
+        onEditTitle: vi.fn(),
+        onFocusLabels: vi.fn(),
+      }
+      renderHook(() => useContextShortcuts('issue-detail', handlers))
+      renderShortcuts(true)
+
+      const editor = mountContentEditable()
+      for (const key of ['i', 'a', 'm', 'e', 'l']) dispatchKey(key, editor)
+      editor.remove()
+
+      for (const [name, fn] of Object.entries(handlers)) {
+        expect(fn, `${name} 이 에디터 안에서 발화했다`).not.toHaveBeenCalled()
+      }
+    })
+
+    it('본문 에디터 포커스 중 전역 키(c)도 무동작이다 — 같은 가드 한 줄이 둘을 함께 막는다', () => {
+      renderShortcuts(true)
+
+      const editor = mountContentEditable()
+      dispatchKey('c', editor)
+      editor.remove()
+
+      expect(mockNavigate).not.toHaveBeenCalled()
+    })
+  })
+
   it('E11 — 비로그인(enabled=false)이면 컨텍스트 키도 발화하지 않는다', () => {
     const onCursorMove = vi.fn()
     renderHook(() => useContextShortcuts('issue-list', { onCursorMove }))
