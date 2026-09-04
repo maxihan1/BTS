@@ -212,16 +212,17 @@ describe('Sidebar', () => {
     ).not.toBeNull()
   })
 
-  it('프로젝트 nav(ProjectTree)가 렌더되고 메인 메뉴 nav보다 DOM 순서상 앞에 위치한다 (FR-UX-06 PR12 Task 3)', async () => {
+  it('프로젝트 nav(ProjectTree)가 렌더되고 메인 메뉴 nav보다 DOM 순서상 뒤에 위치한다 (캠페인 PR ⑩ · J2)', async () => {
     renderSidebar()
 
     const projectNav = await screen.findByRole('navigation', { name: navLabels.projectNav })
     const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
 
-    // projectNav → mainNav 순서면, mainNav 기준 projectNav는 "이전 형제"다.
-    // compareDocumentPosition의 DOCUMENT_POSITION_PRECEDING(2)는 "인자가 기준 노드보다 앞선다"를 뜻한다.
+    // ★ FR-UX-06 PR12 Task 3 은 반대(트리가 위)였고 J2 가 뒤집었다. 트리는 프로젝트 수만큼
+    //   길어지므로 위에 두면 매일 여는 전역 링크가 스크롤 밖으로 밀린다.
+    // compareDocumentPosition의 DOCUMENT_POSITION_FOLLOWING(4)는 "인자가 기준 노드보다 뒤"를 뜻한다.
     expect(
-      mainNav.compareDocumentPosition(projectNav) & Node.DOCUMENT_POSITION_PRECEDING,
+      mainNav.compareDocumentPosition(projectNav) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
 
@@ -303,7 +304,8 @@ describe('Sidebar', () => {
 
       const navNames = screen.getAllByRole('navigation').map((el) => el.getAttribute('aria-label'))
 
-      expect(navNames).toEqual([navLabels.projectNav, navLabels.mainNav])
+      // 순서도 계약이다 — 메인 메뉴가 먼저고 스페이스 트리가 뒤다 (캠페인 PR ⑩ · J2)
+      expect(navNames).toEqual([navLabels.mainNav, navLabels.projectNav])
     })
   })
 })

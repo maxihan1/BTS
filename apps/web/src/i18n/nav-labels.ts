@@ -111,6 +111,34 @@ export const navLabels = {
   resizeSidebar: '사이드바 폭 조절',
 
   /**
+   * 사이드바 스페이스 트리 「별표 표시됨」 그룹 헤더 (Jira 패리티 캠페인 PR ⑩ · J2).
+   *
+   * Jira 새 네비게이션의 **Starred** 그룹에 대응한다. 근거가 되는 데이터는
+   * `useFavorites('PROJECT')` 의 `targetId`(= 프로젝트 키)다.
+   */
+  treeStarredGroup: '별표 표시됨',
+
+  /**
+   * 사이드바 스페이스 트리 「최근 방문」 그룹 헤더 (Jira 패리티 캠페인 PR ⑩ · J2).
+   *
+   * ⚠️ **`'최근'` 으로 줄이지 말 것.** {@link recent}('최근 항목')의 substring 이 되어
+   * `nav-labels.test.ts` FR15 전수 판별식이 red 를 낸다. 면제를 추가해 통과시킬 수도 있지만
+   * 둘은 사이드바 안에서 **동시에 보이는** 그룹 헤더라 이름이 겹치면 사람도 헷갈린다.
+   * 이쪽은 최근 방문한 **스페이스**, {@link recent} 는 최근 본 **이슈**다(ADR §D1).
+   */
+  treeRecentGroup: '최근 방문',
+
+  /**
+   * 사이드바 스페이스 트리 「추가 스페이스」 그룹 헤더 — 별표도 최근도 아닌 나머지
+   * (Jira 패리티 캠페인 PR ⑩ · J2).
+   *
+   * ⚠️ **`'추가 프로젝트'` 로 쓰지 말 것.** {@link projectNav}('프로젝트')를 통째로 품어
+   * FR15 판별식이 red 다. `'스페이스'` 는 우회일 뿐 아니라 Jira 가 project 를 **space** 로
+   * 개명한 것과도 맞는다.
+   */
+  treeMoreGroup: '추가 스페이스',
+
+  /**
    * 페이지 상단 탐색 경로(breadcrumb) nav aria-label (🔒 e2e 계약, FR-UX-06 PR13 PL-3 신규).
    *
    * 신규 추가 — 기존 계약 문자열(`mainNav`·`adminNav`·`projectNav`·`projectViewNav`·`search`)
