@@ -1,8 +1,10 @@
 // 보드 설정 — 컬럼 한 개의 카드 (이름 · 담은 상태 · WIP · 카드 수) (부채 177 R4)
 import type { JSX } from 'react'
+import { useDroppable } from '@dnd-kit/core'
 import type { BoardColumn } from '@/api/boards'
 import { boardLabels } from '@/i18n/board-labels'
-import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { DraggableState } from './DraggableState'
 
 /** ColumnSettingsCard props */
 export interface ColumnSettingsCardProps {
@@ -16,6 +18,8 @@ export interface ColumnSettingsCardProps {
    * 같은 잘린 목록에서 세므로 두 곳이 같은 한계를 공유한다.
    */
   truncated: boolean
+  /** 상태를 끌 수 있는가 — CREATE 권한. 없으면 읽기만 된다. */
+  draggable: boolean
 }
 
 /**
@@ -29,15 +33,24 @@ export interface ColumnSettingsCardProps {
  * 그것을 요구한다(J23→J27). 그 컬럼은 보드 화면에서 **항상 비어 있는데**, 설정 화면이 그냥
  * 비워 두면 사용자가 미완성임을 모른다. 「상태 없음」을 글자로 적는다.
  */
-export function ColumnSettingsCard({ column, truncated }: ColumnSettingsCardProps): JSX.Element {
+export function ColumnSettingsCard({
+  column,
+  truncated,
+  draggable,
+}: ColumnSettingsCardProps): JSX.Element {
   const cardCountText = truncated
     ? boardLabels.settings.cardCountTruncated
     : boardLabels.settings.cardCount(column.cards.length)
+  const { setNodeRef, isOver } = useDroppable({ id: column.columnId })
 
   return (
     <article
+      ref={setNodeRef}
       aria-label={column.name}
-      className="ring-foreground/10 bg-card w-72 shrink-0 rounded-lg p-4 ring-1"
+      className={cn(
+        'ring-foreground/10 bg-card w-72 shrink-0 rounded-lg p-4 ring-1',
+        isOver && 'ring-primary ring-2',
+      )}
     >
       <h3 className="text-sm font-semibold">{column.name}</h3>
 
@@ -58,9 +71,11 @@ export function ColumnSettingsCard({ column, truncated }: ColumnSettingsCardProp
         <ul className="mt-4 flex flex-col gap-2">
           {column.states.map((state) => (
             <li key={state.key}>
-              <Badge variant="neutral" className="w-full justify-start font-normal">
-                {state.name}
-              </Badge>
+              <DraggableState
+                state={state}
+                fromColumnId={column.columnId}
+                draggable={draggable}
+              />
             </li>
           ))}
         </ul>

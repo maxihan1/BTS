@@ -1,14 +1,7 @@
 // 칸반 보드 루트 컴포넌트 — DndContext + 컬럼 배치 + 드래그 이동 오케스트레이션 (FR-BD-01)
 import type { JSX } from 'react'
 import { useMemo, useRef, useState } from 'react'
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { Announcements, DragEndEvent, DragStartEvent, DragOverEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import type { BoardDetail, BoardCardFilterParams } from '@/api/boards'
@@ -19,6 +12,7 @@ import { useReorderCard } from '@/hooks/use-reorder-card'
 import type { ReorderCardVars } from '@/hooks/use-reorder-card'
 import { useChangeCardField } from '@/hooks/use-change-card-field'
 import type { ChangeCardFieldVars } from '@/hooks/use-change-card-field'
+import { useBoardDragSensors } from './board-drag-sensors'
 import { BoardColumn } from './BoardColumn'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
@@ -533,10 +527,9 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   const changeCardField = useChangeCardField(boardId, filter)
 
   // PointerSensor: distance 5px 이상 이동해야 드래그 시작 → 카드 Link 클릭 보존 (D-2)
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
-  )
+  // 구성 자체는 `board-drag-sensors.ts` 가 정본이다 — 보드 설정 화면도 같은 것을 쓴다.
+  // 복사본을 두 벌 두면 한쪽만 고쳐지고, 고쳐지지 않은 쪽은 키보드 사용자에게만 고장 난다.
+  const sensors = useBoardDragSensors()
 
   // displayOrder asc 정렬 — 원본 board.columns 변경 금지 (immutable)
   const sortedColumns = [...board.columns].sort((a, b) => a.displayOrder - b.displayOrder)
