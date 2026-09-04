@@ -31,6 +31,11 @@ export function DraggableState({ state, fromColumnId, draggable }: DraggableStat
     data: { stateKey: state.key, fromColumnId },
   })
 
+  // ★못 끄는 배지에는 listeners 뿐 아니라 dnd-kit 의 attributes(role="button" · tabIndex=0)도
+  //   달지 않는다. 달면 읽기 전용 사용자에게 **눌러도 아무 일 없는 포커스 대상**이 상태 수만큼
+  //   생긴다 — Tab 을 그만큼 더 눌러야 다음 컨트롤에 닿는다(리뷰 T0-4).
+  const dragProps = draggable ? { ...listeners, ...attributes } : {}
+
   return (
     <Badge
       ref={setNodeRef}
@@ -40,8 +45,7 @@ export function DraggableState({ state, fromColumnId, draggable }: DraggableStat
         draggable && 'cursor-grab',
         isDragging && 'opacity-50',
       )}
-      {...(draggable ? listeners : {})}
-      {...attributes}
+      {...dragProps}
     >
       {state.name}
     </Badge>

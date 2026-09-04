@@ -354,3 +354,49 @@ describe('Columns 탭 — 편집이 서버로 나가는 형태 (리뷰 B1 프로
     expect(vars.patch).toEqual({ wipLimit: 3 })
   })
 })
+
+describe('Columns 탭 — 실패하면 입력이 서버 값으로 돌아온다 (스펙 §8b · 리뷰 CONCERNS C1)', () => {
+  it('T-CP-23: 이름 저장 실패 시 호출부가 revert 를 불러 옛 이름이 복원된다', async () => {
+    const user = userEvent.setup()
+    // 카드가 준 revert 를 호출부가 **실제로 부르는지** 잰다. 카드 쪽 T-CC-9 는 revert 를
+    // 직접 호출해 동작만 확인하므로, 이 배선이 끊겨도 그쪽은 초록이다.
+    mockUpdateColumn.mockImplementation(
+      (_vars: unknown, opts: { onError?: (e: unknown) => void }) => {
+        opts.onError?.(new Error('500'))
+      },
+    )
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }))
+
+    const input = screen.getByLabelText(boardLabels.settings.renameColumnLabel('진행 중'))
+    await user.clear(input)
+    await user.type(input, '검수{Enter}')
+
+    await waitFor(() => {
+      expect(input).toHaveValue('진행 중')
+    })
+  })
+
+  it('T-CP-24: WIP 저장 실패 시에도 서버 값으로 돌아온다', async () => {
+    const user = userEvent.setup()
+    mockUpdateColumn.mockImplementation(
+      (_vars: unknown, opts: { onError?: (e: unknown) => void }) => {
+        opts.onError?.(new Error('500'))
+      },
+    )
+    const only = column({
+      columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891',
+      name: '진행 중',
+      wipLimit: 5,
+    })
+    renderPanel(board({ columns: [only] }))
+
+    const input = screen.getByLabelText(boardLabels.settings.wipLimitInputLabel('진행 중'))
+    await user.clear(input)
+    await user.type(input, '9{Enter}')
+
+    await waitFor(() => {
+      expect(input).toHaveValue(5)
+    })
+  })
+})

@@ -35,21 +35,32 @@ export interface ColumnSettingsCardProps {
   deleteDisabledReason?: string
   /** 삭제 버튼을 눌렀을 때 — 확인 창은 부모가 연다. */
   onRequestDelete: () => void
-  /** 이름을 확정했을 때(Enter 또는 blur). 값이 그대로면 부르지 않는다. */
-  onRenameCommit: (name: string) => void
+  /**
+   * 이름을 확정했을 때(Enter 또는 blur). 값이 그대로면 부르지 않는다.
+   *
+   * ★[revert] 를 **실패 시 반드시 부른다**. 입력값은 이 카드의 로컬 draft 라, 요청이 실패해도
+   * 화면에는 사용자가 친 값이 그대로 남는다 — 서버는 옛 이름인데 화면은 새 이름인 상태다.
+   * 무효화 재조회로는 안 풀린다: 실패했으니 서버 값이 안 바뀌었고, 안 바뀐 prop 은 draft 를
+   * 되돌리지 않는다(리뷰 CONCERNS C1). 스펙 §8b 「에러 → 값 복원 + 사유」의 「복원」이 이것이다.
+   */
+  onRenameCommit: (name: string, revert: () => void) => void
   /**
    * WIP 제한을 확정했을 때.
    *
    * `null` 은 **해제**다(J29 "clear the existing value"). 빈 입력이 그것이다.
+   * [revert] 규약은 [onRenameCommit] 과 같다 — 실패 시 서버 값으로 되돌린다.
    */
-  onWipLimitCommit: (wipLimit: number | null) => void
+  onWipLimitCommit: (wipLimit: number | null, revert: () => void) => void
 }
 
 /**
- * 컬럼 한 개를 설정 화면에 그린다.
+ * 컬럼 한 개를 설정 화면에 그린다 — 이름 편집 · WIP 편집 · 상태 드래그 · 삭제 요청.
  *
- * 이 PR 의 이 컴포넌트는 **읽기 전용**이다 — 이름 편집 · WIP 편집 · 상태 드래그는 후속 task 가
- * 여기에 붙인다. 읽기가 먼저 서야 조작이 붙을 자리가 생긴다.
+ * ### 입력은 로컬 draft 다 — 그래서 실패하면 되돌려야 한다
+ * 이름·WIP 입력은 확정 시점(Enter · blur)에만 서버로 나간다. 매 키 입력마다 요청을 보내지
+ * 않으려는 선택인데, 대가로 **화면 값의 정본이 잠깐 서버가 아니라 이 컴포넌트**가 된다.
+ * 요청이 실패하면 재조회는 아무것도 되돌리지 못한다(서버 값이 안 바뀌었으니 prop 도 그대로다) —
+ * 그래서 커밋 콜백이 `revert` 를 함께 받고 호출부가 실패 경로에서 그것을 부른다.
  *
  * ### 상태 0개 컬럼을 명시한다
  * 백엔드가 상태 0개 컬럼을 허용한다(#444 E1) — 지라의 「컬럼 먼저, 상태는 드래그로」 흐름이
@@ -84,28 +95,37 @@ export function ColumnSettingsCard({
   const [nameDraft, setNameDraft] = useState(column.name)
   const [wipDraft, setWipDraft] = useState(column.wipLimit === null ? '' : String(column.wipLimit))
 
+  /** 서버 값으로 되돌린다 — 커밋 실패 경로가 부른다. */
+  function revertName(): void {
+    setNameDraft(column.name)
+  }
+
+  function revertWip(): void {
+    setWipDraft(column.wipLimit === null ? '' : String(column.wipLimit))
+  }
+
   function commitName(): void {
     const next = nameDraft.trim()
     if (next === '' || next === column.name) {
-      setNameDraft(column.name)
+      revertName()
       return
     }
-    onRenameCommit(next)
+    onRenameCommit(next, revertName)
   }
 
   function commitWip(): void {
     const raw = wipDraft.trim()
     // 빈 입력 = 해제다(J29). 0 이하·비숫자는 서버가 400 이므로 여기서 되돌린다.
     if (raw === '') {
-      if (column.wipLimit !== null) onWipLimitCommit(null)
+      if (column.wipLimit !== null) onWipLimitCommit(null, revertWip)
       return
     }
     const parsed = Number(raw)
     if (!Number.isInteger(parsed) || parsed < 1) {
-      setWipDraft(column.wipLimit === null ? '' : String(column.wipLimit))
+      revertWip()
       return
     }
-    if (parsed !== column.wipLimit) onWipLimitCommit(parsed)
+    if (parsed !== column.wipLimit) onWipLimitCommit(parsed, revertWip)
   }
 
   return (

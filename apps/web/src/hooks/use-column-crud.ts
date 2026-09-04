@@ -18,7 +18,7 @@ export function useCreateColumn(boardId: string) {
 
   return useMutation<ColumnMeta, unknown, string>({
     mutationFn: (name) => createColumn(boardId, name),
-    onSuccess: async () => {
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: boardKeys.detail(boardId) })
     },
   })
@@ -31,6 +31,12 @@ export function useCreateColumn(boardId: string) {
  * **이슈는 지워지지 않는다**: `board_columns` 와 `issues` 사이에 FK 가 없고 카드 배치는 조회
  * 시점 계산이라, 컬럼이 사라져도 이슈의 상태는 그대로다.
  *
+ * ### 왜 `onSettled` 인가 (리뷰 CONCERNS C9)
+ * 실패해도 재조회한다. 이 화면에서 가장 흔한 실패가 **동시 편집**(E6)이고 — 다른 사람이 이미
+ * 지운 컬럼을 지우면 404 다 — 그때야말로 화면을 서버에 맞춰야 한다. `onSuccess` 면 404 를 받고도
+ * 재조회가 안 돌아 **이미 없는 컬럼이 화면에 남는다.** 컬럼 조작 mutation 훅 4개
+ * (생성·삭제·갱신·상태 교체)가 이 이유로 모두 `onSettled` 다.
+ *
  * @param boardId 대상 보드 UUID.
  */
 export function useDeleteColumn(boardId: string) {
@@ -38,7 +44,7 @@ export function useDeleteColumn(boardId: string) {
 
   return useMutation<DeleteColumnResult, unknown, string>({
     mutationFn: (columnId) => deleteColumn(boardId, columnId),
-    onSuccess: async () => {
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: boardKeys.detail(boardId) })
     },
   })

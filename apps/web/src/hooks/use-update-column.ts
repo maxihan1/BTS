@@ -29,7 +29,10 @@ export function useUpdateColumn(boardId: string) {
   return useMutation<ColumnMeta, unknown, UpdateColumnVars>({
     mutationFn: ({ columnId, patch }) => updateColumn(boardId, columnId, patch),
     onSettled: async () => {
-      // 실패해도 재조회한다 — 낙관적으로 보이던 입력값이 서버 값으로 되돌아온다.
+      // 성패와 무관하게 재조회한다 — 동시 편집으로 서버가 이미 다른 값일 수 있다(E6).
+      // ★단 **입력란은 이것으로 안 되돌아온다.** 실패하면 서버 값이 안 바뀌었으므로 prop 도
+      //   그대로고, 카드의 로컬 draft 는 사용자가 친 값에 머문다. 값 복원은 카드가 `revert`
+      //   콜백으로 따로 한다(리뷰 CONCERNS C1 · 스펙 §8b).
       await queryClient.invalidateQueries({ queryKey: boardKeys.detail(boardId) })
     },
   })

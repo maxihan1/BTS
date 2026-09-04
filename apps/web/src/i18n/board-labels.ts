@@ -358,12 +358,17 @@ export const boardLabels = {
     cardCount: (count: number): string => `카드 ${String(count)}개`,
 
     /**
-     * 카드 수가 조회 상한에 잘렸을 때의 표기 (eng 리뷰 BLOCKER-1).
+     * 카드 수가 조회 상한에 잘렸을 때의 표기 (eng 리뷰 BLOCKER-1 · 리뷰 CONCERNS C5).
      *
      * 보드 조회는 `BOARD_CARD_FETCH_LIMIT`(1000)에서 잘린다. 잘린 목록의 길이를 정확한 수인 양
      * 보이면 거짓말이 되므로 **수를 주장하지 않는다.**
+     *
+     * ★종전 문구 「카드 1000개 이상」은 두 번 틀렸다. ①`truncated` 는 **보드 단위** 플래그라
+     * 1001장짜리 보드의 카드 3장짜리 컬럼도 「1000개 이상」으로 읽혔다 — 컬럼에 대해 참이 아니다.
+     * ②삭제 창에 끼우면 「카드 1000개 이상**가** 사라집니다」로 조사가 깨졌다. 지금은 수를 아예
+     * 주장하지 않고, 삭제 창은 [deleteColumnDescriptionTruncated] 로 문장을 따로 쓴다.
      */
-    cardCountTruncated: '카드 1000개 이상',
+    cardCountTruncated: '카드 수 확인 불가',
 
     /**
      * 상태 매핑 실패 — 409 전용 문구 (E3).
@@ -409,10 +414,23 @@ export const boardLabels = {
     /**
      * 컬럼 삭제 확인 설명 — 폭발 반경을 먼저 보인다 (S6).
      *
-     * @param cardCountText 영향 카드 수 문구. `truncated` 면 수를 주장하지 않는 문구가 온다.
+     * 잘린 보드에서는 이 함수를 쓰지 않는다. 수를 넣을 자리가 없어 문장이 통째로 달라지므로
+     * [deleteColumnDescriptionTruncated] 를 쓴다 — 조사(「~가」)를 끼워 맞추려다 「1000개 이상가」가
+     * 나온 자리다(리뷰 CONCERNS C5).
+     *
+     * @param cardCountText 영향 카드 수 문구. 「카드 N개」 형태만 온다.
      */
     deleteColumnDescription: (cardCountText: string): string =>
       `이 컬럼의 상태는 미매핑으로 돌아갑니다. ${cardCountText}가 보드에서 사라집니다. 이슈 자체는 지워지지 않습니다.`,
+
+    /**
+     * 컬럼 삭제 확인 설명 — 보드가 조회 상한에 잘렸을 때 (S6 · C5).
+     *
+     * 수를 모른다는 사실 자체가 사용자에게 필요한 정보다. 「0개」로 뭉개면 안심시키고,
+     * 「1000개 이상」으로 부풀리면 컬럼에 대해 거짓이 된다.
+     */
+    deleteColumnDescriptionTruncated:
+      '이 컬럼의 상태는 미매핑으로 돌아갑니다. 이 컬럼의 카드가 보드에서 사라집니다 — 보드가 조회 상한에 걸려 몇 장인지 셀 수 없습니다. 이슈 자체는 지워지지 않습니다.',
 
     /** 컬럼 삭제 확인 버튼 */
     deleteColumnConfirm: '컬럼 삭제',
@@ -459,13 +477,6 @@ export const boardLabels = {
     /** WIP 제한 표시 — 무제한일 때 */
     wipUnlimited: 'WIP 제한 없음',
 
-    /**
-     * WIP 제한 표시.
-     *
-     * @param limit 설정된 상한
-     * @returns "WIP 제한 {limit}"
-     */
-    wipLimitLabel: (limit: number): string => `WIP 제한 ${String(limit)}`,
   },
 } as const
 

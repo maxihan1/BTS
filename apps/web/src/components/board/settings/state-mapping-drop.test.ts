@@ -81,6 +81,14 @@ describe('planStateDrop — 아무 일도 하지 않는 경계', () => {
     // 던지면 드래그 한 번이 화면을 통째로 죽인다. 드롭 판정은 실패해도 조용해야 한다.
     expect(planStateDrop('open', COL_A, 'not-a-column', columns).changes).toEqual([])
   })
+
+  it('T-SD-13: 모르는 **출처** id 도 빈 계획이다 — 그 컬럼을 비우는 요청을 만들지 않는다', () => {
+    // ★대상 쪽만 막고 출처 쪽을 안 막으면 비대칭이 결함이 된다(리뷰 T0-3): 못 찾은 컬럼의
+    //   「뺀 나머지」가 빈 목록이 되어 `{ columnId: 사라진id, stateKeys: [] }` 가 나갔다.
+    //   낡은 화면에서 온 드롭 하나로 멀쩡한 컬럼의 상태가 전부 떨어지는 경로다.
+    const plan = planStateDrop('open', 'gone-column', COL_B, columns)
+    expect(plan.changes).toEqual([])
+  })
 })
 
 describe('planColumnReorder — 전체 순서 교체 (R10 · J25)', () => {

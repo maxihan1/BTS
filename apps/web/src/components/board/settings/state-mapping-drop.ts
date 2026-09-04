@@ -54,6 +54,11 @@ export function planStateDrop(
   if (toDropId === fromColumnId) return NO_OP
   if (toDropId === UNMAPPED_DROP_ID && fromColumnId === null) return NO_OP
 
+  // ★모르는 **출처** id 도 모르는 대상 id 와 같이 무시한다(아래 target 분기와 대칭).
+  //   종전에는 `keysWithout` 이 빈 목록을 돌려줘 「그 컬럼의 상태를 전부 뗀다」는 요청이 만들어졌다 —
+  //   낡은 화면에서 온 드롭 하나가 멀쩡한 컬럼을 비우는 경로다(리뷰 T0-3).
+  if (fromColumnId !== null && !columns.some((c) => c.columnId === fromColumnId)) return NO_OP
+
   const removal: StateSetChange[] =
     fromColumnId === null
       ? []
@@ -104,7 +109,7 @@ export function planColumnReorder(
   return next
 }
 
-/** 그 컬럼의 상태 집합에서 `stateKey` 를 뺀 목록. 컬럼이 없으면 빈 목록. */
+/** 그 컬럼의 상태 집합에서 `stateKey` 를 뺀 목록. 호출 전에 컬럼 존재를 확인한다(빈 목록은 「전부 뗀다」다). */
 function keysWithout(
   columns: readonly BoardColumn[],
   columnId: string,
