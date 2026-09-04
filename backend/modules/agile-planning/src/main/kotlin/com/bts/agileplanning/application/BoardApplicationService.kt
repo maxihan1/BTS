@@ -874,6 +874,65 @@ class BoardApplicationService(
     }
 
     /**
+     * 보드 컬럼의 표시 순서를 **통째로 교체**한다 (R10 · J25).
+     *
+     * [orderedColumnIds] 는 이 보드의 **전 컬럼**을 원하는 순서대로 담아야 한다. 부분 이동을 받지
+     * 않는 이유는 `replaceColumnStates` 와 같다 — 「지금 이 보드의 순서」가 클라이언트와 서버
+     * 사이에서 갈리지 않게 한다. 부분 명령을 받으면 서버가 클라이언트의 현재 화면을 추측해야 한다.
+     *
+     * ### 집합 일치를 여기서 판정하는 이유
+     * 누락·중복·타 보드 id 세 가지가 **한 판정으로 잡힌다** — 요청 집합과 보드의 실제 컬럼 집합이
+     * 같은지 보면 된다. 리포지터리는 보드의 컬럼 집합을 모르므로 이 판정을 질 수 없고, 컨트롤러에
+     * 두면 보드를 한 번 더 조회해야 한다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @param orderedColumnIds 원하는 순서대로 담은 이 보드의 전 컬럼 UUID.
+     * @return 순서가 반영된 보드.
+     * @throws BoardNotFoundException 보드 미존재 → 404.
+     * @throws ResponseStatusException 400 — 요청 집합이 보드의 컬럼 집합과 다르다(누락·중복·외부).
+     */
+    @Transactional
+    fun reorderColumns(
+        boardId: UUID,
+        orderedColumnIds: List<UUID>,
+    ): Board {
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        requireExactColumnSet(board, orderedColumnIds)
+        columnStates.updateColumnOrder(boardId, orderedColumnIds)
+        return board.copy(
+            columns =
+                orderedColumnIds.mapIndexed { index, columnId ->
+                    board.columns.first { it.id == columnId }.copy(displayOrder = index)
+                },
+        )
+    }
+
+    /**
+     * 요청 순서가 보드의 컬럼 집합과 정확히 일치하는지 본다 (R10).
+     *
+     * 별 함수로 뺀 이유는 둘이다. ①`reorderColumns` 의 throw 수를 규칙 안에 둔다.
+     * ②**뮤테이션이 흔들 자리를 만든다** — 이 판정을 지우면 누락·중복·외부 id 세 결함이 한꺼번에
+     * 통과하는데, 그 사실을 재는 테스트가 `BoardApplicationServiceTest` 의 3건이다.
+     *
+     * 세 결함이 한 판정에 들어온다. **중복**은 크기 비교가 잡고(Set 으로 접히며 요청 크기와 어긋난다),
+     * **누락·외부 id** 는 집합 비교가 잡는다. 크기만 보거나 집합만 보면 각각 한쪽이 샌다.
+     *
+     * @throws ResponseStatusException 400 — 집합이 다르다.
+     */
+    private fun requireExactColumnSet(
+        board: Board,
+        orderedColumnIds: List<UUID>,
+    ) {
+        val actual = board.columns.map { it.id }.toSet()
+        if (orderedColumnIds.size != actual.size || orderedColumnIds.toSet() != actual) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "columnIds 는 이 보드의 전 컬럼을 빠짐없이 한 번씩 담아야 합니다: boardId=${board.id}",
+            )
+        }
+    }
+
+    /**
      * 보드의 이름과 스윔레인 기준 필드를 **한 트랜잭션**에서 부분 갱신한다.
      *
      * [name] / [swimlaneField] 는 각각 null 이면 「미전송」이라 건드리지 않는다. 두 필드가 함께 오면

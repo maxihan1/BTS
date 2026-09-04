@@ -20,6 +20,7 @@ import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.agileplanning.web.dto.DeleteColumnResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
+import com.bts.agileplanning.web.dto.ReorderColumnsRequest
 import com.bts.agileplanning.web.dto.ReplaceColumnStatesRequest
 import com.bts.agileplanning.web.dto.UpdateBoardRequest
 import com.bts.agileplanning.web.dto.UpdateColumnRequest
@@ -395,6 +396,39 @@ class BoardController(
         val updatedColumn = service.updateColumn(id, columnId, name, wipLimit)
         val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
         return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn, catalog)))
+    }
+
+    /**
+     * 보드 컬럼의 표시 순서를 통째로 교체한다 (R10 · J25).
+     *
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트 — 컬럼 구성 변경 게이트를 승계한다.
+     *
+     * 컨트롤러는 **빈 배열만** 막는다. 빈 배열은 「순서를 지운다」가 아니라 요청 실수이고 그
+     * 판정에는 보드 조회가 필요 없다. 누락·중복·타 보드 id 는 보드의 실제 컬럼 집합을 알아야
+     * 판정할 수 있어 [BoardApplicationService.reorderColumns] 가 한 판정으로 진다.
+     *
+     * @param id path variable 보드 UUID.
+     * @param request 순서 교체 요청. 이 보드의 전 컬럼을 원하는 순서대로 담는다.
+     * @return 200 OK + [BoardMetaResponse].
+     * @throws BoardNotFoundException 보드 미존재 → 404.
+     * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
+     * @throws ResponseStatusException 400 — 빈 배열 또는 컬럼 집합 불일치.
+     */
+    @PutMapping("/{id}/columns/order")
+    fun reorderColumns(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ReorderColumnsRequest,
+    ): ResponseEntity<DataResponse<BoardMetaResponse>> {
+        log.info("BoardController.reorderColumns id={} count={}", id, request.columnIds.size)
+
+        loadBoardWithCreate(id)
+
+        if (request.columnIds.isEmpty()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "columnIds 는 비어 있을 수 없습니다.")
+        }
+
+        val updated = service.reorderColumns(id, request.columnIds)
+        return ResponseEntity.ok(DataResponse(BoardMetaResponse.from(updated)))
     }
 
     /**

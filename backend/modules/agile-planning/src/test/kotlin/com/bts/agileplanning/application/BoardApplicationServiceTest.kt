@@ -1253,6 +1253,102 @@ class BoardApplicationServiceTest {
         assertThat(result).isEqualTo(expectedColumn)
     }
 
+    // ── reorderColumns 집합 일치 판정 (부채 177 R10 · J25) ──────────────────────
+    //
+    // ★컨트롤러 테스트(COL-O2·O3)는 서비스를 mock 으로 던지게 하므로 **판정 자체를 재지 않는다.**
+    //   판정이 사는 자리는 여기다 — 아래 3건을 지우면 누락·중복·외부 id 가 조용히 통과한다.
+
+    @Test
+    fun `reorderColumns 전 컬럼을 순서대로 주면 그 순서로 저장을 요청한다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val board = boardWithColumnIds(boardId, ids)
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns board
+
+        val desired = listOf(ids[2], ids[0], ids[1])
+        serviceWith(repo = repo, columnStateRepo = columnRepo).reorderColumns(boardId, desired)
+
+        verify(exactly = 1) { columnRepo.updateColumnOrder(boardId, desired) }
+    }
+
+    @Test
+    fun `reorderColumns 컬럼이 빠지면 400 이고 저장하지 않는다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[0], ids[1]))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { columnRepo.updateColumnOrder(any(), any()) }
+    }
+
+    @Test
+    fun `reorderColumns 같은 컬럼이 두 번 오면 400 이다 — 크기는 같아도 집합이 접힌다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+
+        // 크기 3 으로 같지만 Set 으로 접으면 2 가 된다 — 크기 비교만으로는 못 잡는 자리다.
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[0], ids[0], ids[1]))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { columnRepo.updateColumnOrder(any(), any()) }
+    }
+
+    @Test
+    fun `reorderColumns 타 보드 컬럼이 섞이면 400 이다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+
+        // 크기는 3 으로 맞지만 한 개가 남의 것이다 — 크기 비교를 통과하고 집합 비교가 잡는다.
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[0], ids[1], UUID.randomUUID()))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { columnRepo.updateColumnOrder(any(), any()) }
+    }
+
+    /** 주어진 id 순서대로 컬럼을 가진 보드. 순서 판정 테스트 전용 픽스처. */
+    private fun boardWithColumnIds(
+        boardId: UUID,
+        columnIds: List<UUID>,
+    ): Board =
+        Board(
+            id = boardId,
+            projectKey = "BTS",
+            name = "순서 테스트 보드",
+            columns =
+                columnIds.mapIndexed { index, id ->
+                    BoardColumn(id, listOf("s$index"), "컬럼 $index", "TODO", index)
+                },
+            createdAt = Instant.parse("2026-09-04T00:00:00Z"),
+            updatedAt = Instant.parse("2026-09-04T00:00:00Z"),
+        )
+
     @Test
     fun `updateColumn repo 가 null 반환하면 404 를 던진다`() {
         val repo = mockk<BoardRepository>()
