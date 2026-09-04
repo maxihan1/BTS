@@ -31,7 +31,11 @@ interface UseIssueListPresentationArgs {
 export function useIssueListPresentation({
   selected,
   clearSelected,
-}: UseIssueListPresentationArgs): { openViaPresentation: (issueKey: string) => boolean } {
+}: UseIssueListPresentationArgs): {
+  openViaPresentation: (issueKey: string) => boolean
+  /** 상세 모달이 떠 있는가 — 목록 커서 단축키를 끊는 데 쓴다 */
+  detailModalOpen: boolean
+} {
   const presentation = useIssueDetailModalStore((s) => s.presentation)
   const openKey = useIssueDetailModalStore((s) => s.openKey)
   const open = useIssueDetailModalStore((s) => s.open)
@@ -68,6 +72,7 @@ export function useIssueListPresentation({
   }, [presentation, selected, openKey, close])
 
   return {
+    detailModalOpen: openKey !== null,
     openViaPresentation: (issueKey: string): boolean => {
       if (presentation !== 'modal') return false
       open(issueKey)
