@@ -48,7 +48,11 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
   const sensors = useBoardDragSensors()
   // 드래그 두 축(상태 매핑 · 컬럼 순서)의 오케스트레이션은 훅이 진다 — 이 컴포넌트가
   // 200줄 래칫을 넘었고, 그 래칫의 처방은 베이스라인 추가가 아니라 쪼개는 것이다.
-  const handleDragEnd = useColumnSettingsDrag(board)
+  const { handleDragEnd, isMutating } = useColumnSettingsDrag(board)
+
+  // ★in-flight 동안 드래그를 잠근다(스펙 E8). 두 번째 드롭을 허용하면 둘 다 같은 낡은
+  //   집합에서 파생돼 앞 변경이 조용히 사라진다. 무효화 재조회가 끝나면 저절로 풀린다.
+  const canDrag = canConfigure && !isMutating
   const createColumn = useCreateColumn(board.boardId)
   const deleteColumn = useDeleteColumn(board.boardId)
   const updateColumn = useUpdateColumn(board.boardId)
@@ -164,7 +168,7 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
               key={column.columnId}
               column={column}
               truncated={board.truncated}
-              draggable={canConfigure}
+              draggable={canDrag}
               canDelete={canDeleteAny}
               deleteDisabledReason={
                 board.columns.length <= 1 ? boardLabels.settings.lastColumnLocked : undefined
@@ -197,7 +201,7 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
               }}
             />
           ))}
-          <UnmappedStatesPanel states={board.unmappedStates} draggable={canConfigure} />
+          <UnmappedStatesPanel states={board.unmappedStates} draggable={canDrag} />
         </div>
       </DndContext>
       {dialogs}

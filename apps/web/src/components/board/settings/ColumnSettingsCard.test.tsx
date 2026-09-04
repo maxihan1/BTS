@@ -4,6 +4,7 @@
 //   초록이었다(코드리뷰 프로브 ①). 렌더 단언만으로는 **조작이 요청을 만드는지**를 못 잰다.
 //   E2E 도 못 잡는다 — 입력이 로컬 draft 상태라 서버에 안 보내도 화면 값은 그대로다.
 import { describe, it, expect, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
@@ -30,13 +31,16 @@ function column(overrides: Partial<BoardColumn> = {}): BoardColumn {
 }
 
 interface Handlers {
-  onRenameCommit: ReturnType<typeof vi.fn>
-  onWipLimitCommit: ReturnType<typeof vi.fn>
+  onRenameCommit: Mock<(name: string) => void>
+  onWipLimitCommit: Mock<(wipLimit: number | null) => void>
 }
 
 /** 카드를 그린다. `useDroppable`·`useDraggable` 이 DndContext 를 요구한다. */
 function renderCard(col: BoardColumn = column(), draggable = true): Handlers {
-  const handlers: Handlers = { onRenameCommit: vi.fn(), onWipLimitCommit: vi.fn() }
+  const handlers: Handlers = {
+    onRenameCommit: vi.fn<(name: string) => void>(),
+    onWipLimitCommit: vi.fn<(wipLimit: number | null) => void>(),
+  }
   function Harness(): JSX.Element {
     return (
       <DndContext>

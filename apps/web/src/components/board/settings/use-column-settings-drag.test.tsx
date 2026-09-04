@@ -13,13 +13,15 @@ import { UNMAPPED_DROP_ID } from './state-mapping-drop'
 
 const mockReplace = vi.fn()
 const mockReorder = vi.fn()
+let replacePending = false
+let reorderPending = false
 
 vi.mock('@/hooks/use-replace-column-states', () => ({
-  useReplaceColumnStates: () => ({ mutate: mockReplace, isPending: false }),
+  useReplaceColumnStates: () => ({ mutate: mockReplace, isPending: replacePending }),
   isStateConflict: () => false,
 }))
 vi.mock('@/hooks/use-update-column', () => ({
-  useReorderColumns: () => ({ mutate: mockReorder, isPending: false }),
+  useReorderColumns: () => ({ mutate: mockReorder, isPending: reorderPending }),
   useUpdateColumn: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
@@ -69,13 +71,15 @@ function dragEnd(data: Record<string, unknown>, overId: string | null): DragEndE
 
 beforeEach(() => {
   vi.clearAllMocks()
+  replacePending = false
+  reorderPending = false
 })
 
 describe('드래그 두 축 분기 (R5 · R10)', () => {
   it('T-DR-1: kind=column 이면 순서 교체만 부른다', () => {
     const { result } = renderHook(() => useColumnSettingsDrag(board), { wrapper })
 
-    result.current(dragEnd({ kind: 'column', columnId: COL_A }, COL_B))
+    result.current.handleDragEnd(dragEnd({ kind: 'column', columnId: COL_A }, COL_B))
 
     expect(mockReorder).toHaveBeenCalledWith([COL_B, COL_A], expect.anything())
     // ★두 축이 섞이면 컬럼을 끌었는데 상태 매핑이 바뀐다. 부정 단언이 그 자리를 지킨다.
@@ -85,7 +89,7 @@ describe('드래그 두 축 분기 (R5 · R10)', () => {
   it('T-DR-2: stateKey 가 있으면 상태 매핑만 부른다', () => {
     const { result } = renderHook(() => useColumnSettingsDrag(board), { wrapper })
 
-    result.current(dragEnd({ stateKey: 'open', fromColumnId: COL_A }, UNMAPPED_DROP_ID))
+    result.current.handleDragEnd(dragEnd({ stateKey: 'open', fromColumnId: COL_A }, UNMAPPED_DROP_ID))
 
     expect(mockReplace).toHaveBeenCalled()
     expect(mockReorder).not.toHaveBeenCalled()
@@ -94,8 +98,8 @@ describe('드래그 두 축 분기 (R5 · R10)', () => {
   it('T-DR-3: 허공에 놓으면 아무것도 부르지 않는다', () => {
     const { result } = renderHook(() => useColumnSettingsDrag(board), { wrapper })
 
-    result.current(dragEnd({ stateKey: 'open', fromColumnId: COL_A }, null))
-    result.current(dragEnd({ kind: 'column', columnId: COL_A }, null))
+    result.current.handleDragEnd(dragEnd({ stateKey: 'open', fromColumnId: COL_A }, null))
+    result.current.handleDragEnd(dragEnd({ kind: 'column', columnId: COL_A }, null))
 
     expect(mockReplace).not.toHaveBeenCalled()
     expect(mockReorder).not.toHaveBeenCalled()
@@ -106,9 +110,34 @@ describe('드래그 두 축 분기 (R5 · R10)', () => {
 
     // 던지면 드래그 한 번이 화면을 통째로 죽인다.
     expect(() => {
-      result.current(dragEnd({}, COL_B))
+      result.current.handleDragEnd(dragEnd({}, COL_B))
     }).not.toThrow()
     expect(mockReplace).not.toHaveBeenCalled()
     expect(mockReorder).not.toHaveBeenCalled()
+  })
+})
+
+describe('E8 — in-flight 중에는 드래그가 잠긴다 (연속 드롭 lost update 차단)', () => {
+  it('T-DR-5: 상태 매핑이 전송 중이면 isMutating 이 참이다', () => {
+    replacePending = true
+    const { result } = renderHook(() => useColumnSettingsDrag(board), { wrapper })
+
+    // ★이 값이 거짓으로 굳으면 두 번째 드롭이 열리고, 둘 다 같은 낡은 집합에서 파생돼
+    //   앞 변경이 조용히 사라진다. 서버는 둘 다 200 이라 아무도 오류를 못 본다.
+    expect(result.current.isMutating).toBe(true)
+  })
+
+  it('T-DR-6: 순서 교체가 전송 중이어도 잠긴다', () => {
+    reorderPending = true
+    const { result } = renderHook(() => useColumnSettingsDrag(board), { wrapper })
+
+    // 두 축을 따로 잰다 — 한쪽만 보면 다른 축의 in-flight 가 새는 것을 못 잡는다.
+    expect(result.current.isMutating).toBe(true)
+  })
+
+  it('T-DR-7: 아무것도 전송 중이 아니면 잠기지 않는다', () => {
+    const { result } = renderHook(() => useColumnSettingsDrag(board), { wrapper })
+
+    expect(result.current.isMutating).toBe(false)
   })
 })

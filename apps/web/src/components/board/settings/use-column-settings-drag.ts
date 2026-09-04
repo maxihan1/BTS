@@ -21,14 +21,24 @@ import { planStateDrop, planColumnReorder } from './state-mapping-drop'
  * 어느 쪽이 처리했는지 모호해진다. 대신 끌리는 쪽이 `data.kind` 를 싣고 여기서 분기한다 —
  * 「상태를 컬럼 헤더에 떨어뜨리는」 잘못된 조합은 `kind` 가 갈라 주므로 컨텍스트를 나눌 이유가 없다.
  *
+ * ### in-flight 중에는 드래그를 잠근다 (스펙 E8)
+ * 드롭 하나가 서버에 가 있는 동안 두 번째 드롭을 허용하면, 둘 다 **같은 낡은 집합**에서
+ * 파생돼 나중 것이 앞 변경을 덮는다(lost update). 서버는 둘 다 200 이고 아무도 오류를 못 본다.
+ * 요청을 큐에 쌓는 대신 **드롭 자체를 막는다** — 큐는 「무엇이 반영됐나」를 더 어렵게 만들고,
+ * 무효화 재조회가 끝나면 잠금이 저절로 풀리므로 체감 지연이 한 왕복뿐이다.
+ * 그래서 이 훅은 [isMutating] 을 함께 돌려주고 호출부가 그것으로 `draggable` 을 끈다.
+ *
  * @param board 현재 보드 상세. 드롭 계획이 현재 컬럼·상태 배치를 읽는다.
- * @returns `DndContext` 의 `onDragEnd` 에 그대로 넘길 핸들러.
+ * @returns `onDragEnd` 핸들러와 in-flight 여부.
  */
-export function useColumnSettingsDrag(board: BoardDetail): (event: DragEndEvent) => void {
+export function useColumnSettingsDrag(board: BoardDetail): {
+  handleDragEnd: (event: DragEndEvent) => void
+  isMutating: boolean
+} {
   const replaceStates = useReplaceColumnStates(board.boardId)
   const reorder = useReorderColumns(board.boardId)
 
-  return function handleDragEnd(event: DragEndEvent): void {
+  function handleDragEnd(event: DragEndEvent): void {
     const data = event.active.data.current as
       | { kind?: string; stateKey?: string; fromColumnId?: string | null; columnId?: string }
       | undefined
@@ -63,4 +73,6 @@ export function useColumnSettingsDrag(board: BoardDetail): (event: DragEndEvent)
       },
     })
   }
+
+  return { handleDragEnd, isMutating: replaceStates.isPending || reorder.isPending }
 }
