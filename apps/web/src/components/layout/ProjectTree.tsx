@@ -1,5 +1,5 @@
 // 사이드바 스페이스 트리 — 별표/최근/추가 3그룹 + 프로젝트별 보드 목록 + 스페이스·보드 `⋯` (Jira 패리티 캠페인 PR ⑩ · J2)
-import { useMemo, useState, useEffect, type JSX } from 'react'
+import { useId, useMemo, useState, useEffect, type JSX } from 'react'
 import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronRight, ChevronDown, MoreHorizontal, Plus, Settings, Star, StarOff } from 'lucide-react'
 import { toast } from 'sonner'
@@ -23,7 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { partitionProjectsForTree } from './project-tree-order'
+import { partitionProjectsForTree, pickBoardLookupKeys } from './project-tree-order'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -114,9 +114,12 @@ const ALL_PROJECTS_LABEL = '모든 프로젝트'
 /**
  * 트리 헤더 `＋` 의 접근성 이름.
  *
- * ⚠️ **`navLabels` 에 넣지 않는다.** 「새 프로젝트」는 `projectNav`('프로젝트')를 통째로 품어
- * `nav-labels.test.ts` FR15 substring 판별식이 red 를 낸다. 이 파일의 다른 표시 문구
- * (`ALL_PROJECTS_LABEL` 등)와 같은 자리에 두는 것이 기존 관례이기도 하다.
+ * 이 파일의 다른 표시 문구(`ALL_PROJECTS_LABEL` · `REPORTS_GROUP_LABEL` · `SETTINGS_GROUP_LABEL`)와
+ * 같은 자리에 둔다 — `navLabels` 는 **nav `aria-label`** 의 출처이고 이것은 링크 이름이다.
+ *
+ * 부수적으로, `navLabels` 에 넣었다면 `nav-labels.test.ts` FR15 substring 판별식이 red 였을 것이다
+ * (「새 프로젝트」가 `projectNav`('프로젝트')를 통째로 품는다). 그 판별식이 지키는 위험은
+ * **nav 이름끼리의 충돌**이고 링크 이름인 이 값은 그 축에 없다 — 회피가 아니라 자리가 다른 것이다.
  */
 const NEW_PROJECT_LABEL = '새 프로젝트'
 
@@ -551,14 +554,21 @@ function ProjectTreeGroup({
   collapsed,
   onToggle,
 }: ProjectTreeGroupProps): JSX.Element | null {
+  // 🛑 훅은 조기 반환보다 **위**에 있어야 한다 — 빈 그룹에서 건너뛰면 렌더 간 훅 순서가 어긋난다.
+  const headingId = useId()
+
   if (projects.length === 0) return null
 
   return (
     <>
       {/* 접힘 레일에서는 헤더 텍스트가 잘려 읽히므로 시각적으로만 숨긴다 — DOM 에는 남아
-          구간 경계가 스크린리더에 계속 들린다(레일의 `sr-only` 관례와 같다). */}
-      <p className={collapsed ? 'sr-only' : TREE_GROUP_HEADING_CLASS}>{heading}</p>
-      <ul className="flex flex-col gap-1">
+          구간 경계가 스크린리더에 계속 들린다(레일의 `sr-only` 관례와 같다).
+          🛑 `aria-labelledby` 로 아래 목록과 **묶어야** 그 약속이 실제로 지켜진다. 연결이 없으면
+             목록 앞을 지나가는 텍스트 한 줄일 뿐이라 목록에 들어선 사용자는 구간을 알 수 없다. */}
+      <p id={headingId} className={collapsed ? 'sr-only' : TREE_GROUP_HEADING_CLASS}>
+        {heading}
+      </p>
+      <ul aria-labelledby={headingId} className="flex flex-col gap-1">
         {projects.map((project) => (
           <ProjectTreeRow
             key={project.id}
@@ -642,21 +652,6 @@ export function ProjectTree(): JSX.Element | null {
   )
 
   /**
-   * 보드를 조회할 프로젝트 — **펼쳐진 것만**이다.
-   *
-   * 접힘 레일에서는 하위 목록 자체가 없으므로 빈 배열을 넘겨 조회를 통째로 끈다. 그러지 않으면
-   * 아이콘만 보이는 상태에서 보이지도 않는 보드 목록을 계속 받아 온다.
-   */
-  const expandedProjectKeys = useMemo(
-    () =>
-      collapsed
-        ? []
-        : (projects ?? []).filter((project) => expandedKeys.has(project.key)).map((project) => project.key),
-    [projects, expandedKeys, collapsed],
-  )
-  const boardsByProject = useProjectBoards(expandedProjectKeys)
-
-  /**
    * 자동 펼침의 근거 — **URL 이 담은** 프로젝트 키(경로 우선, 없으면 검색 파라미터).
    *
    * 저장값·첫 프로젝트 폴백까지 해소하는 `useResolvedActiveProject` 를 쓰지 않는 이유 —
@@ -664,6 +659,24 @@ export function ProjectTree(): JSX.Element | null {
    * "프로젝트 컨텍스트 밖이면 전부 접힘" 계약이 깨진다 (스펙 FR7 정정단락).
    */
   const urlProjectKey = pathProjectKey ?? searchProjectKey
+
+  /**
+   * 보드를 조회할 프로젝트 — **펼쳐진 것만**이고, 거기서 다시 **상한까지만**이다.
+   *
+   * 접힘 레일에서는 하위 목록 자체가 없으므로 빈 배열을 넘겨 조회를 통째로 끈다. 그러지 않으면
+   * 아이콘만 보이는 상태에서 보이지도 않는 보드 목록을 계속 받아 온다.
+   *
+   * 상한이 필요한 이유는 펼침 집합이 **영속되고 더하기만 한다**는 데 있다 — 상한 근거와
+   * 활성 프로젝트 우선 규칙의 정본은 {@link pickBoardLookupKeys} 다.
+   */
+  const expandedProjectKeys = useMemo(() => {
+    if (collapsed) return []
+    const expanded = (projects ?? [])
+      .filter((project) => expandedKeys.has(project.key))
+      .map((project) => project.key)
+    return pickBoardLookupKeys(expanded, urlProjectKey)
+  }, [projects, expandedKeys, collapsed, urlProjectKey])
+  const boardsByProject = useProjectBoards(expandedProjectKeys)
 
   // 활성 프로젝트가 바뀌면 그 키를 펼침 집합에 **더한다**. 다른 키를 제거하지 않는다.
   // FR-UX-06 PR12 의 FR5(덮어쓰기)를 정정한 것이다 — ADR 2026-07-30 §D2.

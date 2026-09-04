@@ -1,7 +1,11 @@
 // 사이드바 스페이스 3그룹 분할 순수 함수 테스트 — 별표/최근/추가 (Jira 패리티 캠페인 PR ⑩ · J2)
 import { describe, it, expect } from 'vitest'
 import type { Project } from '@/api/projects'
-import { partitionProjectsForTree } from '../project-tree-order'
+import {
+  partitionProjectsForTree,
+  pickBoardLookupKeys,
+  EXPANDED_BOARD_LOOKUP_LIMIT,
+} from '../project-tree-order'
 
 /** 백엔드 순서(`ORDER BY name ASC`)를 그대로 재현한 목록 */
 const PROJECTS: readonly Project[] = [
@@ -83,5 +87,55 @@ describe('partitionProjectsForTree', () => {
 
     expect(keysOf(starred)).toEqual(['ALPHA'])
     expect(keysOf(recent)).toEqual(['BRAVO'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pickBoardLookupKeys — 보드 조회 팬아웃 상한 (PR ⑩ 코드리뷰 CONCERNS-2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('pickBoardLookupKeys', () => {
+  /** 상한을 넘기는 입력 — 실제 상한값이 바뀌어도 따라간다(숫자를 손으로 적지 않는다) */
+  const OVER_LIMIT_KEYS = Array.from(
+    { length: EXPANDED_BOARD_LOOKUP_LIMIT + 3 },
+    (_, index) => `P${String(index)}`,
+  )
+
+  it('비-공허: 상한이 1 이상이고 입력이 상한을 실제로 넘는다', () => {
+    // 상한이 0 이나 음수면 아래 단언들이 빈 배열끼리 비교하며 조용히 통과한다.
+    expect(EXPANDED_BOARD_LOOKUP_LIMIT).toBeGreaterThan(0)
+    expect(OVER_LIMIT_KEYS.length).toBeGreaterThan(EXPANDED_BOARD_LOOKUP_LIMIT)
+  })
+
+  it('상한 이하면 입력을 그대로 돌려준다 (순서 보존)', () => {
+    expect(pickBoardLookupKeys(['ALPHA', 'BRAVO'], undefined)).toEqual(['ALPHA', 'BRAVO'])
+  })
+
+  it('상한을 넘으면 상한 개수까지만 자른다', () => {
+    const picked = pickBoardLookupKeys(OVER_LIMIT_KEYS, undefined)
+
+    expect(picked).toHaveLength(EXPANDED_BOARD_LOOKUP_LIMIT)
+    expect(picked).toEqual(OVER_LIMIT_KEYS.slice(0, EXPANDED_BOARD_LOOKUP_LIMIT))
+  })
+
+  it('★ 잘려 나갈 자리에 있던 활성 프로젝트는 맨 앞으로 당겨져 살아남는다', () => {
+    // 상한 밖(마지막)에 있는 키를 활성으로 준다 — 순서 조정이 없으면 여기서 사라진다.
+    const activeKey = OVER_LIMIT_KEYS[OVER_LIMIT_KEYS.length - 1]
+
+    const picked = pickBoardLookupKeys(OVER_LIMIT_KEYS, activeKey)
+
+    expect(picked[0]).toBe(activeKey)
+    expect(picked).toContain(activeKey)
+    expect(picked).toHaveLength(EXPANDED_BOARD_LOOKUP_LIMIT)
+  })
+
+  it('활성 키가 펼쳐져 있지 않으면 순서를 바꾸지 않는다 (없는 키를 끼워 넣지 않는다)', () => {
+    const picked = pickBoardLookupKeys(['ALPHA', 'BRAVO'], 'GHOST')
+
+    expect(picked).toEqual(['ALPHA', 'BRAVO'])
+  })
+
+  it('접힘 등으로 펼침이 0건이면 빈 배열이다 (조회가 나가지 않는다)', () => {
+    expect(pickBoardLookupKeys([], 'ALPHA')).toEqual([])
   })
 })
