@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.web.dto
 
+import com.bts.agileplanning.application.BoardCardMoveResult
 import com.bts.agileplanning.application.BoardPlacementResult
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
@@ -9,7 +10,7 @@ import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.shared.board.BoardIssueView
-import com.bts.shared.board.BoardTransitionResult
+import com.bts.shared.workflow.WorkflowStateView
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.PositiveOrZero
@@ -51,13 +52,21 @@ data class CreateBoardRequest(
  *
  * actor 는 body 로 받지 않는다 — SecurityContext 에서 추출한다(actor 위조 차단).
  *
- * @property toColumnId 이동 대상 컬럼 UUID. 필수.
+ * ## 대상은 상태로 지목한다 (R6 · J3 · J4)
+ *
+ * 지라는 컬럼 안의 **각 상태를 드롭존**으로 그린다 — 「컬럼으로 드롭」이라는 조작이 없다.
+ * 그래서 [toStateKey] 가 정본 경로이고 [toColumnId] 는 하위 호환이다(R7).
+ * **둘 중 정확히 하나**를 보내야 하며, 그 판정은 서비스가 진다 — `@NotNull` 로는
+ * 「둘 중 하나」를 표현할 수 없고, 컨트롤러에도 두면 같은 규칙이 두 곳이 된다.
+ *
+ * @property toColumnId 하위 호환 — 이동 대상 컬럼 UUID. 그 컬럼의 상태가 2개 이상이면 400.
+ * @property toStateKey 이동 대상 워크플로우 상태 키. 이 보드의 어느 컬럼에도 없으면 404.
  * @property expectedVersion 낙관적 락(OCC) 기대 버전. 0 이상 필수.
  * @property resolutionId DONE 카테고리 전환 시 필요한 해결 방안 ID. 불필요하면 null.
  */
 data class MoveCardRequest(
-    @field:NotNull
-    val toColumnId: UUID?,
+    val toColumnId: UUID? = null,
+    val toStateKey: String? = null,
     @field:NotNull
     @field:PositiveOrZero
     val expectedVersion: Long?,
@@ -68,24 +77,33 @@ data class MoveCardRequest(
  * 보드 컬럼 응답 DTO(카드 미포함, 생성 응답용).
  *
  * @property columnId 컬럼 UUID.
- * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property states 이 컬럼에 매핑된 워크플로우 상태 목록(0개 이상 · `display_order` 순). R11.
  * @property name 컬럼 표시 이름.
  * @property category 칸반 카테고리. `"TODO"` · `"IN_PROGRESS"` · `"DONE"`.
+ *   담은 상태들의 **최댓값**이고(R5) 개별 상태의 category 와 다를 수 있다 — 표시 전용이다.
  * @property displayOrder 컬럼 표시 순서(오름차순).
  */
 data class BoardColumnResponse(
     val columnId: UUID,
-    val stateKey: String,
+    val states: List<ColumnStateResponse>,
     val name: String,
     val category: String,
     val displayOrder: Int,
 ) {
     companion object {
-        /** 도메인 [BoardColumn] 을 [BoardColumnResponse] 로 변환한다. */
-        fun from(column: BoardColumn): BoardColumnResponse =
+        /**
+         * 도메인 [BoardColumn] 을 [BoardColumnResponse] 로 변환한다.
+         *
+         * @param catalog [ColumnStateResponse.catalog] 로 만든 상태 색인. **기본값을 두지 않는다** —
+         *   두면 카탈로그를 안 넘긴 호출부가 「키를 이름으로 쓴 응답」을 조용히 내보낸다.
+         */
+        fun from(
+            column: BoardColumn,
+            catalog: Map<String, WorkflowStateView>,
+        ): BoardColumnResponse =
             BoardColumnResponse(
                 columnId = column.id,
-                stateKey = column.stateKey,
+                states = ColumnStateResponse.resolve(column.stateKeys, catalog),
                 name = column.name,
                 category = column.category,
                 displayOrder = column.displayOrder,
@@ -110,15 +128,24 @@ data class BoardResponse(
     val boardType: String,
 ) {
     companion object {
-        /** 도메인 [Board] 를 [BoardResponse](컬럼 포함, 카드 미포함) 로 변환한다. */
-        fun from(board: Board): BoardResponse =
-            BoardResponse(
+        /**
+         * 도메인 [Board] 를 [BoardResponse](컬럼 포함, 카드 미포함) 로 변환한다.
+         *
+         * @param states 프로젝트의 워크플로우 상태 전량. 컬럼 상태의 이름·카테고리 출처(R11).
+         */
+        fun from(
+            board: Board,
+            states: List<WorkflowStateView>,
+        ): BoardResponse {
+            val catalog = ColumnStateResponse.catalog(states)
+            return BoardResponse(
                 boardId = board.id,
                 projectKey = board.projectKey,
                 name = board.name,
-                columns = board.columns.map(BoardColumnResponse::from),
+                columns = board.columns.map { BoardColumnResponse.from(it, catalog) },
                 boardType = board.boardType.name,
             )
+        }
     }
 }
 
@@ -206,9 +233,10 @@ data class BoardCardResponse(
  * 보드 단건 조회 컬럼 응답 DTO(카드 포함).
  *
  * @property columnId 컬럼 UUID.
- * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property states 이 컬럼에 매핑된 워크플로우 상태 목록(0개 이상 · `display_order` 순). R11.
+ *   ★프론트가 카드를 떨굴 때 **대상 상태**의 `category` 로 해결 방안 모달을 판정한다(R13).
  * @property name 컬럼 표시 이름.
- * @property category 칸반 카테고리.
+ * @property category 칸반 카테고리. 담은 상태들의 최댓값(R5)이라 개별 상태와 다를 수 있다.
  * @property displayOrder 컬럼 표시 순서.
  * @property cards 이 컬럼에 배치된 카드 목록(priority ASC 정렬).
  * @property wipLimit WIP(Work In Progress) 제한 수. null 이면 무제한.
@@ -218,7 +246,7 @@ data class BoardCardResponse(
  */
 data class BoardColumnWithCardsResponse(
     val columnId: UUID,
-    val stateKey: String,
+    val states: List<ColumnStateResponse>,
     val name: String,
     val category: String,
     val displayOrder: Int,
@@ -227,11 +255,19 @@ data class BoardColumnWithCardsResponse(
     val wipExceeded: Boolean,
 ) {
     companion object {
-        /** [PlacedColumn] 을 [BoardColumnWithCardsResponse] 로 변환한다. */
-        fun from(placed: PlacedColumn): BoardColumnWithCardsResponse =
+        /**
+         * [PlacedColumn] 을 [BoardColumnWithCardsResponse] 로 변환한다.
+         *
+         * @param catalog [ColumnStateResponse.catalog] 로 만든 상태 색인. 기본값을 두지 않는 이유는
+         *   [BoardColumnResponse.Companion.from] 과 같다.
+         */
+        fun from(
+            placed: PlacedColumn,
+            catalog: Map<String, WorkflowStateView>,
+        ): BoardColumnWithCardsResponse =
             BoardColumnWithCardsResponse(
                 columnId = placed.column.id,
-                stateKey = placed.column.stateKey,
+                states = ColumnStateResponse.resolve(placed.column.stateKeys, catalog),
                 name = placed.column.name,
                 category = placed.column.category,
                 displayOrder = placed.column.displayOrder,
@@ -253,6 +289,9 @@ data class BoardColumnWithCardsResponse(
  *   클라이언트가 "보드에 표시되지 않은 이슈가 있습니다" UI 경고를 표시하는 데 사용한다.
  * @property unplacedCount 어느 컬럼에도 매핑되지 않아 보드에서 제외된 이슈 수(E2 미매핑 상태 이슈).
  *   0 이면 미매핑 이슈 없음. 양수이면 워크플로우 상태와 보드 컬럼 간 미싱 매핑이 있음을 의미한다.
+ * @property unmappedStates 어느 컬럼에도 매핑되지 않은 워크플로우 상태 목록(R8 · J2). 지라의
+ *   **Unmapped statuses** 패널에 대응한다 — 컬럼으로 끌어다 놓을 후보이자, [unplacedCount] 가
+ *   양수인 **이유**다. 「몇 건이 빠졌나」만 알던 클라이언트가 「어느 상태가 빠졌나」를 알게 된다.
  * @property swimlaneField 스윔레인 기준 필드 이름. [SwimlaneField.name] 문자열. 예: `"NONE"`, `"ASSIGNEE"`, `"PRIORITY"`.
  *   클라이언트가 스윔레인 UI 활성 여부 및 그룹화 기준을 판단하는 데 사용한다.
  * @property quickFilters 보드에 저장된 퀵필터 목록(created_at ASC, FR-UX-01 Task 7). 보드를 보는 모든
@@ -272,6 +311,7 @@ data class BoardDetailResponse(
     val columns: List<BoardColumnWithCardsResponse>,
     val truncated: Boolean,
     val unplacedCount: Int,
+    val unmappedStates: List<ColumnStateResponse>,
     val swimlaneField: String,
     val quickFilters: List<QuickFilterResponse>,
     val canDelete: Boolean,
@@ -293,20 +333,24 @@ data class BoardDetailResponse(
             result: BoardPlacementResult,
             quickFilters: List<QuickFilter> = emptyList(),
             canDelete: Boolean = false,
-        ): BoardDetailResponse =
-            BoardDetailResponse(
+        ): BoardDetailResponse {
+            // 색인은 한 번만 만든다 — 컬럼마다 다시 만들면 컬럼 수 × 상태 수가 된다(N3).
+            val catalog = ColumnStateResponse.catalog(result.stateCatalog)
+            return BoardDetailResponse(
                 boardId = board.id,
                 projectKey = board.projectKey,
                 name = board.name,
-                columns = result.columns.map(BoardColumnWithCardsResponse::from),
+                columns = result.columns.map { BoardColumnWithCardsResponse.from(it, catalog) },
                 truncated = result.truncated,
                 unplacedCount = result.unplacedCount,
+                unmappedStates = result.unmappedStates.map(ColumnStateResponse::from),
                 swimlaneField = board.swimlaneField.name,
                 quickFilters = quickFilters.map(QuickFilterResponse::from),
                 canDelete = canDelete,
                 boardType = board.boardType.name,
                 activeSprint = result.activeSprint?.let(ActiveSprintResponse::from),
             )
+        }
     }
 }
 
@@ -377,29 +421,80 @@ data class UpdateBoardRequest(
 )
 
 /**
+ * 컬럼 생성 요청 DTO (R9 · J2).
+ *
+ * `stateKeys` 는 **비어 있어도 된다** — 지라는 컬럼을 먼저 만들고 Unmapped 패널에서 상태를
+ * 끌어다 놓는다. 그 중간 상태를 표현할 수 없으면 조작 자체가 성립하지 않는다(E1).
+ *
+ * @property name 컬럼 표시 이름. 공백 불가.
+ * @property stateKeys 처음부터 담을 상태 키 목록. 순서가 곧 컬럼 안 드롭존 순서다. 미전송이면 빈 목록.
+ * @property displayOrder 표시 순서. 미전송이면 맨 뒤에 붙는다.
+ */
+data class CreateColumnRequest(
+    @field:NotBlank
+    val name: String?,
+    val stateKeys: List<String> = emptyList(),
+    val displayOrder: Int? = null,
+)
+
+/**
+ * 컬럼 상태 집합 교체 요청 DTO (R9).
+ *
+ * 집합 **전체**를 받는다 — 추가·제거를 각각의 엔드포인트로 두면 「지금 이 컬럼의 상태 집합」이
+ * 클라이언트와 서버 사이에서 갈리고, X1 위반을 한 요청 안에서 판정할 수 없다.
+ *
+ * @property stateKeys 새 상태 키 목록. 빈 목록이면 그 컬럼의 상태를 전부 뗀다(E1).
+ */
+data class ReplaceColumnStatesRequest(
+    val stateKeys: List<String> = emptyList(),
+)
+
+/**
+ * 컬럼 삭제 응답 DTO (R10 · ceo 리뷰 CONCERN-3).
+ *
+ * 204 가 아니라 200 인 이유 — 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.**
+ * 되돌리려면 컬럼을 다시 만들고 상태를 다시 매핑해야 하는데, 몇 장이 사라지는지 모르면
+ * 그 판단을 할 수 없다.
+ *
+ * @property removedCardCount 이 삭제로 보드에서 사라지는 카드 수. 요청자가 보는 기준이다
+ *   (행 단위 보안 필터·스크럼 활성 스프린트 한정이 이미 반영된 수). 상태 0개 컬럼이면 0.
+ */
+data class DeleteColumnResponse(
+    val removedCardCount: Int,
+)
+
+/**
  * 컬럼 WIP 제한 변경 응답 DTO.
  *
  * @property columnId 컬럼 UUID.
- * @property stateKey 매핑된 워크플로우 상태 키.
+ * @property states 이 컬럼에 매핑된 워크플로우 상태 목록(0개 이상 · `display_order` 순). R11.
  * @property name 컬럼 표시 이름.
- * @property category 칸반 카테고리.
+ * @property category 칸반 카테고리. 담은 상태들의 최댓값(R5)이라 개별 상태와 다를 수 있다.
  * @property displayOrder 컬럼 표시 순서.
  * @property wipLimit 갱신된 WIP 제한. null 이면 무제한.
  */
 data class ColumnMetaResponse(
     val columnId: UUID,
-    val stateKey: String,
+    val states: List<ColumnStateResponse>,
     val name: String,
     val category: String,
     val displayOrder: Int,
     val wipLimit: Int?,
 ) {
     companion object {
-        /** 도메인 [BoardColumn] 을 [ColumnMetaResponse] 로 변환한다. */
-        fun from(column: BoardColumn): ColumnMetaResponse =
+        /**
+         * 도메인 [BoardColumn] 을 [ColumnMetaResponse] 로 변환한다.
+         *
+         * @param catalog [ColumnStateResponse.catalog] 로 만든 상태 색인. 기본값을 두지 않는 이유는
+         *   [BoardColumnResponse.Companion.from] 과 같다.
+         */
+        fun from(
+            column: BoardColumn,
+            catalog: Map<String, WorkflowStateView>,
+        ): ColumnMetaResponse =
             ColumnMetaResponse(
                 columnId = column.id,
-                stateKey = column.stateKey,
+                states = ColumnStateResponse.resolve(column.stateKeys, catalog),
                 name = column.name,
                 category = column.category,
                 displayOrder = column.displayOrder,
@@ -457,20 +552,19 @@ data class MoveCardResponse(
 ) {
     companion object {
         /**
-         * 전환 결과([BoardTransitionResult])와 대상 컬럼 UUID 를 합쳐 응답을 만든다.
+         * 이동 결과([BoardCardMoveResult])를 응답으로 옮긴다.
          *
-         * @param result 전환 결과(issueKey/currentStateKey/version 출처).
-         * @param toColumnId 이동 대상 컬럼 UUID(응답 columnId echo).
+         * `columnId` 는 **서버가 해석한** 컬럼이다 — 요청이 상태만 지목했어도(R6) 그 상태를 담은
+         * 컬럼을 되돌려 주므로, 클라이언트가 컬럼을 다시 계산할 필요가 없다.
+         *
+         * @param result 이동 결과(전환 + 해석된 컬럼).
          */
-        fun of(
-            result: BoardTransitionResult,
-            toColumnId: UUID,
-        ): MoveCardResponse =
+        fun of(result: BoardCardMoveResult): MoveCardResponse =
             MoveCardResponse(
-                issueKey = result.issueKey,
-                currentStateKey = result.currentStateKey,
-                version = result.version,
-                columnId = toColumnId,
+                issueKey = result.transition.issueKey,
+                currentStateKey = result.transition.currentStateKey,
+                version = result.transition.version,
+                columnId = result.columnId,
             )
     }
 }

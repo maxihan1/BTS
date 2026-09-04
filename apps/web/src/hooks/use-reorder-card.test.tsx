@@ -40,12 +40,13 @@ const INITIAL_BOARD: BoardDetail = {
   activeSprint: null,
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE',
   quickFilters: [],
   columns: [
     {
       columnId: COL_A_ID,
-      stateKey: 'TODO',
+      states: [{ key: 'TODO', name: 'To Do', category: 'TODO' }],
       name: 'To Do',
       category: 'TODO',
       displayOrder: 1,
@@ -59,7 +60,7 @@ const INITIAL_BOARD: BoardDetail = {
     },
     {
       columnId: COL_B_ID,
-      stateKey: 'IN_PROGRESS',
+      states: [{ key: 'IN_PROGRESS', name: '진행 중', category: 'IN_PROGRESS' }],
       name: '진행 중',
       category: 'IN_PROGRESS',
       displayOrder: 2,

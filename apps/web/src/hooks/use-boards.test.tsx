@@ -53,6 +53,7 @@ const MOCK_BOARD_DETAIL: BoardDetail = {
   columns: [],
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE',
   quickFilters: [],
 }
@@ -293,6 +294,7 @@ describe('useBoard (filter-aware)', () => {
     columns: [],
     truncated: false,
     unplacedCount: 0,
+    unmappedStates: [],
     swimlaneField: 'NONE',
     quickFilters: [],
   }

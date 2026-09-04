@@ -54,7 +54,7 @@ class BoardCardPlacementTest {
         category: String = "TODO",
     ) = BoardColumn(
         id = UUID.randomUUID(),
-        stateKey = stateKey,
+        stateKeys = listOf(stateKey),
         name = stateKey,
         category = category,
         displayOrder = displayOrder,
@@ -75,7 +75,7 @@ class BoardCardPlacementTest {
             val columns = BoardCardPlacement.seedColumns(states)
 
             assertThat(columns).hasSize(3)
-            assertThat(columns.map { it.stateKey })
+            assertThat(columns.map { it.legacyStateKey })
                 .containsExactly("open", "in-progress", "closed")
         }
 
@@ -86,7 +86,7 @@ class BoardCardPlacementTest {
             val columns = BoardCardPlacement.seedColumns(listOf(state))
 
             val column = columns.single()
-            assertThat(column.stateKey).isEqualTo("in-progress")
+            assertThat(column.legacyStateKey).isEqualTo("in-progress")
             assertThat(column.name).isEqualTo("진행 중")
             assertThat(column.category).isEqualTo("IN_PROGRESS")
             assertThat(column.displayOrder).isEqualTo(5)
@@ -134,8 +134,8 @@ class BoardCardPlacementTest {
                     issues = issues,
                 )
 
-            val todoCards = result.columns.first { it.column.stateKey == "open" }.cards
-            val inProgressCards = result.columns.first { it.column.stateKey == "in-progress" }.cards
+            val todoCards = result.columns.first { it.column.legacyStateKey == "open" }.cards
+            val inProgressCards = result.columns.first { it.column.legacyStateKey == "in-progress" }.cards
             assertThat(todoCards.map { it.key }).containsExactlyInAnyOrder("PROJ-1", "PROJ-3")
             assertThat(inProgressCards.map { it.key }).containsExactly("PROJ-2")
         }
@@ -391,5 +391,139 @@ class BoardCardPlacementTest {
             val keys = result.columns.single().cards.map { it.key }
             assertThat(keys).containsExactly("PROJ-1", "PROJ-2", "PROJ-3")
         }
+    }
+
+    // (d) 컬럼:상태 1:N — 컬럼 하나가 상태 여러 개를 담는다 (R1·R3·R5 · 편차 X1)
+    @Nested
+    inner class MultiStateColumns {
+        /**
+         * 한 컬럼이 상태 둘을 담으면 두 상태의 이슈가 **모두** 그 컬럼에 온다.
+         *
+         * 지라의 흔한 구성인 「진행 중 컬럼에 `in_progress` + `in_review`」가 이것이다(J1).
+         * 오늘은 컬럼당 상태가 하나뿐이라 만들 수 없다.
+         */
+        @Test
+        fun `컬럼이 상태 둘을 담으면 두 상태의 이슈가 모두 그 컬럼에 배치된다`() {
+            val columns = listOf(multiColumn("todo"), multiColumn("in_progress", "in_review"))
+            val issues =
+                listOf(
+                    issueView(key = "PROJ-1", currentStateKey = "todo"),
+                    issueView(key = "PROJ-2", currentStateKey = "in_progress"),
+                    issueView(key = "PROJ-3", currentStateKey = "in_review"),
+                )
+
+            val result = BoardCardPlacement.placeCards(columns = columns, issues = issues)
+
+            assertThat(result.columns[0].cards.map { it.key }).containsExactly("PROJ-1")
+            assertThat(result.columns[1].cards.map { it.key }).containsExactlyInAnyOrder("PROJ-2", "PROJ-3")
+            assertThat(result.unplacedCount).isZero()
+        }
+
+        /** 상태 집합 밖의 이슈는 종전대로 제외되고 `unplacedCount` 에 잡힌다 (R3 · E2). */
+        @Test
+        fun `어느 컬럼의 어느 상태에도 없는 이슈는 제외되고 unplacedCount 에 잡힌다`() {
+            val columns = listOf(multiColumn("in_progress", "in_review"))
+            val issues =
+                listOf(
+                    issueView(key = "PROJ-1", currentStateKey = "in_review"),
+                    issueView(key = "PROJ-2", currentStateKey = "blocked"),
+                )
+
+            val result = BoardCardPlacement.placeCards(columns = columns, issues = issues)
+
+            assertThat(result.columns.single().cards.map { it.key }).containsExactly("PROJ-1")
+            assertThat(result.unplacedCount).isEqualTo(1)
+        }
+
+        /** 상태 0개 컬럼은 허용되고 카드 0장으로 렌더된다 (E1 · N4 — 미매핑 이동의 중간 상태). */
+        @Test
+        fun `상태 0개 컬럼은 카드 0장으로 배치된다`() {
+            val columns = listOf(multiColumn("todo"), emptyColumn())
+            val issues = listOf(issueView(key = "PROJ-1", currentStateKey = "todo"))
+
+            val result = BoardCardPlacement.placeCards(columns = columns, issues = issues)
+
+            assertThat(result.columns[1].cards).isEmpty()
+            assertThat(result.unplacedCount).isZero()
+        }
+
+        /**
+         * 컬럼 category 는 담은 상태들의 **최댓값**이다 — `DONE` > `IN_PROGRESS` > `TODO` (R5).
+         *
+         * ★ 이 값은 **표시 전용**이다. R13 이 프론트의 resolution 분기를 대상 상태 기준으로
+         * 옮긴 뒤 그 사실이 실제가 된다 — 그 전까지는 `board-drop.ts:322` 가 이 값으로
+         * 해결 방안 모달을 띄울지 정했다(plan 리뷰 BLOCKER-1).
+         */
+        @Test
+        fun `컬럼 category 는 담은 상태들의 최댓값이다 DONE 이 IN_PROGRESS 를 이긴다`() {
+            val mixed =
+                BoardCardPlacement.resolveCategory(
+                    listOf("IN_PROGRESS", "DONE", "TODO"),
+                )
+
+            assertThat(mixed).isEqualTo("DONE")
+        }
+
+        @Test
+        fun `상태가 하나면 그 category 가 그대로 컬럼 category 다`() {
+            assertThat(BoardCardPlacement.resolveCategory(listOf("IN_PROGRESS"))).isEqualTo("IN_PROGRESS")
+        }
+
+        @Test
+        fun `상태가 0개면 컬럼 category 는 TODO 다`() {
+            // 빈 컬럼은 아직 아무 일도 안 하는 자리다. 가장 약한 카테고리로 둔다.
+            assertThat(BoardCardPlacement.resolveCategory(emptyList())).isEqualTo("TODO")
+        }
+
+        /** `seedColumns` 는 안 바뀐다 — 신규 보드의 초기 모습은 종전대로 상태 1개당 컬럼 1개다 (R4). */
+        @Test
+        fun `seedColumns 는 여전히 상태 1개당 컬럼 1개를 만든다`() {
+            val states =
+                listOf(
+                    stateView(key = "todo", displayOrder = 0),
+                    stateView(key = "in_progress", displayOrder = 1),
+                )
+
+            val columns = BoardCardPlacement.seedColumns(states)
+
+            assertThat(columns).hasSize(2)
+            assertThat(columns.map { it.stateKeys }).containsExactly(listOf("todo"), listOf("in_progress"))
+        }
+
+        /** 컬럼 내 정렬 규칙은 상태가 여럿이어도 그대로다 (무회귀). */
+        @Test
+        fun `여러 상태를 담은 컬럼에서도 rank NULLS LAST priority key 순서를 유지한다`() {
+            val columns = listOf(multiColumn("a", "b"))
+            val issues =
+                listOf(
+                    issueView(key = "PROJ-3", currentStateKey = "b", priority = 1, rank = null),
+                    issueView(key = "PROJ-1", currentStateKey = "a", priority = 3, rank = "0|100000:"),
+                    issueView(key = "PROJ-2", currentStateKey = "b", priority = 2, rank = null),
+                )
+
+            val result = BoardCardPlacement.placeCards(columns = columns, issues = issues)
+
+            // rank 있는 PROJ-1 이 먼저, 그 뒤 rank 없는 것들이 priority ASC.
+            assertThat(result.columns.single().cards.map { it.key })
+                .containsExactly("PROJ-1", "PROJ-3", "PROJ-2")
+        }
+
+        private fun multiColumn(vararg stateKeys: String) =
+            BoardColumn(
+                id = UUID.randomUUID(),
+                stateKeys = stateKeys.toList(),
+                name = stateKeys.joinToString("+"),
+                category = "TODO",
+                displayOrder = 0,
+            )
+
+        private fun emptyColumn() =
+            BoardColumn(
+                id = UUID.randomUUID(),
+                stateKeys = emptyList(),
+                name = "빈 컬럼",
+                category = "TODO",
+                displayOrder = 1,
+            )
     }
 }

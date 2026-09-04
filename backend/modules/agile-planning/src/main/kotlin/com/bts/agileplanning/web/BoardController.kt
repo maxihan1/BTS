@@ -6,15 +6,20 @@ import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.web.dto.BoardColumnResponse
 import com.bts.agileplanning.web.dto.BoardDetailResponse
 import com.bts.agileplanning.web.dto.BoardMetaResponse
 import com.bts.agileplanning.web.dto.BoardResponse
 import com.bts.agileplanning.web.dto.BoardSummaryResponse
 import com.bts.agileplanning.web.dto.ColumnMetaResponse
+import com.bts.agileplanning.web.dto.ColumnStateResponse
 import com.bts.agileplanning.web.dto.CreateBoardRequest
+import com.bts.agileplanning.web.dto.CreateColumnRequest
 import com.bts.agileplanning.web.dto.DataResponse
+import com.bts.agileplanning.web.dto.DeleteColumnResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
+import com.bts.agileplanning.web.dto.ReplaceColumnStatesRequest
 import com.bts.agileplanning.web.dto.UpdateBoardRequest
 import com.bts.agileplanning.web.dto.UpdateColumnWipLimitRequest
 import com.bts.shared.permission.IssuePermission
@@ -32,6 +37,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -112,8 +118,11 @@ class BoardController(
         // 구분해 프로젝트 존재를 떠볼 수 있다(probe). 미지정은 KANBAN 이다.
         val boardType = BoardType.from(request.boardType)
         val board = service.createBoard(request.projectKey, request.name, boardType)
+        // 컬럼 상태의 이름·카테고리(R11)는 워크플로우 카탈로그에만 있다. `listStates` 는
+        // MANDATORY 라 컨트롤러가 직접 못 부르므로 서비스의 읽기 메서드를 거친다.
+        val states = service.listWorkflowStates(board.projectKey)
         val location = URI.create("/api/v1/boards/${board.id}")
-        return ResponseEntity.created(location).body(DataResponse(BoardResponse.from(board)))
+        return ResponseEntity.created(location).body(DataResponse(BoardResponse.from(board, states)))
     }
 
     /**
@@ -210,21 +219,22 @@ class BoardController(
         val (actor, _) = loadBoardWithBrowse(id)
 
         // @field:NotNull 검증 통과 후이므로 non-null. !! 금지 규칙에 따라 명시 체크.
-        val toColumnId =
-            request.toColumnId ?: error("toColumnId 는 @NotNull 검증 통과 후 null 일 수 없습니다.")
         val expectedVersion =
             request.expectedVersion ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
 
+        // toColumnId / toStateKey 는 그대로 넘긴다 — 「둘 중 정확히 하나」 판정은 서비스가 진다(R7).
+        // 여기서도 재검하면 같은 규칙이 두 곳이 되고, 언젠가 갈린다.
         val result =
             service.moveCard(
                 boardId = id,
                 issueKey = issueKey,
                 actorUserId = actor,
-                toColumnId = toColumnId,
+                toColumnId = request.toColumnId,
+                toStateKey = request.toStateKey,
                 expectedVersion = expectedVersion,
                 resolutionId = request.resolutionId,
             )
-        return ResponseEntity.ok(DataResponse(MoveCardResponse.of(result, toColumnId)))
+        return ResponseEntity.ok(DataResponse(MoveCardResponse.of(result)))
     }
 
     /**
@@ -341,13 +351,93 @@ class BoardController(
     ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
         log.info("BoardController.updateColumnWipLimit id={} columnId={} wipLimit={}", id, columnId, request.wipLimit)
 
-        loadBoardWithCreate(id)
+        val (_, board) = loadBoardWithCreate(id)
         val wipLimit = request.wipLimit
         if (wipLimit != null && wipLimit < 1) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "wipLimit 는 1 이상이어야 합니다.")
         }
         val updatedColumn = service.updateColumnWipLimit(id, columnId, wipLimit)
-        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn)))
+        val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
+        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn, catalog)))
+    }
+
+    /**
+     * 보드에 컬럼을 추가한다 (R9 · J2).
+     *
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트 — 기존 `PATCH /{id}/columns/{columnId}` 의
+     * [loadBoardWithCreate] 게이트를 **승계**한다. 컬럼 구성 변경은 같은 무게의 조작이다.
+     *
+     * `stateKeys` 를 비워 보내면 상태 0개 컬럼이 만들어진다(E1) — 지라의 「컬럼 먼저, 상태는 드래그로」
+     * 흐름이 그것을 요구한다.
+     *
+     * @param id path variable 보드 UUID.
+     * @param request 컬럼 생성 요청(name 필수 · stateKeys · displayOrder 선택).
+     * @return 201 Created + [BoardColumnResponse].
+     */
+    @PostMapping("/{id}/columns")
+    fun createColumn(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: CreateColumnRequest,
+    ): ResponseEntity<DataResponse<BoardColumnResponse>> {
+        log.info("BoardController.createColumn id={} states={}", id, request.stateKeys)
+
+        val (_, board) = loadBoardWithCreate(id)
+        val name = request.name ?: error("name 은 @NotBlank 검증 통과 후 null 일 수 없습니다.")
+        val created = service.createColumn(id, name, request.stateKeys, request.displayOrder)
+        val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(DataResponse(BoardColumnResponse.from(created, catalog)))
+    }
+
+    /**
+     * 컬럼이 담는 상태 집합을 통째로 교체한다 (R9).
+     *
+     * `PUT` 인 이유는 집합 **전체**를 받아야 X1(한 상태는 한 컬럼에만) 위반을 한 요청 안에서
+     * 판정할 수 있어서다. 다른 컬럼이 쓰는 상태가 섞이면 409 이고 어느 컬럼인지 알려준다(E7).
+     *
+     * @param id path variable 보드 UUID.
+     * @param columnId path variable 컬럼 UUID.
+     * @param request 새 상태 집합.
+     * @return 200 OK + [ColumnMetaResponse](갱신된 states·category 반영).
+     */
+    @PutMapping("/{id}/columns/{columnId}/states")
+    fun replaceColumnStates(
+        @PathVariable id: UUID,
+        @PathVariable columnId: UUID,
+        @Valid @RequestBody request: ReplaceColumnStatesRequest,
+    ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
+        log.info("BoardController.replaceColumnStates id={} columnId={} states={}", id, columnId, request.stateKeys)
+
+        val (_, board) = loadBoardWithCreate(id)
+        val updated = service.replaceColumnStates(id, columnId, request.stateKeys)
+        val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
+        return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updated, catalog)))
+    }
+
+    /**
+     * 컬럼을 삭제한다 (R10 · J5).
+     *
+     * 담긴 상태는 미매핑으로 돌아가고 **이슈는 손대지 않는다** — 미매핑 목록은 보드 조회의
+     * `unmappedStates` 가 이미 준다.
+     *
+     * 204 가 아니라 200 인 이유는 **폭발 반경**을 알려야 하기 때문이다(ceo 리뷰 CONCERN-3).
+     * 이슈는 남지만 사용자가 보기엔 카드가 증발하고, 몇 장인지 모르면 되돌릴 판단을 할 수 없다.
+     *
+     * @param id path variable 보드 UUID.
+     * @param columnId path variable 컬럼 UUID.
+     * @return 200 OK + [DeleteColumnResponse](사라지는 카드 수).
+     */
+    @DeleteMapping("/{id}/columns/{columnId}")
+    fun deleteColumn(
+        @PathVariable id: UUID,
+        @PathVariable columnId: UUID,
+    ): ResponseEntity<DataResponse<DeleteColumnResponse>> {
+        log.info("BoardController.deleteColumn id={} columnId={}", id, columnId)
+
+        // 카드 수는 **요청자가 보는 기준**으로 센다 — 행 단위 보안 필터가 사람마다 다른 수를 준다.
+        val (actor, _) = loadBoardWithCreate(id)
+        val removed = service.deleteColumn(id, columnId, actor)
+        return ResponseEntity.ok(DataResponse(DeleteColumnResponse(removedCardCount = removed)))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

@@ -82,8 +82,10 @@ export interface MoveCardVars {
   issueKey: string
   /** 출발 컬럼 UUID — 낙관적 이동과 롤백에 사용 */
   fromColumnId: string
-  /** 도착 컬럼 UUID */
+  /** 도착 컬럼 UUID — **낙관적 캐시 이동에만** 쓴다. 서버 요청은 [toStateKey] 가 지목한다. */
   toColumnId: string
+  /** 도착 워크플로우 상태 키 — 서버가 실제로 읽는 값(R6·R12). 컬럼의 첫 상태다(E5). */
+  toStateKey: string
   /** 낙관적 잠금(OCC) 버전 — 409 충돌 감지용 */
   expectedVersion: number
   /** 결의안 UUID — DONE 카테고리 이동 시 필요. 생략 가능 */
@@ -114,7 +116,7 @@ export function useMoveCard(boardId: string, filter?: BoardCardFilterParams) {
   return useMutation<MoveCardResult, unknown, MoveCardVars, { snapshot: BoardDetail | undefined }>({
     mutationFn: (vars) =>
       moveCard(boardId, vars.issueKey, {
-        toColumnId: vars.toColumnId,
+        toStateKey: vars.toStateKey,
         expectedVersion: vars.expectedVersion,
         resolutionId: vars.resolutionId,
       }),

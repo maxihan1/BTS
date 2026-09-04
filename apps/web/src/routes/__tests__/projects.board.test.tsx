@@ -273,6 +273,7 @@ const BOARD_DETAIL: BoardDetail = {
   columns: [],
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE',
   quickFilters: [],
   boardType: 'KANBAN',
@@ -326,7 +327,7 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   columns: [
     {
       columnId: 'col-1',
-      stateKey: 'todo',
+      states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
@@ -344,6 +345,7 @@ const BOARD_DETAIL_WITH_ASSIGNEES: BoardDetail = {
   ],
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   quickFilters: [],
 }
 
@@ -360,7 +362,7 @@ const ACTIVE_SPRINT: ActiveSprint = {
 /** 카드가 0건인 컬럼 — 「컬럼은 있는데 이슈가 없다」를 만드는 최소 조각 */
 const EMPTY_TODO_COLUMN: BoardColumn = {
   columnId: 'col-1',
-  stateKey: 'todo',
+  states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
   name: '할 일',
   category: 'TODO',
   displayOrder: 1,
@@ -871,8 +873,8 @@ describe('BoardPage', () => {
     const emptyBoard: BoardDetail = {
       ...BOARD_DETAIL,
       columns: [
-        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
-        { columnId: 'col-2', stateKey: 'done', name: '완료', category: 'DONE', displayOrder: 2, wipLimit: null, wipExceeded: false, cards: [] },
+        { columnId: 'col-1', states: [{ key: 'todo', name: '할 일', category: 'TODO' }], name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
+        { columnId: 'col-2', states: [{ key: 'done', name: '완료', category: 'DONE' }], name: '완료', category: 'DONE', displayOrder: 2, wipLimit: null, wipExceeded: false, cards: [] },
       ],
     }
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
@@ -917,7 +919,7 @@ describe('BoardPage', () => {
     const emptyBoard: BoardDetail = {
       ...BOARD_DETAIL,
       columns: [
-        { columnId: 'col-1', stateKey: 'todo', name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
+        { columnId: 'col-1', states: [{ key: 'todo', name: '할 일', category: 'TODO' }], name: '할 일', category: 'TODO', displayOrder: 1, wipLimit: null, wipExceeded: false, cards: [] },
       ],
     }
     mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })

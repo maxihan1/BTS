@@ -51,7 +51,7 @@ const VIEWED_BOARD_ID = 'b0a1c2d3-e4f5-4678-9abc-def012345678'
 
 const EMPTY_COLUMN: BoardColumn = {
   columnId: 'c1d2e3f4-a5b6-4890-abcd-ef1234567801',
-  stateKey: 'todo',
+  states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
   name: '할 일',
   category: 'TODO',
   displayOrder: 1,
@@ -86,6 +86,7 @@ const BASE_BOARD: BoardDetail = {
   columns: [EMPTY_COLUMN],
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE',
   quickFilters: [],
   boardType: 'SCRUM',

@@ -174,7 +174,7 @@ class BoardQuickFilterControllerIntegrationTest {
             id = boardId,
             projectKey = projectKey,
             name = "BTS 개발 보드",
-            columns = listOf(BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0)),
+            columns = listOf(BoardColumn(UUID.randomUUID(), listOf("open"), "열림", "TODO", 0)),
             createdAt = Instant.parse("2026-06-20T00:00:00Z"),
             updatedAt = Instant.parse("2026-06-20T00:00:00Z"),
         )

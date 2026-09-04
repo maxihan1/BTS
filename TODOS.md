@@ -1456,6 +1456,89 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
+## ⬜ agile-planning — 보드 설정 화면이 통째로 없다. 지라 7개 탭 중 도달 가능한 것이 0개다 (신규 · 미착수 · T3)
+
+**쉬운 말.** 보드를 만든 뒤에는 거의 아무것도 바꿀 수 없다. 컬럼 구성도, 카드에 무엇을 보일지도, 추정 방식도 고를 화면이 없다. 일부는 서버에 기능이 있는데 **누를 곳이 없어서** 없는 것과 같다.
+
+**방치하면.** 보드가 만들어진 순간의 모습으로 영원히 굳는다. 워크플로우에 상태를 추가하면 그 상태의 이슈가 보드에서 조용히 사라지는데(`unplacedCount` 로만 세어진다) 사용자가 고칠 방법이 없다.
+
+**무엇.** `apps/web/src/routes/` 의 보드 라우트는 `projects.$projectKey.board.tsx` **하나뿐**이고 설정 화면이 없다. 지라 Cloud 의 보드 설정 탭 7종과 대조한 실측(2026-09-03)이다.
+
+| 지라 탭 | BTS 백엔드 | BTS 화면 | 판정 |
+|---|---|---|---|
+| Columns | WIP 제한만 | 없음 | **#444 가 담당 중** |
+| Swimlanes | `PATCH /boards/{id}` 의 `swimlaneField` | **없음** | 갭 A — **서버는 되는데 누를 곳이 없다** |
+| Quick filters | `BoardQuickFilterService` · `V504` | `QuickFilterChips` 있음 | 충족 |
+| **Card layout** | **없음** | **없음** | 갭 B — **Maxi 가 지목한 것** |
+| Estimation and tracking | 없음(`estimation` 0건) | 없음 | 갭 C |
+| Working days | 없음(`workingDays` 0건) | 없음 | 갭 D |
+| Issue detail view | 없음 | 없음 | 갭 E |
+| 진입 경로·권한 | 보드 API 게이트는 있다 | **설정 라우트 자체가 없다** | 갭 F |
+
+**★갭 A 가 이 항목의 성격을 말해 준다.** 스윔레인 기준은 **백엔드가 이미 받는다**(`UpdateBoardRequest.swimlaneField`). 그런데 그것을 보낼 화면이 없어 아무도 못 쓴다. learnings 2026-07-17 「도메인·서비스·repo 가 다 있어도 REST 노출이 없으면 기능이 없는 것이다」의 **UI 판본**이다.
+
+**★갭 B 는 새 필드를 만드는 일이 아니다.** #346(FR-UX-14 B2)이 카드 응답에 유형·라벨·추정을 이미 실었고 #349(F14)가 화면 밀도를 했다. 카드가 **무엇을 담을 수 있는지**는 갖춰졌고, 없는 것은 **「무엇을 보일지 고르는 설정」**과 그 저장소다.
+
+### 지라 근거 (실물 조회 2026-09-03 · 착수 시 계약 §1-0 재사용 대상)
+
+**여기 적어 두는 이유.** 조회는 이미 했으므로 적는 비용이 0 이고, 안 적으면 착수 시점에 같은 조회를 다시 한다. **설계는 적지 않는다** — 요구사항·스키마·PR 분할은 착수 시점에 `/bts` 체인이 만든다.
+
+| # | 원문 인용 | 출처 · 구분 |
+|---|---|---|
+| **J7** | *"From your board, select **more** () then **Configure board**."* | [Configure a company-managed board](https://support.atlassian.com/jira-software-cloud/docs/configure-a-company-managed-board/) · Cloud |
+| **J8** | *"you must be either: a **space administrator** for the location of the board [or] a **board administrator** for the board itself"* | 동일 · Cloud |
+| **J9** | `Columns` — *"edit the mapping of workflow statuses to columns of a board"* | 동일 · Cloud |
+| **J10** | `Swimlanes` — *"Configure swimlanes on a board to help you distinguish tasks of different categories"* | 동일 · Cloud |
+| **J11** | `Quick filters` — *"Configure quick filters on a board to help you switch between work types"* | 동일 · Cloud |
+| **J12** | `Card layout` — *"Customize the layout, colors, and fields on the cards on your board"* | 동일 · Cloud |
+| **J13** | `Estimation and tracking` — *"Configure how you estimate work and track time"* | 동일 · Cloud |
+| **J14** | `Working days` — *"Configure the timezone, and your team's standard working and non-working days"* | 동일 · Cloud |
+| **J15** | `Issue detail view` — *"Customize the work item to show more fields, hide fields, and rearrange"* | 동일 · Cloud |
+| **J16** | 카드 레이아웃 경로 — *"…select **Board settings**. Expand **Layout** in the sidebar, then select **Card layout**."* | [Customize cards](https://support.atlassian.com/jira-software-cloud/docs/customize-cards/) · Cloud |
+| **J17** | **추가 필드 상한 3개** — *"You can configure cards on a board to display up to three additional fields."* | 동일 · Cloud |
+| **J18** | **백로그와 활성 스프린트가 서로 다른 설정을 갖는다** — *"The fields can be different for the backlog and Active sprints, if you are using a Scrum board."* | 동일 · Cloud |
+| **J19** | *"The work item summary is always at the top on the board and backlog. Any custom fields added to the card are next. Then details about the work item, including work type, priority, assignee, and estimate."* | 동일 · Cloud |
+| **J20** | *"You can also enable **Days in column** to visually indicate how long a work item's in a column."* | 동일 · Cloud |
+| **J21** | *"You can base your card colors on work types, priorities, assignees, or JQL."* | 동일 · Cloud |
+
+**착수 시 먼저 풀 것 3건.** ① `Days in column`(J20)의 컬럼 진입 시각을 어디서 얻나 — 이슈 전환 이력은 `issue-tracking` 소유라 BC 격리상 포트가 필요할 수 있다 ② 카드 색(J21)의 JQL 기준은 `search` BC 소관이라 배제 대상인지 ③ 퀵필터를 설정 화면으로 옮기면(J11) 칩이 한 번에 안 보여 오늘 UX 가 나빠질 수 있다 — 의도적 편차 후보.
+
+**분할은 착수 시점에 정한다.** 다만 **설정 화면 뼈대가 먼저**라는 것만은 갭 A 가 이미 증명한다 — 화면 없이 API 만 만들면 그것도 「도달할 UI 가 없는 기능」이 되어 같은 문제를 반복한다.
+
+---
+
+## ⬜ agile-planning — `board_columns.state_key` 이중 기록 창이 열린 채로 남는다 (신규 · 미착수 · T3)
+
+**쉬운 말.** 컬럼과 상태를 잇는 정보가 **두 곳에 동시에 저장된다.** 새 표가 정본이고 옛 칸은 되돌리기용 사본인데, 사본을 언제 지울지가 정해져 있지 않다. 두 곳이 갈리면 되돌릴 때 엉뚱한 값을 복원한다.
+
+**방치하면.** 창이 영구히 열린다. 쓰기 경로가 두 곳을 채우는 코드가 계속 살아 있고, 누군가 한쪽만 고치는 순간 조용히 갈린다. 되돌리기용이라는 명분은 시간이 지날수록 약해진다.
+
+**무엇.** PR #444 가 `board_column_states` 를 신설하면서 `DATA.md §4` 3단 분할을 따라 `board_columns.state_key` 를 **DROP 하지 않았다.** ①신설+백필 ②코드 전환까지가 #444 이고 **③DROP 이 이 항목**이다.
+
+그동안 쓰기 경로는 같은 트랜잭션에서 두 곳을 채우고, 컬럼 상태가 2개 이상이면 옛 칸에 `(display_order, state_key)` 최소를 쓴다. 읽기는 이미 새 표만 본다.
+
+**★ceo 리뷰가 지적한 것은 「3단 분할이 틀렸다」가 아니라 「3단계가 등재되지 않았다」이다.** #444 스펙이 「DROP 은 후속」이라고만 적고 그 후속을 아무도 담당하지 않으면, 분할의 마지막 단계가 영원히 안 온다.
+
+**착수 조건.** #444 가 머지되고 **드롭존 UI PR 까지 안정화된 뒤**. 그 전에 지우면 되돌릴 곳이 없다.
+
+**할 일.** ①`board_columns.state_key` DROP 마이그레이션 ②쓰기 경로의 이중 기록 제거 ③`board_column_states` 단독 읽기임을 재확인하는 판별식.
+
+## ⬜ agile-planning — 컬럼 0개 보드를 둘이 동시에 조회하면 자가 치유가 UNIQUE 에 걸려 500 이 된다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 컬럼이 하나도 없는 보드를 열면 서버가 알아서 컬럼을 만들어 준다. 그런데 **두 사람이 같은 순간에 그 보드를 열면** 둘 다 만들려 들고, 늦은 쪽이 「이미 있다」는 DB 오류를 맞는다. 그 사람 화면에는 **보드 대신 서버 오류**가 뜬다. 아무것도 안 고쳤는데 그냥 본 것뿐인데도 그렇다.
+
+**방치하면.** 조회가 실패하는 결함이라 사용자는 원인을 짐작할 수 없고, 새로고침하면 (먼저 들어온 쪽이 이미 만들어 놨으므로) 멀쩡히 뜬다. 재현이 어려워 「가끔 500 이 난다」로만 남는다.
+
+**무엇.** `BoardApplicationService.healColumnsIfEmpty` 가 컬럼 0개 보드를 조회 시점에 채운다 — `boardRepository.seedColumns` 를 부르고 그것이 `board_columns` 와 `board_column_states` 에 쓴다. 잠금이 없어 두 요청이 같은 창에 들어갈 수 있고, 두 번째 INSERT 가 `UNIQUE (board_id, state_key)` 에 걸린다. 변환 핸들러가 없어 `@ExceptionHandler(Exception::class)` 까지 내려가 **500 `AGILE_INTERNAL_ERROR`** 가 된다.
+
+**★이 결함은 PR #444 가 만든 것이 아니다.** `V500:39` 가 같은 UNIQUE 를 `board_columns` 에 이미 갖고 있어 1:1 시절에도 똑같이 났다. #444 의 게이트 2 재리뷰가 X1 경합을 조사하다 곁가지로 발견했고, 체크리스트의 **hot-fix 혼입 금지**(Pass 0-1)에 따라 그 PR 에서 고치지 않고 등재만 한다.
+
+**할 일.** 둘 중 하나. ①`seedColumns` 호출을 `BoardApplicationService.tryMapStates` 와 같은 형태로 감싸 제약 위반을 흡수한다(이미 시드됐다는 뜻이므로 재조회 후 정상 응답). ②`ensureScrumBoard` 가 `acquireProjectScrumBoardLock` 을 먼저 잡는 것처럼 보드 단위 advisory lock 을 조회 앞에 건다 — 다만 **읽기 경로에 락을 거는 비용**을 재야 한다. ①이 더 싸 보인다.
+
+**판별식.** 같은 보드를 동시에 조회하는 통합 테스트. 선례는 `SprintIntegrationTest` 의 동시성 테스트(`futures.map { it.get(30, TimeUnit.SECONDS) }` + 실패 타입 고정).
+
+---
+
 # 개발 안전장치
 
 ## ⬜ 워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)
@@ -3629,6 +3712,8 @@ find backend/modules/<bc>/src/main -name '*.kt' | xargs wc -l | awk '$1>300 && $
 
 **★먼저 정할 것이 있다.** 로드맵 정본이 저장소 **밖**(`~/.claude/plans/`)이라 판별식이 읽을 수 없다.
 저장소 안으로 옮길지, 옮긴다면 `docs/plans/` 인지 별도 자리인지가 선행 결정이다. **자의로 정하지 않는다.**
+
+---
 
 ---
 

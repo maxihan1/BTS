@@ -29,7 +29,10 @@ export type DropAction =
       type: 'move'
       issueKey: string
       fromColumnId: string
+      /** 낙관적 캐시 이동에 쓴다. 서버 요청이 지목하는 것은 [toStateKey] 다. */
       toColumnId: string
+      /** 서버에 보낼 대상 상태 키 — 컬럼의 **첫 상태**(E5 · R12). */
+      toStateKey: string
       expectedVersion: number
     }
   | {
@@ -37,6 +40,8 @@ export type DropAction =
       issueKey: string
       fromColumnId: string
       toColumnId: string
+      /** 대상 상태 키. 이 상태의 category 가 DONE 이라 해결 방안이 필요하다(R13). */
+      toStateKey: string
       expectedVersion: number
     }
   | {
@@ -313,13 +318,24 @@ export function resolveDropAction(
   const { toColumn, overIssueKey } = target
 
   if (toColumn.columnId !== fromColumnId) {
+    // 「첫 상태」다(E5·R12). 백엔드가 (display_order, state_key) 오름차순으로 보내므로 다시
+    // 정렬하지 않는다 — 규칙이 두 곳이 되는 순간 레거시 칸과 화면이 갈린다.
+    const toState = toColumn.states[0]
+    // 상태 0개 컬럼(E1)에는 「어느 상태로 가라」가 없어 요청을 만들 수 없다. 백엔드도 400 이다.
+    if (toState === undefined) return { type: 'noop' }
+
     const base = {
       issueKey,
       fromColumnId,
       toColumnId: toColumn.columnId,
+      toStateKey: toState.key,
       expectedVersion: card.version,
     }
-    return toColumn.category === 'DONE' ? { type: 'needs-resolution', ...base } : { type: 'move', ...base }
+    // ★R13 — 해결 방안 판정은 **대상 상태**의 category 로 한다. 지라는 resolution 을 전환에
+    // 붙이고(J7·J8) BTS 백엔드도 이미 대상 상태로 판단한다(IssueRepository targetStateIsDone).
+    // 컬럼 category 는 담은 상태들의 최댓값이라(R5) 개별 상태와 다를 수 있다 — 1:1 시절에는
+    // 둘이 항상 같아서 이 분기가 틀렸다는 사실이 드러나지 않았다.
+    return toState.category === 'DONE' ? { type: 'needs-resolution', ...base } : { type: 'move', ...base }
   }
 
   return resolveSameColumnDrop(

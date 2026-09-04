@@ -104,11 +104,30 @@ const columnCategorySchema = z.enum(['TODO', 'IN_PROGRESS', 'DONE'])
  * 보드 컬럼 스키마.
  * 백엔드 `BoardColumnWithCardsResponse` DTO 대응.
  */
+/**
+ * 컬럼이 담은 워크플로우 상태 1건.
+ * 백엔드 `ColumnStateResponse` DTO 대응 (R11).
+ *
+ * ★`category` 는 **상태의 것**이지 컬럼의 것이 아니다. 컬럼 `category` 는 담은 상태들의
+ * 최댓값이라(R5) 개별 상태와 다를 수 있고, 해결 방안 모달 판정은 **상태**의 값을 읽어야 한다(R13).
+ */
+export const columnStateSchema = z.object({
+  /** 워크플로우 상태 키. 예: `"in_progress"` */
+  key: z.string(),
+  /** 사용자에게 표시되는 상태 이름 */
+  name: z.string(),
+  /** 상태의 칸반 카테고리 */
+  category: columnCategorySchema,
+})
+
 export const boardColumnSchema = z.object({
   /** 컬럼 UUID */
   columnId: z.string().uuid(),
-  /** 워크플로우 상태 키 */
-  stateKey: z.string(),
+  /**
+   * 이 컬럼에 매핑된 워크플로우 상태 목록(0개 이상 · display_order 순). R11.
+   * **첫 항목이 「첫 상태」다**(E5) — 백엔드가 이미 그 순서로 보내므로 다시 정렬하지 않는다.
+   */
+  states: z.array(columnStateSchema),
   /** 컬럼 표시 이름 */
   name: z.string(),
   /** 컬럼 카테고리 (TODO / IN_PROGRESS / DONE) */
@@ -167,6 +186,12 @@ export const boardDetailSchema = z.object({
   truncated: z.boolean(),
   /** 어떤 컬럼에도 배치되지 않은 이슈 수 */
   unplacedCount: z.number().int(),
+  /**
+   * 어느 컬럼에도 매핑되지 않은 워크플로우 상태 목록 (R8 · J2).
+   * 지라의 **Unmapped statuses** 패널에 대응한다 — `unplacedCount` 가 양수인 **이유**다.
+   * 레거시 응답 대비 `.default([])`(백엔드 `@JsonInclude` 대비 · epicKey 선례와 같은 패턴).
+   */
+  unmappedStates: z.array(columnStateSchema).default([]),
   /** 스윔레인 기준 필드. NONE=없음, ASSIGNEE=담당자별, PRIORITY=우선순위별. 백엔드 FR-BD-03 D4 신호. */
   swimlaneField: swimlaneFieldSchema,
   /**
@@ -207,8 +232,8 @@ export const boardDetailSchema = z.object({
 export const boardCreatedColumnSchema = z.object({
   /** 컬럼 UUID */
   columnId: z.string().uuid(),
-  /** 워크플로우 상태 키 */
-  stateKey: z.string(),
+  /** 이 컬럼에 매핑된 워크플로우 상태 목록(생성 직후에는 시드된 1개). R11. */
+  states: z.array(columnStateSchema),
   /** 컬럼 표시 이름 */
   name: z.string(),
   /** 컬럼 카테고리 (TODO / IN_PROGRESS / DONE) */
@@ -289,13 +314,22 @@ export type BoardCreated = z.infer<typeof boardCreatedSchema>
 /** 카드 이동 결과 타입 */
 export type MoveCardResult = z.infer<typeof moveCardResultSchema>
 
-/** 카드 이동 요청 body 타입 */
+/** 컬럼이 담은 상태 1건 타입 */
+export type ColumnState = z.infer<typeof columnStateSchema>
+
+/**
+ * 카드 이동 요청 body 타입.
+ *
+ * ★대상은 **상태**로 지목한다(R6 · R12). 지라는 컬럼 안의 각 상태를 드롭존으로 그려서
+ * 「컬럼으로 드롭」이라는 조작 자체가 없고(J3·J4), 서버도 상태를 추론하지 않는다.
+ * 백엔드는 `toColumnId` 도 받지만(하위 호환 · R7) 컬럼의 상태가 2개 이상이면 400 이다.
+ */
 export interface MoveCardBody {
-  /** 목표 컬럼 UUID */
-  toColumnId: string
+  /** 목표 워크플로우 상태 키 */
+  toStateKey: string
   /** 낙관적 잠금 버전 (충돌 감지용) */
   expectedVersion: number
-  /** 결의안 UUID. DONE 카테고리 이동 시 필요. 생략 가능 */
+  /** 결의안 UUID. 대상 상태가 DONE 이면 필요. 생략 가능 */
   resolutionId?: string
 }
 
@@ -466,9 +500,9 @@ export async function moveCard(
   issueKey: string,
   body: MoveCardBody,
 ): Promise<MoveCardResult> {
-  const { toColumnId, expectedVersion, resolutionId } = body
+  const { toStateKey, expectedVersion, resolutionId } = body
   const requestBody = {
-    toColumnId,
+    toStateKey,
     expectedVersion,
     ...(resolutionId !== undefined ? { resolutionId } : {}),
   }

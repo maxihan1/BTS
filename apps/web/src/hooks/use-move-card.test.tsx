@@ -30,12 +30,13 @@ const INITIAL_BOARD: BoardDetail = {
   activeSprint: null,
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE',
   quickFilters: [],
   columns: [
     {
       columnId: COL_A_ID,
-      stateKey: 'TODO',
+      states: [{ key: 'TODO', name: 'To Do', category: 'TODO' }],
       name: 'To Do',
       category: 'TODO',
       displayOrder: 1,
@@ -48,7 +49,7 @@ const INITIAL_BOARD: BoardDetail = {
     },
     {
       columnId: COL_B_ID,
-      stateKey: 'IN_PROGRESS',
+      states: [{ key: 'IN_PROGRESS', name: '진행 중', category: 'IN_PROGRESS' }],
       name: '진행 중',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -116,7 +117,7 @@ describe('useMoveCard', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
       // onMutate는 동기(microtask) — await 한 tick 대기
       await Promise.resolve()
@@ -143,7 +144,7 @@ describe('useMoveCard', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
     })
 
@@ -175,7 +176,7 @@ describe('useMoveCard', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
     })
 
@@ -202,7 +203,7 @@ describe('useMoveCard', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
     })
 
@@ -234,7 +235,7 @@ describe('useMoveCard', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
         resolutionId: 'res-uuid-0000-0000-000000000001',
       })
     })
@@ -284,7 +285,7 @@ describe('useMoveCard — filter-aware queryKey', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
     })
 
@@ -320,7 +321,7 @@ describe('useMoveCard — filter-aware queryKey', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
     })
 
@@ -350,7 +351,7 @@ describe('useMoveCard — filter-aware queryKey', () => {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
-        expectedVersion: 1,
+        toStateKey: 'moved',        expectedVersion: 1,
       })
     })
 

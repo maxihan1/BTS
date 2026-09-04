@@ -3,7 +3,13 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
+import com.bts.agileplanning.application.BoardCardMoveResult
 import com.bts.agileplanning.application.BoardPlacementResult
+import com.bts.agileplanning.application.BoardStateNotMappedException
+import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.DuplicateStateKeysException
+import com.bts.agileplanning.application.MoveTargetAmbiguousException
+import com.bts.agileplanning.application.StateAlreadyMappedException
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
@@ -17,6 +23,7 @@ import com.bts.shared.board.BoardTransitionResult
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.workflow.WorkflowStateView
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -48,6 +55,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
@@ -237,9 +245,9 @@ class BoardControllerIntegrationTest {
             boardType = boardType,
             columns =
                 listOf(
-                    BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0),
-                    BoardColumn(UUID.randomUUID(), "in-progress", "진행 중", "IN_PROGRESS", 1),
-                    BoardColumn(UUID.randomUUID(), "closed", "완료", "DONE", 2),
+                    BoardColumn(UUID.randomUUID(), listOf("open"), "열림", "TODO", 0),
+                    BoardColumn(UUID.randomUUID(), listOf("in-progress"), "진행 중", "IN_PROGRESS", 1),
+                    BoardColumn(UUID.randomUUID(), listOf("closed"), "완료", "DONE", 2),
                 ),
             createdAt = Instant.parse("2026-06-20T00:00:00Z"),
             updatedAt = Instant.parse("2026-06-20T00:00:00Z"),
@@ -251,6 +259,12 @@ class BoardControllerIntegrationTest {
     fun `POST boards 정상 입력이면 201 + DataResponse 봉투에 컬럼 포함`() {
         val board = sampleBoard()
         every { boardApplicationService.createBoard("BTS", "BTS 개발 보드", BoardType.KANBAN) } returns board
+        // 상태의 이름·카테고리는 워크플로우 카탈로그에서만 온다(R11). 컨트롤러가 이 조회를
+        // 빠뜨리면 응답의 `name` 이 키로 떨어지므로, stub 을 걸어 배선을 실측한다.
+        every { boardApplicationService.listWorkflowStates("BTS") } returns
+            listOf(
+                WorkflowStateView(key = "open", name = "열림", isDone = false, category = "TODO", displayOrder = 0),
+            )
 
         val body = mapOf("projectKey" to "BTS", "name" to "BTS 개발 보드")
 
@@ -263,7 +277,13 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
             .andExpect(jsonPath("$.data.projectKey").value("BTS"))
             .andExpect(jsonPath("$.data.columns.length()").value(3))
-            .andExpect(jsonPath("$.data.columns[0].stateKey").value("open"))
+            // 1:1 시절의 `stateKey` 자리다 — 이제 배열이고 상태별 표시 정보를 함께 낸다(R11).
+            .andExpect(jsonPath("$.data.columns[0].states.length()").value(1))
+            .andExpect(jsonPath("$.data.columns[0].states[0].key").value("open"))
+            .andExpect(jsonPath("$.data.columns[0].states[0].name").value("열림"))
+            .andExpect(jsonPath("$.data.columns[0].states[0].category").value("TODO"))
+            // 카탈로그에 없는 키는 드롭하지 않고 키를 이름으로 쓴다 — 매핑이 남았다는 사실이 보여야 한다.
+            .andExpect(jsonPath("$.data.columns[1].states[0].name").value("in-progress"))
 
         // 권한 게이트가 CREATE + Project(요청 projectKey) 로 판정됐는지 검증 (sec P2)
         assertThat(permissionGate.calls)
@@ -634,10 +654,16 @@ class BoardControllerIntegrationTest {
                 issueKey = "BTS-1",
                 actorUserId = actorId,
                 toColumnId = toColumnId,
+                toStateKey = null,
                 expectedVersion = 3L,
                 resolutionId = null,
             )
-        } returns BoardTransitionResult(issueKey = "BTS-1", currentStateKey = "in-progress", version = 4L)
+        } returns
+            BoardCardMoveResult(
+                transition = BoardTransitionResult(issueKey = "BTS-1", currentStateKey = "in-progress", version = 4L),
+                columnId = toColumnId,
+                stateKey = "in-progress",
+            )
 
         val body = mapOf("toColumnId" to toColumnId.toString(), "expectedVersion" to 3)
 
@@ -684,7 +710,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT, "version conflict")
 
@@ -706,7 +732,7 @@ class BoardControllerIntegrationTest {
         val toColumnId = board.columns[1].id
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any())
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
         } throws
             ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "mismatch")
 
@@ -718,6 +744,188 @@ class BoardControllerIntegrationTest {
                 .content(mapper.writeValueAsString(body)),
         )
             .andExpect(status().isBadRequest)
+    }
+
+    // ── MOVE-4b. toStateKey 수용 + 하위 호환 응답 계약 (R6 · R7 · E4) ──────────
+
+    @Test
+    fun `POST move 가 toStateKey 를 받으면 200 이고 그 상태를 담은 컬럼을 echo 한다`() {
+        // R6 — 지라는 컬럼 안의 각 상태를 드롭존으로 그린다(J3·J4). 요청이 상태를 지목한다.
+        val board = sampleBoard()
+        val merged = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(
+                boardId = board.id,
+                issueKey = "BTS-1",
+                actorUserId = actorId,
+                toColumnId = null,
+                toStateKey = "in-progress",
+                expectedVersion = 3L,
+                resolutionId = null,
+            )
+        } returns
+            BoardCardMoveResult(
+                transition = BoardTransitionResult(issueKey = "BTS-1", currentStateKey = "in-progress", version = 4L),
+                columnId = merged.id,
+                stateKey = "in-progress",
+            )
+
+        val body = mapOf("toStateKey" to "in-progress", "expectedVersion" to 3)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.currentStateKey").value("in-progress"))
+            // echo 는 **서비스가 해석한** 컬럼이다. 요청이 컬럼을 안 줬으므로 서버가 되돌려 준다.
+            .andExpect(jsonPath("$.data.columnId").value(merged.id.toString()))
+    }
+
+    @Test
+    fun `POST move 의 toStateKey 가 보드에 매핑 안 됐으면 404 AGILE_BOARD_STATE_NOT_MAPPED`() {
+        // E4 — 보드 미존재(AGILE_BOARD_NOT_FOUND)와 코드를 나눠야 UI 가 「컬럼에 상태를 추가하세요」를
+        //      띄울 수 있다. 둘 다 404 라 상태 코드만으로는 구분이 안 된다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+        } throws BoardStateNotMappedException("blocked")
+
+        val body = mapOf("toStateKey" to "blocked", "expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_BOARD_STATE_NOT_MAPPED"))
+    }
+
+    @Test
+    fun `POST move 의 toColumnId 가 상태 2개 이상 컬럼이면 400 AGILE_COLUMN_STATE_AMBIGUOUS`() {
+        // R7 — 하위 호환 경로의 막다른 골목이다. 프론트가 toStateKey 로 옮겨 가야 한다는 신호.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+        } throws ColumnStateAmbiguousException(board.columns[1].id, 2)
+
+        val body = mapOf("toColumnId" to board.columns[1].id.toString(), "expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_COLUMN_STATE_AMBIGUOUS"))
+    }
+
+    @Test
+    fun `POST move 가 toColumnId 도 toStateKey 도 없으면 400`() {
+        // R7 — 「둘 중 정확히 하나」는 @NotNull 로 표현할 수 없어 서비스가 진다.
+        //      이 판정을 컨트롤러에도 두면 규칙이 두 곳이 되고, 언젠가 갈린다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.moveCard(any(), any(), any(), any(), any(), any(), any())
+        } throws MoveTargetAmbiguousException("toColumnId 와 toStateKey 중 정확히 하나를 보내야 합니다.")
+
+        val body = mapOf("expectedVersion" to 1)
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/cards/BTS-1/move")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    // ── COLUMN-1~4. 컬럼 관리 3종 (R9 · R10 · E7) ──────────────────────────────
+
+    @Test
+    fun `POST columns 는 201 과 생성된 컬럼을 내고 CREATE 권한으로 게이트된다`() {
+        val board = sampleBoard()
+        val created = BoardColumn(UUID.randomUUID(), emptyList(), "대기", "TODO", 3)
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.createColumn(board.id, "대기", emptyList(), null) } returns created
+        every { boardApplicationService.listWorkflowStates("BTS") } returns emptyList()
+
+        val body = mapOf("name" to "대기", "stateKeys" to emptyList<String>())
+
+        mockMvc.perform(
+            post("/api/v1/boards/${board.id}/columns")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.columnId").value(created.id.toString()))
+            .andExpect(jsonPath("$.data.states").isEmpty)
+
+        // 컬럼 관리는 기존 PATCH columns/{columnId} 의 게이트를 승계한다 — CREATE on 보드 프로젝트.
+        assertThat(permissionGate.calls)
+            .containsExactly(Triple(actorId, IssuePermission.CREATE, IssueScope.Project("BTS")))
+    }
+
+    @Test
+    fun `PUT states 가 다른 컬럼이 쓰는 상태를 받으면 409 AGILE_STATE_ALREADY_MAPPED`() {
+        // E7 — 어느 컬럼이 쓰고 있는지 detail 에 실어야 사용자가 풀 방법을 찾는다.
+        val board = sampleBoard()
+        val owner = board.columns[2]
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.replaceColumnStates(any(), any(), any())
+        } throws StateAlreadyMappedException(stateKey = "closed", ownerColumnId = owner.id)
+
+        val body = mapOf("stateKeys" to listOf("open", "closed"))
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/${board.columns[0].id}/states")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_STATE_ALREADY_MAPPED"))
+    }
+
+    @Test
+    fun `PUT states 의 stateKeys 에 중복이 있으면 400 AGILE_VALIDATION_FAILED`() {
+        // E9 — 요청 모양의 오류다. 경합(409)과 코드를 나눈다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.replaceColumnStates(any(), any(), any())
+        } throws DuplicateStateKeysException(listOf("open"))
+
+        val body = mapOf("stateKeys" to listOf("open", "open"))
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/${board.columns[0].id}/states")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
+    }
+
+    @Test
+    fun `DELETE columns 는 200 과 사라지는 카드 수를 낸다`() {
+        // R10(ceo-3) — 이슈는 안 건드리지만 사용자가 보기엔 카드가 증발한다. 몇 장인지 모르면
+        //              되돌릴 판단을 할 수 없다. 그래서 204 가 아니라 200 + removedCardCount 다.
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.deleteColumn(board.id, board.columns[0].id, actorId) } returns 3
+
+        mockMvc.perform(delete("/api/v1/boards/${board.id}/columns/${board.columns[0].id}"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.removedCardCount").value(3))
+
+        verify(exactly = 1) { boardApplicationService.deleteColumn(board.id, board.columns[0].id, actorId) }
     }
 
     // ── MOVE-5. POST move body 손상 → 400 (catch-all 변질 차단) ────────────────
@@ -920,9 +1128,9 @@ class BoardControllerIntegrationTest {
                 name = "BTS 보드",
                 columns =
                     listOf(
-                        BoardColumn(UUID.randomUUID(), "open", "열림", "TODO", 0),
-                        BoardColumn(UUID.randomUUID(), "in-progress", "진행 중", "IN_PROGRESS", 1, wipLimit = 3),
-                        BoardColumn(UUID.randomUUID(), "closed", "완료", "DONE", 2),
+                        BoardColumn(UUID.randomUUID(), listOf("open"), "열림", "TODO", 0),
+                        BoardColumn(UUID.randomUUID(), listOf("in-progress"), "진행 중", "IN_PROGRESS", 1, wipLimit = 3),
+                        BoardColumn(UUID.randomUUID(), listOf("closed"), "완료", "DONE", 2),
                     ),
                 createdAt = Instant.parse("2026-06-22T00:00:00Z"),
                 updatedAt = Instant.parse("2026-06-22T00:00:00Z"),

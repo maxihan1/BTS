@@ -66,7 +66,7 @@ class BoardRepositoryTest {
                 listOf(
                     BoardColumn(
                         id = colId,
-                        stateKey = "open",
+                        stateKeys = listOf("open"),
                         name = "열림",
                         category = "TODO",
                         displayOrder = 0,

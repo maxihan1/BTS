@@ -57,7 +57,7 @@ const COL_UUID = 'col-uuid-0001'
 
 const columnWithCards: BoardColumnType = {
   columnId: COL_UUID,
-  stateKey: 'in-progress',
+  states: [{ key: 'in-progress', name: '진행 중', category: 'IN_PROGRESS' }],
   name: '진행 중',
   category: 'IN_PROGRESS',
   displayOrder: 2,
@@ -72,7 +72,7 @@ const columnWithCards: BoardColumnType = {
 
 const emptyColumn: BoardColumnType = {
   columnId: 'col-uuid-0002',
-  stateKey: 'todo',
+  states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
   name: '할 일',
   category: 'TODO',
   displayOrder: 1,
@@ -229,7 +229,7 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
   it('S5a: wipLimit=5·카드 2개·wipExceeded=false → 헤더에 "2/5" 표기, 경고 없음', () => {
     const col: BoardColumnType = {
       columnId: 'col-wip-ok',
-      stateKey: 'in-progress',
+      states: [{ key: 'in-progress', name: 'WIP 미초과', category: 'IN_PROGRESS' }],
       name: 'WIP 미초과',
       category: 'IN_PROGRESS',
       displayOrder: 1,
@@ -250,7 +250,7 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
   it('S5b: wipLimit=2·카드 3개·wipExceeded=true → "3/2" 표기 + "WIP 초과" 경고 표시', () => {
     const col: BoardColumnType = {
       columnId: 'col-wip-exceed',
-      stateKey: 'in-progress',
+      states: [{ key: 'in-progress', name: 'WIP 초과', category: 'IN_PROGRESS' }],
       name: 'WIP 초과',
       category: 'IN_PROGRESS',
       displayOrder: 1,
@@ -285,7 +285,7 @@ describe('BoardColumn — S5 WIP 제한 표시', () => {
 describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
   const columnMultiAssignee: BoardColumnType = {
     columnId: COL_UUID,
-    stateKey: 'in-progress',
+    states: [{ key: 'in-progress', name: '진행 중', category: 'IN_PROGRESS' }],
     name: '진행 중',
     category: 'IN_PROGRESS',
     displayOrder: 2,
@@ -348,7 +348,7 @@ describe('BoardColumn — S6 스윔레인 ASSIGNEE 그룹', () => {
 describe('BoardColumn — S9 스윔레인 EPIC 그룹', () => {
   const columnEpic: BoardColumnType = {
     columnId: COL_UUID,
-    stateKey: 'in-progress',
+    states: [{ key: 'in-progress', name: '진행 중', category: 'IN_PROGRESS' }],
     name: '진행 중',
     category: 'IN_PROGRESS',
     displayOrder: 2,
@@ -390,7 +390,7 @@ describe('BoardColumn — S9 스윔레인 EPIC 그룹', () => {
 describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
   const wipExceededCol: BoardColumnType = {
     columnId: 'col-wip-filter',
-    stateKey: 'in-progress',
+    states: [{ key: 'in-progress', name: 'WIP 초과 필터', category: 'IN_PROGRESS' }],
     name: 'WIP 초과 필터',
     category: 'IN_PROGRESS',
     displayOrder: 1,
@@ -454,7 +454,7 @@ describe('BoardColumn — S8 isFilterActive WIP 경고 약화', () => {
 describe('BoardColumn — S7 스윔레인 PRIORITY 그룹', () => {
   const columnPriority: BoardColumnType = {
     columnId: 'col-priority-test',
-    stateKey: 'in-progress',
+    states: [{ key: 'in-progress', name: '진행 중', category: 'IN_PROGRESS' }],
     name: '진행 중',
     category: 'IN_PROGRESS',
     displayOrder: 2,

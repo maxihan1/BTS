@@ -123,12 +123,13 @@ const boardFixture: BoardDetail = {
   activeSprint: null,
   truncated: false,
   unplacedCount: 0,
+  unmappedStates: [],
   swimlaneField: 'NONE',
   quickFilters: [],
   columns: [
     {
       columnId: COL_TODO,
-      stateKey: 'todo',
+      states: [{ key: 'todo', name: '할 일', category: 'TODO' }],
       name: '할 일',
       category: 'TODO',
       displayOrder: 1,
@@ -140,7 +141,7 @@ const boardFixture: BoardDetail = {
     },
     {
       columnId: COL_DONE,
-      stateKey: 'done',
+      states: [{ key: 'done', name: '완료', category: 'DONE' }],
       name: '완료',
       category: 'DONE',
       displayOrder: 3,
@@ -152,7 +153,7 @@ const boardFixture: BoardDetail = {
     },
     {
       columnId: COL_INPROGRESS,
-      stateKey: 'in-progress',
+      states: [{ key: 'in-progress', name: '진행 중', category: 'IN_PROGRESS' }],
       name: '진행 중',
       category: 'IN_PROGRESS',
       displayOrder: 2,
@@ -226,6 +227,8 @@ describe('resolveDropAction — S1 순수 헬퍼', () => {
       issueKey: 'ATLAS-1',
       fromColumnId: COL_TODO,
       toColumnId: COL_INPROGRESS,
+      // 서버가 읽는 값은 컬럼이 아니라 상태다(R6·R12). 컬럼의 첫 상태를 보낸다(E5).
+      toStateKey: 'in-progress',
       expectedVersion: 1,
     })
   })
@@ -239,6 +242,7 @@ describe('resolveDropAction — S1 순수 헬퍼', () => {
       issueKey: 'ATLAS-1',
       fromColumnId: COL_TODO,
       toColumnId: COL_DONE,
+      toStateKey: 'done',
       expectedVersion: 1,
     })
   })
@@ -470,7 +474,9 @@ describe('KanbanBoard — S4 onDragEnd 분기 (Task 7)', () => {
       {
         issueKey: 'ATLAS-1',
         fromColumnId: COL_TODO,
+        // toColumnId 는 낙관적 캐시 이동용으로 남고, 서버 요청은 toStateKey 가 지목한다(R6·R12).
         toColumnId: COL_INPROGRESS,
+        toStateKey: 'in-progress',
         expectedVersion: 1,
       },
       expect.objectContaining({ onError: expect.any(Function) }),

@@ -451,9 +451,17 @@ class BoardSchemaMigrationTest {
         assertThat(columnIsNullable("board_columns", "board_id")).isEqualTo("NO")
     }
 
+    /**
+     * `V508` 이 이 제약을 **의도적으로 풀었다** — 컬럼:상태가 1:N 이 되면서 상태 0개 컬럼이
+     * 생길 수 있고(스펙 E1·N4), 그런 컬럼은 레거시 칸에 쓸 값이 없다(gap G1).
+     *
+     * 이 테스트는 `V500` 시절 「NOT NULL」을 계약으로 고정하고 있었고, V508 이 그것을 바꾸자
+     * pre-push 훅에서 red 가 났다. **판별식이 제 일을 한 것이다** — 계약 변경이 조용히 지나가지
+     * 않았다. 정본은 이제 `board_column_states` 이고 이 칸은 롤백 대비 사본이다(DROP 은 부채 178).
+     */
     @Test
-    fun `V500 board_columns state_key 는 NOT NULL`() {
-        assertThat(columnIsNullable("board_columns", "state_key")).isEqualTo("NO")
+    fun `V508 board_columns state_key 는 NULL 을 허용한다`() {
+        assertThat(columnIsNullable("board_columns", "state_key")).isEqualTo("YES")
     }
 
     @Test

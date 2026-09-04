@@ -39,7 +39,10 @@ export type { DragActiveMin, DragOverMin, DropAction } from './board-drop'
 interface PendingMove {
   issueKey: string
   fromColumnId: string
+  /** 낙관적 캐시 이동용. 서버 요청이 지목하는 것은 [toStateKey] 다. */
   toColumnId: string
+  /** 서버가 읽는 대상 상태 키(R6·R12). 이 상태의 category 가 DONE 이라 모달이 열렸다(R13). */
+  toStateKey: string
   expectedVersion: number
 }
 
@@ -468,6 +471,7 @@ function dispatchDropAction(action: DropAction, deps: DropActionDeps): void {
         issueKey: action.issueKey,
         fromColumnId: action.fromColumnId,
         toColumnId: action.toColumnId,
+        toStateKey: action.toStateKey,
         expectedVersion: action.expectedVersion,
       })
       return
@@ -477,6 +481,7 @@ function dispatchDropAction(action: DropAction, deps: DropActionDeps): void {
           issueKey: action.issueKey,
           fromColumnId: action.fromColumnId,
           toColumnId: action.toColumnId,
+          toStateKey: action.toStateKey,
           expectedVersion: action.expectedVersion,
         },
         deps.moveCardMutate,

@@ -12,6 +12,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.SprintRepository
@@ -27,6 +28,7 @@ import com.bts.shared.board.IssueTransitionPort
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
+import io.mockk.CapturingSlot
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -37,6 +39,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.time.LocalDate
@@ -79,6 +82,10 @@ class BoardApplicationServiceTest {
     @Autowired
     private lateinit var sprintRepository: SprintRepository
 
+    /** 컬럼에 상태를 둘 이상 매핑해 1:N 경로를 만드는 데 쓴다(R6·R7). */
+    @Autowired
+    private lateinit var columnStateRepository: BoardColumnStateRepository
+
     /**
      * Spring 이 프록시한 [BoardApplicationService] 빈.
      *
@@ -102,6 +109,10 @@ class BoardApplicationServiceTest {
                 ),
                 WorkflowStateView(key = "closed", name = "완료", isDone = true, category = "DONE", displayOrder = 2),
             )
+
+        /** 보드 시드 **뒤에** 워크플로우에 추가된 상태 — 어느 컬럼에도 매핑되지 않는다(R8). */
+        val BLOCKED_STATE =
+            WorkflowStateView(key = "blocked", name = "차단됨", isDone = false, category = "TODO", displayOrder = 3)
     }
 
     /**
@@ -118,6 +129,8 @@ class BoardApplicationServiceTest {
         repo: BoardRepository = boardRepository,
         quickFilterRepo: BoardQuickFilterRepository = mockk(relaxed = true),
         sprintRepo: SprintRepository = sprintRepository,
+        // 기본은 실물 — X1 제약과 CASCADE 가 판정에 들어와야 한다. 경합 변환(B1) 판정만 mock 을 넣는다.
+        columnStateRepo: BoardColumnStateRepository = columnStateRepository,
     ): BoardApplicationService =
         BoardApplicationService(
             workflowStateCatalog = catalog,
@@ -126,6 +139,7 @@ class BoardApplicationServiceTest {
             boardRepository = repo,
             boardQuickFilterRepository = quickFilterRepo,
             sprintRepository = sprintRepo,
+            columnStates = columnStateRepo,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
@@ -138,7 +152,7 @@ class BoardApplicationServiceTest {
         val board = serviceWith(catalog = catalog).createBoard(projectKey = "BTS", name = "BTS 보드")
 
         assertThat(board.columns).hasSize(3)
-        assertThat(board.columns.map { it.stateKey })
+        assertThat(board.columns.map { it.legacyStateKey })
             .containsExactly("open", "in-progress", "closed")
         assertThat(board.columns.map { it.category })
             .containsExactly("TODO", "IN_PROGRESS", "DONE")
@@ -205,13 +219,59 @@ class BoardApplicationServiceTest {
 
         val result = serviceWith(lookup = lookup).getBoard(boardId = board.id, viewerUserId = viewerId)
 
-        val openPlaced = result.columns.first { it.column.stateKey == "open" }
+        val openPlaced = result.columns.first { it.column.legacyStateKey == "open" }
         assertThat(openPlaced.cards).hasSize(1)
         assertThat(openPlaced.cards.first().key).isEqualTo("PROJ-1")
 
-        val inProgressPlaced = result.columns.first { it.column.stateKey == "in-progress" }
+        val inProgressPlaced = result.columns.first { it.column.legacyStateKey == "in-progress" }
         assertThat(inProgressPlaced.cards).hasSize(1)
         assertThat(inProgressPlaced.cards.first().key).isEqualTo("PROJ-2")
+    }
+
+    // ── (c-2) 미매핑 상태 목록 (R8 · J2 · G3) ───────────────────────────────────
+
+    @Test
+    fun `보드 조회가 어느 컬럼에도 없는 상태를 unmappedStates 로 낸다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("UNMAP"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("UNMAP", "미매핑 보드")
+
+        // 보드를 만든 뒤 워크플로우에 상태가 하나 늘었다 — 그것을 담은 컬럼은 아직 없다.
+        // 이 상태의 이슈는 오늘 unplacedCount 로만 세어져 「왜 빠졌는지」를 알 수 없다(E2).
+        every { catalog.listStates(ProjectKey.of("UNMAP"), null) } returns DEFAULT_STATES + BLOCKED_STATE
+
+        val result = service.getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.unmappedStates.map { it.key }).containsExactly("blocked")
+        assertThat(result.unmappedStates.map { it.name }).containsExactly("차단됨")
+    }
+
+    @Test
+    fun `모든 상태가 매핑됐으면 unmappedStates 가 빈 배열이다`() {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("MAPPED"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("MAPPED", "전량 매핑 보드")
+
+        val result = service.getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        assertThat(result.unmappedStates).isEmpty()
+    }
+
+    @Test
+    fun `unmappedStates 기준이 listStates projectKey null 이다`() {
+        // G3 — `createBoard` 의 시드와 **같은 호출**이어야 한다. `issueTypeKey` 로 가르면 시드에는
+        // 있는데 미매핑 목록에는 없는(또는 그 반대) 상태가 생겨 두 목록이 서로를 배신한다.
+        // strict mock 이라 다른 인자 조합으로 불리면 그 자체로 실패한다 — 이 verify 는 「불렸다」를 잰다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("GTHREE"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("GTHREE", "G3 보드")
+
+        service.getBoard(boardId = board.id, viewerUserId = UUID.randomUUID())
+
+        verify(atLeast = 2) { catalog.listStates(ProjectKey.of("GTHREE"), null) }
     }
 
     // ── 스크럼 보드 분기 (FR-BD-04 D4) ──────────────────────────────────────────
@@ -370,7 +430,7 @@ class BoardApplicationServiceTest {
 
         assertThat(result.columns).hasSize(3)
         // ★ 영속이 핵심이다. 매 조회마다 다시 시드하면 컬럼 UUID 가 흔들려 카드 이동(toColumnId)이 깨진다.
-        assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
+        assertThat(boardRepository.findById(boardId)!!.columns.map { it.legacyStateKey })
             .containsExactly("open", "in-progress", "closed")
     }
 
@@ -443,7 +503,7 @@ class BoardApplicationServiceTest {
 
             transactionalBoardService.getBoard(boardId = boardId, viewerUserId = UUID.randomUUID())
 
-            assertThat(boardRepository.findById(boardId)!!.columns.map { it.stateKey })
+            assertThat(boardRepository.findById(boardId)!!.columns.map { it.legacyStateKey })
                 .containsExactly("open", "in-progress", "closed")
         } finally {
             AgilePlanningTestcontainersConfig.EmptyWorkflowStateCatalogStub.states = emptyList()
@@ -569,7 +629,7 @@ class BoardApplicationServiceTest {
         every { catalog.listStates(ProjectKey.of("CARD"), null) } returns DEFAULT_STATES
         val board = serviceWith(catalog = catalog).createBoard("CARD", "이동 테스트 보드")
 
-        val inProgressColumn = board.columns.first { it.stateKey == "in-progress" }
+        val inProgressColumn = board.columns.first { it.legacyStateKey == "in-progress" }
         val cmdSlot = slot<BoardTransitionCommand>()
         val transition = mockk<IssueTransitionPort>()
         every { transition.transition(capture(cmdSlot)) } returns
@@ -591,7 +651,364 @@ class BoardApplicationServiceTest {
         assertThat(cmdSlot.captured.toStateKey).isEqualTo("in-progress")
         assertThat(cmdSlot.captured.issueKey).isEqualTo("CARD-1")
         assertThat(cmdSlot.captured.expectedVersion).isEqualTo(1L)
-        assertThat(result.currentStateKey).isEqualTo("in-progress")
+        assertThat(result.transition.currentStateKey).isEqualTo("in-progress")
+    }
+
+    // ── (d-2) toStateKey 수용 + toColumnId 하위 호환 (R6 · R7 · E3 · E4) ─────────
+
+    /**
+     * 컬럼에 상태 둘을 매핑한 보드를 만든다 — 1:N 경로를 타려면 이 상태가 필요하다.
+     *
+     * `in-progress` 컬럼이 `in-progress` 와 `closed` 를 함께 담는다. `closed` 를 원래 갖고 있던
+     * 컬럼에서 먼저 떼야 X1(한 상태는 한 컬럼에만)을 어기지 않는다.
+     */
+    private fun boardWithMergedColumn(projectKey: String): Board {
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of(projectKey), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard(projectKey, "1:N 이동 보드")
+
+        val closedColumn = board.columns.first { it.legacyStateKey == "closed" }
+        val inProgressColumn = board.columns.first { it.legacyStateKey == "in-progress" }
+        columnStateRepository.replaceStates(board.id, closedColumn.id, emptyList())
+        columnStateRepository.replaceStates(board.id, inProgressColumn.id, listOf("in-progress", "closed"))
+
+        return requireNotNull(boardRepository.findById(board.id))
+    }
+
+    private fun capturingTransition(cmdSlot: CapturingSlot<BoardTransitionCommand>): IssueTransitionPort {
+        val transition = mockk<IssueTransitionPort>()
+        every { transition.transition(capture(cmdSlot)) } answers
+            {
+                BoardTransitionResult(
+                    issueKey = cmdSlot.captured.issueKey,
+                    currentStateKey = cmdSlot.captured.toStateKey,
+                    version = cmdSlot.captured.expectedVersion + 1,
+                )
+            }
+        return transition
+    }
+
+    @Test
+    fun `toStateKey 로 옮기면 그 상태로 전환된다`() {
+        // R6 — 지라는 컬럼 안의 각 상태를 드롭존으로 그린다(J3·J4). 클라이언트가 상태를 고르고
+        //      서버는 그것이 이 보드에 매핑됐는지만 본다. 서버가 상태를 추론하지 않는다.
+        val board = boardWithMergedColumn("MOVEA")
+        val cmdSlot = slot<BoardTransitionCommand>()
+
+        val result =
+            serviceWith(transition = capturingTransition(cmdSlot)).moveCard(
+                boardId = board.id,
+                issueKey = "MOVEA-1",
+                actorUserId = UUID.randomUUID(),
+                toStateKey = "closed",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("closed")
+        assertThat(result.transition.currentStateKey).isEqualTo("closed")
+        // echo 되는 컬럼은 그 상태를 **담은** 컬럼이다. 병합된 in-progress 컬럼이어야 한다.
+        assertThat(result.columnId)
+            .isEqualTo(board.columns.first { it.stateKeys.contains("in-progress") }.id)
+    }
+
+    @Test
+    fun `같은 컬럼 안 다른 상태로도 옮길 수 있다`() {
+        // E3 — 1:N 이후에만 존재하는 조합이다. 컬럼은 그대로인데 상태만 바뀐다.
+        val board = boardWithMergedColumn("MOVEB")
+        val merged = board.columns.first { it.stateKeys.contains("in-progress") }
+        val cmdSlot = slot<BoardTransitionCommand>()
+
+        val result =
+            serviceWith(transition = capturingTransition(cmdSlot)).moveCard(
+                boardId = board.id,
+                issueKey = "MOVEB-1",
+                actorUserId = UUID.randomUUID(),
+                toStateKey = "closed",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(result.columnId).isEqualTo(merged.id)
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("closed")
+    }
+
+    @Test
+    fun `toStateKey 가 그 보드의 어느 컬럼에도 없으면 404`() {
+        // E4 — 워크플로우에는 있으나 이 보드가 안 담은 상태다(미매핑 · R8 이 목록으로 알려주는 그것).
+        val board = boardWithMergedColumn("MOVEC")
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEC-1",
+                actorUserId = UUID.randomUUID(),
+                toStateKey = "blocked",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(BoardStateNotMappedException::class.java)
+    }
+
+    @Test
+    fun `toColumnId 만 보내고 그 컬럼의 상태가 1개면 성공한다`() {
+        // R7 — 오늘의 프론트가 보내는 형태다. 상태가 유일하면 해석에 모호함이 없다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("MOVED"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("MOVED", "하위 호환 보드")
+        val cmdSlot = slot<BoardTransitionCommand>()
+
+        val result =
+            serviceWith(transition = capturingTransition(cmdSlot)).moveCard(
+                boardId = board.id,
+                issueKey = "MOVED-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = board.columns.first { it.legacyStateKey == "closed" }.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+
+        assertThat(cmdSlot.captured.toStateKey).isEqualTo("closed")
+        assertThat(result.transition.currentStateKey).isEqualTo("closed")
+    }
+
+    @Test
+    fun `toColumnId 만 보내고 그 컬럼의 상태가 2개 이상이면 400`() {
+        // R7 — 서버가 둘 중 하나를 고르면 사용자가 의도하지 않은 전환이 조용히 일어난다.
+        //      「어느 상태로 가라」는 클라이언트만 안다.
+        val board = boardWithMergedColumn("MOVEE")
+        val merged = board.columns.first { it.stateKeys.size >= 2 }
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEE-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = merged.id,
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(ColumnStateAmbiguousException::class.java)
+    }
+
+    @Test
+    fun `toStateKey 와 toColumnId 가 둘 다 없거나 둘 다 있으면 400`() {
+        // R7 — `@NotNull` 로는 「둘 중 정확히 하나」를 표현할 수 없어 서비스가 진다.
+        val board = boardWithMergedColumn("MOVEF")
+        val anyColumn = board.columns.first()
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEF-1",
+                actorUserId = UUID.randomUUID(),
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(MoveTargetAmbiguousException::class.java)
+
+        assertThatThrownBy {
+            serviceWith().moveCard(
+                boardId = board.id,
+                issueKey = "MOVEF-1",
+                actorUserId = UUID.randomUUID(),
+                toColumnId = anyColumn.id,
+                toStateKey = "closed",
+                expectedVersion = 1L,
+                resolutionId = null,
+            )
+        }
+            .isInstanceOf(MoveTargetAmbiguousException::class.java)
+    }
+
+    // ── (d-3) 컬럼 관리 3종 — 생성 · 상태 교체 · 삭제 (R9 · R10 · E7~E9 · J5) ────
+
+    @Test
+    fun `컬럼을 상태 0개로 만들 수 있다`() {
+        // R9·E1 — 지라는 컬럼을 먼저 만들고 Unmapped 패널에서 상태를 끌어다 놓는다(J2).
+        //         그 중간 상태가 「상태 0개 컬럼」이고, V508 의 DROP NOT NULL 이 그것을 표현한다(G1).
+        val board = boardWithMergedColumn("COLA")
+
+        val created = serviceWith().createColumn(board.id, name = "대기", stateKeys = emptyList())
+
+        assertThat(created.stateKeys).isEmpty()
+        assertThat(created.category).isEqualTo("TODO")
+        val reloaded = requireNotNull(boardRepository.findById(board.id))
+        assertThat(reloaded.columns.map { it.id }).contains(created.id)
+        assertThat(reloaded.columns.last().id).isEqualTo(created.id)
+    }
+
+    @Test
+    fun `컬럼의 상태 집합을 통째로 교체한다`() {
+        // R9 — 추가·제거를 각각 두면 「지금 이 컬럼의 상태 집합」이 클라이언트와 서버에서 갈린다.
+        val board = boardWithMergedColumn("COLB")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        serviceWith().replaceColumnStates(board.id, target.id, listOf("open", "blocked"))
+
+        val reloaded = requireNotNull(boardRepository.findById(board.id))
+        assertThat(reloaded.columns.first { it.id == target.id }.stateKeys)
+            .containsExactly("open", "blocked")
+    }
+
+    @Test
+    fun `다른 컬럼이 쓰는 상태를 넣으면 409 이고 어느 컬럼인지 알려준다`() {
+        // E7·X1 — 「어느 컬럼이 쓰고 있는지」를 안 알려주면 사용자가 풀 방법을 못 찾는다.
+        val board = boardWithMergedColumn("COLC")
+        val merged = board.columns.first { it.stateKeys.size >= 2 }
+        val other = board.columns.first { it.stateKeys == listOf("open") }
+
+        val thrown =
+            runCatching {
+                serviceWith().replaceColumnStates(board.id, other.id, listOf("open", "closed"))
+            }.exceptionOrNull()
+
+        assertThat(thrown).isInstanceOf(StateAlreadyMappedException::class.java)
+        assertThat((thrown as StateAlreadyMappedException).stateKey).isEqualTo("closed")
+        assertThat(thrown.ownerColumnId).isEqualTo(merged.id)
+        // 원래 매핑은 그대로다 — 거부가 부분 적용을 남기지 않는다.
+        val reloaded = requireNotNull(boardRepository.findById(board.id))
+        assertThat(reloaded.columns.first { it.id == other.id }.stateKeys).containsExactly("open")
+    }
+
+    @Test
+    fun `stateKeys 에 중복이 있으면 400`() {
+        // E9 — DB 는 UNIQUE(column_id, state_key) 로 막지만, 요청 자체의 모양 오류라
+        //      409(경합)가 아니라 400(잘못된 요청)이어야 한다.
+        val board = boardWithMergedColumn("COLD")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        assertThatThrownBy {
+            serviceWith().replaceColumnStates(board.id, target.id, listOf("open", "open"))
+        }
+            .isInstanceOf(DuplicateStateKeysException::class.java)
+    }
+
+    @Test
+    fun `컬럼을 지우면 그 상태가 미매핑으로 돌아가고 이슈는 그대로다`() {
+        // R10·J5 — 지라도 컬럼을 지우면 그 상태들이 Unmapped 패널로 돌아간다. 이슈는 손대지 않는다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("COLE"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("COLE", "삭제 테스트 보드")
+        val victim = board.columns.first { it.legacyStateKey == "closed" }
+
+        service.deleteColumn(board.id, victim.id, UUID.randomUUID())
+
+        val result = service.getBoard(board.id, UUID.randomUUID())
+        assertThat(result.columns.map { it.column.id }).doesNotContain(victim.id)
+        assertThat(result.unmappedStates.map { it.key }).containsExactly("closed")
+    }
+
+    @Test
+    fun `마지막 컬럼도 지울 수 있다`() {
+        // E8 — 컬럼 0개 보드는 healColumnsIfEmpty 가 다시 채운다. 삭제를 막을 이유가 없다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("COLF"), null) } returns DEFAULT_STATES
+        val service = serviceWith(catalog = catalog)
+        val board = service.createBoard("COLF", "전량 삭제 보드")
+
+        board.columns.forEach { service.deleteColumn(board.id, it.id, UUID.randomUUID()) }
+
+        assertThat(requireNotNull(boardRepository.findById(board.id)).columns).isEmpty()
+    }
+
+    // ── 게이트 2 BLOCKER 2건 (B1 경합 변환 · B2 ceo-3) ──────────────────────────
+
+    @Test
+    fun `사전 검사를 통과한 뒤 UNIQUE 에 걸리면 409 로 바뀐다`() {
+        // B1 — 사전 검사(requireAssignableStates)는 사용자에게 「어느 컬럼이 쓰는지」를 주려고 있는 것이지
+        //      제약을 대신하는 것이 아니다. 미매핑 상태 하나를 두 관리자가 서로 다른 컬럼에 동시에
+        //      끌어다 놓으면 둘 다 「주인 없음」을 보고 통과하고, INSERT 하나가 UNIQUE 에 걸린다.
+        //      그때 500 이 나가면 안 된다 — 같은 BC 의 BoardQuickFilterService 가 이미 그렇게 한다.
+        val board = boardWithMergedColumn("RACEA")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        val racing = mockk<BoardColumnStateRepository>()
+        every { racing.findStateKeysByBoard(any()) } returns emptyMap()
+        every { racing.replaceStates(any(), any(), any()) } throws
+            DuplicateKeyException("duplicate key value violates unique constraint")
+
+        assertThatThrownBy {
+            serviceWith(columnStateRepo = racing)
+                .replaceColumnStates(board.id, target.id, listOf("blocked"))
+        }
+            .isInstanceOf(StateAlreadyMappedException::class.java)
+    }
+
+    @Test
+    fun `jOOQ 가 직접 던지는 제약 위반도 409 로 바뀐다`() {
+        // B1 — Spring PersistenceExceptionTranslator 가 개입하지 않으면 jOOQ 가 자기 예외를 던진다.
+        //      선례 BoardQuickFilterService.tryPersist 가 두 경로를 모두 잡는다.
+        val board = boardWithMergedColumn("RACEB")
+        val target = board.columns.first { it.stateKeys == listOf("open") }
+
+        val racing = mockk<BoardColumnStateRepository>()
+        every { racing.findStateKeysByBoard(any()) } returns emptyMap()
+        every { racing.replaceStates(any(), any(), any()) } throws
+            org.jooq.exception.IntegrityConstraintViolationException("uq violation")
+
+        assertThatThrownBy {
+            serviceWith(columnStateRepo = racing)
+                .replaceColumnStates(board.id, target.id, listOf("blocked"))
+        }
+            .isInstanceOf(StateAlreadyMappedException::class.java)
+    }
+
+    @Test
+    fun `컬럼 삭제가 사라지는 카드 수를 돌려준다`() {
+        // B2 · R10(ceo-3) — 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.**
+        //      몇 장인지 모르면 되돌릴 판단을 할 수 없다. 되돌리려면 컬럼을 다시 만들고
+        //      상태를 다시 매핑해야 한다.
+        val catalog = mockk<WorkflowStateCatalog>()
+        every { catalog.listStates(ProjectKey.of("BLAST"), null) } returns DEFAULT_STATES
+        val board = serviceWith(catalog = catalog).createBoard("BLAST", "폭발 반경 보드")
+        val victim = board.columns.first { it.legacyStateKey == "in-progress" }
+
+        // in-progress 2장 · open 1장. 지우는 컬럼의 카드만 세어야 한다.
+        val lookup =
+            mockk<BoardIssueLookupPort>().also {
+                every { it.listVisibleIssuesByProject(any(), any(), any()) } returns
+                    BoardIssuePage(
+                        issues =
+                            listOf(
+                                issueView("BLAST-1", "in-progress"),
+                                issueView("BLAST-2", "in-progress"),
+                                issueView("BLAST-3", "open"),
+                            ),
+                        truncated = false,
+                    )
+            }
+
+        val removed =
+            serviceWith(catalog = catalog, lookup = lookup)
+                .deleteColumn(board.id, victim.id, UUID.randomUUID())
+
+        assertThat(removed).isEqualTo(2)
+    }
+
+    @Test
+    fun `상태 0개 컬럼을 지우면 사라지는 카드가 0 이다`() {
+        // 매핑을 옮기는 중간 창의 컬럼이다(E1). 담긴 카드가 없으니 폭발 반경도 0 이다.
+        val board = boardWithMergedColumn("BLASTZ")
+        val empty = serviceWith().createColumn(board.id, name = "빈 컬럼", stateKeys = emptyList())
+
+        val removed = serviceWith().deleteColumn(board.id, empty.id, UUID.randomUUID())
+
+        assertThat(removed).isZero()
+    }
+
+    @Test
+    fun `없는 컬럼을 지우면 404`() {
+        val board = boardWithMergedColumn("COLG")
+
+        assertThatThrownBy { serviceWith().deleteColumn(board.id, UUID.randomUUID(), UUID.randomUUID()) }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(404)
     }
 
     // ── (e) E8: 보드-이슈 프로젝트 정합 ────────────────────────────────────────────
@@ -822,7 +1239,7 @@ class BoardApplicationServiceTest {
         val expectedColumn =
             BoardColumn(
                 id = columnId,
-                stateKey = "open",
+                stateKeys = listOf("open"),
                 name = "열림",
                 category = "TODO",
                 displayOrder = 0,

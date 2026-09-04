@@ -1104,7 +1104,9 @@ describe('GET /api/v1/boards/:id — 스크럼 보드 활성 스프린트 (FR-BD
 
     const detail = await fetchBoard(scrumBoardId)
     const cardsOf = (stateKey: string): string[] =>
-      detail.columns.find((col) => col.stateKey === stateKey)?.cards.map((c) => c.issueKey) ?? []
+      detail.columns
+        .find((col) => col.states.some((s) => s.key === stateKey))
+        ?.cards.map((c) => c.issueKey) ?? []
     expect(cardsOf('open')).toEqual(['SPRINTBD-1'])
     expect(cardsOf('in_progress')).toEqual(['SPRINTBD-2'])
     expect(cardsOf('done')).toEqual([])

@@ -12,6 +12,7 @@ import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
 import com.bts.shared.board.BoardIssueView
+import com.bts.shared.workflow.WorkflowStateView
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -35,10 +36,21 @@ import java.util.UUID
 class BoardResponsesTest {
     // --- 픽스처 헬퍼 ---
 
+    /**
+     * 이 클래스의 판정은 wip · 스윔레인 · priority 이지 **상태 이름이 아니다.** 컬럼 상태의
+     * 표시 정보(R11)를 지는 판정은 [BoardColumnStatesResponseTest] 가 따로 가져갔으므로
+     * 여기서는 빈 카탈로그로 변환한다 — 그러면 `states` 는 키를 이름으로 쓴다.
+     */
+    private val noCatalog = emptyMap<String, WorkflowStateView>()
+
+    private val noStates = emptyList<WorkflowStateView>()
+
+    private fun withCards(placed: PlacedColumn) = BoardColumnWithCardsResponse.from(placed, noCatalog)
+
     private fun column(wipLimit: Int? = null) =
         BoardColumn(
             id = UUID.randomUUID(),
-            stateKey = "open",
+            stateKeys = listOf("open"),
             name = "열림",
             category = "TODO",
             displayOrder = 1,
@@ -135,8 +147,10 @@ class BoardResponsesTest {
 
         @Test
         fun `생성 응답도 board 의 종류를 그대로 노출한다`() {
-            assertThat(BoardResponse.from(board(boardType = BoardType.SCRUM)).boardType).isEqualTo("SCRUM")
-            assertThat(BoardResponse.from(board(boardType = BoardType.KANBAN)).boardType).isEqualTo("KANBAN")
+            assertThat(BoardResponse.from(board(boardType = BoardType.SCRUM), noStates).boardType)
+                .isEqualTo("SCRUM")
+            assertThat(BoardResponse.from(board(boardType = BoardType.KANBAN), noStates).boardType)
+                .isEqualTo("KANBAN")
         }
 
         /**
@@ -202,19 +216,19 @@ class BoardResponsesTest {
     inner class WipLimitEcho {
         @Test
         fun `wipLimit null 인 컬럼은 응답 wipLimit 도 null 이다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = null))
+            val response = withCards(placed(wipLimit = null))
             assertThat(response.wipLimit).isNull()
         }
 
         @Test
         fun `wipLimit 3 인 컬럼은 응답 wipLimit 도 3 이다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = 3))
+            val response = withCards(placed(wipLimit = 3))
             assertThat(response.wipLimit).isEqualTo(3)
         }
 
         @Test
         fun `wipLimit 1 인 컬럼은 응답 wipLimit 도 1 이다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = 1))
+            val response = withCards(placed(wipLimit = 1))
             assertThat(response.wipLimit).isEqualTo(1)
         }
     }
@@ -225,37 +239,37 @@ class BoardResponsesTest {
     inner class WipExceeded {
         @Test
         fun `wipLimit 3 카드 5건이면 wipExceeded true 다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = 3, cardCount = 5))
+            val response = withCards(placed(wipLimit = 3, cardCount = 5))
             assertThat(response.wipExceeded).isTrue()
         }
 
         @Test
         fun `wipLimit 3 카드 2건이면 wipExceeded false 다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = 3, cardCount = 2))
+            val response = withCards(placed(wipLimit = 3, cardCount = 2))
             assertThat(response.wipExceeded).isFalse()
         }
 
         @Test
         fun `wipLimit 3 카드 3건이면 같으므로 wipExceeded false 다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = 3, cardCount = 3))
+            val response = withCards(placed(wipLimit = 3, cardCount = 3))
             assertThat(response.wipExceeded).isFalse()
         }
 
         @Test
         fun `wipLimit null 이면 카드가 많아도 wipExceeded false 다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = null, cardCount = 100))
+            val response = withCards(placed(wipLimit = null, cardCount = 100))
             assertThat(response.wipExceeded).isFalse()
         }
 
         @Test
         fun `카드 0건이면 wipExceeded false 다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = 3, cardCount = 0))
+            val response = withCards(placed(wipLimit = 3, cardCount = 0))
             assertThat(response.wipExceeded).isFalse()
         }
 
         @Test
         fun `wipLimit null 카드 0건이면 wipExceeded false 다`() {
-            val response = BoardColumnWithCardsResponse.from(placed(wipLimit = null, cardCount = 0))
+            val response = withCards(placed(wipLimit = null, cardCount = 0))
             assertThat(response.wipExceeded).isFalse()
         }
     }
@@ -426,10 +440,11 @@ class BoardResponsesTest {
             val col = column(wipLimit = 2)
             val cardList = cards(1)
             val placedColumn = PlacedColumn(column = col, cards = cardList)
-            val response = BoardColumnWithCardsResponse.from(placedColumn)
+            val response = withCards(placedColumn)
 
             assertThat(response.columnId).isEqualTo(col.id)
-            assertThat(response.stateKey).isEqualTo(col.stateKey)
+            // 1:1 시절의 `stateKey` 자리다. 이제 배열이고, 컬럼이 담은 키를 순서대로 낸다(R11).
+            assertThat(response.states.map { it.key }).isEqualTo(col.stateKeys)
             assertThat(response.name).isEqualTo(col.name)
             assertThat(response.category).isEqualTo(col.category)
             assertThat(response.displayOrder).isEqualTo(col.displayOrder)
