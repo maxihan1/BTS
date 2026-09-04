@@ -17,13 +17,16 @@ import { issueDetailStrings } from '@/i18n/ko'
 
 /**
  * 활동 탭 value 상수.
- * TabsList 렌더 순서(작업로그 → 연결 → 이력 → 댓글)와 일치한다.
+ * TabsList 렌더 순서(댓글 → 이력 → 작업로그 → 연결)와 일치한다.
+ *
+ * ★순서가 Jira Cloud 의 Activity 필터 순서다(J3) — Comments · History · Work log.
+ * 「연결」은 Jira 에 대응이 없는 BTS 고유 탭이라 끝에 둔다.
  */
 export const ACTIVITY_TABS = {
+  COMMENT: 'comment',
+  HISTORY: 'history',
   WORKLOG: 'worklog',
   LINKS: 'links',
-  HISTORY: 'history',
-  COMMENT: 'comment',
 } as const
 
 /** ACTIVITY_TABS 값 유니온 타입 */
@@ -81,7 +84,14 @@ export interface IssueActivityTabsProps {
  * 이슈 상세 활동 영역(작업로그/연결/이력)을 Radix Tabs 3탭으로 접는 컨테이너.
  *
  * - 같은 라우트 내 패널 전환(ADR §D4 정본) — uncontrolled `defaultValue`, URL 미동기화.
- * - 기본 활성 탭=이력(변경 이력은 생성 이벤트가 항상 있어 빈 첫인상 회피, Maxi 게이트 D1).
+ * - 기본 활성 탭=**댓글**.
+ *
+ *   ★2026-09-04 에 「이력」에서 번복했다. 원래 근거는 「변경 이력은 생성 이벤트가 항상 있어 빈
+ *   첫인상을 회피한다」(Maxi 게이트 D1)였다. Jira Cloud 실물이 "By default the activity feed shows
+ *   comments"(J3, `what-are-the-different-types-of-activity-on-an-issue`, 2026-09-04 조회)라
+ *   패리티를 택했다. 빈 첫인상 우려는 유효하지만, 이슈를 열었을 때 가장 먼저 보고 싶은 것이
+ *   「누가 뭐라 했나」라는 판단이 그보다 앞선다. `jira-parity-roadmap.md` 의 `F7 댓글 기본탭` 이
+ *   이 변경으로 닫힌다.
  * - 비활성 탭 콘텐츠는 Radix 기본 동작(lazy)대로 언마운트 — 연결/이력 탭은 활성 시점에 fetch된다.
  * - 각 하위 섹션에 전달하는 props는 기존 route 배선과 동일하게 verbatim 보존한다.
  *
@@ -107,7 +117,7 @@ export function IssueActivityTabs({
   return (
     <Tabs
       value={value}
-      defaultValue={value === undefined ? ACTIVITY_TABS.HISTORY : undefined}
+      defaultValue={value === undefined ? ACTIVITY_TABS.COMMENT : undefined}
       onValueChange={(next) => {
         const tab = toActivityTab(next)
         if (tab !== null) onValueChange?.(tab)
@@ -115,19 +125,27 @@ export function IssueActivityTabs({
       className="mt-8"
     >
       <TabsList>
+        <TabsTrigger value={ACTIVITY_TABS.COMMENT}>
+          {issueDetailStrings.activityCommentTabLabel}
+        </TabsTrigger>
+        <TabsTrigger value={ACTIVITY_TABS.HISTORY}>
+          {issueDetailStrings.activityHistoryTabLabel}
+        </TabsTrigger>
         <TabsTrigger value={ACTIVITY_TABS.WORKLOG}>
           {issueDetailStrings.activityWorklogTabLabel}
         </TabsTrigger>
         <TabsTrigger value={ACTIVITY_TABS.LINKS}>
           {issueDetailStrings.activityLinksTabLabel}
         </TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TABS.HISTORY}>
-          {issueDetailStrings.activityHistoryTabLabel}
-        </TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TABS.COMMENT}>
-          {issueDetailStrings.activityCommentTabLabel}
-        </TabsTrigger>
       </TabsList>
+
+      <TabsContent value={ACTIVITY_TABS.COMMENT}>
+        <CommentSection issueKey={issueKey} canUpdate={canUpdate} focusRef={commentInputRef} />
+      </TabsContent>
+
+      <TabsContent value={ACTIVITY_TABS.HISTORY}>
+        <IssueChangelog issueKey={issueKey} refs={changelogRefs} />
+      </TabsContent>
 
       <TabsContent value={ACTIVITY_TABS.WORKLOG}>
         <WorklogSection issueKey={issueKey} canUpdate={canUpdate} />
@@ -145,14 +163,6 @@ export function IssueActivityTabs({
           <EpicChildrenSection epicKey={issueKey} disabled={!canUpdate} />
         )}
         <LinkGraph issueKey={issueKey} />
-      </TabsContent>
-
-      <TabsContent value={ACTIVITY_TABS.HISTORY}>
-        <IssueChangelog issueKey={issueKey} refs={changelogRefs} />
-      </TabsContent>
-
-      <TabsContent value={ACTIVITY_TABS.COMMENT}>
-        <CommentSection issueKey={issueKey} canUpdate={canUpdate} focusRef={commentInputRef} />
       </TabsContent>
     </Tabs>
   )

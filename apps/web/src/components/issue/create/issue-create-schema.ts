@@ -4,13 +4,20 @@ import { issueCreateStrings } from '@/i18n/ko'
 import type { CreateIssueInput, CustomFieldValues } from '@/api/issues'
 
 /**
- * 이슈 제목(summary) 최대 길이 — zod 검증과 URL summary 프리필 clamp(FR-UX-04 FR7)가 공유.
+ * 이슈 제목(summary) 최대 길이 — zod 검증 · URL summary 프리필 clamp(FR-UX-04 FR7) ·
+ * 상세 화면 제목 편집 `maxLength` 가 공유한다.
  *
- * ★백엔드 `CreateIssueRequest.summary` 가 `@Size(max = 200)` 다. 프론트가 500 을 허용하던 동안
- * 201~500자 제목은 **프론트 검증을 통과한 뒤 백엔드 400** 을 맞았다(선재 결함).
- * FR-UX-09 F2 에서 200 으로 정렬한다.
+ * ## 200 → 255 (2026-09-04, Jira 패리티)
+ *
+ * FR-UX-09 F2 는 프론트(500)를 **백엔드(200)에 맞춰** 봉합했다. 그때 200 자체가 DB
+ * `VARCHAR(255)`·도메인 `require(<=255)` 보다 좁다는 것은 되재지 않았고, 그래서 「클론으로는
+ * 255자 제목을 만들 수 있는데 그 이슈를 열어 저장하면 400」이라는 비대칭이 남아 있었다.
+ *
+ * 이번에는 반대 방향으로 **백엔드를 Jira 값에 맞췄다** — Jira Cloud 는 255 이고 변경 불가다
+ * ("The 255 character limit is for single-line text fields, like Summary. You can not change it.",
+ * 2026-09-04 조회). 백엔드 단일 출처는 `IssueTextConstraints.SUMMARY_MAX`.
  */
-export const SUMMARY_MAX_LENGTH = 200
+export const SUMMARY_MAX_LENGTH = 255
 
 /** 기본 우선순위 — 백엔드 도메인 기본값(3, Medium)과 같은 값이다. */
 export const DEFAULT_PRIORITY = 3

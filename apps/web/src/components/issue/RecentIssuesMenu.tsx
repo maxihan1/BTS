@@ -1,6 +1,7 @@
 // 사이드바 "최근 항목" 섹션 — 최근 본 이슈 MRU 렌더 + 제목 마운트 조회 + 403/404 자동 탈락 (FR-UX-08 PR-B Task 6, FR13/FR13-b)
 import { type JSX } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import { useQueries } from '@tanstack/react-query'
 import { fetchIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
@@ -71,6 +72,7 @@ const RECENT_LINK_CLASS =
  * 적중한다(스펙 L2 완화).
  */
 export function RecentIssuesMenu(): JSX.Element | null {
+  const openIssueDetail = useOpenIssueDetail()
   const recentIssueKeys = useRecentIssues((s) => s.recentIssueKeys)
   const railCollapsed = useSidebarRailCollapsed()
 
@@ -105,7 +107,12 @@ export function RecentIssuesMenu(): JSX.Element | null {
       <ul aria-label={navLabels.recent} className="flex flex-col gap-0.5">
         {visible.map(({ key, issue }) => (
           <li key={key}>
-            <Link to="/issues/$key" params={{ key }} className={RECENT_LINK_CLASS}>
+            <Link
+              to="/issues/$key"
+              params={{ key }}
+              className={RECENT_LINK_CLASS}
+              onClick={(e) => { openIssueDetail(key, e) }}
+            >
               {`${key} ${issue.summary}`}
             </Link>
           </li>

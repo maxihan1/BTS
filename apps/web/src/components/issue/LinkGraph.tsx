@@ -1,7 +1,7 @@
 // 이슈 링크 그래프 시각화 컴포넌트 — mermaid flowchart + 5상태 + depth + 노드 클릭 내비게이션 (FR-LK-02 D6)
 import type { JSX, ChangeEvent } from 'react'
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { useIssueGraph, extractGraphErrorCode, ISSUE_GRAPH_ERROR_CODES } from '@/api/issue-graph'
 import type { IssueGraphResponse } from '@/api/issue-graph'
 import { generateGraphMermaidCode } from '@/components/issue/link-graph-mermaid'
@@ -108,7 +108,9 @@ function GraphRenderer({
   onRenderSuccess,
 }: GraphRendererProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null)
-  const navigate = useNavigate()
+  // 그래프 노드 클릭은 상세 모달로 간다(J1). 이 그래프 자체가 상세 안에 있으므로
+  // 모달이 열려 있으면 같은 모달이 다른 이슈로 갈아탄다 — 스토어가 키 하나를 소유하기 때문이다.
+  const openIssueDetailModal = useIssueDetailModalStore((s) => s.open)
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -144,7 +146,7 @@ function GraphRenderer({
         containerRef.current.innerHTML = svg
 
         // 노드 클릭/a11y 바인딩
-        bindNodeHandlers(containerRef.current, idToKey, centerKey, navigate)
+        bindNodeHandlers(containerRef.current, idToKey, centerKey, openIssueDetailModal)
 
         onRenderSuccess()
       } catch (err) {
@@ -163,7 +165,7 @@ function GraphRenderer({
     // code 변경 시에만 재렌더한다.
     // - idToKey는 GraphContent의 useMemo에서 code와 함께 생성되므로 code와 동기화된다.
     // - centerKey는 issueKey prop에서 오므로 code 변경 시 함께 최신 값이 capture된다.
-    // - navigate는 TanStack Router가 안정 참조를 보장한다.
+    // - openIssueDetailModal 은 zustand 액션이라 참조가 안정적이다.
     // - onRenderError/onRenderSuccess는 GraphContent의 useCallback으로 안정화된다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code])
@@ -192,13 +194,13 @@ function GraphRenderer({
  * @param container SVG가 주입된 컨테이너 div
  * @param idToKey sanitizedId → 이슈 키 역매핑
  * @param centerKey 현재 이슈 키 (클릭 no-op)
- * @param navigate TanStack Router navigate 함수
+ * @param openIssueDetailModal 이슈 상세 모달을 여는 함수 (J1)
  */
 function bindNodeHandlers(
   container: HTMLDivElement,
   idToKey: Record<string, string>,
   centerKey: string,
-  navigate: ReturnType<typeof useNavigate>,
+  openIssueDetailModal: (issueKey: string) => void,
 ): void {
   const nodeEls = container.querySelectorAll<SVGGElement>('g.node')
 
@@ -225,13 +227,13 @@ function bindNodeHandlers(
 
       // 클릭 핸들러
       nodeEl.addEventListener('click', () => {
-        void navigate({ to: '/issues/$key', params: { key: issueKey } })
+        openIssueDetailModal(issueKey)
       })
 
       // Enter 키다운 핸들러 (CONCERN C2)
       nodeEl.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter') {
-          void navigate({ to: '/issues/$key', params: { key: issueKey } })
+          openIssueDetailModal(issueKey)
         }
       })
     }

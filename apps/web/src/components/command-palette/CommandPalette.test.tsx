@@ -16,6 +16,7 @@ import {
 import { DEFAULT_SEARCH_PAGE, makeSearchPage } from '@/mocks/search-fixtures'
 import { CommandPalette } from './CommandPalette'
 import { QUICK_LINKS, COMMANDS } from './commands'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 
 // jsdom은 scrollIntoView를 구현하지 않는다 — cmdk Command.Item이 활성 항목 변경 시
 // 내부적으로 호출하므로(cmdk 소스 `ne()`), 이 파일 범위에서만 no-op stub을 등록한다.
@@ -58,6 +59,8 @@ function renderPalette() {
 }
 
 beforeEach(() => {
+  // 모달 스토어는 모듈 전역이라 테스트 간에 새지 않도록 매번 닫는다.
+  useIssueDetailModalStore.setState({ openKey: null })
   // `src/test/handlers.ts` 기본 목록은 auth refresh 하나뿐이라 BC 핸들러를 파일마다 등록한다
   // (저장소 관례 — CreateIssueDialog.test.tsx 등). 빼먹으면 미핸들 에러가
   // 「검색에 실패했습니다.」로 둔갑해 거짓 신호를 진짜로 착각하게 만든다.
@@ -100,7 +103,7 @@ describe('CommandPalette', () => {
     await user.type(input, '/goto PROJ-12')
     await user.keyboard('{Enter}')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'PROJ-12' } })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('PROJ-12')
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
@@ -268,7 +271,7 @@ describe('CommandPalette — 실체 검색 (FR-UX-12 F4)', () => {
 
     await user.keyboard('{Enter}')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-1' } })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-1')
   })
 
   it('자유 텍스트 입력 시 결과 목록이 뜬다 (S4)', async () => {
@@ -343,7 +346,7 @@ describe('CommandPalette — 실체 검색 (FR-UX-12 F4)', () => {
     })
     await user.keyboard('{Enter}')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-1' } })
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-1')
   })
 
   it('★검색이 끝나기 전에는 「모든 결과 보기」를 먼저 띄우지 않는다 (선택 가로채기 차단 기전)', async () => {

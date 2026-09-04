@@ -9,6 +9,7 @@ import { cardDroppableId } from '@/lib/backlog-drag'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import type { BacklogIssue } from '@/api/backlog'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,6 +157,7 @@ function BacklogCardInner({
   typeIconName,
   typeName,
 }: BacklogCardProps) {
+  const openIssueDetail = useOpenIssueDetail()
   const resolvedSprintId = sprintId ?? null
 
   const dragData: BacklogDragData = {
@@ -222,6 +224,8 @@ function BacklogCardInner({
           if (isDragging) {
             e.preventDefault()
           }
+          // 평범한 좌클릭이면 모달로 가로챈다(J1). BoardCard 와 같은 형태다.
+          openIssueDetail(issue.key, e)
         }}
       >
         {issue.summary}

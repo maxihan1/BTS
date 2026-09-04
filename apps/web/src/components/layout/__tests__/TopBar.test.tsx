@@ -8,6 +8,7 @@ import { useAuthStore } from '@/auth/authStore'
 import { navLabels } from '@/i18n/nav-labels'
 import { issueCreateStrings } from '@/i18n/ko'
 import { inboxLabels } from '@/i18n/inbox-labels'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { TopBar } from '../TopBar'
 
 // TanStack Router useNavigate + Link 모킹 — 라우터 컨텍스트 없이 단위 테스트 가능 (Header.test.tsx 동일 패턴)
@@ -79,6 +80,8 @@ function renderTopBar(props: { onHelpClick?: () => void } = {}) {
 }
 
 beforeEach(() => {
+  // 모달 스토어는 모듈 전역이라 테스트 간에 새지 않도록 매번 닫는다.
+  useIssueDetailModalStore.setState({ openKey: null })
   mockNavigate.mockReset()
   mockToggle.mockReset()
   mockUseSidebarCollapsed.mockReset()
@@ -138,7 +141,8 @@ describe('TopBar', () => {
 
     await user.type(screen.getByRole('searchbox', { name: navLabels.globalSearch }), 'atlas-42{Enter}')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/$key', params: { key: 'ATLAS-42' } })
+    // ★J1 — 이슈 키 입력은 navigate 가 아니라 상세 모달을 연다. 보던 화면을 잃지 않는다.
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-42')
   })
 
   it('F13 S3 — AQL 문법은 원문 그대로 보낸다', async () => {

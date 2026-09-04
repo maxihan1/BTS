@@ -35,6 +35,7 @@ vi.mock('@/hooks/use-custom-fields', () => ({
 }))
 
 import { useCustomFields } from '@/hooks/use-custom-fields'
+import { SUMMARY_MAX_LENGTH } from '@/components/issue/create/issue-create-schema'
 
 const EMPTY_CUSTOM_FIELDS_RESULT = {
   data: [] as CustomField[],
@@ -546,13 +547,14 @@ describe('IssueCreateForm', () => {
       expect(screen.getByLabelText('제목')).toHaveValue('공백 포함 제목')
     })
 
-    it('FR7-4: URL summary가 200자를 넘으면 zod max(200)에 맞춰 잘린다', () => {
-      // FR-UX-09 F2 — 백엔드 @Size(max = 200) 와 정렬하면서 상한이 500 → 200 이 됐다.
-      mockUseSearch.mockReturnValue({ summary: 'a'.repeat(600) })
+    it('FR7-4: URL summary가 상한을 넘으면 zod max 에 맞춰 잘린다', () => {
+      // ★숫자를 여기 적지 않는다. 상한이 500 → 200 → 255 로 두 번 움직였고, 그때마다
+      //   하드코딩한 이 테스트가 무관하게 깨졌다. 상수에서 파생시키면 따라 움직인다.
+      mockUseSearch.mockReturnValue({ summary: 'a'.repeat(SUMMARY_MAX_LENGTH + 400) })
 
       renderRouteAdapter()
 
-      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(200))
+      expect(screen.getByLabelText('제목')).toHaveValue('a'.repeat(SUMMARY_MAX_LENGTH))
     })
 
     /**

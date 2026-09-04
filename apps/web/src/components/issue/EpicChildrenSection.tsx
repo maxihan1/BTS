@@ -14,6 +14,7 @@ import type { EpicChildSummary } from '@/api/epic-children'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { epicChildrenStrings } from '@/i18n/ko'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import { EpicProgressBar, epicProgressKey } from './EpicProgressBar'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,6 +60,8 @@ interface ChildRowProps {
  * 이슈 키(링크 스타일) + 요약 + 상태 칩 + (typeKey가 있을 때만) 타입 칩 + 해제 버튼.
  */
 function ChildRow({ child, disabled, onDisconnect }: ChildRowProps): JSX.Element {
+  const openIssueDetail = useOpenIssueDetail()
+
   return (
     <li
       className="flex items-center justify-between gap-2 py-1.5 border-b border-border last:border-b-0"
@@ -70,6 +73,7 @@ function ChildRow({ child, disabled, onDisconnect }: ChildRowProps): JSX.Element
           href={`/issues/${child.key}`}
           className="text-sm font-medium text-primary hover:underline shrink-0"
           aria-label={child.key}
+          onClick={(e) => { openIssueDetail(child.key, e) }}
         >
           {child.key}
         </a>

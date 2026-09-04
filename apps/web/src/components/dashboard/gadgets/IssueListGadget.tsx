@@ -1,6 +1,7 @@
 // 이슈 목록 가젯 — assigned_to_me/recently_created/filter_result 공용 (FR-DB-02 D6/D7 Task-5)
 import type { JSX } from 'react'
 import { Link } from '@tanstack/react-router'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import { useGadgetData } from './useGadgetData'
 import type { GadgetConfig } from './gadget-types'
 
@@ -36,6 +37,7 @@ export interface IssueListGadgetProps {
  * - 타일 본문 영역에 맞는 컴팩트 레이아웃.
  */
 export function IssueListGadget({ gadgetType, config }: IssueListGadgetProps): JSX.Element {
+  const openIssueDetail = useOpenIssueDetail()
   const { isLoading, isError, rows } = useGadgetData(gadgetType, config)
 
   if (isLoading) {
@@ -71,6 +73,7 @@ export function IssueListGadget({ gadgetType, config }: IssueListGadgetProps): J
             to="/issues/$key"
             params={{ key: row.key }}
             className="text-xs font-mono text-muted-foreground hover:text-primary hover:underline shrink-0"
+            onClick={(e) => { openIssueDetail(row.key, e) }}
           >
             {row.key}
           </Link>

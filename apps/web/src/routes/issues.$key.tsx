@@ -30,6 +30,8 @@ import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
+import { SUMMARY_MAX_LENGTH } from '@/components/issue/create/issue-create-schema'
+import type { ChangelogRefs } from '@/lib/changelog-labels'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
 import { AmbiguousTransitionPrompt } from '@/components/issue/meta/AmbiguousTransitionPrompt'
@@ -200,6 +202,29 @@ interface IssueDetailPageProps {
  */
 function transitionIdOf(transition: IssueTransition): string | undefined {
   return transition.transitionId ?? undefined
+}
+
+/**
+ * 변경 이력의 값 표시명을 해석하는 데 필요한 참조 묶음을 조립한다.
+ *
+ * `IssueDetailPage` 안의 인라인 객체였다. 활동 탭을 본문 컬럼 안으로 옮기면서 들여쓰기가
+ * 깊어져 `lint-ratchet` 의 200줄 래칫(동결 1013)을 넘겼고, 래칫이 요구한 대로 쪼갰다 —
+ * 베이스라인 숫자를 올리는 것은 부채를 늘리는 쪽이라 택하지 않았다.
+ */
+function buildChangelogRefs(
+  types: ChangelogRefs['types'],
+  components: ChangelogRefs['components'],
+  versions: ChangelogRefs['versions'],
+  customFieldDefinitions: ChangelogRefs['customFieldDefinitions'],
+): ChangelogRefs {
+  return {
+    types,
+    components,
+    versions,
+    priorityMap: issueDetailStrings.priorityNames as Record<number, string>,
+    impactMap: issueDetailStrings.impactNames as Record<number, string>,
+    customFieldDefinitions,
+  }
 }
 
 export function IssueDetailPage({
@@ -970,6 +995,8 @@ export function IssueDetailPage({
     issue.summary
   )
 
+  const changelogRefs = buildChangelogRefs(availableTypes, projectComponents, projectVersions, customFieldDefinitions)
+
   // ── 성공 레이아웃 ─────────────────────────────────────────────────────────
   return (
     <div className="max-w-[960px] mx-auto px-6 py-10">
@@ -1030,6 +1057,8 @@ export function IssueDetailPage({
                 value={editSummary}
                 onChange={(e) => setEditSummary(e.target.value)}
                 onKeyDown={handleTitleKeyDown}
+                // ★상한이 **아예 없었다** — 생성 폼에만 zod 검증이 있어 저장 시점에야 400 이었다.
+                maxLength={SUMMARY_MAX_LENGTH}
                 className="text-xl font-semibold"
               />
               <div className="flex gap-2">
@@ -1091,6 +1120,18 @@ export function IssueDetailPage({
 
           {/* 첨부 파일 섹션 — IssueDescription 하단 (FR-AC-01 D6) */}
           <AttachmentSection issueKey={issue.key} canUpdate={canEdit} />
+
+          {/* 활동(댓글/이력/작업로그/연결) — 본문 컬럼 **안**, 첨부 아래 (J2). grid 바깥
+              전체폭이던 FR-UX-06 PR19 배치를 되돌렸다 — 근거는 IssueActivityTabs KDoc. */}
+          <IssueActivityTabs
+            issueKey={issue.key}
+            canUpdate={canEdit}
+            issue={issue}
+            changelogRefs={changelogRefs}
+            value={activityTab}
+            onValueChange={setActivityTab}
+            commentInputRef={commentInputRef}
+          />
         </section>
 
         {/* 우측 메타패널 + 삭제 확인 UI */}
@@ -1168,24 +1209,6 @@ export function IssueDetailPage({
           </div>
         )}
       </div>
-
-      {/* 활동 영역(작업로그/연결/이력) — Radix Tabs 3탭, 2단 grid 바깥 전체폭 (FR-UX-06 PR19 Task 1) */}
-      <IssueActivityTabs
-        issueKey={issue.key}
-        canUpdate={canEdit}
-        issue={issue}
-        changelogRefs={{
-          types: availableTypes,
-          components: projectComponents,
-          versions: projectVersions,
-          priorityMap: issueDetailStrings.priorityNames as Record<number, string>,
-          impactMap: issueDetailStrings.impactNames as Record<number, string>,
-          customFieldDefinitions,
-        }}
-        value={activityTab}
-        onValueChange={setActivityTab}
-        commentInputRef={commentInputRef}
-      />
 
       {/* DONE 전환 시 Resolution 선택 모달 (B9) */}
       <ResolutionModal

@@ -1,5 +1,6 @@
 // 알림 보관함 단건 항목 컴포넌트 — 제목/발신자/생성시각/읽음강조/버튼/issueKey 링크 (FR-UX-03 D6/D7)
 import { Link } from '@tanstack/react-router'
+import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import type { InboxItem } from '@/api/inbox'
 import { inboxLabels } from '@/i18n/inbox-labels'
 import { useDateFormat } from '@/hooks/use-date-format'
@@ -56,6 +57,7 @@ export const InboxListItem = ({
   onToggleRead,
   onToggleArchive,
 }: InboxListItemProps) => {
+  const openIssueDetail = useOpenIssueDetail()
   const { formatDateTime } = useDateFormat()
   const isUnread = item.readAt === null
   const isArchived = item.archivedAt !== null
@@ -101,6 +103,7 @@ export const InboxListItem = ({
             to="/issues/$key"
             params={{ key: item.issueKey }}
             className="font-medium text-primary hover:underline"
+            onClick={(e) => { openIssueDetail(item.issueKey as string, e) }}
           >
             {item.issueKey}
           </Link>

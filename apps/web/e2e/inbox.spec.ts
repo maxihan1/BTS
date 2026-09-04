@@ -370,12 +370,15 @@ test.describe('FR-UX-03 개인 알림 보관함 (InboxPage)', () => {
   // Given   alice로 로그인, /inbox 진입, 전체 탭
   //         ATLAS-1 항목에 issueKey 링크 표시
   // When    ATLAS-1 issueKey 링크 클릭
-  //         → SPA 내부 이동 (/issues/ATLAS-1)
-  // Then    URL이 /issues/ATLAS-1로 변경됨 (SPA Link — page.reload 없이)
+  //         → ATLAS-1 상세 **모달**이 열린다
+  // Then    모달이 뜨고 URL 은 /inbox 그대로다
   //
-  // Note: page.reload() 금지 (MSW store 리셋). URL 변경만 검증 (이슈 상세 렌더는 타 E2E 커버)
+  // ★2026-09-04 계약 번복(Jira 패리티 J1). 종전엔 `/issues/ATLAS-1` 전체 페이지 이동이었다.
+  //   `InboxListItem` 이 `useOpenIssueDetail` 로 바뀌어 URL 이 움직이지 않는다 —
+  //   옛 `waitForURL` 단언은 이 변경을 잡지 못하고 타임아웃으로만 죽는다.
+  //   Note: page.reload() 금지 (MSW store 리셋).
   // ───────────────────────────────────────────────────────────────────────────
-  test('E2E-8 issueKey 링크 — 클릭 시 이슈 상세 SPA 이동', async ({ page }) => {
+  test('E2E-8 issueKey 링크 — 클릭 시 이슈 상세 모달이 열린다', async ({ page }) => {
     // Given. /inbox SPA 내부 이동
     await navigateToInbox(page)
 
@@ -386,9 +389,11 @@ test.describe('FR-UX-03 개인 알림 보관함 (InboxPage)', () => {
     // When. issueKey 링크 클릭
     await issueLink.click()
 
-    // Then. URL이 /issues/ATLAS-1로 변경됨 (TanStack Router SPA 이동)
-    await page.waitForURL(`**/issues/${FIXTURE_UNREAD_ISSUE_KEY}`)
-    expect(page.url()).toContain(`/issues/${FIXTURE_UNREAD_ISSUE_KEY}`)
+    // Then. ATLAS-1 상세 모달이 열린다 (URL 은 /inbox 그대로)
+    await expect(
+      page.getByRole('dialog', { name: `이슈 상세 ${FIXTURE_UNREAD_ISSUE_KEY}` }),
+    ).toBeVisible()
+    expect(page.url()).not.toContain(`/issues/${FIXTURE_UNREAD_ISSUE_KEY}`)
   })
 
   // ───────────────────────────────────────────────────────────────────────────

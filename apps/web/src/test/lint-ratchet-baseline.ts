@@ -33,7 +33,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/issues/NodeMappingSection.tsx::Function 'NodeMappingSection'": 232,
   "src/components/search/ExportDialog.tsx::Function 'ExportForm'": 334,
   "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 332,
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1013,
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1011,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
   //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다

@@ -7,6 +7,7 @@ import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { useKeyboardShortcuts } from '@/components/keyboard-shortcuts/useKeyboardShortcuts'
 import { ShortcutsHelpDialog } from '@/components/keyboard-shortcuts/ShortcutsHelpDialog'
 import { LoginDialog } from '@/auth/LoginDialog'
+import { IssueDetailModal } from '@/components/issue/IssueDetailModal'
 
 export const RootLayout = () => {
   // 경로 기반 분기 대신 인증 상태로 분기 — 의미적으로 정확하며 /login 외에 미래 공개 라우트도 자동 처리
@@ -31,6 +32,9 @@ export const RootLayout = () => {
       {/* 로그인 모달은 미인증일 때만 스스로 열린다 — 여기서 조건부 렌더하면 세션 만료 시
           현재 화면을 유지한 채 뜨는 경로가 끊긴다. 열림 판정은 LoginDialog 가 소유한다. */}
       <LoginDialog />
+      {/* 이슈 상세 모달 — 진입점 13곳이 스토어 하나를 공유하므로 마운트도 여기 하나뿐이다(J1).
+          미인증이면 열릴 일이 없어 조건부 렌더가 필요 없다 — 열림 판정은 스토어가 소유한다. */}
+      <IssueDetailModal />
       <Outlet />
     </div>
   )
