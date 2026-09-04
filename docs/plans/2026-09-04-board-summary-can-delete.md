@@ -289,6 +289,248 @@ GET /api/v1/boards?projectKey={key}
 
 **PR 분할 필요 없음.** gap 이 2회째 반복되지 않았고, 세 축이 파일 교집합 0 이라 한 PR 로 초록이 선다.
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+> **Jira 매핑** (§1-7 차집합 대조) — `J4 → Task 1` · `J5 → Task 1 · Task 3`. 채택 2건 전량이 task 에
+> 물렸고 범위 밖 항목은 0건이다. J4·J5 의 **소비 지점**(사이드바 보드 행 `⋯` 렌더)은 PR ⑨ 이지만,
+> 두 항목이 요구하는 **데이터 계약**은 이 PR 이 전부 놓는다.
+
+### Task 1. 목록 응답에 `canDelete` — 권한 판정 1회로 N건을 덮는다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardControllerIntegrationTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/dto/BoardResponsesTest.kt`]
+- depends-on: []
+- jira: [J4, J5]
+
+**RED** — 🛑 **커밋 2개로 쪼갠다.** Kotlin 은 테스트 **컴파일**이 깨지면 그 모듈의 테스트가
+하나도 안 돈다. 한 커밋에 뭉치면 「단언이 빨갛다」가 「컴파일이 빨갛다」에 삼켜져 red-first
+대조가 무의미해진다.
+
+*커밋 ① `test:` — 단언 red (컴파일은 통과).* `BoardControllerIntegrationTest.kt`.
+하네스 `PermissionGate`(`:177`)를 그대로 쓴다 — 신규 모킹 불필요.
+
+| 테스트 | 내용 | 예상 실패 | 원형 |
+|---|---|---|---|
+| **LIST-4** | 목록 각 항목에 `canDelete` — 보드 **2건**, 둘 다 `true` | `No value at JSON path $.data[0].canDelete` | LIST-3 `:624-642` 형 |
+| **LIST-5** | `permissionGate.denied.add(SOFT_DELETE)` 면 전 항목 `false` (BROWSE 는 통과) | 동상 | CANDEL-1 `:1755`/`:1771` |
+| **LIST-6** | **N+1 판별식** — 보드 2건이어도 `permissionGate.calls` 가 정확히 `[BROWSE, SOFT_DELETE]` | 현재 1건 | — |
+| **LIST-1 수정** | `:606-607` `containsExactly(BROWSE)` → `containsExactly(BROWSE, SOFT_DELETE)` | 현재 1건 | — |
+
+★ **LIST-4·LIST-6 은 보드 2건 이상이어야 비-공허하다** (스펙 E8). 1건이면 「1회」와 「N회」가
+구분되지 않는다.
+★ **LIST-1 수정을 이 커밋에 넣는 것이 핵심이다.** `feat:` 로 미루면 그 커밋이 「초록으로 만든 것」과
+「깨서 고친 것」을 섞어 대조가 흐려진다. `test:` 시점의 LIST-1 red 가 곧 *「이 PR 은 판정을 1회 더
+한다」* 는 선언이다.
+★ 전수 스윕 결과 **깨지는 기존 단언은 LIST-1 하나뿐**이다. 같은 파일의 다른 `permissionGate.calls`
+단언 12곳은 전부 다른 엔드포인트고, ERR-1(`:1668`)은 목록 경로지만 calls 단언이 없다.
+
+*커밋 ② `test:` — 컴파일 red.* `BoardResponsesTest.kt` `ExistingFieldsPreserved`(`:423` 부근)에 3건.
+기존 4필드 유지 · `from(board, true/false)` 가 인자를 그대로 싣는다 · **기본값이 `false`**(fail-closed).
+
+**GREEN** — 커밋 ③ `feat:`.
+- `BoardResponses.kt:161-176` — `val canDelete: Boolean` + KDoc.
+  `companion fun from(board: Board, canDelete: Boolean = false)`. 기본값 `false` 는 fail-closed
+  선례(`BoardDetailResponse.of` `:317`).
+- `BoardController.kt:184-195` — BROWSE 게이트(`:190`) **직후**
+  `val canDelete = permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(projectKey))`,
+  이어서 `:192` 의 `.map(BoardSummaryResponse::from)` → `.map { BoardSummaryResponse.from(it, canDelete) }`.
+- **보드 0건이어도 무조건 판정한다** (스펙 FR-4 · E1). 비면 건너뛰게 하면 `permissionGate.calls` 가
+  데이터 의존이 되어 테스트가 취약해진다.
+
+> 🛑 **컴파일러가 안 잡는 자리.** 기본값 `= false` 때문에 `.map(BoardSummaryResponse::from)` 을
+> **고치지 않아도 그대로 컴파일된다.** 호출부를 빠뜨리면 응답이 전량 `canDelete=false` 인데
+> 컴파일러도 detekt 도 침묵한다. **LIST-4 만이 그것을 잡는다** — `feat:` 후 LIST-4 초록을
+> 눈으로 확인할 것.
+
+**REFACTOR**: `@return` KDoc 갱신 + **클래스 KDoc 색인**(`BoardControllerIntegrationTest.kt:91-93`)에
+LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔다.
+
+**검증**: `backend/gradlew :modules:agile-planning:test ktlintCheck detekt`
+
+### Task 2. 보드 e2e 셀렉터를 컨테이너로 좁힌다 (R10)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/e2e/fixtures/board-helpers.ts`, `apps/web/e2e/board-manage.spec.ts`, `apps/web/e2e/scrum-board.spec.ts`]
+- depends-on: []
+
+**RED** — 🛑 **리팩터 트랙이라 red-first 가 성립하지 않는다.** 지금은 중복이 없어 unscoped 셀렉터도
+초록이다. red 는 **「일부러 끊기」**로 산다 (아래 REFACTOR 절). 이 예외 사유를 여기 남기는 것은
+`spec-compliance-verifier` 가 `git log` 에서 `test:` → `feat:` 순서를 대조하기 때문이다 —
+이 task 는 그 패턴에 해당하지 않는다.
+
+**동반 테스트 (RED 대체)** — 컨테이너 실재 단언 **2줄 신설**.
+`board-manage.spec.ts` 진입 직후와 `scrum-board.spec.ts` S2(`:191` 옆)에
+`await expect(boardHeader(page)).toBeVisible()`.
+
+> ★ 이게 없으면 testid 오타 시 `getByTestId(...).getByRole(...)` 이 **count 0** 이 되고,
+> `board-manage.spec.ts:183` 의 `toHaveCount(0)` 은 **그대로 통과한다**(실측 확인함, 스펙 E6).
+> 스코프가 조용히 죽는 유일한 자리를 이 2줄이 막는다.
+
+**GREEN**.
+- `projects.$projectKey.board.tsx` — 보드 헤더 행에 `data-testid="board-header"`.
+  **이 PR 의 유일한 prod UI diff 다.** 접근성 트리 무변경 · 픽셀 무변경.
+- `e2e/fixtures/board-helpers.ts`(기존 파일) — 헬퍼 3종 신설.
+  ```ts
+  boardHeader(page)          = page.getByTestId('board-header')
+  boardActionsTrigger(page)  = boardHeader(page).getByRole('button', { name: /보드 관리/ })
+  boardSwitcherTrigger(page) = boardHeader(page).getByRole('button', { name: /보드 선택/ })
+  ```
+  그 파일은 이미 `boardLabels` 를 import 하고 `src/api/boards.ts` 는 **일부러 피한다**
+  (`import.meta.env` 가 Playwright 런타임에서 죽는다, `:9-13` 에 사유 기재) — import 그래프 위험 0.
+- `board-manage.spec.ts:54-61` · `scrum-board.spec.ts:96-103` — **로컬 헬퍼 4개 삭제 → import**.
+  헬퍼가 두 파일에 복붙돼 있던 것이 애초에 R10 이 2곳인 원인이다.
+
+> 🛑 **정규식을 유지한다.** 접근성 이름이 `보드 관리, {name}` · `보드 선택, 현재 {name}` 이고
+> `board-manage.spec.ts` S3 가 **테스트 중간에 이름을 바꾼다**. `exact` 로 굳히거나
+> `triggerAriaLabel(name)` 을 직접 부르면 rename 단계에서 죽는다 (스펙 E7).
+
+**REFACTOR** — **일부러 끊기 1회.** `data-testid` 값을 오타로 바꿔 두 spec 이 red 인지 보고 원복.
+함정 「표면을 없애면 판별자도 사라진다」의 처방이고, 이 task 의 red 관측 지점이다.
+
+**검증**:
+- 기존 E2E: `apps/web/e2e/board-manage.spec.ts` · `apps/web/e2e/scrum-board.spec.ts`
+- 🛑 **worktree 밖(main 체크아웃)에서 돌린다.** 판정 전
+  `grep -c 'outside of Vite serving allow list' <log>` 가 0 이 아니면 그 실행은 무효다.
+- 눈확인: 불필요 — `data-testid` 는 렌더에 영향이 없다. 시각 회귀 0.
+
+### Task 3. `boardSummarySchema` + MSW 목록 조립부에 `canDelete`
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/boards.ts`, `apps/web/src/api/boards.test.ts`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/mocks/board-handlers.test.ts`]
+- depends-on: []
+- jira: [J5]
+
+> **왜 `depends-on: []` 인가.** Kotlin 과 TypeScript 사이에 **코드 의존이 없다** — MSW 가 픽스처를
+> 공급하므로 Task 1 없이도 프론트 테스트가 선다. 계약 정합은 Task 4 가 기계로 잰다.
+
+**RED** — 커밋 ④ `test:`.
+- `boards.test.ts` — T-BD-20 블록 뒤(`:1151`)에 **T-BD-21** 신설. `true`/`false` 파싱 ·
+  **없어도 파싱 성공**하고 `?? false` 로 읽힌다 · boolean 아니면 거부.
+  **T-BD-20b**(`boardType` 은 없으면 **거부**) 바로 옆에 놓아 **두 필드의 필수성이 왜 다른지가
+  한 화면에 보이게** 한다.
+- `board-handlers.test.ts:343` 옆 — `fetchBoards` 결과 `canDelete === true`, **그리고**
+  `seedBoard({...DEFAULT_BOARD, canDelete: false})` 면 `false`.
+  ★ **후자가 필수다.** `true` 만 재면 핸들러가 **상수 `true`** 를 박아도 통과한다.
+  `board-fixtures.ts:76` 이 이미 `canDelete?: boolean` 이라 store 를 실제로 가를 수 있다.
+- `board-handlers.test.ts:54` 로컬 `interface BoardSummary` 에 `canDelete?: boolean` (타입만, red 아님).
+
+**GREEN** — 커밋 ⑤ `feat:`.
+- `api/boards.ts:31-44` — `canDelete: z.boolean().optional()` + KDoc.
+  KDoc 에 **`boardType` 과 필수성이 갈리는 이유**를 못박는다 (스펙 C-2) — `boardType` 은 없으면
+  그 자체가 결함이고 기본값으로 때우면 스크럼이 칸반으로 오인되지만, `canDelete` 는 없으면
+  **「삭제 못 함」이 옳은 해석**이라 기본값이 fail-closed 와 일치한다.
+- `api/boards.ts:206` · `boards.test.ts:866` — 「목록에는 없고 단건만」 주석 정정 →
+  「양쪽. 소비처는 PR ⑨ 사이드바 보드 `⋯`」.
+- `mocks/board-handlers.ts:379-395` — `canDelete: canDelete ?? true`
+  (`toResponseDetail:312` 와 **같은 기본값**, 스펙 E5).
+
+**REFACTOR** — 목록 조립을 `toResponseSummary(stored)` 로 뽑아 `toResponseDetail` **바로 옆**에 둔다.
+`:389-390` 의 「다른 조립부라 상세만 고치면 스위처가 죽는다」 경고가 「같은 파일의 형제 함수」로
+격하된다.
+
+**검증**: `apps/web/node_modules/.bin/vitest run src/api src/mocks/board-handlers.test.ts`
+· 인라인 픽스처 9곳 무변경 확인(`.optional()` 선택의 직접 이득)
+
+### Task 4. 백엔드 DTO ↔ zod ↔ MSW 3-way 정합 판별식
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/__tests__/board-summary-parity.test.ts`]
+- depends-on: [1, 3]
+
+> **왜 필요한가** (스펙 C-3). `.optional()` 을 고르는 순간 **런타임 파싱이 백엔드 누락을 못 잡는다.**
+> 세 목록이 서로를 모르는 상태는 이 저장소가 이미 이름 붙인 지배 결함 양식이고,
+> `board-handlers.ts:389-390` 이 그 사고를 **주석으로** 이미 경고하고 있다 — 주석은 다음 필드
+> 추가 때 읽히지 않는다.
+
+**RED**: 신설 `apps/web/src/api/__tests__/board-summary-parity.test.ts`.
+원형은 같은 디렉터리의 `bulk-operation-enum-parity.test.ts` — 골격을 그대로 복제한다.
+
+세 꼭짓점.
+1. `BoardResponses.kt` 의 `data class BoardSummaryResponse(` **괄호 본문**에서 `val <name>:` 추출.
+   ★ **괄호 밖을 읽으면 안 된다** — 바로 위 KDoc 이 `@property boardId …` 로 필드명을 나열한다.
+   원형이 명시적으로 경고하는 실패 양식이고, 빠지면 판별식이 「원래 시끄러운 것」으로 학습된다.
+2. `Object.keys(boardSummarySchema.shape)` 와 **양방향 차집합 0**.
+3. MSW 목록 조립부를 **실제로 태워** raw 키 집합 추출 — `server.use(...boardHandlers)` →
+   `seedBoard(DEFAULT_BOARD)` → `fetch('/api/v1/boards?projectKey=ATLAS')` → `Object.keys(body.data[0])`.
+   ★ **Zod 로 파싱하면 안 된다** — `z.object` 가 미지 키를 버리고 `.optional()` 이 누락을 삼킨다.
+   이것이 `board-handlers.test.ts` 와 다른 지점이고, 이 판별식이 그 테스트의 중복이 아닌 이유다.
+
+**비-공허 4종** (원형과 동형).
+- `existsSync(BoardResponses.kt)` — 경로가 틀리면 빈 집합끼리 비교해 조용히 통과한다
+- 추출 필드 수 `>= 5`
+- **카나리** — 추출 집합이 `canDelete` **와** `boardType` 을 실제로 포함한다
+  (파서가 KDoc 이 아니라 본문을 읽는다는 증거)
+- MSW 응답 `data.length >= 1` — 빈 배열이면 키 비교가 공허하다
+
+**GREEN**: Task 1·3 이 이미 셋을 맞춰 놨으므로 판별식은 작성 즉시 초록이어야 한다.
+초록이 아니면 **판별식이 아니라 앞 task 가 틀린 것**이다.
+
+**REFACTOR** — **뮤테이션 2종을 각각 관측한다.** 🛑 **GREEN 선커밋 뒤에.** 미커밋 원복은 소실이다.
+- zod 의 `canDelete` 한 줄 삭제 → red 1회 → 원복
+- MSW 조립부의 `canDelete` 한 줄 삭제 → red 1회 → 원복
+
+**두 red 를 각각 봐야** 「셋 중 둘만 보는 반쪽 판별식」이 아님이 선다. 하나만 확인하면 나머지 변은
+계속 아무도 안 본다.
+
+**범위 한정** — `BoardSummaryResponse` 삼각형만 건다. `BoardDetailResponse`(필드 10+ ·
+`JsonNullable` · 중첩 DTO · #444 로 `states`·`unmappedStates` 추가)까지 넓히면 파서가 무거워지고
+PR ⑧ 의 신호가 묻힌다. **넓히지 않은 이유를 파일 상단 미커버 선언으로 남기고** TODOS 후보로 올린다.
+
+**검증**: `apps/web/node_modules/.bin/vitest run src/api/__tests__/board-summary-parity.test.ts`
+
+### Task 5. 문서 동기화 — 기각 뒤집기 + 즉사 계약 1행
+
+**메타**.
+- agent: 컨트롤러 인라인 (`/bts` 가 직접 편집)
+- files: [`docs/plans/2026-08-31-board-crud-recovery.md`, `docs/design/jira-parity-contract.md`, `docs/INDEX.md`, `docs/INDEX-fr.md`, `docs/INDEX-recent.md`]
+- depends-on: [1, 2]
+
+**작업**.
+1. `2026-08-31-board-crud-recovery.md` NOT-in-scope 표의 `BoardSummaryResponse 에 canDelete` 행 —
+   **지우지 말고 그 자리에서 뒤집는다.** 사유 칸에 취소선 + 「2026-09-04 뒤집음 (캠페인 PR ⑧)」 +
+   소비처·N+1 부재·도메인 제약 0건 근거. 지우면 「왜 미뤘는지」와 「왜 되돌렸는지」가 함께 사라진다.
+2. `jira-parity-contract.md:79` 「깨면 즉사하는 계약」 표에 **1행 추가**. PR ⑨ 작성자가 착수 전에
+   읽는 바로 그 문서이고, 스코프화가 살아남는 메커니즘은 여기 한 줄이 있느냐다.
+   계약 「보드 헤더 `⋯` 는 컨테이너 스코프로만 잡는다」 · 실측 명령
+   `grep -rn "보드 관리" apps/web/e2e/` + `grep -rn "board-header" apps/web/`.
+   ★ **개수 리터럴 금지** — 그 문서 `:76-77` 자체 규칙이다. 「2곳」이라고 적지 말 것.
+3. `node scripts/build-doc-index.mjs` 후 `--check`.
+
+**검증**: `node scripts/build-doc-index.mjs --check`
+· `bash scripts/verify-master-plan.sh` 는 **안 걸린다**(검증 완료) — 그 스크립트는 `docs/plan/`
+**단수**의 `product/`·`fr-index.md`·`README.md` 만 본다. 이번에 손대는 것은 `docs/plans/` **복수**다.
+FR 추가·삭제·카운트 변경이 0 이라 룰 E·H 도 무관하다.
+
+## Plan 메타
+
+- **task 수**: 5 · **예상 wave**: 3
+  - wave 1 — Task 1(`backend-engineer`) · Task 2(`qa-engineer`) · Task 3(`frontend-engineer`) 병렬.
+    셋의 `files` 교집합 0.
+  - wave 2 — Task 4 (`depends-on: [1, 3]`)
+  - wave 3 — Task 5 (`depends-on: [1, 2]`)
+- **구현 규율**: TDD red-first. **단 Task 2 는 예외**다 — 리팩터 트랙이라 지금은 중복이 없어
+  unscoped 셀렉터도 초록이고, `test:` → `feat:` 커밋 순서가 성립하지 않는다.
+  `spec-compliance-verifier` 가 이 예외를 BLOCKER 로 오판하지 않도록 red 관측 지점을
+  **「일부러 끊기 1회」**로 대체해 task 본문에 명시했다.
+- **Jira 매핑**: `J4 → Task 1` · `J5 → Task 1 · Task 3`. 채택 2건 전량 물림 · 범위 밖 0건.
+- **추가 검증**:
+  - 백엔드 `backend/gradlew :modules:agile-planning:test ktlintCheck detekt`
+  - 프론트 `apps/web/node_modules/.bin/vitest run src/api src/mocks`
+  - 타입 `apps/web/node_modules/.bin/tsc -p tsconfig.app.json --noEmit`
+    🛑 **`tsconfig.json` 을 쓰면 안 된다** — `files: []` solution 파일이라 아무것도 컴파일하지 않고
+    **EXIT=0** 이 난다. 그리고 `include: ["src"]` 라 **`e2e/` 를 안 덮는다**(Task 2 는 lint-staged 경로).
+  - 린트 `apps/web/node_modules/.bin/eslint <바뀐 파일>`
+  - 문서 `node scripts/build-doc-index.mjs --check`
+  - 판별식 전량 — pre-push 훅이 무조건 돌린다
+- 🛑 **worktree 에서 pnpm 스크립트는 전부 죽는다**(심볼릭 `node_modules` → `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`).
+  위 명령은 전부 바이너리 직접 호출이다. 프론트 vitest 는 **`apps/web` 이 cwd 여야** `@/` alias 가 해석된다.
+- 🛑 **e2e 는 worktree 밖(main 체크아웃)에서.** 판정 전
+  `grep -c 'outside of Vite serving allow list' <log>` 가 0 이 아니면 그 실행은 무효다.
+  **선재 실패 8건**(`fr-au-05-signup` · `workflow.spec` · `workflow-scheme-assignment`)은 이 작업과
+  무관하므로 로그에는 남기되 보고에서 분리한다.
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
