@@ -106,3 +106,67 @@ flexmark 는 제거하지 않는다 — CSV import(`ParsedImportRow.description`
 - `IssueDescription.test.tsx` 1,005줄이 지키던 계약 중 무엇을 새 파일로 옮길지는 PR③ 착수 시 훑고 정한다
 - FR 귀속(신규 FR 인가 기존 FR 의 D 단계 추가인가)은 `docs/plan/README.md` 대조 후 확정
 - 시각 회귀 기준선 갱신 범위는 PR② 이후 실측
+
+---
+
+## 2026-09-04 · PR① 구현 중 결정
+
+### 백필을 버렸다 — 등록 지점이 둘이라서
+
+계획은 Flyway Java migration 으로 `issues.description` 을 HTML 로 in-place 변환하는 것이었다.
+버린 이유는 「SQL 로 flexmark 를 못 부른다」가 아니라 **등록 지점이 둘**이라는 점이다.
+
+| 어디 | 무엇이 Flyway 를 돌리나 |
+|---|---|
+| 조립 앱 | `FlywayAssemblyConfig` 가 `Flyway.configure()` 로 직접 |
+| issue-tracking 단독 테스트 | `application-test.yml` 의 Spring auto-config |
+
+한쪽에만 Java migration 을 등록하면 **단독 테스트는 초록인데 조립 앱에서 백필이 조용히
+건너뛰어진다**. 두 목록이 서로를 검사하지 않는 지배 결함 양식 그대로다.
+
+대신 기존 컬럼을 그대로 두고 HTML 컬럼을 새로 뒀다. 읽기 지점 한 곳이
+`description_html ?: renderSafe(description)` 으로 옛 행을 흡수하고, 그 이슈가 편집되는 순간
+이행이 끝난다. 부수 효과로 **마이그레이션이 순수 SQL 이 되고 마크다운 원문이 영구 보존된다** —
+계획에 있던 `description_md_backup` 백업 컬럼도 그래서 필요 없어졌다.
+
+### `issue_body_plain()` 이 함수인 이유 — generated → generated 금지
+
+`description_plain` 과 `search_vector` 는 **같은 평문**을 봐야 한다. 그런데 PostgreSQL 은
+generated column 이 다른 generated column 을 참조하는 것을 금지한다(실측:
+"cannot use generated column in column generation expression"). 식을 복사하면 한쪽만 고쳤을 때
+FTS 와 trigram 이 서로 다른 텍스트를 색인한다. 함수로 묶어 두 컬럼이 정의 **하나**를 호출한다.
+
+### `img[src]` — 스킴 등록과 술어가 둘 다 필요하다
+
+OWASP 는 `src` 를 URL 속성으로 특별 취급해 `allowUrlProtocols` 에 없는 스킴을 `matching` 술어보다
+**먼저** 잘라낸다(실측). 스킴만 등록하면 `attachment:../../etc/passwd` 가 통과하고, 술어만 두면
+`src` 자체가 스킴 단계에서 사라져 `<img alt="…" />` 만 남는다.
+
+### 리뷰 적발 — 그 `allowUrlProtocols` 가 `a[href]` 까지 열었다
+
+위 항목의 대가가 있었다. `allowUrlProtocols` 는 **요소별이 아니라 정책 전역**이다. `img` 를 위해
+연 `attachment` 스킴이 `a[href]` 에도 그대로 열렸고, UUID 술어는 `img[src]` 에만 걸려 있었다.
+
+```
+<a href="attachment:../../etc/passwd">x</a>   =>  그대로 통과   (수정 전, 실측)
+<img src="attachment:../../etc/passwd">       =>  제거          (술어가 막는다)
+```
+
+`javascript:` 는 여전히 차단되니 XSS 는 아니다. 그러나 PR④ 가 프론트에서 `attachment:` 참조를
+API 경로로 치환하므로, 두면 경로 조작 표면이 된다. `href` 에 스킴 술어를 걸어 막았다 —
+상대 경로·앵커·`http(s)`·`mailto` 는 종전대로 통과하는 것을 실측으로 대조했다.
+
+**교훈.** 스킴 하나를 한 요소를 위해 열면 **정책 전체가 열린다**. 여는 쪽 요소에만 술어를 달고
+끝내면, 같은 스킴을 쓸 수 있는 다른 속성이 무방비로 남는다.
+
+### 파일 개명은 보류했다
+
+계획의 `MarkdownRenderer.kt` → `HtmlSanitizer` 개명은 호출 지점 전수 변경이라 이 PR 의 표면을
+넓힌다. 두 진입점(`renderSafe` · `sanitizeHtml`)만 추가하고 파일명은 그대로 뒀다.
+
+### main 리베이스 후 재검증 — 「1초 만에 초록」을 믿지 않는다
+
+PR① 을 main(#444 · #445 머지본) 위로 리베이스한 뒤 테스트를 다시 돌렸더니
+`BUILD SUCCESSFUL in 1s`, 전 태스크 UP-TO-DATE 였다. 초록으로 보이지만 **테스트가 돌지 않았다**.
+XML 타임스탬프가 리베이스 이전 시각 그대로인 것으로 확인했다. `--no-build-cache --rerun-tasks`
+로 실제 실행(38 tasks executed · 19분)해 issue-tracking 3487 + 조립 앱 79 초록을 받았다.
