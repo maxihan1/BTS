@@ -68,6 +68,33 @@ describe('navLabels', () => {
       expect(navLabels.collapseSidebar).toBeTruthy()
     })
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 스페이스 3그룹 헤더 (Jira 패리티 캠페인 PR ⑩ · J2)
+    //
+    // 세 값은 아래 FR15 전수 판별식과 **함께** 읽어야 한다. 값 고정 단언만 있으면
+    // 「왜 하필 이 글자인가」가 남지 않는다 — 셋 다 substring 제약이 골라 준 값이다.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    it('treeStarredGroup 이 "별표 표시됨"이다 (J2 — Jira Starred)', () => {
+      expect(navLabels.treeStarredGroup).toBe('별표 표시됨')
+    })
+
+    it('treeRecentGroup 이 "최근 방문"이다 — "최근"이 아니다 (recent 와 substring 충돌)', () => {
+      // ★`'최근'` 으로 줄이면 `recent`('최근 항목')의 substring 이 되어 FR15 판별식이 red 다.
+      //   면제를 추가해 통과시키는 길도 있지만, 둘 다 사이드바 안에서 **동시에 보이는**
+      //   그룹 헤더라 이름이 겹치면 화면에서도 사람이 헷갈린다.
+      expect(navLabels.treeRecentGroup).toBe('최근 방문')
+      expect(navLabels.treeRecentGroup.includes(navLabels.recent)).toBe(false)
+      expect(navLabels.recent.includes(navLabels.treeRecentGroup)).toBe(false)
+    })
+
+    it('treeMoreGroup 이 "추가 스페이스"다 — "추가 프로젝트"가 아니다 (projectNav 를 삼킨다)', () => {
+      // ★`'추가 프로젝트'` 는 `projectNav`('프로젝트')를 통째로 품어 FR15 판별식이 red 다.
+      //   `'스페이스'` 는 Jira 가 project 를 space 로 개명한 것과도 맞는다.
+      expect(navLabels.treeMoreGroup).toBe('추가 스페이스')
+      expect(navLabels.treeMoreGroup.includes(navLabels.projectNav)).toBe(false)
+    })
+
     it('expandSidebar 라벨이 존재한다', () => {
       expect(navLabels.expandSidebar).toBeTruthy()
     })
