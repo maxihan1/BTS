@@ -641,6 +641,11 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
     typeId?: number
     expectedVersion?: number
     description?: string | null
+    /**
+     * 리치 에디터(TipTap)의 본문 저장 경로 — `api/issues.ts` 의 `UpdateIssueRequest` 정본과 같은 모양.
+     * 이 캐스트에 빠져 있으면 아래에서 `body.descriptionHtml` 을 읽는 순간 TS2551 이 난다.
+     */
+    descriptionHtml?: string | null
     priority?: number | null
     labels?: string[] | null
     environment?: string | null
