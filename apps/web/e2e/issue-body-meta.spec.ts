@@ -46,7 +46,14 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
     await editor.pressSequentially('테스트 본문 — E1 시나리오')
 
     // When. 저장. 편집기 컨테이너 안으로 한정한다 — 환경/라벨 섹션에도 같은 이름의 저장 버튼이 있다.
-    const descriptionEditor = page.locator('div:has(> [role="toolbar"])')
+    // ★`div:has(> [role="toolbar"])` 로는 못 잡는다. 툴바의 **직계 부모에는 저장 버튼이 없다** —
+    //   툴바·에디터·버튼줄이 형제로 놓이기 때문이다. 에디터와 저장 버튼을 **함께** 가진 div 중
+    //   가장 안쪽(`.last()`)을 고른다. 조상들이 DOM 순서상 먼저 나오므로 마지막이 가장 가깝다.
+    const descriptionEditor = page
+      .locator('div')
+      .filter({ has: page.getByRole('textbox', { name: i18nLabels.issueDetail.descriptionEditLabel }) })
+      .filter({ has: page.getByRole('button', { name: i18nLabels.issueDetail.descriptionSaveButton }) })
+      .last()
     const saveBtn = descriptionEditor.getByRole('button', {
       name: i18nLabels.issueDetail.descriptionSaveButton,
     })
@@ -55,8 +62,10 @@ test.describe('FR-IS-04 이슈 본문/메타 필드 편집 (E1~E6)', () => {
     // When. mutation 완료 대기 — 저장 버튼이 다시 활성화되면 PATCH 완료(isSaving=false).
     // 저장 성공 후 편집 모드가 자동으로 닫히지 않으므로 취소로 읽기 모드 전환.
     await expect(saveBtn).toBeEnabled()
+    // ★`exact` 가 없으면 툴바의 '취소선' 버튼과 부분 일치해 strict mode 로 죽는다.
     await descriptionEditor.getByRole('button', {
       name: i18nLabels.issueDetail.descriptionCancelButton,
+      exact: true,
     }).click()
 
     // Then. 읽기 모드 본문에 저장 내용이 보인다 (refetch 후 descriptionHtml 정합 — 가짜 그린 방지)

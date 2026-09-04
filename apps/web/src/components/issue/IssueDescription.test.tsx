@@ -38,6 +38,8 @@ const HTML_BODY = '<p>본문 HTML</p>'
 function baseProps() {
   return {
     descriptionHtml: HTML_BODY,
+    // 본문 이미지의 첨부 참조를 내려받고 붙여넣은 이미지를 매다는 대상 (J7).
+    issueKey: 'ATLAS-1',
     onSave: vi.fn(),
     isSaving: false,
   }

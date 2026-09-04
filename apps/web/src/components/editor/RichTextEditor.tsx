@@ -1,10 +1,12 @@
 // 본문·댓글이 공유하는 TipTap WYSIWYG 에디터 (Jira 패리티 J8)
 import type { JSX, RefObject } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
+import type { Editor } from '@tiptap/react'
 import { isMentionSuggestionActive } from './mention-extension'
 import { buildRichTextExtensions } from './rich-text-extensions'
 import { RichTextToolbar } from './RichTextToolbar'
+import { useEditorImageUpload } from './use-editor-image-upload'
 import { editorLabels } from '@/i18n/editor-labels'
 import { cn } from '@/lib/utils'
 
@@ -23,8 +25,11 @@ export interface RichTextEditorProps {
   editable?: boolean
   /** 접근성 이름 — 한 화면에 에디터가 둘 이상일 때 구분한다(본문/댓글). */
   ariaLabel?: string
-  /** 툴바 이미지 버튼 핸들러 (PR④ 가 배선) */
-  onInsertImage?: () => void
+  /**
+   * 이미지 첨부를 매달 이슈 키. 주면 붙여넣기·드롭·툴바 버튼으로 이미지를 넣을 수 있다(J7).
+   * 미전달이면 이미지 경로가 통째로 비활성 — 아직 이슈가 없는 화면(생성 폼)이 그렇다.
+   */
+  imageIssueKey?: string
   /** 마운트 시 포커스를 줄지 */
   autoFocus?: boolean
   /** 외부에서 포커스를 주기 위한 DOM 참조 — 단축키 `m` 이 댓글 입력으로 이동할 때 쓴다. */
@@ -67,10 +72,17 @@ export function RichTextEditor({
   placeholder = '',
   editable = true,
   ariaLabel = editorLabels.editorLabel,
-  onInsertImage,
+  imageIssueKey,
   autoFocus = false,
   contentRef,
 }: RichTextEditorProps): JSX.Element {
+  const uploadImages = useEditorImageUpload(imageIssueKey ?? null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ★`handlePaste`/`handleDrop` 은 `useEditor` 설정 객체 안에서 만들어져 `editor` 를 아직
+  //   볼 수 없다. ref 를 거쳐 최신 인스턴스를 잡는다 — 클로저가 초기 null 을 붙드는 것을 피한다.
+  const editorRef = useRef<Editor | null>(null)
+
   const editor = useEditor({
     extensions: buildRichTextExtensions(placeholder),
     content: initialHtml,
@@ -111,9 +123,45 @@ export function RichTextEditor({
         }
         return false
       },
+      /**
+       * 클립보드 이미지 붙여넣기 (J7).
+       *
+       * ★이미지가 없으면 **false 를 돌려 기본 동작에 넘긴다** — 여기서 항상 true 를 내면
+       * 평범한 텍스트 붙여넣기가 통째로 막힌다.
+       */
+      handlePaste: (_view, event) => {
+        if (imageIssueKey === undefined) return false
+        const files = event.clipboardData?.files ?? null
+        if (files === null || files.length === 0) return false
+        const ed = editorRef.current
+        if (ed === null) return false
+        // 업로드는 비동기라 즉시 판정할 수 없다. 이미지가 섞여 있으면 기본 붙여넣기를
+        // 막고(이미지 바이너리가 텍스트로 떨어지는 것을 방지) 업로드에 맡긴다.
+        const hasImage = Array.from(files).some((f) => f.type.startsWith('image/'))
+        if (!hasImage) return false
+        event.preventDefault()
+        void uploadImages(ed, files)
+        return true
+      },
+      /** 드래그앤드롭 — 붙여넣기와 같은 경로로 흘린다. */
+      handleDrop: (_view, event) => {
+        if (imageIssueKey === undefined) return false
+        const dragEvent = event as DragEvent
+        const files = dragEvent.dataTransfer?.files ?? null
+        if (files === null || files.length === 0) return false
+        const ed = editorRef.current
+        if (ed === null) return false
+        const hasImage = Array.from(files).some((f) => f.type.startsWith('image/'))
+        if (!hasImage) return false
+        event.preventDefault()
+        void uploadImages(ed, files)
+        return true
+      },
     },
     onUpdate: ({ editor: e }) => { onChange(e.getHTML()) },
   })
+
+  editorRef.current = editor
 
   // 편집 대상이 바뀌면(다른 이슈로 갈아탐 · 저장 후 refetch) 내용을 다시 채운다.
   // `setContent` 는 onUpdate 를 발화시키므로 `emitUpdate: false` 로 되먹임 고리를 끊는다.
@@ -130,8 +178,29 @@ export function RichTextEditor({
 
   return (
     <div className="rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
-      <RichTextToolbar editor={editor} onInsertImage={onInsertImage} />
+      <RichTextToolbar
+        editor={editor}
+        // 이슈가 없으면 이미지 경로 자체가 없다 — 버튼도 그리지 않는다.
+        onInsertImage={imageIssueKey === undefined ? undefined : () => fileInputRef.current?.click()}
+      />
       <EditorContent editor={editor} ref={contentRef} />
+      {/* 툴바 이미지 버튼의 실제 입구. 시각적으로 숨기되 접근성 트리에서도 뺀다 —
+          툴바 버튼이 이미 이름을 갖고 있어 이중으로 읽히면 혼란스럽다. */}
+      {imageIssueKey !== undefined && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          multiple
+          hidden
+          aria-hidden="true"
+          onChange={(e) => {
+            if (editor !== null) void uploadImages(editor, e.target.files)
+            // 같은 파일을 연달아 고를 수 있게 값을 비운다 — 비우지 않으면 change 가 안 뜬다.
+            e.target.value = ''
+          }}
+        />
+      )}
     </div>
   )
 }

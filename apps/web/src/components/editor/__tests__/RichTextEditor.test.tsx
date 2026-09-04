@@ -26,7 +26,7 @@ function renderEditor(overrides: Partial<Parameters<typeof RichTextEditor>[0]> =
   const onChange = vi.fn()
   const onSubmit = vi.fn()
   const onCancel = vi.fn()
-  render(
+  const { container } = render(
     <RichTextEditor
       initialHtml="<p>처음 내용</p>"
       onChange={onChange}
@@ -35,7 +35,7 @@ function renderEditor(overrides: Partial<Parameters<typeof RichTextEditor>[0]> =
       {...overrides}
     />,
   )
-  return { onChange, onSubmit, onCancel }
+  return { onChange, onSubmit, onCancel, container }
 }
 
 describe('RichTextEditor — 툴바 서식 (J8)', () => {
@@ -129,19 +129,17 @@ describe('RichTextEditor — 툴바 서식 (J8)', () => {
     expect(screen.getByRole('button', { name: editorLabels.italic })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('이미지 버튼은 핸들러가 있을 때만 그린다 — PR④ 이전에는 없다', () => {
+  it('이미지 버튼은 이슈 키가 있을 때만 그린다 — 생성 폼에는 첨부할 곳이 없다', () => {
     renderEditor()
     expect(screen.queryByRole('button', { name: editorLabels.image })).not.toBeInTheDocument()
   })
 
-  it('onInsertImage 를 주면 이미지 버튼이 그것을 부른다', async () => {
-    const user = userEvent.setup()
-    const onInsertImage = vi.fn()
-    renderEditor({ onInsertImage })
+  it('imageIssueKey 를 주면 이미지 버튼과 파일 입력이 생긴다 (J7)', () => {
+    const { container } = renderEditor({ imageIssueKey: 'ATLAS-1' })
 
-    await user.click(screen.getByRole('button', { name: editorLabels.image }))
-
-    expect(onInsertImage).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: editorLabels.image })).toBeInTheDocument()
+    // 실제 업로드 입구가 함께 있어야 버튼이 무동작이 아니다.
+    expect(container.querySelector('input[type="file"]')).toBeInTheDocument()
   })
 })
 

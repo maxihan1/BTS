@@ -10,6 +10,7 @@ import { attachmentLabels } from '@/i18n/attachment-labels'
 import { isPreviewable } from '@/lib/attachment-preview'
 import { useDateFormat } from '@/hooks/use-date-format'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
+import { AttachmentThumbnail } from './AttachmentThumbnail'
 import { Button } from '@/components/ui/button'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -98,10 +99,16 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
 
   return (
     <tr className="border-b border-border last:border-b-0">
-      <td className="py-2 pr-3 max-w-[200px]">
-        <span className="text-sm text-foreground truncate block" title={attachment.filename}>
-          {attachment.filename}
-        </span>
+      <td className="py-2 pr-3 max-w-[240px]">
+        {/* ★썸네일 + 파일명 (J6 — "Click an image thumbnail to open a preview").
+            테이블 구조는 그대로 둔다 — e2e 가 행 단위로 잡고 있고, 그리드로 갈아엎으면
+            삭제 확인·다운로드 계약까지 함께 흔들린다. 시각적 목표(썸네일)는 셀 안에서 이룬다. */}
+        <div className="flex items-center gap-2 min-w-0">
+          <AttachmentThumbnail issueKey={issueKey} attachment={attachment} onOpen={() => { setPreviewOpen(true) }} />
+          <span className="text-sm text-foreground truncate block" title={attachment.filename}>
+            {attachment.filename}
+          </span>
+        </div>
       </td>
       <td className="py-2 pr-3 text-xs text-muted-foreground whitespace-nowrap">
         {formatFileSize(attachment.sizeBytes)}
