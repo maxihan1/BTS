@@ -55,6 +55,8 @@ interface BoardSummary {
   boardId: string
   projectKey: string
   name: string
+  /** 삭제 권한 보유 여부 (FR-BD-01-2d). 스키마가 `.optional()` 이라 여기도 optional 이다. */
+  canDelete?: boolean
 }
 
 interface BoardCard {
@@ -346,6 +348,46 @@ describe('시드 전량 — 보드 종류 계약 (FR-BD-04)', () => {
     const summaries = await fetchBoards('ATLAS')
     expect(summaries).toHaveLength(1)
     expect(summaries[0]?.boardType).toBe('KANBAN')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 목록 조립부 — canDelete (FR-BD-01-2d · 캠페인 PR ⑧)
+//
+// 세 분기를 전부 잰다. 하나라도 빠지면 판정이 공허해진다.
+//   ① true 만 재면 핸들러가 **상수 true** 를 박아도 통과한다 → ②가 그것을 가른다.
+//   ② store 값을 통과시키는 것만 재면 「미정의일 때 무엇인가」가 안 잡힌다 → ③이 잰다.
+//   ③ 상세 조립부(toResponseDetail)와 **같은 기본값**이어야 한다는 것이 스펙 E5 다.
+//      두 조립부의 기본값이 갈리는 것이 목록/상세 분리가 부른 사고의 모양이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('보드 목록 조립부 — canDelete (FR-BD-01-2d)', () => {
+  it('store 의 canDelete=true 를 목록 응답에 그대로 싣는다', async () => {
+    seedBoard(DEFAULT_BOARD)
+    const summaries = await fetchBoards('ATLAS')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.canDelete).toBe(true)
+  })
+
+  it('store 의 canDelete=false 를 목록 응답에 그대로 싣는다 (상수 true 를 박으면 여기서 깨진다)', async () => {
+    seedBoard({ ...DEFAULT_BOARD, canDelete: false })
+    const summaries = await fetchBoards('ATLAS')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.canDelete).toBe(false)
+  })
+
+  it('store 에 canDelete 가 없으면 상세 조립부와 같은 기본값 true 로 응답한다', async () => {
+    // 기본값이 실제로 존재하는지는 「미설정 시드」로만 잴 수 있다 (boardType 기본값 테스트와 같은 형태).
+    const legacy = { ...DEFAULT_BOARD }
+    delete legacy.canDelete
+    seedBoard(legacy)
+
+    const summaries = await fetchBoards('ATLAS')
+    expect(summaries).toHaveLength(1)
+    expect(summaries[0]?.canDelete).toBe(true)
+    // 짝 단언 — 같은 store 를 상세로 읽어도 같은 값이어야 한다. 두 조립부가 갈리면 여기가 깨진다.
+    const detail = await fetchBoard(DEFAULT_BOARD.boardId)
+    expect(detail.canDelete).toBe(true)
   })
 })
 

@@ -751,9 +751,9 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {/* 프로젝트 즐겨찾기 + 이슈 생성 진입점 (분기 공통 헤더) */}
       {projectFavoriteHeader}
 
-      {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터 */}
+      {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터. `data-testid` 는 e2e 스코프 전용이고 접근성 트리·렌더 영향 0 이다 (사유. `e2e/fixtures/board-helpers.ts` · `docs/design/jira-parity-contract.md` §2) */}
       {(boards !== undefined && boards.length >= 1) || (boardDetail !== undefined && canCreate) ? (
-        <div className="flex items-center gap-4 flex-wrap">
+        <div data-testid="board-header" className="flex items-center gap-4 flex-wrap">
           {/* 보드 스위처 — 1개여도 상시 노출한다. N개 모델임을 드러내는 자리다 (J1) */}
           {boards !== undefined && boards.length >= 1 && (
             <BoardSelectorDropdown

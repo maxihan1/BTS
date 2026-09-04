@@ -14,6 +14,7 @@ import type {
   BoardDetail,
   BoardCard,
   BoardCardFilterParams,
+  BoardSummary,
   SwimlaneField,
   BoardType,
 } from '@/api/boards'
@@ -319,6 +320,31 @@ function toResponseDetail(stored: StoredBoardDetail, params: URLSearchParams): B
   }
 }
 
+/**
+ * StoredBoardDetail을 BoardSummary 응답 형식으로 변환한다 (GET /api/v1/boards 목록).
+ *
+ * ★{@link toResponseDetail} 바로 옆에 두는 이유.
+ * 목록과 상세는 **서로 다른 조립부**라, 예전에는 상세만 고치고 목록을 잊으면 보드 스위처가
+ * 목록 파싱에서 죽었다. 두 함수가 형제로 붙어 있으면 한쪽을 고칠 때 다른 쪽이 눈에 들어온다.
+ * 기본값(`boardType`·`canDelete`)은 두 함수가 **같은 값**을 써야 한다 — 갈리면 같은 store 를
+ * 목록으로 읽을 때와 상세로 읽을 때 답이 달라진다(스펙 E5).
+ *
+ * 반환은 spread 없이 **명시적 객체 리터럴**로 유지한다. 목록 응답에 실리는 키 집합이
+ * 텍스트로 드러나야 백엔드 DTO ↔ zod ↔ MSW 3-way 정합 판별식이 키를 뽑아낼 수 있다.
+ *
+ * @param stored store 내부 보드 데이터
+ * @returns 목록 응답 단건(BoardSummary)
+ */
+function toResponseSummary(stored: StoredBoardDetail): BoardSummary {
+  return {
+    boardId: stored.boardId,
+    projectKey: stored.projectKey,
+    name: stored.name,
+    boardType: stored.boardType ?? DEFAULT_BOARD_TYPE,
+    canDelete: stored.canDelete ?? true,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 퀵필터 query 정규화 (FR-UX-01)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -384,14 +410,9 @@ const getBoardsHandler = http.get('/api/v1/boards', ({ request }) => {
   const summaries = boardIds
     .map((boardId) => boardStore.get(boardId))
     .filter((b): b is NonNullable<typeof b> => b !== undefined)
-    // boardType 은 상세와 **다른 조립부**다 — 상세만 고치면 보드 스위처가 목록 파싱에서 죽는다
-    // (boardSummarySchema.boardType 필수 · FR-BD-04).
-    .map(({ boardId, projectKey: pk, name, boardType }) => ({
-      boardId,
-      projectKey: pk,
-      name,
-      boardType: boardType ?? DEFAULT_BOARD_TYPE,
-    }))
+    // 조립은 toResponseDetail 의 형제 함수가 한다 — 두 조립부의 기본값이 갈리지 않도록
+    // 같은 자리에 붙여 뒀다({@link toResponseSummary}).
+    .map(toResponseSummary)
 
   return HttpResponse.json({ data: summaries })
 })

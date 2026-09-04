@@ -16,6 +16,9 @@
 //   - **goto 는 처음 1회뿐이다.** MSW store 는 페이지 로드마다 픽스처로 되돌아가므로 S1 이 만든
 //     보드가 reload 한 번에 사라진다. 이후 이동은 전부 SPA 안에서 일어난다
 //     (board-manage.spec.ts 가 세운 관례 — reload 금지).
+//   - 보드 스위처·`⋯` 트리거는 `board-helpers.ts` 의 공용 헬퍼(헤더 컨테이너 스코프)를 쓴다.
+//     board-manage.spec.ts 와 복붙 쌍이던 것을 한 곳으로 모은 것이다 — 사이드바가 같은 접근성
+//     이름의 `⋯` 를 갖게 되면 전역 조회는 두 spec 에서 동시에 strict mode 로 죽는다.
 //   - src 는 **i18n 정본만** import 한다. mock 픽스처/컴포넌트를 끌어오면 `import.meta.env` 를
 //     거쳐 Playwright(Node) 런타임에서 깨진다 — 필요한 값은 미러 + 출처 주석으로 동기화한다.
 //   - S7 이 성립하려면 mock 이 **파생 동작을 공유 store 로** 재현해야 한다 — 시작 핸들러가
@@ -30,6 +33,9 @@ import { openTabIfOverflowed } from './fixtures/project-view-tabs'
 import { projectViewLabels } from '../src/i18n/project-view-labels'
 import {
   backlogSprintColumn,
+  boardActionsTrigger,
+  boardHeader,
+  boardSwitcherTrigger,
   goToBoardNameStep,
   selectBoardType,
   startSprintFromBacklog,
@@ -92,16 +98,6 @@ const SCRUM_EMPTY = {
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — 셀렉터
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** 보드 스위처 트리거 — 접근성 이름이 「보드 선택, 현재 …」이라 정규식으로 잡는다 */
-function boardSwitcherTrigger(page: Page): Locator {
-  return page.getByRole('button', { name: /보드 선택/ })
-}
-
-/** 보드 관리 `⋯` 트리거 — 접근성 이름이 「보드 관리, …」 */
-function boardActionsTrigger(page: Page): Locator {
-  return page.getByRole('button', { name: /보드 관리/ })
-}
 
 /** 백로그 칸 locator — 백로그 칸은 이름이 고정이다 */
 function backlogColumn(page: Page): Locator {
@@ -188,6 +184,9 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await expect(page.getByTestId('active-sprint-summary')).toHaveCount(0)
     // ★early-return 이 아니라 인라인 대체라는 것 — 이것이 깨지면 보드를 지울 수도 없다
     await expect(page.getByRole('heading', { name: boardLabels.page.title, exact: true })).toBeVisible()
+    // ★`⋯` 조회가 `board-header` 스코프라 컨테이너 실재를 먼저 단언한다. testid 가 어긋나면
+    //   하위 조회는 count 0 이 되고, 이 spec 의 부재 단언(`toHaveCount(0)`)들은 그대로 통과한다.
+    await expect(boardHeader(page)).toBeVisible()
     await expect(boardActionsTrigger(page)).toBeVisible()
 
     // ── S3. 백로그로 이동 — 빈 상태의 CTA 가 데려간다 (J18) ──────────────────

@@ -91,6 +91,10 @@ import java.util.UUID
  * - LIST-1. GET /api/v1/boards?projectKey= 정상 → 200 + 배열
  * - LIST-2. GET 목록 BROWSE 권한 미충족 → 403
  * - LIST-3. GET 목록 각 항목에 boardType — SCRUM/KANBAN 이 각각 판정을 진다 (FR-BD-04 D6)
+ * - LIST-4. GET 목록 각 항목에 canDelete — 보드 2건이 각각 판정을 진다 (FR-BD-01 · Jira J5)
+ * - LIST-5. GET 목록 SOFT_DELETE 미보유 → 200 + 전 항목 canDelete=false (403 아님)
+ * - LIST-6. GET 목록 보드 2건이어도 권한 판정은 BROWSE·SOFT_DELETE 각 1회 (N+1 판별식)
+ * - LIST-7. GET 목록 보드 0건이어도 200 + 빈 배열이고 권한 판정 횟수는 같다
  * - MOVE-1. POST move 정상 → 200 + 전환 결과 + columnId echo
  * - MOVE-2. POST move 보드 미존재 → 404
  * - MOVE-3. POST move 버전 충돌(서비스 409) → 409
@@ -603,8 +607,12 @@ class BoardControllerIntegrationTest {
         verify { boardApplicationService.listBoards("BTS") }
 
         // 권한 게이트가 BROWSE + Project(요청 projectKey) 로 판정됐는지 검증 (sec P2)
+        // canDelete 파생값 때문에 SOFT_DELETE 판정이 1회 더 붙는다 — 둘 다 같은 프로젝트 스코프다.
         assertThat(permissionGate.calls)
-            .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")))
+            .containsExactly(
+                Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")),
+                Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project("BTS")),
+            )
     }
 
     // ── LIST-2. GET 목록 BROWSE 권한 미충족 → 403 ─────────────────────────────
@@ -639,6 +647,87 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.data[0].boardType").value("SCRUM"))
             .andExpect(jsonPath("$.data[1].boardId").value(kanbanBoard.id.toString()))
             .andExpect(jsonPath("$.data[1].boardType").value("KANBAN"))
+    }
+
+    // ── LIST-4. GET 목록 각 항목에 canDelete (FR-BD-01 · Jira J5) ──────────────
+
+    @Test
+    fun `LIST-4 GET boards 목록의 각 항목에 canDelete 가 실린다`() {
+        val first = sampleBoard(projectKey = "BTS")
+        val second = sampleBoard(projectKey = "BTS")
+        every { boardApplicationService.listBoards("BTS") } returns listOf(first, second)
+
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            // 보드 2건을 각각 단언한다 — 1건이면 "첫 보드의 답만 싣는다" 와 구분되지 않는다.
+            // boardId 를 함께 못박아 어느 항목의 판정인지가 뒤바뀌어도 드러나게 한다.
+            .andExpect(jsonPath("$.data[0].boardId").value(first.id.toString()))
+            .andExpect(jsonPath("$.data[0].canDelete").value(true))
+            .andExpect(jsonPath("$.data[1].boardId").value(second.id.toString()))
+            .andExpect(jsonPath("$.data[1].canDelete").value(true))
+    }
+
+    // ── LIST-5. SOFT_DELETE 미보유면 전 항목 canDelete=false (스펙 S2 · E2) ────
+
+    @Test
+    fun `LIST-5 GET boards 목록은 SOFT_DELETE 미보유자에게 전 항목 canDelete 가 false 다`() {
+        val first = sampleBoard(projectKey = "BTS")
+        val second = sampleBoard(projectKey = "BTS")
+        every { boardApplicationService.listBoards("BTS") } returns listOf(first, second)
+        // BROWSE 는 통과시키고 SOFT_DELETE 만 거부한다 — 목록은 보이고 삭제만 막히는 상태.
+        permissionGate.denied.add(IssuePermission.SOFT_DELETE)
+
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
+        )
+            // 403 이 아니다 — 목록 조회는 BROWSE 로 허용되고 canDelete 는 표시용 파생값이다.
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].canDelete").value(false))
+            .andExpect(jsonPath("$.data[1].canDelete").value(false))
+    }
+
+    // ── LIST-6. N+1 판별식 — 보드 수와 무관하게 판정 2회 (스펙 FR-3 · E8) ──────
+
+    @Test
+    fun `LIST-6 GET boards 목록은 보드가 2건이어도 권한 판정이 BROWSE 와 SOFT_DELETE 각 1회다`() {
+        every { boardApplicationService.listBoards("BTS") } returns
+            listOf(sampleBoard(projectKey = "BTS"), sampleBoard(projectKey = "BTS"))
+
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "BTS").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.length()").value(2))
+
+        // 이 개수를 늘리는 수정은 「테스트 갱신」이 아니라 X10 근사가 깨졌다는 신호다.
+        assertThat(permissionGate.calls)
+            .containsExactly(
+                Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")),
+                Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project("BTS")),
+            )
+    }
+
+    // ── LIST-7. 빈 프로젝트 판별식 — 보드 0건이어도 판정한다 (스펙 FR-4 · E1) ──
+
+    @Test
+    fun `LIST-7 GET boards 목록은 보드가 0건이어도 200 빈 배열이고 권한 판정 횟수는 같다`() {
+        every { boardApplicationService.listBoards("EMPTY") } returns emptyList()
+
+        mockMvc.perform(
+            get("/api/v1/boards").param("projectKey", "EMPTY").accept(MediaType.APPLICATION_JSON),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data").isArray)
+            .andExpect(jsonPath("$.data.length()").value(0))
+
+        // 데이터 유무가 권한 호출 횟수를 바꾸면 calls 단언이 픽스처에 종속돼 취약해진다.
+        assertThat(permissionGate.calls)
+            .containsExactly(
+                Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("EMPTY")),
+                Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project("EMPTY")),
+            )
     }
 
     // ── MOVE-1. POST move 정상 → 200 + columnId echo ──────────────────────────

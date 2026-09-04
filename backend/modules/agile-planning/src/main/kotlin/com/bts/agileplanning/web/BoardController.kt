@@ -176,9 +176,11 @@ class BoardController(
      * 프로젝트별 보드 목록을 조회한다.
      *
      * 권한: [IssuePermission.BROWSE] on [IssueScope.Project] (요청 projectKey 기준).
+     * [IssuePermission.SOFT_DELETE] 는 게이트가 아니라 표시용 파생값이다 — 미보유여도 200 이다.
      *
      * @param projectKey 조회할 프로젝트 키.
-     * @return 200 OK + [BoardSummaryResponse] 목록.
+     * @return 200 OK + [BoardSummaryResponse] 목록. 각 항목의 canDelete 는 프로젝트 스코프 판정
+     *   **1회**의 결과를 함께 쓴다(보드 수와 무관하게 권한 조회는 늘지 않는다).
      */
     @GetMapping
     fun listBoards(
@@ -189,7 +191,20 @@ class BoardController(
         val actor = currentActorId()
         requirePermission(actor, IssuePermission.BROWSE, IssueScope.Project(projectKey))
 
-        val boards = service.listBoards(projectKey).map(BoardSummaryResponse::from)
+        // 프로젝트 스코프 근사(편차 X3)라 판정 1회로 N건을 덮는다.
+        // per-board 관리자가 도입되면 이 줄과 LIST-6 을 반드시 함께 고쳐야 한다 —
+        // 안 그러면 전 보드가 첫 보드의 답을 받는다.
+        //
+        // ★LIST-6·LIST-7 은 **호출 횟수 축만** 잡는다. per-board 관리자가 resolver 쪽에
+        //   IssueScope.Board 를 신설하면서 이 줄을 안 고치면, 여기는 여전히 Project 로 1회만
+        //   물으므로 calls 는 [BROWSE, SOFT_DELETE] 그대로이고 LIST-4/6/7 이 전부 초록인 채
+        //   전 보드가 프로젝트 답을 받는다. 즉 그 도입이 이 줄을 **반드시 지나가지는 않는다** —
+        //   실질 방어선은 이 주석이다. T3 계획은 이 한계를 물려받아 스코프 타입 축 단언을
+        //   함께 세울 것.
+        val canDelete =
+            permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(projectKey))
+
+        val boards = service.listBoards(projectKey).map { BoardSummaryResponse.from(it, canDelete) }
         return ResponseEntity.ok(DataResponse(boards))
     }
 

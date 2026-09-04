@@ -868,7 +868,8 @@ describe('updateBoardSwimlane', () => {
 // boardDetailSchema — canDelete 파싱 (FR-BD-01-2d)
 //
 // 백엔드 BoardDetailResponse.canDelete = IssuePermission.SOFT_DELETE 판정 결과.
-// 목록(BoardSummaryResponse)에는 없고 단건 조회 응답에만 실린다.
+// 목록(BoardSummaryResponse)에도 함께 실린다 — 소비처는 캠페인 PR ⑨ 의 사이드바 보드 `⋯` 다.
+// 목록 쪽 판정은 아래 T-BD-21 이 별도로 잰다 (조립부가 서로 다르기 때문이다).
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('boardDetailSchema — canDelete 파싱 (FR-BD-01-2d)', () => {
@@ -1146,6 +1147,46 @@ describe('boardSummarySchema — boardType (FR-BD-04)', () => {
     const withoutBoardType: Record<string, unknown> = { ...boardSummaryFixture }
     delete withoutBoardType['boardType']
     const result = boardSummarySchema.safeParse(withoutBoardType)
+    expect(result.success).toBe(false)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T-BD-21. boardSummarySchema — canDelete (FR-BD-01-2d · 캠페인 PR ⑧)
+//
+// ★ 바로 위 T-BD-20b(boardType 은 없으면 **거부**) 옆에 붙여 둔다. 두 필드의 필수성이 왜 갈리는지가
+//   한 화면에 보여야 하기 때문이다.
+//   - boardType 이 없는 것은 그 자체가 결함이고, 기본값으로 때우면 스크럼이 칸반으로 오인된다.
+//   - canDelete 가 없는 것은 「삭제 못 함」이 옳은 해석이라 기본값이 fail-closed 와 일치한다.
+//     기본값이 안전한 쪽과 겹치는 유일한 필드라 optional 이 옳은 선택이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('boardSummarySchema — canDelete (FR-BD-01-2d)', () => {
+  it('T-BD-21a: 목록 요약의 canDelete=true 를 파싱한다', () => {
+    const result = boardSummarySchema.safeParse({ ...boardSummaryFixture, canDelete: true })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.canDelete).toBe(true)
+  })
+
+  it('T-BD-21b: 목록 요약의 canDelete=false 를 파싱한다', () => {
+    const result = boardSummarySchema.safeParse({ ...boardSummaryFixture, canDelete: false })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.canDelete).toBe(false)
+  })
+
+  it('T-BD-21c: canDelete 가 없어도 파싱에 성공하고 삭제 불가로 읽힌다 (fail-closed)', () => {
+    // T-BD-20b 와 정반대의 판정이다 — 여기서 거부하면 필드를 뺀 응답 1건이 보드 스위처 ·
+    // 백로그 헤더 · ProjectViewChrome 탭바 3곳을 한꺼번에 지운다.
+    const result = boardSummarySchema.safeParse(boardSummaryFixture)
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.canDelete ?? false).toBe(false)
+  })
+
+  it('T-BD-21d: canDelete 가 boolean 이 아니면 파싱을 거부한다', () => {
+    const result = boardSummarySchema.safeParse({ ...boardSummaryFixture, canDelete: 'yes' })
     expect(result.success).toBe(false)
   })
 })
