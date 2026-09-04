@@ -98,17 +98,34 @@ export function AttachmentPreviewModal({
    * 컨테이너에 거는 이유 — Radix `DialogContent` 가 열릴 때 포커스를 자기 안으로 가져오므로
    * 전역 리스너 없이 여기서 받는다. 전역에 걸면 모달이 닫힌 뒤에도 살아 있어야 할지를
    * 따로 관리해야 하고, 단축키 파이프라인과 겹친다.
+   *
+   * ## ★두 가지를 먼저 걸러낸다 (리뷰 BLOCKER-1)
+   *
+   * 컨테이너에 걸었다는 것은 **모달 안의 모든 키가 여기로 버블한다**는 뜻이다. 조건 없이
+   * `preventDefault` 하면 포커스를 가진 자식의 기본동작을 통째로 빼앗는다.
+   *
+   * ① **이동할 곳이 없으면 잡지 않는다.** 첨부가 하나뿐이면 이동 UI 조차 안 그리면서
+   *    키만 삼키는 것은 사용자에게 「아무 일도 안 일어남」으로 보인다.
+   * ② **기본동작이 있는 자식 위에서는 잡지 않는다.** `<video controls>` 의 ←/→ 는 5초
+   *    되감기·빨리감기다. 가로채면 되감기가 죽고, 갤러리가 여럿이면 되감기 대신 다른
+   *    첨부로 넘어가면서 blob 이 revoke 되어 **재생 위치를 통째로 잃는다.**
+   *    `iframe`(PDF 뷰어)도 자체 스크롤·페이지 이동을 쓴다.
    */
   function handleKeyDown(e: ReactKeyboardEvent<HTMLDivElement>): void {
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault()
-      goPrevious()
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+    // ① 이동할 곳이 없다.
+    if (attachments.length <= 1) return
+    // ② 자식이 그 키를 이미 쓴다.
+    const target = e.target
+    if (
+      target instanceof Element &&
+      target.closest('video, iframe, input, textarea, select, [contenteditable="true"]') !== null
+    ) {
       return
     }
-    if (e.key === 'ArrowRight') {
-      e.preventDefault()
-      goNext()
-    }
+    e.preventDefault()
+    if (e.key === 'ArrowLeft') goPrevious()
+    else goNext()
   }
 
   useEffect(() => {
@@ -238,10 +255,20 @@ export function AttachmentPreviewModal({
               >
                 ←
               </Button>
+              {/*
+                ★`aria-live` 가 필요하다 (리뷰 CONCERNS-4). Radix `DialogTitle` 은 내용이 바뀌어도
+                재알림되지 않으므로, 이것이 없으면 스크린리더 사용자는 ←/→ 로 넘겼을 때
+                **몇 번째로 갔는지도 파일이 바뀌었는지도 아무 신호를 못 받는다** —
+                시각 사용자만 쓸 수 있는 이동이 된다. 파일명을 함께 읽어 「어디로 갔나」가
+                위치 숫자만으로 끝나지 않게 한다.
+              */}
               <span
                 data-testid="attachment-preview-position"
+                aria-live="polite"
+                aria-atomic="true"
                 className="text-xs text-muted-foreground tabular-nums"
               >
+                <span className="sr-only">{attachment?.filename ?? ''} </span>
                 {attachmentLabels.previewPosition(safeIndex + 1, attachments.length)}
               </span>
               <Button

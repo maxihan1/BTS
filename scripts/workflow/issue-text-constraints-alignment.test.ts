@@ -88,7 +88,9 @@ function readKotlinConstants(source: string): Map<string, number> {
 /** TS `export const NAME = 123` 를 뽑는다. */
 function readTsConstants(source: string): Map<string, number> {
   const out = new Map<string, number>()
-  const re = /export\s+const\s+([A-Z_]+)\s*=\s*(\d+)/g
+  // ★`(?![\d.])` 로 소수를 배제한다. 없으면 `LENGTH_COUNTER_VISIBLE_RATIO = 0.9` 에서 `0` 을
+  //   뽑아 조용히 넣고, 그것이 `ts.size` 를 부풀려 **비-공허 판정을 헐겁게** 만든다.
+  const re = /export\s+const\s+([A-Z_]+)\s*=\s*(\d+)(?![\d.])/g
   for (const m of stripComments(source).matchAll(re)) {
     out.set(m[1] as string, Number(m[2]))
   }

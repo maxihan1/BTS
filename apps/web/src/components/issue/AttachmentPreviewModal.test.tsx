@@ -419,6 +419,99 @@ describe('TC-7: 갤러리 좌우 이동', () => {
     expect(screen.getByRole('img', { name: 'first.png' })).toBeInTheDocument()
   })
 
+  // ── ←/→ 가 남의 기본동작을 빼앗지 않는다 (리뷰 BLOCKER-1) ────────────────────
+  //
+  // 이동 핸들러는 `DialogContent` 에 걸려 있어 **모달 안의 모든 키가 여기로 버블한다.**
+  // 조건 없이 `preventDefault` 하면 포커스를 가진 자식의 기본동작을 통째로 빼앗는다.
+  //
+  // `<video controls>` 의 ←/→ 는 5초 되감기·빨리감기다. 첨부가 하나뿐이라 이동 UI 조차
+  // 안 그려지는 경우에도 되감기가 죽고, 둘 이상이면 되감기 대신 다른 첨부로 넘어가면서
+  // blob 이 revoke 되어 **재생 위치를 통째로 잃는다.**
+  describe('←/→ 가 자식의 기본동작을 빼앗지 않는다', () => {
+    const video = makeAttachment({
+      id: '44444444-4444-4444-8444-444444444444',
+      filename: 'clip.mp4',
+      contentType: 'video/mp4',
+    })
+
+    /** 지정한 요소에서 키를 올려 보내고 기본동작이 취소됐는지 돌려준다. */
+    function dispatchKey(el: Element, key: string): boolean {
+      const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
+      el.dispatchEvent(ev)
+      return ev.defaultPrevented
+    }
+
+    it('비디오에 포커스가 있으면 ← 를 가로채지 않는다 — 5초 되감기를 지킨다', async () => {
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[video]}
+          startIndex={0}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const el = await screen.findByTestId('preview-video')
+
+      expect(dispatchKey(el, 'ArrowLeft')).toBe(false)
+      expect(dispatchKey(el, 'ArrowRight')).toBe(false)
+    })
+
+    it('갤러리가 여럿이어도 비디오 위에서는 이동하지 않는다 — 재생 위치를 잃지 않는다', async () => {
+      const second = makeAttachment({
+        id: '55555555-5555-4555-8555-555555555555',
+        filename: 'clip2.mp4',
+        contentType: 'video/mp4',
+      })
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[video, second]}
+          startIndex={0}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const el = await screen.findByTestId('preview-video')
+
+      expect(dispatchKey(el, 'ArrowRight')).toBe(false)
+      expect(screen.getByTestId('attachment-preview-position')).toHaveTextContent(
+        attachmentLabels.previewPosition(1, 2),
+      )
+    })
+
+    it('첨부가 하나뿐이면 ← 를 가로채지 않는다 — 이동할 곳이 없다', async () => {
+      const only = makeAttachment({ filename: 'solo.png' })
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[only]}
+          startIndex={0}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const img = await screen.findByRole('img', { name: 'solo.png' })
+
+      expect(dispatchKey(img, 'ArrowLeft')).toBe(false)
+    })
+
+    it('이미지 갤러리에서는 여전히 ← 를 잡는다 — 위 단언들의 비-공허 짝', async () => {
+      render(
+        <AttachmentPreviewModal
+          issueKey="ATLAS-1"
+          attachments={[first, second, third]}
+          startIndex={1}
+          open={true}
+          onOpenChange={vi.fn()}
+        />,
+      )
+      const img = await screen.findByRole('img', { name: 'second.png' })
+
+      expect(dispatchKey(img, 'ArrowLeft')).toBe(true)
+    })
+  })
+
   it('첨부가 하나뿐이면 이동 UI 를 그리지 않는다 — 늘 비활성인 버튼을 남기지 않는다', async () => {
     render(
       <AttachmentPreviewModal

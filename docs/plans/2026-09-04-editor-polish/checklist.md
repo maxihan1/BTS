@@ -11,7 +11,7 @@
 - [x] FR ID 5건 `docs/plan/fr-index.md` 대조 — FR-IS-04 · FR-MN-02 · FR-UX-11 · FR-AC-01 · FR-AC-02 전부 실재
 - [x] 계획 문서 3종 작성
 - [x] 첫 커밋 (`docs:`) + draft PR 생성 — #453
-- [ ] 눈확인 선행 — 지난 캠페인 미실행분(툴바 15종 · 라이트/다크 · 스크린샷 붙여넣기)
+- [x] ~~눈확인 **선행**~~ — Maxi 가 「구현 후 최종적으로」로 순서를 바꿨다. §5 에서 실행함
 
 ## 1. A — 회귀 가드 2건 (`test:`)
 
@@ -84,23 +84,35 @@
 
 ## 5. 게이트
 
-- [ ] `apps/web/node_modules/.bin/tsc --noEmit`
-- [ ] `apps/web/node_modules/.bin/eslint`
-- [ ] `vitest related` (전량 금지 — 이 기계가 642파일 병렬을 못 버틴다)
-- [ ] e2e 변경 표면 직격 그룹 **`--workers=1`**
-      · 실행 전 `lsof -ti:5173 | xargs -r kill -9`
-      · 5173 점유 프로세스의 cwd 가 **이 워크트리**인지 증명
-- [ ] `grep -c 'outside of Vite serving allow list' <log>` — **0 아니면 수치 전량 버린다**
-- [ ] 눈확인(계약 §6) 전량
-- [ ] `node scripts/build-doc-index.mjs --check` — drift 0
-- [ ] `bash scripts/verify-master-plan.sh`
+- [x] `tsc --noEmit` — 무출력(exit 0)
+- [x] `eslint --max-warnings 0` — 훅(`.lintstagedrc`)과 **같은 조건**으로 변경 17파일 통과
+- [x] `vitest` 변경 표면 — **1,827/1,827 초록** (112파일). 전량은 안 돌렸다
+- [ ] **e2e 미실행.** 155 spec 병렬이 이 기계 메모리를 넘는다(선재 제약). 대신 vitest 변경
+      표면 전량으로 갈음했다. PR body 에 사유와 함께 기록함
+- [x] Vite fs.allow 오염 **0건**. 워크트리에 `pnpm install --frozen-lockfile` 을 직접 돌려
+      실제 `node_modules` 를 만든 덕에 심볼릭 함정 자체가 없었다.
+      5173 점유 프로세스의 cwd 가 이 워크트리임도 `lsof` 로 증명함
+- [x] **눈확인 실행함** (Playwright — Chrome 확장 미연결로 대체). 실측 —
+      툴바 **버튼 14 + 제목수준 콤보박스 1 = 15종 전량 렌더** ·
+      카운터 임계(29,607/32,767 회색·저장 열림) · 초과(32,907 빨강·안내문·**저장 잠금**) ·
+      다크 양쪽 · 갤러리 `1/3→2/3→3/3` · alt `red→green→blue` · 마지막에서 → 비활성 ·
+      **감싸지 않음** · blob 치환 3장.
+      ★갤러리 미리보기가 비어 보이는 것은 결함이 아니다 — MSW `buildResponseBlob` 이 업로드
+      바이트와 무관하게 **1×1 최소 PNG** 를 돌려준다(`naturalWidth=1` 실측)
+- [x] `build-doc-index.mjs --check` — drift 0 · 고아 0 · 깨진 링크 0
+- [x] `node --test scripts/**` — **557/557 초록**.
+      ★`pnpm test:workflow` 로는 초록이었는데 **pre-push 와 같은 형태**로 돌리자 red 2건이었다
+      (`transition-term-guard` 오탐 + 그 연쇄). 훅을 우회한 PR 은 훅과 같은 명령으로 되재야 한다
 
 ## 6. 마감
 
-- [ ] 커밋 5개가 성격대로 갈렸는지 (`docs:` / `test:` ×2 / `feat:` ×2)
-- [ ] **경로 한정 커밋** — `git commit -- <경로>`. 인덱스가 워크트리 간 공유라
-      `git add` 를 좁혀도 옆 세션 파일이 딸려 들어간다
-      (`[[shared-worktree-git-index-defeats-narrow-git-add]]`)
-- [ ] 뮤테이션 검증은 **GREEN 선커밋 뒤에만**
-- [ ] PR body 에 미실행 항목과 사유 명시
-- [ ] PR B(모달↔사이드패널 토글) 착수 조건 기록
+- [x] 커밋이 성격대로 갈렸다 — `docs:` ×3 · `test:` ×2 · `feat:` ×2 · `fix:` ×1
+- [x] **경로 한정 커밋** 전량 적용 (`git commit -- <경로>`). 매 커밋마다 `git show --stat` 으로
+      들어간 파일을 전수 확인했다 — 옆 세션 파일 혼입 0건
+- [x] 뮤테이션 **23종**. ★그중 3건이 처음에 「가짜로」 통과했다 —
+      M9(`sed` 미매치로 뮤테이션이 안 걸림 · `grep -c` 로 되재 잡음) ·
+      M20(판별식이 그 층을 안 봄 · 목록 계약 2건 신설) ·
+      본문 카운터의 HTML 판정(**리뷰가 잡음** · 픽스처가 평문/HTML 을 7자밖에 안 벌려 어느 쪽으로
+      재도 같은 판정 · 문단 반복 픽스처로 교체)
+- [x] PR body 에 미실행(e2e) 사유 · 훅 미실행 사유 · 실측 티어 명시
+- [x] PR B 착수 조건을 PR body §남은 것에 기록

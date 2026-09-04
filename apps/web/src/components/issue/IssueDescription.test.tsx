@@ -431,6 +431,34 @@ describe('IssueDescription — 길이 카운터·상한 잠금', () => {
     ).toBeEnabled()
   })
 
+  // ★이 판별식이 「HTML 을 잰다」를 지키는 유일한 자리다 (리뷰 CONCERNS-2).
+  //
+  // 위 두 케이스의 픽스처(`htmlOfLength`)는 평문과 HTML 이 7자밖에 차이 나지 않아 **어느 쪽으로
+  // 재도 판정이 같은 쪽에 떨어진다** — `draftHtml.length` 를 평문 길이로 바꿔도 6건이 전부
+  // 초록이었다(실측). 서식이 많은 본문을 넣어 두 값을 크게 벌려야 비로소 갈린다.
+  //
+  // 댓글 쪽에는 반대 방향의 짝이 이미 있다(`CommentSection.test.tsx` 의 `noisyHtml` —
+  // 평문은 짧고 HTML 만 넘치는 입력이 **잠기면 안 된다**). 본문은 그것을 뒤집은 것이다.
+  it('평문이 아니라 HTML 길이로 잰다 — 서식이 많으면 보이는 글자가 적어도 막힌다', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
+    // ★인접한 같은 mark 는 TipTap 이 마운트하며 **하나로 병합한다** — `<strong>가</strong>` 를
+    //   2,000번 반복해도 직렬화 결과는 `<strong>가가…</strong>` 한 덩어리라 HTML 이 짧아진다
+    //   (첫 시도에서 이것 때문에 카운터가 안 떴다). 문단은 병합되지 않으므로 그것으로 부풀린다.
+    const noisyHtml = '<p>가</p>'.repeat(4200)
+    const plainLength = noisyHtml.replace(/<[^>]*>/g, '').length
+    expect(plainLength).toBeLessThan(DESCRIPTION_MAX_LENGTH)
+    expect(noisyHtml.length).toBeGreaterThan(DESCRIPTION_MAX_LENGTH)
+
+    render(<IssueDescription {...props} descriptionHtml={noisyHtml} />)
+    await enterEditMode(user)
+
+    expect(screen.getByTestId('description-length-counter')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+    ).toBeDisabled()
+  })
+
   it('초과 상태에서는 저장을 눌러도 onSave 가 불리지 않는다', async () => {
     const user = userEvent.setup()
     const props = baseProps()
