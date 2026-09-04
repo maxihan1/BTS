@@ -806,8 +806,6 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
               // ★`canDelete` 는 Zod `.optional()` 이라 undefined 가 온다. `=== true` 로만 연다 —
               //   `!== false` 로 무르면 필드가 없는 응답에서 삭제가 열린다 (fail-closed).
               canDelete={boardDetail.canDelete === true}
-              // 설정 진입은 이름 변경과 같은 CREATE 축이다(J8). 별 prop 으로 두는 이유는
-              // BoardActionsMenuProps 의 KDoc 에 있다.
               canConfigure={canCreate}
               onDeleted={() => {
                 void navigate({

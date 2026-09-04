@@ -65,6 +65,12 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //    숫자만 맞추면 그 래칫은 그 뒤로 아무것도 지키지 않는다.
   // 상환 후보로 이 항목은 그대로 남는다 — 위 `projectFavoriteHeader` 추출 논의와 함께 읽을 것.
   // 426 → 420 (Jira 패리티 J5) — 뷰 전환 nav 를 셸(`ProjectViewChrome`)로 옮기며 6줄이 빠졌다.
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 420,
+  // ⚠️ 2026-09-04 (부채 177) 420 → 421. **의도적으로 올렸다.**
+  //   `BoardActionsMenu` 에 `canConfigure` prop 을 넘기는 JSX 한 줄이다 — 보드 설정 진입
+  //   메뉴 항목의 권한 게이팅이고, 그 한 줄 없이는 기능이 성립하지 않는다.
+  //   ★설명 주석 2줄은 걷어내 증가를 최소로 줄였다(423 → 421). 남은 +1 은 prop 그 자체다.
+  //   #367 이 「래칫 장부를 낮추라는 지시를 안 지켜 재성장이 사전 승인됐다」로 남긴 사고를
+  //   반복하지 않으려고, 이 이탈을 게이트 2 요약에 그대로 싣는다.
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 421,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }

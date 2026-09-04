@@ -2,7 +2,6 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { DndContext } from '@dnd-kit/core'
-import type { DragEndEvent } from '@dnd-kit/core'
 import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BoardDetail, BoardColumn } from '@/api/boards'
@@ -11,13 +10,12 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useBoardDragSensors } from '../board-drag-sensors'
-import { useReplaceColumnStates, isStateConflict } from '@/hooks/use-replace-column-states'
 import { useCreateColumn, useDeleteColumn } from '@/hooks/use-column-crud'
-import { useUpdateColumn, useReorderColumns } from '@/hooks/use-update-column'
+import { useUpdateColumn } from '@/hooks/use-update-column'
 import { ColumnSettingsCard } from './ColumnSettingsCard'
 import { UnmappedStatesPanel } from './UnmappedStatesPanel'
 import { AddColumnDialog } from './AddColumnDialog'
-import { planStateDrop, planColumnReorder } from './state-mapping-drop'
+import { useColumnSettingsDrag } from './use-column-settings-drag'
 
 /** ColumnSettingsPanel props */
 export interface ColumnSettingsPanelProps {
@@ -48,11 +46,12 @@ export interface ColumnSettingsPanelProps {
  */
 export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanelProps): JSX.Element {
   const sensors = useBoardDragSensors()
-  const replaceStates = useReplaceColumnStates(board.boardId)
+  // 드래그 두 축(상태 매핑 · 컬럼 순서)의 오케스트레이션은 훅이 진다 — 이 컴포넌트가
+  // 200줄 래칫을 넘었고, 그 래칫의 처방은 베이스라인 추가가 아니라 쪼개는 것이다.
+  const handleDragEnd = useColumnSettingsDrag(board)
   const createColumn = useCreateColumn(board.boardId)
   const deleteColumn = useDeleteColumn(board.boardId)
   const updateColumn = useUpdateColumn(board.boardId)
-  const reorder = useReorderColumns(board.boardId)
 
   const [addOpen, setAddOpen] = useState(false)
   const [addError, setAddError] = useState<string | undefined>(undefined)
@@ -67,64 +66,6 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
    * 만들지 않는다. 서버는 그대로 두고 UI 가 도달을 막는다.
    */
   const canDeleteAny = canConfigure && board.columns.length > 1
-
-  /**
-   * 드래그 두 축을 한 컨텍스트에서 가른다.
-   *
-   * ★plan 은 「dnd context 를 분리한다」고 적었는데 **구현이 그것을 바꿨다.** `DndContext` 를
-   * 중첩하면 이벤트가 바깥까지 올라가 어느 쪽이 처리했는지 모호해진다. 대신 끌리는 쪽이
-   * `data.kind` 를 싣고 여기서 분기한다 — 「상태를 컬럼 헤더에 떨어뜨리는」 잘못된 조합은
-   * `kind` 가 갈라 주므로 컨텍스트를 나눌 이유가 사라진다.
-   */
-  function handleDragEnd(event: DragEndEvent): void {
-    const data = event.active.data.current as
-      | { kind?: string; stateKey?: string; fromColumnId?: string | null; columnId?: string }
-      | undefined
-
-    if (data?.kind === 'column' && data.columnId !== undefined) {
-      handleColumnReorder(data.columnId, event)
-      return
-    }
-
-    const stateKey = data?.stateKey
-    if (stateKey === undefined) return
-
-    const plan = planStateDrop(
-      stateKey,
-      data?.fromColumnId ?? null,
-      event.over === null ? null : String(event.over.id),
-      board.columns,
-    )
-    if (plan.changes.length === 0) return
-
-    replaceStates.mutate(plan, {
-      // ★모든 실패에서 문구를 낸다. 409 만 갈라 쓰고 나머지는 공통 문구다 — 훅이
-      //   무효화로 화면을 되돌리므로 여기서 할 일은 「왜」를 말하는 것뿐이다(G2 · E3).
-      onError: (error: unknown) => {
-        toast.error(
-          isStateConflict(error)
-            ? boardLabels.settings.stateConflict
-            : boardLabels.settings.stateChangeFailed,
-        )
-      },
-    })
-  }
-
-  /** 컬럼 순서 드래그 — 전 컬럼 순서를 만들어 한 번에 보낸다 (R10 · J25). */
-  function handleColumnReorder(draggedColumnId: string, event: DragEndEvent): void {
-    const next = planColumnReorder(
-      draggedColumnId,
-      event.over === null ? null : String(event.over.id),
-      board.columns,
-    )
-    if (next === null) return
-
-    reorder.mutate(next, {
-      onError: () => {
-        toast.error(boardLabels.settings.reorderFailed)
-      },
-    })
-  }
 
   function handleCreate(name: string): void {
     setAddError(undefined)
