@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import kotlin.reflect.full.functions
 
 /**
  * BoardColumnWithCardsResponse.from + BoardDetailResponse.of + BoardCardResponse.from DTO 변환 단위테스트.
@@ -462,6 +463,47 @@ class BoardResponsesTest {
             assertThat(response.name).isEqualTo(b.name)
             assertThat(response.truncated).isFalse()
             assertThat(response.unplacedCount).isEqualTo(0)
+        }
+
+        /**
+         * 목록 DTO 의 기존 4필드는 canDelete 추가 뒤에도 그대로여야 한다.
+         *
+         * 보드 스위처 · 백로그 헤더 · 탭바가 이 목록 하나만 읽는다 — 필드가 하나 사라지면
+         * 세 화면이 함께 죽는다.
+         */
+        @Test
+        fun `BoardSummaryResponse 기존 4필드가 canDelete 추가 후에도 유지된다`() {
+            val b = board(boardType = BoardType.SCRUM)
+
+            val response = BoardSummaryResponse.from(b, canDelete = true)
+
+            assertThat(response.boardId).isEqualTo(b.id)
+            assertThat(response.projectKey).isEqualTo(b.projectKey)
+            assertThat(response.name).isEqualTo(b.name)
+            assertThat(response.boardType).isEqualTo("SCRUM")
+        }
+
+        @Test
+        fun `BoardSummaryResponse from 은 canDelete 인자를 그대로 싣는다`() {
+            // 한쪽만 단언하면 상수 하드코딩(항상 true 또는 항상 false)이 그대로 통과한다.
+            assertThat(BoardSummaryResponse.from(board(), canDelete = true).canDelete).isTrue()
+            assertThat(BoardSummaryResponse.from(board(), canDelete = false).canDelete).isFalse()
+        }
+
+        /**
+         * `canDelete` 파라미터에 기본값이 있으면 안 된다.
+         *
+         * 기본값을 주는 순간 컨트롤러의 `.map(BoardSummaryResponse::from)` 이 **고치지 않아도 그대로
+         * 컴파일되고**, 응답이 전량 false 로 나가는데 컴파일러도 detekt 도 침묵한다. 기본값 부재만이
+         * 그 실수를 컴파일 에러로 만든다. 그러니 이 성질은 사람 눈이 아니라 기계가 지킨다.
+         */
+        @Test
+        fun `BoardSummaryResponse from 의 canDelete 파라미터에는 기본값이 없다`() {
+            val fromFn = BoardSummaryResponse.Companion::class.functions.single { it.name == "from" }
+
+            val canDeleteParam = fromFn.parameters.single { it.name == "canDelete" }
+
+            assertThat(canDeleteParam.isOptional).isFalse()
         }
     }
 
