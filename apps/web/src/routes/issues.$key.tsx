@@ -1106,10 +1106,10 @@ export function IssueDetailPage({
             </>
           )}
 
-          {/* 본문 — IssueDescription 컴포넌트 (FR-IS-04 Task 6) */}
           <div className="mt-6">
             <IssueDescription
               descriptionHtml={issue.descriptionHtml}
+              issueKey={issue.key}
               onSave={handleDescriptionSave}
               isSaving={descriptionMutation.isPending}
               canEdit={canEdit}

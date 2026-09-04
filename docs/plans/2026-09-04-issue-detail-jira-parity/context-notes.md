@@ -221,6 +221,44 @@ ProseMirror 는 좌표(`elementFromPoint`·`getBoundingClientRect`)에 기대므
 - `EditMode` 가 337줄 → 200줄 미만. 래칫 항목 자체를 지웠다(Write/Preview 탭 소멸)
 - 원시 `<button role="tab">` 2건 소멸 → `button-primitive-usage` 기대 목록에서 제거
 
+## 2026-09-04 · PR④ 설계 — 첨부
+
+### 테이블을 그리드로 갈아엎지 않았다
+
+계획은 「썸네일 그리드」였다. 실제로는 **행 왼쪽에 40px 타일**을 넣는 것으로 그쳤다.
+`AttachmentSection` 은 `<table>` 이고 e2e 가 행 단위로 잡는다 — 그리드로 바꾸면 삭제 확인·
+다운로드·미리보기 계약까지 함께 흔들린다. 시각적 목표(썸네일이 보인다)는 셀 안에서 이뤄진다.
+
+### 자리표시자를 두지 않았다
+
+계획은 「업로드 중 자리표시자 → 실패 시 제거」였다. 두지 않았다 — 자리표시자는 실패·중복·
+되돌리기 경로를 각각 만든다. 대신 **업로드가 끝난 뒤에만** 노드를 넣는다. 성공하면 이미지가
+나타나고 실패하면 아무것도 넣지 않고 토스트만 띄운다. 상태가 둘뿐이라 되돌릴 것이 없다.
+
+### 문자열 치환을 피한 이유
+
+`html.replace('attachment:…', blobUrl)` 는 치환 대상이 태그 안인지 텍스트인지 구분하지 못한다.
+사용자가 본문에 `attachment:uuid` 를 평문으로 써 넣으면 그것도 바뀐다 — **주입 표면이 하나
+늘어난다**. `AttachmentHtml` 은 서버 HTML 을 그대로 넣고(정화는 서버가 이미 했다) 마운트 후
+DOM 에서 `<img>` 노드를 찾아 `src` 만 바꿔 끼운다.
+
+### 선택 기능이 필수 결합을 만든 것 2건 (실측)
+
+| 무엇 | 증상 | 처방 |
+|---|---|---|
+| `useQueryClient()` 를 그냥 호출 | Provider 밖에서 throw → **에디터가 QueryClientProvider 없이는 렌더조차 못 하는** 컴포넌트가 됐다. 단위 테스트 26건 사망 | `QueryClientContext` 를 직접 읽어 옵셔널로 |
+| `downloadAttachment(...).then` | 호출부가 그 모듈을 mock 하면 `vi.fn()` 기본값 undefined 에 `.then` → 렌더 중 TypeError. 첨부 테스트 12건 사망 | `Promise.resolve(...)` 로 감싸고 `instanceof Blob` 확인 |
+
+둘 다 같은 양식이다 — **선택 기능(이미지 업로드·썸네일)이 그것을 쓰지 않는 화면까지 인질로
+잡았다.** 결합을 선택으로 되돌리는 것이 처방이고, 그러면 실제 운영에서도 더 안전하다.
+
+### 접근성 이름은 겹치면 안 된다
+
+썸네일에 `previewButton`("미리보기")을 재사용했더니 같은 행의 텍스트 버튼과 이름이 겹쳐
+`getByRole('button', { name: /미리보기/ })` 가 둘을 잡아 strict mode 로 죽었다(기존 2건).
+`thumbnailButton(filename)` 을 따로 뒀다 — **하는 일이 같아도 부르는 이름은 달라야** 셀렉터가
+하나를 지목할 수 있다. 계약 §2 의 `role="dialog"` 고유 label 조항과 같은 이치다.
+
 ## 미해결 · 착수 중 판단할 것
 
 - `IssueDescription.test.tsx` 1,005줄이 지키던 계약 중 무엇을 새 파일로 옮길지는 PR③ 착수 시 훑고 정한다

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { AttachmentHtml } from './AttachmentHtml'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -18,6 +19,11 @@ export interface IssueDescriptionProps {
    * 화면에 그리는 것이 같은 문자열이다 — 「미리보기와 실제가 다르다」가 원천적으로 없다.
    */
   descriptionHtml: string | null
+  /**
+   * 이슈 식별 키 — 본문 이미지의 첨부 참조(`attachment:<uuid>`)를 내려받고,
+   * 편집 중 붙여넣은 이미지를 이 이슈의 첨부로 올린다(J7).
+   */
+  issueKey: string
   /** 저장 버튼 클릭 시 호출 — 편집된 **HTML** 문자열 전달 */
   onSave: (html: string) => void
   /** 저장 진행 중 여부 — true 시 저장/취소 버튼 disabled */
@@ -62,6 +68,7 @@ const EMPTY_DOC = ''
  */
 export function IssueDescription({
   descriptionHtml,
+  issueKey,
   onSave,
   isSaving,
   canEdit = true,
@@ -105,6 +112,7 @@ export function IssueDescription({
   if (isEditing) {
     return (
       <EditMode
+        issueKey={issueKey}
         draftHtml={draftHtml}
         // 편집 진입 시 draftHtml 을 seed 한 값과 같은 식이어야 변경분 판정이 정확하다
         initialHtml={descriptionHtml ?? EMPTY_DOC}
@@ -119,6 +127,7 @@ export function IssueDescription({
   return (
     <ReadMode
       descriptionHtml={descriptionHtml}
+      issueKey={issueKey}
       onEditClick={handleEditClick}
       canEdit={!isEditDisabled}
     />
@@ -131,6 +140,7 @@ export function IssueDescription({
 
 interface ReadModeProps {
   descriptionHtml: string | null
+  issueKey: string
   onEditClick: () => void
   canEdit: boolean
 }
@@ -148,7 +158,7 @@ const DESCRIPTION_CLICKABLE_CLS = '-mx-2 rounded px-2 cursor-text hover:bg-(--bg
  * `dangerouslySetInnerHTML` 을 쓰는 근거는 그대로다 — 이 HTML 은 **서버가 정화한 것**이고
  * (`MarkdownRenderer.sanitizeHtml`), 정화 지점이 하나라 검증 대상이 갈라지지 않는다(NFR1).
  */
-function ReadMode({ descriptionHtml, onEditClick, canEdit }: ReadModeProps): JSX.Element {
+function ReadMode({ descriptionHtml, issueKey, onEditClick, canEdit }: ReadModeProps): JSX.Element {
   /** 본문 클릭 진입 — 텍스트를 드래그로 선택하는 중이면 진입하지 않는다 (FR-UX-11 F8). */
   function handleBodyClick(e: ReactMouseEvent<HTMLDivElement>): void {
     if (!canEdit) return
@@ -163,14 +173,17 @@ function ReadMode({ descriptionHtml, onEditClick, canEdit }: ReadModeProps): JSX
   return (
     <div className="flex flex-col gap-2">
       {descriptionHtml !== null && descriptionHtml !== '' ? (
-        <div
-          data-testid="description-body"
-          onClick={handleBodyClick}
-          className={`prose prose-sm max-w-none text-sm text-foreground${clickableCls}`}
-          // NFR1: 백엔드 정화 HTML만 dangerouslySetInnerHTML로 렌더
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: 백엔드 OWASP 정화 HTML만 허용
-          dangerouslySetInnerHTML={{ __html: descriptionHtml }}
-        />
+        // 본문 클릭 진입은 편집 버튼과 **같은 동작의 보조 경로**다(FR-UX-11 F8). 키보드
+        // 사용자는 바로 아래 「본문 편집」 버튼으로 도달하므로 여기에 키 핸들러를 더하지 않는다 —
+        // 본문 안 텍스트 선택·링크 이동을 방해하지 않는 것이 우선이다.
+        <div onClick={handleBodyClick}>
+          <AttachmentHtml
+            html={descriptionHtml}
+            issueKey={issueKey}
+            testId="description-body"
+            className={`prose prose-sm max-w-none text-sm text-foreground${clickableCls}`}
+          />
+        </div>
       ) : (
         <p
           data-testid="description-empty"
@@ -202,6 +215,8 @@ function ReadMode({ descriptionHtml, onEditClick, canEdit }: ReadModeProps): JSX
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface EditModeProps {
+  /** 붙여넣은 이미지를 매달 이슈 키 (J7) */
+  issueKey: string
   draftHtml: string
   initialHtml: string
   onDraftChange: (next: string) => void
@@ -216,6 +231,7 @@ interface EditModeProps {
  * 폐기 확인(편차 D-1)의 계약을 그대로 승계한다. 판정식만 마크다운 비교 → HTML 비교다.
  */
 function EditMode({
+  issueKey,
   draftHtml,
   initialHtml,
   onDraftChange,
@@ -295,6 +311,7 @@ function EditMode({
         autoFocus
         placeholder={issueDetailStrings.descriptionEmpty}
         ariaLabel={issueDetailStrings.descriptionEditLabel}
+        imageIssueKey={issueKey}
       />
 
       {/* 저장/취소 버튼 */}

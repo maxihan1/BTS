@@ -244,30 +244,40 @@ suggestion 키를 직접 지정해 상태를 조회하고, 후보가 떠 있으�
 
 ### 4.1 RED
 
-- [ ] 이미지 첨부가 썸네일로, 비이미지가 아이콘 타일로 뜬다
-- [ ] 5MB 초과 이미지는 썸네일을 그리지 않는다
-- [ ] blob URL 이 언마운트 시 revoke 된다
-- [ ] 붙여넣기가 업로드 → `attachment:` 삽입 → 첨부 목록 갱신 순으로 간다
-- [ ] 업로드 실패 시 자리표시자가 사라진다
-- [ ] `attachment:uuid` 가 blob 으로 치환돼 렌더된다
-- [ ] 갤러리 좌우 이동이 동작한다
-- [ ] **red 확인 (비-공허)**
+- [x] 이미지 첨부가 썸네일로, 비이미지가 아이콘 타일로 뜬다
+- [x] 5MB 초과 이미지는 썸네일을 **내려받지도 않는다**
+- [x] 임계 경계값(정확히 5MB)은 그린다 — 경계 단언
+- [x] PDF 는 미리보기 가능하나 썸네일은 없다
+- [x] 미리보기 불가 타입은 클릭 어포던스를 주지 않는다
+- [x] blob URL 이 언마운트 시 revoke 된다
+- [x] 다운로드 실패를 흡수한다 (아이콘으로 떨어질 뿐 터지지 않는다)
+- [x] **red 확인 (비-공허)** — 임계 판정을 끊어 정확히 1건 red
+- [ ] 붙여넣기가 업로드 → `attachment:` 삽입 → 첨부 목록 갱신 순으로 간다 — **미작성**.
+      jsdom 에 클립보드 이미지 이벤트를 만들 수단이 없다. e2e 몫
+- [ ] `attachment:uuid` 가 blob 으로 치환돼 렌더된다 — **미작성**. 위와 같은 이유
 
 ### 4.2 GREEN
 
-- [ ] `AttachmentSection` 썸네일 그리드
-- [ ] `use-attachment-image-src` 훅 — blob 치환 (문자열 치환 금지, 노드 교체)
-- [ ] 에디터 `handlePaste` · `handleDrop` · 툴바 이미지 버튼
-- [ ] 업로드 자리표시자 · 실패 롤백
-- [ ] 첨부 쿼리 invalidate
-- [ ] `AttachmentPreviewModal` 갤러리 좌우 이동
-- [ ] 서버 리사이즈 엔드포인트를 `TODOS.md` 에 별건 등록
+- [x] `AttachmentThumbnail` — 행 왼쪽 40px 타일. **테이블 구조는 유지**(e2e 행 셀렉터 보존)
+- [x] `use-attachment-blob` 훅 — fetch → objectURL → revoke 생명주기
+- [x] `AttachmentHtml` — blob 치환을 **노드 교체**로 (문자열 치환 금지)
+- [x] `use-editor-image-upload` — 업로드 → `attachment:` 삽입 → 첨부 쿼리 invalidate
+- [x] 에디터 `handlePaste` · `handleDrop` · 툴바 이미지 버튼 (숨은 file input)
+- [x] 댓글도 같은 경로 — 작성·편집 양쪽에 `imageIssueKey` 배선
+- [x] 썸네일 접근성 이름 분리 (`thumbnailButton`) — 같은 행의 「미리보기」와 strict mode 충돌 회피
+
+**계획에서 바뀐 것 / 안 한 것**
+
+- [x] ~~업로드 자리표시자 · 실패 롤백~~ — **두지 않았다**. 업로드가 끝난 뒤에만 노드를 넣어
+      상태가 둘(있다/없다)뿐이라 되돌릴 것이 없다. 자리표시자는 실패·중복·되돌리기 경로를 만든다
+- [ ] `AttachmentPreviewModal` 갤러리 좌우 이동 — **미구현**
+- [ ] 서버 리사이즈 엔드포인트를 `TODOS.md` 에 별건 등록 — **미등록**
 
 ### 4.3 게이트
 
-- [ ] `pnpm typecheck && pnpm lint && pnpm test`
-- [ ] 첨부 e2e 2종 (`issue-attachments` · `issue-attachment-preview`)
-- [ ] 눈확인 — 스크린샷 붙여넣기 → 본문 + 첨부 목록 동시 반영
+- [x] `pnpm typecheck && pnpm lint && pnpm test`
+- [ ] 첨부 e2e 2종 (`issue-attachments` · `issue-attachment-preview`) — **미실행**
+- [ ] 눈확인 — 스크린샷 붙여넣기 → 본문 + 첨부 목록 동시 반영 — **미실행**
 
 ---
 

@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
 import { htmlToPlainText, escapeHtml } from '@/lib/html-text'
+import { AttachmentHtml } from './AttachmentHtml'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 작성 폼
@@ -84,6 +85,7 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
           editable={!isPending}
           placeholder={commentStrings.commentBodyPlaceholder}
           ariaLabel={commentStrings.commentBodyLabel}
+          imageIssueKey={issueKey}
           contentRef={focusRef}
         />
       </div>
@@ -106,6 +108,8 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CommentEditFormProps {
+  /** 붙여넣은 이미지를 매달 이슈 키 (J7) */
+  issueKey: string
   /** 편집 시작 시점의 원문 Markdown */
   initialBody: string
   /** 편집 시작 시점의 정화된 HTML. null 이면 옛 댓글이라 [initialBody] 를 평문으로 넣는다. */
@@ -131,6 +135,7 @@ interface CommentEditFormProps {
  * @param onCancel 취소 콜백
  */
 function CommentEditForm({
+  issueKey,
   initialBody,
   initialBodyHtml,
   isPending,
@@ -153,6 +158,7 @@ function CommentEditForm({
         editable={!isPending}
         autoFocus
         ariaLabel={commentStrings.commentEditBodyLabel}
+        imageIssueKey={issueKey}
       />
       <div className="flex gap-2">
         <Button
@@ -369,6 +375,7 @@ function CommentRow({
 
       {isEditing ? (
         <CommentEditForm
+          issueKey={issueKey}
           initialBody={comment.body}
           // 서버는 항상 bodyHtml 을 채워 준다(옛 행은 읽기 fallback 이 렌더한다) — 그대로 seed 한다.
           initialBodyHtml={comment.bodyHtml}
@@ -383,11 +390,12 @@ function CommentRow({
       ) : (
         <div className="flex items-start justify-between gap-2">
           {/* NFR1: 백엔드 정화 HTML만 dangerouslySetInnerHTML 로 렌더 (IssueDescription 선례) */}
-          <div
-            data-testid={`comment-body-${comment.id}`}
+          {/* 댓글에도 첨부 이미지가 실릴 수 있다 — 본문과 같은 렌더러가 blob 치환을 맡는다(J7). */}
+          <AttachmentHtml
+            html={comment.bodyHtml}
+            issueKey={issueKey}
+            testId={`comment-body-${comment.id}`}
             className="prose prose-sm min-w-0 max-w-none text-sm text-foreground"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: 백엔드 OWASP 정화 HTML만 허용
-            dangerouslySetInnerHTML={{ __html: comment.bodyHtml }}
           />
 
           {(canEdit || canDelete) && (

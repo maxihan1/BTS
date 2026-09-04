@@ -99,6 +99,16 @@ export const attachmentLabels = {
   /** 미리보기 모달 열기 버튼 */
   previewButton: '미리보기',
 
+  /**
+   * 썸네일 타일의 접근성 이름 (J6).
+   *
+   * ★`previewButton` 을 재사용하지 않는다. 같은 행에 「미리보기」 텍스트 버튼이 이미 있어
+   * 이름이 겹치면 `getByRole('button', { name: /미리보기/ })` 가 두 개를 잡아 strict mode 로
+   * 죽는다 — 실제로 기존 테스트 2건이 그렇게 깨졌다. 하는 일은 같지만 **부르는 이름은 달라야**
+   * 셀렉터가 하나를 지목할 수 있다.
+   */
+  thumbnailButton: (filename: string) => `${filename} 썸네일`,
+
   /** 미리보기 모달 제목 (파일명 포함) */
   previewTitle: (filename: string) => `${filename} 미리보기`,
 
