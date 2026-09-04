@@ -78,13 +78,52 @@ memory `two-lists-never-check-each-other` 의 문서판 — 장부 갭 표와 `d
 3. **탭 배치(J9~J15)** — BTS 는 스윔레인·퀵필터를 **보드 화면 인라인**에 뒀다. 지라로 수렴시키면
    오늘 되는 것이 한 단계 멀어진다(위 「먼저 풀 것」 3·4번). **의도적 편차 후보 1순위.**
 
-## 도메인 정리 (← /bts-spec §1 채움)
+## 도메인 정리
 
-## 스펙 (← /bts-spec §2 채움)
+**BC — `agile-planning` 단일.** 한 PR = 한 BC 를 지킨다.
 
-정본은 `docs/specs/2026-09-04-board-settings-screen.md` (T3 — spec 분리).
+**영향 엔티티.** `Board` · `BoardColumn`(`name` · `category` · `displayOrder` · `wipLimit` · `stateKeys`) ·
+`board_column_states`(#444 V508). **워크플로우 상태**는 `project-workflow` 소유이고
+`service.listWorkflowStates(projectKey)` 경유로만 읽는다 — 직접 import 금지.
 
-## Sanity Check (← /bts-spec §3 채움)
+**새 용어 — 없다.** 「컬럼」 · 「미매핑 상태」 · 「WIP 제한」 모두 기존 용어이고
+`unmappedStates` 는 #444 가 이미 `BoardDetailResponse` 에 실었다. `glossary.md` 갱신 대상 없음.
+
+**관련 ADR 2건 · 충돌 0.**
+
+| ADR | 관계 |
+|---|---|
+| [`2026-09-03-board-column-multi-state`](../adr/2026-09-03-board-column-multi-state.md) | **전제를 깔아 준다.** D5·D7 이 「`category` 는 표시 전용」을 확정했고 이 PR 의 편차 `X1`(category 를 사용자가 안 고른다)이 그것을 승계한다. 컬럼 관리 API 3종·`unmappedStates` 도 이 ADR 의 산물이다 |
+| [`2026-09-01-board-type-and-active-sprint`](../adr/2026-09-01-board-type-and-active-sprint.md) | **충돌 없음.** 이 PR 은 보드 종류를 읽지도 쓰지도 않는다 — 컬럼 구성은 스크럼·칸반 공통이다 |
+
+**신규 ADR 필요 없다.** 새 엔티티·경계·용어가 0건이고 기존 결정을 무효화하지 않는다.
+T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 해당하지 않아 부르지 않는다.
+
+## 스펙
+
+정본 **[`docs/specs/2026-09-04-board-settings-screen.md`](../specs/2026-09-04-board-settings-screen.md)**
+— R1~R11 · N1~N6 · E1~E7 · 편차 X1~X4 · 완료 기준 14개.
+
+핵심 3줄.
+1. **범위는 「뼈대 + Columns 탭」 하나다**(Maxi 확정). 나머지 6탭은 만들지 않는다 — 비활성 골격은
+   「도달할 UI 가 없는 기능」의 거울상이라 배포하지 않는다. 탭이 하나라 **탭바도 안 만든다**.
+2. **마이그레이션 0 · 신규 API 2종뿐.** Columns 탭 백엔드 4종(WIP 편집·생성·삭제·상태 교체)이
+   이미 있고 UI 만 0개였다. 없는 것은 **컬럼 이름 변경 · 순서 변경** 둘이다.
+3. **이 PR 이 부채 178 을 해금한다.** 178 이 착수 조건을 「드롭존 UI PR 안정화 뒤」로 걸었고
+   상태 매핑 드래그가 그 드롭존이다. 동시에 FR-BD-03 **D6 deviation ③**(WIP 편집 UI 이연)을 상환한다.
+
+## Sanity Check
+
+**gap 3건 발견 · 2건 자체 보강 · 1건 Maxi 확정. ✅ 통과 — 미해결 결정 없음.**
+
+- ❓**G1 🔴 마지막 컬럼 삭제 처방 부재** → **보강.** 컬럼 1개면 삭제 비활성(R7).
+  이 PR 이 부채 179(컬럼 0개 조회 500)로 가는 **클릭 한 번짜리 경로**를 새로 만들 뻔했다.
+- ❓**G2 🟡 낙관적 반영의 되돌리기 기준 모호** → **보강.** 409 만이 아니라 **모든 실패**에서 되돌린다(E3).
+- ❓**G3 🔴 탭 골격 7종을 지금 그리는가** → **Maxi 확정.** Columns 하나만.
+
+**흔들었으나 문제없던 것.** 편차 `X3`(스윔레인·퀵필터 인라인 유지)이 지라 패리티를 깨는지 —
+깨지 않는다. 지라도 **보드 화면에서 스윔레인을 볼 수 있고**, 다른 것은 「설정을 어디서 바꾸나」뿐이다.
+게다가 BTS 쪽이 조작 단계가 짧다.
 
 ## Plan (← /bts-plan 채움)
 

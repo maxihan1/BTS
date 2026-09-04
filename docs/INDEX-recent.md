@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-04 | board-settings-screen | — | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
+| 2026-09-04 | board-settings-screen | ✔ | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
 | 2026-09-04 | issue-detail-jira-parity | — | ✔ | — | — | — |
 | 2026-09-03 | board-column-multi-state | ✔ | ✔ | — | ✔ | FR-BD-01 FR-BD-04 |
 | 2026-09-03 | kanban-sprint-move-and-lock-budget | ✔ | ✔ | — | ✔ | FR-BD-04 |
