@@ -47,6 +47,11 @@ interface AttachmentRowProps {
   issueKey: string
   /** 삭제 허용 여부 */
   canDelete: boolean
+  /**
+   * 미리보기 갤러리에 실을 목록 — **미리보기 가능한 것만** 담긴다.
+   * 이 행의 첨부가 미리보기 불가면 여기 없고, 그때는 모달 자체를 마운트하지 않는다.
+   */
+  previewable: readonly AttachmentResponse[]
 }
 
 /**
@@ -58,7 +63,12 @@ interface AttachmentRowProps {
  *
  * 삭제는 하드삭제이므로 경고 문구와 인라인 확인 단계를 거친다 (FR-MF-02 선례).
  */
-function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps): JSX.Element {
+function AttachmentRow({
+  attachment,
+  issueKey,
+  canDelete,
+  previewable,
+}: AttachmentRowProps): JSX.Element {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -200,7 +210,8 @@ function AttachmentRow({ attachment, issueKey, canDelete }: AttachmentRowProps):
       {canPreview && (
         <AttachmentPreviewModal
           issueKey={issueKey}
-          attachment={attachment}
+          attachments={previewable}
+          startIndex={previewable.findIndex((a) => a.id === attachment.id)}
           open={previewOpen}
           onOpenChange={setPreviewOpen}
         />
@@ -348,6 +359,15 @@ interface AttachmentSectionProps {
 export function AttachmentSection({ issueKey, canUpdate }: AttachmentSectionProps): JSX.Element {
   const { data: attachments = [], isLoading } = useAttachmentList(issueKey)
 
+  /**
+   * 미리보기 갤러리에 실을 목록.
+   *
+   * 목록 전체가 아니라 **미리보기 가능한 것만** 담는다. 그러면 좌우 이동에서
+   * 「미리보기 안 되는 항목을 건너뛸까」라는 경계 처리가 아예 사라지고, 위치 표시
+   * (「2 / 5」)가 이동으로 닿을 수 있는 자리만 센다.
+   */
+  const previewable = attachments.filter((att) => isPreviewable(att.contentType))
+
   return (
     <section aria-label={attachmentLabels.sectionTitle} className="mt-6">
       {/* 섹션 제목 */}
@@ -382,6 +402,7 @@ export function AttachmentSection({ issueKey, canUpdate }: AttachmentSectionProp
                   attachment={att}
                   issueKey={issueKey}
                   canDelete={canUpdate}
+                  previewable={previewable}
                 />
               ))}
             </tbody>
