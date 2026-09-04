@@ -1154,7 +1154,7 @@ class BoardApplicationServiceTest {
         assertThat(boards.map { it.name }).contains("목록 보드 1", "목록 보드 2")
     }
 
-    // ── updateBoard / updateColumnWipLimit 단위 테스트 (mockk repo) ────────────
+    // ── updateBoard / updateColumn 단위 테스트 (mockk repo) ────────────
 
     @Test
     fun `updateBoard 가 swimlaneField 만 받으면 repo 가 SwimlaneField_ASSIGNEE 로 호출된다`() {
@@ -1233,7 +1233,7 @@ class BoardApplicationServiceTest {
     }
 
     @Test
-    fun `updateColumnWipLimit 유효 호출이면 repo 결과를 그대로 반환한다`() {
+    fun `updateColumn 유효 호출이면 repo 결과를 그대로 반환한다`() {
         val boardId = UUID.randomUUID()
         val columnId = UUID.randomUUID()
         val expectedColumn =
@@ -1246,20 +1246,20 @@ class BoardApplicationServiceTest {
                 wipLimit = 5,
             )
         val repo = mockk<BoardRepository>()
-        every { repo.updateColumnWipLimit(boardId, columnId, 5) } returns expectedColumn
+        every { repo.updateColumn(boardId, columnId, null, WipLimitChange.Set(5)) } returns expectedColumn
 
-        val result = serviceWith(repo = repo).updateColumnWipLimit(boardId, columnId, 5)
+        val result = serviceWith(repo = repo).updateColumn(boardId, columnId, null, WipLimitChange.Set(5))
 
         assertThat(result).isEqualTo(expectedColumn)
     }
 
     @Test
-    fun `updateColumnWipLimit repo 가 null 반환하면 404 를 던진다`() {
+    fun `updateColumn repo 가 null 반환하면 404 를 던진다`() {
         val repo = mockk<BoardRepository>()
-        every { repo.updateColumnWipLimit(any(), any(), any()) } returns null
+        every { repo.updateColumn(any(), any(), any(), any()) } returns null
 
         assertThatThrownBy {
-            serviceWith(repo = repo).updateColumnWipLimit(UUID.randomUUID(), UUID.randomUUID(), 3)
+            serviceWith(repo = repo).updateColumn(UUID.randomUUID(), UUID.randomUUID(), null, WipLimitChange.Set(3))
         }
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")

@@ -402,16 +402,33 @@ data class ActiveSprintResponse(
 }
 
 /**
- * 컬럼 WIP 제한 변경 요청 바디.
+ * 컬럼 부분 갱신 요청 바디 — 이름 · WIP 제한 (부채 177 R9 · J24 · J29).
  *
- * [wipLimit] 가 null 이면 WIP 제한을 해제한다.
- * null 이 아닌 경우 반드시 양수(1 이상)여야 한다. 0 또는 음수는 컨트롤러에서 검증해 400 으로 거부한다
- * (jakarta `@Positive` 가 nullable `Int?` 에서 0 을 통과시키는 한계가 있어 BoardController 가 수동 검증한다).
+ * [JsonNullable] presence 로 3-state 를 구분한다(`UpdateBoardRequest` 와 같은 관용구).
+ * **두 필드의 「명시 null」 의미가 다르다** — 그 차이가 이 DTO 의 존재 이유다.
  *
- * @property wipLimit 새로운 WIP 제한. null 이면 해제. 양수만 허용.
+ * | 필드 | 부재 | 명시 null | 값 |
+ * |---|---|---|---|
+ * | [name] | 무변경 | **400** — 컬럼 이름은 해제할 수 없다 | 그 이름으로 변경 |
+ * | [wipLimit] | 무변경 | **해제**(무제한) | 그 값으로 설정. 0 이하는 400 |
+ *
+ * ★**`wipLimit` 을 종전처럼 `Int?` 로 두면 안 된다.** 그러면 「`name` 만 전송」과
+ * 「`wipLimit: null` 전송」이 서버에서 같은 값이 되어 **이름만 바꿔도 WIP 제한이 조용히 해제된다.**
+ * 응답은 200 이라 아무도 오류를 못 본다. 서비스는 그래서 [com.bts.agileplanning.application.WipLimitChange] 를 받는다.
+ *
+ * 두 필드가 모두 부재이면 400 이다 — 빈 바디 `{}` 가 조용히 200 을 받지 않게 하는 최소 1필드 규칙이고,
+ * `UpdateBoardRequest` 의 같은 규칙을 승계한다.
+ *
+ * 타입 인자를 `String?` · `Int?` 로 둔 것은 의도적이다. `JsonNullable<String>` 로 두면 `get()` 이
+ * 플랫폼 타입이라 명시 null 이 컴파일러 검사 없이 흘러 들어가 500 이 된다.
+ *
+ * @property name 새 컬럼 이름. 미전송=무변경. 공백만 있으면 400.
+ * @property wipLimit 새로운 WIP 제한. 미전송=무변경. 명시 null=해제. 양수만 허용
+ *   (jakarta `@Positive` 가 nullable 에서 0 을 통과시키는 한계가 있어 BoardController 가 수동 검증한다).
  */
-data class UpdateColumnWipLimitRequest(
-    val wipLimit: Int?,
+data class UpdateColumnRequest(
+    val name: JsonNullable<String?> = JsonNullable.undefined(),
+    val wipLimit: JsonNullable<Int?> = JsonNullable.undefined(),
 )
 
 /**

@@ -833,25 +833,40 @@ class BoardApplicationService(
     }
 
     /**
-     * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.
+     * 보드 컬럼의 이름과 WIP 제한을 **한 트랜잭션**에서 부분 갱신하고 갱신된 컬럼을 반환한다.
      *
-     * [boardRepository.updateColumnWipLimit] 가 null 을 반환하면 보드 또는 컬럼이 존재하지 않거나
+     * [boardRepository.updateColumn] 이 null 을 반환하면 보드 또는 컬럼이 존재하지 않거나
      * 타 보드 소속이므로 404 를 던진다.
+     *
+     * 두 필드를 한 메서드가 받는 이유는 [updateBoard] 와 같다 — 컨트롤러가 두 서비스 메서드를
+     * 순차 호출하면 각각이 자기 트랜잭션을 열어, 응답은 400 인데 이름만 커밋된 상태가 남는다.
+     *
+     * ★[wipLimit] 이 `Int?` 가 아니라 [WipLimitChange] 인 이유는 그 타입의 KDoc 에 있다 —
+     * 요약하면 **「무변경」과 「해제」가 둘 다 null 이 되어** 이름만 바꿔도 WIP 제한이 조용히
+     * 해제되기 때문이다.
      *
      * @param boardId 갱신 대상 보드 UUID.
      * @param columnId 갱신 대상 컬럼 UUID.
-     * @param wipLimit 새로운 WIP 제한. null 이면 해제.
+     * @param name 새 컬럼 이름. null 이면 미전송이라 건드리지 않는다. 공백 검증은 컨트롤러가 앞세운다.
+     * @param wipLimit WIP 제한 갱신 의도.
      * @return 갱신된 컬럼 도메인 객체.
      * @throws ResponseStatusException 404 — 보드/컬럼 미존재 또는 타 보드 소속.
      */
     @Transactional
-    fun updateColumnWipLimit(
+    fun updateColumn(
         boardId: UUID,
         columnId: UUID,
-        wipLimit: Int?,
+        name: String?,
+        wipLimit: WipLimitChange,
     ): BoardColumn {
-        log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
-        return boardRepository.updateColumnWipLimit(boardId, columnId, wipLimit)
+        log.debug(
+            "컬럼 갱신 — boardId={}, columnId={}, renaming={}, wipLimit={}",
+            boardId,
+            columnId,
+            name != null,
+            wipLimit,
+        )
+        return boardRepository.updateColumn(boardId, columnId, name, wipLimit)
             ?: throw ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "AGILE_BOARD_NOT_FOUND: 컬럼을 찾을 수 없습니다: boardId=$boardId, columnId=$columnId",

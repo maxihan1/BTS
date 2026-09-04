@@ -1502,7 +1502,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateColumnWipLimit(board.id, otherColumnId, 3)
+            boardApplicationService.updateColumn(board.id, otherColumnId, null, WipLimitChange.Set(3))
         } throws ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "column not found")
 
         val body = mapOf("wipLimit" to 3)
@@ -1572,7 +1572,7 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
 
         // 권한 거부 시 서비스가 호출되지 않아야 한다
-        verify(exactly = 0) { boardApplicationService.updateColumnWipLimit(any(), any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
     }
 
     @Test
