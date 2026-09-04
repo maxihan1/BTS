@@ -2177,6 +2177,39 @@ describe('IssueListPage — 「새 이슈」 접근성 이름', () => {
 // 표시 방식 결선 — 목록도 모달이 기본이다 (Jira 패리티 J1)
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('IssueListPage — 상세 모달이 뜨면 목록 커서를 끊는다 (J1)', () => {
+  beforeEach(() => {
+    server.use(createTruePermissionHandler)
+    useContextShortcutsStore.setState({ handlers: {} })
+    useIssueDetailModalStore.setState({ openKey: null, presentation: 'modal' })
+  })
+
+  /**
+   * PR7: 상세 모달이 떠 있으면 `issue-list` 커서 레이어를 **등록하지 않는다**.
+   *
+   * 모달 안 닫기·`⋯`·PDF 버튼은 입력 요소가 아니라 `shouldIgnoreEvent` 를 통과하고,
+   * `issue-detail` 레이어의 폴백이 `j` 를 `issue-list` 로 흘린다 — 막지 않으면 모달 뒤에서
+   * 목록이 움직이고 배후에 split 페인까지 마운트된다. 행 클릭 기본이 모달로 바뀌면서 드물던
+   * 누수가 주경로가 됐다(독립 리뷰 BLOCKER-2). 등록 자체를 끊으므로 `preventDefault` 도 하지
+   * 않는다 — 브라우저 기본 동작을 삼키지 않는다.
+   */
+  it('PR7: openKey 가 있으면 목록 커서 레이어가 등록되지 않는다', async () => {
+    useIssueDetailModalStore.setState({ openKey: 'ATLAS-1' })
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeUndefined()
+  })
+
+  /** PR8: 비-공허 짝 — 모달이 닫혀 있으면 종전대로 등록된다. */
+  it('PR8: openKey 가 null 이면 목록 커서 레이어가 등록된다', async () => {
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    expect(useContextShortcutsStore.getState().handlers['issue-list']).toBeDefined()
+  })
+})
+
 describe('IssueListRouteAdapter — 표시 방식 결선 (J1)', () => {
   beforeEach(() => {
     useIssueDetailModalStore.setState({ presentation: 'modal', openKey: null })

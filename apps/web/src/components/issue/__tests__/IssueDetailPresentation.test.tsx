@@ -7,10 +7,19 @@ import { IssueDetailSidePanel } from '../IssueDetailSidePanel'
 import { useIssueDetailModalStore } from '../issueDetailModalStore'
 
 const mockNavigate = vi.fn()
+let mockPathname = '/issues'
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
-  return { ...actual, useNavigate: () => mockNavigate }
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+    useRouterState: ({ select }: { select: (s: unknown) => unknown }) =>
+      select({ location: { pathname: mockPathname } }),
+  }
 })
+
+const mockIsWide = vi.fn(() => true)
+vi.mock('@/hooks/use-media-query', () => ({ useMediaQuery: () => mockIsWide() }))
 
 /**
  * 상세 본문은 이 판별식의 대상이 아니다 — 어느 껍데기가 떴는지와, 그 안으로 무엇이 넘어가는지만 잰다.
@@ -49,6 +58,8 @@ function sidePanel() {
 describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () => {
   beforeEach(() => {
     mockNavigate.mockClear()
+    mockIsWide.mockReturnValue(true)
+    mockPathname = '/issues'
     useIssueDetailModalStore.setState({ openKey: null, presentation: 'modal' })
   })
 
@@ -96,6 +107,45 @@ describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () =
     const body = within(panel).getByTestId('issue-detail-body')
     expect(body).toHaveAttribute('data-variant', 'pane')
     expect(body).toHaveAttribute('data-issue-key', 'ATLAS-7')
+  })
+
+  /**
+   * P6: 좁은 화면에서는 사이드바 선호여도 **모달**이 맡는다.
+   *
+   * 상세 안쪽은 `1fr + 340px` 2단 그리드이고 그 분기는 뷰포트 기준이라, 패널이 좁으면
+   * 메타패널과 `⋯` 가 화면 밖으로 밀려 **되돌아올 길이 사라진다**. 바로 옆 split view 도
+   * 같은 이유로 `min-width: 1024px` 가드를 이미 갖고 있다.
+   */
+  it('P6: 좁은 화면이면 사이드바 선호여도 패널 대신 모달이 뜬다', () => {
+    mockIsWide.mockReturnValue(false)
+    useIssueDetailModalStore.setState({ openKey: 'ATLAS-1', presentation: 'sidePanel' })
+    renderBoth()
+
+    expect(sidePanel()).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: '이슈 상세 ATLAS-1' })).toBeInTheDocument()
+  })
+
+  /**
+   * P7: 화면을 옮기면 패널이 닫힌다.
+   *
+   * 패널은 `ShellLayout` 소유라 라우트를 모른다 — 닫아 주지 않으면 보드에서 연 상세가
+   * `/admin` 옆에 그대로 붙어 있고, `/issues/KEY` 전체화면으로 가면 같은 이슈가 두 벌 뜬다.
+   */
+  it('P7: pathname 이 바뀌면 패널이 닫힌다', () => {
+    useIssueDetailModalStore.setState({ openKey: 'ATLAS-1', presentation: 'sidePanel' })
+    const { rerender } = renderBoth()
+    expect(sidePanel()).toBeInTheDocument()
+
+    mockPathname = '/dashboards'
+    rerender(
+      <>
+        <IssueDetailModal />
+        <IssueDetailSidePanel />
+      </>,
+    )
+
+    expect(useIssueDetailModalStore.getState().openKey).toBeNull()
+    expect(sidePanel()).not.toBeInTheDocument()
   })
 
   /**

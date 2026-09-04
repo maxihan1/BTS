@@ -676,13 +676,13 @@ describe('FilterBar — S8 hiddenSections 섹션 가시성', () => {
     expect(screen.getByText(filterBarLabels.filter.componentLabel)).toBeInTheDocument()
   })
 
-  it('S8b: hiddenSections로 감추면 라벨·컴포넌트 섹션이 DOM에서 사라진다', async () => {
+  it('S8b: hiddenSections로 감추면 라벨·컴포넌트 섹션이 DOM에서 사라진다', () => {
     renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true, components: true } })
     expect(screen.queryByText(filterBarLabels.filter.labelLabel)).not.toBeInTheDocument()
     expect(screen.queryByText(filterBarLabels.filter.componentLabel)).not.toBeInTheDocument()
   })
 
-  it('S8c: 라벨만 감출 수 있다 — 컴포넌트는 남는다', async () => {
+  it('S8c: 라벨만 감출 수 있다 — 컴포넌트는 남는다', () => {
     renderBar(emptyFilter, vi.fn(), { hiddenSections: { labels: true } })
     expect(screen.queryByText(filterBarLabels.filter.labelLabel)).not.toBeInTheDocument()
     expect(screen.getByText(filterBarLabels.filter.componentLabel)).toBeInTheDocument()
@@ -701,7 +701,7 @@ describe('FilterBar — S8 hiddenSections 섹션 가시성', () => {
     expect(screen.getByRole('button', { name: filterBarLabels.filter.reset })).toBeInTheDocument()
   })
 
-  it('S8f: 감춰도 activeCount 계산식은 바뀌지 않는다 — 가시성은 표시 문제이지 집계 문제가 아니다', async () => {
+  it('S8f: 감춰도 activeCount 계산식은 바뀌지 않는다 — 가시성은 표시 문제이지 집계 문제가 아니다', () => {
     // 값에 labels가 들어 있는 상태로 섹션만 감춘다. 카운트가 줄어들면 감추기가
     // 조용히 집계까지 바꾼 것이고, 보드·이슈 소비처의 카운트 계약을 흔든다.
     renderBar({ ...emptyFilter, labels: ['bug'] }, vi.fn(), { hiddenSections: { labels: true } })

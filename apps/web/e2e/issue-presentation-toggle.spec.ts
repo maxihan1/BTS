@@ -42,9 +42,17 @@ function getModal(page: Page) {
   return page.getByRole('dialog', { name: `이슈 상세 ${TARGET_KEY}` })
 }
 
-/** 상세 사이드패널 — complementary 가 아니라 region 이다(사이드바의 유일성을 지킨다). */
+/**
+ * 상세 사이드패널 — complementary 가 아니라 region 이다(사이드바의 유일성을 지킨다).
+ *
+ * ★role 이 아니라 **CSS 로케이터**로 잡는다. Radix Dialog 는 열릴 때 형제(= 셸 루트)에
+ * `aria-hidden` 을 걸고, `getByRole` 은 접근성 트리에서 숨겨진 요소를 매치하지 않는다 —
+ * 그래서 모달이 떠 있는 상태의 「패널 없음」 단언이 배타가 깨져도 통과한다. 유닛에서 뮤테이션
+ * 프로브가 잡아낸 바로 그 공허를 여기서도 되풀이하지 않는다(`IssueDetailPresentation.test`).
+ * 여기서 재려는 것은 「눈에 보이나」가 아니라 「DOM 에 아예 없나」다.
+ */
 function getSidePanel(page: Page) {
-  return page.getByRole('region', { name: issueDetailStrings.sidePanelLabel })
+  return page.locator(`section[aria-label="${issueDetailStrings.sidePanelLabel}"]`)
 }
 
 /**

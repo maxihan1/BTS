@@ -27,6 +27,7 @@ import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFil
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
 import { useIssueListPresentation } from '@/components/issue/use-issue-list-presentation'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
 import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
@@ -511,6 +512,8 @@ export function IssueListPage({
   onCloseDetailPane,
   cursorEnabled = true,
 }: IssueListPageProps): JSX.Element {
+  // 상세 모달이 떠 있으면 목록 커서 단축키를 끊는다 (J1) — 위 등록 조건의 AND 항.
+  const detailModalOpenKey = useIssueDetailModalStore((st) => st.openKey)
   const queryClient = useQueryClient()
 
   // ── B1 queryKey filter-aware ─────────────────────────────────────────────────
@@ -658,10 +661,20 @@ export function IssueListPage({
     // - 모달 3종 — 일괄 편집·전환·결과 다이얼로그는 입력 요소가 없어 `shouldIgnoreEvent`
     //   를 통과한다. 막지 않으면 다이얼로그가 떠 있는데 `j` 가 배후 목록을 옮기고,
     //   **`o` 는 다이얼로그를 띄운 채 화면을 통째로 갈아치운다**(독립 리뷰 I-3).
+    // - **상세 모달**(J1) — 위와 똑같은 자리다. 행 클릭 기본이 모달로 바뀌면서 드물던
+    //   누수가 주경로가 됐다: 모달 안 닫기·`⋯`·PDF 버튼은 입력 요소가 아니라
+    //   `shouldIgnoreEvent` 를 통과하고, `issue-detail` 레이어의 폴백이 `j` 를
+    //   `issue-list` 로 흘려 **모달 뒤 목록이 움직이고 배후에 split 페인까지 마운트된다**.
     //
     // 등록 자체를 끊으므로 `preventDefault` 도 하지 않는다 — 브라우저 기본 동작을
     // 삼키지 않는다(콜백만 `undefined` 로 넘기던 옛 방식의 한계).
-    cursorEnabled && !isLoading && error === null && !editOpen && !transitionOpen && !resultOpen,
+    cursorEnabled &&
+      !isLoading &&
+      error === null &&
+      !editOpen &&
+      !transitionOpen &&
+      !resultOpen &&
+      detailModalOpenKey === null,
   )
 
   /** 커서가 몇 번째 행인지 (0-indexed). 커서 없음/목록에 없음이면 -1 */

@@ -1,6 +1,7 @@
 // 이슈 상세를 모달로 띄우는 전역 단일 마운트 컴포넌트 (Jira 패리티 J1)
 import type { JSX } from 'react'
 import { useNavigate } from '@tanstack/react-router'
+import { useMediaQuery } from '@/hooks/use-media-query'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { IssueDetailPage } from '@/routes/issues.$key'
 import { useIssueDetailModalStore } from './issueDetailModalStore'
@@ -35,10 +36,15 @@ export function IssueDetailModal(): JSX.Element | null {
   const close = useIssueDetailModalStore((s) => s.close)
   const open = useIssueDetailModalStore((s) => s.open)
   const navigate = useNavigate()
+  const isWide = useMediaQuery('(min-width: 1024px)')
 
   // 표시 방식이 사이드바면 `IssueDetailSidePanel` 이 대신 그린다. 둘 다 스토어의 같은
   // `openKey` 를 보므로 이 분기가 없으면 **같은 이슈가 두 곳에 동시에 그려진다**(J1).
-  if (openKey === null || presentation !== 'modal') return null
+  //
+  // ★단, **좁은 화면에서는 선호와 무관하게 모달이 맡는다.** 패널은 상세의 2단 그리드가
+  //   뷰포트 기준으로 펼쳐져 좁은 폭에서 메타패널과 `⋯` 를 화면 밖으로 밀어낸다 — 되돌릴
+  //   길이 사라지므로 패널 쪽이 스스로 물러나고(같은 `isWide` 판정), 이 조건이 그 폴백을 받는다.
+  if (openKey === null || (presentation !== 'modal' && isWide)) return null
 
   return (
     <Dialog

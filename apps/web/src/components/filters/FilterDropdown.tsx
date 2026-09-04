@@ -1,5 +1,6 @@
 // 필터 한 칸을 드롭다운 버튼으로 감싸는 껍데기 — 지라 기본 검색의 가로 필터 바 (Jira 패리티)
 import type { JSX, ReactNode } from 'react'
+import { useId } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -38,6 +39,8 @@ export function FilterDropdown({
   children,
   contentClassName,
 }: FilterDropdownProps): JSX.Element {
+  const countId = useId()
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -47,10 +50,18 @@ export function FilterDropdown({
           size="sm"
           className="min-h-[44px] gap-1.5"
           aria-label={filterBarLabels.filter.dropdownAriaLabel(label)}
+          // 개수는 **이름이 아니라 설명**으로 붙인다. `aria-label` 이 있으면 버튼 안 텍스트가
+          // 접근성 이름에서 밀려나 배지가 통째로 사라지는데(화면 보는 사람만 아는 상태),
+          // 이름에 개수를 섞으면 `getByRole({ name })` 로 트리거를 잡는 판정·e2e 가 선택 직후
+          // 전부 깨진다. `aria-describedby` 는 이름을 건드리지 않고 개수만 읽어 준다.
+          aria-describedby={selectedCount > 0 ? countId : undefined}
         >
           <span>{label}</span>
           {selectedCount > 0 && (
-            <span className="rounded-full bg-primary px-1.5 py-0.5 text-xs leading-none text-primary-foreground">
+            <span
+              id={countId}
+              className="rounded-full bg-primary px-1.5 py-0.5 text-xs leading-none text-primary-foreground"
+            >
               {selectedCount}
             </span>
           )}

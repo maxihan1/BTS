@@ -144,7 +144,7 @@ describe('BacklogFilterBar — S1 제목 검색', () => {
     expect(label).toHaveAttribute('for', 'backlog-filter-query-input')
   })
 
-  it('S1b: 249ms 까지는 조용하고 250ms 에 정확히 한 번 나간다 (N3 디바운스)', async () => {
+  it('S1b: 249ms 까지는 조용하고 250ms 에 정확히 한 번 나간다 (N3 디바운스)', () => {
     const onChange = vi.fn()
     renderBar(emptyBacklogFilter(), onChange)
 
@@ -290,7 +290,7 @@ describe('BacklogFilterBar — S4 활성 개수 가산 (R2)', () => {
     expect(screen.getByText(filterBarLabels.count.applied(3))).toBeInTheDocument()
   })
 
-  it('S4b: 담당자·미배정까지 더해도 축이 전부 합산된다 (2+1+1+1 = 5)', async () => {
+  it('S4b: 담당자·미배정까지 더해도 축이 전부 합산된다 (2+1+1+1 = 5)', () => {
     renderBar({
       query: '결제',
       assigneeIds: ['user-uuid-0001'],
