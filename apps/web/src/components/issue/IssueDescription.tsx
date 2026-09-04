@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { TextLengthCounter } from '@/components/editor/TextLengthCounter'
+import { DESCRIPTION_MAX_LENGTH } from '@/lib/issue-text-constraints'
 import { AttachmentHtml } from './AttachmentHtml'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -266,6 +268,15 @@ function EditMode({
    */
   const actionsLocked = isSaving || showDiscardConfirm
 
+  /**
+   * 상한 초과 — 저장을 막는다.
+   *
+   * 재는 것은 **HTML** 이다. 서버 `UpdateIssueRequest` 가 `description` 과 `descriptionHtml`
+   * 양쪽에 `@Size(max = DESCRIPTION_MAX)` 를 걸고, 프론트가 보내는 것은 HTML 이다.
+   * 막지 않으면 사용자는 32,767자를 다 쓴 뒤 저장 버튼을 눌러서야 400 으로 알게 된다.
+   */
+  const isOverLimit = draftHtml.length > DESCRIPTION_MAX_LENGTH
+
   function dismissDiscardConfirm(): void {
     setConfirmDiscard(false)
   }
@@ -305,7 +316,7 @@ function EditMode({
       <RichTextEditor
         initialHtml={initialHtml}
         onChange={handleDraftChange}
-        onSubmit={onSave}
+        onSubmit={() => { if (!isOverLimit) onSave() }}
         onCancel={requestCancel}
         editable={!isSaving}
         autoFocus
@@ -314,13 +325,23 @@ function EditMode({
         imageIssueKey={issueKey}
       />
 
+      {/*
+        길이 카운터 — 서버가 재는 것은 **정화된 HTML** 이다(`@Size` on `descriptionHtml`).
+        보이는 글자 수를 세면 서식이 많은 본문에서 카운터가 거짓말을 한다.
+      */}
+      <TextLengthCounter
+        length={draftHtml.length}
+        max={DESCRIPTION_MAX_LENGTH}
+        testId="description-length-counter"
+      />
+
       {/* 저장/취소 버튼 */}
       <div className="flex items-center gap-2">
         <Button
           size="sm"
           className="min-h-[44px]"
           onClick={onSave}
-          disabled={actionsLocked}
+          disabled={actionsLocked || isOverLimit}
           aria-label={issueDetailStrings.descriptionSaveButton}
         >
           {issueDetailStrings.descriptionSaveButton}

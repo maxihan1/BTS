@@ -103,6 +103,34 @@ FR-AC-01(첨부 업로드) · FR-AC-02(첨부 미리보기).
   (`getByRole('dialog')` 실측 224건 · 이름으로 구분해야 한다)
 - 경계 — 목록의 처음/끝, 미리보기 불가 타입(`previewCategory` 가 분류)을 건너뛸지 포함할지
 
+## Jira 대조
+
+조회일 **2026-09-04**. 이 PR 은 직전 4-PR 캠페인(#446~#449)의 마감이라 근거 표가
+`2026-09-04-issue-detail-jira-parity.md` 와 겹친다. 여기서는 **이 PR 이 실제로 건드리는
+두 갈래**만 다시 적는다.
+
+| # | 항목 | Jira Cloud 실물 | 출처 |
+|---|---|---|---|
+| J4 | 제목 길이 | "The 255 character limit is for single-line text fields, like Summary. You can not change it." | [커뮤니티 공식 답변](https://community.atlassian.com/forums/Jira-questions/Summary-must-be-less-than-255-characters/qaq-p/989632) |
+| J5 | 본문 길이 | "Description is a long text that defaults to max 32767 characters" | [커뮤니티 공식 답변](https://community.atlassian.com/forums/Jira-questions/Character-limit-of-Description-field-in-Jira-Software-cloud/qaq-p/2655913) |
+| J6 | 첨부 미리보기 | "Click an image thumbnail to open a preview… If your Jira admin has disabled thumbnails in Jira's attachment settings, the image files will appear as a list" — 썸네일이 기본, 미리보기는 그 썸네일에서 연다 | [첨부·스크린샷](https://support.atlassian.com/jira-service-management-cloud/docs/attach-files-and-screenshots-to-issues/) (Cloud · JSM) |
+
+### 채택
+
+- **길이 상한 값**(B) — 제목 255 · 본문 32,767 · 댓글 32,767. 백엔드는 #446 에서 이미 이 값으로
+  정렬했다. 이 PR 은 그 값을 **프론트에 노출**한다.
+- **미리보기가 첨부 목록의 한 장에서 열린다**(D) — 목록이 미리보기의 맥락이라는 것이
+  좌우 이동의 근거다.
+
+### 의도적 편차
+
+| # | 편차 | 근거 |
+|---|---|---|
+| **X6** | 카운터를 **상시 노출하지 않는다** — 임계(90%)에 닿을 때만 나타난다 | Jira Cloud 사용자 문서에 카운터의 표시 규칙에 대한 서술이 없다(조회 2026-09-04). 상한이 32,767자라 일상적 글쓰기가 닿지 않으므로, 늘 띄우면 모든 에디터 아래에 쓸모없는 숫자가 붙고 정작 필요한 순간의 신호가 소음에 묻힌다. 「숫자가 보인다는 것 자체가 경고」로 설계한다 |
+| **X7** | 상한 초과 시 **프론트가 저장을 막는다** | Jira 동작 미확인. 막지 않으면 사용자가 32,767자를 다 쓴 뒤 서버 400 으로 처음 알게 된다 — 그 시점에는 이미 손실을 인지할 방법이 없다. 되돌릴 수 없는 쪽을 피한다 |
+| **X8** | 재는 문자열이 필드마다 다르다 — 본문은 **HTML**, 댓글은 **평문** | Jira 는 ADF 를 쓰므로 대응 개념이 없다. BTS 서버가 실제로 재는 값을 그대로 따른다 — `@Size` on `descriptionHtml` 대 `CommentApplicationService.validateBody(body)`. 한쪽에 맞추면 다른 쪽에서 카운터가 거짓말을 한다 |
+| **X9** | 갤러리 이동은 **키보드 ←/→ 와 버튼**만. 스와이프 제스처 없음 | Jira Cloud 문서에 모바일 제스처 서술이 없다(조회 2026-09-04). 데스크톱 우선인 이 저장소의 관례를 따르고, 새 제스처 자산을 만들지 않는다(계약 §4) |
+
 ## 범위 밖 — PR B 로 분리
 
 **모달↔사이드패널 토글** (Jira J1 의 "persist across Jira views within the same session").
@@ -138,7 +166,7 @@ FR-AC-01(첨부 업로드) · FR-AC-02(첨부 미리보기).
 
 - **e2e 병렬 flaky** — 병렬이면 매번 다른 6~9건이 실패하고 워커 1개면 전부 통과.
   두 실패 집합이 겹치지 않는 것을 실측했다
-- **`select-test-scope.ts` 의 `@{u}` base 결함** — 리베이스 후 push 전이면 diff 가 부풀어
-  백엔드 전량(약 55분)으로 넓어진다
+- **`select-test-scope.ts` 의 `@{u}` base 결함** — 리베이스한 뒤 push 를 아직 안 했으면 diff 가
+  부풀어 백엔드 전량(약 55분)으로 넓어진다
 - main 체크아웃 선재 e2e 실패 3파일 8건 (`fr-au-05-signup` · `workflow.spec` ·
   `workflow-scheme-assignment`) — 전부 에디터 무관

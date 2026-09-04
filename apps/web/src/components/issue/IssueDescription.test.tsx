@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { issueDetailStrings } from '@/i18n/ko'
 import { editorLabels } from '@/i18n/editor-labels'
 import { IssueDescription } from './IssueDescription'
+import { DESCRIPTION_MAX_LENGTH } from '@/lib/issue-text-constraints'
 
 /**
  * `IssueDescription` 판별식.
@@ -361,5 +362,115 @@ describe('IssueDescription — 필드 권한', () => {
     expect(
       screen.getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
     ).toBeEnabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 길이 카운터 · 상한 잠금
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 상한 배선 판별식.
+ *
+ * ## 왜 초기 HTML 로 길이를 만드나
+ *
+ * jsdom 에서 ProseMirror 타이핑이 재현되지 않는다(이 파일 머리 §jsdom 제약). 편집 진입 시
+ * `draftHtml` 이 `descriptionHtml` 로 seed 되므로, 긴 본문을 넘겨 렌더하면 타이핑 없이
+ * 초과 상태를 만들 수 있다.
+ *
+ * ## 왜 HTML 길이인가
+ *
+ * 서버 `UpdateIssueRequest` 가 `description` 과 `descriptionHtml` **양쪽**에
+ * `@Size(max = DESCRIPTION_MAX)` 를 건다. 프론트가 보내는 것은 HTML 이므로 재야 할 것도
+ * HTML 이다. 보이는 글자 수를 세면 서식이 많은 본문에서 카운터가 거짓말을 한다.
+ */
+describe('IssueDescription — 길이 카운터·상한 잠금', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  /** 지정한 HTML 길이를 갖는 본문을 만든다. */
+  function htmlOfLength(length: number): string {
+    const wrapper = '<p></p>'
+    return `<p>${'가'.repeat(Math.max(0, length - wrapper.length))}</p>`
+  }
+
+  it('평범한 길이에서는 카운터를 띄우지 않는다 — 숫자가 늘 붙어 있으면 신호가 죽는다', async () => {
+    const user = userEvent.setup()
+    render(<IssueDescription {...baseProps()} />)
+    await enterEditMode(user)
+
+    expect(screen.queryByTestId('description-length-counter')).not.toBeInTheDocument()
+  })
+
+  it('상한을 넘으면 카운터가 나타나고 저장 버튼이 잠긴다', async () => {
+    const user = userEvent.setup()
+    render(
+      <IssueDescription
+        {...baseProps()}
+        descriptionHtml={htmlOfLength(DESCRIPTION_MAX_LENGTH + 10)}
+      />,
+    )
+    await enterEditMode(user)
+
+    expect(screen.getByTestId('description-length-counter')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+    ).toBeDisabled()
+  })
+
+  it('상한 이하이면 저장 버튼이 열려 있다 — 위 단언의 비-공허 짝', async () => {
+    const user = userEvent.setup()
+    render(
+      <IssueDescription {...baseProps()} descriptionHtml={htmlOfLength(DESCRIPTION_MAX_LENGTH)} />,
+    )
+    await enterEditMode(user)
+
+    // 임계(90%)는 넘었으므로 카운터는 보이고, 상한은 안 넘었으므로 저장은 열려 있다.
+    expect(screen.getByTestId('description-length-counter')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+    ).toBeEnabled()
+  })
+
+  it('초과 상태에서는 저장을 눌러도 onSave 가 불리지 않는다', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
+    render(
+      <IssueDescription {...props} descriptionHtml={htmlOfLength(DESCRIPTION_MAX_LENGTH + 10)} />,
+    )
+    await enterEditMode(user)
+
+    await user.click(
+      screen.getByRole('button', { name: issueDetailStrings.descriptionSaveButton }),
+    )
+
+    expect(props.onSave).not.toHaveBeenCalled()
+  })
+
+  it('초과 상태에서는 ⌘+Enter 로도 저장되지 않는다 — 버튼만 막으면 우회된다', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
+    render(
+      <IssueDescription {...props} descriptionHtml={htmlOfLength(DESCRIPTION_MAX_LENGTH + 10)} />,
+    )
+    const body = await enterEditMode(user)
+
+    await user.click(body)
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+
+    expect(props.onSave).not.toHaveBeenCalled()
+  })
+
+  it('상한 이하에서는 ⌘+Enter 가 정상 저장한다 — 위 단언의 비-공허 짝', async () => {
+    const user = userEvent.setup()
+    const props = baseProps()
+    render(
+      <IssueDescription {...props} descriptionHtml={htmlOfLength(DESCRIPTION_MAX_LENGTH)} />,
+    )
+    const body = await enterEditMode(user)
+
+    await user.click(body)
+    await user.keyboard('{Meta>}{Enter}{/Meta}')
+
+    await waitFor(() => { expect(props.onSave).toHaveBeenCalledOnce() })
   })
 })
