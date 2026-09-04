@@ -28,11 +28,18 @@
 // 그래서 **판정을 못 하는 모든 경우의 기본값은 전량**이다. 비교 기준을 못 읽었을 때,
 // 설정·의존성이 바뀌었을 때, 모듈 참조를 파싱 못 했을 때 — 전부 전량으로 넓힌다.
 //
-// ## 프론트를 좁히는 방법 — `vitest --related`
+// ## 프론트를 좁히는 방법 — `vitest related`
 //
 // 백엔드는 Gradle 모듈 그래프로 역의존 폐포를 계산한다. 프론트에는 그런 단위가 없어서
-// vitest 자체의 모듈 그래프를 쓴다 — `--related <파일들>` 은 그 파일을 **import 하는**
-// 테스트를 전부 찾아 돌린다. 공용 유틸이 바뀌면 그것을 쓰는 테스트가 자동으로 딸려 온다.
+// vitest 자체의 모듈 그래프를 쓴다 — `vitest related --run <파일들>` 은 그 파일을
+// **import 하는** 테스트를 전부 찾아 돌린다. 공용 유틸이 바뀌면 그것을 쓰는 테스트가
+// 자동으로 딸려 온다. 실측(2026-09-04) — `src/lib/active-project.ts` 하나로 20파일 424개.
+// 전량 640파일 9,755개 대비 4.3% 다.
+//
+// ★`--related` 가 아니라 `related` **서브커맨드**다. vitest 4 에서 플래그 형태는 없고,
+//   틀린 형태를 쓰면 `CACError: Unknown option` 으로 죽는다(초록이 아니라 빨강이라 다행이다).
+//   `select-test-scope.test.ts` 가 `vitest related --help` 를 실제로 실행해 이 형태를 지킨다.
+//   경로는 `apps/web` 기준 상대경로여야 한다 — 그래서 렌더에서 접두를 떼고 cwd 를 옮긴다.
 //
 // 그래프가 못 닫는 것(설정·의존성·전역 셋업)은 `FE_WIDEN` 으로 전량 처리한다.
 //
@@ -154,6 +161,17 @@ export function frontendScope(files: string[] | null): FrontendScope {
   }
 }
 
+/**
+ * vitest 에 넘길 인자. **`apps/web` 기준 상대경로**로 바꾼다.
+ *
+ * vitest 는 `apps/web` 을 cwd 로 돌아야 설정(`vitest.config.ts`)을 찾는다. 저장소 루트 기준
+ * 경로를 그대로 주면 매칭이 0건이 되고 — **테스트 0개를 돌고 초록**이 된다. 조용한 통과라
+ * 가장 위험한 형태다.
+ */
+export function vitestArgs(scope: FrontendScope): string[] {
+  return scope.files.map((f) => f.slice(FRONTEND_PREFIX.length))
+}
+
 /** Playwright 시나리오가 바뀌었나. 바뀌었으면 e2e 를 돌려야 한다. */
 export function e2eTouched(files: string[] | null): boolean {
   if (files === null) return true
@@ -235,10 +253,10 @@ export function renderCommands(scope: TestScope): string {
     lines.push(`# 프론트 — 생략 (${scope.frontend.reason})`)
   } else if (scope.frontend.mode === 'all') {
     lines.push(`# 프론트 전량 — ${scope.frontend.reason}`)
-    lines.push('apps/web/node_modules/.bin/vitest run')
+    lines.push('(cd apps/web && node_modules/.bin/vitest run)')
   } else {
     lines.push(`# 프론트 — ${scope.frontend.reason}`)
-    lines.push(`apps/web/node_modules/.bin/vitest run --related ${scope.frontend.files.join(' ')}`)
+    lines.push(`(cd apps/web && node_modules/.bin/vitest related --run ${vitestArgs(scope.frontend).join(' ')})`)
   }
 
   lines.push('')

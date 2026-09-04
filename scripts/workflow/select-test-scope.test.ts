@@ -19,6 +19,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -31,6 +32,7 @@ import {
   frontendScope,
   planVerifyCommands,
   renderCommands,
+  vitestArgs,
 } from './select-test-scope.ts'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -68,7 +70,7 @@ describe('넓힘의 방향 — 모르면 전량', () => {
     assert.equal(s.mode, 'all')
   })
 
-  test('src 안 변경만 있으면 --related 로 좁힌다', () => {
+  test('src 안 변경만 있으면 related 로 좁힌다', () => {
     const s = frontendScope(['apps/web/src/routes/issue.tsx', 'apps/web/src/lib/fmt.ts'])
     assert.equal(s.mode, 'related')
     assert.deepEqual(s.files, ['apps/web/src/routes/issue.tsx', 'apps/web/src/lib/fmt.ts'])
@@ -90,7 +92,7 @@ describe('넓힘의 방향 — 모르면 전량', () => {
 
   test('백엔드만 바뀌면 프론트 명령이 렌더에 없다', () => {
     const out = renderCommands(computeScope(['backend/modules/notification/src/main/kotlin/A.kt'], null))
-    assert.doesNotMatch(out, /vitest run\b(?! --related)/, '프론트 전량 명령이 새어 나왔다')
+    assert.doesNotMatch(out, /vitest run/, '프론트 전량 명령이 새어 나왔다')
     assert.match(out, /:modules:notification:test/)
   })
 })
@@ -130,6 +132,39 @@ describe('plan 의 검증 칸 ↔ 추출기 (비-공허 짝)', () => {
   test('검증 칸이 있으면 렌더 결과에 그대로 실린다', () => {
     const out = renderCommands(computeScope([], '**검증**: `./gradlew :modules:x:test --tests YTest`'))
     assert.match(out, /--tests YTest/, 'plan 이 지정한 검증이 명령 블록에서 사라졌다')
+  })
+})
+
+describe('★vitest 호출 형태 — 실행으로 확인한다', () => {
+  // 문자열 계약만으로는 못 잡는 축이다. 실제로 2026-09-04 에 `--related` 플래그로 썼다가
+  // `CACError: Unknown option` 을 맞았다 — vitest 4 에는 플래그 형태가 없고 서브커맨드뿐이다.
+  // 다행히 빨강이었지만, 다음 메이저에서 서브커맨드가 사라지면 그때는 조용할 수 있다.
+  const bin = path.join(REPO_ROOT, 'apps/web/node_modules/.bin/vitest')
+
+  test('vitest related 서브커맨드가 실재한다', (t) => {
+    if (!fs.existsSync(bin)) {
+      // worktree 심볼릭이 없는 환경에서 위양성을 내지 않는다. 부재 사실은 남긴다.
+      t.diagnostic('vitest 바이너리 없음 — 이 검사를 건너뛴다')
+      return
+    }
+    const r = spawnSync(bin, ['related', '--help'], { encoding: 'utf-8', timeout: 60_000 })
+    assert.equal(r.status, 0, `vitest related 서브커맨드가 없다.\n${r.stderr ?? ''}`)
+    assert.match(r.stdout, /vitest related/, 'related 사용법이 안 나온다')
+  })
+
+  test('렌더가 서브커맨드 형태를 쓴다', () => {
+    const out = renderCommands(computeScope(['apps/web/src/lib/fmt.ts'], null))
+    assert.match(out, /vitest related --run/, 'related 서브커맨드 형태가 아니다')
+    assert.doesNotMatch(out, /--related/, 'vitest 4 에 없는 --related 플래그를 쓴다')
+  })
+
+  test('★렌더 경로가 apps/web 기준 상대경로다', () => {
+    // 저장소 루트 기준 경로를 주면 매칭 0건 → **테스트 0개 돌고 초록**. 조용한 통과다.
+    const s = frontendScope(['apps/web/src/lib/fmt.ts'])
+    assert.deepEqual(vitestArgs(s), ['src/lib/fmt.ts'])
+    const out = renderCommands(computeScope(['apps/web/src/lib/fmt.ts'], null))
+    assert.match(out, /cd apps\/web/, 'cwd 를 apps/web 으로 옮기지 않는다 — 설정을 못 찾는다')
+    assert.doesNotMatch(out, /related --run apps\/web\//, '루트 기준 경로가 인자로 새어 나갔다')
   })
 })
 
