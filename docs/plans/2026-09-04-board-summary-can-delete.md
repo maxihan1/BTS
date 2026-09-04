@@ -225,27 +225,31 @@ GET /api/v1/boards?projectKey={key}
   **`boardType` 과 갈리는 이유** — `boardType` 은 없으면 그 자체가 결함이고 기본값으로 때우면
   스크럼이 칸반으로 오인된다. `canDelete` 는 없으면 **「삭제 못 함」이 옳은 해석**이다.
   기본값이 fail-closed 와 일치하는 유일한 필드라 optional 이 안전한 쪽이다.
-- **C-3 — `.optional()` 의 대가를 판별식으로 갚는다. 단 그 판별식은 지금 자동으로 안 돈다.**
+- **C-3 — `.optional()` 의 대가를 판별식으로 갚는다. 단 그 판별식은 한 축을 못 본다.**
   런타임 파싱이 백엔드 누락을 못 잡는 구멍이 생긴다. 백엔드 DTO ↔ 프론트 zod ↔ MSW 목록 조립부
   **세 목록이 서로를 모르는** 상태이고, 이것은 저장소가 이미 이름 붙인 지배 결함 양식이다.
   3-way 차집합 판별식 + 비-공허 짝으로 닫는다.
 
-  > 🛑 **정정 (리뷰 이슈 4).** 초안은 이 판별식이 구멍을 「메운다」고 적었다. 실측 결과
-  > **`apps/web` 의 vitest 는 어떤 자동 게이트에서도 돌지 않는다.**
-  > - `.lintstagedrc` — `apps/web/**/*.{ts,tsx,js,jsx}` 에 **eslint 만** 건다
-  > - `.husky/pre-push:47` — `node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`.
-  >   `apps/web/src/**` 는 **대상이 아니다**
-  > - `.github/workflows/frontend-ci.yml` — *「★2026-08-21 — 자동 실행을 껐다.
-  >   `workflow_dispatch` 로만 돈다」*
+  > 🛑 **정정 2회차 (2026-09-04 · 리베이스 후).**
+  > 리뷰 시점(base `7d13cdb3d`)의 정정은 「`apps/web` 의 vitest 가 어떤 자동 게이트에서도
+  > 안 돈다」였다. **그 사이 `472f05c49`(#451)가 그것을 고쳤다** — `push-frontend-tests.ts` 가
+  > 신설되고 `.husky/pre-push:74` 에 무조건 배선됐다. 이제 프론트 테스트는 푸시 때 돈다.
   >
-  > 원형인 `bulk-operation-enum-parity.test.ts` 도 같은 처지다. 게다가 `frontend-ci.yml` 주석은
-  > *「대신 어디서 보는가. 커밋 전 = `.husky/pre-commit`」* 이라 적어 두었는데 그 훅은 apps/web 에
-  > eslint 만 돌린다 — **주석이 stale 이다.**
+  > **그런데 이 판별식은 여전히 한 축을 못 본다.** 좁힘이 `vitest related` 의
+  > **모듈 그래프**로 이뤄지는데(`select-test-scope.ts` `frontendScope`), 이 판별식은
+  > `BoardResponses.kt` 를 `import` 가 아니라 **`readFileSync` 로 읽는다.** 따라서.
   >
-  > ⇒ 이 PR 은 판별식을 **넣되 「사람이 손으로 돌려야 값을 한다」를 사실대로 적고 간다.**
-  > 자동화는 별건 T2 PR (`push-frontend-tests.ts`, 백엔드 `push-backend-tests.ts` 선례와 같은 모양)
-  > 로 분리했고 TODOS.md 에 등재한다 — 표면이 `GUARD_CI` 라 「한 PR = 한 BC」를 깬다.
-  > 그때까지 이 판별식의 실효 감시 지점은 **리뷰어와 다음 세션**이다.
+  > | 무엇이 바뀌면 | 판별식이 도나 |
+  > |---|---|
+  > | `api/boards.ts` (zod) | ✅ 돈다 — 판별식이 `boardSummarySchema` 를 import 한다 |
+  > | `mocks/board-handlers.ts` (MSW) | ✅ 돈다 — 판별식이 핸들러를 import 한다 |
+  > | **`BoardResponses.kt` (백엔드 DTO) 단독** | ❌ **안 돈다** — 프론트 변경 0건이라 `frontendScope` 가 `skip` 이다 |
+  >
+  > ⇒ **가장 위험한 방향이 정확히 안 덮인다.** 이 판별식이 존재하는 이유가 「백엔드가 필드를
+  > 추가·개명했는데 프론트 셋이 못 따라가는 것」인데, 그 시나리오에서 아무것도 안 돈다.
+  > 저장소가 이미 이름 붙인 양식이다 — 메모리 `[[self-reading-guard-needs-helper-level-tests]]`.
+  > ⇒ **처방은 Task 4 안에서 닫는다**(아래 「백엔드 축 커버」 절). 별건 PR 로 미루지 않는다 —
+  > 미루면 이 판별식은 만들어진 날부터 반쪽인 채로 굳는다.
 - **C-4 — e2e 스코프는 앵커가 아니라 컨테이너다.** `보드 관리` 문자열의 생산자는
   `i18n/board-labels.ts` 의 `triggerAriaLabel` **하나**이고, `ProjectTree.tsx` 가 「PR ⑨ 가 이
   하위 목록을 보드 목록으로 갈아치운다」고 이미 예고한다. PR ⑨ 가 같은 헬퍼를 부르면 접근성 이름이
@@ -479,59 +483,84 @@ LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔�
 **검증**: `apps/web/node_modules/.bin/vitest run src/api src/mocks/board-handlers.test.ts`
 · 인라인 픽스처 9곳 무변경 확인(`.optional()` 선택의 직접 이득)
 
-### Task 4. 백엔드 DTO ↔ zod ↔ MSW 3-way 정합 판별식
+### Task 4. 백엔드 DTO ↔ zod ↔ MSW 3-way 정합 판별식 (`scripts/workflow/`)
 
 **메타**.
-- agent: `frontend-engineer`
-- files: [`apps/web/src/api/__tests__/board-summary-parity.test.ts`]
+- agent: `qa-engineer`
+- files: [`scripts/workflow/board-summary-contract.test.ts`]
 - depends-on: [1, 3]
 
 > **왜 필요한가** (스펙 C-3). `.optional()` 을 고르는 순간 **런타임 파싱이 백엔드 누락을 못 잡는다.**
 > 세 목록이 서로를 모르는 상태는 이 저장소가 이미 이름 붙인 지배 결함 양식이고,
-> `board-handlers.ts:389-390` 이 그 사고를 **주석으로** 이미 경고하고 있다 — 주석은 다음 필드
+> `board-handlers.ts:387-388` 이 그 사고를 **주석으로** 이미 경고하고 있다 — 주석은 다음 필드
 > 추가 때 읽히지 않는다.
 
-**RED**: 신설 `apps/web/src/api/__tests__/board-summary-parity.test.ts`.
-원형은 같은 디렉터리의 `bulk-operation-enum-parity.test.ts` — 골격을 그대로 복제한다.
+> 🛑 **왜 `apps/web/src/api/__tests__/` 가 아니라 `scripts/workflow/` 인가** (리베이스 후 재설계).
+> `472f05c49`(#451)가 `push-frontend-tests.ts` 를 넣어 프론트 테스트가 푸시 때 돌게 됐지만,
+> 좁힘이 `vitest related` 의 **모듈 그래프**다. 이 판별식은 `BoardResponses.kt` 를 `import` 가
+> 아니라 **`readFileSync` 로 읽으므로 그래프에 안 걸린다** — `BoardResponses.kt` 만 바뀐 커밋은
+> `frontendScope` 가 `skip`(프론트 변경 0건)이라 **아무것도 안 돈다.**
+> 그런데 그 시나리오가 바로 이 판별식이 존재하는 이유다.
+> `scripts/**/*.test.ts` 는 `.husky/pre-push` **줄 2에서 조건 없이 전량** 실행되므로
+> 거기 두면 어느 쪽이 바뀌든 항상 돈다.
 
-세 꼭짓점.
-1. `BoardResponses.kt` 의 `data class BoardSummaryResponse(` **괄호 본문**에서 `val <name>:` 추출.
-   ★ **괄호 밖을 읽으면 안 된다** — 바로 위 KDoc 이 `@property boardId …` 로 필드명을 나열한다.
-   원형이 명시적으로 경고하는 실패 양식이고, 빠지면 판별식이 「원래 시끄러운 것」으로 학습된다.
-2. `Object.keys(boardSummarySchema.shape)` 와 **양방향 차집합 0**.
-3. MSW 목록 조립부를 **실제로 태워** raw 키 집합 추출 — `server.use(...boardHandlers)` →
-   `seedBoard(DEFAULT_BOARD)` → `fetch('/api/v1/boards?projectKey=ATLAS')` → `Object.keys(body.data[0])`.
-   ★ **Zod 로 파싱하면 안 된다** — `z.object` 가 미지 키를 버리고 `.optional()` 이 누락을 삼킨다.
-   이것이 `board-handlers.test.ts` 와 다른 지점이고, 이 판별식이 그 테스트의 중복이 아닌 이유다.
+**RED**: 신설 `scripts/workflow/board-summary-contract.test.ts`.
+골격은 `apps/web/src/api/__tests__/bulk-operation-enum-parity.test.ts` 를 따르되
+**import 를 쓰지 않고 세 꼭짓점 전부 텍스트로 추출**한다(`node --test` 는 `import.meta.env` 를
+못 견디므로 `api/boards.ts` 를 import 할 수 없다 — `e2e/fixtures/board-helpers.ts:9-13` 이 같은
+이유를 이미 기록해 뒀다).
 
-**비-공허 4종** (원형과 동형).
-- `existsSync(BoardResponses.kt)` — 경로가 틀리면 빈 집합끼리 비교해 조용히 통과한다
-- 추출 필드 수 `>= 5`
-- **카나리** — 추출 집합이 `canDelete` **와** `boardType` 을 실제로 포함한다
-  (파서가 KDoc 이 아니라 본문을 읽는다는 증거)
-- MSW 응답 `data.length >= 1` — 빈 배열이면 키 비교가 공허하다
+| # | 출처 | 추출 대상 |
+|---|---|---|
+| 1 | `BoardResponses.kt` | `data class BoardSummaryResponse(` **괄호 본문**의 `val <name>:` |
+| 2 | `apps/web/src/api/boards.ts` | `boardSummarySchema` 의 `z.object({ … })` 블록 키 |
+| 3 | `apps/web/src/mocks/board-handlers.ts` | `getBoardsHandler` 의 `.map(…) => ({ … })` 객체 리터럴 키 (`:389-394`) |
+
+**세 집합의 양방향 차집합이 0** 이어야 한다.
+
+★ **꼭짓점 1 — 괄호 밖을 읽으면 안 된다.** 바로 위 KDoc 이 `@property boardId …` 로 필드명을
+나열한다. 원형이 명시적으로 경고하는 실패 양식이고, 빠지면 판별식이 「원래 시끄러운 것」으로
+학습된다.
+
+**비-공허 5종.**
+- `existsSync` **세 파일 전부** — 경로가 틀리면 빈 집합끼리 비교해 조용히 통과한다
+- 세 집합 각각 크기 `>= 5`
+- **카나리** — 세 집합 전부가 `canDelete` **와** `boardType` 을 실제로 포함한다
+  (파서가 KDoc·주석이 아니라 본문을 읽는다는 증거)
+- ★ **MSW 블록 모양 단언** — `:389-394` 의 객체 리터럴에 **spread(`...`)가 없다.**
+  지금은 명시적 리터럴이라 텍스트 추출이 건전하지만, 누가 `...stored` 로 바꾸면 추출이
+  **조용히 틀려진다.** 그 순간 red 가 나게 모양 자체를 단언한다
+  (메모리 `[[self-reading-guard-needs-helper-level-tests]]` 의 처방).
+- **헬퍼 계약 픽스처** — 세 추출 함수를 픽스처 문자열로 직접 재는 `describe` 를 따로 둔다.
+  파일이 어떻게 생겼든 성립하고, 결함 픽스처가 그 자체로 회귀 판정이 된다.
 
 **GREEN**: Task 1·3 이 이미 셋을 맞춰 놨으므로 판별식은 작성 즉시 초록이어야 한다.
 초록이 아니면 **판별식이 아니라 앞 task 가 틀린 것**이다.
 
-**REFACTOR** — **뮤테이션 2종을 각각 관측한다.** 🛑 **GREEN 선커밋 뒤에.** 미커밋 원복은 소실이다.
-- zod 의 `canDelete` 한 줄 삭제 → red 1회 → 원복
-- MSW 조립부의 `canDelete` 한 줄 삭제 → red 1회 → 원복
+**REFACTOR** — **뮤테이션 3종을 각각 관측한다.** 🛑 **GREEN 선커밋 뒤에.** 미커밋 원복은 소실이다.
+- `BoardResponses.kt` 의 `canDelete` 한 줄 삭제 → red → 원복 ← **A안이 새로 사는 축**
+- zod 의 `canDelete` 한 줄 삭제 → red → 원복
+- MSW 조립부의 `canDelete` 한 줄 삭제 → red → 원복
 
-**두 red 를 각각 봐야** 「셋 중 둘만 보는 반쪽 판별식」이 아님이 선다. 하나만 확인하면 나머지 변은
-계속 아무도 안 본다.
+**세 red 를 각각 봐야** 「셋 중 둘만 보는 반쪽 판별식」이 아님이 선다. 메모리
+`[[mutation-passing-is-evidence-only-if-it-crosses-the-defect]]` — 뮤테이션이 결함 지점을
+실제로 지나는지 먼저 물을 것.
 
 **범위 한정** — `BoardSummaryResponse` 삼각형만 건다. `BoardDetailResponse`(필드 10+ ·
 `JsonNullable` · 중첩 DTO · #444 로 `states`·`unmappedStates` 추가)까지 넓히면 파서가 무거워지고
 PR ⑧ 의 신호가 묻힌다. **넓히지 않은 이유를 파일 상단 미커버 선언으로 남기고** TODOS 후보로 올린다.
 
-**검증**: `apps/web/node_modules/.bin/vitest run src/api/__tests__/board-summary-parity.test.ts`
+**런타임 축은 포기한 것이 아니다.** 「핸들러를 실제로 태워 응답 키를 본다」는 증명은 이 판별식이
+안 한다. 대신 `canDelete` 의 런타임 경로는 **Task 3 의 `board-handlers.test.ts` 3분기**가 덮고,
+그것은 zod·MSW 어느 쪽이 바뀌든 `vitest related` 로 딸려 온다.
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/board-summary-contract.test.ts`
 
 ### Task 5. 문서 동기화 — 기각 뒤집기 + 즉사 계약 1행
 
 **메타**.
 - agent: 컨트롤러 인라인 (`/bts` 가 직접 편집)
-- files: [`docs/plans/2026-08-31-board-crud-recovery.md`, `docs/design/jira-parity-contract.md`, `TODOS.md`, `docs/INDEX.md`, `docs/INDEX-fr.md`, `docs/INDEX-recent.md`]
+- files: [`docs/plans/2026-08-31-board-crud-recovery.md`, `docs/design/jira-parity-contract.md`, `docs/INDEX.md`, `docs/INDEX-fr.md`, `docs/INDEX-recent.md`]
 - depends-on: [1, 2]
 
 **작업**.
@@ -543,22 +572,12 @@ PR ⑧ 의 신호가 묻힌다. **넓히지 않은 이유를 파일 상단 미�
    계약 「보드 헤더 `⋯` 는 컨테이너 스코프로만 잡는다」 · 실측 명령
    `grep -rn "보드 관리" apps/web/e2e/` + `grep -rn "board-header" apps/web/`.
    ★ **개수 리터럴 금지** — 그 문서 `:76-77` 자체 규칙이다. 「2곳」이라고 적지 말 것.
-3. **`TODOS.md` 에 신규 항목 등재** (리뷰 이슈 4 · TODOS A).
-   - **What** — pre-push 에 `scripts/workflow/push-frontend-tests.ts` 를 둔다.
-     백엔드 `push-backend-tests.ts` 와 같은 모양(「바뀐 것만」).
-   - **Why** — `apps/web` 의 vitest 는 지금 자동으로 **어디서도 안 돈다**.
-     `.lintstagedrc` 는 eslint 만 · `pre-push:47` 은 `scripts/**` 만 ·
-     `frontend-ci.yml` 은 2026-08-21 부터 `workflow_dispatch` 전용.
-     그래서 `bulk-operation-enum-parity.test.ts` 도, 이 PR 이 넣는
-     `board-summary-parity.test.ts` 도 사람이 손으로 돌려야만 값을 한다.
-   - **Context** — `frontend-ci.yml` 주석이 *「커밋 전 = `.husky/pre-commit`」* 이라 적어
-     stale 이다. 그 문장 때문에 「프론트는 커밋 훅이 본다」고 오해하기 쉽다. 같이 고칠 것.
-   - **Depends on** — 없음. 선례가 이미 있다.
-   - 🛑 **항목 번호는 표 전체를 훑어 정한다.** 끝 번호 좁은 범위만 grep 하면 위 번호와
-     겹친 채 초록이 된다(메모리 `[[title-keyed-diff-lets-item-number-collide]]` — 제목을 키로 쓰는
-     차집합 판별식이 번호 중복을 조용히 통과시킨다).
-   - 🛑 **본문을 나중에 고치지 마라.** 항목 이동·편집을 섞으면 `todos-reorder-integrity` 가
-     「부채 항목이 사라졌다」로 red 다(메모리 `[[todos-item-move-must-not-touch-body]]`).
+3. ~~**`TODOS.md` 에 `push-frontend-tests` 등재**~~ — **불필요해졌다.**
+   리뷰(base `7d13cdb3d`)가 이 항목을 만들었으나, 리베이스로 들어온 `472f05c49`(#451)가
+   `scripts/workflow/push-frontend-tests.ts` 를 신설하고 `.husky/pre-push:74` 에 배선했다.
+   `frontend-ci.yml` 의 stale 주석도 같은 커밋이 정리했다. **등재할 부채가 남지 않았다.**
+   → 그 발견이 남긴 실질은 **Task 4 의 배치 변경**으로 흡수됐다(판별식을 `scripts/workflow/` 로).
+   `TODOS.md` 는 이 PR 에서 손대지 않는다.
 4. `node scripts/build-doc-index.mjs` 후 `--check`.
 
 **검증**: `node scripts/build-doc-index.mjs --check`
@@ -572,8 +591,15 @@ FR 추가·삭제·카운트 변경이 0 이라 룰 E·H 도 무관하다.
 - **task 수**: 5 · **예상 wave**: 3
   - wave 1 — Task 1(`backend-engineer`) · Task 2(`qa-engineer`) · Task 3(`frontend-engineer`) 병렬.
     셋의 `files` 교집합 0.
-  - wave 2 — Task 4 (`depends-on: [1, 3]`)
+  - wave 2 — Task 4 (`qa-engineer` · `depends-on: [1, 3]`)
   - wave 3 — Task 5 (`depends-on: [1, 2]`)
+- **착수 좌표 갱신** — 이 계획은 base `7d13cdb3d` 에서 썼고 **`c506156a7` 로 리베이스**했다.
+  들어온 것 둘. `472f05c49`(#451 하네스 20건) · `c506156a7`(#446 issue-tracking V039).
+  ⇒ **Task 4 의 배치가 바뀌었다**(`apps/web/src/api/__tests__/` → `scripts/workflow/`, 사유는 Task 4 본문).
+  ⇒ Task 5 의 `TODOS.md` 등재는 **불필요해졌다**(#451 이 그 부채를 이미 갚았다).
+  ⇒ **캠페인 위험 R11 이 현실이 됐다** — #446 이 `V039__description_html.sql` 을 가져갔으므로
+  캠페인 PR ⑥ 의 `V039__project_nav_tabs.sql` 은 **재번호가 필요하다.** PR ⑧ 범위 밖이지만 기록해 둔다.
+  ⇒ 백엔드 줄 번호는 `agile-planning` 이 두 커밋에 안 걸려 **그대로 유효**하다.
 - **구현 규율**: TDD red-first. **단 Task 2 는 예외**다 — 리팩터 트랙이라 지금은 중복이 없어
   unscoped 셀렉터도 초록이고, `test:` → `feat:` 커밋 순서가 성립하지 않는다.
   `spec-compliance-verifier` 가 이 예외를 BLOCKER 로 오판하지 않도록 red 관측 지점을
@@ -587,9 +613,10 @@ FR 추가·삭제·카운트 변경이 0 이라 룰 E·H 도 무관하다.
     **EXIT=0** 이 난다. 그리고 `include: ["src"]` 라 **`e2e/` 를 안 덮는다**(Task 2 는 lint-staged 경로).
   - 린트 `apps/web/node_modules/.bin/eslint <바뀐 파일>`
   - 문서 `node scripts/build-doc-index.mjs --check`
-  - 판별식 전량 — pre-push 훅이 무조건 돌린다. 🛑 **단 그 glob 은 `scripts/**` 뿐이다** —
-    Task 4 의 `apps/web/src/api/__tests__/board-summary-parity.test.ts` 는 **거기 안 들어간다**.
-    손으로 돌려야 한다(스펙 C-3 정정 · 리뷰 이슈 4)
+  - 판별식 전량 `node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`
+    — pre-push 줄 2 가 **조건 없이** 돌린다. Task 4 를 이 glob 안에 두는 것이 A안의 요점이다
+  - 프론트 안전망 `node --experimental-strip-types scripts/workflow/push-frontend-tests.ts`
+    — pre-push 줄 4(신설). `vitest related` 로 좁히므로 **프론트 변경 0건이면 `skip`** 이다
 - 🛑 **worktree 에서 pnpm 스크립트는 전부 죽는다**(심볼릭 `node_modules` → `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`).
   위 명령은 전부 바이너리 직접 호출이다. 프론트 vitest 는 **`apps/web` 이 cwd 여야** `@/` alias 가 해석된다.
 - 🛑 **e2e 는 worktree 밖(main 체크아웃)에서.** 판정 전
@@ -694,9 +721,24 @@ COVERAGE (반영 후): 15/15  |  GAP 0
 
 원형 `bulk-operation-enum-parity.test.ts` 도 같은 처지다. 게다가 `frontend-ci.yml` 주석은
 *「대신 어디서 보는가. 커밋 전 = `.husky/pre-commit`」* 이라 적어 **stale** 이다.
-⇒ 이 PR 은 판별식을 넣되 **「사람이 손으로 돌려야 값을 한다」를 사실대로 적고 간다**(C-3 정정).
-자동화(`push-frontend-tests.ts`)는 표면이 `GUARD_CI` 라 **별건 T2 PR** 로 분리하고 TODOS.md 에
-등재한다(Task 5 에 반영).
+⇒ (리뷰 시점 판정) 판별식을 넣되 「사람이 손으로 돌려야 값을 한다」를 사실대로 적고,
+자동화는 별건 T2 PR + TODOS 로 분리한다.
+
+> **🔄 리베이스 후 갱신 (2026-09-04 · base `7d13cdb3d` → `c506156a7`).**
+> 위 판정을 **지우지 않고 그대로 둔다** — 그때의 관측이 맞았기 때문이다. 그 뒤 무엇이 바뀌었는지만 잇는다.
+>
+> **`472f05c49`(#451)가 같은 결함을 독립적으로 진단해 고쳤다.** `push-frontend-tests.ts` 가
+> 신설돼 `.husky/pre-push:74` 에 무조건 배선됐고, `frontend-ci.yml` 의 stale 주석도 정리됐다.
+> 그 커밋 메시지가 같은 수치를 적는다 — *「프론트 테스트 9,755개(640파일)가 커밋·푸시 어느
+> 훅에서도 안 돌고 있었다」*. ⇒ **TODOS 등재는 불필요해졌다**(Task 5 에서 취소선 처리).
+>
+> **그러나 이 판별식에 한해서는 아직 안 덮인다.** 좁힘이 `vitest related` 의 모듈 그래프인데
+> 이 판별식은 `.kt` 를 `readFileSync` 로 읽어 그래프 밖이고, `frontendScope` 는 프론트 변경이
+> 0건이면 `skip` 이다. **백엔드 DTO 만 바뀐 커밋 = 아무것도 안 돈다** — 그런데 그 시나리오가
+> 정확히 이 판별식이 존재하는 이유다.
+> ⇒ **처방을 별건 PR 이 아니라 Task 4 안에서 닫는다** — 판별식을 `scripts/workflow/` 로 옮겨
+> pre-push 줄 2(조건 없는 전량)에 태운다. Maxi 판정 = A안.
+> 미루면 이 판별식은 **만들어진 날부터 반쪽인 채로 굳는다.**
 
 ### 컨트롤러가 지목한 5문항 답
 
@@ -712,8 +754,9 @@ COVERAGE (반영 후): 15/15  |  GAP 0
 
 | 항목 | 사유 |
 |---|---|
-| `push-frontend-tests.ts` (pre-push 프론트 단계) | 표면이 `GUARD_CI` 라 「한 PR = 한 BC」를 깬다. 별건 T2 PR + TODOS 등재 |
-| `frontend-ci.yml` 의 stale 주석 수정 | 위 PR 과 같은 자리에서 함께 고친다 |
+| ~~`push-frontend-tests.ts` (pre-push 프론트 단계)~~ | **범위 밖이 아니라 이미 끝났다** — `472f05c49`(#451)가 리베이스로 들어오며 신설·배선했다 |
+| ~~`frontend-ci.yml` 의 stale 주석 수정~~ | **같은 커밋이 정리했다** |
+| 캠페인 PR ⑥ 의 마이그레이션 재번호 | 위험 R11 이 현실이 됐다 — #446 이 `V039` 를 가져갔다. **PR ⑥ 착수 시** 처리한다 |
 | `BoardDetailResponse` 까지 판별식 확장 | 필드 10+ · `JsonNullable` · 중첩 DTO · #444 로 `states`/`unmappedStates` 추가. 파서가 무거워지고 ⑧ 신호가 묻힌다 |
 | `BoardDetailResponse.of` 의 기본값 제거 | 테스트 호출부 10+ 가 diff 에 들어와 「모든 변경 줄은 요청으로 추적」을 깬다 |
 | per-board 관리자 도입 | `created_by` 마이그레이션 + shared-kernel 포트 = **T3 승격**. 선행 문서 X3 가 이미 이연으로 적었다 |
@@ -739,7 +782,7 @@ COVERAGE (반영 후): 15/15  |  GAP 0
 |---|---|---|---|---|
 | `listBoards` 의 SOFT_DELETE 판정 | 권한 서비스 예외 | ✅ 기존 403 경로 | ✅ `BoardExceptionHandler` | 명시적 403 |
 | `from(board, canDelete)` 호출부 | 인자 누락 | — | ✅ **컴파일 에러**(2A) | 배포 자체가 안 된다 |
-| zod `.optional()` | 백엔드가 필드 누락 | ⚠️ 판별식은 **수동만**(이슈 4) | ✅ `=== true` fail-closed | 삭제 UI 미노출 — **조용하지만 안전한 쪽** |
+| zod `.optional()` | 백엔드가 필드 누락 | ✅ Task 4 판별식이 **pre-push 무조건** 잡는다(A안) | ✅ `=== true` fail-closed | 삭제 UI 미노출 — **조용하지만 안전한 쪽** |
 | MSW 목록 조립부 | 상세와 기본값이 갈림 | ✅ 3분기(3A) | — | 개발 환경 한정 |
 | `data-testid="board-header"` | 오타·삭제 | ✅ 컨테이너 실재 단언 2줄 | — | e2e red |
 | X10 근사 | per-board 관리자 도입 후 첫 보드 답이 전파 | ✅ LIST-6 + 사유 주석(1A) | — | 잘못된 삭제 버튼 노출 |
@@ -794,10 +837,12 @@ Lane D: Task 5 (docs/ — A·B 뒤)
   - Surfaced by: Test 이슈 3 — 스펙 E5 가 「상세 조립부와 같은 기본값」을 요구하는데 초안은 2분기만 쟀다
   - Files: `apps/web/src/mocks/board-handlers.test.ts`
   - Verify: `apps/web/node_modules/.bin/vitest run src/mocks/board-handlers.test.ts` (cwd = `apps/web`)
-- [ ] **T5 (P1, human: ~20분 / CC: ~5분)** — `docs` — C-3 정정 + `push-frontend-tests` TODOS 등재
+- [x] **T5 (P1, human: ~20분 / CC: ~5분)** — `docs` — C-3 정정 + Task 4 배치 이동
   - Surfaced by: 게이트 실효성 이슈 4 — apps/web 의 vitest 는 어떤 자동 게이트에서도 안 돈다. 「판별식이 구멍을 메운다」가 거짓이었다
-  - Files: `docs/plans/2026-09-04-board-summary-can-delete.md` · `TODOS.md`
-  - Verify: `node scripts/build-doc-index.mjs --check` · TODOS 항목 번호를 **표 전체**로 대조
+  - **리베이스로 절반이 상류에서 해결됐다** — `472f05c49`(#451)가 `push-frontend-tests.ts` 를 넣었다. TODOS 등재는 취소
+  - 남은 실질 = **Task 4 를 `scripts/workflow/` 로 옮긴다**(모듈 그래프가 `.kt` 를 못 본다). 계획에 반영 완료
+  - Files: `docs/plans/2026-09-04-board-summary-can-delete.md`
+  - Verify: `node scripts/build-doc-index.mjs --check`
 
 ## GSTACK REVIEW REPORT
 
