@@ -16,6 +16,7 @@ import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueView
@@ -117,6 +118,16 @@ import java.util.UUID
  * - PATCH-N3. {name:null} → 400 (present-null). 서비스 미호출.
  * - PATCH-N4. {} → 400. 최소 1필드 규칙 — 계약 완화 방지 앵커.
  * - PATCH-N5. {name, swimlaneField} 동시 전송 → 200 + 두 변경 모두 반영.
+ * - COL-N1. PATCH columns {name} 만 → 200 + 이름 변경, **wipLimit 무변경**(WipLimitChange.Unchanged 인자 고정).
+ * - COL-N2. {name, wipLimit} 동시 → 200 + 둘 다 반영.
+ * - COL-N3. {} → 400, 서비스 미호출. 최소 1필드 규칙.
+ * - COL-N4. {name:"   "} → 400, 서비스 미호출.
+ * - COL-N5. {name:null} (present-null) → 400. 컬럼 이름은 해제할 수 없다.
+ * - COL-O1. PUT columns/order 전체 순서 → 200 + 서비스에 그 순서 그대로 전달.
+ * - COL-O2·O3. 누락·중복 배열을 **컨트롤러가 손대지 않고 그대로 위임**한다(전달 인자 verify).
+ *   400 판정 자체는 서비스 몫이고 `BoardApplicationServiceTest` 3건이 진다 — 여기서 겹쳐 재지 않는다.
+ * - COL-O4. 빈 배열 → 400, 서비스 미호출. 「순서를 지운다」가 아니라 요청 실수다.
+ * - COL-O5. CREATE 권한 미충족 → 403, 서비스 미호출.
  * - PATCH-N7. {name 유효, swimlaneField 무효} → 400 + 서비스 위임 1회(원자성 — 두 트랜잭션 분할 금지).
  * - ERR-1. 이름 불변식과 무관한 IllegalArgumentException 하위(NumberFormatException) → 500.
  * - DEL-1. DELETE /boards/{id} → 204 + SOFT_DELETE 권한 판정 + 서비스 위임.
@@ -1174,7 +1185,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateColumnWipLimit(board.id, col.id, 5)
+            boardApplicationService.updateColumn(board.id, col.id, null, WipLimitChange.Set(5))
         } returns updatedCol
 
         val body = mapOf("wipLimit" to 5)
@@ -1272,7 +1283,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(boardWithWip.id) } returns boardWithWip
         every {
-            boardApplicationService.updateColumnWipLimit(boardWithWip.id, col.id, null)
+            boardApplicationService.updateColumn(boardWithWip.id, col.id, null, WipLimitChange.Set(null))
         } returns releasedCol
 
         val body = mapOf("wipLimit" to null)
@@ -1284,6 +1295,219 @@ class BoardControllerIntegrationTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.wipLimit").doesNotExist())
+    }
+
+    // ── COL-N. PATCH 컬럼이 name 을 받는다 (부채 177 R9 · J24) ──────────────────
+    //
+    // ★이 묶음의 급소는 COL-N1 이다. `wipLimit` 이 평범한 `Int?` 였다면 「name 만 전송」과
+    //   「name + wipLimit=null 전송」이 서버에서 구분되지 않아 **이름만 바꿔도 WIP 제한이 조용히
+    //   해제**된다. 그래서 요청 DTO 는 3-state 를 쓰고 서비스는 [WipLimitChange.Unchanged] 를 받는다.
+    //   COL-N1 이 그 인자를 직접 못박으므로, 누군가 `Set(null)` 로 되돌리면 이 한 건만 red 가 된다.
+
+    @Test
+    fun `COL-N1 name 만 보내면 이름이 바뀌고 wipLimit 은 건드리지 않는다`() {
+        val board = sampleBoard()
+        val col = board.columns[1].copy(wipLimit = 7)
+        val boardWithWip = board.copy(columns = listOf(board.columns[0], col, board.columns[2]))
+        val renamed = col.copy(name = "검수")
+
+        every { boardRepository.findById(boardWithWip.id) } returns boardWithWip
+        every {
+            boardApplicationService.updateColumn(boardWithWip.id, col.id, "검수", WipLimitChange.Unchanged)
+        } returns renamed
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${boardWithWip.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to "검수"))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("검수"))
+            .andExpect(jsonPath("$.data.wipLimit").value(7))
+
+        // ★인자 자체를 못박는다 — 「해제하지 않는다」는 응답만 봐서는 증명되지 않는다.
+        verify(exactly = 1) {
+            boardApplicationService.updateColumn(boardWithWip.id, col.id, "검수", WipLimitChange.Unchanged)
+        }
+    }
+
+    @Test
+    fun `COL-N2 name 과 wipLimit 을 함께 보내면 둘 다 반영된다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        val updated = col.copy(name = "검수", wipLimit = 4)
+
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateColumn(board.id, col.id, "검수", WipLimitChange.Set(4))
+        } returns updated
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to "검수", "wipLimit" to 4))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("검수"))
+            .andExpect(jsonPath("$.data.wipLimit").value(4))
+    }
+
+    @Test
+    fun `COL-N3 두 필드가 모두 부재이면 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        ).andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `COL-N4 name 이 공백뿐이면 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to "   "))),
+        ).andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
+    }
+
+    // ── COL-O. PUT columns/order — 전체 순서 교체 (부채 177 R10 · J25) ──────────
+    //
+    // ★부분 이동이 아니라 **전체 교체**다. #444 가 상태 집합에 쓴 근거가 순서에도 그대로 선다 —
+    //   「지금 이 보드의 컬럼 순서」가 클라이언트와 서버 사이에서 갈리지 않는다.
+    //   그래서 불완전한 배열은 400 이고, 그 판정 3종(누락·중복·외부)이 아래 세 건이다.
+
+    @Test
+    fun `COL-O1 columnIds 전체를 보내면 200 이고 그 순서로 교체된다`() {
+        val board = sampleBoard()
+        val reordered =
+            board.copy(
+                columns =
+                    listOf(
+                        board.columns[2].copy(displayOrder = 0),
+                        board.columns[0].copy(displayOrder = 1),
+                        board.columns[1].copy(displayOrder = 2),
+                    ),
+            )
+        val order = listOf(board.columns[2].id, board.columns[0].id, board.columns[1].id)
+
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(board.id, order) } returns reordered
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to order.map { it.toString() }))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
+
+        verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, order) }
+    }
+
+    // ★COL-O2·O3 이 재는 것은 **집합 판정이 아니다** — 그 판정은 서비스가 지고
+    //   `BoardApplicationServiceTest` 3건이 그것을 잰다. 여기가 지는 것은 컨트롤러가 요청 배열을
+    //   **손대지 않고 그대로 넘기는가**다. 종전 두 건은 서비스를 400 으로 던지게 stub 하고 400 을
+    //   다시 확인만 해서, 요청 바디를 아무도 안 보는 같은 판정 2회였다(리뷰 CONCERNS C2) —
+    //   `requireExactColumnSet` 을 통째로 지워도 둘 다 초록이었다. 이제 전달 인자를 못박는다.
+
+    @Test
+    fun `COL-O2 컬럼이 빠진 배열도 컨트롤러가 채우지 않고 그대로 서비스에 넘긴다`() {
+        val board = sampleBoard()
+        val partial = listOf(board.columns[0].id, board.columns[1].id)
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(board.id, partial) } throws
+            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to partial.map { it.toString() }))),
+        ).andExpect(status().isBadRequest)
+
+        // 컨트롤러가 빠진 컬럼을 「친절하게」 뒤에 붙이면 누락 판정이 서비스에 도달하지 못한다.
+        verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, partial) }
+    }
+
+    @Test
+    fun `COL-O3 중복이 든 배열도 컨트롤러가 접지 않고 그대로 서비스에 넘긴다`() {
+        val board = sampleBoard()
+        val dup = listOf(board.columns[0].id, board.columns[0].id, board.columns[1].id)
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(board.id, dup) } throws
+            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to dup.map { it.toString() }))),
+        ).andExpect(status().isBadRequest)
+
+        // ★distinct() 한 줄이면 중복 3개가 2개로 접혀 서비스의 크기 비교를 그냥 통과한다.
+        //   그러면 「누락」이 「중복」의 얼굴로 200 이 된다. 크기 3 을 여기서 못박는다.
+        verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, dup) }
+    }
+
+    @Test
+    fun `COL-O4 빈 columnIds 는 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to emptyList<String>()))),
+        ).andExpect(status().isBadRequest)
+
+        // 빈 배열은 「순서를 지운다」가 아니라 요청 실수다. 서비스까지 보내지 않는다.
+        verify(exactly = 0) { boardApplicationService.reorderColumns(any(), any()) }
+    }
+
+    @Test
+    fun `COL-O5 CREATE 권한이 없으면 403 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        permissionGate.denied.add(IssuePermission.CREATE)
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("columnIds" to board.columns.map { it.id.toString() }),
+                    ),
+                ),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
+
+        verify(exactly = 0) { boardApplicationService.reorderColumns(any(), any()) }
+    }
+
+    @Test
+    fun `COL-N5 name 이 명시 null 이면 400 이다 — 컬럼 이름은 해제할 수 없다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to null))),
+        ).andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
     }
 
     // ── WIP-S4. PATCH swimlaneField=ASSIGNEE → 200 + echo ────────────────────
@@ -1396,7 +1620,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateColumnWipLimit(board.id, otherColumnId, 3)
+            boardApplicationService.updateColumn(board.id, otherColumnId, null, WipLimitChange.Set(3))
         } throws ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "column not found")
 
         val body = mapOf("wipLimit" to 3)
@@ -1466,7 +1690,7 @@ class BoardControllerIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
 
         // 권한 거부 시 서비스가 호출되지 않아야 한다
-        verify(exactly = 0) { boardApplicationService.updateColumnWipLimit(any(), any(), any()) }
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
     }
 
     @Test

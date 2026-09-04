@@ -6,11 +6,13 @@ import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.jooq.tables.records.BoardColumnsRecord
 import com.bts.agileplanning.jooq.tables.records.BoardsRecord
 import com.bts.agileplanning.jooq.tables.references.BOARDS
 import com.bts.agileplanning.jooq.tables.references.BOARD_COLUMNS
 import org.jooq.DSLContext
+import org.jooq.Field
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Propagation
@@ -364,27 +366,37 @@ class BoardRepository(
     }
 
     /**
-     * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.
+     * 보드 컬럼의 이름·WIP 제한을 **한 UPDATE 로** 부분 갱신하고 갱신된 컬럼을 반환한다.
      *
      * boardId + columnId 쌍을 WHERE 조건으로 사용해 타 보드 소속 컬럼 갱신을 방지한다.
      * affected 행이 0 이면(타 보드 소속이거나 미존재) null 을 반환한다.
      *
+     * 한 문으로 쓰는 이유는 [BoardApplicationService.updateBoard] KDoc 의 「리뷰 지적 1」과 같다 —
+     * 쪼개면 뒤가 실패해도 앞이 커밋된다. 빈 변경 맵은 컨트롤러가 400 으로 앞서 막으므로 여기
+     * 도달하면 프로그래밍 오류다(그대로 넘기면 SET 절 없는 UPDATE 가 된다).
      * @param boardId 보드 UUID — 컬럼이 이 보드에 속해야 한다
      * @param columnId 갱신할 컬럼 UUID
-     * @param wipLimit 새로운 WIP 제한. null 이면 제한 해제
+     * @param name 새 컬럼 이름. null 이면 이름은 건드리지 않는다
+     * @param wipLimit WIP 제한 갱신 의도. [WipLimitChange.Unchanged] 면 건드리지 않는다
      * @return 갱신된 컬럼, 타 보드 소속이거나 미존재이면 null
      */
     @Transactional
-    fun updateColumnWipLimit(
+    fun updateColumn(
         boardId: UUID,
         columnId: UUID,
-        wipLimit: Int?,
+        name: String?,
+        wipLimit: WipLimitChange,
     ): BoardColumn? {
-        log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
-
+        log.debug("컬럼 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
+        val changes =
+            buildMap<Field<*>, Any?> {
+                if (name != null) put(BOARD_COLUMNS.NAME, name)
+                if (wipLimit is WipLimitChange.Set) put(BOARD_COLUMNS.WIP_LIMIT, wipLimit.value)
+            }
+        require(changes.isNotEmpty()) { "updateColumn 은 최소 1개 필드를 받아야 한다: columnId=$columnId" }
         val affected =
             dsl.update(BOARD_COLUMNS)
-                .set(BOARD_COLUMNS.WIP_LIMIT, wipLimit)
+                .set(changes)
                 .where(BOARD_COLUMNS.ID.eq(columnId))
                 .and(BOARD_COLUMNS.BOARD_ID.eq(boardId))
                 .execute()

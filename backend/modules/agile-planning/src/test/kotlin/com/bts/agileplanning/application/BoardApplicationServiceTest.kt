@@ -12,6 +12,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
@@ -1154,7 +1155,7 @@ class BoardApplicationServiceTest {
         assertThat(boards.map { it.name }).contains("목록 보드 1", "목록 보드 2")
     }
 
-    // ── updateBoard / updateColumnWipLimit 단위 테스트 (mockk repo) ────────────
+    // ── updateBoard / updateColumn 단위 테스트 (mockk repo) ────────────
 
     @Test
     fun `updateBoard 가 swimlaneField 만 받으면 repo 가 SwimlaneField_ASSIGNEE 로 호출된다`() {
@@ -1233,7 +1234,7 @@ class BoardApplicationServiceTest {
     }
 
     @Test
-    fun `updateColumnWipLimit 유효 호출이면 repo 결과를 그대로 반환한다`() {
+    fun `updateColumn 유효 호출이면 repo 결과를 그대로 반환한다`() {
         val boardId = UUID.randomUUID()
         val columnId = UUID.randomUUID()
         val expectedColumn =
@@ -1246,20 +1247,138 @@ class BoardApplicationServiceTest {
                 wipLimit = 5,
             )
         val repo = mockk<BoardRepository>()
-        every { repo.updateColumnWipLimit(boardId, columnId, 5) } returns expectedColumn
+        every { repo.updateColumn(boardId, columnId, null, WipLimitChange.Set(5)) } returns expectedColumn
 
-        val result = serviceWith(repo = repo).updateColumnWipLimit(boardId, columnId, 5)
+        val result = serviceWith(repo = repo).updateColumn(boardId, columnId, null, WipLimitChange.Set(5))
 
         assertThat(result).isEqualTo(expectedColumn)
     }
 
+    // ── reorderColumns 집합 일치 판정 (부채 177 R10 · J25) ──────────────────────
+    //
+    // ★컨트롤러 테스트(COL-O2·O3)는 서비스를 mock 으로 던지게 하므로 **판정 자체를 재지 않는다.**
+    //   판정이 사는 자리는 여기다 — 아래 3건을 지우면 누락·중복·외부 id 가 조용히 통과한다.
+
     @Test
-    fun `updateColumnWipLimit repo 가 null 반환하면 404 를 던진다`() {
+    fun `reorderColumns 전 컬럼을 순서대로 주면 그 순서로 저장을 요청한다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val board = boardWithColumnIds(boardId, ids)
         val repo = mockk<BoardRepository>()
-        every { repo.updateColumnWipLimit(any(), any(), any()) } returns null
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns board
+
+        val desired = listOf(ids[2], ids[0], ids[1])
+        every { columnRepo.updateColumnOrder(boardId, desired) } returns desired.size
+        serviceWith(repo = repo, columnStateRepo = columnRepo).reorderColumns(boardId, desired)
+
+        verify(exactly = 1) { columnRepo.updateColumnOrder(boardId, desired) }
+    }
+
+    @Test
+    fun `reorderColumns 갱신 건수가 요청 수보다 적으면 409 다 — 그 사이 컬럼이 지워졌다`() {
+        // ★리뷰 CONCERNS C3 — updateColumnOrder 의 반환 건수를 버리면 「일부만 옮겨졌는데 200」이
+        //   된다. 집합 판정(위 3건)은 batch UPDATE **이전** 스냅샷만 보므로 그 사이의 삭제를 못 본다.
+        //   이 판정을 지우면 화면은 새 순서를 그리고 DB 는 옛 순서로 남는다 — 아무도 오류를 못 본다.
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+        every { columnRepo.updateColumnOrder(boardId, any()) } returns 2
 
         assertThatThrownBy {
-            serviceWith(repo = repo).updateColumnWipLimit(UUID.randomUUID(), UUID.randomUUID(), 3)
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[2], ids[0], ids[1]))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(409)
+    }
+
+    @Test
+    fun `reorderColumns 컬럼이 빠지면 400 이고 저장하지 않는다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[0], ids[1]))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { columnRepo.updateColumnOrder(any(), any()) }
+    }
+
+    @Test
+    fun `reorderColumns 같은 컬럼이 두 번 오면 400 이다 — 크기는 같아도 집합이 접힌다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+
+        // 크기 3 으로 같지만 Set 으로 접으면 2 가 된다 — 크기 비교만으로는 못 잡는 자리다.
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[0], ids[0], ids[1]))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { columnRepo.updateColumnOrder(any(), any()) }
+    }
+
+    @Test
+    fun `reorderColumns 타 보드 컬럼이 섞이면 400 이다`() {
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+
+        // 크기는 3 으로 맞지만 한 개가 남의 것이다 — 크기 비교를 통과하고 집합 비교가 잡는다.
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[0], ids[1], UUID.randomUUID()))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(400)
+
+        verify(exactly = 0) { columnRepo.updateColumnOrder(any(), any()) }
+    }
+
+    /** 주어진 id 순서대로 컬럼을 가진 보드. 순서 판정 테스트 전용 픽스처. */
+    private fun boardWithColumnIds(
+        boardId: UUID,
+        columnIds: List<UUID>,
+    ): Board =
+        Board(
+            id = boardId,
+            projectKey = "BTS",
+            name = "순서 테스트 보드",
+            columns =
+                columnIds.mapIndexed { index, id ->
+                    BoardColumn(id, listOf("s$index"), "컬럼 $index", "TODO", index)
+                },
+            createdAt = Instant.parse("2026-09-04T00:00:00Z"),
+            updatedAt = Instant.parse("2026-09-04T00:00:00Z"),
+        )
+
+    @Test
+    fun `updateColumn repo 가 null 반환하면 404 를 던진다`() {
+        val repo = mockk<BoardRepository>()
+        every { repo.updateColumn(any(), any(), any(), any()) } returns null
+
+        assertThatThrownBy {
+            serviceWith(repo = repo).updateColumn(UUID.randomUUID(), UUID.randomUUID(), null, WipLimitChange.Set(3))
         }
             .isInstanceOf(ResponseStatusException::class.java)
             .extracting("statusCode.value")

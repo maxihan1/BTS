@@ -402,16 +402,51 @@ data class ActiveSprintResponse(
 }
 
 /**
- * 컬럼 WIP 제한 변경 요청 바디.
+ * 컬럼 부분 갱신 요청 바디 — 이름 · WIP 제한 (부채 177 R9 · J24 · J29).
  *
- * [wipLimit] 가 null 이면 WIP 제한을 해제한다.
- * null 이 아닌 경우 반드시 양수(1 이상)여야 한다. 0 또는 음수는 컨트롤러에서 검증해 400 으로 거부한다
- * (jakarta `@Positive` 가 nullable `Int?` 에서 0 을 통과시키는 한계가 있어 BoardController 가 수동 검증한다).
+ * [JsonNullable] presence 로 3-state 를 구분한다(`UpdateBoardRequest` 와 같은 관용구).
+ * **두 필드의 「명시 null」 의미가 다르다** — 그 차이가 이 DTO 의 존재 이유다.
  *
- * @property wipLimit 새로운 WIP 제한. null 이면 해제. 양수만 허용.
+ * | 필드 | 부재 | 명시 null | 값 |
+ * |---|---|---|---|
+ * | [name] | 무변경 | **400** — 컬럼 이름은 해제할 수 없다 | 그 이름으로 변경 |
+ * | [wipLimit] | 무변경 | **해제**(무제한) | 그 값으로 설정. 0 이하는 400 |
+ *
+ * ★**`wipLimit` 을 종전처럼 `Int?` 로 두면 안 된다.** 그러면 「`name` 만 전송」과
+ * 「`wipLimit: null` 전송」이 서버에서 같은 값이 되어 **이름만 바꿔도 WIP 제한이 조용히 해제된다.**
+ * 응답은 200 이라 아무도 오류를 못 본다. 서비스는 그래서 [com.bts.agileplanning.domain.WipLimitChange] 를 받는다.
+ *
+ * 두 필드가 모두 부재이면 400 이다 — 빈 바디 `{}` 가 조용히 200 을 받지 않게 하는 최소 1필드 규칙이고,
+ * `UpdateBoardRequest` 의 같은 규칙을 승계한다.
+ *
+ * 타입 인자를 `String?` · `Int?` 로 둔 것은 의도적이다. `JsonNullable<String>` 로 두면 `get()` 이
+ * 플랫폼 타입이라 명시 null 이 컴파일러 검사 없이 흘러 들어가 500 이 된다.
+ *
+ * @property name 새 컬럼 이름. 미전송=무변경. 공백만 있으면 400.
+ * @property wipLimit 새로운 WIP 제한. 미전송=무변경. 명시 null=해제. 양수만 허용
+ *   (jakarta `@Positive` 가 nullable 에서 0 을 통과시키는 한계가 있어 BoardController 가 수동 검증한다).
  */
-data class UpdateColumnWipLimitRequest(
-    val wipLimit: Int?,
+data class UpdateColumnRequest(
+    val name: JsonNullable<String?> = JsonNullable.undefined(),
+    val wipLimit: JsonNullable<Int?> = JsonNullable.undefined(),
+)
+
+/**
+ * 컬럼 순서 교체 요청 바디 (부채 177 R10 · J25).
+ *
+ * **부분 이동이 아니라 전체 교체다.** `#444` 가 상태 집합에 `PUT …/states` 를 쓴 근거가 순서에도
+ * 그대로 선다 — 「지금 이 보드의 컬럼 순서」가 클라이언트와 서버 사이에서 갈리지 않는다.
+ * 「3번을 1번 앞으로」 같은 부분 명령을 받으면 서버가 클라이언트의 현재 화면을 추측해야 한다.
+ *
+ * 집합 일치 판정(누락·중복·타 보드 id)은 **서비스**가 진다 — 보드의 실제 컬럼 집합을 알아야
+ * 판정할 수 있고, 컨트롤러에도 두면 같은 규칙이 두 곳이 된다. 컨트롤러는 **빈 배열만** 막는다:
+ * 빈 배열은 「순서를 지운다」가 아니라 요청 실수이고, 그 판정에는 보드 조회가 필요 없다.
+ *
+ * @property columnIds 보드의 **전 컬럼**을 원하는 순서대로 담은 목록. 빠지거나 중복되거나
+ *   타 보드 컬럼이 섞이면 400. 비어 있으면 400.
+ */
+data class ReorderColumnsRequest(
+    val columnIds: List<UUID> = emptyList(),
 )
 
 /**
@@ -476,6 +511,8 @@ data class ReplaceColumnStatesRequest(
  *
  * @property removedCardCount 이 삭제로 보드에서 사라지는 카드 수. 요청자가 보는 기준이다
  *   (행 단위 보안 필터·스크럼 활성 스프린트 한정이 이미 반영된 수). 상태 0개 컬럼이면 0.
+ *   ★**상한이 있다** — 보드 조회의 `BOARD_CARD_FETCH_LIMIT` 자르기를 물려받으므로 큰 프로젝트에서는
+ *   실제보다 작을 수 있다. 「최소 이만큼」으로 읽어야 한다(리뷰 CONCERNS C6).
  */
 data class DeleteColumnResponse(
     val removedCardCount: Int,

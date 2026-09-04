@@ -187,6 +187,40 @@ class BoardColumnStateRepository(
     }
 
     /**
+     * 컬럼 표시 순서를 **주어진 목록 순서대로 0부터 다시 매긴다** (부채 177 R10 · J25).
+     *
+     * 부분 이동이 아니라 전체 교체다 — 호출자가 보드의 전 컬럼을 순서대로 넘긴다. 집합 일치
+     * 판정(누락·중복·타 보드)은 **호출자(서비스)** 가 이미 끝냈다고 전제한다: 그 판정에는 보드의
+     * 실제 컬럼 집합이 필요하고 리포지터리는 그것을 모른다([updateColumnCategory] 가 카탈로그를
+     * 서비스에 맡긴 것과 같은 이유).
+     *
+     * `boardId` 를 술어에 함께 걸어 **타 보드 컬럼은 어차피 갱신되지 않는다** — 서비스 판정이
+     * 뚫려도 남의 보드를 흔들지 못하는 두 번째 방벽이다.
+     *
+     * 이 자리를 [BoardRepository] 가 아니라 여기 둔 이유는 [toDomain] 과 같다 — 그 파일이
+     * 줄수 상한을 더 넘긴다(N2 · 부채 157). `board_columns` 행 수명주기는 이미 이 클래스가 진다.
+     *
+     * @param boardId 소속 보드 UUID.
+     * @param orderedColumnIds 원하는 순서대로 담은 컬럼 UUID 목록. 첫 원소가 `display_order = 0`.
+     * @return 실제로 갱신된 행 수. 호출자가 기대 건수와 대조할 수 있다.
+     */
+    @Transactional
+    fun updateColumnOrder(
+        boardId: UUID,
+        orderedColumnIds: List<UUID>,
+    ): Int {
+        log.debug("컬럼 순서 교체 — boardId={}, count={}", boardId, orderedColumnIds.size)
+        val steps =
+            orderedColumnIds.mapIndexed { index, columnId ->
+                dsl.update(BOARD_COLUMNS)
+                    .set(BOARD_COLUMNS.DISPLAY_ORDER, index)
+                    .where(BOARD_COLUMNS.ID.eq(columnId))
+                    .and(BOARD_COLUMNS.BOARD_ID.eq(boardId))
+            }
+        return if (steps.isEmpty()) 0 else dsl.batch(steps).execute().sum()
+    }
+
+    /**
      * [BoardColumnsRecord] 를 도메인 [com.bts.agileplanning.domain.BoardColumn] 으로 변환한다.
      *
      * 상태 목록의 정본이 이 클래스이므로 변환도 여기 둔다 — [BoardRepository] 에 두면 그 파일이

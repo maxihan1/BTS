@@ -38,11 +38,11 @@ describe('프로젝트 CRUD 라우트 3종 등록 (_shell 재부모화, FR-PJ PR
     )
   })
 
-  it('라우트 카운트가 61개로 갱신된다 (60 + Jira 패리티 J4 요약 라우트 1, router.ts 헤더 주석과 동일 형식)', () => {
+  it('라우트 카운트가 62개로 갱신된다 (61 + 부채 177 보드 설정 라우트 1, router.ts 헤더 주석과 동일 형식)', () => {
     const shellChildCount = Object.values(byId).filter(
       (route) => route.parentRoute?.id === '/_shell',
     ).length
-    expect(shellChildCount).toBe(61)
+    expect(shellChildCount).toBe(62)
   })
 })
 

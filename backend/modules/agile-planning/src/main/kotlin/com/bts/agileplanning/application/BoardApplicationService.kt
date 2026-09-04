@@ -11,6 +11,7 @@ import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
@@ -771,8 +772,18 @@ class BoardApplicationService(
      * 활성 스프린트 한정 · 배치)이 이미 거기 있다. 여기서 다시 세면 규칙이 두 곳이 되어 언젠가
      * 갈린다. 드문 파괴적 조작이라 조회 1회가 더 드는 것은 정확성 값으로 싸다.
      *
+     * ### 이 수는 상한에 걸린다 (리뷰 CONCERNS C6)
+     *
+     * [getBoard] 를 태우므로 그 조회의 `BOARD_CARD_FETCH_LIMIT` 자르기를 그대로 물려받는다 —
+     * 보드가 상한을 넘긴 프로젝트라면 반환값은 **실제로 사라지는 카드 수보다 작다**(보드 전체가
+     * 잘렸을 때 `BoardPlacementResult.truncated` 가 true 다). 소비자는 이 수를 「최소 이만큼」으로
+     * 읽어야 하고, 정확한 수가 필요한 화면이라면 truncated 를 함께 봐야 한다.
+     * 클라이언트 쪽 같은 한계 기술은 `apps/web/src/api/board-columns.ts` 에 있다 — 생산자 쪽이
+     * 침묵하면 그 기술은 언젠가 원본 없는 사본이 된다.
+     *
      * @param actorUserId 삭제 행위자. **카드 수를 그 사람이 보는 기준으로** 세는 데 쓴다.
-     * @return 이 삭제로 보드에서 사라지는 카드 수.
+     * @return 이 삭제로 보드에서 사라지는 카드 수. `BOARD_CARD_FETCH_LIMIT` 상한 아래에서 센 값이라
+     *   보드가 잘렸으면 실제보다 작을 수 있다.
      * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
      */
     @Transactional
@@ -833,29 +844,113 @@ class BoardApplicationService(
     }
 
     /**
-     * 보드 컬럼의 WIP 제한을 갱신하고 갱신된 컬럼을 반환한다.
+     * 보드 컬럼의 이름과 WIP 제한을 **한 트랜잭션**에서 부분 갱신하고 갱신된 컬럼을 반환한다.
      *
-     * [boardRepository.updateColumnWipLimit] 가 null 을 반환하면 보드 또는 컬럼이 존재하지 않거나
+     * [boardRepository.updateColumn] 이 null 을 반환하면 보드 또는 컬럼이 존재하지 않거나
      * 타 보드 소속이므로 404 를 던진다.
+     *
+     * 두 필드를 한 메서드가 받는 이유는 [updateBoard] 와 같다 — 컨트롤러가 두 서비스 메서드를
+     * 순차 호출하면 각각이 자기 트랜잭션을 열어, 응답은 400 인데 이름만 커밋된 상태가 남는다.
+     *
+     * ★[wipLimit] 이 `Int?` 가 아니라 [WipLimitChange] 인 이유는 그 타입의 KDoc 에 있다 —
+     * 요약하면 **「무변경」과 「해제」가 둘 다 null 이 되어** 이름만 바꿔도 WIP 제한이 조용히
+     * 해제되기 때문이다.
      *
      * @param boardId 갱신 대상 보드 UUID.
      * @param columnId 갱신 대상 컬럼 UUID.
-     * @param wipLimit 새로운 WIP 제한. null 이면 해제.
+     * @param name 새 컬럼 이름. null 이면 미전송이라 건드리지 않는다. 공백 검증은 컨트롤러가 앞세운다.
+     * @param wipLimit WIP 제한 갱신 의도.
      * @return 갱신된 컬럼 도메인 객체.
      * @throws ResponseStatusException 404 — 보드/컬럼 미존재 또는 타 보드 소속.
      */
     @Transactional
-    fun updateColumnWipLimit(
+    fun updateColumn(
         boardId: UUID,
         columnId: UUID,
-        wipLimit: Int?,
+        name: String?,
+        wipLimit: WipLimitChange,
     ): BoardColumn {
-        log.debug("WIP 제한 갱신 — boardId={}, columnId={}, wipLimit={}", boardId, columnId, wipLimit)
-        return boardRepository.updateColumnWipLimit(boardId, columnId, wipLimit)
+        log.debug(
+            "컬럼 갱신 — boardId={}, columnId={}, renaming={}, wipLimit={}",
+            boardId,
+            columnId,
+            name != null,
+            wipLimit,
+        )
+        return boardRepository.updateColumn(boardId, columnId, name, wipLimit)
             ?: throw ResponseStatusException(
                 HttpStatus.NOT_FOUND,
                 "AGILE_BOARD_NOT_FOUND: 컬럼을 찾을 수 없습니다: boardId=$boardId, columnId=$columnId",
             )
+    }
+
+    /**
+     * 보드 컬럼의 표시 순서를 **통째로 교체**한다 (R10 · J25).
+     *
+     * [orderedColumnIds] 는 이 보드의 **전 컬럼**을 원하는 순서대로 담아야 한다. 부분 이동을 받지
+     * 않는 이유는 `replaceColumnStates` 와 같다 — 「지금 이 보드의 순서」가 클라이언트와 서버
+     * 사이에서 갈리지 않게 한다. 부분 명령을 받으면 서버가 클라이언트의 현재 화면을 추측해야 한다.
+     *
+     * ### 집합 일치를 여기서 판정하는 이유
+     * 누락·중복·타 보드 id 세 가지가 **한 판정으로 잡힌다** — 요청 집합과 보드의 실제 컬럼 집합이
+     * 같은지 보면 된다. 리포지터리는 보드의 컬럼 집합을 모르므로 이 판정을 질 수 없고, 컨트롤러에
+     * 두면 보드를 한 번 더 조회해야 한다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @param orderedColumnIds 원하는 순서대로 담은 이 보드의 전 컬럼 UUID.
+     * @return 순서가 반영된 보드.
+     * @throws BoardNotFoundException 보드 미존재 → 404.
+     * @throws ResponseStatusException 400 — 요청 집합이 보드의 컬럼 집합과 다르다(누락·중복·외부).
+     * @throws ResponseStatusException 409 — 갱신 건수가 요청 수와 다르다(그 사이 컬럼이 지워졌다).
+     */
+    @Transactional
+    fun reorderColumns(
+        boardId: UUID,
+        orderedColumnIds: List<UUID>,
+    ): Board {
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
+        requireExactColumnSet(board, orderedColumnIds)
+        val affected = columnStates.updateColumnOrder(boardId, orderedColumnIds)
+        // ★건수를 버리면 「일부만 옮겨졌는데 응답은 200」이 된다(리뷰 CONCERNS C3). 집합 판정과
+        //   batch UPDATE 사이에 다른 사람이 컬럼을 지우면 READ COMMITTED 에서 실제로 갈린다 —
+        //   그때 돌려줄 board 는 방금 읽은 낡은 것이라 화면과 DB 가 조용히 어긋난다. 롤백시킨다.
+        if (affected != orderedColumnIds.size) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "컬럼 구성이 그 사이 바뀌었습니다. 새로 고친 뒤 다시 시도하세요: boardId=$boardId",
+            )
+        }
+        return board.copy(
+            columns =
+                orderedColumnIds.mapIndexed { index, columnId ->
+                    board.columns.first { it.id == columnId }.copy(displayOrder = index)
+                },
+        )
+    }
+
+    /**
+     * 요청 순서가 보드의 컬럼 집합과 정확히 일치하는지 본다 (R10).
+     *
+     * 별 함수로 뺀 이유는 둘이다. ①`reorderColumns` 의 throw 수를 규칙 안에 둔다.
+     * ②**뮤테이션이 흔들 자리를 만든다** — 이 판정을 지우면 누락·중복·외부 id 세 결함이 한꺼번에
+     * 통과하는데, 그 사실을 재는 테스트가 `BoardApplicationServiceTest` 의 3건이다.
+     *
+     * 세 결함이 한 판정에 들어온다. **중복**은 크기 비교가 잡고(Set 으로 접히며 요청 크기와 어긋난다),
+     * **누락·외부 id** 는 집합 비교가 잡는다. 크기만 보거나 집합만 보면 각각 한쪽이 샌다.
+     *
+     * @throws ResponseStatusException 400 — 집합이 다르다.
+     */
+    private fun requireExactColumnSet(
+        board: Board,
+        orderedColumnIds: List<UUID>,
+    ) {
+        val actual = board.columns.map { it.id }.toSet()
+        if (orderedColumnIds.size != actual.size || orderedColumnIds.toSet() != actual) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "columnIds 는 이 보드의 전 컬럼을 빠짐없이 한 번씩 담아야 합니다: boardId=${board.id}",
+            )
+        }
     }
 
     /**
