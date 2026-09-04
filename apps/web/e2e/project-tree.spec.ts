@@ -33,9 +33,13 @@ const sortedProjects = [...projectListFixtures].sort((a, b) => a.name.localeComp
 /** 활성 시나리오(S2~S4) 전용 프로젝트 — fixture 중 ATLAS */
 const ATLAS_PROJECT_NAME = 'Atlas 프로젝트'
 
-/** 직접 링크 3종 — router.ts 실측 실 라우트 계약(ATLAS 기준) */
+/**
+ * 직접 링크 2종 — router.ts 실측 실 라우트 계약(ATLAS 기준).
+ *
+ * **「보드」가 여기 없다** — 캠페인 PR ⑩(J2)이 그 한 줄을 보드 **목록**(보드마다 한 줄,
+ * `?board=<id>`)으로 갈랐다. 목록 자체의 계약은 유닛(`ProjectTree.test.tsx`)이 덮는다.
+ */
 const DIRECT_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
-  ['보드', '/projects/ATLAS/board'],
   ['백로그', '/projects/ATLAS/backlog'],
   ['타임라인', '/projects/ATLAS/timeline'],
 ]
