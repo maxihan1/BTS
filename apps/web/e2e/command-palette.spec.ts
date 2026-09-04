@@ -161,20 +161,25 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
   //
   // Given  alice로 로그인, 팔레트 열림
   // When   `/goto ATLAS-1` 입력 + Enter
-  // Then   `/issues/ATLAS-1`로 이동(SPA 내부 이동), 이슈 상세 heading(summary) 표시
-  //        팔레트는 닫힌다(FR6)
+  // Then   ATLAS-1 상세 **모달**이 열리고 요약이 보인다. 팔레트는 닫힌다(FR6)
+  //
+  // ★2026-09-04 계약 번복(Jira 패리티 J1). `/goto` 는 전체 페이지 이동이었다.
+  //   `CommandPalette` 가 `useOpenIssueDetail` 로 바뀌어 URL 이 움직이지 않는다.
+  //   모달 안쪽은 `variant='pane'` 이라 제목이 **h2** 다 — 문서 h1 은 배경 화면의 것 하나뿐이라는
+  //   계약이 그대로 유지된다(`issue-split-view` H1 이 같은 계약을 지킨다).
   // ───────────────────────────────────────────────────────────────────────────
-  test('S3 /goto ATLAS-1 → 이슈 상세로 이동', async ({ page }) => {
+  test('S3 /goto ATLAS-1 → 이슈 상세 모달', async ({ page }) => {
     await loginAndWaitForRootReady(page)
     const dialog = await openCommandPalette(page)
 
     // When. /goto 명령 실행
     await runSlashCommand(dialog, '/goto ATLAS-1')
 
-    // Then. 이슈 상세 URL로 이동
-    await page.waitForURL('**/issues/ATLAS-1')
+    // Then. ATLAS-1 상세 모달이 열리고 요약이 h2 로 보인다
+    const issueModal = page.getByRole('dialog', { name: '이슈 상세 ATLAS-1' })
+    await expect(issueModal).toBeVisible()
     await expect(
-      page.getByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+      issueModal.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
     ).toBeVisible()
 
     // Then. 팔레트 닫힘(FR6)
@@ -322,9 +327,9 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
   // Given  alice로 로그인, 팔레트 열림
   // When   소문자 `atlas-1` 입력(슬래시 없음)
   // Then   「이슈」 그룹에 ATLAS-1이 뜨고 기본 하이라이트가 그 위에 있다(대문자 정규화)
-  //        Enter로 이슈 상세로 이동하고 팔레트가 닫힌다
+  //        Enter로 상세 **모달**이 열리고 팔레트가 닫힌다 (2026-09-04 J1 번복 — S3 주석 참조)
   // ───────────────────────────────────────────────────────────────────────────
-  test('S9 atlas-1 입력 → 이슈 정확일치가 뜨고 Enter로 이동(대소문자 무관)', async ({ page }) => {
+  test('S9 atlas-1 입력 → 이슈 정확일치가 뜨고 Enter로 모달(대소문자 무관)', async ({ page }) => {
     await loginAndWaitForRootReady(page)
     const dialog = await openCommandPalette(page)
 
@@ -344,8 +349,8 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
     // When2. Enter
     await page.keyboard.press('Enter')
 
-    // Then2. 이슈 상세로 이동 + 팔레트 닫힘(FR6)
-    await page.waitForURL('**/issues/ATLAS-1')
+    // Then2. 이슈 상세 모달 + 팔레트 닫힘(FR6)
+    await expect(page.getByRole('dialog', { name: '이슈 상세 ATLAS-1' })).toBeVisible()
     await expect(dialog).not.toBeVisible()
   })
 
@@ -435,9 +440,11 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
     await page.keyboard.press('ArrowDown')
     await expect(secondResult).toHaveAttribute('aria-selected', 'true')
 
-    // Then. Enter로 2번째 이슈를 연다
+    // Then. Enter로 2번째 이슈를 연다 — 상세 모달 (2026-09-04 J1 번복 — S3 주석 참조)
     await page.keyboard.press('Enter')
-    await page.waitForURL(`**/issues/${DEFAULT_SEARCH_RESULT_KEYS[1]}`)
+    await expect(
+      page.getByRole('dialog', { name: `이슈 상세 ${DEFAULT_SEARCH_RESULT_KEYS[1]}` }),
+    ).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -445,7 +452,8 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
   //
   // Given  alice로 로그인, 팔레트 열림
   // When   `/goto ATLAS-1` 입력 + Enter
-  // Then   여전히 이슈 상세로 이동한다 — 이슈키 판별이 슬래시 명령을 가로채지 않는다
+  // Then   여전히 이슈 상세가 열린다 — 이슈키 판별이 슬래시 명령을 가로채지 않는다
+  //        (2026-09-04 J1 번복으로 도착지가 페이지 → 모달이 됐다. S3 주석 참조)
   //
   // 판별 **순서**(parseCommand 먼저 → resolveNonCommandInput 나중)는 단위 테스트가 계약으로
   // 못 박고, 이 테스트는 그 순서가 깨졌을 때 실사용이 무엇을 잃는지를 지키는 무회귀 증인이다.
@@ -458,10 +466,11 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
     // When. 슬래시 명령 — 인자가 이슈키 형식이라 2계층 판별과 겹치는 입력이다
     await runSlashCommand(dialog, '/goto ATLAS-1')
 
-    // Then. 슬래시 경로 그대로 이슈 상세로 이동
-    await page.waitForURL('**/issues/ATLAS-1')
+    // Then. 슬래시 경로 그대로 이슈 상세 모달
+    const issueModal = page.getByRole('dialog', { name: '이슈 상세 ATLAS-1' })
+    await expect(issueModal).toBeVisible()
     await expect(
-      page.getByRole('heading', { level: 1, name: issueAtlas1Fixture.summary }),
+      issueModal.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary }),
     ).toBeVisible()
   })
 

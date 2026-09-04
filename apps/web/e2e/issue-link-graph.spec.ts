@@ -238,7 +238,11 @@ test.describe('FR-LK-02 이슈 링크 그래프 패널 (LinkGraph)', () => {
   // 전제: 커밋 887911dc(resolveSanitizedId $-앵커) +
   //       커밋 2fae8a07(CENTER_CLASS_DEF hex 절대값)으로 mermaid 렌더 정상화됨.
   // ─────────────────────────────────────────────────────────────────────────
-  test('E2E-G5 (C1) 비-center 노드 클릭 → 이슈 이동', async ({ page }) => {
+  // ★2026-09-04 계약 번복(Jira 패리티 J1). 링크 그래프 노드는 전체 페이지 이동이었다.
+  // `LinkGraph` 가 `useOpenIssueDetail` 로 바뀌어 URL 이 움직이지 않는다 — 대상 이슈의
+  // 상세 **모달**이 배경(현재 이슈 상세) 위에 열린다. 옛 `waitForURL` 은 8초를 기다렸다 죽었다.
+  // ─────────────────────────────────────────────────────────────────────────
+  test('E2E-G5 (C1) 비-center 노드 클릭 → 이슈 상세 모달', async ({ page }) => {
     // Given.
     await navigateToIssueDetail(page)
     await expandLinkGraph(page)
@@ -273,20 +277,24 @@ test.describe('FR-LK-02 이슈 링크 그래프 패널 (LinkGraph)', () => {
     // When. ATLAS-2 노드 클릭
     await atlas2Node.click()
 
-    // Then. /issues/ATLAS-2 로 이동
-    await page.waitForURL('**/issues/ATLAS-2', { timeout: 8_000 })
+    // Then. ATLAS-2 상세 모달이 열린다 (URL 은 ATLAS-1 상세 그대로)
+    await expect(page.getByRole('dialog', { name: '이슈 상세 ATLAS-2' })).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────
-  // E2E-G6 (C2) 키보드 Enter로 노드 이슈 이동
+  // E2E-G6 (C2) 키보드 Enter로 노드 이슈 상세 모달
   //
   // Given   alice로 로그인, ATLAS-1 이슈 상세 → 그래프 펼침 (depth=2 기본값)
   //         ATLAS-2 노드에 tabindex=0, role=link, aria-label 부여됨
   // When    ATLAS-2 노드 포커스 → Enter 키 입력
-  // Then    URL이 /issues/ATLAS-2 로 이동
+  // Then    ATLAS-2 상세 모달이 열린다
   //         aria-label 값이 nodeAriaLabel('ATLAS-2') 와 일치
+  //
+  // ★2026-09-04 계약 번복(Jira 패리티 J1). 링크 그래프 노드는 전체 페이지 이동이었다.
+  // `LinkGraph` 가 `useOpenIssueDetail` 로 바뀌어 URL 이 움직이지 않는다 — 대상 이슈의
+  // 상세 **모달**이 배경(현재 이슈 상세) 위에 열린다. 옛 `waitForURL` 은 8초를 기다렸다 죽었다.
   // ─────────────────────────────────────────────────────────────────────────
-  test('E2E-G6 (C2) 키보드 Enter로 비-center 노드 이슈 이동', async ({ page }) => {
+  test('E2E-G6 (C2) 키보드 Enter로 비-center 노드 이슈 상세 모달', async ({ page }) => {
     // Given.
     await navigateToIssueDetail(page)
     await expandLinkGraph(page)
@@ -312,7 +320,7 @@ test.describe('FR-LK-02 이슈 링크 그래프 패널 (LinkGraph)', () => {
     await atlas2Node.focus()
     await page.keyboard.press('Enter')
 
-    // Then. /issues/ATLAS-2 로 이동
-    await page.waitForURL('**/issues/ATLAS-2', { timeout: 8_000 })
+    // Then. ATLAS-2 상세 모달이 열린다
+    await expect(page.getByRole('dialog', { name: '이슈 상세 ATLAS-2' })).toBeVisible()
   })
 })

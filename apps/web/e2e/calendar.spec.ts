@@ -158,11 +158,15 @@ test.describe('FR-CA-01 개인 캘린더 (/calendar 월/주 뷰)', () => {
   // Given  alice로 로그인, /calendar 진입 (고정 오늘=2026-07-08)
   //        ATLAS-12(startDate=2026-07-03~dueDate=2026-07-10) 기간 막대가 월 그리드에 렌더
   // When   2026-07-03 셀의 ATLAS-12 막대 세그먼트(isStart) 클릭
-  // Then   /issues/ATLAS-12로 SPA 내부 이동(URL 변경)
+  // Then   ATLAS-12 상세 **모달**이 열린다.
   //
-  // Note. page.reload() 금지 — URL 변경만 검증(이슈 상세 렌더는 issue-tracking E2E가 커버)
+  // ★2026-09-04 계약 번복(Jira 패리티 J1). 이 진입점은 전체 페이지 이동이었다.
+  //   Jira 는 목록·캘린더에서 이슈를 열면 모달을 띄우므로 `useOpenIssueDetail` 로 바꿨고,
+  //   그래서 **URL 이 바뀌지 않는다** — 옛 `waitForURL` 단언은 이 변경을 잡지 못하고
+  //   8초를 기다렸다 죽는다. 단언 대상을 모달로 옮긴다.
+  //   새 탭·딥링크(⌘/Ctrl 클릭)는 훅이 통과시키므로 `/issues/KEY` 경로는 그대로 살아 있다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('E2E-4 이벤트 클릭 — ATLAS-12 막대 클릭 시 /issues/ATLAS-12로 이동', async ({ page }) => {
+  test('E2E-4 이벤트 클릭 — ATLAS-12 막대 클릭 시 상세 모달이 열린다', async ({ page }) => {
     // Given. /calendar 진입, 2026-07-03 셀에 ATLAS-12 이벤트 표시
     await page.goto('/calendar')
     const startCell = page.locator(`[data-date="${SEED_ISSUE_START_DATE}"]`)
@@ -173,9 +177,9 @@ test.describe('FR-CA-01 개인 캘린더 (/calendar 월/주 뷰)', () => {
     // When. 이벤트 클릭
     await eventButton.click()
 
-    // Then. /issues/ATLAS-12로 SPA 내부 이동
-    await page.waitForURL(`**/issues/${SEED_ISSUE_KEY}`)
-    expect(page.url()).toContain(`/issues/${SEED_ISSUE_KEY}`)
+    // Then. ATLAS-12 상세 모달이 열린다 (URL 은 /calendar 그대로)
+    await expect(page.getByRole('dialog', { name: `이슈 상세 ${SEED_ISSUE_KEY}` })).toBeVisible()
+    expect(page.url()).not.toContain(`/issues/${SEED_ISSUE_KEY}`)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
