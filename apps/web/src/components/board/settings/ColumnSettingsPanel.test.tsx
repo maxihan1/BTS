@@ -1,7 +1,20 @@
 // Columns 탭 읽기 렌더 동반 테스트 — 빈 상태 3종 · 카드 수 절단 표기 (부채 177 Task 5)
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+/**
+ * 편집 mutate 호출을 가로챈다.
+ *
+ * 훅 자체가 아니라 **호출부가 무엇을 보내는가**를 재려는 것이다 — 리뷰 B1 프로브 ②가
+ * 그 자리에 판정이 0 건임을 실증했다.
+ */
+const mockUpdateColumn = vi.fn()
+vi.mock('@/hooks/use-update-column', () => ({
+  useUpdateColumn: () => ({ mutate: mockUpdateColumn, isPending: false }),
+  useReorderColumns: () => ({ mutate: vi.fn(), isPending: false }),
+}))
 import type { BoardDetail, BoardColumn, ColumnState } from '@/api/boards'
 import { ColumnSettingsPanel } from './ColumnSettingsPanel'
 import { boardLabels } from '@/i18n/board-labels'
@@ -20,6 +33,12 @@ function renderPanel(detail: BoardDetail, canConfigure = true): void {
     </QueryClientProvider>,
   )
 }
+
+beforeEach(() => {
+  // mock 은 테스트 사이에 살아남는다 — 지우지 않으면 calls[0] 이 앞 테스트의 호출을 집어
+  // 「이 조작이 무엇을 보냈나」 판정이 옆 테스트의 결과를 재게 된다.
+  vi.clearAllMocks()
+})
 
 const STATE_OPEN: ColumnState = { key: 'open', name: '열림', category: 'TODO' }
 const STATE_DONE: ColumnState = { key: 'closed', name: '완료', category: 'DONE' }
@@ -295,5 +314,43 @@ describe('Columns 탭 — 이름 편집·순서 핸들 (R9 · R10 · J24 · J25)
     expect(
       screen.getByRole('button', { name: boardLabels.settings.reorderHandleLabel('진행 중') }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('Columns 탭 — 편집이 서버로 나가는 형태 (리뷰 B1 프로브 ②)', () => {
+  it('T-CP-21: 이름만 바꾸면 wipLimit 키를 싣지 않는다', async () => {
+    const user = userEvent.setup()
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }))
+
+    const input = screen.getByLabelText(boardLabels.settings.renameColumnLabel('진행 중'))
+    await user.clear(input)
+    await user.type(input, '검수{Enter}')
+
+    // ★리뷰어가 `patch: { name, wipLimit: column.wipLimit }` 로 바꿔도 전부 초록임을 실증했다.
+    //   그 변경은 Task 1 이 WipLimitChange 로 막은 바로 그 결함(이름만 바꿔도 WIP 해제)을
+    //   프론트에서 되살린다. 키 부재를 직접 못박는 판정은 이것 하나뿐이다.
+    await waitFor(() => {
+      expect(mockUpdateColumn).toHaveBeenCalled()
+    })
+    const [vars] = mockUpdateColumn.mock.calls[0] as [{ patch: Record<string, unknown> }]
+    expect(vars.patch).toEqual({ name: '검수' })
+    expect(vars.patch).not.toHaveProperty('wipLimit')
+  })
+
+  it('T-CP-22: WIP 만 바꾸면 name 키를 싣지 않는다', async () => {
+    const user = userEvent.setup()
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }))
+
+    const input = screen.getByLabelText(boardLabels.settings.wipLimitInputLabel('진행 중'))
+    await user.type(input, '3{Enter}')
+
+    // T-CP-21 의 대칭. 「항상 두 키를 싣는다」로 고치면 둘 중 하나는 반드시 red 다.
+    await waitFor(() => {
+      expect(mockUpdateColumn).toHaveBeenCalled()
+    })
+    const [vars] = mockUpdateColumn.mock.calls[0] as [{ patch: Record<string, unknown> }]
+    expect(vars.patch).toEqual({ wipLimit: 3 })
   })
 })
