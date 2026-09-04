@@ -358,7 +358,15 @@ LIST-1/2/3 뿐이고 **보드 0건 케이스가 전무하다**(`BoardControllerI
 단언 12곳은 전부 다른 엔드포인트고, ERR-1(`:1668`)은 목록 경로지만 calls 단언이 없다.
 
 *커밋 ② `test:` — 컴파일 red.* `BoardResponsesTest.kt` `ExistingFieldsPreserved`(`:423` 부근)에 3건.
-기존 4필드 유지 · `from(board, true/false)` 가 인자를 그대로 싣는다 · **기본값이 `false`**(fail-closed).
+기존 4필드 유지 · `from(board, true/false)` 가 인자를 그대로 싣는다 · **기본값이 없다**.
+
+> 🔧 **정정 (구현 중 검증자가 잡음).** 이 줄은 원래 「기본값이 `false`(fail-closed)」였다 —
+> 리뷰 이슈 2(2A)가 **기본값 제거**로 뒤집기 **전**의 초안 잔재이고, 같은 문서의 GREEN 명세와
+> **정면으로 모순**이었다. GREEN 쪽이 맞다.
+> 구현은 이 자리를 `kotlin-reflect` 반사 테스트로 채웠다 —
+> `from` 의 `canDelete` 파라미터가 `isOptional == false` 임을 단언한다(신규 의존성 0).
+> 「누가 나중에 `= false` 를 붙이면 호출부 누락이 침묵한다」는 이 task 최대 위험을
+> **사람 눈이 아니라 기계가** 지키게 만든 것이라, 명세 이탈이 아니라 명세가 요구한 보증의 집행 수단이다.
 
 **GREEN** — 커밋 ③ `feat:`.
 - `BoardResponses.kt:161-176` — `val canDelete: Boolean` + KDoc.
@@ -390,7 +398,12 @@ LIST-1/2/3 뿐이고 **보드 0건 케이스가 전무하다**(`BoardControllerI
 **REFACTOR**: `@return` KDoc 갱신 + **클래스 KDoc 색인**(`BoardControllerIntegrationTest.kt:91-93`)에
 LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔다.
 
-**검증**: `backend/gradlew :modules:agile-planning:test ktlintCheck detekt`
+**검증**: `(cd backend && ./gradlew :modules:agile-planning:test ktlintCheck detekt --console=plain)`
+
+★ **`backend/gradlew :modules:…` 형태로 쓰면 안 된다** (구현 중 실측으로 잡혔다). worktree 루트에서
+그렇게 부르면 Gradle 이 **cwd 에서** settings 파일을 찾으므로
+`Directory '…/board-summary-can-delete' does not contain a Gradle build.` 로 **작업이 시작조차 안 되고**
+`EXIT=1` 이 난다. `select-test-scope.ts` 가 렌더하는 형태도 `(cd backend && ./gradlew …)` 다.
 
 ### Task 2. 보드 e2e 셀렉터를 컨테이너로 좁힌다 (R10)
 
@@ -519,7 +532,16 @@ LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔�
 |---|---|---|
 | 1 | `BoardResponses.kt` | `data class BoardSummaryResponse(` **괄호 본문**의 `val <name>:` |
 | 2 | `apps/web/src/api/boards.ts` | `boardSummarySchema` 의 `z.object({ … })` 블록 키 |
-| 3 | `apps/web/src/mocks/board-handlers.ts` | `getBoardsHandler` 의 `.map(…) => ({ … })` 객체 리터럴 키 (`:389-394`) |
+| 3 | `apps/web/src/mocks/board-handlers.ts` | **`toResponseSummary` 함수 본문**의 반환 객체 리터럴 키 (`:338` 부터) |
+
+> 🔧 **추출 대상 정정 (Task 3 REFACTOR 이후 · 검증자가 잡음).**
+> 이 표는 원래 「`getBoardsHandler` 의 `.map(…) => ({ … })` 객체 리터럴(`:389-394`)」을 가리켰다.
+> Task 3 의 REFACTOR 가 plan 지시대로 목록 조립을 `toResponseSummary(stored)` 로 뽑아
+> `toResponseDetail` 옆에 옮겼고, 그 결과 **`getBoardsHandler` 안에는 객체 리터럴이 남지 않았다**
+> (`:415` 는 `.map(toResponseSummary)` 뿐이다). 옛 위치를 파싱하면 빈 집합이 나온다.
+> ★ 다만 이것이 **조용히 깨지지는 않는다** — 비-공허 카나리(세 집합이 `canDelete` 와 `boardType` 을
+> 실제로 포함한다)가 빈 집합을 즉시 red 로 잡는다. 카나리를 빼면 이 정정이 없을 때 판별식이
+> 「셋 다 비었으니 차집합 0」으로 **가짜 초록**이 된다 — 그 자리가 카나리의 존재 이유다.
 
 **세 집합의 양방향 차집합이 0** 이어야 한다.
 
