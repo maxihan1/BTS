@@ -1,6 +1,8 @@
 // TipTap @멘션 확장 — 서버가 만드는 span.mention 마크업과 왕복 호환 (FR-MN-02)
 import Mention from '@tiptap/extension-mention'
 import { ReactRenderer } from '@tiptap/react'
+import { PluginKey } from '@tiptap/pm/state'
+import type { EditorState } from '@tiptap/pm/state'
 import type { SuggestionOptions } from '@tiptap/suggestion'
 import type { AnyExtension } from '@tiptap/react'
 import { fetchUsers } from '@/api/users'
@@ -10,6 +12,28 @@ import type { MentionListHandle } from './MentionList'
 
 /** 자동완성에 보여 줄 최대 후보 수 — 기존 textarea 구현과 같은 값이다. */
 const MAX_SUGGESTIONS = 8
+
+/**
+ * 멘션 suggestion 플러그인 키.
+ *
+ * 기본값(`MentionPluginKey`)은 `@tiptap/extension-mention` 이 **export 하지 않아** 밖에서
+ * 상태를 조회할 수 없다. 직접 만들어 [isMentionSuggestionActive] 가 쓰게 한다.
+ */
+const MENTION_SUGGESTION_KEY = new PluginKey('mentionSuggestion')
+
+/**
+ * 멘션 후보 팝업이 떠 있나.
+ *
+ * ★[RichTextEditor] 의 `editorProps.handleKeyDown` 이 이것을 봐야 한다. ProseMirror 의
+ * `someProp` 은 **view props 를 플러그인보다 먼저** 훑기 때문에, 에디터가 `Escape` 를
+ * 먼저 받아 취소로 처리해 버리면 suggestion 의 `onKeyDown` 이 **영영 불리지 않는다**.
+ * 그러면 후보를 닫으려던 `Escape` 가 작성분을 통째로 버리는 취소가 된다(실측 2026-09-04 ·
+ * `issue-mention-autocomplete` S3 가 증인).
+ */
+export function isMentionSuggestionActive(state: EditorState): boolean {
+  const s = MENTION_SUGGESTION_KEY.getState(state) as { active?: boolean } | undefined
+  return s?.active === true
+}
 
 /**
  * 후보 조회.
@@ -101,6 +125,8 @@ export function buildMentionExtension(): AnyExtension {
     ],
     renderText: ({ node }) => `@${String(node.attrs.id ?? node.attrs.label ?? '')}`,
     suggestion: {
+      // ★밖에서 상태를 조회하려고 키를 직접 준다 — [isMentionSuggestionActive] 참조.
+      pluginKey: MENTION_SUGGESTION_KEY,
       char: '@',
       // `@` 앞에 올 수 있는 문자 — 공백·여는 괄호만 허용한다.
       // 글자 뒤에 바로 붙는 `@`(예: `user@example.com`)는 이메일이지 멘션이 아니다.

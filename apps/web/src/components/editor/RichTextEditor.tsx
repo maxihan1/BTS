@@ -2,6 +2,7 @@
 import type { JSX, RefObject } from 'react'
 import { useEffect } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
+import { isMentionSuggestionActive } from './mention-extension'
 import { buildRichTextExtensions } from './rich-text-extensions'
 import { RichTextToolbar } from './RichTextToolbar'
 import { editorLabels } from '@/i18n/editor-labels'
@@ -88,7 +89,7 @@ export function RichTextEditor({
           'focus:outline-none',
         ),
       },
-      handleKeyDown: (_view, event) => {
+      handleKeyDown: (view, event) => {
         // ⌘/Ctrl+Enter — 저장.
         if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
           if (onSubmit === undefined) return false
@@ -98,6 +99,11 @@ export function RichTextEditor({
         }
         // Escape — 취소. ★IME 조합 중에는 넘긴다(한글 조합 취소를 빼앗지 않는다).
         if (event.key === 'Escape' && !event.isComposing) {
+          // ★멘션 후보가 떠 있으면 그 Escape 는 팝업의 것이다. 여기서 가로채면 후보를 닫으려던
+          //   입력이 **편집 취소**가 되어 작성분이 통째로 날아간다.
+          //   ProseMirror `someProp` 은 view props(이 함수)를 플러그인보다 **먼저** 훑으므로,
+          //   넘겨주지 않으면 suggestion 의 `onKeyDown` 이 영영 불리지 않는다(실측 2026-09-04).
+          if (isMentionSuggestionActive(view.state)) return false
           if (onCancel === undefined) return false
           event.preventDefault()
           onCancel()
