@@ -40,8 +40,11 @@ export function IssueDetailSidePanel(): JSX.Element | null {
   return (
     <section
       aria-label={issueDetailStrings.sidePanelLabel}
-      // 고정폭 + 뷰포트 상한. 좁은 화면에서 본문을 다 먹지 않도록 45vw 로 묶는다.
-      className="flex w-[560px] min-w-0 max-w-[45vw] shrink-0 flex-col overflow-y-auto border-l border-border bg-background"
+      // 고정폭 + 뷰포트 상한. 상세는 안쪽이 `1fr + 340px` 2단 그리드이고 그 분기는 **뷰포트**
+      // 기준(`lg:`)이라 패널이 좁아도 2단으로 펼쳐진다 — 560px 로 뒀더니 우측 메타패널이 잘려
+      // 저장 버튼이 화면 밖으로 나갔다(눈확인에서 발견). 본문 400px + 메타 340px + gap 이
+      // 들어갈 만큼 준다. 좁은 화면에서 목록을 다 먹지 않도록 55vw 로 묶는다.
+      className="flex w-[800px] min-w-0 max-w-[55vw] shrink-0 flex-col overflow-y-auto border-l border-border bg-background"
     >
       <div className="px-2 py-2">
         {/* key 로 이슈 전환 시 인스턴스를 강제 재마운트한다 — confirmDelete/isEditingTitle 같은
