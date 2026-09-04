@@ -1661,11 +1661,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">130</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 102건 · 전체 232건</span>
+      <span class="big-pct" style="color:#9ca3af;">132</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 102건 · 전체 234건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 130건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">25건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 132건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">26건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — e2e 로그인 헬퍼가 <b>17 파일에 복사</b>돼 있고 아무도 서로를 검사하지 않는다 (신규 · 미착수 · T1)</span></div>
@@ -1898,6 +1898,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — apps/web — nav 라벨 정본이 선언만 있고 리터럴이 5벌 따로 박혀 있다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>i18n/workflow-editor-labels.ts:1</code> 이 「E2E 셀렉터 정본 — 단일 진입점」이라 선언하는데 사이드바·관리 허브 라벨의 <b>소비처가 0</b> 이었다. 실제 리터럴이 박힌 곳을 전수로 적는다 — <code>Sidebar.tsx</code> · <code>admin.index.tsx</code>(라벨·설명 둘 다) · <code>Sidebar.test.tsx</code> · <code>e2e/workflow-editor.spec.ts</code>(여러 자리). 정본을 &#39;워크플로우&#39; 로 줄여도 화면이 안 바뀌고 아무 검사도 red 가 아니었다.</p><p>PR #400 은 그 죽은 <code>nav</code> 블록을 <b>지웠다</b> — 소비처 없는 선언이 남아 있으면 다음 사람이 그것을 정본으로 믿기 때문이다. 이 부채는 「지운 것」이 아니라 <b>「실제로 통합하는 것」</b>이다.</p><p><b>처방.</b> 소비처를 실제로 연결하거나(사이드바·허브가 라벨 모듈을 import), 정본 선언 문구를 사실에 맞게 낮춘다. 지금은 선언과 실체가 갈려 있다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 키보드로 카드·상태를 옮기면 화살표를 20번 넘게 눌러야 한다 (신규 · 미착수 · T1)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 마우스 없이 키보드로 카드를 옮길 수 있다. 그런데 옆 칸으로 한 칸 옮기는 데 화살표를 스무 번 넘게 눌러야 한다. 되기는 되지만 아무도 그렇게 쓰지 않는다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 「접근성 있음」으로 집계되지만 실제로는 쓸 수 없다. 기능이 없는 것과 있는 것 사이의 회색지대로 남고, 접근성 점검에서 「동작한다」로 통과해 아무도 다시 안 본다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 키보드로 카드·상태를 옮기면 화살표를 20번 넘게 눌러야 한다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>@dnd-kit</code> 의 기본 <code>KeyboardSensor</code> 는 화살표 한 번에 <b>25px</b> 을 옮긴다(라이브러리 기본 <code>defaultCoordinatesGetter</code>). 보드 컬럼은 288px(<code>w-72</code>), 보드 설정의 미매핑 패널은 256px(<code>w-64</code>)이라 옆 대상에 닿으려면 12~25회를 눌러야 한다. <code>apps/web/src/components/board/board-drag-sensors.ts</code> 가 센서를 거는 유일한 자리이고 <code>KanbanBoard</code>·보드 설정 두 화면이 그것을 공유한다.</p><p><b>실측 (2026-09-04 · 부채 177 E2E).</b> <code>board-settings.spec.ts</code> 의 키보드 매핑 시나리오가 <code>ArrowLeft</code> <b>1회로는 실패</b>했고 25회로 통과했다. 그 수가 이 항목의 근거다 — 추정이 아니라 실행 결과다.</p><p><b>할 일.</b> <code>useSensor(KeyboardSensor, { coordinateGetter })</code> 에 <b>드롭 대상 단위로 건너뛰는</b> getter 를 준다. <code>@dnd-kit/sortable</code> 의 <code>sortableKeyboardCoordinates</code> 가 정렬 목록에는 그 일을 하지만, 이 두 화면은 정렬이 아니라 컨테이너 간 이동이라 그대로 쓸 수 없다 — 컬럼·패널 목록을 알고 그 사이를 오가는 getter 를 직접 쓴다. <code>board-drag-sensors.ts</code> 한 곳만 고치면 두 화면이 함께 좋아진다(그 파일을 공유 자리로 만든 이유가 이것이다).</p><p><b>판별식.</b> E2E 에서 화살표 <b>1회</b>로 옆 대상에 닿는지 잰다. 지금 spec 의 25회 루프가 그 자리의 표식이다 — 고치면 그 루프를 1회로 줄이는 것이 곧 검증이다.</p></div>
       </details>
     </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 「기본 보드」 규칙이 세 곳에서 서로 다르다 (신규 · 미착수 · T1)</span></div>
@@ -2221,9 +2231,19 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — agile-planning — 컬럼 0개 보드를 둘이 동시에 조회하면 자가 치유가 UNIQUE 에 걸려 500 이 된다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>BoardApplicationService.healColumnsIfEmpty</code> 가 컬럼 0개 보드를 조회 시점에 채운다 — <code>boardRepository.seedColumns</code> 를 부르고 그것이 <code>board_columns</code> 와 <code>board_column_states</code> 에 쓴다. 잠금이 없어 두 요청이 같은 창에 들어갈 수 있고, 두 번째 INSERT 가 <code>UNIQUE (board_id, state_key)</code> 에 걸린다. 변환 핸들러가 없어 <code>@ExceptionHandler(Exception::class)</code> 까지 내려가 <b>500 <code>AGILE_INTERNAL_ERROR</code></b> 가 된다.</p><p><b>★이 결함은 PR #444 가 만든 것이 아니다.</b> <code>V500:39</code> 가 같은 UNIQUE 를 <code>board_columns</code> 에 이미 갖고 있어 1:1 시절에도 똑같이 났다. #444 의 게이트 2 재리뷰가 X1 경합을 조사하다 곁가지로 발견했고, 체크리스트의 <b>hot-fix 혼입 금지</b>(Pass 0-1)에 따라 그 PR 에서 고치지 않고 등재만 한다.</p><p><b>할 일.</b> 둘 중 하나. ①<code>seedColumns</code> 호출을 <code>BoardApplicationService.tryMapStates</code> 와 같은 형태로 감싸 제약 위반을 흡수한다(이미 시드됐다는 뜻이므로 재조회 후 정상 응답). ②<code>ensureScrumBoard</code> 가 <code>acquireProjectScrumBoardLock</code> 을 먼저 잡는 것처럼 보드 단위 advisory lock 을 조회 앞에 건다 — 다만 <b>읽기 경로에 락을 거는 비용</b>을 재야 한다. ①이 더 싸 보인다.</p><p><b>판별식.</b> 같은 보드를 동시에 조회하는 통합 테스트. 선례는 <code>SprintIntegrationTest</code> 의 동시성 테스트(<code>futures.map { it.get(30, TimeUnit.SECONDS) }</code> + 실패 타입 고정).</p></div>
       </details>
-    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">55건</span></h3>
+    </div></div><h3 class="todo-cat">개발 안전장치 <span class="todo-cat-count">56건</span></h3>
         <p class="todo-cat-desc">사용자에게는 안 보인다. 여기가 고장 나면 다른 고장을 못 잡는다.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 테스트 범위 계산기가 한 번 푸시한 브랜치에서 「변경 없음」을 낸다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 어떤 테스트를 돌려야 하는지 계산해 주는 도구가 있다. 그런데 작업 내용을 서버에 한 번 올리고 나면, 그 도구가 「바뀐 게 하나도 없다」고 답한다. 그래서 <b>테스트를 하나도 안 돌리고 초록불</b>이 뜬다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 조용히 통과한다. 도구가 「생략」이라고 적어 주므로 화면상으로는 정상으로 보이고, 사람은 좁혀진 범위를 믿는다. 검증되지 않은 코드가 초록으로 머지되는 경로이고, 그 도구를 도입한 PR 본문이 <b>바로 그 방향을 「치명적」이라 못박았다</b> — <i>&quot;넓힘의 방향은 한쪽뿐이다 … 좁게 고르는 실수만이 치명적이다(검증 안 된 코드가 초록으로 머지된다)&quot;</i>.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — 워크플로우 — 테스트 범위 계산기가 한 번 푸시한 브랜치에서 「변경 없음」을 낸다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>scripts/workflow/select-test-scope.ts:110</code> 이 비교 기준을 <b>브랜치 자신의 upstream</b> 으로 잡는다.</p><blockquote class="md-quote"><code>const base = git([&#39;rev-parse&#39;, &#39;--abbrev-ref&#39;, &#39;--symbolic-full-name&#39;, &#39;@{u}&#39;]) ?? FALLBACK_BASE</code></blockquote><p>기능 브랜치의 <code>@{u}</code> 는 <code>origin/&lt;그 브랜치&gt;</code> 다. 푸시 직후에는 그것이 <code>HEAD</code> 와 같으므로 <code>merge-base</code> 도 <code>HEAD</code> 가 되고 <code>git diff</code> 가 빈 목록을 낸다. <code>FALLBACK_BASE = &#39;origin/main&#39;</code>(<code>:96</code>)은 <b>upstream 이 아예 없을 때만</b> 쓰이므로, 첫 푸시 이후에는 기준이 조용히 뒤바뀐다. <code>--base</code> 같은 우회 인자도 없다(<code>main()</code> 은 <code>--plan</code> 하나만 읽는다 · <code>:279-285</code>).</p><p><b>실측 (2026-09-04 · <code>ui/board-settings-screen</code>).</b> 백엔드 8파일을 바꾼 브랜치에서</p><table class="md-table"><thead><tr><th>기준</th><th><code>git diff --name-only</code> 결과</th><th>계산기 판정</th></tr></thead><tbody><tr><td>브랜치 upstream (계산기가 쓰는 것)</td><td><b>0건</b></td><td><code># 백엔드 — 생략 (변경 없음)</code></td></tr><tr><td><code>origin/main</code> (의도된 것)</td><td><b>8건</b> (<code>agile-planning</code> main 5 + test 3)</td><td><code>:modules:agile-planning:test</code></td></tr></tbody></table><p><b>★도입 PR 이 스스로 예고한 양식이다.</b> #451 은 「좁힘 장치가 세 겹 있었는데 이 자리가 셋 다 안 불렀다」를 고쳤다. 이번 것은 그 계산기가 <b>자기 기준을 잘못 읽어</b> 결과적으로 같은 자리로 돌아간 경우다. 「기준을 못 읽으면 전량으로 넓힌다」는 fail-safe 는 <code>changedFiles()</code> 가 <code>null</code> 을 낼 때만 작동하는데, 여기서는 <code>[]</code>(없다)를 내므로 <b>fail-safe 가 발동하지 않는다</b> — 그 함수 KDoc 이 <code>null</code>(모른다)과 <code>[]</code>(없다)를 구분해야 한다고 적어 둔 바로 그 구분이 호출부에서 지켜졌으나, 기준 자체가 틀려 「없다」가 거짓이 됐다.</p><p><b>할 일.</b> ①기준을 <code>origin/&lt;기본 브랜치&gt;</code> 와의 merge-base 로 바꾼다(현재 <code>FALLBACK_BASE</code> 를 기본 경로로 승격). 브랜치 upstream 은 「내가 뭘 아직 안 올렸나」를 재는 값이지 「이 브랜치가 main 대비 뭘 바꿨나」가 아니다. ②<code>--base</code> 인자를 열어 두면 릴리스 브랜치 등에서 기준을 지정할 수 있다. ③<b>판별식</b>이 이 축을 직접 잰다 — 픽스처 저장소에서 브랜치를 만들고 <b>푸시된 상태를 흉내 낸 뒤</b>(upstream ref 를 HEAD 로 맞춘 뒤) <code>changedFiles()</code> 가 여전히 비지 않는지 본다. 문자열 계약으로는 못 잡는 축이라 실제 ref 조작이 필요하다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">워크플로우 — 개발 오리진 판별식이 다섯 곳 중 한 곳만 읽는다 (신규 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> 로컬 개발 주소(포트 5173)가 설정 파일 다섯 곳에 따로 적혀 있는데, 서로 같은지</p>
