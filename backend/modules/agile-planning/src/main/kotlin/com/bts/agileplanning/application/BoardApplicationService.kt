@@ -11,6 +11,7 @@ import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
@@ -771,8 +772,18 @@ class BoardApplicationService(
      * 활성 스프린트 한정 · 배치)이 이미 거기 있다. 여기서 다시 세면 규칙이 두 곳이 되어 언젠가
      * 갈린다. 드문 파괴적 조작이라 조회 1회가 더 드는 것은 정확성 값으로 싸다.
      *
+     * ### 이 수는 상한에 걸린다 (리뷰 CONCERNS C6)
+     *
+     * [getBoard] 를 태우므로 그 조회의 `BOARD_CARD_FETCH_LIMIT` 자르기를 그대로 물려받는다 —
+     * 보드가 상한을 넘긴 프로젝트라면 반환값은 **실제로 사라지는 카드 수보다 작다**(보드 전체가
+     * 잘렸을 때 `BoardPlacementResult.truncated` 가 true 다). 소비자는 이 수를 「최소 이만큼」으로
+     * 읽어야 하고, 정확한 수가 필요한 화면이라면 truncated 를 함께 봐야 한다.
+     * 클라이언트 쪽 같은 한계 기술은 `apps/web/src/api/board-columns.ts` 에 있다 — 생산자 쪽이
+     * 침묵하면 그 기술은 언젠가 원본 없는 사본이 된다.
+     *
      * @param actorUserId 삭제 행위자. **카드 수를 그 사람이 보는 기준으로** 세는 데 쓴다.
-     * @return 이 삭제로 보드에서 사라지는 카드 수.
+     * @return 이 삭제로 보드에서 사라지는 카드 수. `BOARD_CARD_FETCH_LIMIT` 상한 아래에서 센 값이라
+     *   보드가 잘렸으면 실제보다 작을 수 있다.
      * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
      */
     @Transactional
@@ -890,6 +901,7 @@ class BoardApplicationService(
      * @return 순서가 반영된 보드.
      * @throws BoardNotFoundException 보드 미존재 → 404.
      * @throws ResponseStatusException 400 — 요청 집합이 보드의 컬럼 집합과 다르다(누락·중복·외부).
+     * @throws ResponseStatusException 409 — 갱신 건수가 요청 수와 다르다(그 사이 컬럼이 지워졌다).
      */
     @Transactional
     fun reorderColumns(
@@ -898,7 +910,16 @@ class BoardApplicationService(
     ): Board {
         val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
         requireExactColumnSet(board, orderedColumnIds)
-        columnStates.updateColumnOrder(boardId, orderedColumnIds)
+        val affected = columnStates.updateColumnOrder(boardId, orderedColumnIds)
+        // ★건수를 버리면 「일부만 옮겨졌는데 응답은 200」이 된다(리뷰 CONCERNS C3). 집합 판정과
+        //   batch UPDATE 사이에 다른 사람이 컬럼을 지우면 READ COMMITTED 에서 실제로 갈린다 —
+        //   그때 돌려줄 board 는 방금 읽은 낡은 것이라 화면과 DB 가 조용히 어긋난다. 롤백시킨다.
+        if (affected != orderedColumnIds.size) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "컬럼 구성이 그 사이 바뀌었습니다. 새로 고친 뒤 다시 시도하세요: boardId=$boardId",
+            )
+        }
         return board.copy(
             columns =
                 orderedColumnIds.mapIndexed { index, columnId ->

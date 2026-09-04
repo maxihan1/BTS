@@ -12,6 +12,7 @@ import com.bts.agileplanning.domain.QuickFilter
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
@@ -1268,9 +1269,31 @@ class BoardApplicationServiceTest {
         every { repo.findById(boardId) } returns board
 
         val desired = listOf(ids[2], ids[0], ids[1])
+        every { columnRepo.updateColumnOrder(boardId, desired) } returns desired.size
         serviceWith(repo = repo, columnStateRepo = columnRepo).reorderColumns(boardId, desired)
 
         verify(exactly = 1) { columnRepo.updateColumnOrder(boardId, desired) }
+    }
+
+    @Test
+    fun `reorderColumns 갱신 건수가 요청 수보다 적으면 409 다 — 그 사이 컬럼이 지워졌다`() {
+        // ★리뷰 CONCERNS C3 — updateColumnOrder 의 반환 건수를 버리면 「일부만 옮겨졌는데 200」이
+        //   된다. 집합 판정(위 3건)은 batch UPDATE **이전** 스냅샷만 보므로 그 사이의 삭제를 못 본다.
+        //   이 판정을 지우면 화면은 새 순서를 그리고 DB 는 옛 순서로 남는다 — 아무도 오류를 못 본다.
+        val boardId = UUID.randomUUID()
+        val ids = List(3) { UUID.randomUUID() }
+        val repo = mockk<BoardRepository>()
+        val columnRepo = mockk<BoardColumnStateRepository>(relaxed = true)
+        every { repo.findById(boardId) } returns boardWithColumnIds(boardId, ids)
+        every { columnRepo.updateColumnOrder(boardId, any()) } returns 2
+
+        assertThatThrownBy {
+            serviceWith(repo = repo, columnStateRepo = columnRepo)
+                .reorderColumns(boardId, listOf(ids[2], ids[0], ids[1]))
+        }
+            .isInstanceOf(ResponseStatusException::class.java)
+            .extracting("statusCode.value")
+            .isEqualTo(409)
     }
 
     @Test

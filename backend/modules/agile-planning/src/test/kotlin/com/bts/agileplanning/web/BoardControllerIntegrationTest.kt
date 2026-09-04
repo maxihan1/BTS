@@ -10,13 +10,13 @@ import com.bts.agileplanning.application.ColumnStateAmbiguousException
 import com.bts.agileplanning.application.DuplicateStateKeysException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.StateAlreadyMappedException
-import com.bts.agileplanning.application.WipLimitChange
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.PlacedColumn
 import com.bts.agileplanning.domain.QuickFilter
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueView
@@ -124,7 +124,8 @@ import java.util.UUID
  * - COL-N4. {name:"   "} → 400, 서비스 미호출.
  * - COL-N5. {name:null} (present-null) → 400. 컬럼 이름은 해제할 수 없다.
  * - COL-O1. PUT columns/order 전체 순서 → 200 + 서비스에 그 순서 그대로 전달.
- * - COL-O2. 컬럼 누락 → 400. COL-O3. 중복 → 400 (둘 다 서비스가 집합 일치로 판정).
+ * - COL-O2·O3. 누락·중복 배열을 **컨트롤러가 손대지 않고 그대로 위임**한다(전달 인자 verify).
+ *   400 판정 자체는 서비스 몫이고 `BoardApplicationServiceTest` 3건이 진다 — 여기서 겹쳐 재지 않는다.
  * - COL-O4. 빈 배열 → 400, 서비스 미호출. 「순서를 지운다」가 아니라 요청 실수다.
  * - COL-O5. CREATE 권한 미충족 → 403, 서비스 미호출.
  * - PATCH-N7. {name 유효, swimlaneField 무효} → 400 + 서비스 위임 1회(원자성 — 두 트랜잭션 분할 금지).
@@ -1415,41 +1416,47 @@ class BoardControllerIntegrationTest {
         verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, order) }
     }
 
-    @Test
-    fun `COL-O2 columnIds 에 컬럼이 빠지면 400 이다`() {
-        val board = sampleBoard()
-        every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.reorderColumns(any(), any()) } throws
-            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
+    // ★COL-O2·O3 이 재는 것은 **집합 판정이 아니다** — 그 판정은 서비스가 지고
+    //   `BoardApplicationServiceTest` 3건이 그것을 잰다. 여기가 지는 것은 컨트롤러가 요청 배열을
+    //   **손대지 않고 그대로 넘기는가**다. 종전 두 건은 서비스를 400 으로 던지게 stub 하고 400 을
+    //   다시 확인만 해서, 요청 바디를 아무도 안 보는 같은 판정 2회였다(리뷰 CONCERNS C2) —
+    //   `requireExactColumnSet` 을 통째로 지워도 둘 다 초록이었다. 이제 전달 인자를 못박는다.
 
-        val partial = listOf(board.columns[0].id.toString(), board.columns[1].id.toString())
+    @Test
+    fun `COL-O2 컬럼이 빠진 배열도 컨트롤러가 채우지 않고 그대로 서비스에 넘긴다`() {
+        val board = sampleBoard()
+        val partial = listOf(board.columns[0].id, board.columns[1].id)
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(board.id, partial) } throws
+            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
 
         mockMvc.perform(
             put("/api/v1/boards/${board.id}/columns/order")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("columnIds" to partial))),
+                .content(mapper.writeValueAsString(mapOf("columnIds" to partial.map { it.toString() }))),
         ).andExpect(status().isBadRequest)
+
+        // 컨트롤러가 빠진 컬럼을 「친절하게」 뒤에 붙이면 누락 판정이 서비스에 도달하지 못한다.
+        verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, partial) }
     }
 
     @Test
-    fun `COL-O3 columnIds 에 중복이 있으면 400 이다`() {
+    fun `COL-O3 중복이 든 배열도 컨트롤러가 접지 않고 그대로 서비스에 넘긴다`() {
         val board = sampleBoard()
+        val dup = listOf(board.columns[0].id, board.columns[0].id, board.columns[1].id)
         every { boardRepository.findById(board.id) } returns board
-        every { boardApplicationService.reorderColumns(any(), any()) } throws
+        every { boardApplicationService.reorderColumns(board.id, dup) } throws
             ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
-
-        val dup =
-            listOf(
-                board.columns[0].id.toString(),
-                board.columns[0].id.toString(),
-                board.columns[1].id.toString(),
-            )
 
         mockMvc.perform(
             put("/api/v1/boards/${board.id}/columns/order")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(mapOf("columnIds" to dup))),
+                .content(mapper.writeValueAsString(mapOf("columnIds" to dup.map { it.toString() }))),
         ).andExpect(status().isBadRequest)
+
+        // ★distinct() 한 줄이면 중복 3개가 2개로 접혀 서비스의 크기 비교를 그냥 통과한다.
+        //   그러면 「누락」이 「중복」의 얼굴로 200 이 된다. 크기 3 을 여기서 못박는다.
+        verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, dup) }
     }
 
     @Test

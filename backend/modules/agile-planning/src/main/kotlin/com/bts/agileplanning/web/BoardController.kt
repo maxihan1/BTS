@@ -3,9 +3,9 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardApplicationService
-import com.bts.agileplanning.application.WipLimitChange
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.web.dto.BoardColumnResponse
 import com.bts.agileplanning.web.dto.BoardDetailResponse

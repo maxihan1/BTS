@@ -1,6 +1,6 @@
 // 컬럼 WIP 제한의 부분 갱신 의도 — 「무변경」과 「해제(null)」를 타입으로 구분한다 (부채 177 R9)
 
-package com.bts.agileplanning.application
+package com.bts.agileplanning.domain
 
 /**
  * `PATCH /boards/{id}/columns/{columnId}` 의 `wipLimit` 부분 갱신 의도.

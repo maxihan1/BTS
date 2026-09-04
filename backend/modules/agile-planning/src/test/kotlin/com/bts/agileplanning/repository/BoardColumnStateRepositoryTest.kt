@@ -33,6 +33,7 @@ import java.util.UUID
  * | ③ **이중 기록** | 쓰기가 레거시 `board_columns.state_key` 에 「첫 상태」를 함께 남긴다 | E5 |
  * | ④ 상태 0개 | 상태를 비우면 레거시 칸이 NULL 이 된다 | E1·G1 |
  * | ⑤ 교체 의미론 | `replaceStates` 가 집합을 통째로 갈아끼운다 | R9 |
+ * | ⑥ 순서 교체 | `updateColumnOrder` 가 display_order 를 0부터 다시 매긴다 | R10·J25 |
  *
  * ★ ③ 의 「첫」은 `(display_order, state_key)` 오름차순 최소이고, 그 정의는
  * [BoardColumn.legacyStateKey] 한 곳에 산다. 문서에만 적으면 이중 기록과 프론트 전송(R12)이
@@ -151,7 +152,57 @@ class BoardColumnStateRepositoryTest {
             .containsExactly("todo")
     }
 
+    // ── ⑥ 컬럼 순서 교체 (R10 · J25) ──────────────────────────────────────────
+
+    @Test
+    fun `updateColumnOrder 가 display_order 를 0부터 다시 매기고 갱신 건수를 돌려준다`() {
+        // ★리뷰 CONCERNS C3 — 이 batch renumber SQL 은 이 PR 이 새로 쓴 DB 쓰기 경로인데
+        //   어떤 테스트도 실행하지 않았다(E2E 는 MSW 라 백엔드에 닿지 않는다). 메서드 본문을
+        //   `return 0` 으로 바꿔도 전부 초록이었다.
+        val board = insertBoard(listOf(col("todo"), col("in_progress"), col("done")))
+        val (first, second, third) = board.columns
+
+        val affected = columnStateRepository.updateColumnOrder(board.id, listOf(third.id, first.id, second.id))
+
+        assertThat(affected).isEqualTo(3)
+        assertThat(boardRepository.findById(board.id)!!.columns.map { it.id })
+            .containsExactly(third.id, first.id, second.id)
+        // display_order 값 자체를 본다 — 조회 정렬만 보면 0·1·2 가 아니라 5·9·12 여도 통과한다.
+        assertThat(displayOrders(board.id)).containsExactlyInAnyOrderEntriesOf(
+            mapOf(third.id to 0, first.id to 1, second.id to 2),
+        )
+    }
+
+    @Test
+    fun `updateColumnOrder 는 타 보드 컬럼을 건드리지 않고 건수에서도 빠진다`() {
+        // 서비스의 집합 판정이 뚫려도 남의 보드를 흔들지 못하는 두 번째 방벽(boardId 술어).
+        val mine = insertBoard(listOf(col("todo"), col("done")))
+        val other = insertBoard(listOf(col("todo")))
+        val stranger = other.columns[0]
+
+        val affected = columnStateRepository.updateColumnOrder(mine.id, listOf(stranger.id, mine.columns[1].id))
+
+        assertThat(affected).isEqualTo(1)
+        assertThat(displayOrders(other.id)[stranger.id]).isEqualTo(0)
+    }
+
+    @Test
+    fun `updateColumnOrder 는 빈 목록에 SQL 을 보내지 않고 0 을 돌려준다`() {
+        val board = insertBoard(listOf(col("todo")))
+
+        assertThat(columnStateRepository.updateColumnOrder(board.id, emptyList())).isEqualTo(0)
+        assertThat(displayOrders(board.id)[board.columns[0].id]).isEqualTo(0)
+    }
+
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
+
+    /** board_columns.display_order 원본 값 — 조회 정렬이 아니라 저장된 숫자를 본다. */
+    private fun displayOrders(boardId: UUID): Map<UUID, Int> =
+        dsl.select(BOARD_COLUMNS.ID, BOARD_COLUMNS.DISPLAY_ORDER)
+            .from(BOARD_COLUMNS)
+            .where(BOARD_COLUMNS.BOARD_ID.eq(boardId))
+            .fetch()
+            .associate { it.value1()!! to it.value2()!! }
 
     private fun col(stateKey: String) =
         BoardColumn(

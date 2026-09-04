@@ -4,10 +4,10 @@ package com.bts.agileplanning.repository
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
-import com.bts.agileplanning.application.WipLimitChange
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.jooq.tables.references.BOARDS
 import org.assertj.core.api.Assertions.assertThat
 import org.jooq.DSLContext
@@ -29,7 +29,7 @@ import java.util.UUID
  * ## 검증 범위 (FR-BD-03 Task 3)
  * 1. insert → findById 라운드트립 — swimlaneField / wipLimit 보존.
  * 2. updateSwimlaneField — 갱신 후 findById 반영 + 존재하지 않는 boardId → null.
- * 3. updateColumn — 이름·WIP 갱신(7)/해제(null) 후 findById 반영.
+ * 3. updateColumn — 이름 갱신 · WIP 갱신(7)/해제(null) · 이름만 보낼 때 WIP 불변 후 findById 반영.
  * 4. 타 보드 소속 / 존재하지 않는 columnId → null(affected 0).
  *
  * ## 검증 범위 (FR-BD-01-2 Task 1)
@@ -209,6 +209,41 @@ class BoardRepositoryTest {
 
         val found = boardRepository.findById(saved.id)
         assertThat(found!!.columns[0].wipLimit as Int?).isNull()
+    }
+
+    @Test
+    fun `updateColumn 이름을 바꾸면 findById 가 새 이름을 반환하고 wipLimit 은 그대로다`() {
+        // ★리뷰 CONCERNS C3 — 이 파일의 updateColumn 판정 4건이 전부 name=null 이라
+        //   `if (name != null) put(BOARD_COLUMNS.NAME, name)` SET 절이 **한 번도 실행되지 않았다**.
+        //   그 줄을 통째로 지워도 통합테스트가 전부 초록이었다. 신규 DB 쓰기 경로는 DB 에서 재야 한다.
+        val board = buildBoard(wipLimit = 4)
+        val saved = boardRepository.insert(board)
+        val columnId = saved.columns[0].id
+
+        val updated = boardRepository.updateColumn(saved.id, columnId, "검수", WipLimitChange.Unchanged)
+
+        assertThat(updated).isNotNull
+        assertThat(updated!!.name).isEqualTo("검수")
+        // ★이름만 보내면 WIP 는 손대지 않는다 — WipLimitChange 가 존재하는 이유 그 자체를 DB 에서 잰다.
+        //   `Unchanged` 를 `Set(null)` 처럼 다루면 이름 변경 한 번에 제한이 조용히 풀린다.
+        assertThat(updated.wipLimit).isEqualTo(4)
+
+        val found = boardRepository.findById(saved.id)
+        assertThat(found!!.columns[0].name).isEqualTo("검수")
+        assertThat(found.columns[0].wipLimit).isEqualTo(4)
+    }
+
+    @Test
+    fun `updateColumn 이름과 WIP 를 함께 보내면 한 UPDATE 로 둘 다 반영된다`() {
+        val saved = boardRepository.insert(buildBoard(wipLimit = null))
+        val columnId = saved.columns[0].id
+
+        val updated = boardRepository.updateColumn(saved.id, columnId, "검수", WipLimitChange.Set(2))
+
+        assertThat(updated).isNotNull
+        val found = boardRepository.findById(saved.id)!!.columns[0]
+        assertThat(found.name).isEqualTo("검수")
+        assertThat(found.wipLimit).isEqualTo(2)
     }
 
     // ── (4) updateColumn — 타 보드 소속 / 미존재 columnId → null ───────

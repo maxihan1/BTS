@@ -414,7 +414,7 @@ data class ActiveSprintResponse(
  *
  * ★**`wipLimit` 을 종전처럼 `Int?` 로 두면 안 된다.** 그러면 「`name` 만 전송」과
  * 「`wipLimit: null` 전송」이 서버에서 같은 값이 되어 **이름만 바꿔도 WIP 제한이 조용히 해제된다.**
- * 응답은 200 이라 아무도 오류를 못 본다. 서비스는 그래서 [com.bts.agileplanning.application.WipLimitChange] 를 받는다.
+ * 응답은 200 이라 아무도 오류를 못 본다. 서비스는 그래서 [com.bts.agileplanning.domain.WipLimitChange] 를 받는다.
  *
  * 두 필드가 모두 부재이면 400 이다 — 빈 바디 `{}` 가 조용히 200 을 받지 않게 하는 최소 1필드 규칙이고,
  * `UpdateBoardRequest` 의 같은 규칙을 승계한다.
@@ -511,6 +511,8 @@ data class ReplaceColumnStatesRequest(
  *
  * @property removedCardCount 이 삭제로 보드에서 사라지는 카드 수. 요청자가 보는 기준이다
  *   (행 단위 보안 필터·스크럼 활성 스프린트 한정이 이미 반영된 수). 상태 0개 컬럼이면 0.
+ *   ★**상한이 있다** — 보드 조회의 `BOARD_CARD_FETCH_LIMIT` 자르기를 물려받으므로 큰 프로젝트에서는
+ *   실제보다 작을 수 있다. 「최소 이만큼」으로 읽어야 한다(리뷰 CONCERNS C6).
  */
 data class DeleteColumnResponse(
     val removedCardCount: Int,

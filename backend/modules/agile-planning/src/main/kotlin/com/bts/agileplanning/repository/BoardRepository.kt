@@ -2,11 +2,11 @@
 
 package com.bts.agileplanning.repository
 
-import com.bts.agileplanning.application.WipLimitChange
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.domain.SwimlaneField
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.jooq.tables.records.BoardColumnsRecord
 import com.bts.agileplanning.jooq.tables.records.BoardsRecord
 import com.bts.agileplanning.jooq.tables.references.BOARDS
