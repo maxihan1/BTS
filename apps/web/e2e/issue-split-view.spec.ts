@@ -8,6 +8,12 @@
 //   S5  좁은 뷰포트에서 행 클릭 → `/issues/<KEY>` 전체화면 이동(split 미표시)
 //   H1  split 와이드에서 문서 h1은 목록 제목("이슈 목록") 1개뿐 — 상세는 h2로 강등
 //
+// ★전제 — 이 spec 이 재는 split view 는 **사이드바 표시 방식**이다(Jira 패리티 J1).
+//   상세 열기의 기본이 모달로 바뀐 뒤로 「행 클릭 → ?selected=」는 사이드바 선호일 때만
+//   성립한다. 그래서 각 describe 가 sessionStorage 선호를 심고 시작한다 — 심지 않으면 S1 이
+//   모달을 열어 red 가 되고, 그 red 는 split view 의 결함이 아니라 전제 누락이다.
+//   기본(모달) 쪽 계약과 토글 왕복은 `issue-presentation-toggle.spec.ts` 가 덮는다.
+//
 // 설계 결정.
 //   - playwright.config.ts 기본 프로젝트(Desktop Chrome)의 기본 뷰포트는 1280x720으로
 //     이미 split 분기 기준(min-width: 1024px)을 넘지만, 이 기능 자체가 뷰포트 경계에
@@ -89,6 +95,23 @@ function getPaneHeading(page: Page) {
   return page.getByRole('heading', { level: 2, name: TARGET_SUMMARY })
 }
 
+/**
+ * 사이드바 표시 방식을 세션에 심는다 (J1).
+ *
+ * `addInitScript` 는 매 네비게이션 직전에 돌아 로그인 리다이렉트를 거쳐도 살아남는다.
+ * 키는 `issueDetailModalStore` 의 `PREFER_KEY` 와 바이트 단위로 같아야 한다 — 갈리면 선호가
+ * 안 심기고, 그러면 이 spec 전체가 모달을 열어 원인과 무관한 실패를 낸다.
+ */
+async function preferSidePanel(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    try {
+      sessionStorage.setItem('bts.issueDetail.presentation', 'sidePanel')
+    } catch {
+      // 저장 실패는 스토어와 같게 조용히 넘긴다 — 그 경우 기본(모달)이라 테스트가 스스로 드러난다.
+    }
+  })
+}
+
 /** 상세 페인 닫기 버튼 — /issues 페이지 내에서 유일한 aria-label="닫기" 요소. */
 function getCloseButton(page: Page) {
   return page.getByRole('button', { name: '닫기', exact: true })
@@ -102,6 +125,7 @@ test.describe('FR-UX-06 Phase 5 PR20 이슈 목록 split view — 와이드 뷰�
   test.use({ viewport: WIDE_VIEWPORT })
 
   test.beforeEach(async ({ page }) => {
+    await preferSidePanel(page)
     await loginAsAlice(page)
   })
 
