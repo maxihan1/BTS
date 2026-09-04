@@ -225,9 +225,27 @@ GET /api/v1/boards?projectKey={key}
   **`boardType` 과 갈리는 이유** — `boardType` 은 없으면 그 자체가 결함이고 기본값으로 때우면
   스크럼이 칸반으로 오인된다. `canDelete` 는 없으면 **「삭제 못 함」이 옳은 해석**이다.
   기본값이 fail-closed 와 일치하는 유일한 필드라 optional 이 안전한 쪽이다.
-- **C-3 — `.optional()` 의 대가를 판별식으로 갚는다.** 런타임 파싱이 백엔드 누락을 못 잡는
-  구멍이 생긴다. 백엔드 DTO ↔ 프론트 zod ↔ MSW 목록 조립부 **세 목록이 서로를 모르는** 상태이고,
-  이것은 저장소가 이미 이름 붙인 지배 결함 양식이다. 3-way 차집합 판별식 + 비-공허 짝으로 닫는다.
+- **C-3 — `.optional()` 의 대가를 판별식으로 갚는다. 단 그 판별식은 지금 자동으로 안 돈다.**
+  런타임 파싱이 백엔드 누락을 못 잡는 구멍이 생긴다. 백엔드 DTO ↔ 프론트 zod ↔ MSW 목록 조립부
+  **세 목록이 서로를 모르는** 상태이고, 이것은 저장소가 이미 이름 붙인 지배 결함 양식이다.
+  3-way 차집합 판별식 + 비-공허 짝으로 닫는다.
+
+  > 🛑 **정정 (리뷰 이슈 4).** 초안은 이 판별식이 구멍을 「메운다」고 적었다. 실측 결과
+  > **`apps/web` 의 vitest 는 어떤 자동 게이트에서도 돌지 않는다.**
+  > - `.lintstagedrc` — `apps/web/**/*.{ts,tsx,js,jsx}` 에 **eslint 만** 건다
+  > - `.husky/pre-push:47` — `node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'`.
+  >   `apps/web/src/**` 는 **대상이 아니다**
+  > - `.github/workflows/frontend-ci.yml` — *「★2026-08-21 — 자동 실행을 껐다.
+  >   `workflow_dispatch` 로만 돈다」*
+  >
+  > 원형인 `bulk-operation-enum-parity.test.ts` 도 같은 처지다. 게다가 `frontend-ci.yml` 주석은
+  > *「대신 어디서 보는가. 커밋 전 = `.husky/pre-commit`」* 이라 적어 두었는데 그 훅은 apps/web 에
+  > eslint 만 돌린다 — **주석이 stale 이다.**
+  >
+  > ⇒ 이 PR 은 판별식을 **넣되 「사람이 손으로 돌려야 값을 한다」를 사실대로 적고 간다.**
+  > 자동화는 별건 T2 PR (`push-frontend-tests.ts`, 백엔드 `push-backend-tests.ts` 선례와 같은 모양)
+  > 로 분리했고 TODOS.md 에 등재한다 — 표면이 `GUARD_CI` 라 「한 PR = 한 BC」를 깬다.
+  > 그때까지 이 판별식의 실효 감시 지점은 **리뷰어와 다음 세션**이다.
 - **C-4 — e2e 스코프는 앵커가 아니라 컨테이너다.** `보드 관리` 문자열의 생산자는
   `i18n/board-labels.ts` 의 `triggerAriaLabel` **하나**이고, `ProjectTree.tsx` 가 「PR ⑨ 가 이
   하위 목록을 보드 목록으로 갈아치운다」고 이미 예고한다. PR ⑨ 가 같은 헬퍼를 부르면 접근성 이름이
@@ -315,7 +333,17 @@ GET /api/v1/boards?projectKey={key}
 | **LIST-4** | 목록 각 항목에 `canDelete` — 보드 **2건**, 둘 다 `true` | `No value at JSON path $.data[0].canDelete` | LIST-3 `:624-642` 형 |
 | **LIST-5** | `permissionGate.denied.add(SOFT_DELETE)` 면 전 항목 `false` (BROWSE 는 통과) | 동상 | CANDEL-1 `:1755`/`:1771` |
 | **LIST-6** | **N+1 판별식** — 보드 2건이어도 `permissionGate.calls` 가 정확히 `[BROWSE, SOFT_DELETE]` | 현재 1건 | — |
+| **LIST-7** | **빈 프로젝트 판별식** — 보드 **0건**이어도 200 + `[]` 이고 `calls` 가 여전히 `[BROWSE, SOFT_DELETE]` | 현재 1건 | — |
 | **LIST-1 수정** | `:606-607` `containsExactly(BROWSE)` → `containsExactly(BROWSE, SOFT_DELETE)` | 현재 1건 | — |
+
+**LIST-6 단언 바로 위에 주석**(리뷰 이슈 1 · 1A).
+```
+// 이 개수를 늘리는 수정은 「테스트 갱신」이 아니라 X10 근사가 깨졌다는 신호다.
+```
+
+**LIST-7 은 리뷰가 찾은 구멍이다** (이슈 3 · 3A). 스펙 FR-4·E1 이 「데이터 유무가 권한 호출 횟수를
+바꾸지 않는다」를 명시했는데 초안 task 어디에도 그것을 재는 테스트가 없었다. 기존 목록 테스트는
+LIST-1/2/3 뿐이고 **보드 0건 케이스가 전무하다**(`BoardControllerIntegrationTest.kt:91-93` 색인 확인).
 
 ★ **LIST-4·LIST-6 은 보드 2건 이상이어야 비-공허하다** (스펙 E8). 1건이면 「1회」와 「N회」가
 구분되지 않는다.
@@ -330,18 +358,30 @@ GET /api/v1/boards?projectKey={key}
 
 **GREEN** — 커밋 ③ `feat:`.
 - `BoardResponses.kt:161-176` — `val canDelete: Boolean` + KDoc.
-  `companion fun from(board: Board, canDelete: Boolean = false)`. 기본값 `false` 는 fail-closed
-  선례(`BoardDetailResponse.of` `:317`).
+  `companion fun from(board: Board, canDelete: Boolean)` — 🛑 **기본값을 주지 않는다**
+  (리뷰 이슈 2 · 2A). `boardType` KDoc(`:158-159`)이 「이 필드가 없으면 종류를 알 방법이 없다」를
+  적어 둔 것과 같은 층에 `canDelete` 설명을 넣는다.
 - `BoardController.kt:184-195` — BROWSE 게이트(`:190`) **직후**
   `val canDelete = permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(projectKey))`,
   이어서 `:192` 의 `.map(BoardSummaryResponse::from)` → `.map { BoardSummaryResponse.from(it, canDelete) }`.
+  판정 줄 **바로 위에 주석**(리뷰 이슈 1 · 1A):
+  ```
+  // 프로젝트 스코프 근사(편차 X3)라 판정 1회로 N건을 덮는다.
+  // per-board 관리자가 도입되면 이 줄과 LIST-6 을 반드시 함께 고쳐야 한다 —
+  // 안 그러면 전 보드가 첫 보드의 답을 받는다.
+  ```
 - **보드 0건이어도 무조건 판정한다** (스펙 FR-4 · E1). 비면 건너뛰게 하면 `permissionGate.calls` 가
-  데이터 의존이 되어 테스트가 취약해진다.
+  데이터 의존이 되어 테스트가 취약해진다. **LIST-7 이 이것을 기계로 박는다.**
 
-> 🛑 **컴파일러가 안 잡는 자리.** 기본값 `= false` 때문에 `.map(BoardSummaryResponse::from)` 을
-> **고치지 않아도 그대로 컴파일된다.** 호출부를 빠뜨리면 응답이 전량 `canDelete=false` 인데
-> 컴파일러도 detekt 도 침묵한다. **LIST-4 만이 그것을 잡는다** — `feat:` 후 LIST-4 초록을
-> 눈으로 확인할 것.
+> ✅ **기본값을 없애면 컴파일러가 잡는다** (리뷰 이슈 2 · 2A 채택).
+> 초안은 `canDelete: Boolean = false` 였고, 그러면 `.map(BoardSummaryResponse::from)` 을
+> **고치지 않아도 그대로 컴파일돼** 응답이 전량 `false` 인데 컴파일러도 detekt 도 침묵한다.
+> 기본값을 빼면 그 호출부가 **재정의 불가로 컴파일 에러**가 되어, 「`feat:` 후 LIST-4 초록을
+> 눈으로 확인할 것」이라는 사람 의존 절차 자체가 사라진다.
+> 인용한 선례 `BoardDetailResponse.of(… canDelete: Boolean = false)` 의 기본값은 fail-closed
+> 안전장치가 아니라 **테스트 호출부 10곳 이상이 인자를 생략**해서 있는 것이다
+> (`BoardResponsesTest` · `BoardColumnStatesResponseTest` 전수 확인). `BoardSummaryResponse::from` 은
+> **production 호출부가 `BoardController.kt:192` 단 하나**라 그 동기가 없다.
 
 **REFACTOR**: `@return` KDoc 갱신 + **클래스 KDoc 색인**(`BoardControllerIntegrationTest.kt:91-93`)에
 LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔다.
@@ -411,10 +451,15 @@ LIST-4/5/6 추가. 이 저장소는 테스트 목록을 클래스 KDoc 에 둔�
   **없어도 파싱 성공**하고 `?? false` 로 읽힌다 · boolean 아니면 거부.
   **T-BD-20b**(`boardType` 은 없으면 **거부**) 바로 옆에 놓아 **두 필드의 필수성이 왜 다른지가
   한 화면에 보이게** 한다.
-- `board-handlers.test.ts:343` 옆 — `fetchBoards` 결과 `canDelete === true`, **그리고**
-  `seedBoard({...DEFAULT_BOARD, canDelete: false})` 면 `false`.
-  ★ **후자가 필수다.** `true` 만 재면 핸들러가 **상수 `true`** 를 박아도 통과한다.
-  `board-fixtures.ts:76` 이 이미 `canDelete?: boolean` 이라 store 를 실제로 가를 수 있다.
+- `board-handlers.test.ts:343` 옆 — **3분기 전량**.
+  ① `fetchBoards` 결과 `canDelete === true`
+  ② `seedBoard({...DEFAULT_BOARD, canDelete: false})` 면 `false`
+  ③ **store 에 `canDelete` 미정의면 `true`** (`?? true` 분기 — 리뷰 이슈 3 · 3A 로 추가)
+  ★ **②가 필수다.** `true` 만 재면 핸들러가 **상수 `true`** 를 박아도 통과한다.
+  ★ **③도 필수다.** 스펙 E5 가 「상세 조립부(`toResponseDetail:312`)와 **같은 기본값**」을
+  요구하는데, 그것을 재는 테스트가 초안에 없었다. 두 조립부의 기본값이 갈리는 것이 바로
+  `board-handlers.ts:389-390` 이 주석으로 경고한 사고의 모양이다.
+  `board-fixtures.ts:76` 이 이미 `canDelete?: boolean` 이라 세 분기를 실제로 가를 수 있다.
 - `board-handlers.test.ts:54` 로컬 `interface BoardSummary` 에 `canDelete?: boolean` (타입만, red 아님).
 
 **GREEN** — 커밋 ⑤ `feat:`.
@@ -486,7 +531,7 @@ PR ⑧ 의 신호가 묻힌다. **넓히지 않은 이유를 파일 상단 미�
 
 **메타**.
 - agent: 컨트롤러 인라인 (`/bts` 가 직접 편집)
-- files: [`docs/plans/2026-08-31-board-crud-recovery.md`, `docs/design/jira-parity-contract.md`, `docs/INDEX.md`, `docs/INDEX-fr.md`, `docs/INDEX-recent.md`]
+- files: [`docs/plans/2026-08-31-board-crud-recovery.md`, `docs/design/jira-parity-contract.md`, `TODOS.md`, `docs/INDEX.md`, `docs/INDEX-fr.md`, `docs/INDEX-recent.md`]
 - depends-on: [1, 2]
 
 **작업**.
@@ -498,9 +543,26 @@ PR ⑧ 의 신호가 묻힌다. **넓히지 않은 이유를 파일 상단 미�
    계약 「보드 헤더 `⋯` 는 컨테이너 스코프로만 잡는다」 · 실측 명령
    `grep -rn "보드 관리" apps/web/e2e/` + `grep -rn "board-header" apps/web/`.
    ★ **개수 리터럴 금지** — 그 문서 `:76-77` 자체 규칙이다. 「2곳」이라고 적지 말 것.
-3. `node scripts/build-doc-index.mjs` 후 `--check`.
+3. **`TODOS.md` 에 신규 항목 등재** (리뷰 이슈 4 · TODOS A).
+   - **What** — pre-push 에 `scripts/workflow/push-frontend-tests.ts` 를 둔다.
+     백엔드 `push-backend-tests.ts` 와 같은 모양(「바뀐 것만」).
+   - **Why** — `apps/web` 의 vitest 는 지금 자동으로 **어디서도 안 돈다**.
+     `.lintstagedrc` 는 eslint 만 · `pre-push:47` 은 `scripts/**` 만 ·
+     `frontend-ci.yml` 은 2026-08-21 부터 `workflow_dispatch` 전용.
+     그래서 `bulk-operation-enum-parity.test.ts` 도, 이 PR 이 넣는
+     `board-summary-parity.test.ts` 도 사람이 손으로 돌려야만 값을 한다.
+   - **Context** — `frontend-ci.yml` 주석이 *「커밋 전 = `.husky/pre-commit`」* 이라 적어
+     stale 이다. 그 문장 때문에 「프론트는 커밋 훅이 본다」고 오해하기 쉽다. 같이 고칠 것.
+   - **Depends on** — 없음. 선례가 이미 있다.
+   - 🛑 **항목 번호는 표 전체를 훑어 정한다.** 끝 번호 좁은 범위만 grep 하면 위 번호와
+     겹친 채 초록이 된다(메모리 `[[title-keyed-diff-lets-item-number-collide]]` — 제목을 키로 쓰는
+     차집합 판별식이 번호 중복을 조용히 통과시킨다).
+   - 🛑 **본문을 나중에 고치지 마라.** 항목 이동·편집을 섞으면 `todos-reorder-integrity` 가
+     「부채 항목이 사라졌다」로 red 다(메모리 `[[todos-item-move-must-not-touch-body]]`).
+4. `node scripts/build-doc-index.mjs` 후 `--check`.
 
 **검증**: `node scripts/build-doc-index.mjs --check`
+· `node --experimental-strip-types --test scripts/**/*.test.ts` (TODOS 판별식 포함 — pre-push 가 무조건 돌린다)
 · `bash scripts/verify-master-plan.sh` 는 **안 걸린다**(검증 완료) — 그 스크립트는 `docs/plan/`
 **단수**의 `product/`·`fr-index.md`·`README.md` 만 본다. 이번에 손대는 것은 `docs/plans/` **복수**다.
 FR 추가·삭제·카운트 변경이 0 이라 룰 E·H 도 무관하다.
@@ -525,7 +587,9 @@ FR 추가·삭제·카운트 변경이 0 이라 룰 E·H 도 무관하다.
     **EXIT=0** 이 난다. 그리고 `include: ["src"]` 라 **`e2e/` 를 안 덮는다**(Task 2 는 lint-staged 경로).
   - 린트 `apps/web/node_modules/.bin/eslint <바뀐 파일>`
   - 문서 `node scripts/build-doc-index.mjs --check`
-  - 판별식 전량 — pre-push 훅이 무조건 돌린다
+  - 판별식 전량 — pre-push 훅이 무조건 돌린다. 🛑 **단 그 glob 은 `scripts/**` 뿐이다** —
+    Task 4 의 `apps/web/src/api/__tests__/board-summary-parity.test.ts` 는 **거기 안 들어간다**.
+    손으로 돌려야 한다(스펙 C-3 정정 · 리뷰 이슈 4)
 - 🛑 **worktree 에서 pnpm 스크립트는 전부 죽는다**(심볼릭 `node_modules` → `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`).
   위 명령은 전부 바이너리 직접 호출이다. 프론트 vitest 는 **`apps/web` 이 cwd 여야** `@/` alias 가 해석된다.
 - 🛑 **e2e 는 worktree 밖(main 체크아웃)에서.** 판정 전
@@ -533,4 +597,220 @@ FR 추가·삭제·카운트 변경이 0 이라 룰 E·H 도 무관하다.
   **선재 실패 8건**(`fr-au-05-signup` · `workflow.spec` · `workflow-scheme-assignment`)은 이 작업과
   무관하므로 로그에는 남기되 보고에서 분리한다.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈**: `/plan-eng-review` **1종**. `type == "api"` 행이 정하는 값이다
+(`bts-review-plan` Step 2 표). `/bts` 티어표의 「독립 리뷰 2종」은 체인 [6] `bts-codereview` 의
+값이지 이 단계의 값이 아니다.
+**보안 렌즈**: 이 단계 표에 없다. 권한 노출 여부는 아래 §Architecture 에서 판정했다.
+
+**판정 — 통과 (BLOCKER 0 · 이슈 4건 전량 계획에 반영).**
+
+### Step 0. 범위 도전
+
+복잡도 체크가 **걸렸다**(18 파일 경로 > 8). Maxi 판정 = **그대로 진행**.
+근거 — 18건 중 production 5(`BoardResponses.kt` · `BoardController.kt` · `api/boards.ts` ·
+`mocks/board-handlers.ts` · `board.tsx` 의 `data-testid` 한 줄) · 테스트 7 · 신규 판별식 1 ·
+문서 2 + **자동 생성 인덱스 3**. 새 클래스·서비스 0 · 새 추상화 0 · 마이그레이션 0.
+파일 수가 부푼 것은 숫자지 설계가 아니다.
+
+### 1. Architecture — 이슈 1건 · 무이슈 판정 1건
+
+**무이슈 — 권한 파생값의 목록 노출은 새 정보를 0비트 흘린다** (confidence 9/10).
+`BoardController.kt:190` 의 `requirePermission(actor, BROWSE, Project(projectKey))` 가 응답 전체를
+막고, 같은 비트를 `:168-171` 의 단건 조회가 **이미** 같은 프로젝트에 대해 내준다. 호출자는
+`getBoard` 한 번으로 이미 알 수 있다. 값은 **요청자 자신의** 권한이라 타인 정보도 아니다.
+계획의 판단이 맞다.
+
+**이슈 1 — X10 최적화의 파수꾼이 자기가 뭘 지키는지 말하지 않는다** (confidence 8/10) → **1A 채택**.
+`BoardController.kt:192` 의 판정 1회는 X10(프로젝트 스코프 근사)에 **의존한다**. 나중에 per-board
+관리자가 도입되면 LIST-6(정확히 2건)이 red 를 내긴 하지만, 그 red 가 말하는 것은 「기대값이
+틀렸다」뿐이다. 수정자가 기대 목록을 `[BROWSE, SOFT_DELETE × N]` 으로 고쳐버리면 **전 보드가 첫
+보드의 답을 받는 채로 초록**이 된다.
+⇒ 판정 줄과 LIST-6 단언 **양쪽에** 사유 주석을 박는다(위 Task 1 본문에 반영).
+
+### 2. Code Quality — 이슈 1건
+
+**이슈 2 — `from(board, canDelete = false)` 의 기본값이 호출부 누락을 숨긴다**
+(confidence 9/10) → **2A 채택**.
+계획이 스스로 🛑 로 「컴파일러도 detekt 도 침묵하고 LIST-4 만이 잡는다」고 적은 자리다.
+**기본값을 없애면 그 자리가 컴파일 에러가 된다** — 사람이 눈으로 확인하는 절차 자체가 사라진다.
+인용된 선례 `BoardDetailResponse.of(… canDelete: Boolean = false)` 의 기본값은 fail-closed
+안전장치가 아니라 **테스트 호출부 10곳 이상이 인자를 생략**해서 있는 것이고
+(`BoardResponsesTest` · `BoardColumnStatesResponseTest` 전수 확인),
+`BoardSummaryResponse::from` 은 **production 호출부가 `BoardController.kt:192` 하나뿐**이라
+그 동기가 없다.
+⇒ 기본값 제거(위 Task 1 GREEN 에 반영).
+
+### 3. Test — 커버리지 다이어그램 + GAP 2건
+
+```
+CODE PATHS                                          USER FLOWS
+[+] BoardController.listBoards                      [+] 보드 목록 조회
+  ├── BROWSE 게이트                                    ├── [★★★] SOFT_DELETE 보유 → 전항목 true — LIST-4
+  │   ├── [★★  기존] 통과 — LIST-1 :590                ├── [★★★] 미보유 → 전항목 false — LIST-5
+  │   └── [★★  기존] 미충족 403 — LIST-2 :610          └── [★★  기존] BROWSE 없음 → 403 — LIST-2
+  ├── SOFT_DELETE 판정 (신규)
+  │   ├── [★★★] true/false — LIST-4·5                [+] 보드 헤더 ⋯ (e2e)
+  │   ├── [★★★] 정확히 1회 — LIST-6                     ├── [★★  기존] 삭제 흐름 — board-manage.spec
+  │   └── [GAP→닫음] 0건일 때도 1회 — LIST-7 신설        └── [★★★] 컨테이너 실재 — 신설 2줄
+  └── BoardSummaryResponse.from
+      └── [★★★] 필드 보존 + 인자 전달 — BoardResponsesTest
+
+[+] boardSummarySchema (zod)                        [+] 3-way 정합
+  ├── [★★★] true/false/누락/비-boolean — T-BD-21       ├── [★★★] 양방향 차집합 0 — Task 4
+  └── [★★★] boardType 필수성 대조 — T-BD-20b 옆         └── [★★★] 뮤테이션 2종 각각 — Task 4
+
+[+] MSW 목록 조립부
+  ├── [★★★] store true → true
+  ├── [★★★] store false → false (상수 박기 차단)
+  └── [GAP→닫음] store 미정의 → ?? true (E5) — 3분기로 확장
+
+COVERAGE (반영 후): 15/15  |  GAP 0
+```
+
+**이슈 3 — 스펙이 명시한 동작 2건을 아무 테스트도 안 잰다** (confidence 9/10) → **3A 채택**.
+① FR-4·E1(보드 0건이어도 판정 1회) — 기존 목록 테스트는 LIST-1/2/3 뿐이고 **0건 케이스가 전무**하다
+(`BoardControllerIntegrationTest.kt:91-93` 색인 확인). **LIST-7 신설**.
+② E5(MSW store 미정의 → 상세와 같은 기본값 `true`) — 초안은 true/false 2분기만 쟀다. **3분기로 확장**.
+둘 다 「문서가 약속하고 판별식은 안 보는」 양식이다.
+
+### 4. Performance — 이슈 0건
+
+추가되는 것은 프로젝트 스코프 권한 조회 **1회**이고 보드 수와 무관하다(LIST-6 이 고정).
+`findAllByProjectKey` 무변경 · N+1 없음 · 프론트 쿼리는 이미 `staleTime 30초`.
+
+### 4b. 게이트 실효성 — 이슈 4 (BLOCKER 후보였다)
+
+**이슈 4 — 3-way 판별식이 자동 게이트 어디서도 안 돈다** (confidence 10/10) → **4A 채택**.
+스펙 C-3 이 「`.optional()` 의 구멍을 판별식이 메운다」고 적었는데, 실측하면 그 판별식은
+**어떤 훅에서도 실행되지 않는다.**
+
+| 게이트 | apps/web 에 대해 실제로 하는 일 |
+|---|---|
+| `.lintstagedrc` (pre-commit) | `apps/web/**/*.{ts,tsx,js,jsx}` 에 **eslint 만** |
+| `.husky/pre-push:47` | `node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` — **apps/web 제외** |
+| `.github/workflows/frontend-ci.yml` | *「★2026-08-21 — 자동 실행을 껐다. `workflow_dispatch` 로만 돈다」* |
+
+원형 `bulk-operation-enum-parity.test.ts` 도 같은 처지다. 게다가 `frontend-ci.yml` 주석은
+*「대신 어디서 보는가. 커밋 전 = `.husky/pre-commit`」* 이라 적어 **stale** 이다.
+⇒ 이 PR 은 판별식을 넣되 **「사람이 손으로 돌려야 값을 한다」를 사실대로 적고 간다**(C-3 정정).
+자동화(`push-frontend-tests.ts`)는 표면이 `GUARD_CI` 라 **별건 T2 PR** 로 분리하고 TODOS.md 에
+등재한다(Task 5 에 반영).
+
+### 컨트롤러가 지목한 5문항 답
+
+| # | 질문 | 답 |
+|---|---|---|
+| 1 | 권한 파생값 목록 노출의 위험 | **계획이 맞다.** 새 정보 0비트 — 단건 조회가 같은 비트를 이미 내주고, BROWSE 가 응답 전체를 막는다 |
+| 2 | X10 최적화가 미래에 조용히 틀려지나 | **그럴 수 있었다.** LIST-6 이 red 를 내긴 하나 「기대값 갱신」으로 읽힌다 → 이슈 1(1A)로 사유 주석을 양쪽에 박아 닫았다 |
+| 3 | `.optional()` + pre-push 만으로 충분한가 | **전제가 틀렸다.** 판별식은 pre-push 에서도 **안 돈다** → 이슈 4(4A). 계획의 주장을 사실로 정정하고 자동화를 별건 PR + TODOS 로 뺐다 |
+| 4 | Task 2 의 TDD 예외가 구멍인가 | **구멍 아니다.** ① 예외 사유가 plan 에 명시돼 검증자가 오판하지 않는다 ② 컨테이너 실재 단언 2줄이 침묵사를 실제로 막는다 — `board-manage.spec.ts:183` 의 `toHaveCount(0)` 이 count 0 을 통과시키는 자리를 정확히 겨눈다 ③ 「일부러 끊기 1회」가 red 관측을 산다 |
+| 5 | 소비처 없는 필드를 먼저 내는 것이 낙관인가 | **낙관 아니다.** 순서가 선호가 아니라 **필연**이다 — PR ⑨ 가 목록 행마다 `⋯` 를 렌더하려면 목록이 판단 근거를 가져야 한다. 지금 안 넣으면 ⑨ 는 보드마다 `useBoard()` 를 부르는 N+1 을 안고 태어난다. 그 사이 기간 위험은 0 에 수렴한다(필드 추가뿐, 읽는 사람이 없다). S4 를 「PR ⑨ 범위」로 명시해 고아 판별이 가능하게 해 뒀다 |
+
+### NOT in scope
+
+| 항목 | 사유 |
+|---|---|
+| `push-frontend-tests.ts` (pre-push 프론트 단계) | 표면이 `GUARD_CI` 라 「한 PR = 한 BC」를 깬다. 별건 T2 PR + TODOS 등재 |
+| `frontend-ci.yml` 의 stale 주석 수정 | 위 PR 과 같은 자리에서 함께 고친다 |
+| `BoardDetailResponse` 까지 판별식 확장 | 필드 10+ · `JsonNullable` · 중첩 DTO · #444 로 `states`/`unmappedStates` 추가. 파서가 무거워지고 ⑧ 신호가 묻힌다 |
+| `BoardDetailResponse.of` 의 기본값 제거 | 테스트 호출부 10+ 가 diff 에 들어와 「모든 변경 줄은 요청으로 추적」을 깬다 |
+| per-board 관리자 도입 | `created_by` 마이그레이션 + shared-kernel 포트 = **T3 승격**. 선행 문서 X3 가 이미 이연으로 적었다 |
+| 사이드바 보드 목록 · 행별 `⋯` | **PR ⑨** 범위. 이 PR 은 그 선행 조건만 놓는다 |
+| `bc:*` · `type:*` PR 라벨 | `DEVELOPMENT.md` §4 가 규정했으나 저장소에 라벨이 하나도 없다(기본 GitHub 9개뿐). 별건 |
+
+### What already exists — 재사용 확인
+
+| 이미 있는 것 | 이 계획이 하는 일 |
+|---|---|
+| `BoardController.kt:168-171` 의 `canDelete` 계산 | **그대로 재사용**. 같은 술어를 목록에도 적용할 뿐 — 두 응답이 갈리지 않는 것이 요점이다. 새 권한 경로 0 |
+| `IssuePermissionResolver` (shared-kernel 포트) | 이미 `BoardController` 에 주입돼 있다(`:90`). 신규 배선 0 |
+| `PermissionGate` 테스트 하네스 (`:177`) | `allowAll` + `denied` + `calls` 를 그대로 쓴다. 신규 모킹 0 |
+| `e2e/fixtures/board-helpers.ts` | 기존 파일에 헬퍼를 **모은다**. 새 픽스처 파일 0 — 두 spec 의 복붙을 없애는 것이 R10 이 2곳인 원인을 제거한다 |
+| `bulk-operation-enum-parity.test.ts` | 판별식 골격을 **복제**한다. 새 패턴 발명 0 |
+| `board-fixtures.ts:76` 의 `canDelete?: boolean` | store 타입이 **이미** 필드를 갖는다. 픽스처 스키마 변경 0 |
+
+**불필요한 재구축 0건.** 이 계획은 새로 만드는 것보다 이어 붙이는 것이 많다.
+
+### Failure modes
+
+| 신규 경로 | 현실적 실패 | 테스트 | 에러 처리 | 사용자가 보는 것 |
+|---|---|---|---|---|
+| `listBoards` 의 SOFT_DELETE 판정 | 권한 서비스 예외 | ✅ 기존 403 경로 | ✅ `BoardExceptionHandler` | 명시적 403 |
+| `from(board, canDelete)` 호출부 | 인자 누락 | — | ✅ **컴파일 에러**(2A) | 배포 자체가 안 된다 |
+| zod `.optional()` | 백엔드가 필드 누락 | ⚠️ 판별식은 **수동만**(이슈 4) | ✅ `=== true` fail-closed | 삭제 UI 미노출 — **조용하지만 안전한 쪽** |
+| MSW 목록 조립부 | 상세와 기본값이 갈림 | ✅ 3분기(3A) | — | 개발 환경 한정 |
+| `data-testid="board-header"` | 오타·삭제 | ✅ 컨테이너 실재 단언 2줄 | — | e2e red |
+| X10 근사 | per-board 관리자 도입 후 첫 보드 답이 전파 | ✅ LIST-6 + 사유 주석(1A) | — | 잘못된 삭제 버튼 노출 |
+
+**critical gap 0건** — 「테스트도 없고 에러 처리도 없고 조용한」 실패는 없다.
+`.optional()` 경로가 유일하게 「조용」하지만 그 조용함이 **fail-closed 방향**이고 에러 처리가 있다.
+
+### Worktree parallelization
+
+| Step | 모듈 | 의존 |
+|---|---|---|
+| Task 1 | `backend/modules/agile-planning/` | — |
+| Task 2 | `apps/web/src/routes/` · `apps/web/e2e/` | — |
+| Task 3 | `apps/web/src/api/` · `apps/web/src/mocks/` | — |
+| Task 4 | `apps/web/src/api/__tests__/` | 1, 3 |
+| Task 5 | `docs/` · `TODOS.md` | 1, 2 |
+
+```
+Lane A: Task 1 (backend/ 단독)
+Lane B: Task 2 (routes/ + e2e/)
+Lane C: Task 3 → Task 4 (순차 — api/ 공유)
+Lane D: Task 5 (docs/ — A·B 뒤)
+
+실행: A + B + C 를 병렬로. C 안에서만 순차. 셋이 끝나면 D.
+```
+
+⚠️ **Lane B 와 Lane C 는 둘 다 `apps/web/` 아래다.** 디렉터리는 갈리지만
+(`routes/`+`e2e/` vs `api/`+`mocks/`) 같은 `tsconfig`·`eslint` 캐시를 공유하므로
+동시 실행 시 lint 결과가 섞일 수 있다. worktree 를 나눈다면 각자 검증을 완전히 마친 뒤 머지할 것.
+
+### 미해결
+
+없다. 이슈 4건 전부 Maxi 가 판정했고 계획에 반영됐다.
+
+## Implementation Tasks
+
+리뷰 findings 에서 나온 것만. Task 1~5 본문에 이미 반영돼 있고, 아래는 그 반영분의 체크리스트다.
+
+- [ ] **T1 (P1, human: ~5분 / CC: ~2분)** — `agile-planning/web/dto` — `BoardSummaryResponse.from` 의 `canDelete` 기본값을 없앤다
+  - Surfaced by: Code Quality 이슈 2 — 기본값 `= false` 때문에 `.map(BoardSummaryResponse::from)` 을 안 고쳐도 컴파일된다. production 호출부는 `BoardController.kt:192` 하나뿐이라 기본값의 동기가 없다
+  - Files: `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`
+  - Verify: 호출부를 일부러 안 고친 채 `backend/gradlew :modules:agile-planning:compileKotlin` → **컴파일 에러**를 1회 본다
+- [ ] **T2 (P2, human: ~10분 / CC: ~3분)** — `agile-planning/web` — X10 근사의 사유를 판정 줄과 LIST-6 양쪽에 박는다
+  - Surfaced by: Architecture 이슈 1 — LIST-6 의 red 가 「기대값 갱신」으로 읽히면 per-board 관리자 도입 시 전 보드가 첫 보드의 답을 받은 채 초록이 된다
+  - Files: `BoardController.kt` · `BoardControllerIntegrationTest.kt`
+  - Verify: 주석 문구가 「함께 고쳐야 한다」와 「X10 근사가 깨졌다는 신호」를 각각 담는지 눈으로
+- [ ] **T3 (P1, human: ~15분 / CC: ~3분)** — `agile-planning/test` — LIST-7 신설 (보드 0건이어도 판정 1회)
+  - Surfaced by: Test 이슈 3 — 스펙 FR-4·E1 이 명시했는데 기존 목록 테스트가 LIST-1/2/3 뿐이고 0건 케이스가 전무하다
+  - Files: `BoardControllerIntegrationTest.kt`
+  - Verify: `backend/gradlew :modules:agile-planning:test --tests '*BoardControllerIntegrationTest*'`
+- [ ] **T4 (P2, human: ~15분 / CC: ~3분)** — `apps/web/mocks` — MSW 목록 테스트를 3분기로 (store 미정의 → `?? true`)
+  - Surfaced by: Test 이슈 3 — 스펙 E5 가 「상세 조립부와 같은 기본값」을 요구하는데 초안은 2분기만 쟀다
+  - Files: `apps/web/src/mocks/board-handlers.test.ts`
+  - Verify: `apps/web/node_modules/.bin/vitest run src/mocks/board-handlers.test.ts` (cwd = `apps/web`)
+- [ ] **T5 (P1, human: ~20분 / CC: ~5분)** — `docs` — C-3 정정 + `push-frontend-tests` TODOS 등재
+  - Surfaced by: 게이트 실효성 이슈 4 — apps/web 의 vitest 는 어떤 자동 게이트에서도 안 돈다. 「판별식이 구멍을 메운다」가 거짓이었다
+  - Files: `docs/plans/2026-09-04-board-summary-can-delete.md` · `TODOS.md`
+  - Verify: `node scripts/build-doc-index.mjs --check` · TODOS 항목 번호를 **표 전체**로 대조
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | skipped | `codex_reviews` disabled |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 4 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+**VERDICT:** ENG CLEARED — 구현 착수 가능. 이슈 4건 전량 계획에 반영됐고 BLOCKER 는 0 이다.
+Design Review 는 불필요하다(prod UI diff 가 `data-testid` 한 줄, 픽셀·접근성 트리 무변경).
+CEO Review 도 불필요하다(신규 FR 0 · 범위 변경 0 · 사용자 표면 변화 0).
+
+NO UNRESOLVED DECISIONS
