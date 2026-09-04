@@ -34,6 +34,7 @@ import { projectViewLabels } from '../src/i18n/project-view-labels'
 import {
   backlogSprintColumn,
   boardActionsTrigger,
+  boardHeader,
   boardSwitcherTrigger,
   goToBoardNameStep,
   selectBoardType,
@@ -183,6 +184,9 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await expect(page.getByTestId('active-sprint-summary')).toHaveCount(0)
     // ★early-return 이 아니라 인라인 대체라는 것 — 이것이 깨지면 보드를 지울 수도 없다
     await expect(page.getByRole('heading', { name: boardLabels.page.title, exact: true })).toBeVisible()
+    // ★`⋯` 조회가 `board-header` 스코프라 컨테이너 실재를 먼저 단언한다. testid 가 어긋나면
+    //   하위 조회는 count 0 이 되고, 이 spec 의 부재 단언(`toHaveCount(0)`)들은 그대로 통과한다.
+    await expect(boardHeader(page)).toBeVisible()
     await expect(boardActionsTrigger(page)).toBeVisible()
 
     // ── S3. 백로그로 이동 — 빈 상태의 CTA 가 데려간다 (J18) ──────────────────

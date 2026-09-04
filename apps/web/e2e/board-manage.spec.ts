@@ -24,6 +24,7 @@ import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import {
   boardActionsTrigger,
+  boardHeader,
   boardSwitcherTrigger,
   goToBoardNameStep,
   selectBoardType,
@@ -96,6 +97,11 @@ test.describe('보드 관리 — 생성·전환·이름 변경·삭제 (FR-BD-01
     // Given. alice 로그인 후 카드가 있는 ATLAS 보드로 진입
     await loginAsAlice(page)
     await page.goto(BOARD_URL)
+    // ★컨테이너 실재를 **먼저** 단언한다. 아래 트리거 조회가 전부 `board-header` 스코프라,
+    //   testid 가 어긋나면 하위 조회가 조용히 count 0 이 되는데 S5 의
+    //   `expect(boardSwitcherTrigger(page)).toHaveCount(0)` 은 **그대로 통과한다** — 스코프가
+    //   침묵사하는 유일한 자리를 이 한 줄이 막는다.
+    await expect(boardHeader(page)).toBeVisible()
     await expect(boardSwitcherTrigger(page)).toContainText(DEFAULT_BOARD_NAME)
 
     // ── S1. 두 번째 보드 생성 ────────────────────────────────────────────────
