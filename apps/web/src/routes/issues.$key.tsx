@@ -24,8 +24,15 @@ import { useIssueTransitions, useIssueTransitionFlow } from '@/hooks/use-issue-t
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
-import { FileDown, X } from 'lucide-react'
+import { FileDown, MoreHorizontal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
@@ -250,6 +257,11 @@ export function IssueDetailPage({
 
   // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
   const paneTitleRef = useRef<HTMLHeadingElement>(null)
+
+  // ── 표시 방식 토글 (Jira 패리티 J1) ────────────────────────────────────────
+  // `variant='page'` 에서는 쓰이지 않지만 훅은 조건부로 못 부른다 — 렌더 쪽에서 가린다.
+  const presentation = useIssueDetailModalStore((s) => s.presentation)
+  const setPresentation = useIssueDetailModalStore((s) => s.setPresentation)
 
   // 제목 편집 입력창 — 진입 시 포커스 + 커서 끝 배치용 (FR-UX-11 F8 FR1)
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -1030,6 +1042,35 @@ export function IssueDetailPage({
             <FileDown className="size-4 mr-1.5" aria-hidden="true" />
             {issueDetailStrings.pdfDownloadButton}
           </Button>
+          {/* pane 전용 표시 방식 토글 — 모달 ↔ 사이드바 (Jira 패리티 J1).
+              Jira 원문이 이 자리를 못 박는다 — "clicking the '…' and selecting 'Open issues
+              in sidebar'". 전체화면(`variant='page'`)에는 달지 않는다: 거기서 표시 방식을
+              바꿔도 지금 보고 있는 화면은 그대로라 무엇이 바뀌었는지 알 수 없다. */}
+          {variant === 'pane' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={issueDetailStrings.presentationMenuAriaLabel}
+                >
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setPresentation(presentation === 'modal' ? 'sidePanel' : 'modal')
+                  }}
+                >
+                  {presentation === 'modal'
+                    ? issueDetailStrings.openInSidePanelItem
+                    : issueDetailStrings.openInModalItem}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {/* pane 전용 닫기 버튼 — split view 우측 페인 (FR-UX-06 PR20 Task 1) */}
           {variant === 'pane' && (
             <Button

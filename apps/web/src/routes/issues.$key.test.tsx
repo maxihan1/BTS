@@ -11,6 +11,7 @@ import { issueAtlas1Fixture, issueAtlasNoWorkflowFixture } from '@/mocks/issue-f
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { MOCK_CONFLICT_TRIGGER, MOCK_NO_WORKFLOW_TRIGGER } from '@/mocks/issue-handlers'
 import { issueDetailStrings } from '@/i18n/ko'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { IssueDetailPage } from './issues.$key'
 
 // useIssuePermissions를 mock — 기존 테스트는 권한 제어를 검증하지 않으므로 모든 권한 true로 고정
@@ -2091,6 +2092,8 @@ function renderPanePage(
 
 describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => {
   beforeEach(() => {
+    // 표시 방식은 sessionStorage 를 겸하는 전역이라 테스트 간에 샌다 — 매번 Jira 기본으로 되돌린다.
+    useIssueDetailModalStore.setState({ presentation: 'modal', openKey: null })
     vi.mocked(toast.error).mockClear()
     server.use(...issueTypeHandlers)
     setupIssueFoundHandler()
@@ -2268,6 +2271,64 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
       expect(onIssueClosed).toHaveBeenCalledTimes(1)
     })
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  // ── 표시 방식 토글 (Jira 패리티 J1) ─────────────────────────────────────────
+
+  /**
+   * T1-9: `⋯` 메뉴의 「사이드바로 열기」가 표시 방식을 sidePanel 로 바꾼다.
+   *
+   * Jira 원문 — "revert to sidebar by opening an issue in the modal, clicking the '…' and
+   * selecting 'Open issues in sidebar'". 토글이 사는 자리가 `⋯` 라는 것까지가 계약이다.
+   */
+  it('T1-9: variant="pane" 시 ⋯ 의 「사이드바로 열기」가 표시 방식을 sidePanel 로 바꾼다', async () => {
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose: vi.fn() })
+
+    await screen.findByRole('button', { name: '닫기' })
+    await user.click(
+      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
+    )
+    await user.click(
+      await screen.findByRole('menuitem', { name: issueDetailStrings.openInSidePanelItem }),
+    )
+
+    expect(useIssueDetailModalStore.getState().presentation).toBe('sidePanel')
+  })
+
+  /**
+   * T1-10: 이미 sidePanel 이면 같은 자리가 「모달로 열기」로 뒤집힌다.
+   * 되돌아갈 길이 없으면 세션 내내 사이드바에 갇힌다 — 선호가 sessionStorage 라 새로고침도 안 듣는다.
+   */
+  it('T1-10: presentation 이 sidePanel 이면 ⋯ 항목이 「모달로 열기」로 바뀐다', async () => {
+    useIssueDetailModalStore.setState({ presentation: 'sidePanel' })
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose: vi.fn() })
+
+    await screen.findByRole('button', { name: '닫기' })
+    await user.click(
+      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
+    )
+
+    expect(
+      await screen.findByRole('menuitem', { name: issueDetailStrings.openInModalItem }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: issueDetailStrings.openInSidePanelItem }),
+    ).not.toBeInTheDocument()
+  })
+
+  /**
+   * T1-11: 전체화면(`variant='page'`)에는 `⋯` 이 없다.
+   * 전체화면은 모달도 사이드바도 아니다 — 거기서 표시 방식을 물으면 무엇이 바뀌는지 알 수 없다.
+   */
+  it('T1-11: variant 미지정(page) 에는 표시 방식 ⋯ 메뉴가 없다', async () => {
+    renderPage('ATLAS-1')
+
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
+    expect(
+      screen.queryByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
+    ).not.toBeInTheDocument()
   })
 })
 
