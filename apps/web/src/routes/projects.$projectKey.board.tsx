@@ -514,6 +514,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
               // ★`canDelete` 는 Zod `.optional()` 이라 undefined 가 온다. `=== true` 로만 연다 —
               //   `!== false` 로 무르면 필드가 없는 응답에서 삭제가 열린다 (fail-closed).
               canDelete={boardDetail.canDelete === true}
+              canConfigure={canCreate}
               onDeleted={() => {
                 void navigate({
                   to: '/projects/$projectKey/board',

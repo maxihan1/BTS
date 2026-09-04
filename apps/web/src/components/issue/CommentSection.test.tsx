@@ -30,6 +30,7 @@ vi.mock('@/components/editor/RichTextEditor', async () => ({
   RichTextEditor: (await import('@/test/rich-text-editor-mock')).RichTextEditorMock,
 }))
 import type { CommentResponse } from '@/api/comments'
+import { COMMENT_BODY_MAX_LENGTH } from '@/lib/issue-text-constraints'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처 — RFC4122 v4 형식 UUID (Zod v4 검증 통과)
@@ -569,4 +570,112 @@ describe('CommentSection — (e) FR-UX-10 F11 단축키 `m` 손잡이', () => {
   //   포커스 링은 이제 `RichTextEditor` 의 컨테이너가 `focus-within:ring-2` 로 소유한다 —
   //   이 파일은 그 컴포넌트를 mock 으로 대체하므로 클래스를 볼 수 없고, 봐도 mock 의 것이라
   //   가짜 그린이 된다. 표시 자체는 브라우저 눈확인과 e2e 의 몫이다.
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (f) 길이 카운터 · 상한 잠금
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 댓글 상한 배선 판별식.
+ *
+ * ## ★본문과 재는 문자열이 다르다
+ *
+ * 이슈 본문은 서버가 **HTML** 을 잰다(`@Size` on `descriptionHtml`). 댓글은 **평문**이다 —
+ * `CommentApplicationService.validateBody(body)` 가 raw 텍스트를 받는다. 둘을 섞으면
+ * 카운터가 거짓말을 한다. 그래서 이 판별식은 평문 길이로 판정하는지를 잰다.
+ *
+ * 입력은 `RichTextEditorMock`(textarea 대역)을 통과하므로 `fireEvent.change` 로 긴 값을
+ * 한 번에 넣는다 — `user.type` 으로 32,768자를 치면 테스트가 끝나지 않는다.
+ */
+describe('CommentSection — (f) 길이 카운터·상한 잠금', () => {
+  /** 평문 기준 길이를 갖는 HTML 을 만든다. `<p></p>` 를 벗기면 정확히 `length` 자다. */
+  function commentHtmlOfPlainLength(length: number): string {
+    return `<p>${'가'.repeat(length)}</p>`
+  }
+
+  it('평범한 길이에서는 카운터를 띄우지 않는다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([])
+    renderSection()
+
+    const box = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    fireEvent.change(box, { target: { value: '<p>짧은 댓글</p>' } })
+
+    expect(screen.queryByTestId('comment-add-length-counter')).not.toBeInTheDocument()
+  })
+
+  it('상한을 넘으면 카운터가 나타나고 등록 버튼이 잠긴다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([])
+    renderSection()
+
+    const box = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    fireEvent.change(box, {
+      target: { value: commentHtmlOfPlainLength(COMMENT_BODY_MAX_LENGTH + 1) },
+    })
+
+    expect(screen.getByTestId('comment-add-length-counter')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: commentStrings.commentAddButton })).toBeDisabled()
+    })
+  })
+
+  it('상한 이하이면 등록 버튼이 열려 있다 — 위 단언의 비-공허 짝', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([])
+    renderSection()
+
+    const box = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    fireEvent.change(box, {
+      target: { value: commentHtmlOfPlainLength(COMMENT_BODY_MAX_LENGTH) },
+    })
+
+    // 임계는 넘어 카운터가 보이고, 상한은 안 넘어 등록은 열려 있다.
+    expect(screen.getByTestId('comment-add-length-counter')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: commentStrings.commentAddButton })).toBeEnabled()
+    })
+  })
+
+  it('평문이 아니라 HTML 길이로 재면 안 된다 — 태그만으로 상한을 넘기지 못한다', async () => {
+    stubIssuePermissions(false)
+    stubCommentList([])
+    renderSection()
+
+    // 평문은 10자인데 마크업이 잔뜩 붙어 HTML 은 상한을 넘는 입력.
+    const noisyHtml = `<p>${'<strong>가</strong>'.repeat(10)}</p>${'<!-- x -->'.repeat(4000)}`
+    expect(noisyHtml.length).toBeGreaterThan(COMMENT_BODY_MAX_LENGTH)
+
+    const box = await screen.findByLabelText(commentStrings.commentBodyLabel)
+    fireEvent.change(box, { target: { value: noisyHtml } })
+
+    // 서버가 재는 것은 평문이므로 잠기면 안 된다.
+    expect(screen.queryByTestId('comment-add-length-counter')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: commentStrings.commentAddButton })).toBeEnabled()
+    })
+  })
+
+  it('수정 폼에서도 상한을 넘으면 저장이 잠긴다', async () => {
+    const user = userEvent.setup({ delay: null })
+    stubIssuePermissions(false)
+    stubCommentList([myComment])
+    renderSection()
+
+    const item = await screen.findByRole('listitem')
+    await user.click(within(item).getByRole('button', { name: commentStrings.commentEditButton }))
+
+    const box = screen.getByLabelText(commentStrings.commentEditBodyLabel)
+    fireEvent.change(box, {
+      target: { value: commentHtmlOfPlainLength(COMMENT_BODY_MAX_LENGTH + 1) },
+    })
+
+    expect(screen.getByTestId('comment-edit-length-counter')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: commentStrings.commentEditSaveButton }),
+      ).toBeDisabled()
+    })
+  })
 })

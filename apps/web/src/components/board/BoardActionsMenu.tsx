@@ -6,7 +6,8 @@
 //    같다** — e2e 는 반드시 컨테이너로 스코프를 좁혀 잡는다(계약 §2).
 import type { FormEvent, JSX } from 'react'
 import { useState } from 'react'
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, Settings, Trash2 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { ApiError } from '@/api/client'
 import { useUpdateBoardName, useDeleteBoard } from '@/hooks/use-boards'
 import { extractErrorCode } from '@/lib/extract-error-code'
@@ -157,6 +158,13 @@ interface BoardActionsMenuProps {
   canRename: boolean
   /** 삭제 항목 노출 여부 — 보드 응답의 `canDelete` 가 참일 때만 */
   canDelete: boolean
+  /**
+   * 보드 설정 진입 항목 노출 여부 — 프로젝트 CREATE 권한 (부채 177 · J8).
+   *
+   * `canRename` 과 같은 축(`canCreate`)이지만 별 prop 으로 둔다. 둘을 하나로 묶으면
+   * 「이름 변경 권한」과 「설정 진입 권한」이 갈릴 때 한쪽을 못 표현한다.
+   */
+  canConfigure: boolean
   /** 삭제가 성공한 뒤 호출 — 부모가 남은 보드로 이동한다 (E2) */
   onDeleted: () => void
   /**
@@ -182,6 +190,7 @@ export function BoardActionsMenu({
   boardName,
   canRename,
   canDelete,
+  canConfigure,
   onDeleted,
   triggerSize = 'icon',
 }: BoardActionsMenuProps): JSX.Element | null {
@@ -208,7 +217,10 @@ export function BoardActionsMenu({
 
   // 항목이 하나도 없으면 트리거 자체를 내린다 — 열면 비는 메뉴는 「권한이 없다」가 아니라
   // 「고장났다」로 읽힌다.
-  if (!canRename && !canDelete) return null
+  // ★부채 177 이 세 번째 항목을 더하면서 이 줄도 함께 고쳤다. 항목만 늘리고 여기를 두면
+  //   두 권한이 없는 사용자에게 **설정 진입까지 사라진다** — 의도한 게이팅과 우연히 같아 보이지만
+  //   근거가 다르고, 셋 중 설정만 열린 조합에서 조용히 틀린다.
+  if (!canRename && !canDelete && !canConfigure) return null
 
   return (
     <>
@@ -224,6 +236,20 @@ export function BoardActionsMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
+          {canConfigure && (
+            <DropdownMenuItem asChild>
+              {/* 보드를 `?board=` 로 실어 나른다 — 설정 화면은 기본 보드를 스스로 고르지 않는다.
+                  「기본 보드」 규칙을 네 번째로 늘리지 않기 위해서다(부채 164). */}
+              <Link
+                to="/projects/$projectKey/board/settings"
+                params={{ projectKey }}
+                search={{ board: boardId }}
+              >
+                <Settings aria-hidden="true" />
+                {boardLabels.actions.settingsItem}
+              </Link>
+            </DropdownMenuItem>
+          )}
           {canRename && (
             <DropdownMenuItem onSelect={() => { setRenameOpen(true) }}>
               <Pencil aria-hidden="true" />

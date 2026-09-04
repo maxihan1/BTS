@@ -39,6 +39,23 @@ if (typeof document !== 'undefined' && typeof document.elementFromPoint !== 'fun
   document.elementFromPoint = (): Element | null => null
 }
 
+// jsdom 은 `Range.prototype` 의 `getClientRects` 와 `getBoundingClientRect` 를 **둘 다** 구현하지 않는다
+// (실측 jsdom 29.1.1 — `Element.prototype` 에는 둘 다 있다. 그래서 「Element 는 되는데 왜」로 헷갈린다).
+// ProseMirror 의 `singleRect(target)` 은 `textRange()` 가 만든 **Range** 를 받으므로, TipTap 에디터가
+// `scrollToSelection` 하는 순간 「TypeError: target.getClientRects is not a function」이 난다.
+// 이게 **테스트 밖 uncaught exception** 이라 개별 단언은 전부 초록인데 vitest 종료 코드만 1 이 되는,
+// 귀속이 어려운 형태가 된다 — 실측 전체 스위트에서 10752건 전부 통과 + unhandled 22건 + EXIT=1.
+// ★`singleRect` 는 rects 가 비면 `getBoundingClientRect()` 로 물러나므로 **둘 다** 채워야 한다.
+//   하나만 채우면 같은 자리에서 같은 모양으로 다시 터진다.
+// jsdom 에는 레이아웃이 없어 좌표는 어차피 0 이다 —
+// **좌표에 의존하는 동작을 이 폴리필로 검증하지 말 것.** 그런 것은 e2e 의 몫이다.
+// ★`typeof Range` 가드가 필수다. 위 elementFromPoint 와 같은 이유로,
+//   `// @vitest-environment node` 를 선언한 파일에서는 `Range` 자체가 없다.
+if (typeof Range !== 'undefined' && typeof Range.prototype.getClientRects !== 'function') {
+  Range.prototype.getClientRects = (): DOMRectList => [] as unknown as DOMRectList
+  Range.prototype.getBoundingClientRect = (): DOMRect => new DOMRect(0, 0, 0, 0)
+}
+
 /**
  * ★`process.on('unhandledRejection', …)` 를 여기에 **추가하지 말 것.**
  *

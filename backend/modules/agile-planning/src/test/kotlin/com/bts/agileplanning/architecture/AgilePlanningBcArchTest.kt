@@ -17,13 +17,14 @@ import org.junit.jupiter.api.Test
  * agile-planning BC 아키텍처 규칙 검증.
  *
  * ArchUnit(아키텍처 규칙을 코드로 작성하고 자동 검증하는 라이브러리)을 사용해
- * 다음 5개 규칙을 테스트 시점에 강제한다.
+ * 다음 6개 규칙을 테스트 시점에 강제한다(룰 6 은 비-공허 카운트 가드).
  *
  * - 룰 1 (BC 격리 — issue-tracking 직접 import 금지) — [mustNotImportIssueTracking]
  * - 룰 2 (BC 격리 — project-workflow 직접 import 금지) — [mustNotImportProjectWorkflow]
  * - 룰 3 (BC 격리 — identity-access 직접 import 금지) — [mustNotImportIdentityAccess]
  * - 룰 4 (jOOQ 화이트리스트 — repository 레이어만 접촉) — [jooqGeneratedMustOnlyBeUsedInRepositoryLayer]
  * - 룰 5 (@Transactional + @Service/@Component 동반) — [transactionalClassesMustBeServiceOrComponent]
+ * - 룰 7 (계층 역전 금지 — repository → application 의존 금지) — [repositoryLayerMustNotDependOnApplicationLayer]
  *
  * ### 통신 허용 채널
  * agile-planning BC는 이벤트(pgmq)와 shared-kernel 포트(`com.bts.shared.*`)를 통해서만
@@ -199,6 +200,39 @@ class AgilePlanningBcArchTest {
                     "— Sprint 클래스가 실제로 스캔됨을 보증하는 명시 가드",
             )
             .isTrue()
+    }
+
+    /**
+     * 룰 7 — repository 레이어는 application 레이어에 의존하지 않는다.
+     *
+     * 계층 방향은 web → application → domain ← repository 다. repository 가 application 을
+     * import 하면 **인프라가 애플리케이션을 끌어안는 역전**이 되고, 그 뒤로는 「리포지토리만 쓰는
+     * 배치·이벤트 소비자」가 애플리케이션 서비스까지 끌고 와야 컴파일된다.
+     *
+     * 실제로 부채 177 에서 [com.bts.agileplanning.repository.BoardRepository] 가
+     * `application.WipLimitChange` 를 import 한 채 머지 직전까지 갔다(코드리뷰 CONCERNS C4).
+     * 룰 4 가 jOOQ 축만 보고 있어 **이 축에는 판별자가 아예 없었다** — 되돌려 놓아도 전부 초록이었다.
+     * 처방은 그 타입을 `domain` 으로 내리고 이 룰을 세우는 것이다.
+     *
+     * 공유가 필요한 타입은 `domain` 에 둔다 — 양쪽이 아래를 함께 보는 것은 계층 역전과 다르다.
+     */
+    @Test
+    fun repositoryLayerMustNotDependOnApplicationLayer() {
+        // 비-공허 짝 — repository 패키지가 비면 아래 noClasses 룰은 아무것도 검사하지 않고 통과한다.
+        val repositoryClassCount =
+            importedClasses.count { it.packageName.startsWith("com.bts.agileplanning.repository") }
+        assertThat(repositoryClassCount)
+            .`as`("repository 레이어 클래스가 1개 이상이어야 이 룰이 공허하지 않다")
+            .isGreaterThanOrEqualTo(1)
+
+        noClasses()
+            .that().resideInAPackage("com.bts.agileplanning.repository..")
+            .should().dependOnClassesThat()
+            .resideInAPackage("com.bts.agileplanning.application..")
+            .because(
+                "계층 역전 금지 — repository 는 domain 만 본다. " +
+                    "양쪽이 공유할 타입은 application 이 아니라 domain 에 둔다.",
+            ).check(importedClasses)
     }
 
     companion object {

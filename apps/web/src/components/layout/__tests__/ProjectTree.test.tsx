@@ -562,7 +562,7 @@ describe('ProjectTree', () => {
       ).not.toBeInTheDocument()
     })
 
-    it('★ 사이드바 `⋯` 는 삭제만 낸다 — 이름 변경은 보드 화면 헤더의 몫이다', async () => {
+    it('★ 사이드바 `⋯` 는 삭제만 낸다 — 이름 변경·보드 설정은 보드 화면 헤더의 몫이다', async () => {
       const user = userEvent.setup()
       stubBoards({ ATLAS: [scrumBoard] })
       renderProjectTree()
@@ -580,6 +580,11 @@ describe('ProjectTree', () => {
       //   가진 사용자(기본 스킴 MEMBER)에게서 기능을 빼앗는 방향으로 틀린다.
       expect(
         screen.queryByRole('menuitem', { name: boardLabels.actions.renameItem }),
+      ).not.toBeInTheDocument()
+      // 보드 설정(부채 177 · #452)도 같은 CREATE 축이라 같은 판단을 받는다 — 항목이 늘어날
+      // 때마다 근사가 슬며시 되살아나는 자리라 함께 못 박는다.
+      expect(
+        screen.queryByRole('menuitem', { name: boardLabels.actions.settingsItem }),
       ).not.toBeInTheDocument()
     })
   })

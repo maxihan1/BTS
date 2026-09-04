@@ -5,6 +5,7 @@ package com.bts.agileplanning.web
 import com.bts.agileplanning.application.BoardApplicationService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
+import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.web.dto.BoardColumnResponse
 import com.bts.agileplanning.web.dto.BoardDetailResponse
@@ -19,9 +20,10 @@ import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.agileplanning.web.dto.DeleteColumnResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
+import com.bts.agileplanning.web.dto.ReorderColumnsRequest
 import com.bts.agileplanning.web.dto.ReplaceColumnStatesRequest
 import com.bts.agileplanning.web.dto.UpdateBoardRequest
-import com.bts.agileplanning.web.dto.UpdateColumnWipLimitRequest
+import com.bts.agileplanning.web.dto.UpdateColumnRequest
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -344,36 +346,105 @@ class BoardController(
     }
 
     /**
-     * 보드 컬럼의 WIP 제한을 설정하거나 해제한다.
+     * 보드 컬럼의 이름과 WIP 제한을 부분 갱신한다 (R9 · J24 · J29).
      *
-     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트.
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트. 컬럼 구성 변경은 같은 무게의 조작이라
+     * 기존 게이트를 그대로 승계한다 — 새 권한 축을 만들지 않는다.
      *
-     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 서비스 위임.
+     * 처리 순서: actor 추출(401) → 보드 메타 조회(404) → CREATE 권한(403) → 요청 해석 → 서비스 위임.
+     *
+     * ★**「최소 1필드」와 「명시 null」을 서비스 호출 전에 판정한다.** 검증이 쓰기보다 앞서야
+     * 400 응답과 커밋된 상태가 어긋나지 않는다 — `updateBoard` 가 같은 순서를 쓴다.
      *
      * @param id path variable 보드 UUID.
      * @param columnId path variable 컬럼 UUID.
-     * @param request WIP 제한 요청 바디(wipLimit 양수 또는 null).
+     * @param request 컬럼 부분 갱신 바디. 두 필드 모두 부재면 400.
      * @return 200 OK + [ColumnMetaResponse].
      * @throws BoardNotFoundException 보드 미존재 → 404.
      * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
+     * @throws ResponseStatusException 400 — 빈 바디 · 공백 이름 · 명시 null 이름 · wipLimit 0 이하.
      * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
      */
     @PatchMapping("/{id}/columns/{columnId}")
-    fun updateColumnWipLimit(
+    fun updateColumn(
         @PathVariable id: UUID,
         @PathVariable columnId: UUID,
-        @Valid @RequestBody request: UpdateColumnWipLimitRequest,
+        @Valid @RequestBody request: UpdateColumnRequest,
     ): ResponseEntity<DataResponse<ColumnMetaResponse>> {
-        log.info("BoardController.updateColumnWipLimit id={} columnId={} wipLimit={}", id, columnId, request.wipLimit)
+        log.info(
+            "BoardController.updateColumn id={} columnId={} namePresent={} wipLimitPresent={}",
+            id,
+            columnId,
+            request.name.isPresent,
+            request.wipLimit.isPresent,
+        )
 
         val (_, board) = loadBoardWithCreate(id)
-        val wipLimit = request.wipLimit
-        if (wipLimit != null && wipLimit < 1) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "wipLimit 는 1 이상이어야 합니다.")
+
+        if (!request.name.isPresent && !request.wipLimit.isPresent) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "name 또는 wipLimit 중 하나는 전송해야 합니다.")
         }
-        val updatedColumn = service.updateColumnWipLimit(id, columnId, wipLimit)
+
+        // presentValueOrNull 은 명시 null 을 400 으로 바꾼다 — 컬럼 이름은 해제할 수 없다.
+        val name = presentValueOrNull(request.name, "name")
+        if (name != null && name.isBlank()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "name 은 공백일 수 없습니다.")
+        }
+
+        val wipLimit = resolveWipLimitChange(request.wipLimit)
+
+        val updatedColumn = service.updateColumn(id, columnId, name, wipLimit)
         val catalog = ColumnStateResponse.catalog(service.listWorkflowStates(board.projectKey))
         return ResponseEntity.ok(DataResponse(ColumnMetaResponse.from(updatedColumn, catalog)))
+    }
+
+    /**
+     * 보드 컬럼의 표시 순서를 통째로 교체한다 (R10 · J25).
+     *
+     * 권한: [IssuePermission.CREATE] on 보드의 프로젝트 — 컬럼 구성 변경 게이트를 승계한다.
+     *
+     * 컨트롤러는 **빈 배열만** 막는다. 빈 배열은 「순서를 지운다」가 아니라 요청 실수이고 그
+     * 판정에는 보드 조회가 필요 없다. 누락·중복·타 보드 id 는 보드의 실제 컬럼 집합을 알아야
+     * 판정할 수 있어 [BoardApplicationService.reorderColumns] 가 한 판정으로 진다.
+     *
+     * @param id path variable 보드 UUID.
+     * @param request 순서 교체 요청. 이 보드의 전 컬럼을 원하는 순서대로 담는다.
+     * @return 200 OK + [BoardMetaResponse].
+     * @throws BoardNotFoundException 보드 미존재 → 404.
+     * @throws BoardAccessDeniedException CREATE 권한 미충족 → 403.
+     * @throws ResponseStatusException 400 — 빈 배열 또는 컬럼 집합 불일치.
+     */
+    @PutMapping("/{id}/columns/order")
+    fun reorderColumns(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ReorderColumnsRequest,
+    ): ResponseEntity<DataResponse<BoardMetaResponse>> {
+        log.info("BoardController.reorderColumns id={} count={}", id, request.columnIds.size)
+
+        loadBoardWithCreate(id)
+
+        if (request.columnIds.isEmpty()) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "columnIds 는 비어 있을 수 없습니다.")
+        }
+
+        val updated = service.reorderColumns(id, request.columnIds)
+        return ResponseEntity.ok(DataResponse(BoardMetaResponse.from(updated)))
+    }
+
+    /**
+     * `wipLimit` 요청 필드를 갱신 의도로 옮긴다.
+     *
+     * 부재는 [WipLimitChange.Unchanged], 전송은 [WipLimitChange.Set] 이다 — **명시 null 도 전송**이고
+     * 그 뜻은 해제다(J29). 양수 검증은 여기서 한다: jakarta `@Positive` 가 nullable 에서 0 을
+     * 통과시켜 애너테이션으로는 못 막는다.
+     */
+    private fun resolveWipLimitChange(field: JsonNullable<Int?>): WipLimitChange {
+        if (!field.isPresent) return WipLimitChange.Unchanged
+        val value = field.get()
+        if (value != null && value < 1) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "wipLimit 는 1 이상이어야 합니다.")
+        }
+        return WipLimitChange.Set(value)
     }
 
     /**

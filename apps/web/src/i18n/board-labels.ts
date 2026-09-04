@@ -160,6 +160,15 @@ export const boardLabels = {
      */
     triggerAriaLabel: (boardName: string): string => `보드 관리, ${boardName}`,
 
+    /**
+     * 보드 설정 진입 메뉴 항목 (부채 177 · J7 · 편차 X4).
+     *
+     * 지라는 사이드바 보드 이름 옆 `⋯` → **Configure board** 로 들어간다(J7). BTS 사이드바는
+     * 보드를 개별 노드로 갖지 않아(`?board=` 로 전환한다) 이 `⋯` 에 얹는다 — 새 진입점을
+     * 만들지 않는다.
+     */
+    settingsItem: '보드 설정',
+
     /** 이름 변경 메뉴 항목 */
     renameItem: '이름 변경',
 
@@ -284,6 +293,190 @@ export const boardLabels = {
 
     /** 변경 실패 시 토스트 오류 메시지 */
     updateError: '스윔레인 기준 변경에 실패했습니다',
+  },
+
+  /**
+   * 보드 설정 화면 (부채 177 · 지라 Board settings 의 Columns 탭).
+   *
+   * 이 PR 은 **Columns 하나만** 만든다. 나머지 6탭을 비활성 골격으로 미리 그리지 않는다 —
+   * 「누를 수 있는데 아무 일도 안 일어나는」 화면을 6개 배포하는 것이라, 장부가 경계한
+   * 「도달할 UI 가 없는 기능」의 거울상이다(Maxi 확정 2026-09-04).
+   */
+  settings: {
+    /** 화면 h1. 즉사 계약상 화면당 하나뿐이고 문자열이 곧 e2e 셀렉터다. */
+    pageHeading: '보드 설정',
+
+    /** h1 아래 설명 */
+    pageDescription: '컬럼 구성과 워크플로우 상태 매핑을 바꿉니다.',
+
+    /** 보드 화면으로 돌아가는 링크 */
+    backToBoard: '보드로 돌아가기',
+
+    /**
+     * `?board=` 없이 들어왔을 때의 안내.
+     *
+     * ★**기본 보드를 스스로 고르지 않는다.** 「기본 보드」 규칙이 이미 세 곳에서 서로 다르고
+     * (부채 164), 여기서 네 번째를 만들면 그 부채가 커진다. 보드를 지목하게 하고 되돌린다.
+     */
+    boardNotSelected: '어느 보드의 설정인지 지목되지 않았습니다. 보드 화면에서 다시 들어오세요.',
+
+    /** 조회 실패 안내 */
+    loadError: '보드 설정을 불러오지 못했습니다.',
+
+    /** 조회 실패 시 재시도 버튼 */
+    retry: '다시 시도',
+
+    /** CREATE 권한이 없는 사용자에게 보이는 사유 */
+    readOnlyReason: '보드를 설정할 권한이 없습니다.',
+
+    /** 미매핑 상태 패널 제목 — 지라 `Unmapped statuses` 대응 */
+    unmappedHeading: '미매핑 상태',
+
+    /**
+     * 미매핑이 0건일 때.
+     *
+     * ★**경고가 아니라 안심이다.** 미매핑 0 은 정상 상태다 — 모든 워크플로우 상태가 컬럼에
+     * 배정됐다는 뜻이다. 회색 「없음」으로 그리면 사용자가 정상을 결손으로 읽는다.
+     */
+    unmappedEmpty: '모든 상태가 컬럼에 배정됐습니다.',
+
+    /** 미매핑 패널 설명 — 무엇을 하는 곳인지 */
+    unmappedDescription: '어느 컬럼에도 속하지 않은 상태입니다. 그 상태의 이슈는 보드에 나타나지 않습니다.',
+
+    /** 컬럼이 하나도 없을 때 — 행동 유도가 필요한 빈 상태다 */
+    columnsEmpty: '이 보드에 컬럼이 없습니다. 컬럼을 만들면 상태를 끌어다 놓을 수 있습니다.',
+
+    /** 상태 0개 컬럼의 표시 — 미완성임을 명시한다(E1). 그냥 비워 두면 정상으로 보인다 */
+    columnNoStates: '상태 없음',
+
+    /**
+     * 컬럼 카드의 카드 수 표기.
+     *
+     * @param count 이 컬럼의 카드 수
+     * @returns "카드 {count}개"
+     */
+    cardCount: (count: number): string => `카드 ${String(count)}개`,
+
+    /**
+     * 카드 수가 조회 상한에 잘렸을 때의 표기 (eng 리뷰 BLOCKER-1 · 리뷰 CONCERNS C5).
+     *
+     * 보드 조회는 `BOARD_CARD_FETCH_LIMIT`(1000)에서 잘린다. 잘린 목록의 길이를 정확한 수인 양
+     * 보이면 거짓말이 되므로 **수를 주장하지 않는다.**
+     *
+     * ★종전 문구 「카드 1000개 이상」은 두 번 틀렸다. ①`truncated` 는 **보드 단위** 플래그라
+     * 1001장짜리 보드의 카드 3장짜리 컬럼도 「1000개 이상」으로 읽혔다 — 컬럼에 대해 참이 아니다.
+     * ②삭제 창에 끼우면 「카드 1000개 이상**가** 사라집니다」로 조사가 깨졌다. 지금은 수를 아예
+     * 주장하지 않고, 삭제 창은 [deleteColumnDescriptionTruncated] 로 문장을 따로 쓴다.
+     */
+    cardCountTruncated: '카드 수 확인 불가',
+
+    /**
+     * 상태 매핑 실패 — 409 전용 문구 (E3).
+     *
+     * 한 상태는 한 컬럼에만 속할 수 있다(#444 X1). 공통 실패 문구로 뭉개면 사용자가
+     * 「다시 해 보면 되나」로 읽는데, 이 실패는 재시도로 풀리지 않는다.
+     */
+    stateConflict: '그 상태는 이미 다른 컬럼에 있습니다. 먼저 그 컬럼에서 빼세요.',
+
+    /**
+     * 상태 매핑 실패 — 그 밖의 모든 실패 (G2).
+     *
+     * 409 만 되돌리고 나머지를 삼키면 네트워크 단절·500 에서 화면이 서버와 다른 것을
+     * 보여 준다. 문구는 공통이되 **되돌림은 모든 실패에서** 일어난다.
+     */
+    stateChangeFailed: '상태 매핑을 바꾸지 못했습니다.',
+
+    /** 컬럼 추가 버튼 · 다이얼로그 제목 (J23) */
+    addColumn: '컬럼 추가',
+
+    /** 컬럼 이름 입력 라벨 */
+    columnNameLabel: '컬럼 이름',
+
+    /** 컬럼 추가 제출 버튼 */
+    addColumnSubmit: '추가',
+
+    /** 공통 취소 */
+    cancel: '취소',
+
+    /** 컬럼 추가 실패 */
+    addColumnFailed: '컬럼을 추가하지 못했습니다.',
+
+    /**
+     * 컬럼 삭제 확인 제목.
+     *
+     * ★화면 전체에서 **고유**해야 한다 — 같은 이름의 dialog 가 둘이면 Playwright
+     * `getByRole('dialog', { name })` 가 strict mode 로 즉사한다(즉사 계약 §2).
+     *
+     * @param columnName 지울 컬럼 이름
+     */
+    deleteColumnTitle: (columnName: string): string => `컬럼 삭제: ${columnName}`,
+
+    /**
+     * 컬럼 삭제 확인 설명 — 폭발 반경을 먼저 보인다 (S6).
+     *
+     * 잘린 보드에서는 이 함수를 쓰지 않는다. 수를 넣을 자리가 없어 문장이 통째로 달라지므로
+     * [deleteColumnDescriptionTruncated] 를 쓴다 — 조사(「~가」)를 끼워 맞추려다 「1000개 이상가」가
+     * 나온 자리다(리뷰 CONCERNS C5).
+     *
+     * @param cardCountText 영향 카드 수 문구. 「카드 N개」 형태만 온다.
+     */
+    deleteColumnDescription: (cardCountText: string): string =>
+      `이 컬럼의 상태는 미매핑으로 돌아갑니다. ${cardCountText}가 보드에서 사라집니다. 이슈 자체는 지워지지 않습니다.`,
+
+    /**
+     * 컬럼 삭제 확인 설명 — 보드가 조회 상한에 잘렸을 때 (S6 · C5).
+     *
+     * 수를 모른다는 사실 자체가 사용자에게 필요한 정보다. 「0개」로 뭉개면 안심시키고,
+     * 「1000개 이상」으로 부풀리면 컬럼에 대해 거짓이 된다.
+     */
+    deleteColumnDescriptionTruncated:
+      '이 컬럼의 상태는 미매핑으로 돌아갑니다. 이 컬럼의 카드가 보드에서 사라집니다 — 보드가 조회 상한에 걸려 몇 장인지 셀 수 없습니다. 이슈 자체는 지워지지 않습니다.',
+
+    /** 컬럼 삭제 확인 버튼 */
+    deleteColumnConfirm: '컬럼 삭제',
+
+    /** 컬럼 삭제 실패 */
+    deleteColumnFailed: '컬럼을 삭제하지 못했습니다.',
+
+    /**
+     * 컬럼이 1개뿐일 때 삭제가 잠기는 사유 (Sanity G1).
+     *
+     * ★지라에 대응 제약이 없다. **편차가 아니라 결함 회피**다 — 컬럼 0개 보드는 조회가
+     * 자가 치유 경합으로 500 이 되고(부채 179), 이 화면이 그 상태로 가는 클릭 한 번짜리
+     * 경로를 만들지 않는다.
+     */
+    lastColumnLocked: '마지막 컬럼은 지울 수 없습니다.',
+
+    /**
+     * 컬럼 이름 편집 입력의 접근성 이름 (J24).
+     *
+     * @param columnName 지금 이름
+     */
+    renameColumnLabel: (columnName: string): string => `컬럼 이름 변경: ${columnName}`,
+
+    /**
+     * WIP 제한 입력의 접근성 이름 (J29 · 편차 X2).
+     *
+     * ★**최대치 하나뿐이다.** 지라는 *"you can enter a minimum or maximum value"* 로 둘을
+     * 받지만 BTS 스키마에 최소치 칸이 없다. 이름에 「최대」를 박아 두 번째 입력이 없는 것이
+     * 누락이 아니라 결정임을 화면에서도 읽히게 한다.
+     *
+     * @param columnName 대상 컬럼
+     */
+    wipLimitInputLabel: (columnName: string): string => `${columnName} 최대 카드 수`,
+
+    /** 컬럼 순서 드래그 핸들의 접근성 이름 (J25) */
+    reorderHandleLabel: (columnName: string): string => `컬럼 순서 변경: ${columnName}`,
+
+    /** 컬럼 갱신(이름·WIP) 실패 */
+    updateColumnFailed: '컬럼을 바꾸지 못했습니다.',
+
+    /** 컬럼 순서 변경 실패 */
+    reorderFailed: '컬럼 순서를 바꾸지 못했습니다.',
+
+    /** WIP 제한 표시 — 무제한일 때 */
+    wipUnlimited: 'WIP 제한 없음',
+
   },
 } as const
 

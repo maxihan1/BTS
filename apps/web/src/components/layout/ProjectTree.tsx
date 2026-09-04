@@ -288,8 +288,9 @@ interface ProjectBoardListProps {
  *   보고 있던 보드를 지운 경우의 이동은 보드 화면(`projects.$projectKey.board.tsx`)이 맡는다.
  *
  * ### 🛑 사이드바 `⋯` 는 **삭제만** 한다 (Maxi 확정 2026-09-04, PR ⑩ 코드리뷰 CONCERNS-1)
- * `canRename` 에 `false` 를 **상수로** 넘긴다. 「권한을 몰라서 닫는다」가 아니라 **이 자리에는
- * 그 기능을 두지 않는다**는 뜻이다.
+ * `canRename` 과 `canConfigure` 에 `false` 를 **상수로** 넘긴다. 「권한을 몰라서 닫는다」가
+ * 아니라 **이 자리에는 그 기능을 두지 않는다**는 뜻이다. 보드 설정(부채 177 · #452)도 같은
+ * `IssuePermission.CREATE` 축이라 같은 판단을 받는다.
  *
  * 근거. 사이드바가 가진 유일한 권한 신호는 목록 응답의 `canDelete` 인데 그것은
  * `IssuePermission.SOFT_DELETE` 판정이고(`BoardController.kt:204`), 보드 이름 변경은
@@ -301,8 +302,9 @@ interface ProjectBoardListProps {
  * 이미 **정확한 권한으로** 제공하므로 그 비용을 치를 이유가 없다.
  *
  * 삭제만 남으므로 `canDelete === true` 하나가 트리거 노출을 정한다 — `BoardActionsMenu` 의
- * `if (!canRename && !canDelete) return null` 이 그것을 그대로 집행한다. `undefined` 는
- * 「못 함」이고, 그것이 `boardSummarySchema` 의 `canDelete` JSDoc 이 적은 fail-closed 계약이다.
+ * `if (!canRename && !canDelete && !canConfigure) return null` 이 그것을 그대로 집행한다.
+ * `undefined` 는 「못 함」이고, 그것이 `boardSummarySchema` 의 `canDelete` JSDoc 이 적은
+ * fail-closed 계약이다.
  */
 function ProjectBoardList({ projectKey, boards }: ProjectBoardListProps): JSX.Element | null {
   if (boards === undefined) return null
@@ -330,9 +332,11 @@ function ProjectBoardList({ projectKey, boards }: ProjectBoardListProps): JSX.El
               projectKey={projectKey}
               boardId={board.boardId}
               boardName={board.name}
-              // 🛑 상수 false — 이 자리에는 이름 변경을 두지 않는다(위 JSDoc). 권한 근사로
-              //    `deletable` 을 넣으면 CREATE 권한만 가진 사용자에게서 기능을 빼앗는다.
+              // 🛑 상수 false 둘 — 이 자리에는 이름 변경도 보드 설정도 두지 않는다(위 JSDoc).
+              //    둘 다 `IssuePermission.CREATE` 이고 사이드바에는 그 판정이 없다. `deletable`
+              //    (= SOFT_DELETE)을 근사로 넣으면 CREATE 권한만 가진 사용자에게서 기능을 빼앗는다.
               canRename={false}
+              canConfigure={false}
               canDelete={deletable}
               onDeleted={() => { /* 목록 캐시 무효화로 이 행이 사라진다 — 이동할 곳이 없다 */ }}
               triggerSize="icon-xs"

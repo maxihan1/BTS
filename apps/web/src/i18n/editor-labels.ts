@@ -30,4 +30,10 @@ export const editorLabels = {
   image: '이미지 삽입',
   toolbarLabel: '서식 도구 모음',
   editorLabel: '본문 편집기',
+
+  /** 길이 카운터 — 현재/상한. 임계(90%)에 닿아야 화면에 나타난다. */
+  lengthCounter: (current: number, max: number) =>
+    `${current.toLocaleString('ko-KR')} / ${max.toLocaleString('ko-KR')}자`,
+  /** 상한 초과 안내 — 저장이 막힌 이유를 말한다. */
+  lengthOverLimit: (max: number) => `${max.toLocaleString('ko-KR')}자를 넘어 저장할 수 없습니다.`,
 } as const
