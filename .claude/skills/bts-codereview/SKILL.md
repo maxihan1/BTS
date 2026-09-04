@@ -61,9 +61,22 @@ Skill({
 
 두 렌즈는 관점이 다르다 — 에이전트는 **절대 규칙 정합**, `/review` 는 **구조·안전성**. 순차로 나누면 왕복만 2배가 된다.
 
-## Step 3. ceo 추가 리뷰 (T2+ · auth/migration 한정)
+## Step 3. ceo 추가 리뷰 (**티어 축 또는 타입 축**)
 
-`classify.type ∈ {auth, migration}` 이면 `/plan-ceo-review` 를 PR 단위로 한 번 더 부른다 — 데이터·보안 폭발 반경이 커서 plan 통과만으로 정책 약속이 담보되지 않는다.
+다음 **둘 중 하나라도** 참이면 `/plan-ceo-review` 를 PR 단위로 한 번 더 부른다.
+
+- **티어 축** — 실측 티어가 `T3` 다 (`MIGRATION` · `SHARED_KERNEL` · `TOPOLOGY` 표면).
+- **타입 축** — `classify.type ∈ {auth, migration}` 이다.
+
+데이터·보안 폭발 반경이 커서 plan 통과만으로 정책 약속이 담보되지 않는 자리다.
+
+**★두 축을 모두 본다.** 종전에는 타입 축만 봤다. 그런데 `CLAUDE.md` 티어표와 `/bts` 절차표는
+「T3 = 리뷰 2 + ceo」를 **티어**로 약속한다. 티어와 타입은 서로 독립이므로
+(`scripts/workflow/types.ts` 가 명시), `shared-kernel` 이나 `settings.gradle.kts` 를 고쳐 T3 가
+됐는데 타입이 `backend` 로 분류되면 **가장 위험한 변경에 가장 높은 리뷰가 안 붙었다**
+(2026-09-04 진단). 축이 하나면 약속과 실행이 갈린다.
+
+실측 티어는 Step 1 의 `detect-tier.ts` 출력을 쓴다 — 선언 티어가 아니다.
 
 ```
 Skill({ skill: "plan-ceo-review", args: "이 PR 이 plan 단계 ceo 리뷰의 제약을 지키는지 검증. plan. docs/plans/<date>-<slug>.md · PR diff. <PR_DIFF>" })
@@ -80,11 +93,12 @@ Skill({ skill: "plan-ceo-review", args: "이 PR 이 plan 단계 ceo 리뷰의 �
 | 티어 | 이 스킬이 발행하는 렌즈 |
 |---|---|
 | T0 · T1 | `code-reviewer` 1종 — **하한이다. 0종으로 내려가지 않는다** |
-| T2 · T3 | `code-reviewer` + `/review` 2종 (+ auth/migration 이면 Step 3 ceo) |
+| T2 | `code-reviewer` + `/review` 2종 (+ auth/migration 이면 Step 3 ceo) |
+| **T3** | `code-reviewer` + `/review` 2종 + **ceo 항상** (티어 축) |
 
 ## Step 6. 게이트 2 요약 → `/bts` 반환
 
-**i-have-adhd 규칙으로 낸다.** Maxi 가 승인을 판단하는 지점이므로 첫 줄은 판정(승인 가능 / 차단 사유)이고, 지적은 심각도 순 최대 5건까지 번호를 매긴다. 처음 나온 약어(ReDoS·OCC·nullable 등)는 괄호 풀이 필수. 마지막 줄은 Maxi 가 2분 안에 할 수 있는 다음 행동 하나.
+**보고 서식은 [`docs/rules/output-format.md`](../../../docs/rules/output-format.md) 를 따른다.** Maxi 가 승인을 판단하는 지점이므로 첫 줄은 판정(승인 가능 / 차단 사유)이고, 지적은 심각도 순 최대 5건까지 번호를 매긴다. 처음 나온 약어(ReDoS·OCC·nullable 등)는 괄호 풀이 필수. 마지막 줄은 Maxi 가 2분 안에 할 수 있는 다음 행동 하나.
 
 ```
 🛑 게이트 2 — Maxi 검토 부탁드립니다.

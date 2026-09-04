@@ -38,12 +38,23 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 ```
 
 둘 중 하나라도 비어있지 않으면 `AskUserQuestion` — ① 이어가기 ② 새 작업 추가 ③ 이전 폐기(worktree 삭제 + draft PR close).
-**「이어가기」의 재개 지점은 추정하지 않는다.** `.claude/STATE.md` 의 마지막 기록을 읽어 그 단계로 복귀한다. STATE 가 없거나 `⚠ STALE` 배너가 있으면 Maxi 에게 재개 지점을 묻는다.
+**「이어가기」의 재개 지점은 추정하지 않는다.** `.claude/STATE.md` 의 마지막 기록을 읽어 그 단계로 복귀한다. STATE 가 없거나 `⚠ STALE` 배너가 있으면 `AskUserQuestion` 으로 재개 지점을 묻는다.
+
+**★STATE.md 를 쓰는 것도 이 컨트롤러의 일이다.** 각 단계 응답을 받은 직후 한 줄을 덧쓴다.
+
+```bash
+printf '%s\n' "$(date -u +%FT%TZ) [<N>/7] <스킬명> <결과 한 줄> · slug=<slug> · tier=<T?>" >> .claude/STATE.md
+```
+
+2026-09-04 진단 — 읽으라는 지시만 있고 **쓰라는 곳이 0곳**이었다. 그래서 재개 시
+STATE 는 항상 비어 있었고 「추정하지 않는다」가 지킬 대상을 갖지 못했다.
 활성 작업이 없고 입력이 모호하면(30자 미만 + 동사만) `AskUserQuestion` 으로 3 옵션, 빈 입력이면 `gh pr list --state open` 후 "어떤 PR 이어서 작업?".
 
 ## 티어 판정 5문 (착수 시점 — 선언)
 
-티어 **정의**(표면 4행표)는 `CLAUDE.md` 가 정본이다. 사본을 여기 두지 않는다.
+티어 **요약**(4행표)은 `CLAUDE.md`, **표면 이름↔티어**는 `docs/rules/behavior-rules.md` §1,
+**글로브**는 `scripts/workflow/surfaces.ts` 가 정본이다. 이 파일은 **절차**만 소유한다 — 사본을 두지 않는다.
+정본 분담표는 `docs/rules/behavior-rules.md` 머리말.
 
 ① 혼합이면 **최고 티어**(max)를 쓴다 — 티어는 절차 강도이므로 가장 위험한 표면이 지배한다.
 ② 기본값은 **T1**. Maxi 가 티어를 지정하면 그것이 항상 우선한다.
@@ -102,7 +113,7 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 ## 진행 출력
 
 각 단계마다 1줄 출력해 black box 를 피한다(`🔄 [1/7] 분류 중… → type=feature, tier=T2, tasks=4`).
-**보고는 i-have-adhd 규칙을 따른다** — 다음 행동부터, 여러 단계는 번호, 서두·요약·마무리 인사 없음. T0/T1 은 바꾼 파일과 확인 방법 각 1줄. T2/T3 은 무엇을 왜 · 확인 방법 · 남은 위험 · 다음 할 일 각 1줄.
+**보고 서식 정본은 [`docs/rules/output-format.md`](../../../docs/rules/output-format.md)** — 다음 행동부터, 여러 단계는 번호, 서두·요약·마무리 인사 없음. T0/T1 은 바꾼 파일과 확인 방법 각 1줄. T2/T3 은 무엇을 왜 · 확인 방법 · 남은 위험 · 다음 할 일 각 1줄.
 
 ## 실패 / 엣지 케이스
 

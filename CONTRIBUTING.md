@@ -147,5 +147,5 @@ docker system prune
 |---|---|
 | SDD (설계 문서 26개 챕터) | `docs/sdd/README.md` |
 | 헌법 진입점 | `CLAUDE.md` |
-| 절대 규칙 18개 | `DEVELOPMENT.md` |
+| 절대 규칙 19개 | `DEVELOPMENT.md` |
 | 데이터 룰 | `DATA.md` |

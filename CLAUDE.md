@@ -20,6 +20,7 @@ notification search-export-import slack-integration automation) + 배포 조립 
 | T3 | 마이그레이션 `shared-kernel` 토폴로지 | ADR+plan · TDD + 마이그레이션 검증 | 리뷰 2+ceo · 게이트 1+2 |
 
 ① 섞이면 **최고 티어** ② 기본 T1, Maxi 지정 우선 ③ 미분류는 T1 + `UNMAPPED: <경로>` 를 게이트 2 요약에.
+**이 표는 요약이다.** 절차 정본은 `.claude/skills/bts/SKILL.md §티어별 절차`, 표면 이름은 `docs/rules/behavior-rules.md` §1.
 보안 표면은 T2 미만 불가. 글로브 정본 `scripts/workflow/surfaces.ts` · 전문 `docs/rules/behavior-rules.md`.
 
 ## 코드 지도

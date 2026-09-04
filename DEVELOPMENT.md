@@ -117,7 +117,7 @@ export const issueKey = (input: string): IssueKey | null => { ... };
 
 | Prefix | 용도 |
 |---|---|
-| `feat:` | 새 기능 (TDD red→green→refactor 한 사이클 = 한 커밋) |
+| `feat:` | 새 기능의 **green 단계** (TDD 한 사이클 = 아래 3커밋) |
 | `test:` | TDD red 단계 (실패 테스트) |
 | `fix:` | 버그 수정 |
 | `refactor:` | 동작 변경 없는 정리 |
@@ -127,12 +127,20 @@ export const issueKey = (input: string): IssueKey | null => { ... };
 ### TDD 강제 커밋 패턴
 
 ```
-test: <slug> red — <테스트가 검증하는 시나리오>
-feat: <slug> green — <최소 구현>
-refactor: <slug> — <정리 요약>
+test: <slug> task-N red
+feat: <slug> task-N green
+refactor: <slug> task-N
 ```
 
-`/bts-impl`의 spec-compliance-verifier가 git log를 확인. `test:` 커밋이 `feat:` 커밋보다 먼저 없으면 BLOCKED.
+**★`task-N` 토큰은 장식이 아니다.** `/bts-impl` 의 검증자가 이 문자열을 그대로 대조해
+`test:` 커밋 hash 가 `feat:` 커밋보다 먼저인지 본다 — 아니면 `TDD_VIOLATION` 이다.
+서식 정본은 `.claude/skills/bts-impl/dispatch-prompt.md` 이고 여기는 그 사본이다.
+
+**한 사이클 = 3커밋이다.** 종전 이 문서는 `feat:` 행에서 「한 사이클 = 한 커밋」이라 하고
+바로 아래에서 3커밋을 제시했다. 검증자는 3커밋 전제로 판정하므로 위 행을 따르면
+**규칙을 지켰는데 위반 판정**이 났다(2026-09-04 진단). 3커밋으로 통일한다.
+
+부연을 쓰고 싶으면 `—` 뒤에 붙인다 — `task-N` 토큰과 순서만 계약이다.
 
 ### PR 규칙
 

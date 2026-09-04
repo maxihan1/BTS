@@ -70,7 +70,8 @@ Pre-Landing Review: N issues (X critical, Y informational)
 ## Suppressions — DO NOT flag
 
 - 글로벌 체크리스트의 Suppressions 전체 적용.
-- `detekt-baseline.xml` 동결 항목 (identity-access · issue-tracking · project-workflow 3모듈 — PRE_EXISTING 동결 정책).
+- `detekt-baseline.xml` 동결 항목 (**실측이 정본** — `ls backend/modules/*/detekt-baseline.xml`. PRE_EXISTING 동결 정책).
+  종전 이 줄은 「3모듈」로 굳어 있었고 실제는 8모듈이었다. 같은 PR 을 두 렌즈가 서로 다른 전제로 봤다.
 - Pass 0에서 PRE_EXISTING으로 판별된 위반 (표기만, 차단 금지).
 - `packages/` · `features/` 모노레포 부재 지적 (단일 SPA가 의도된 구조).
 - Testcontainers 공통 베이스 클래스 부재 (알려진 현황, 후속 트랙).

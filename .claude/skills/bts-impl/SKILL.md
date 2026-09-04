@@ -64,8 +64,10 @@ plan 의 task 메타(`agent` / `files` / `depends-on`)로 실행 순서를 잡�
 **BLOCKED 복구 규율.** 재dispatch 프롬프트에 **시도한 것 / 관찰한 것 / 가설 2개 / 필요한 정보** 네 항목을 반드시 채운다 — 이것 없이 다시 던지면 같은 실패가 반복된다.
 wave 안 일부만 BLOCKED 면 그 task 만 재시도하고, BLOCKED task 에 의존하지 않는 다음 wave task 는 진입 가능하다.
 
-#### 2-C. spec-compliance-verifier 병렬 dispatch
+#### 2-C. 계획 대조 검증자 병렬 dispatch (`subagent_type: "general-purpose"`)
 
+- **★역할 이름이 아니라 빌트인 에이전트다.** `.claude/agents/` 에 `spec-compliance-verifier.md` 는 없다 —
+  `CLAUDE.md` 의 「파일 없는 역할은 만들지 않는다」에 걸리므로 실제 `subagent_type` 인 `general-purpose` 로 부른다.
 - `DONE` / `DONE_WITH_CONCERNS` task 전부를 검증한다. **controller 가 task 별 git log + diff 를 먼저 직접 수집해 verifier prompt 에 인라인 첨부** — verifier 가 추측으로 거짓 PASS 를 내는 경로를 막는다.
 - verifier 는 **read-only 분석 전용**. 추가 Bash 실행 금지.
 - PASS 응답에 **실제 commit hash 문자열이 인용돼 있지 않으면 controller 가 거절**하고 재dispatch 한다.
@@ -91,7 +93,7 @@ node --experimental-strip-types scripts/workflow/select-test-scope.ts --plan doc
 
 이 명령이 **이번 브랜치가 실제로 돌려야 할 명령 블록**을 출력한다. 그것을 그대로 실행한다.
 계산에 들어가는 것은 셋이다 — ① 브랜치 diff 기반 백엔드 모듈 폐포 ② 바뀐 소스를 import 하는
-프론트 테스트(`vitest --related`) ③ **plan 이 task 마다 적어 둔 `**검증**:` 명령 전량**.
+프론트 테스트(`vitest related`) ③ **plan 이 task 마다 적어 둔 `**검증**:` 명령 전량**.
 
 **★전량 명령을 여기 적어 두지 않는다.** 2026-09-04 진단 — Step 4 가 `./gradlew test`(8,734개)와
 `pnpm test`(9,755개)를 무조건 돌아, 알림 모듈 한 곳을 고쳐도 18,489개가 돌고 그중 97.6% 가 무관했다.
@@ -150,7 +152,7 @@ echo "EXIT=$?"; tail -30 /tmp/test.log
 
 ## 출력 형식
 
-**진행 트리 위에 i-have-adhd 규칙의 결과 줄을 먼저 얹는다.** 트리의 내부 용어(wave·dispatch·DRIFT)를 읽지 않아도 무엇을·왜 했는지 알게 한다.
+**진행 트리 위에 결과 줄을 먼저 얹는다**(서식 정본 [`docs/rules/output-format.md`](../../../docs/rules/output-format.md)). 트리의 내부 용어(wave·dispatch·DRIFT)를 읽지 않아도 무엇을·왜 했는지 알게 한다.
 
 ```
 ✅ 한 줄  <비전문가 한 문장 — 무엇이 됐나>
