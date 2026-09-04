@@ -31,6 +31,9 @@ const ISSUES_URL = '/issues'
 /** 대상 이슈 키 — 기본 4건 시드 중 하나 */
 const TARGET_KEY = issueAtlas1Fixture.key
 
+/** 대상 이슈 요약 — 상세 제목(h2) 로 잡는다 */
+const TARGET_SUMMARY = issueAtlas1Fixture.summary
+
 /** split 분기 기준(min-width: 1024px)을 넘는 와이드 뷰포트 */
 const WIDE_VIEWPORT = { width: 1280, height: 900 }
 
@@ -42,6 +45,19 @@ function getModal(page: Page) {
 /** 상세 사이드패널 — complementary 가 아니라 region 이다(사이드바의 유일성을 지킨다). */
 function getSidePanel(page: Page) {
   return page.getByRole('region', { name: issueDetailStrings.sidePanelLabel })
+}
+
+/**
+ * 오른쪽에 붙은 상세의 제목(h2).
+ *
+ * ★목록 화면에서 사이드바 선호는 **기존 split view 페인**이 맡고, 그 밖의 화면은 전역
+ * `IssueDetailSidePanel` 이 맡는다. 껍데기는 둘이지만 안쪽은 같은 `variant='pane'` 이라
+ * 사용자 눈에는 같은 것이고, 제목 h2 하나로 양쪽을 함께 잡을 수 있다. 목록의 split view 를
+ * 전역 패널로 갈아치우지 않은 이유는 `selected` URL 에 딥링크·커서 `j`/`k`·뒤로가기가
+ * 걸려 있어서다.
+ */
+function getSideDetailHeading(page: Page) {
+  return page.getByRole('heading', { level: 2, name: TARGET_SUMMARY })
 }
 
 /** 표시 방식 `⋯` 트리거 — 모달/패널 중 떠 있는 쪽에 하나만 있다. */
@@ -111,8 +127,9 @@ test.describe('Jira 패리티 J1 — 상세 표시 방식 토글', () => {
   //
   // Given  P2 로 사이드바를 고른 뒤
   // When   새로고침하고 다시 행을 클릭하면
-  // Then   모달을 거치지 않고 곧바로 패널로 열린다.
+  // Then   모달을 거치지 않고 곧바로 오른쪽 상세로 열린다.
   //        ("persist across Jira views within the same session")
+  //        목록에서의 껍데기는 split view 페인이다 — getSideDetailHeading 주석 참조.
   // ───────────────────────────────────────────────────────────────────────────
   test('P3 사이드바 선호는 새로고침 뒤에도 남는다', async ({ page }) => {
     await page.goto(ISSUES_URL)
@@ -123,8 +140,10 @@ test.describe('Jira 패리티 J1 — 상세 표시 방식 토글', () => {
     await page.reload()
     await openTargetFromList(page)
 
-    await expect(getSidePanel(page)).toBeVisible()
+    // 모달이 아니다 — 선호가 새 문서에서도 살아 있다(sessionStorage).
     await expect(getModal(page)).toHaveCount(0)
+    // 목록에서는 split view 페인이 그 자리를 맡는다(위 getSideDetailHeading 주석).
+    await expect(getSideDetailHeading(page)).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────

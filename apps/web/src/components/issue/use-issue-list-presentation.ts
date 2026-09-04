@@ -35,6 +35,7 @@ export function useIssueListPresentation({
   const presentation = useIssueDetailModalStore((s) => s.presentation)
   const openKey = useIssueDetailModalStore((s) => s.openKey)
   const open = useIssueDetailModalStore((s) => s.open)
+  const close = useIssueDetailModalStore((s) => s.close)
 
   /**
    * 사이드바 → 모달 즉시 전환 뒤의 URL 정리.
@@ -50,6 +51,21 @@ export function useIssueListPresentation({
     // `clearSelected` 는 렌더마다 새로 만들어지는 지역 함수라 의존성에 넣으면 매 렌더 재실행된다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presentation, selected, openKey])
+
+  /**
+   * 목록 페인이 열리면 전역 껍데기를 비운다 — 같은 이슈가 두 번 그려지는 것을 막는다.
+   *
+   * 사이드바 선호에서 전역 패널을 열어 둔 채 목록으로 이동해 커서 `j`/`k` 를 누르면 `selected`
+   * 와 `openKey` 가 **둘 다** 살아난다. 그러면 split 페인과 전역 패널이 나란히 떠 상세가 화면에
+   * 두 벌 그려진다 — 확률은 낮지만 막지 않으면 일어난다. 목록에 있는 동안은 페인이 그 자리를
+   * 맡으므로 전역 쪽을 닫는 것이 옳다.
+   *
+   * 모달 선호는 대상이 아니다 — 그쪽은 위 useEffect 가 반대로 URL 을 비워 모달에 넘긴다.
+   */
+  useEffect(() => {
+    if (presentation !== 'sidePanel' || selected === undefined || openKey === null) return
+    close()
+  }, [presentation, selected, openKey, close])
 
   return {
     openViaPresentation: (issueKey: string): boolean => {

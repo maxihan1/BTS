@@ -2258,6 +2258,20 @@ describe('IssueListRouteAdapter — 표시 방식 결선 (J1)', () => {
   })
 
   /**
+   * PR6: 사이드바 선호에서 페인이 열리면 전역 패널은 닫힌다.
+   *
+   * 전역 패널을 열어 둔 채 목록으로 와 커서 `j`/`k` 를 누르면 `selected` 와 `openKey` 가 둘 다
+   * 살아나 상세가 화면에 **두 벌** 그려진다. 목록에 있는 동안은 페인이 그 자리를 맡는다.
+   */
+  it('PR6: 사이드바 선호 + selected 이면 전역 openKey 를 닫는다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    useIssueDetailModalStore.setState({ presentation: 'sidePanel', openKey: 'ATLAS-1' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(useIssueDetailModalStore.getState().openKey).toBeNull())
+  })
+
+  /**
    * PR5: 커서가 옮긴 `selected` 는 모달 선호에서도 살아남는다 — PR4 의 방아쇠가 좁다는 증거.
    * 모달이 **다른 이슈**를 들고 있으면(또는 아무것도 안 들고 있으면) URL 을 건드리지 않는다.
    */
