@@ -10,6 +10,7 @@ import com.bts.agileplanning.application.ColumnStateAmbiguousException
 import com.bts.agileplanning.application.DuplicateStateKeysException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.StateAlreadyMappedException
+import com.bts.agileplanning.application.WipLimitChange
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.BoardNameInvalidException
@@ -117,6 +118,11 @@ import java.util.UUID
  * - PATCH-N3. {name:null} → 400 (present-null). 서비스 미호출.
  * - PATCH-N4. {} → 400. 최소 1필드 규칙 — 계약 완화 방지 앵커.
  * - PATCH-N5. {name, swimlaneField} 동시 전송 → 200 + 두 변경 모두 반영.
+ * - COL-N1. PATCH columns {name} 만 → 200 + 이름 변경, **wipLimit 무변경**(WipLimitChange.Unchanged 인자 고정).
+ * - COL-N2. {name, wipLimit} 동시 → 200 + 둘 다 반영.
+ * - COL-N3. {} → 400, 서비스 미호출. 최소 1필드 규칙.
+ * - COL-N4. {name:"   "} → 400, 서비스 미호출.
+ * - COL-N5. {name:null} (present-null) → 400. 컬럼 이름은 해제할 수 없다.
  * - PATCH-N7. {name 유효, swimlaneField 무효} → 400 + 서비스 위임 1회(원자성 — 두 트랜잭션 분할 금지).
  * - ERR-1. 이름 불변식과 무관한 IllegalArgumentException 하위(NumberFormatException) → 500.
  * - DEL-1. DELETE /boards/{id} → 204 + SOFT_DELETE 권한 판정 + 서비스 위임.
@@ -1174,7 +1180,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(board.id) } returns board
         every {
-            boardApplicationService.updateColumnWipLimit(board.id, col.id, 5)
+            boardApplicationService.updateColumn(board.id, col.id, null, WipLimitChange.Set(5))
         } returns updatedCol
 
         val body = mapOf("wipLimit" to 5)
@@ -1272,7 +1278,7 @@ class BoardControllerIntegrationTest {
 
         every { boardRepository.findById(boardWithWip.id) } returns boardWithWip
         every {
-            boardApplicationService.updateColumnWipLimit(boardWithWip.id, col.id, null)
+            boardApplicationService.updateColumn(boardWithWip.id, col.id, null, WipLimitChange.Set(null))
         } returns releasedCol
 
         val body = mapOf("wipLimit" to null)
@@ -1284,6 +1290,106 @@ class BoardControllerIntegrationTest {
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.wipLimit").doesNotExist())
+    }
+
+    // ── COL-N. PATCH 컬럼이 name 을 받는다 (부채 177 R9 · J24) ──────────────────
+    //
+    // ★이 묶음의 급소는 COL-N1 이다. `wipLimit` 이 평범한 `Int?` 였다면 「name 만 전송」과
+    //   「name + wipLimit=null 전송」이 서버에서 구분되지 않아 **이름만 바꿔도 WIP 제한이 조용히
+    //   해제**된다. 그래서 요청 DTO 는 3-state 를 쓰고 서비스는 [WipLimitChange.Unchanged] 를 받는다.
+    //   COL-N1 이 그 인자를 직접 못박으므로, 누군가 `Set(null)` 로 되돌리면 이 한 건만 red 가 된다.
+
+    @Test
+    fun `COL-N1 name 만 보내면 이름이 바뀌고 wipLimit 은 건드리지 않는다`() {
+        val board = sampleBoard()
+        val col = board.columns[1].copy(wipLimit = 7)
+        val boardWithWip = board.copy(columns = listOf(board.columns[0], col, board.columns[2]))
+        val renamed = col.copy(name = "검수")
+
+        every { boardRepository.findById(boardWithWip.id) } returns boardWithWip
+        every {
+            boardApplicationService.updateColumn(boardWithWip.id, col.id, "검수", WipLimitChange.Unchanged)
+        } returns renamed
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${boardWithWip.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to "검수"))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("검수"))
+            .andExpect(jsonPath("$.data.wipLimit").value(7))
+
+        // ★인자 자체를 못박는다 — 「해제하지 않는다」는 응답만 봐서는 증명되지 않는다.
+        verify(exactly = 1) {
+            boardApplicationService.updateColumn(boardWithWip.id, col.id, "검수", WipLimitChange.Unchanged)
+        }
+    }
+
+    @Test
+    fun `COL-N2 name 과 wipLimit 을 함께 보내면 둘 다 반영된다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        val updated = col.copy(name = "검수", wipLimit = 4)
+
+        every { boardRepository.findById(board.id) } returns board
+        every {
+            boardApplicationService.updateColumn(board.id, col.id, "검수", WipLimitChange.Set(4))
+        } returns updated
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to "검수", "wipLimit" to 4))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("검수"))
+            .andExpect(jsonPath("$.data.wipLimit").value(4))
+    }
+
+    @Test
+    fun `COL-N3 두 필드가 모두 부재이면 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"),
+        ).andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `COL-N4 name 이 공백뿐이면 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to "   "))),
+        ).andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `COL-N5 name 이 명시 null 이면 400 이다 — 컬럼 이름은 해제할 수 없다`() {
+        val board = sampleBoard()
+        val col = board.columns[1]
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            patch("/api/v1/boards/${board.id}/columns/${col.id}")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("name" to null))),
+        ).andExpect(status().isBadRequest)
+
+        verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
     }
 
     // ── WIP-S4. PATCH swimlaneField=ASSIGNEE → 200 + echo ────────────────────
