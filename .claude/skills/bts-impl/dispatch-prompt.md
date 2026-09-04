@@ -15,13 +15,22 @@ plan 파일의 Task N을 구현. 작업 디렉토리: .worktrees/<slug>.
 **TDD 강제. 다음 순서 절대 지킬 것.**
 
 1. RED. plan의 RED phase 테스트를 작성 → 즉시 커밋 (`test: <slug> task-N red`)
-2. 테스트 실행해서 실패 확인. 실패 출력 전체를 보고에 첨부
+2. **아래 「검증 명령」을 그대로 실행**해서 실패 확인. 실패 출력 전체를 보고에 첨부
 3. GREEN. plan의 GREEN phase 최소 구현 → 커밋 (`feat: <slug> task-N green`)
-4. 테스트 실행해서 통과 확인. 통과 출력 첨부
+4. **같은 검증 명령**을 실행해서 통과 확인. 통과 출력 첨부
 5. REFACTOR. plan의 REFACTOR phase 정리 → 커밋 (`refactor: <slug> task-N`)
 6. 모든 단계에서 절대 규칙 (DEVELOPMENT.md, DATA.md) 준수
 
 **RED 단계 건너뛰면 BLOCKED 처리됨.**
+
+**검증 명령 (이 task 전용 — 이것만 돈다).**
+```
+<task.검증 — plan 의 `**검증**:` 줄을 controller 가 그대로 여기에 붙인다>
+```
+★**전량 명령으로 대체 금지.** `./gradlew test` 나 `vitest run`(인자 없이)을 돌리지 않는다.
+이 task 가 건드린 것과 무관한 테스트 수천 개가 딸려 오고, 실패가 나도 내 변경 때문인지 알 수 없다.
+위 명령이 비어 있으면 구현하지 말고 **BLOCKED** 로 보고한다 — plan 이 검증 대상을 안 정한 것이다.
+범위를 넓혀야 할 근거를 찾았으면 그 근거를 보고에 적고 **넓힌 명령도 함께** 적는다.
 
 **파일 범위 제약 (병렬 dispatch 안전성).**
 이 task가 건드릴 파일은 plan 메타의 `files`에 선언된 것에 한정.

@@ -28,6 +28,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { computeScope, renderCommands } from './select-test-scope.ts'
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 /**
@@ -64,10 +66,13 @@ const DELIBERATELY_OFF: ReadonlyArray<readonly [string, string, string]> = [
 /**
  * `caching=true` 의 부작용을 막는 곳. 이 파일들의 gradle 린트 호출은 `--rerun-tasks` 를
  * 반드시 달아야 한다. 캐시가 위반을 삼키는 것을 막는 유일한 지점이다.
+ *
+ * ★2026-09-04 — 로컬 린트 호출이 `bts-impl/SKILL.md` 본문에서
+ * `select-test-scope.ts` 의 렌더 출력으로 옮겨갔다(전량 명령을 스킬에 두면 사람이 그쪽을
+ * 복사해 쓰기 때문). 텍스트 목록에서 빼는 대신 **렌더된 실제 명령을 검사**한다 — 아래
+ * 「렌더 출력」 describe. 문자열 매칭보다 강한 형태이고, 계약은 그대로 살아 있다.
  */
-const LINT_BYPASS_SITES = [
-  '.claude/skills/bts-impl/SKILL.md',
-] as const
+const LINT_BYPASS_SITES: readonly string[] = []
 
 /** `.properties` 본문에서 주석과 빈 줄을 걷어낸 key=value 맵을 만든다. */
 export function parseProperties(source: string): Map<string, string> {
@@ -123,7 +128,43 @@ describe('gradle 성능 스위치', () => {
   }
 })
 
-describe('caching 의 부작용 차단 — 로컬 린트가 캐시로 통과하지 않는다', () => {
+describe('caching 의 부작용 차단 — 렌더 출력의 린트 명령', () => {
+  // 로컬 검증 명령의 정본은 이제 `select-test-scope.ts` 의 렌더다.
+  // 텍스트가 아니라 **실제로 사람에게 출력되는 명령**을 본다.
+  const rendered = renderCommands(
+    computeScope(['backend/modules/notification/src/main/kotlin/A.kt'], null),
+  )
+  const lines = gradleLintLines(rendered)
+
+  test('★렌더 출력에 gradle 린트 호출이 존재한다', () => {
+    // 부재는 통과가 아니다. 호출이 사라지면 계약이 공허해지므로 그것부터 red 다.
+    assert.ok(
+      lines.length > 0,
+      'select-test-scope.ts 의 렌더 출력에 gradle 린트 호출이 없다.\n' +
+        '  백엔드가 바뀐 브랜치인데 ktlint/detekt 를 아무도 안 부른다는 뜻이다.',
+    )
+  })
+
+  test('★렌더된 린트 호출이 --rerun-tasks 를 단다', () => {
+    for (const line of lines) {
+      assert.ok(
+        line.includes('--rerun-tasks'),
+        `렌더된 린트 호출에 --rerun-tasks 가 없다:\n    ${line}\n` +
+          '  org.gradle.caching=true 인 상태에서 ktlint/detekt 가 UP-TO-DATE 로 통과해\n' +
+          '  위반이 있어도 「린트 초록」이 된다. backend-ci.yml 이 같은 이유로 이미 우회 중이다.',
+      )
+    }
+  })
+
+  test('린트 대상이 바뀐 모듈로 좁혀져 있다', () => {
+    assert.match(lines.join('\n'), /:modules:notification:ktlintCheck/)
+    assert.doesNotMatch(
+      lines.join('\n'),
+      /:modules:issue-tracking:/,
+      '바뀌지 않은 모듈까지 린트하고 있다 — 좁힘이 깨졌다',
+    )
+  })
+
   for (const site of LINT_BYPASS_SITES) {
     test(`${site} 의 gradle 린트 호출이 --rerun-tasks 를 단다`, () => {
       const source = fs.readFileSync(path.join(REPO_ROOT, site), 'utf8')

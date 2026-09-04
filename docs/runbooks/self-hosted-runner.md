@@ -106,7 +106,7 @@ gh api /repos/maxihan1/BTS/actions/runners \
   ```
   이미지 아키텍처 문제가 아니다(pgmq 이미지는 arm64 매니페스트를 갖는다). **기능 자체가 없다.**
   스텝 안에서 `docker run` 으로 직접 띄우는 것은 정상 동작한다 — 같은 실행에서 infra-ci 의 nginx
-  봉인 잡이 그렇게 돌고 통과했다(양성 대조군). `ci-runner-label-alignment.test.ts` 가 회귀를 차단한다.
+  봉인 잡이 그렇게 돌고 통과했다(양성 대조군). 회귀를 막는 기계 장치는 없다 — `ci-runner-label-alignment.test.ts` 는 eca4a9c7f 에서 삭제됐다.
 - **assembly 잡 DB 는 55433 이다.** 로컬 dev postgres(`bts-postgres-dev`)가 5433 을 상시 점유하므로
   전용 컨테이너를 55433 에 띄우고 `BTS_DB_URL` 로 덮는다. **그 dev DB 를 재사용하면 안 된다** —
   볼륨이 영속이라 선재 행이 가짜 초록을 만든다.
@@ -147,7 +147,7 @@ gh api /repos/maxihan1/BTS/actions/runners \
   - **점검.** `bash scripts/verify-runner-health.sh` (exit 0 이어야 정상).
     `/bts-start` **Step 0** 이 매 작업 시작 시 자동으로 돌리고, CI 는 모든 워크플로우가
     `runner-health.yml` 을 `needs:` 로 매달아 돌린다. 배선은
-    `scripts/workflow/runner-healthcheck-wiring.test.ts` 가 강제한다.
+    강제하던 `scripts/workflow/runner-healthcheck-wiring.test.ts` 는 eca4a9c7f 에서 삭제됐다 — 지금은 사람이 지킨다.
   - **★파일 존재 확인으로는 못 잡는다.** `externals` 는 `corepack`·`npm`·`npx` 심볼릭이
     남고 `node` 만 없었고, 툴캐시는 `arm64.complete` 표식만 남아 `setup-*` 가 **캐시 히트로
     오판**해 시스템 node(v22.14.0)로 조용히 흘러내렸으며(그 결과 `.ts` 타입 스트리핑이
@@ -179,7 +179,7 @@ gh api /repos/maxihan1/BTS/actions/runners \
 되돌리려면 **같은 PR 에서 세 가지를 함께** 바꾼다. 하나라도 빠지면 봉인이 어긋난다.
 
 1. `.github/workflows/*.yml` 의 `runs-on: [self-hosted, bts-local]` → `ubuntu-latest` (**전수**)
-2. `scripts/workflow/ci-runner-label-alignment.test.ts` 의 `REQUIRED_RUNNER_LABEL` 단언 —
+2. (삭제됨) `ci-runner-label-alignment.test.ts` 의 `REQUIRED_RUNNER_LABEL` 단언 —
    되돌린다면 이 판별식도 함께 되돌린다. 그냥 두면 되돌리는 PR 이 차단된다 (의도된 래칫이다)
 3. `assembly` 잡의 postgres 기동 방식 — Linux 러너로 돌아가면 `docker run` 스텝 3종을
    `services:` 블록으로 되돌릴 수 있다(그쪽이 헬스체크·정리를 GitHub 이 대신 해 준다).
@@ -265,7 +265,7 @@ gh api "/repos/maxihan1/BTS/actions/artifacts?per_page=100" \
 | 봉인 | `scripts/verify/nginx-log-masking.sh` | 데몬 부재를 **`exit 8`** 로 분리. `5`(문법 오류) · `7`(CLI 부재)와 다른 값이다 |
 
 **어느 워크플로우가 데몬을 요구하는지는 손으로 관리하지 않는다.**
-`scripts/workflow/runner-healthcheck-wiring.test.ts` 가 실제 docker 사용을 훑어 **양방향**으로
+(삭제됨) `runner-healthcheck-wiring.test.ts` 가 실제 docker 사용을 훑어 **양방향**으로
 강제한다 — 쓰는데 안 넘기면 red, 안 쓰는데 넘겨도 red(프론트·판별식 PR 을 부당하게 막는 것도
 결함이다).
 

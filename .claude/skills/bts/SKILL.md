@@ -27,17 +27,34 @@ BTS 모든 코드 작업의 **단일 진입점**. 티어를 판정하고 7단계
 이전 세션이 중단된 채 남긴 worktree / draft PR 을 감지. 발견되면 사용자 확인 없이 진행 금지.
 
 ```bash
-ACTIVE_WORKTREES=$(ls -d .worktrees/*/ 2>/dev/null)
+# ★git 에게 묻는다. 디렉터리 훑기는 위치를 놓친다 —
+#   `ls -d .worktrees/*/` 만 보던 종전 판정은 하네스가 만든 `.claude/worktrees/` 아래를
+#   전혀 못 봤다. 2026-09-04 실측으로 **중단된 작업방 3개가 있는데 0건**을 냈다.
+#   위치를 목록으로 유지하면 그 목록이 또 하나의 썩는 두 번째 목록이 된다.
+MAIN_TREE=$(dirname "$(git rev-parse --git-common-dir)")
+ACTIVE_WORKTREES=$(git worktree list --porcelain | awk '/^worktree /{print $2}' \
+  | grep -vx "$MAIN_TREE" | grep -vx "$(git rev-parse --show-toplevel)")
 ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefName 2>/dev/null)
 ```
 
 둘 중 하나라도 비어있지 않으면 `AskUserQuestion` — ① 이어가기 ② 새 작업 추가 ③ 이전 폐기(worktree 삭제 + draft PR close).
-**「이어가기」의 재개 지점은 추정하지 않는다.** `.claude/STATE.md` 의 마지막 기록을 읽어 그 단계로 복귀한다. STATE 가 없거나 `⚠ STALE` 배너가 있으면 Maxi 에게 재개 지점을 묻는다.
+**「이어가기」의 재개 지점은 추정하지 않는다.** `.claude/STATE.md` 의 마지막 기록을 읽어 그 단계로 복귀한다. STATE 가 없거나 `⚠ STALE` 배너가 있으면 `AskUserQuestion` 으로 재개 지점을 묻는다.
+
+**★STATE.md 를 쓰는 것도 이 컨트롤러의 일이다.** 각 단계 응답을 받은 직후 한 줄을 덧쓴다.
+
+```bash
+printf '%s\n' "$(date -u +%FT%TZ) [<N>/7] <스킬명> <결과 한 줄> · slug=<slug> · tier=<T?>" >> .claude/STATE.md
+```
+
+2026-09-04 진단 — 읽으라는 지시만 있고 **쓰라는 곳이 0곳**이었다. 그래서 재개 시
+STATE 는 항상 비어 있었고 「추정하지 않는다」가 지킬 대상을 갖지 못했다.
 활성 작업이 없고 입력이 모호하면(30자 미만 + 동사만) `AskUserQuestion` 으로 3 옵션, 빈 입력이면 `gh pr list --state open` 후 "어떤 PR 이어서 작업?".
 
 ## 티어 판정 5문 (착수 시점 — 선언)
 
-티어 **정의**(표면 4행표)는 `CLAUDE.md` 가 정본이다. 사본을 여기 두지 않는다.
+티어 **요약**(4행표)은 `CLAUDE.md`, **표면 이름↔티어**는 `docs/rules/behavior-rules.md` §1,
+**글로브**는 `scripts/workflow/surfaces.ts` 가 정본이다. 이 파일은 **절차**만 소유한다 — 사본을 두지 않는다.
+정본 분담표는 `docs/rules/behavior-rules.md` 머리말.
 
 ① 혼합이면 **최고 티어**(max)를 쓴다 — 티어는 절차 강도이므로 가장 위험한 표면이 지배한다.
 ② 기본값은 **T1**. Maxi 가 티어를 지정하면 그것이 항상 우선한다.
@@ -65,12 +82,34 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 
 ## 게이트
 
-| 게이트 | 대상 | 응답 분기 |
-|---|---|---|
-| 🛑 1 (plan 산출물 요약) | T2/T3 | `승인`→[5] 호출 / `수정 요청`→어느 섹션인지 물어 [2] [3] 중 재호출 후 재진입 / `중단`→worktree·draft PR 유지 |
-| 🛑 2 (PR diff + 리뷰 결과) | **전 티어** | `승인`→[7] 호출 / `수정 후 재리뷰`→concerns 첨부해 [5] 재호출→[6] 재호출 / `보류`→A-0 복원 경로로 재진입 |
+**★두 게이트 모두 `AskUserQuestion` 으로 낸다. 산문 3지선다 금지.**
+본문에 「1. 승인 2. 수정 3. 보류」를 적고 숫자를 타이핑하게 하지 않는다 —
+2026-08-23 · 08-24 · 09-02 세 세션 연속 같은 지적이 나왔고 **세 번 다 원인이 달랐다**
+(거부 기록 오독 / 요약을 내면 질문 단계가 증발 / 한 번 썼으니 됐다는 감각).
+산문 지시로는 안 막힌다는 것이 이미 실증됐으므로 여기에 도구를 못 박는다.
 
+**기계적 판정** — 답을 사람이 골라야 하는 문장(「~할까요」「~아니면」「어느 쪽」)을
+쓰려는 순간, 그 문장을 쓰지 말고 도구를 부른다. 보고서 마지막 줄에 질문을 붙이지 않는다.
+
+**★게이트를 내기 직전에 세션 라벨을 갱신한다.** 선택창을 띄우기 전에 부른다.
+
+```bash
+node --experimental-strip-types scripts/workflow/session-label.ts --step "게이트 1"
+```
+
+병렬로 여러 작업을 돌리면 **승인 화면만 보고는 어느 작업의 승인인지 알 수 없다.**
+탭 제목이 `T2 feature · mention-notify — 게이트 1` 이 되어 그 자리에서 구분된다.
+게이트 2 도 `--step "게이트 2"` 로 같게 한다. 라벨 값의 정본은 `classify.json` 이다.
+
+| 게이트 | 대상 | 도구 | 선택지 (`AskUserQuestion` options) |
+|---|---|---|---|
+| 🛑 1 (plan 산출물 요약) | T2/T3 | **`AskUserQuestion` 필수** | `승인`→[5] 호출 / `수정 요청`→**어느 섹션인지도 같은 질문의 두 번째 항목으로 묻는다** → [2] [3] 중 재호출 후 재진입 / `중단`→worktree·draft PR 유지 |
+| 🛑 2 (PR diff + 리뷰 결과) | **전 티어** | **`AskUserQuestion` 필수** | `승인`→[7] 호출 / `수정 후 재리뷰`→concerns 첨부해 [5] 재호출→[6] 재호출 / `보류`→A-0 복원 경로로 재진입 |
+
+게이트 1 요약에는 **티어 · task 수 · 영향 파일 · 리뷰 렌즈 결과 · BLOCKER 유무**를 싣는다.
 게이트 2 요약에는 **선언 티어 · 실측 티어 · `UNMAPPED` 줄 · 건너뛴 단계**를 반드시 싣는다. 우회 사실을 Maxi 가 보고 승인하게 하는 것이 이 요약의 목적이다.
+
+**요약을 다 쓴 것이 질문을 낸 것이 아니다.** 요약은 질문의 재료다 — 요약 뒤에 반드시 도구 호출이 온다.
 
 **T0/T1 에서 UI 를 건드렸으면 `Jira 대응 3줄`도 같이 싣는다** — `Jira 대응`(화면 + 출처 URL + 조회일) ·
 `채택` · `편차`. T1 은 plan 파일이 0개라 이 3줄이 Jira 패리티 판단의 **유일한 기록**이고,
@@ -84,7 +123,7 @@ ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefNa
 ## 진행 출력
 
 각 단계마다 1줄 출력해 black box 를 피한다(`🔄 [1/7] 분류 중… → type=feature, tier=T2, tasks=4`).
-**보고는 i-have-adhd 규칙을 따른다** — 다음 행동부터, 여러 단계는 번호, 서두·요약·마무리 인사 없음. T0/T1 은 바꾼 파일과 확인 방법 각 1줄. T2/T3 은 무엇을 왜 · 확인 방법 · 남은 위험 · 다음 할 일 각 1줄.
+**보고 서식 정본은 [`docs/rules/output-format.md`](../../../docs/rules/output-format.md)** — 다음 행동부터, 여러 단계는 번호, 서두·요약·마무리 인사 없음. T0/T1 은 바꾼 파일과 확인 방법 각 1줄. T2/T3 은 무엇을 왜 · 확인 방법 · 남은 위험 · 다음 할 일 각 1줄.
 
 ## 실패 / 엣지 케이스
 

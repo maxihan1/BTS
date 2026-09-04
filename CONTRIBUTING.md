@@ -92,7 +92,7 @@ Testcontainers 는 테스트 실행 시 Docker 컨테이너를 자동으로 띄�
 ### identity-access 통합 테스트 실행
 
 ```bash
-./gradlew :backend:identity-access:test
+./gradlew :modules:identity-access:test
 ```
 
 **첫 실행 주의.** OpenLDAP 이미지(`osixia/openldap`)를 Docker Hub 에서 내려받으므로
@@ -108,7 +108,7 @@ Container started in 8234ms
 단위 테스트만 (컨테이너 없이, 빠름).
 
 ```bash
-./gradlew :backend:identity-access:test --tests "*LdapProviderUnitTest*"
+./gradlew :modules:identity-access:test --tests "*LdapProviderUnitTest*"
 ```
 
 ---
@@ -147,5 +147,5 @@ docker system prune
 |---|---|
 | SDD (설계 문서 26개 챕터) | `docs/sdd/README.md` |
 | 헌법 진입점 | `CLAUDE.md` |
-| 절대 규칙 18개 | `DEVELOPMENT.md` |
+| 절대 규칙 19개 | `DEVELOPMENT.md` |
 | 데이터 룰 | `DATA.md` |

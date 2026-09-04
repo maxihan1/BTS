@@ -58,3 +58,17 @@ node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test
 #
 # 계약. scripts/workflow/push-backend-tests.test.ts
 node --experimental-strip-types scripts/workflow/push-backend-tests.ts
+
+# 프론트 테스트 — **바뀐 소스를 import 하는 것만**.
+#
+# ★2026-09-04 진단 — 프론트 테스트 9,755개가 커밋·푸시 어느 훅에서도 안 돌고 있었다.
+#   백엔드에는 위 줄이 있는데 프론트에는 대응하는 자리가 없었다. CI 는 꺼져 있으므로
+#   사람이 `bts-impl` 최종 점검을 건너뛰면 **프론트 검증 0회로 머지**된다.
+#
+# ★좁힘은 `vitest --related` 가 한다. 판정 규칙의 정본은 select-test-scope.ts 한 곳이고
+#   이 훅도 Step 4 도 같은 함수를 부른다 — 두 자리가 각자 판정하면 조용히 갈린다.
+#   설정·의존성·src 밖 변경은 계산기가 스스로 전량으로 넓힌다.
+#
+# 탈출구. BTS_SKIP_FRONTEND_TEST=1
+# 계약. scripts/workflow/push-frontend-tests.test.ts
+node --experimental-strip-types scripts/workflow/push-frontend-tests.ts

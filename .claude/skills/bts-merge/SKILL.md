@@ -24,10 +24,20 @@ worktree에 커밋 안 된 산출물(특히 spec/docs 파일)이 남아 있으�
 cd .worktrees/<slug>
 git status --porcelain          # 비어 있어야 함. 남아 있으면 커밋+푸시 먼저
 git log origin/<branch>..HEAD --oneline   # 미푸시 커밋 0 확인
-gh pr checks --watch            # ★머지 전 CI 초록 확인. 빨간불이면 머지하지 않는다
+gh pr checks                    # ★결과를 읽는다. 아래 3분기를 반드시 구분할 것
 ```
 
-`gh pr checks --watch` 는 **사람이 지키는 규율**이다. 무료 플랜에서 브랜치 보호 설정이 403 이라 빨간불 머지를 기계가 막지 못한다 — 이 줄을 건너뛰면 검증 없는 머지가 된다.
+**★★「체크 0건」은 초록이 아니다.** CI 자동 실행을 껐으므로(2026-08-21) 이 명령은 보통
+`no checks reported` 를 낸다. 그것을 「빨간불이 아니니 통과」로 읽으면 **검증 없는 머지**가 된다.
+같은 파일 Step 5 가 「머지가 만드는 run 이 0건」이라고 적는 것과 같은 사실이다.
+
+| `gh pr checks` 결과 | 판정 |
+|---|---|
+| 초록 | 통과. `--watch` 로 완료를 기다린 뒤 머지 |
+| 빨강 | **머지하지 않는다.** 고치고 다시 |
+| **체크 0건** | **통과가 아니다.** 로컬 검증이 유일한 근거이므로, `bts-impl` Step 4 의 범위 명령이 실제로 EXIT=0 이었는지 로그로 확인하고 그 사실을 게이트 2 요약에 적는다. 확인 못 하면 머지하지 않는다 |
+
+이 판정은 **사람이 지키는 규율**이다. 무료 플랜에서 브랜치 보호 설정이 403 이라 기계가 막지 못한다.
 
 미커밋 파일이 있으면 → 해당 task의 산출물인지 확인 후 커밋·푸시. spec/plan 문서는 누락되기 쉬우니 특히 점검.
 
@@ -53,8 +63,8 @@ node scripts/build-dashboard.mjs      # 훅 미작동 시에만
 # ★경로 주의. 생성기의 실제 출력은 `docs/progress.html` 이다(`build-dashboard.mjs` OUTPUT_PATH).
 #   `docs/plan/` 아래가 아니다 — 종전 문구가 그쪽을 가리켜 이 폴백은 실행하면 pathspec 오류로
 #   죽는 상태였다(2026-07-17 적발, 문서만 26일간 그대로).
-#   `merged-pr-run-cleanup.test.ts` 의 「대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다」가
-#   이제 두 목록을 짝지어 막는다. 그 판별식은 **틀린 경로를 적는 것 자체**를 금지하므로
+#   `merge-skill-contract.test.ts` 의 「대시보드 수동 폴백 경로가 생성기의 실제 출력과 같다」가
+#   두 목록을 짝지어 막는다. 그 판별식은 **틀린 경로를 적는 것 자체**를 금지하므로
 #   설명하려고 옮겨 적지도 말 것 — 다음 사람이 그것을 복사한다.
 git add docs/progress.html && git commit -m "[chore] dashboard regen [skip ci]" && git push
 ```
@@ -126,10 +136,10 @@ git -C /Users/maxi.moff/Projects/BTS status
 
 ## 출력 형식
 
-**아래 진행 트리 위에 i-have-adhd 규칙의 결과 줄을 먼저 얹는다.** 트리(verify-master-plan/orphan 5173 kill 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞 첫 줄에서 "무엇이 실제 반영됐고, Maxi가 뭘 확인할 수 있는지"를 비전문가 문장으로 말한다. 요약·마무리 인사는 붙이지 않는다.
+**아래 진행 트리 위에 결과 줄을 먼저 얹는다**(서식 정본 [`docs/rules/output-format.md`](../../../docs/rules/output-format.md)). 트리(verify-master-plan/orphan 5173 kill 등 내부 용어)는 상태 표시용으로 유지하되, 그 앞 첫 줄에서 "무엇이 실제 반영됐고, Maxi가 뭘 확인할 수 있는지"를 비전문가 문장으로 말한다. 요약·마무리 인사는 붙이지 않는다.
 
 ```
-✅ 한 줄  <비전문가 한 문장 — 무엇이 반영됐나. 서식 정본은 CLAUDE.md §사용자 커뮤니케이션 스타일>
+✅ 한 줄  <비전문가 한 문장 — 무엇이 반영됐나. 서식 정본은 docs/rules/output-format.md>
 💡 의미  <Maxi가 어디서 결과를 확인할 수 있는지>
 🔧 기술 상세 (안 봐도 됨)
 🔄 [7/7] /bts-merge

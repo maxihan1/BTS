@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'api', 'feature', 'bugfix', 'chore'로 분류한 작업의 기본 책임 (unknown은 /bts-impl 단계에서만 이 에이전트로 fallback — bts-start 단계는 Maxi 확인). /bts-impl에서는 plan task 메타 agent 지정이 우선. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
+description: BTS의 Kotlin/Spring 백엔드 일반을 담당. classify-task가 'backend', 'api', 'feature', 'bugfix', 'chore'로 분류한 작업의 기본 책임 (신호 0이면 classify-task 가 'backend' 를 기본값으로 주므로 이 에이전트로 온다 — 별도 unknown 타입은 없다). /bts-impl에서는 plan task 메타 agent 지정이 우선. 책임 BC — issue-tracking, project-workflow, agile-planning, automation, notification, slack-integration. 인증/권한은 security-engineer, DB 스키마/마이그레이션은 db-engineer, UI는 frontend-engineer 담당. API 엔드포인트 신규 추가도 이 에이전트가 담당하되 권한 가드는 security-engineer 검토.
 tools: Read, Edit, Write, Grep, Glob, Bash
 model: opus
 ---
