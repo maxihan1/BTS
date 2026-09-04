@@ -2,11 +2,18 @@
 //
 // 시나리오 개요 (spec `2026-09-04-board-settings-screen.md` S1~S8).
 //   S1. 진입      — 보드 화면 `⋯` → 「보드 설정」 → Columns 탭이 열린다
-//   S2/S3. 매핑   — 미매핑 상태를 컬럼으로, 컬럼에서 미매핑으로 (키보드로 한다)
+//   S2. 매핑      — 미매핑 상태를 컬럼으로 (키보드로 한다)
 //   S4. WIP 편집  — 최대 카드 수를 넣고 지운다
 //   S5. 컬럼 추가 — 상태 0개 컬럼이 만들어지고 「상태 없음」으로 보인다
-//   S6. 컬럼 삭제 — 폭발 반경을 먼저 보이고, 지운 상태는 미매핑으로 돌아온다
+//   S6. 컬럼 삭제 — 폭발 반경을 먼저 보이고, 상태를 가진 컬럼을 지우면 그 상태가 미매핑으로 돌아온다
 //   S8. 미지목    — `?board=` 없이 들어오면 보드를 지목하라고 안내한다
+//
+// **여기서 재지 않는 것 — S3(컬럼 → 미매핑 되돌리기).** 종전 이 머리말은 S3 를 잰다고 적었지만
+// 실제 단언은 S2 방향 하나뿐이었다(리뷰 CONCERNS C7). 되돌리기를 키보드로 흉내 내려면 미매핑
+// 패널까지 25px 씩 수십 번 눌러야 하고, 한 번이라도 지나치면 `over` 가 null 이 되어 조용히
+// 아무 일도 일어나지 않는다 — 판정이 아니라 flake 가 된다. 그 방향의 판정은
+// `use-column-settings-drag.test.tsx` 의 **T-DR-2** 가 진다(`UNMAPPED_DROP_ID` 로 드롭 →
+// 상태 교체 호출). 커버리지가 없는 것이 아니라 **여기가 그 자리가 아니다.**
 //
 // 설계 결정.
 //   - **드래그를 키보드로 한다.** @dnd-kit 의 KeyboardSensor 경로다(Space 로 집고 화살표로
@@ -109,6 +116,20 @@ test.describe('보드 설정 — Columns 탭 (부채 177)', () => {
       .click()
 
     await expect(page.getByRole('article', { name: '검수' })).toHaveCount(0)
+
+    // ── S6 후단. 상태를 가진 컬럼을 지우면 그 상태가 미매핑으로 돌아온다 (J28) ──
+    // ★위에서 지운 「검수」는 **상태 0개** 컬럼이라 돌아올 상태가 없다 — 그 삭제만으로는
+    //   J28 을 잰 것이 아니다(리뷰 CONCERNS C7). 상태를 가진 컬럼으로 한 번 더 잰다.
+    const todoColumn = page.getByRole('article', { name: 'TODO' })
+    await todoColumn.getByRole('button', { name: /컬럼 삭제/ }).click()
+    await page
+      .getByRole('dialog', { name: boardLabels.settings.deleteColumnTitle('TODO') })
+      .getByRole('button', { name: boardLabels.settings.deleteColumnConfirm })
+      .click()
+
+    await expect(page.getByRole('article', { name: 'TODO' })).toHaveCount(0)
+    // 담겨 있던 상태가 미매핑 패널에 나타난다 — 이슈는 그대로이고 매핑만 풀린다.
+    await expect(unmappedPanel.getByText('TODO')).toBeVisible()
   })
 
   test('S8 — ?board= 없이 들어오면 보드를 지목하라고 안내한다', async ({ page }) => {

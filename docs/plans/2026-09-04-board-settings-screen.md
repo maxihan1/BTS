@@ -236,7 +236,7 @@ T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 �
 - jira: [J7, J8, J22]
 
 **RED**(동반 테스트).
-- `?board=` 없이 들어오면 보드 화면으로 되돌린다 (S8 — **기본 보드 규칙을 4번째로 늘리지 않는다**)
+- `?board=` 없이 들어오면 **자동 이동 없이** 보드 지목 안내 + 보드 화면 링크를 보인다 (S8 — **기본 보드 규칙을 4번째로 늘리지 않는다** · 스펙 정정은 spec §3 S8 주석 참조)
 - CREATE 권한자에게만 더보기 메뉴에 「보드 설정」이 뜬다 (S7)
 - 권한 없는 사용자가 URL 직접 진입하면 편집 컨트롤이 전부 비활성 + 사유 (S7)
 
@@ -396,7 +396,11 @@ node --experimental-strip-types scripts/workflow/select-test-scope.ts \
 - 타입체크 — `apps/web/node_modules/.bin/tsc -p apps/web/tsconfig.app.json --noEmit`
   (★루트 tsconfig 는 `files: []` 라 0개를 검사한다)
 - `build-doc-index --check` · `verify-master-plan.sh`
-- **뮤테이션 짝 3건** — ①T2 집합 일치 판정 제거 → 400 판정 1건만 red ②G1 컬럼 1개 비활성 제거 → 1건만 red ③G2 「모든 실패에서 되돌림」을 409 한정으로 좁힘 → 1건만 red.
+- **뮤테이션 짝 3건** — ①T2 집합 일치 판정(`requireExactColumnSet`) 제거 → **`BoardApplicationServiceTest` 3건 red** ②G1 컬럼 1개 비활성 제거 → 1건만 red ③G2 「모든 실패에서 되돌림」을 409 한정으로 좁힘 → 1건만 red.
+  - ★①의 예측을 「400 판정 1건만 red」에서 고쳤다(리뷰 CONCERNS C2). 그 판정은 누락·중복·외부 id 세 결함을 **한 자리에서** 지므로
+    지우면 세 테스트가 함께 죽는 것이 정상이다. 「1건만」이라 적어 두면 실측이 3건일 때 「어딘가 겹쳤나」로 잘못 읽힌다.
+    컨트롤러 COL-O2·O3 은 이 판정을 재지 않는다 — 서비스를 mock 으로 던지게 하므로 요청 바디를 보지 않았고, 지금은
+    「컨트롤러가 배열을 손대지 않고 위임하는가」를 재도록 고쳤다.
   ★**GREEN 선커밋 뒤에 돌린다** — 미커밋 원복은 소실이다(함정 정본).
 
 ## Plan 메타
