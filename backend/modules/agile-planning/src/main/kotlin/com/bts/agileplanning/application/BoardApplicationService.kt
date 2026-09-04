@@ -26,6 +26,7 @@ import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -633,7 +634,8 @@ class BoardApplicationService(
                 category = BoardCardPlacement.resolveCategory(categoriesOf(board.projectKey, stateKeys)),
                 displayOrder = displayOrder ?: ((board.columns.maxOfOrNull { it.displayOrder } ?: -1) + 1),
             )
-        return columnStates.insertColumn(boardId, column)
+        // 생성도 같은 경합에 노출된다 — insertColumn 이 안에서 replaceStates 를 부른다.
+        return tryInsertColumn(boardId, column)
     }
 
     /**
@@ -658,7 +660,7 @@ class BoardApplicationService(
         val board = loadBoardWithColumn(boardId, columnId)
 
         requireAssignableStates(board, columnId = columnId, stateKeys = stateKeys)
-        columnStates.replaceStates(boardId, columnId, stateKeys)
+        tryMapStates(boardId, columnId, stateKeys)
         columnStates.updateColumnCategory(
             columnId,
             BoardCardPlacement.resolveCategory(categoriesOf(board.projectKey, stateKeys)),
@@ -667,6 +669,75 @@ class BoardApplicationService(
         return requireNotNull(boardRepository.findById(boardId)?.columns?.firstOrNull { it.id == columnId }) {
             "방금 갱신한 컬럼이 재조회에서 사라졌다 — boardId=$boardId, columnId=$columnId"
         }
+    }
+
+    /**
+     * 상태 매핑 쓰기를 실행하고 `UNIQUE (board_id, state_key)` 위반을
+     * [StateAlreadyMappedException](409)으로 변환한다 (E7 · X1).
+     *
+     * ### 사전 검사가 있는데도 이게 필요한 이유
+     *
+     * [requireAssignableStates] 는 사용자에게 **어느 컬럼이 그 상태를 쓰는지**를 주려고 있는 것이지
+     * DB 제약을 대신하는 것이 아니다. 읽고 쓰는 사이의 경쟁은 코드로 못 막는다 — 미매핑 상태 하나를
+     * 두 관리자가 **서로 다른 컬럼에** 동시에 끌어다 놓으면 두 사전 검사 모두 「주인 없음」을 보고
+     * 통과하고 INSERT 하나가 제약에 걸린다. 그 예외를 여기서 안 잡으면 폴백 핸들러까지 내려가
+     * **500** 이 나간다 — 제약은 버텼는데 사용자는 서버 오류를 본다.
+     *
+     * 선례는 같은 BC 의 [BoardQuickFilterService.tryPersist] 다. jOOQ 는 Spring
+     * `PersistenceExceptionTranslator` 가 개입하지 않으면 [DataIntegrityViolationException] 대신
+     * `org.jooq.exception.IntegrityConstraintViolationException` 을 직접 던지므로 **두 경로를 모두** 잡는다.
+     *
+     * 어느 컬럼이 주인인지는 경합 시점에 이미 바뀌었을 수 있어 재조회한다. 못 찾으면 요청한 컬럼을
+     * 담아 보낸다 — 그 사이에 또 바뀐 것이고, 409 라는 사실은 그대로 참이다.
+     *
+     * SwallowedException — catch 목적이 409 도메인 예외 변환이라 원 예외를 재던지지 않는 것이 의도다.
+     */
+    @Suppress("SwallowedException", "ThrowsCount")
+    private fun tryInsertColumn(
+        boardId: UUID,
+        column: BoardColumn,
+    ): BoardColumn =
+        try {
+            columnStates.insertColumn(boardId, column)
+        } catch (ex: DataIntegrityViolationException) {
+            log.warn("컬럼 생성 UNIQUE 제약 위반(Spring) — boardId={}", boardId)
+            throw stateAlreadyMapped(boardId, column.id, column.stateKeys)
+        } catch (ex: org.jooq.exception.IntegrityConstraintViolationException) {
+            log.warn("컬럼 생성 UNIQUE 제약 위반(jOOQ) — boardId={}", boardId)
+            throw stateAlreadyMapped(boardId, column.id, column.stateKeys)
+        }
+
+    /** [tryInsertColumn] 과 같은 변환을 상태 교체 경로에 적용한다. */
+    @Suppress("SwallowedException", "ThrowsCount")
+    private fun tryMapStates(
+        boardId: UUID,
+        columnId: UUID,
+        stateKeys: List<String>,
+    ) {
+        try {
+            columnStates.replaceStates(boardId, columnId, stateKeys)
+        } catch (ex: DataIntegrityViolationException) {
+            log.warn("컬럼 상태 매핑 UNIQUE 제약 위반(Spring) — boardId={}, columnId={}", boardId, columnId)
+            throw stateAlreadyMapped(boardId, columnId, stateKeys)
+        } catch (ex: org.jooq.exception.IntegrityConstraintViolationException) {
+            log.warn("컬럼 상태 매핑 UNIQUE 제약 위반(jOOQ) — boardId={}, columnId={}", boardId, columnId)
+            throw stateAlreadyMapped(boardId, columnId, stateKeys)
+        }
+    }
+
+    /** 경합으로 밀린 상태와 그 새 주인을 재조회해 409 예외를 만든다. */
+    private fun stateAlreadyMapped(
+        boardId: UUID,
+        columnId: UUID,
+        stateKeys: List<String>,
+    ): StateAlreadyMappedException {
+        val owners = columnStates.findStateKeysByBoard(boardId)
+        val clash =
+            owners.entries.firstOrNull { (owner, keys) -> owner != columnId && keys.any { it in stateKeys } }
+        return StateAlreadyMappedException(
+            stateKey = clash?.value?.first { it in stateKeys } ?: stateKeys.first(),
+            ownerColumnId = clash?.key ?: columnId,
+        )
     }
 
     /**
@@ -690,17 +761,38 @@ class BoardApplicationService(
      *
      * 담긴 상태는 미매핑으로 돌아가고(보드 조회의 `unmappedStates` 에 나타난다) **이슈는 그대로다.**
      * 마지막 컬럼도 지울 수 있다(E8) — 컬럼 0개 보드는 [healColumnsIfEmpty] 가 다시 채운다.
+     * ### 폭발 반경을 세어 돌려준다 (ceo 리뷰 CONCERN-3)
      *
+     * 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.** 되돌리려면 컬럼을 다시 만들고
+     * 상태를 다시 매핑해야 하는데, **몇 장이 사라지는지 모르면 그 판단을 할 수 없다.**
+     *
+     * 세는 방법은 [getBoard] 를 그대로 태우는 것이다 — 「사라지는 카드」의 정의가 「그 사용자의
+     * 보드 화면에 지금 그 컬럼에 놓여 있는 카드」이고, 그것을 계산하는 규칙(보안 필터 · 스크럼
+     * 활성 스프린트 한정 · 배치)이 이미 거기 있다. 여기서 다시 세면 규칙이 두 곳이 되어 언젠가
+     * 갈린다. 드문 파괴적 조작이라 조회 1회가 더 드는 것은 정확성 값으로 싸다.
+     *
+     * @param actorUserId 삭제 행위자. **카드 수를 그 사람이 보는 기준으로** 세는 데 쓴다.
+     * @return 이 삭제로 보드에서 사라지는 카드 수.
      * @throws ResponseStatusException 404 — 타 보드 소속 또는 미존재 컬럼.
      */
     @Transactional
     fun deleteColumn(
         boardId: UUID,
         columnId: UUID,
-    ) {
+        actorUserId: UUID,
+    ): Int {
+        loadBoardWithColumn(boardId, columnId)
+
+        val removedCardCount =
+            getBoard(boardId, actorUserId).columns
+                .firstOrNull { it.column.id == columnId }
+                ?.cards
+                ?.size ?: 0
+
         if (!columnStates.deleteColumn(boardId, columnId)) {
             throw ResponseStatusException(HttpStatus.NOT_FOUND, "컬럼을 찾을 수 없습니다: columnId=$columnId")
         }
+        return removedCardCount
     }
 
     /**

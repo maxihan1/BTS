@@ -38,8 +38,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.dao.DuplicateKeyException
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DuplicateKeyException
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.time.LocalDate
@@ -983,7 +983,9 @@ class BoardApplicationServiceTest {
                     )
             }
 
-        val removed = serviceWith(catalog = catalog, lookup = lookup).deleteColumn(board.id, victim.id, UUID.randomUUID())
+        val removed =
+            serviceWith(catalog = catalog, lookup = lookup)
+                .deleteColumn(board.id, victim.id, UUID.randomUUID())
 
         assertThat(removed).isEqualTo(2)
     }

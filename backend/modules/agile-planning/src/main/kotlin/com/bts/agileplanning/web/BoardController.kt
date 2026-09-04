@@ -16,6 +16,7 @@ import com.bts.agileplanning.web.dto.ColumnStateResponse
 import com.bts.agileplanning.web.dto.CreateBoardRequest
 import com.bts.agileplanning.web.dto.CreateColumnRequest
 import com.bts.agileplanning.web.dto.DataResponse
+import com.bts.agileplanning.web.dto.DeleteColumnResponse
 import com.bts.agileplanning.web.dto.MoveCardRequest
 import com.bts.agileplanning.web.dto.MoveCardResponse
 import com.bts.agileplanning.web.dto.ReplaceColumnStatesRequest
@@ -416,23 +417,27 @@ class BoardController(
     /**
      * 컬럼을 삭제한다 (R10 · J5).
      *
-     * 담긴 상태는 미매핑으로 돌아가고 **이슈는 손대지 않는다.** 돌려줄 표현이 없으므로 204 다 —
-     * 미매핑 목록은 보드 조회의 `unmappedStates` 가 이미 준다.
+     * 담긴 상태는 미매핑으로 돌아가고 **이슈는 손대지 않는다** — 미매핑 목록은 보드 조회의
+     * `unmappedStates` 가 이미 준다.
+     *
+     * 204 가 아니라 200 인 이유는 **폭발 반경**을 알려야 하기 때문이다(ceo 리뷰 CONCERN-3).
+     * 이슈는 남지만 사용자가 보기엔 카드가 증발하고, 몇 장인지 모르면 되돌릴 판단을 할 수 없다.
      *
      * @param id path variable 보드 UUID.
      * @param columnId path variable 컬럼 UUID.
-     * @return 204 No Content.
+     * @return 200 OK + [DeleteColumnResponse](사라지는 카드 수).
      */
     @DeleteMapping("/{id}/columns/{columnId}")
     fun deleteColumn(
         @PathVariable id: UUID,
         @PathVariable columnId: UUID,
-    ): ResponseEntity<Void> {
+    ): ResponseEntity<DataResponse<DeleteColumnResponse>> {
         log.info("BoardController.deleteColumn id={} columnId={}", id, columnId)
 
-        loadBoardWithCreate(id)
-        service.deleteColumn(id, columnId)
-        return ResponseEntity.noContent().build()
+        // 카드 수는 **요청자가 보는 기준**으로 센다 — 행 단위 보안 필터가 사람마다 다른 수를 준다.
+        val (actor, _) = loadBoardWithCreate(id)
+        val removed = service.deleteColumn(id, columnId, actor)
+        return ResponseEntity.ok(DataResponse(DeleteColumnResponse(removedCardCount = removed)))
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

@@ -450,6 +450,20 @@ data class ReplaceColumnStatesRequest(
 )
 
 /**
+ * 컬럼 삭제 응답 DTO (R10 · ceo 리뷰 CONCERN-3).
+ *
+ * 204 가 아니라 200 인 이유 — 이슈는 안 건드리지만 **사용자가 보기엔 카드가 증발한다.**
+ * 되돌리려면 컬럼을 다시 만들고 상태를 다시 매핑해야 하는데, 몇 장이 사라지는지 모르면
+ * 그 판단을 할 수 없다.
+ *
+ * @property removedCardCount 이 삭제로 보드에서 사라지는 카드 수. 요청자가 보는 기준이다
+ *   (행 단위 보안 필터·스크럼 활성 스프린트 한정이 이미 반영된 수). 상태 0개 컬럼이면 0.
+ */
+data class DeleteColumnResponse(
+    val removedCardCount: Int,
+)
+
+/**
  * 컬럼 WIP 제한 변경 응답 DTO.
  *
  * @property columnId 컬럼 UUID.

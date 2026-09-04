@@ -165,7 +165,7 @@ Then 컬럼 구성·카드 배치가 **이전과 완전히 같다**. 컬럼당 �
 | 메서드 · 경로 | 하는 일 |
 |---|---|
 | `POST /api/v1/boards/{id}/columns` | 컬럼 생성. 바디 `{ name, stateKeys[], displayOrder? }` |
-| `DELETE /api/v1/boards/{id}/columns/{columnId}` | 컬럼 삭제. 담긴 상태는 미매핑으로 복귀(R10) |
+| `DELETE /api/v1/boards/{id}/columns/{columnId}` | 컬럼 삭제. 담긴 상태는 미매핑으로 복귀(R10). **200 + `{ removedCardCount }`** — 204 가 아닌 이유는 폭발 반경을 알려야 해서다(ceo-3) |
 | `PUT /api/v1/boards/{id}/columns/{columnId}/states` | 그 컬럼의 상태 집합을 통째로 교체. 바디 `{ stateKeys[] }` |
 
 `PUT` 을 고른 이유 — 상태 추가·제거를 각각의 엔드포인트로 두면 「지금 이 컬럼의 상태 집합」이
