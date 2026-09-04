@@ -381,6 +381,54 @@ export const boardLabels = {
      */
     stateChangeFailed: '상태 매핑을 바꾸지 못했습니다.',
 
+    /** 컬럼 추가 버튼 · 다이얼로그 제목 (J23) */
+    addColumn: '컬럼 추가',
+
+    /** 컬럼 이름 입력 라벨 */
+    columnNameLabel: '컬럼 이름',
+
+    /** 컬럼 추가 제출 버튼 */
+    addColumnSubmit: '추가',
+
+    /** 공통 취소 */
+    cancel: '취소',
+
+    /** 컬럼 추가 실패 */
+    addColumnFailed: '컬럼을 추가하지 못했습니다.',
+
+    /**
+     * 컬럼 삭제 확인 제목.
+     *
+     * ★화면 전체에서 **고유**해야 한다 — 같은 이름의 dialog 가 둘이면 Playwright
+     * `getByRole('dialog', { name })` 가 strict mode 로 즉사한다(즉사 계약 §2).
+     *
+     * @param columnName 지울 컬럼 이름
+     */
+    deleteColumnTitle: (columnName: string): string => `컬럼 삭제: ${columnName}`,
+
+    /**
+     * 컬럼 삭제 확인 설명 — 폭발 반경을 먼저 보인다 (S6).
+     *
+     * @param cardCountText 영향 카드 수 문구. `truncated` 면 수를 주장하지 않는 문구가 온다.
+     */
+    deleteColumnDescription: (cardCountText: string): string =>
+      `이 컬럼의 상태는 미매핑으로 돌아갑니다. ${cardCountText}가 보드에서 사라집니다. 이슈 자체는 지워지지 않습니다.`,
+
+    /** 컬럼 삭제 확인 버튼 */
+    deleteColumnConfirm: '컬럼 삭제',
+
+    /** 컬럼 삭제 실패 */
+    deleteColumnFailed: '컬럼을 삭제하지 못했습니다.',
+
+    /**
+     * 컬럼이 1개뿐일 때 삭제가 잠기는 사유 (Sanity G1).
+     *
+     * ★지라에 대응 제약이 없다. **편차가 아니라 결함 회피**다 — 컬럼 0개 보드는 조회가
+     * 자가 치유 경합으로 500 이 되고(부채 179), 이 화면이 그 상태로 가는 클릭 한 번짜리
+     * 경로를 만들지 않는다.
+     */
+    lastColumnLocked: '마지막 컬럼은 지울 수 없습니다.',
+
     /** WIP 제한 표시 — 무제한일 때 */
     wipUnlimited: 'WIP 제한 없음',
 

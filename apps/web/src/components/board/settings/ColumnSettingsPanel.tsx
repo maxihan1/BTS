@@ -1,15 +1,21 @@
 // 보드 설정 — Columns 탭 본문 (컬럼 가로 배치 + 미매핑 패널 + 상태 매핑 드래그) (부채 177 R4·R5)
 import type { JSX } from 'react'
+import { useState } from 'react'
 import { DndContext } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
+import { Plus } from 'lucide-react'
 import { toast } from 'sonner'
-import type { BoardDetail } from '@/api/boards'
+import type { BoardDetail, BoardColumn } from '@/api/boards'
 import { boardLabels } from '@/i18n/board-labels'
+import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useBoardDragSensors } from '../board-drag-sensors'
 import { useReplaceColumnStates, isStateConflict } from '@/hooks/use-replace-column-states'
+import { useCreateColumn, useDeleteColumn } from '@/hooks/use-column-crud'
 import { ColumnSettingsCard } from './ColumnSettingsCard'
 import { UnmappedStatesPanel } from './UnmappedStatesPanel'
+import { AddColumnDialog } from './AddColumnDialog'
 import { planStateDrop } from './state-mapping-drop'
 
 /** ColumnSettingsPanel props */
@@ -42,6 +48,22 @@ export interface ColumnSettingsPanelProps {
 export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanelProps): JSX.Element {
   const sensors = useBoardDragSensors()
   const replaceStates = useReplaceColumnStates(board.boardId)
+  const createColumn = useCreateColumn(board.boardId)
+  const deleteColumn = useDeleteColumn(board.boardId)
+
+  const [addOpen, setAddOpen] = useState(false)
+  const [addError, setAddError] = useState<string | undefined>(undefined)
+  const [deleteTarget, setDeleteTarget] = useState<BoardColumn | null>(null)
+  const [deleteError, setDeleteError] = useState<string | undefined>(undefined)
+
+  /**
+   * ★**마지막 컬럼은 지울 수 없다** (Sanity G1).
+   *
+   * 지라에 대응 제약이 없지만 편차가 아니라 **결함 회피**다 — 컬럼 0개 보드는 조회가 자가 치유
+   * 경합으로 500 이 되고(부채 179), 이 화면이 그 상태로 가는 **클릭 한 번짜리 경로**를 새로
+   * 만들지 않는다. 서버는 그대로 두고 UI 가 도달을 막는다.
+   */
+  const canDeleteAny = canConfigure && board.columns.length > 1
 
   function handleDragEnd(event: DragEndEvent): void {
     const data = event.active.data.current as
@@ -71,25 +93,118 @@ export function ColumnSettingsPanel({ board, canConfigure }: ColumnSettingsPanel
     })
   }
 
+  function handleCreate(name: string): void {
+    setAddError(undefined)
+    createColumn.mutate(name, {
+      onSuccess: () => {
+        setAddOpen(false)
+      },
+      onError: () => {
+        setAddError(boardLabels.settings.addColumnFailed)
+      },
+    })
+  }
+
+  function handleDeleteConfirm(): void {
+    if (deleteTarget === null) return
+    setDeleteError(undefined)
+    deleteColumn.mutate(deleteTarget.columnId, {
+      onSuccess: () => {
+        setDeleteTarget(null)
+      },
+      onError: () => {
+        setDeleteError(boardLabels.settings.deleteColumnFailed)
+      },
+    })
+  }
+
+  const addButton = canConfigure ? (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => {
+        setAddError(undefined)
+        setAddOpen(true)
+      }}
+    >
+      <Plus aria-hidden="true" />
+      {boardLabels.settings.addColumn}
+    </Button>
+  ) : null
+
+  const dialogs = (
+    <>
+      <AddColumnDialog
+        open={addOpen}
+        onOpenChange={(next) => {
+          if (!next) setAddError(undefined)
+          setAddOpen(next)
+        }}
+        onSubmit={handleCreate}
+        submitting={createColumn.isPending}
+        error={addError}
+      />
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) {
+            setDeleteTarget(null)
+            setDeleteError(undefined)
+          }
+        }}
+        title={boardLabels.settings.deleteColumnTitle(deleteTarget?.name ?? '')}
+        description={boardLabels.settings.deleteColumnDescription(
+          // ★잘린 목록의 길이를 정확한 수인 양 보이지 않는다(eng 리뷰 BLOCKER-1).
+          //   서버의 removedCardCount 도 같은 잘린 목록에서 세므로 두 곳이 한계를 공유한다.
+          board.truncated
+            ? boardLabels.settings.cardCountTruncated
+            : boardLabels.settings.cardCount(deleteTarget?.cards.length ?? 0),
+        )}
+        confirmLabel={boardLabels.settings.deleteColumnConfirm}
+        cancelLabel={boardLabels.settings.cancel}
+        onConfirm={handleDeleteConfirm}
+        confirming={deleteColumn.isPending}
+        error={deleteError}
+        destructive
+      />
+    </>
+  )
+
   if (board.columns.length === 0) {
     // 행동 유도가 필요한 빈 상태다 — 미매핑 0건의 「안심」과 온도가 다르다(스펙 §8b).
-    // 추가 버튼은 후속 task 가 이 자리에 붙인다.
-    return <EmptyState title={boardLabels.settings.columnsEmpty} />
+    return (
+      <>
+        <EmptyState title={boardLabels.settings.columnsEmpty} action={addButton} />
+        {dialogs}
+      </>
+    )
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {board.columns.map((column) => (
-          <ColumnSettingsCard
-            key={column.columnId}
-            column={column}
-            truncated={board.truncated}
-            draggable={canConfigure}
-          />
-        ))}
-        <UnmappedStatesPanel states={board.unmappedStates} draggable={canConfigure} />
-      </div>
-    </DndContext>
+    <>
+      <div className="flex justify-end">{addButton}</div>
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {board.columns.map((column) => (
+            <ColumnSettingsCard
+              key={column.columnId}
+              column={column}
+              truncated={board.truncated}
+              draggable={canConfigure}
+              canDelete={canDeleteAny}
+              deleteDisabledReason={
+                board.columns.length <= 1 ? boardLabels.settings.lastColumnLocked : undefined
+              }
+              onRequestDelete={() => {
+                setDeleteError(undefined)
+                setDeleteTarget(column)
+              }}
+            />
+          ))}
+          <UnmappedStatesPanel states={board.unmappedStates} draggable={canConfigure} />
+        </div>
+      </DndContext>
+      {dialogs}
+    </>
   )
 }
