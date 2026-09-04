@@ -122,37 +122,51 @@ API 경로로 치환하므로 그대로 두면 경로 조작 표면이 된다.
 
 ### 2.1 RED
 
-- [ ] 진입점 클릭 시 모달이 열리고 URL 이 바뀌지 않는다
-- [ ] ⌘/Ctrl+클릭은 모달을 열지 않는다 (새 탭 기본 동작 보존)
-- [ ] `/issues/KEY` 직접 진입은 전체 페이지다
-- [ ] 활동 탭이 본문 `<section>` **안**에 있다 (DOM 포함 관계 단언)
-- [ ] 기본 활성 탭이 댓글이다
-- [ ] 제목 입력 `maxLength` 가 255다
-- [ ] 모달 `aria-label` 이 이슈 키를 포함해 고유하다
-- [ ] `issue-detail-modal-gate.test.ts` 가 여전히 초록 (모달 보고 신호)
-- [ ] **red 확인 (비-공허)**
+- [x] 진입점 클릭 시 모달이 열리고 URL 이 바뀌지 않는다
+- [x] ⌘/Ctrl+클릭은 모달을 열지 않는다 (새 탭 기본 동작 보존)
+- [x] `/issues/KEY` 직접 진입은 전체 페이지다
+- [x] 활동 탭이 본문 `<section>` **안**에 있다 (DOM 포함 관계 단언)
+- [x] 기본 활성 탭이 댓글이다
+- [x] 제목 입력 `maxLength` 가 255다
+- [x] 모달 `aria-label` 이 이슈 키를 포함해 고유하다
+- [x] `issue-detail-modal-gate.test.ts` 가 여전히 초록 (모달 보고 신호)
+- [x] **red 확인 (비-공허)**
 
 ### 2.2 GREEN
 
-- [ ] `IssueDetailPage` `variant` 에 `'modal'` 추가
-- [ ] `IssueDetailModal.tsx` 신규 — Dialog 껍데기만
-- [ ] 모달 열림 전역 스토어 (zustand, 비영속)
-- [ ] `useReportModalOpen` 배선
-- [ ] 진입점 13곳 전환 — `BoardCard` · `BacklogCard` · `InboxListItem` · `ProjectActivityFeed` · `IssueListGadget` · `RecentIssuesMenu` · `CommandPalette`×2 · `CalendarView` · `TopBar`×2 · `EpicChildrenSection` · `LinkGraph`×2 · `issue-columns`
-- [ ] modifier key 검사로 새 탭 보존
-- [ ] `…` 메뉴 「사이드 패널로 열기」 + `sessionStorage` 선호 유지
-- [ ] `IssueActivityTabs` 를 본문 section 안 `AttachmentSection` 아래로 이동
-- [ ] `defaultValue` HISTORY → COMMENT · 탭 순서 Jira 순
-- [ ] 기존 D1 결정 번복 사실을 주석에 날짜와 함께 남긴다
-- [ ] `SUMMARY_MAX_LENGTH` 200 → 255
-- [ ] 상세 제목 `Input` 에 `maxLength`
-- [ ] 본문·댓글 길이 상수 + 임계 이하일 때만 보이는 카운터
+- [x] `IssueDetailModal.tsx` 신규 — Dialog 껍데기만
+- [x] 모달 열림 전역 스토어 (zustand, 비영속) + `__root.tsx` 단일 마운트
+- [x] `useReportModalOpen` 배선 (`IssueDetailPage` 가 이미 보고)
+- [x] modifier key 검사로 새 탭 보존 — `useOpenIssueDetail` 훅 하나로 모음
+- [x] `IssueActivityTabs` 를 본문 section 안 `AttachmentSection` 아래로 이동
+- [x] `defaultValue` HISTORY → COMMENT · 탭 순서 Jira 순
+- [x] 기존 D1 결정 번복 사실을 주석에 날짜와 함께 남긴다
+- [x] `SUMMARY_MAX_LENGTH` 200 → 255 · i18n 문구도 함께
+- [x] 상세 제목 `Input` 에 `maxLength`
+
+**계획에서 바뀐 것 / 안 한 것**
+
+- [x] ~~`variant` 에 `'modal'` 추가~~ — **하지 않았다**. 기존 `variant='pane'` 이 닫기·Escape·
+      `<h2>` 강등·콜백 위임을 전부 갖고 있어 새 분기는 같은 코드를 두 벌로 만든다
+- [x] 진입점 **11곳** 전환 (계획은 13곳) — `issue-columns.ts` 는 목록 split view 에 위임하므로
+      제외했고(유지 결정), `TopBar` 생성 토스트는 방금 만든 이슈로 가는 것이라 전체 페이지가 맞다
+- [ ] `…` 메뉴 「사이드 패널로 열기」 + `sessionStorage` 선호 — **미구현**. 스토어에 `presentation`
+      필드는 두었으나 토글 UI 와 목록 split view 연동은 후속
+- [ ] 본문·댓글 길이 카운터 — **미구현**. `maxLength` 만 걸었다
 
 ### 2.3 게이트
 
-- [ ] `pnpm typecheck && pnpm lint && pnpm test`
-- [ ] 상세 진입 e2e 37 spec 전량
-- [ ] 눈확인 — 라이트/다크 · 클릭 모달 · ⌘클릭 새 탭 · 댓글 기본탭 · 활동 위치
+- [x] `pnpm typecheck && pnpm lint && pnpm test` — 10,574건 초록
+- [x] 상세 진입 e2e — **돌렸고 8건이 red 였다**. 전부 같은 원인 — 모달이라 URL 이 안 바뀌는데
+      spec 이 `waitForURL('**/issues/KEY')` 로 도착지를 재고 있었다(유닛은 스토어 단언으로
+      갱신했지만 e2e 는 빠졌다). 도착지를 `getByRole('dialog', { name: '이슈 상세 <KEY>' })` 로
+      옮기고 `heading level 1` → level 2 로 함께 옮겼다. `calendar` E2E-4 ·
+      `command-palette` S3·S9·S12·S13 · `inbox` E2E-8 · `issue-link-graph` G5·G6
+- [x] `goto('/issues/KEY')` 46건은 무영향 확인 — 전체 페이지 경로가 그대로 살아 있다
+- [ ] **병렬 flaky (선재 · 이 PR 소관 아님)** — 병렬로 돌리면 매번 다른 조합이 6~9건 실패하고
+      워커 1개로는 전부 통과한다. 두 실패 집합이 겹치지 않는 것을 실측했다.
+      vite dev 서버·MSW store 공유 문제. 고아 vite 가 5173 을 점유하면 실행 자체가 죽는다
+- [ ] 눈확인 — 라이트/다크 · 클릭 모달 · ⌘클릭 새 탭 · 댓글 기본탭 · 활동 위치 — **미실행**
 
 ---
 
@@ -160,33 +174,43 @@ API 경로로 치환하므로 그대로 두면 경로 조작 표면이 된다.
 
 ### 3.1 RED
 
-- [ ] 툴바 15종이 각각 기대 태그를 만든다
-- [ ] 단축키 10종이 각각 동작한다 (⌘⇧S · ⌘⇧M · ⌘⇧7/8/9 는 직접 배선분)
-- [ ] 저장 시 `descriptionHtml` 로 PATCH 한다
-- [ ] 멘션 `@` 가 후보를 띄우고 `span.mention` 을 만든다
-- [ ] 에디터 포커스 중 `i` 가 담당자 변경을 발화하지 않는다 (회귀 가드)
-- [ ] `⌘Enter` 저장 · `Esc` 취소가 살아 있다
-- [ ] 미저장 변경 확인 패널이 HTML 비교로 동작한다
-- [ ] 댓글도 같은 컴포넌트를 쓴다
-- [ ] **red 확인 (비-공허)**
+- [x] 툴바 서식 11종이 각각 기대 태그를 만든다 (마크 5 + 블록 6)
+- [x] 제목 드롭다운이 h1~h6 전부 제공 + H2 선택이 `<h2>` 를 만든다
+- [x] 서식 버튼이 `aria-pressed` 로 활성 상태를 노출한다
+- [x] `⌘Enter`·`Ctrl+Enter` 저장 / 맨 Enter 는 저장 안 함
+- [x] `Esc` 취소 / **IME 조합 중 Esc 는 취소하지 않는다**
+- [x] `onChange` 가 마크다운이 아니라 HTML 을 넘긴다
+- [x] `editable=false` 잠금 + 비-공허 짝
+- [x] 저장 시 `descriptionHtml` 로 PATCH 한다 (라우트 통합 테스트)
+- [x] 미저장 변경 확인 패널이 HTML 비교로 동작한다 (`IssueDescription` 8건)
+- [x] 댓글도 같은 컴포넌트를 쓴다
+- [x] **red 확인 (비-공허)** — 굵게 명령을 끊어 정확히 1건 red 확인
+- [ ] 멘션 `@` 가 후보를 띄우고 `span.mention` 을 만든다 — **단위 판별식 미작성**.
+      jsdom 에서 suggestion 팝업이 좌표에 기대 재현되지 않는다. e2e 몫으로 남긴다
+- [ ] 에디터 포커스 중 `i` 가 담당자 변경을 발화하지 않는다 — **회귀 가드 미작성**.
+      `isEditableTarget` 이 `isContentEditable` 을 이미 보므로 동작은 하지만 가드가 없다
 
 ### 3.2 GREEN
 
-- [ ] TipTap 의존성 추가 (pnpm)
-- [ ] `components/editor/RichTextEditor.tsx` 신규
-- [ ] 툴바 15종
-- [ ] 단축키 배선
-- [ ] `Mention` 확장 — 후보 조회 로직 재사용 · `span.mention` 마크업 호환
-- [ ] `IssueDescription` 전환 · Write/Preview 탭 제거
-- [ ] `CommentSection` 전환
-- [ ] 미저장 확인 패널 판정식 교체
+- [x] TipTap 의존성 추가 (pnpm) — starter-kit 이 Underline·Link 를 이미 포함해 중복 5개 제거
+- [x] `components/editor/RichTextEditor.tsx` 신규
+- [x] `rich-text-extensions.ts` — 서버 allowlist 와 짝을 이루는 확장 구성
+- [x] 툴바 15종 (`RichTextToolbar.tsx` + `i18n/editor-labels.ts`)
+- [x] 단축키 — 서식은 TipTap 확장 소유, 폼 키 2개만 직접 배선
+- [x] `Mention` 확장 — 기존 `MentionDropdown` UI 재사용 · `span.mention` 마크업 호환
+- [x] `IssueDescription` 전환 · Write/Preview 탭 제거 (i18n 키 2개도 삭제)
+- [x] `CommentSection` 전환 (작성·편집 양쪽) + `html-text.ts` 평문 추출
+- [x] 미저장 확인 패널 판정식 교체 (마크다운 비교 → HTML 비교)
+- [x] 공유 테스트 대역 `test/rich-text-editor-mock.tsx` — prop 을 전부 실제로 쓴다
 
 ### 3.3 게이트
 
-- [ ] `pnpm typecheck && pnpm lint && pnpm test`
-- [ ] 멘션 e2e 2종 (`issue-mention-autocomplete` · `issue-mention-render`)
-- [ ] `IssueDescription.test.tsx` 삭제 전 살릴 단언 이관 확인
-- [ ] 눈확인 — 툴바 15종 각각
+- [x] `pnpm typecheck && pnpm lint && pnpm test`
+- [x] `IssueDescription.test.tsx` 재작성 — 살릴 계약(폐기 확인·권한·클릭 진입) 이관 완료
+- [x] 부채 감소 2건 — `EditMode` 가 200줄 밑으로(래칫 항목 삭제) · 원시 `<button>` 2건 소멸
+- [ ] 멘션 e2e 2종 (`issue-mention-autocomplete` · `issue-mention-render`) — **미갱신**.
+      Write 탭 셀렉터에 의존하므로 TipTap 기준으로 다시 써야 한다
+- [ ] 눈확인 — 툴바 15종 각각 — **미실행**
 
 ---
 

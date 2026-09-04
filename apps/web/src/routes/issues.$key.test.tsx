@@ -14,6 +14,12 @@ import { issueDetailStrings } from '@/i18n/ko'
 import { IssueDetailPage } from './issues.$key'
 
 // useIssuePermissions를 mock — 기존 테스트는 권한 제어를 검증하지 않으므로 모든 권한 true로 고정
+// RichTextEditor 대역 — jsdom 에서 ProseMirror 타이핑이 재현되지 않아 textarea 로 갈음한다.
+// 대역이 prop 을 삼키지 않는 이유와 목록은 `@/test/rich-text-editor-mock` KDoc 참조.
+vi.mock('@/components/editor/RichTextEditor', async () => ({
+  RichTextEditor: (await import('@/test/rich-text-editor-mock')).RichTextEditorMock,
+}))
+
 vi.mock('@/hooks/use-issue-permissions', () => ({
   useIssuePermissions: vi.fn(),
 }))
@@ -1133,7 +1139,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
 
     // textarea에 내용 입력
-    const textarea = within(section).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    const textarea = within(section).getByRole('textbox', { name: issueDetailStrings.descriptionEditLabel })
     await user.clear(textarea)
     await user.type(textarea, '새 본문 내용')
 
@@ -1144,7 +1150,11 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
       expect(patchBodies.length).toBeGreaterThan(0)
     })
     const lastPatch = patchBodies[patchBodies.length - 1]
-    expect(lastPatch?.['description']).toBe('새 본문 내용')
+    // ★2026-09-04 WYSIWYG 전환 — PATCH 가 `description`(마크다운)이 아니라
+    //   `descriptionHtml` 을 보낸다(V039). 서버가 둘의 동시 전달을 400 으로 막으므로
+    //   마크다운 키는 **없어야** 한다 — 있으면 저장이 통째로 거부된다.
+    expect(lastPatch?.['descriptionHtml']).toBe('새 본문 내용')
+    expect(lastPatch).not.toHaveProperty('description')
     expect(lastPatch?.['expectedVersion']).toBe(0)
   })
 
@@ -1303,7 +1313,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     if (section === null) return
 
     await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }))
-    const textarea = within(section).getByRole('textbox', { name: issueDetailStrings.descriptionEditButton })
+    const textarea = within(section).getByRole('textbox', { name: issueDetailStrings.descriptionEditLabel })
     await user.type(textarea, '충돌 테스트')
     await user.click(within(section).getByRole('button', { name: issueDetailStrings.descriptionSaveButton }))
 
@@ -2481,7 +2491,7 @@ describe('IssueDetailPage — pane 에서 본문 Esc 이중 발화 방지 (FR-UX
       within(section).getByRole('button', { name: issueDetailStrings.descriptionEditButton }),
     )
     const textarea = within(section).getByRole('textbox', {
-      name: issueDetailStrings.descriptionEditButton,
+      name: issueDetailStrings.descriptionEditLabel,
     })
 
     // 변경분 없이 Esc — 확인 패널을 거치지 않고 곧장 편집이 닫히는 경로

@@ -116,12 +116,15 @@ export const issueDetailStrings = {
   /** 422 workflow_not_configured 에러 메시지 (S5) */
   transitionWorkflowNotConfiguredError: '이 이슈에 워크플로우가 설정되지 않아 상태를 변경할 수 없습니다.',
 
-  // ── 본문(description) 탭/버튼 ──────────────────────────────────────
-  /** 본문 편집 탭 레이블 */
-  descriptionWriteTab: '편집',
-  /** 본문 미리보기 탭 레이블 */
-  descriptionPreviewTab: '미리보기',
-  /** 본문이 비어 있을 때 안내 문구 */
+  // ── 본문(description) 버튼 ─────────────────────────────────────────
+  //
+  // ★`descriptionWriteTab`/`descriptionPreviewTab` 은 2026-09-04 에 사라졌다. 마크다운
+  //   textarea 시절에는 원문과 결과가 달라 미리보기가 필요했지만, WYSIWYG 은 쓰는 화면이
+  //   곧 결과라 탭이 없다(Jira 도 그렇다). 되살리지 말 것 — 되살리면 같은 내용을 두 벌로
+  //   그리게 되고, 그 둘이 어긋나는 순간 어느 쪽이 저장될지 사용자가 알 수 없다.
+  /** 본문 편집기 접근성 이름 — 한 화면의 댓글 편집기와 구분한다 */
+  descriptionEditLabel: '본문 편집기',
+  /** 본문이 비어 있을 때 안내 문구 (편집기 placeholder 겸용) */
   descriptionEmpty: '본문이 없습니다.',
   /** 본문 편집 시작 버튼 */
   descriptionEditButton: '본문 편집',

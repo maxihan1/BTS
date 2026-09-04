@@ -267,7 +267,8 @@ export function IssueDetailPage({
   /** 관심(watch) 토글 버튼 — 단축키 `w` */
   const watchToggleRef = useRef<HTMLButtonElement>(null)
   /** 댓글 작성 textarea — 단축키 `m` */
-  const commentInputRef = useRef<HTMLTextAreaElement>(null)
+  // WYSIWYG 전환으로 대상이 contenteditable 컨테이너가 됐다 — `.focus()` 는 그대로 동작한다.
+  const commentInputRef = useRef<HTMLDivElement>(null)
 
   /**
    * 활동 영역 활성 탭 — 단축키 `m` 이 댓글 탭을 열어야 해서 라우트가 소유한다.
@@ -468,9 +469,9 @@ export function IssueDetailPage({
     },
   })
 
+  // ★HTML 로 보낸다(V039) — 마크다운 `description` 과 배타다. 근거는 UpdateIssueInput KDoc.
   const descriptionMutation = useMutation({
-    mutationFn: ({ description, expectedVersion }: { description: string; expectedVersion: number }) =>
-      updateIssue(issueKey, { description, expectedVersion }),
+    mutationFn: (v: { descriptionHtml: string; expectedVersion: number }) => updateIssue(issueKey, v),
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
@@ -806,9 +807,9 @@ export function IssueDetailPage({
   }
 
   // ── 본문 저장 핸들러 ─────────────────────────────────────────────────────
-  function handleDescriptionSave(markdown: string) {
+  function handleDescriptionSave(html: string) {
     if (issue === undefined) return
-    descriptionMutation.mutate({ description: markdown, expectedVersion: issue.version })
+    descriptionMutation.mutate({ descriptionHtml: html, expectedVersion: issue.version })
   }
 
   // ── 우선순위 변경 핸들러 ─────────────────────────────────────────────────
@@ -1109,7 +1110,6 @@ export function IssueDetailPage({
           <div className="mt-6">
             <IssueDescription
               descriptionHtml={issue.descriptionHtml}
-              description={issue.description}
               onSave={handleDescriptionSave}
               isSaving={descriptionMutation.isPending}
               canEdit={canEdit}

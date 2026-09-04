@@ -419,10 +419,20 @@ export interface UpdateIssueInput {
   /** 변경할 이슈 타입 ID. 미전달 시 타입 유지. */
   typeId?: number
   /**
-   * 본문 Markdown 텍스트.
-   * "" = DB NULL 클리어, null/미전달 = 변경 없음, 값 = 설정. max 65535자.
+   * 본문 Markdown 텍스트 — **레거시·import 경로 전용**.
+   * "" = DB NULL 클리어, null/미전달 = 변경 없음, 값 = 설정. max 32767자.
+   *
+   * 리치 에디터는 [descriptionHtml] 을 쓴다. 서버가 둘의 동시 전달을 400 으로 막는다.
    */
   description?: string | null
+  /**
+   * 본문 HTML — 리치 에디터 저장 경로 (V039).
+   * 서버가 `sanitizeHtml` 로 정화해 `description_html` 에 저장한다. max 32767자.
+   *
+   * ★[description] 과 **동시에 보낼 수 없다** — 서버 `isBodyExclusive` 가 400 을 낸다.
+   * 어느 쪽이 이기는지가 호출자마다 달라지면 「보낸 대로 저장되지 않는다」가 되기 때문이다.
+   */
+  descriptionHtml?: string | null
   /**
    * 우선순위 1~5. null = 무변경. 미전달 = 무변경.
    * (서버는 null과 미전달을 동일하게 처리한다.)

@@ -44,6 +44,12 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 // useIssuePermissions 훅을 vi.mock으로 모킹 — 권한 시나리오를 자유롭게 제어한다
+// RichTextEditor 대역 — jsdom 에서 ProseMirror 타이핑이 재현되지 않아 textarea 로 갈음한다.
+// 대역이 prop 을 삼키지 않는 이유와 목록은 `@/test/rich-text-editor-mock` KDoc 참조.
+vi.mock('@/components/editor/RichTextEditor', async () => ({
+  RichTextEditor: (await import('@/test/rich-text-editor-mock')).RichTextEditorMock,
+}))
+
 vi.mock('@/hooks/use-issue-permissions', () => ({
   useIssuePermissions: vi.fn(),
 }))
@@ -444,15 +450,22 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     })
 
     it('T-F11-6 (S3): m 이 댓글 탭을 열고 댓글 입력에 포커스를 준다', async () => {
-      // ★비활성 탭 콘텐츠는 Radix Tabs 가 **언마운트**한다. 기본 활성 탭은 「이력」이라
-      //   ref 통과만으로는 댓글 입력이 DOM 에 없어 `m` 이 조용히 무동작이 된다.
+      // ★비활성 탭 콘텐츠는 Radix Tabs 가 **언마운트**한다. 기본 활성 탭이 바뀌어도
+      //   `m` 이 탭을 먼저 열어야 하므로 활성 탭 소유권이 라우트에 있다(F11 설계).
+      //
+      // ★2026-09-04 WYSIWYG 전환 — 포커스 대상이 textarea 에서 **contenteditable 을 감싼
+      //   컨테이너**로 바뀌었다. `commentInputRef` 가 그 div 를 잡고 `.focus()` 를 부른다.
+      //   입력 자체가 아니라 컨테이너를 보는 이유는 TipTap 이 contenteditable 을 소유해
+      //   외부에서 ref 를 직접 붙일 수 없기 때문이다.
       renderDetail()
       await waitForDetailLoaded()
 
       await pressKey('m')
 
-      const textarea = await screen.findByLabelText('댓글 입력')
-      expect(textarea).toHaveFocus()
+      const editor = await screen.findByLabelText('댓글 입력')
+      // 컨테이너가 포커스를 받았거나, 그 안의 입력이 받았으면 배선이 산 것이다.
+      const focusedInside = editor.closest('div')?.contains(document.activeElement) ?? false
+      expect(focusedInside).toBe(true)
     })
 
     // ── 토글 2종 — 포커스 먼저, 클릭 나중 (리뷰 F-2) ────────────────────────
