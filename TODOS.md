@@ -1523,6 +1523,20 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 **할 일.** ①`board_columns.state_key` DROP 마이그레이션 ②쓰기 경로의 이중 기록 제거 ③`board_column_states` 단독 읽기임을 재확인하는 판별식.
 
+## ⬜ agile-planning — 컬럼 0개 보드를 둘이 동시에 조회하면 자가 치유가 UNIQUE 에 걸려 500 이 된다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 컬럼이 하나도 없는 보드를 열면 서버가 알아서 컬럼을 만들어 준다. 그런데 **두 사람이 같은 순간에 그 보드를 열면** 둘 다 만들려 들고, 늦은 쪽이 「이미 있다」는 DB 오류를 맞는다. 그 사람 화면에는 **보드 대신 서버 오류**가 뜬다. 아무것도 안 고쳤는데 그냥 본 것뿐인데도 그렇다.
+
+**방치하면.** 조회가 실패하는 결함이라 사용자는 원인을 짐작할 수 없고, 새로고침하면 (먼저 들어온 쪽이 이미 만들어 놨으므로) 멀쩡히 뜬다. 재현이 어려워 「가끔 500 이 난다」로만 남는다.
+
+**무엇.** `BoardApplicationService.healColumnsIfEmpty` 가 컬럼 0개 보드를 조회 시점에 채운다 — `boardRepository.seedColumns` 를 부르고 그것이 `board_columns` 와 `board_column_states` 에 쓴다. 잠금이 없어 두 요청이 같은 창에 들어갈 수 있고, 두 번째 INSERT 가 `UNIQUE (board_id, state_key)` 에 걸린다. 변환 핸들러가 없어 `@ExceptionHandler(Exception::class)` 까지 내려가 **500 `AGILE_INTERNAL_ERROR`** 가 된다.
+
+**★이 결함은 PR #444 가 만든 것이 아니다.** `V500:39` 가 같은 UNIQUE 를 `board_columns` 에 이미 갖고 있어 1:1 시절에도 똑같이 났다. #444 의 게이트 2 재리뷰가 X1 경합을 조사하다 곁가지로 발견했고, 체크리스트의 **hot-fix 혼입 금지**(Pass 0-1)에 따라 그 PR 에서 고치지 않고 등재만 한다.
+
+**할 일.** 둘 중 하나. ①`seedColumns` 호출을 `BoardApplicationService.tryMapStates` 와 같은 형태로 감싸 제약 위반을 흡수한다(이미 시드됐다는 뜻이므로 재조회 후 정상 응답). ②`ensureScrumBoard` 가 `acquireProjectScrumBoardLock` 을 먼저 잡는 것처럼 보드 단위 advisory lock 을 조회 앞에 건다 — 다만 **읽기 경로에 락을 거는 비용**을 재야 한다. ①이 더 싸 보인다.
+
+**판별식.** 같은 보드를 동시에 조회하는 통합 테스트. 선례는 `SprintIntegrationTest` 의 동시성 테스트(`futures.map { it.get(30, TimeUnit.SECONDS) }` + 실패 타입 고정).
+
 ---
 
 # 개발 안전장치
