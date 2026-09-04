@@ -40,6 +40,7 @@
 //     userBobFixture.displayName=null → username 'bob' 폴백으로 드롭다운에 표시됨.
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
+import { openFilterDropdown } from './fixtures/filter-bar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — issue-fixtures.ts / user-fixtures.ts와 인라인 동기화
@@ -126,6 +127,7 @@ async function selectAssigneeFromTypeahead(
   query: string,
   displayName: string,
 ): Promise<void> {
+  await openFilterDropdown(page, '담당자')
   const input = page.locator('#issue-filter-assignee-input')
   await input.fill(query)
   // AssigneeSection 드롭다운 ul — input 형제로 렌더됨
@@ -153,6 +155,7 @@ async function selectLabelFromAutocomplete(
   query: string,
   labelName: string,
 ): Promise<void> {
+  await openFilterDropdown(page, '라벨')
   const input = page.getByTestId('label-autocomplete-input')
   await input.fill(query)
   const option = page.getByRole('option', { name: labelName, exact: true })
@@ -186,6 +189,7 @@ test.describe('FR-SR-01 이슈 목록 필터 (status/담당자/미배정/라벨/
 
     // When. status "Open" 체크박스 선택
     // role=checkbox로 한정 — 이슈 상태 배지(role="status")와 충돌 방지
+    await openFilterDropdown(page, '상태')
     await page.getByRole('checkbox', { name: 'Open', exact: true }).check()
 
     // Then. ATLAS-1 표시
@@ -257,6 +261,7 @@ test.describe('FR-SR-01 이슈 목록 필터 (status/담당자/미배정/라벨/
 
     // When. "미배정" 체크박스 체크
     // role=checkbox로 한정 — "미배정"이 이슈 요약/다른 영역에 텍스트로 존재할 경우 strict-mode 방지
+    await openFilterDropdown(page, '담당자')
     await page.getByRole('checkbox', { name: '미배정', exact: true }).check()
 
     // Then. 미배정 이슈 2건 표시
@@ -370,6 +375,7 @@ test.describe('FR-SR-01 이슈 목록 필터 (status/담당자/미배정/라벨/
     expect(beforeCount).toBe(4)
 
     // When-1. status "In Progress" 체크 → 1건으로 감소 확인 (AND 중간 단계)
+    await openFilterDropdown(page, '상태')
     await page.getByRole('checkbox', { name: 'In Progress', exact: true }).check()
     // in_progress 이외 이슈가 사라질 때까지 대기
     await expect(getIssueLocator(page, 'ATLAS-1')).not.toBeVisible()
@@ -413,6 +419,7 @@ test.describe('FR-SR-01 이슈 목록 필터 (status/담당자/미배정/라벨/
     await waitForFullIssueList(page)
 
     // Given. status "Open" 체크 → 1건으로 감소 확인
+    await openFilterDropdown(page, '상태')
     await page.getByRole('checkbox', { name: 'Open', exact: true }).check()
     const filteredCount = await countIssues(page)
     expect(filteredCount).toBe(1)

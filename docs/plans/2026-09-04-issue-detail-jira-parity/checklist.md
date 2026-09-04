@@ -150,8 +150,11 @@ API 경로로 치환하므로 그대로 두면 경로 조작 표면이 된다.
       `<h2>` 강등·콜백 위임을 전부 갖고 있어 새 분기는 같은 코드를 두 벌로 만든다
 - [x] 진입점 **11곳** 전환 (계획은 13곳) — `issue-columns.ts` 는 목록 split view 에 위임하므로
       제외했고(유지 결정), `TopBar` 생성 토스트는 방금 만든 이슈로 가는 것이라 전체 페이지가 맞다
-- [ ] `…` 메뉴 「사이드 패널로 열기」 + `sessionStorage` 선호 — **미구현**. 스토어에 `presentation`
-      필드는 두었으나 토글 UI 와 목록 split view 연동은 후속
+- [x] `…` 메뉴 「사이드 패널로 열기」 + `sessionStorage` 선호 — **PR B 에서 완료**
+      (`modal-sidepanel-toggle`). 상세 pane 헤더에 `⋯` 신설 · 전역 `IssueDetailSidePanel` 을
+      `ShellLayout` 의 `<main>` 형제로 마운트 · 목록 행 클릭이 표시 방식을 따른다.
+      `selected` 딥링크와 커서 `j`/`k` 는 표시 방식과 무관하게 페인을 연다(그 둘이 URL 에
+      의존하므로 표시 방식을 얹으면 함께 죽는다)
 - [ ] 본문·댓글 길이 카운터 — **미구현**. `maxLength` 만 걸었다
 
 ### 2.3 게이트

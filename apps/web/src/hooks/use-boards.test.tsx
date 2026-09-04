@@ -365,6 +365,73 @@ describe('useBoard (filter-aware)', () => {
     await waitFor(() => expect(fetchBoard).toHaveBeenCalledTimes(2))
     expect(fetchBoard).toHaveBeenNthCalledWith(2, boardId, filterB)
   })
+
+  /**
+   * PH1: **같은 보드**의 필터 변경 중에는 이전 데이터를 이어 쓴다.
+   *
+   * 보드 화면이 `{boardDetail !== undefined && <BoardFilterBar/>}` 로 필터 바를 조건부 렌더하기
+   * 때문이다 — 데이터가 잠시 `undefined` 가 되면 필터 바가 통째로 언마운트되고, 드롭다운으로
+   * 바뀐 뒤로는 열려 있던 팝오버까지 사라져 값 하나 고를 때마다 다시 열어야 했다.
+   */
+  it('PH1: 같은 보드에서 필터가 바뀌는 동안 이전 데이터가 유지된다', async () => {
+    const boardId = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+    const filterA: BoardCardFilterParams = {
+      assigneeIds: ['u1'], includeUnassigned: false, labels: [], componentIds: [],
+    }
+    const filterB: BoardCardFilterParams = {
+      assigneeIds: ['u2'], includeUnassigned: false, labels: [], componentIds: [],
+    }
+    let resolveSecond: ((v: BoardDetail) => void) | undefined
+    vi.mocked(fetchBoard)
+      .mockResolvedValueOnce(MOCK_BOARD_DETAIL)
+      .mockImplementationOnce(() => new Promise<BoardDetail>((res) => { resolveSecond = res }))
+
+    const { result, rerender } = renderHook(
+      ({ filter }: { filter: BoardCardFilterParams }) => useBoard(boardId, filter),
+      { wrapper: createWrapper(queryClient), initialProps: { filter: filterA } },
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    rerender({ filter: filterB })
+
+    // 두 번째 응답이 오기 전 — 데이터가 비지 않는다(그래야 필터 바가 살아 있다)
+    await waitFor(() => expect(fetchBoard).toHaveBeenCalledTimes(2))
+    expect(result.current.data).toBeDefined()
+    expect(result.current.isPlaceholderData).toBe(true)
+
+    resolveSecond?.(MOCK_BOARD_DETAIL)
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false))
+  })
+
+  /**
+   * PH2: **보드가 바뀌면** 이전 데이터를 쓰지 않는다.
+   *
+   * 통짜 `keepPreviousData` 였다면 보드 스위처로 옮길 때 **다른 보드의 카드가 그대로 남는다** —
+   * 필터 팝오버를 고치려던 옵션이 「지금 보고 있는 보드가 아닌 것을 보여주는」 더 나쁜 상태를
+   * 만든다. 비-공허 짝: 이 판정이 없으면 PH1 만 보고 스코프를 넓혀도 아무도 못 잡는다.
+   */
+  it('PH2: 보드가 바뀌면 이전 보드 데이터를 이어 쓰지 않는다', async () => {
+    const boardId = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+    const otherBoardId = 'ffffffff-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
+    let resolveSecond: ((v: BoardDetail) => void) | undefined
+    vi.mocked(fetchBoard)
+      .mockResolvedValueOnce(MOCK_BOARD_DETAIL)
+      .mockImplementationOnce(() => new Promise<BoardDetail>((res) => { resolveSecond = res }))
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string }) => useBoard(id),
+      { wrapper: createWrapper(queryClient), initialProps: { id: boardId } },
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    rerender({ id: otherBoardId })
+
+    await waitFor(() => expect(fetchBoard).toHaveBeenCalledTimes(2))
+    expect(result.current.data).toBeUndefined()
+
+    resolveSecond?.(MOCK_BOARD_DETAIL)
+    await waitFor(() => expect(result.current.data).toBeDefined())
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

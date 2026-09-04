@@ -41,6 +41,7 @@ import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { LS_KEY_PAGINATION_EXTRA_ISSUES } from '../src/mocks/issue-handlers'
 import { issueAtlas1Fixture } from '../src/mocks/issue-fixtures'
+import { openFilterDropdown } from './fixtures/filter-bar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -92,11 +93,11 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
   //
   // Given  alice 로그인 + /issues 진입 (ATLAS-1/2/3/5 4건, 기본 와이드 뷰포트)
   // When   테이블이 렌더되면
-  // Then   <table> 시맨틱으로 렌더되고, 행(요약 셀) 클릭 시 split 상세 페인이 열린다
-  //        (URL에 ?selected= 반영 + 우측 상세 제목이 h2로 등장, PR20). 체크박스 클릭은
-  //        이벤트 전파를 차단해 split이 열리지 않는다.
+  // Then   <table> 시맨틱으로 렌더되고, 행(요약 셀) 클릭 시 상세가 **모달**로 열린다
+  //        (Jira 패리티 J1 — 기본 표시 방식. URL 은 목록 그대로고 제목은 h2).
+  //        체크박스 클릭은 이벤트 전파를 차단해 상세가 열리지 않는다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 테이블 렌더 — <table> 시맨틱 + 행 클릭 시 split 상세 페인 오픈 + 체크박스 클릭 전파 차단', async ({ page }) => {
+  test('S1 테이블 렌더 — <table> 시맨틱 + 행 클릭 시 상세 모달 오픈 + 체크박스 클릭 전파 차단', async ({ page }) => {
     // Given. alice 로그인 + 이슈 목록 진입
     await loginAsAlice(page)
     await page.goto(ISSUES_URL)
@@ -108,19 +109,23 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
     // When. 체크박스 클릭 (요약 셀 클릭보다 먼저 검증 — 전파 차단 확인)
     await page.getByTestId('select-ATLAS-1').click()
 
-    // Then. 체크박스는 토글됐지만(선택 상태 반영) split이 열리지 않음
+    // Then. 체크박스는 토글됐지만(선택 상태 반영) 상세가 열리지 않음
     await expect(page.getByTestId('select-ATLAS-1')).toBeChecked()
     await expect(page).toHaveURL(new RegExp(`${ISSUES_URL}$`))
+    // ★모달 부재를 **함께** 단언한다. 기본이 모달로 바뀐 뒤로 모달은 URL 을 건드리지 않으므로
+    //   URL 만 보면 전파 차단이 깨져 모달이 떠도 위 줄이 통과한다 — 가짜 그린이 된다.
+    await expect(page.getByRole('dialog', { name: `이슈 상세 ${issueAtlas1Fixture.key}` })).toHaveCount(0)
 
-    // When. 요약 셀(행 영역) 클릭 → 와이드 뷰포트에서 split 상세 페인 오픈(PR20)
+    // When. 요약 셀(행 영역) 클릭 → 기본 표시 방식인 모달이 열린다(J1)
     await page.getByTestId('issue-summary-ATLAS-1').click()
 
-    // Then. URL에 selected 파라미터 반영(전체화면 `/issues/ATLAS-1` 이동이 아님)
-    await page.waitForURL(/\/issues\?selected=ATLAS-1/)
+    // Then. 상세가 모달로 열린다 — 열림 상태는 스토어가 쥐므로 URL 은 목록 그대로다
+    // (전체화면 `/issues/ATLAS-1` 이동도, `?selected=` 도 아니다).
+    await expect(page.getByRole('dialog', { name: `이슈 상세 ${issueAtlas1Fixture.key}` })).toBeVisible()
+    await expect(page).toHaveURL(new RegExp(`${ISSUES_URL}$`))
 
-    // Then. 우측 상세 페인 등장(제목이 h2, 정본 fixture 요약 텍스트) — split이 실제로
-    // 열렸음을 명확히 검증(vacuous 회피). 상세 페인 안에는 "첨부 파일"·"변경 이력" 등
-    // 다른 h2도 있어 name으로 상세 제목 h2 하나로 한정한다.
+    // Then. 상세 제목이 h2 (모달 안쪽은 variant='pane' — 문서 h1 단일 계약). 상세 안에는
+    // "첨부 파일"·"변경 이력" 등 다른 h2도 있어 name으로 제목 h2 하나로 한정한다.
     await expect(page.getByRole('heading', { level: 2, name: issueAtlas1Fixture.summary })).toBeVisible()
   })
 
@@ -265,6 +270,7 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
     await waitForDefaultFourIssues(page)
 
     // Given. "미배정" 필터 적용 → ATLAS-1, ATLAS-5 2건만 남음
+    await openFilterDropdown(page, '담당자')
     await page.getByRole('checkbox', { name: '미배정', exact: true }).check()
     await expect(page.getByTestId('issue-summary-ATLAS-1')).toBeVisible()
     await expect(page.getByTestId('issue-summary-ATLAS-5')).toBeVisible()

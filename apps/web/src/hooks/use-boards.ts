@@ -123,6 +123,18 @@ export function useBoard(boardId: string | undefined, filter?: BoardCardFilterPa
     },
     staleTime: 30_000,
     enabled: boardId !== undefined && boardId.length > 0,
+    // ★필터를 바꾸면 쿼리 키가 바뀌어 데이터가 잠시 `undefined` 가 된다. 보드 화면은
+    //   `{boardDetail !== undefined && <BoardFilterBar/>}` 로 필터 바를 조건부 렌더하므로
+    //   그 순간 필터 바가 **통째로 언마운트**되고, 드롭다운으로 바뀐 뒤로는 열려 있던 팝오버가
+    //   같이 사라져 값 하나 고를 때마다 다시 열어야 했다(실브라우저로 확인). 이전 데이터를
+    //   들고 있으면 언마운트가 없어지고, 덤으로 필터할 때마다 보드가 비었다 차는 깜빡임도 없다.
+    //
+    // ★★**같은 보드일 때만** 이어 쓴다. 통짜 `keepPreviousData` 로 두면 보드 스위처로 보드를
+    //   바꿀 때도 키가 바뀌므로 **다른 보드의 카드가 그대로 남는다** — 필터 팝오버를 고치려던
+    //   옵션이 「지금 보고 있는 보드가 아닌 것을 보여주는」 더 나쁜 상태를 만든다(독립 리뷰
+    //   CONCERNS-5). 키 구조는 `['board', boardId, filter?]` 라 1번 칸이 보드다.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === boardId ? previous : undefined,
   })
 }
 

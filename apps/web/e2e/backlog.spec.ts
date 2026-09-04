@@ -61,6 +61,7 @@ import { backlogLabels } from '../src/i18n/backlog-labels'
 import { filterBarLabels } from '../src/i18n/filter-bar-labels'
 import { BACKLOG_EPIC_A, BACKLOG_EPIC_B, DEFAULT_BACKLOG } from '../src/mocks/backlog-fixtures'
 import { userAliceFixture } from '../src/mocks/user-fixtures'
+import { openFilterDropdown } from './fixtures/filter-bar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts와 동기화 (import.meta.env 참조 회피)
@@ -1854,6 +1855,7 @@ test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
     await expect(getActiveChipList(page)).toHaveCount(0)
 
     // When. 담당자 후보를 검색해 고른다
+    await openFilterDropdown(page, '담당자')
     await getAssigneeInput(page).fill('김앨')
     await page.getByRole('button', { name: ALICE_DISPLAY_NAME, exact: true }).click()
 
@@ -2399,6 +2401,7 @@ test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
 
     // When. 3축을 건다
     await getSearchInput(page).fill('페이지')
+    await openFilterDropdown(page, '담당자')
     await getAssigneeInput(page).fill('김앨')
     await page.getByRole('button', { name: ALICE_DISPLAY_NAME, exact: true }).click()
     await getEpicOption(page, NO_EPIC_LABEL).check()
@@ -2445,6 +2448,7 @@ test.describe('FR-UX-13 F16 백로그 필터바 · 에픽 패널', () => {
 
     // Then. 담당자 축과 미배정 축이 **둘 다** 적용됐다
     await expect(getActiveChipList(page)).toContainText(ALICE_DISPLAY_NAME)
+    await openFilterDropdown(page, '담당자')
     await expect(
       page.getByRole('checkbox', { name: filterBarLabels.filter.unassigned, exact: true }),
     ).toBeChecked()

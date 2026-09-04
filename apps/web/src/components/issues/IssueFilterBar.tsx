@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 import { useMemo } from 'react'
 import { FilterBar } from '@/components/filters/FilterBar'
+import { FilterDropdown } from '@/components/filters/FilterDropdown'
 import type { FilterChipData } from '@/components/filters/FilterBar'
 import { useWorkflows, extractStatusOptions } from '@/hooks/use-workflows'
 import type { StatusOption } from '@/hooks/use-workflows'
@@ -63,12 +64,19 @@ export function IssueFilterBar({ projectKey, value, onChange }: IssueFilterBarPr
       onChange={onChange}
       idPrefix="issue-filter"
       leadingSection={
-        <StatusMultiSelect
-          options={statusOptions}
-          selectedKeys={value.statusKeys}
-          onChange={(keys) => onChange({ ...value, statusKeys: keys })}
-          disabled={workflowsLoading || workflowsError}
-        />
+        statusOptions.length > 0 ? (
+          <FilterDropdown
+            label={issueFilterLabels.filter.statusLabel}
+            selectedCount={value.statusKeys.length}
+          >
+            <StatusMultiSelect
+              options={statusOptions}
+              selectedKeys={value.statusKeys}
+              onChange={(keys) => onChange({ ...value, statusKeys: keys })}
+              disabled={workflowsLoading || workflowsError}
+            />
+          </FilterDropdown>
+        ) : undefined
       }
       leadingChips={statusChips}
       extraActiveCount={value.statusKeys.length}
@@ -122,10 +130,8 @@ function StatusMultiSelect({
 
   return (
     <div className="flex min-w-[160px] flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">
-        {issueFilterLabels.filter.statusLabel}
-      </span>
-      <ul className="flex flex-col gap-0.5 max-h-48 overflow-y-auto">
+      {/* 섹션 제목은 드롭다운 트리거가 이미 들고 있다 — 여기 또 적으면 같은 텍스트가 둘이 된다 */}
+      <ul className="flex max-h-60 flex-col gap-0.5 overflow-y-auto">
         {options.map((opt) => {
           const checkboxId = `issue-filter-status-${opt.key}`
           const isChecked = selectedKeys.includes(opt.key)

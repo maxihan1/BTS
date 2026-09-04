@@ -135,6 +135,9 @@ FR-AC-01(첨부 업로드) · FR-AC-02(첨부 미리보기).
 
 **모달↔사이드패널 토글** (Jira J1 의 "persist across Jira views within the same session").
 스토어에 `presentation` 필드만 있고 UI 가 없다.
+**→ PR B(`modal-sidepanel-toggle`)에서 완료.** 분할 근거는 그대로 유효했다 — 이 PR 이 실제로
+`routes/issues.index.tsx` 와 `issue-split-view.spec.ts` 를 건드렸고, e2e 전제(사이드바 선호)를
+심는 작업이 따로 필요했다.
 
 **왜 가르는가.** A~D 는 에디터·첨부 컴포넌트 안에서 끝나지만, 토글은
 `routes/issues.index.tsx`(목록 split view)를 건드리고 e2e 의존이 많다. 섞으면 토글이 막힐 때

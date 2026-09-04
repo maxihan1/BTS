@@ -1,6 +1,6 @@
 // IssueFilterBar 컴포넌트 단위 테스트 — status/담당자/라벨/컴포넌트 필터 + 칩 + 초기화 (FR-SR-01 Task 4)
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -177,9 +177,26 @@ function renderBar(
 // S1. status 멀티셀렉트
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 필터 드롭다운을 연다.
+ *
+ * 지라 기본 검색과 같은 가로 필터 바로 바뀌면서 상태·담당자·라벨·컴포넌트 컨트롤이 각자
+ * 드롭다운 **안**으로 들어갔다. 열기 전에는 DOM 에 없으므로, 컨트롤을 조작하는 판정은
+ * 먼저 이 헬퍼를 부른다.
+ */
+async function openFilter(label: string): Promise<void> {
+  // ★`fireEvent` 를 쓴다. `userEvent.setup()` 은 제 타이머를 세우는데, 디바운스 판정처럼
+  //   가짜 타이머를 쓰는 블록에서는 그 둘이 맞물려 15초 타임아웃으로 죽는다.
+  fireEvent.click(screen.getByRole('button', { name: `${label} 필터` }))
+  // 대기하지 않는다 — Radix 는 클릭에 동기로 열리고, 가짜 타이머를 쓰는 블록에서 대기를
+  // 걸면 타이머가 멈춰 있어 15초 타임아웃으로 죽는다(백로그 디바운스 판정에서 실측).
+  await Promise.resolve()
+}
+
 describe('IssueFilterBar — S1 status 멀티셀렉트', () => {
-  it('S1a: 상태 체크박스가 name으로 렌더된다 (key 아님)', () => {
+  it('S1a: 상태 체크박스가 name으로 렌더된다 (key 아님)', async () => {
     renderBar()
+    await openFilter('상태')
     // 체크박스 라벨이 name(Open, In Progress, Done)으로 표시되어야 한다
     expect(screen.getByRole('checkbox', { name: 'Open' })).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'In Progress' })).toBeInTheDocument()
@@ -192,6 +209,7 @@ describe('IssueFilterBar — S1 status 멀티셀렉트', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('상태')
 
     await user.click(screen.getByRole('checkbox', { name: 'Open' }))
 
@@ -204,6 +222,7 @@ describe('IssueFilterBar — S1 status 멀티셀렉트', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({ ...emptyFilter, statusKeys: ['open'] }, onChange)
+    await openFilter('상태')
 
     await user.click(screen.getByRole('checkbox', { name: 'In Progress' }))
 
@@ -216,6 +235,7 @@ describe('IssueFilterBar — S1 status 멀티셀렉트', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({ ...emptyFilter, statusKeys: ['open', 'done'] }, onChange)
+    await openFilter('상태')
 
     await user.click(screen.getByRole('checkbox', { name: 'Open' }))
 
@@ -224,8 +244,9 @@ describe('IssueFilterBar — S1 status 멀티셀렉트', () => {
     )
   })
 
-  it('S1e: 선택된 상태 키에 해당하는 칩에 name이 표시된다 (key 아님)', () => {
+  it('S1e: 선택된 상태 키에 해당하는 칩에 name이 표시된다 (key 아님)', async () => {
     renderBar({ ...emptyFilter, statusKeys: ['open', 'done'] })
+    await openFilter('상태')
 
     // 칩에 Open, Done이 표시되어야 한다
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
@@ -247,6 +268,7 @@ describe('IssueFilterBar — S2 담당자 typeahead', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: /담당자/ })
     await user.click(input)
@@ -272,6 +294,7 @@ describe('IssueFilterBar — S3 라벨 자동완성', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyFilter, onChange)
+    await openFilter('라벨')
 
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
@@ -297,6 +320,7 @@ describe('IssueFilterBar — S5 칩 개별 제거', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({ ...emptyFilter, statusKeys: ['open', 'done'] }, onChange)
+    await openFilter('상태')
 
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     const removeBtn = within(chipList).getByRole('button', { name: /Open.*제거|제거.*Open/ })
@@ -326,6 +350,10 @@ describe('IssueFilterBar — S6 초기화 버튼', () => {
       labels: ['bug'],
       componentIds: ['comp-uuid-0001'],
     }, onChange)
+    await openFilter('상태')
+    await openFilter('담당자')
+    await openFilter('라벨')
+    await openFilter('컴포넌트')
 
     await user.click(screen.getByRole('button', { name: '초기화' }))
 
@@ -345,12 +373,14 @@ describe('IssueFilterBar — S6 초기화 버튼', () => {
 
 describe('IssueFilterBar — S7 활성 필터 카운트', () => {
   // 카운트 없음(FilterBar S7a)·includeUnassigned 반영(FilterBar S7c)은 FilterBar.test에 동등 커버되어 제거됨.
-  it('S7b: statusKeys + labels 2개 → "2개 적용 중" 표시', () => {
+  it('S7b: statusKeys + labels 2개 → "2개 적용 중" 표시', async () => {
     renderBar({ ...emptyFilter, statusKeys: ['open'], labels: ['bug'] })
+    await openFilter('상태')
+    await openFilter('라벨')
     expect(screen.getByText(/2개 적용 중/)).toBeInTheDocument()
   })
 
-  it('S7d: status 2개 + 담당자 1개 + 미배정 + 라벨 1개 + 컴포넌트 1개 = 6개', () => {
+  it('S7d: status 2개 + 담당자 1개 + 미배정 + 라벨 1개 + 컴포넌트 1개 = 6개', async () => {
     renderBar({
       statusKeys: ['open', 'done'],
       assigneeIds: ['user-uuid-0001'],
@@ -358,6 +388,10 @@ describe('IssueFilterBar — S7 활성 필터 카운트', () => {
       labels: ['bug'],
       componentIds: ['comp-uuid-0001'],
     })
+    await openFilter('상태')
+    await openFilter('담당자')
+    await openFilter('라벨')
+    await openFilter('컴포넌트')
     expect(screen.getByText(/6개 적용 중/)).toBeInTheDocument()
   })
 })
@@ -367,18 +401,24 @@ describe('IssueFilterBar — S7 활성 필터 카운트', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueFilterBar — S8 접근성', () => {
-  it('S8a: 각 필터 컨트롤이 접근 가능한 label을 갖는다', () => {
+  it('S8a: 각 필터 컨트롤이 접근 가능한 label을 갖는다', async () => {
     renderBar()
 
+    // 드롭다운은 한 번에 하나만 열린다(바깥 클릭이 이전 것을 닫는다) — 순차로 확인한다.
+    await openFilter('담당자')
     expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
-    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: /미배정/ })).toBeInTheDocument()
-    // status 섹션
+
+    await openFilter('라벨')
+    expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
+
+    await openFilter('상태')
     expect(screen.getByRole('checkbox', { name: 'Open' })).toBeInTheDocument()
   })
 
-  it('S8b: 상태 칩 제거 버튼에 aria-label이 있다', () => {
+  it('S8b: 상태 칩 제거 버튼에 aria-label이 있다', async () => {
     renderBar({ ...emptyFilter, statusKeys: ['open'] })
+    await openFilter('상태')
 
     const chipList = screen.getByRole('list', { name: '적용된 필터' })
     const removeBtns = within(chipList).getAllByRole('button', { name: /제거/ })
@@ -398,24 +438,28 @@ describe('IssueFilterBar — S8 접근성', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('IssueFilterBar — S10 useWorkflows EC7 fail-safe', () => {
-  it('S10a: useWorkflows 로딩 중에도 담당자 필터는 정상 렌더된다', () => {
+  it('S10a: useWorkflows 로딩 중에도 담당자 필터는 정상 렌더된다', async () => {
     vi.mocked(useWorkflowsModule.useWorkflows).mockReturnValueOnce(
       { data: undefined, isLoading: true, isError: false } as unknown as ReturnType<typeof useWorkflowsModule.useWorkflows>,
     )
     renderBar()
 
-    // 담당자 섹션은 정상 렌더되어야 한다
+    // 옵션이 0개면 상태 **드롭다운 자체**가 렌더되지 않는다 — 눌러도 아무것도 없는 빈 버튼을
+    // 남기지 않는다(장식 필터 금지). 트리거 부재가 체크박스 부재보다 강한 판정이다.
+    expect(screen.queryByRole('button', { name: '상태 필터' })).not.toBeInTheDocument()
+
+    await openFilter('담당자')
     expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
-    // 상태 체크박스는 표시되지 않아야 한다 (옵션 없음)
     expect(screen.queryByRole('checkbox', { name: 'Open' })).not.toBeInTheDocument()
   })
 
-  it('S10b: useWorkflows 에러 시 throw 없이 나머지 필터가 정상 렌더된다', () => {
+  it('S10b: useWorkflows 에러 시 throw 없이 나머지 필터가 정상 렌더된다', async () => {
     vi.mocked(useWorkflowsModule.useWorkflows).mockReturnValueOnce(
       { data: undefined, isLoading: false, isError: true } as unknown as ReturnType<typeof useWorkflowsModule.useWorkflows>,
     )
     // 에러가 throw되지 않아야 한다
     expect(() => renderBar()).not.toThrow()
+    await openFilter('담당자')
     // 담당자 섹션은 정상 렌더
     expect(screen.getByRole('textbox', { name: /담당자/ })).toBeInTheDocument()
   })

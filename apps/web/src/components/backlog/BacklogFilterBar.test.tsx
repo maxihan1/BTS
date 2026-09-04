@@ -108,6 +108,22 @@ function chipList(): HTMLElement {
 // S1. 제목 검색 — leadingSection 주입 + 250ms 디바운스 (N3)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * 필터 드롭다운을 연다.
+ *
+ * 지라 기본 검색과 같은 가로 필터 바로 바뀌면서 상태·담당자·라벨·컴포넌트 컨트롤이 각자
+ * 드롭다운 **안**으로 들어갔다. 열기 전에는 DOM 에 없으므로, 컨트롤을 조작하는 판정은
+ * 먼저 이 헬퍼를 부른다.
+ */
+async function openFilter(label: string): Promise<void> {
+  // ★`fireEvent` 를 쓴다. `userEvent.setup()` 은 제 타이머를 세우는데, 디바운스 판정처럼
+  //   가짜 타이머를 쓰는 블록에서는 그 둘이 맞물려 15초 타임아웃으로 죽는다.
+  fireEvent.click(screen.getByRole('button', { name: `${label} 필터` }))
+  // 대기하지 않는다 — Radix 는 클릭에 동기로 열리고, 가짜 타이머를 쓰는 블록에서 대기를
+  // 걸면 타이머가 멈춰 있어 15초 타임아웃으로 죽는다(백로그 디바운스 판정에서 실측).
+  await Promise.resolve()
+}
+
 describe('BacklogFilterBar — S1 제목 검색', () => {
   // ★userEvent 는 fake timer 와 병용하면 내부 async 타이밍으로 hang 한다
   // (CommandPalette.test.tsx / ExportDialog.test.tsx C3 교훈) — 동기 fireEvent 로 입력한다.
@@ -239,8 +255,9 @@ describe('BacklogFilterBar — S2 에픽 활성 칩', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('BacklogFilterBar — S3 에픽 단일 소유권 (C4)', () => {
-  it('S3a: 에픽 선택 체크박스가 0개다 — 선택 전', () => {
+  it('S3a: 에픽 선택 체크박스가 0개다 — 선택 전', async () => {
     renderBar()
+    await openFilter('담당자')
     // 비-공허 짝: 이 트리에 체크박스 조회 자체는 살아 있다(FilterBar 의 「미배정」)
     expect(screen.getByRole(EPIC_CONTROL_ROLE, { name: filterBarLabels.filter.unassigned }))
       .toBeInTheDocument()
@@ -300,8 +317,9 @@ describe('BacklogFilterBar — S5 라벨·컴포넌트 섹션 제외', () => {
     expect(screen.queryByText(filterBarLabels.filter.componentLabel)).not.toBeInTheDocument()
   })
 
-  it('S5b: 비-공허 짝 — 담당자·미배정·초기화는 그대로 남는다', () => {
+  it('S5b: 비-공허 짝 — 담당자·미배정·초기화는 그대로 남는다', async () => {
     renderBar()
+    await openFilter('담당자')
     expect(screen.getByRole('textbox', { name: filterBarLabels.filter.assigneeLabel }))
       .toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: filterBarLabels.filter.unassigned }))
@@ -361,6 +379,7 @@ describe('BacklogFilterBar — S7 FilterBar 경계 왕복', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar(emptyBacklogFilter(), onChange)
+    await openFilter('담당자')
 
     await user.click(screen.getByRole('checkbox', { name: filterBarLabels.filter.unassigned }))
 
@@ -378,6 +397,7 @@ describe('BacklogFilterBar — S7 FilterBar 경계 왕복', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     renderBar({ ...emptyBacklogFilter(), query: '결제', epicKeys: [EPIC_ALPHA] }, onChange)
+    await openFilter('담당자')
 
     const input = screen.getByRole('textbox', { name: filterBarLabels.filter.assigneeLabel })
     await user.click(input)

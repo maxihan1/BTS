@@ -26,6 +26,7 @@ import type { IssueCellEditContext } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
+import { useIssueListPresentation } from '@/components/issue/use-issue-list-presentation'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
 import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
@@ -906,6 +907,8 @@ export function IssueListRouteAdapter(): JSX.Element {
    */
   function handleNavigate(key: string): void {
     if (isWide) {
+      // 모달 선호(기본)면 URL 을 건드리지 않는다 — 열림 상태는 스토어가 쥔다(J1).
+      if (openViaPresentation(key)) return
       void navigate({
         to: '/issues',
         search: (prev) => ({ ...prev, selected: prev.selected === key ? undefined : key }),
@@ -922,6 +925,9 @@ export function IssueListRouteAdapter(): JSX.Element {
   function clearSelected(): void {
     void navigate({ to: '/issues', search: (prev) => ({ ...prev, selected: undefined }) })
   }
+
+  // 표시 방식 결선 (J1) — 진입 분기 + 전환 직후 URL 정리
+  const { openViaPresentation, detailModalOpen } = useIssueListPresentation({ selected, clearSelected })
 
   /**
    * split view 우측 페인에 열린 이슈 키를 교체한다.
@@ -1018,7 +1024,11 @@ export function IssueListRouteAdapter(): JSX.Element {
         // 않으면 `j` 가 URL 만 바꾸고 화면엔 아무 변화가 없는 유령 상태가 된다.
         // 콜백을 undefined 로 끊던 옛 방식과 달리 등록 자체를 막아 preventDefault 도
         // 하지 않는다 — 브라우저 기본 동작을 삼키지 않는다.
-        cursorEnabled={isWide}
+        // ★상세 모달이 떠 있으면 **여기서** 끊는다(J1). 모달 안 닫기·`⋯`·PDF 버튼은 입력
+        //   요소가 아니라 `shouldIgnoreEvent` 를 통과하고, `issue-detail` 레이어의 폴백이
+        //   `j` 를 `issue-list` 로 흘려 모달 뒤 목록이 움직이고 배후에 split 페인까지
+        //   마운트된다. 행 클릭 기본이 모달로 바뀌면서 드물던 누수가 주경로가 됐다.
+        cursorEnabled={isWide && !detailModalOpen}
         onCursorTo={moveCursorTo}
         onOpenCursor={openCursorIssue}
         onCloseDetailPane={clearSelected}
@@ -1028,6 +1038,7 @@ export function IssueListRouteAdapter(): JSX.Element {
     )
 
   // D2 — 와이드 + selected일 때만 split view(2컬럼)로 전환한다. 그 외(미선택/좁은폭)는 목록 전체폭.
+  // ★표시 방식(J1)은 여기 걸지 않는다 — 근거는 `use-issue-list-presentation.ts` JSDoc.
   if (isWide && selected !== undefined) {
     return (
       <IssueListSplitView

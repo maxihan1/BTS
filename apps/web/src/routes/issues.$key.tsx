@@ -26,6 +26,7 @@ import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { FileDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { IssueDetailPresentationMenu } from '@/components/issue/IssueDetailPresentationMenu'
 import { Input } from '@/components/ui/input'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
@@ -1030,6 +1031,7 @@ export function IssueDetailPage({
             <FileDown className="size-4 mr-1.5" aria-hidden="true" />
             {issueDetailStrings.pdfDownloadButton}
           </Button>
+          {variant === 'pane' && <IssueDetailPresentationMenu issueKey={issueKey} />}
           {/* pane 전용 닫기 버튼 — split view 우측 페인 (FR-UX-06 PR20 Task 1) */}
           {variant === 'pane' && (
             <Button

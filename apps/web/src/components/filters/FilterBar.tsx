@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { LabelAutocompleteInput } from '@/components/labels/LabelAutocompleteInput'
 import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
+import { FilterDropdown } from './FilterDropdown'
 import { useUsers, useUsersByIds } from '@/hooks/use-users'
 import { useComponents } from '@/hooks/use-components'
 import { useDebounce } from '@/hooks/use-debounce'
@@ -135,63 +136,87 @@ export function FilterBar<T extends BoardCardFilterParams>({
     }
   }
 
-  // 🛑 items-end 금지 — 섹션 높이가 제각각(상태 212 · 담당자 112 · 라벨 52 · 컴포넌트 62)이라
-  //    아래를 맞추면 라벨 top 이 145/245/305/295 로 벌어져 계단이 된다. 위를 맞춰야 한 줄로 읽힌다.
-  return (
-    <div className="flex flex-wrap items-start gap-3 rounded-lg border bg-muted/30 p-4">
-      {activeCount > 0 && (
-        <span className="w-full text-xs text-muted-foreground">
-          {filterBarLabels.count.applied(activeCount)}
-        </span>
-      )}
+  const assigneeCount = value.assigneeIds.length + (value.includeUnassigned ? 1 : 0)
 
+  // 지라 기본 검색과 같은 **가로 한 줄** 배치. 종전에는 네 섹션을 전부 펼쳐 세로로 쌓았고
+  // (상태만 체크박스 6줄) 카드 하나가 화면 절반을 먹어, 목록이 좁아지는 사이드패널 표시
+  // 방식에서는 이슈 테이블이 접힘선 아래로 밀려났다.
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
       {leadingSection}
 
       {/* 담당자 typeahead + 미배정 체크박스 */}
-      <AssigneeSection
-        idPrefix={idPrefix}
-        query={assigneeQuery}
-        onQueryChange={setAssigneeQuery}
-        users={users}
-        isLoading={usersLoading}
-        selectedIds={value.assigneeIds}
-        includeUnassigned={value.includeUnassigned}
-        onSelect={handleAssigneeSelect}
-        onUnassignedToggle={(e) => onChange({ ...value, includeUnassigned: e.target.checked })}
-      />
+      <FilterDropdown
+        label={filterBarLabels.filter.assigneeLabel}
+        selectedCount={assigneeCount}
+        contentClassName="w-72"
+      >
+        <AssigneeSection
+          idPrefix={idPrefix}
+          query={assigneeQuery}
+          onQueryChange={setAssigneeQuery}
+          users={users}
+          isLoading={usersLoading}
+          selectedIds={value.assigneeIds}
+          includeUnassigned={value.includeUnassigned}
+          onSelect={handleAssigneeSelect}
+          onUnassignedToggle={(e) => onChange({ ...value, includeUnassigned: e.target.checked })}
+        />
+      </FilterDropdown>
 
       {/* 라벨 자동완성 — 소비처가 감출 수 있다(백로그는 응답에 labels가 없다) */}
       {hiddenSections?.labels !== true && (
-        <div className="flex min-w-[180px] flex-col gap-1">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor={`${idPrefix}-label-input`}>
-            {filterBarLabels.filter.labelLabel}
-          </label>
-          <LabelAutocompleteInput
-            value={labelInput}
-            onChange={setLabelInput}
-            onCommit={handleLabelCommit}
-            existingLabels={value.labels}
-            placeholder={filterBarLabels.filter.labelPlaceholder}
-          />
-        </div>
+        <FilterDropdown
+          label={filterBarLabels.filter.labelLabel}
+          selectedCount={value.labels.length}
+          contentClassName="w-72"
+        >
+          {/* 섹션 제목은 드롭다운 트리거가 들고 있다 — 여기 또 적으면 같은 텍스트가 둘이 되어
+              `getByText('라벨')` 이 strict 위반으로 죽는다. 입력 자신은 `aria-label="라벨
+              자동완성"` 을 이미 갖고 있어 접근성 이름을 잃지 않는다. */}
+          <div className="flex flex-col gap-1">
+            <LabelAutocompleteInput
+              value={labelInput}
+              onChange={setLabelInput}
+              onCommit={handleLabelCommit}
+              existingLabels={value.labels}
+              placeholder={filterBarLabels.filter.labelPlaceholder}
+            />
+          </div>
+        </FilterDropdown>
       )}
 
       {/* 컴포넌트 멀티셀렉트 — 소비처가 감출 수 있다(백로그는 응답에 componentIds가 없다) */}
       {hiddenSections?.components !== true && (
-        <div className="flex min-w-[180px] flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">
-            {filterBarLabels.filter.componentLabel}
-          </span>
-          <ComponentMultiSelect
-            value={value.componentIds}
-            options={components}
-            onChange={(ids) => onChange({ ...value, componentIds: ids })}
-          />
-        </div>
+        <FilterDropdown
+          label={filterBarLabels.filter.componentLabel}
+          selectedCount={value.componentIds.length}
+          contentClassName="w-72"
+        >
+          {/* 위와 같은 이유로 섹션 제목을 두지 않는다 — 검색 입력이 `컴포넌트 검색` 이라는
+              제 이름을 갖는다. */}
+          <div className="flex flex-col gap-1">
+            <ComponentMultiSelect
+              value={value.componentIds}
+              options={components}
+              onChange={(ids) => onChange({ ...value, componentIds: ids })}
+            />
+          </div>
+        </FilterDropdown>
       )}
 
-      {/* 활성 필터 칩 + 초기화 버튼 */}
-      <div className="flex w-full flex-wrap items-center gap-2">
+      <Button type="button" variant="outline" size="sm" className="min-h-[44px]" onClick={handleReset}>
+        {filterBarLabels.filter.reset}
+      </Button>
+
+      {activeCount > 0 && (
+        <span className="text-xs text-muted-foreground">
+          {filterBarLabels.count.applied(activeCount)}
+        </span>
+      )}
+
+      {/* 활성 필터 칩 — 무엇이 걸려 있는지 접힌 드롭다운 밖에서도 보이게 한다 */}
+      <div className="flex w-full flex-wrap items-center gap-2 empty:hidden">
         <ActiveFilterChips
           leadingChips={leadingChips}
           assigneeIds={value.assigneeIds}
@@ -204,9 +229,6 @@ export function FilterBar<T extends BoardCardFilterParams>({
             onChange({ ...value, labels: value.labels.filter((l) => l !== label) })
           }
         />
-        <Button type="button" variant="outline" size="sm" onClick={handleReset}>
-          {filterBarLabels.filter.reset}
-        </Button>
       </div>
     </div>
   )

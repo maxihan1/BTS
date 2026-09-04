@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { render, screen, waitFor, act, within } from '@testing-library/react'
+import { render, screen, waitFor, act, within, fireEvent } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -2189,8 +2189,24 @@ const FILTER_VIEW: BacklogView = {
 /** `FILTER_VIEW` 와 같은 목록인데 응답이 잘렸다 — C5·EC8 이 쓴다 */
 const TRUNCATED_FILTER_VIEW: BacklogView = { ...FILTER_VIEW, truncated: true }
 
+/**
+ * 담당자 필터 드롭다운을 **닫혀 있을 때만** 연다.
+ *
+ * 필터 바가 지라 기본 검색과 같은 가로 드롭다운으로 바뀌면서 담당자 컨트롤이 팝오버 안으로
+ * 들어갔다. 트리거는 토글이라 이미 열려 있는데 또 누르면 도로 닫힌다 — 그래서 컨트롤 존재로
+ * 열림을 먼저 판정한다.
+ */
+function openAssigneeFilterIfClosed(): void {
+  if (screen.queryByRole('checkbox', { name: filterBarLabels.filter.unassigned }) !== null) return
+  const trigger = screen.queryByRole('button', {
+    name: `${filterBarLabels.filter.assigneeLabel} 필터`,
+  })
+  if (trigger !== null) fireEvent.click(trigger)
+}
+
 /** 미배정 체크박스 — 타이핑 없이 전 섹션을 0건으로 만드는 결정적 경로 */
 function unassignedCheckbox(): HTMLElement {
+  openAssigneeFilterIfClosed()
   return screen.getByRole('checkbox', { name: filterBarLabels.filter.unassigned })
 }
 
@@ -2204,6 +2220,7 @@ async function selectAssignee(
   user: ReturnType<typeof userEvent.setup>,
   displayName: string,
 ): Promise<void> {
+  openAssigneeFilterIfClosed()
   await user.type(
     screen.getByRole('textbox', { name: filterBarLabels.filter.assigneeLabel }),
     '김',

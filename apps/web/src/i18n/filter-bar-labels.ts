@@ -27,6 +27,16 @@ export const filterBarLabels = {
     componentLabel: '컴포넌트',
     /** 초기화 버튼 텍스트 */
     reset: '초기화',
+    /**
+     * 필터 드롭다운 트리거의 접근성 이름.
+     *
+     * 안쪽 컨트롤(`담당자` 입력 등)과 **다른 이름**이라야 한다 — 같으면 드롭다운을 연 순간
+     * 이름이 겹쳐 `getByRole` 이 strict 위반으로 죽는다.
+     *
+     * @param name 필터 이름 (상태·담당자·라벨·컴포넌트)
+     * @returns "{name} 필터"
+     */
+    dropdownAriaLabel: (name: string): string => `${name} 필터`,
   },
 
   /** 칩 제거 버튼 */
