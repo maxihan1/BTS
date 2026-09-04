@@ -176,9 +176,11 @@ class BoardController(
      * 프로젝트별 보드 목록을 조회한다.
      *
      * 권한: [IssuePermission.BROWSE] on [IssueScope.Project] (요청 projectKey 기준).
+     * [IssuePermission.SOFT_DELETE] 는 게이트가 아니라 표시용 파생값이다 — 미보유여도 200 이다.
      *
      * @param projectKey 조회할 프로젝트 키.
-     * @return 200 OK + [BoardSummaryResponse] 목록.
+     * @return 200 OK + [BoardSummaryResponse] 목록. 각 항목의 canDelete 는 프로젝트 스코프 판정
+     *   **1회**의 결과를 함께 쓴다(보드 수와 무관하게 권한 조회는 늘지 않는다).
      */
     @GetMapping
     fun listBoards(

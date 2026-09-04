@@ -91,6 +91,10 @@ import java.util.UUID
  * - LIST-1. GET /api/v1/boards?projectKey= 정상 → 200 + 배열
  * - LIST-2. GET 목록 BROWSE 권한 미충족 → 403
  * - LIST-3. GET 목록 각 항목에 boardType — SCRUM/KANBAN 이 각각 판정을 진다 (FR-BD-04 D6)
+ * - LIST-4. GET 목록 각 항목에 canDelete — 보드 2건이 각각 판정을 진다 (FR-BD-01 · Jira J5)
+ * - LIST-5. GET 목록 SOFT_DELETE 미보유 → 200 + 전 항목 canDelete=false (403 아님)
+ * - LIST-6. GET 목록 보드 2건이어도 권한 판정은 BROWSE·SOFT_DELETE 각 1회 (N+1 판별식)
+ * - LIST-7. GET 목록 보드 0건이어도 200 + 빈 배열이고 권한 판정 횟수는 같다
  * - MOVE-1. POST move 정상 → 200 + 전환 결과 + columnId echo
  * - MOVE-2. POST move 보드 미존재 → 404
  * - MOVE-3. POST move 버전 충돌(서비스 409) → 409
@@ -697,6 +701,7 @@ class BoardControllerIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.length()").value(2))
 
+        // 이 개수를 늘리는 수정은 「테스트 갱신」이 아니라 X10 근사가 깨졌다는 신호다.
         assertThat(permissionGate.calls)
             .containsExactly(
                 Triple(actorId, IssuePermission.BROWSE, IssueScope.Project("BTS")),
