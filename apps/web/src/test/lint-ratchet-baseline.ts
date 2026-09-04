@@ -25,6 +25,13 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //      없는 줄을 찾게 되므로 여기 적어 둔다.
   'src/components/import/mapping/ImportMappingWizard.tsx::Arrow function': 289,
   "src/components/issue-templates/IssueTemplateFormDialog.tsx::Function 'FormBody'": 259,
+  // ⚠️ 2026-09-04 (부채 177) 신규 등록 237줄. **이 PR 의 부채가 아니다.**
+  //   #453(에디터 마감 4건)이 이 컴포넌트를 141줄 키워 200줄을 넘겼는데 래칫 등록을 빠뜨렸다.
+  //   #453 은 `gh pr checks` 가 "no checks reported" 인 채로 머지돼 R4 가 한 번도 돌지 않았다.
+  //   부채 177 이 main 을 병합하며 처음 드러났고, 여기서 막히면 머지가 서므로 등록만 해 둔다.
+  //   ★상환은 #453 쪽 몫이다 — 함수를 쪼개는 것이 정처방이고, 그 리팩터를 이 PR 이 하면
+  //     보드 설정 화면의 리뷰 범위를 남의 컴포넌트로 넓히게 된다.
+  "src/components/issue/AttachmentPreviewModal.tsx::Function 'AttachmentPreviewModal'": 237,
   "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 317,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
