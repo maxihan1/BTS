@@ -123,6 +123,10 @@ import java.util.UUID
  * - COL-N3. {} → 400, 서비스 미호출. 최소 1필드 규칙.
  * - COL-N4. {name:"   "} → 400, 서비스 미호출.
  * - COL-N5. {name:null} (present-null) → 400. 컬럼 이름은 해제할 수 없다.
+ * - COL-O1. PUT columns/order 전체 순서 → 200 + 서비스에 그 순서 그대로 전달.
+ * - COL-O2. 컬럼 누락 → 400. COL-O3. 중복 → 400 (둘 다 서비스가 집합 일치로 판정).
+ * - COL-O4. 빈 배열 → 400, 서비스 미호출. 「순서를 지운다」가 아니라 요청 실수다.
+ * - COL-O5. CREATE 권한 미충족 → 403, 서비스 미호출.
  * - PATCH-N7. {name 유효, swimlaneField 무효} → 400 + 서비스 위임 1회(원자성 — 두 트랜잭션 분할 금지).
  * - ERR-1. 이름 불변식과 무관한 IllegalArgumentException 하위(NumberFormatException) → 500.
  * - DEL-1. DELETE /boards/{id} → 204 + SOFT_DELETE 권한 판정 + 서비스 위임.
@@ -1375,6 +1379,113 @@ class BoardControllerIntegrationTest {
         ).andExpect(status().isBadRequest)
 
         verify(exactly = 0) { boardApplicationService.updateColumn(any(), any(), any(), any()) }
+    }
+
+    // ── COL-O. PUT columns/order — 전체 순서 교체 (부채 177 R10 · J25) ──────────
+    //
+    // ★부분 이동이 아니라 **전체 교체**다. #444 가 상태 집합에 쓴 근거가 순서에도 그대로 선다 —
+    //   「지금 이 보드의 컬럼 순서」가 클라이언트와 서버 사이에서 갈리지 않는다.
+    //   그래서 불완전한 배열은 400 이고, 그 판정 3종(누락·중복·외부)이 아래 세 건이다.
+
+    @Test
+    fun `COL-O1 columnIds 전체를 보내면 200 이고 그 순서로 교체된다`() {
+        val board = sampleBoard()
+        val reordered =
+            board.copy(
+                columns =
+                    listOf(
+                        board.columns[2].copy(displayOrder = 0),
+                        board.columns[0].copy(displayOrder = 1),
+                        board.columns[1].copy(displayOrder = 2),
+                    ),
+            )
+        val order = listOf(board.columns[2].id, board.columns[0].id, board.columns[1].id)
+
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(board.id, order) } returns reordered
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to order.map { it.toString() }))),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.boardId").value(board.id.toString()))
+
+        verify(exactly = 1) { boardApplicationService.reorderColumns(board.id, order) }
+    }
+
+    @Test
+    fun `COL-O2 columnIds 에 컬럼이 빠지면 400 이다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(any(), any()) } throws
+            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
+
+        val partial = listOf(board.columns[0].id.toString(), board.columns[1].id.toString())
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to partial))),
+        ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `COL-O3 columnIds 에 중복이 있으면 400 이다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        every { boardApplicationService.reorderColumns(any(), any()) } throws
+            ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "컬럼 집합이 일치하지 않습니다.")
+
+        val dup =
+            listOf(
+                board.columns[0].id.toString(),
+                board.columns[0].id.toString(),
+                board.columns[1].id.toString(),
+            )
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to dup))),
+        ).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `COL-O4 빈 columnIds 는 400 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("columnIds" to emptyList<String>()))),
+        ).andExpect(status().isBadRequest)
+
+        // 빈 배열은 「순서를 지운다」가 아니라 요청 실수다. 서비스까지 보내지 않는다.
+        verify(exactly = 0) { boardApplicationService.reorderColumns(any(), any()) }
+    }
+
+    @Test
+    fun `COL-O5 CREATE 권한이 없으면 403 이고 서비스는 호출되지 않는다`() {
+        val board = sampleBoard()
+        every { boardRepository.findById(board.id) } returns board
+        permissionGate.denied.add(IssuePermission.CREATE)
+
+        mockMvc.perform(
+            put("/api/v1/boards/${board.id}/columns/order")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf("columnIds" to board.columns.map { it.id.toString() }),
+                    ),
+                ),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_ACCESS_DENIED"))
+
+        verify(exactly = 0) { boardApplicationService.reorderColumns(any(), any()) }
     }
 
     @Test
