@@ -24,6 +24,38 @@ const UPDATED_SUMMARY = 'E2E 테스트용 이슈 (Enter 로 저장됨)'
 /** S3 에서 입력했다가 Esc 로 버려질 값. */
 const DISCARDED_SUMMARY = '되돌려져야 하는 제목'
 /** S5 본문 저장값 — 마크다운 특수문자 없이 두어 preview 대조를 단순화한다. */
+/**
+ * TipTap contenteditable 에 본문을 입력한다.
+ *
+ * ★`fill` 은 `value` 가 있는 폼 요소 전용이라 contenteditable 에서는 아무 일도 하지 않는다.
+ *   전체 선택 후 실제 키 입력을 넣어야 ProseMirror 문서가 교체된다(2026-09-04 J8 전환).
+ */
+async function typeBody(
+  page: import('@playwright/test').Page,
+  editor: import('@playwright/test').Locator,
+  text: string,
+) {
+  await editor.click()
+  await page.keyboard.press('ControlOrMeta+a')
+  await page.keyboard.press('Delete')
+  await editor.pressSequentially(text)
+}
+
+/**
+ * 본문 편집기 컨테이너 — 저장/취소 버튼이 이 안에 있다.
+ *
+ * ★옛 `div:has(> [role="tablist"])` 는 Write/Preview 탭과 함께 사라졌다. 또 `EditorContent` 가
+ *   wrapper div 를 하나 더 만들어 **에디터의 직계 부모에는 버튼이 없다** — 에디터와 저장 버튼을
+ *   함께 가진 div 중 가장 안쪽을 잡는다.
+ */
+function bodyEditorContainer(page: import('@playwright/test').Page) {
+  return page
+    .locator('div')
+    .filter({ has: page.getByRole('textbox', { name: i18nLabels.issueDetail.descriptionEditLabel }) })
+    .filter({ has: page.getByRole('button', { name: i18nLabels.issueDetail.descriptionSaveButton }) })
+    .last()
+}
+
 const BODY_MARKDOWN = '인라인 편집으로 저장한 본문'
 /** S7 에서 확인 없이 사라지면 안 되는 작성분. */
 const UNSAVED_BODY_MARKDOWN = '아직 저장 안 한 작성분'
@@ -71,6 +103,7 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     await heading.getByRole('button', { name: ORIGINAL_SUMMARY, exact: true }).click()
     const titleInput = page.getByLabel(i18nLabels.issueDetail.titleEditLabel)
     await expect(titleInput).toBeVisible()
+    // ★제목은 여전히 `<input>` 이라 `toHaveValue` 가 맞다 — 본문만 contenteditable 로 바뀌었다.
     await expect(titleInput).toHaveValue(ORIGINAL_SUMMARY)
 
     // When 2 (S2). 값 변경 후 Enter — 저장 버튼은 누르지 않는다
@@ -134,29 +167,32 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     // When 1 (S4). 본문 클릭 — `본문 편집` 버튼을 거치지 않는 새 진입 경로
     await emptyBody.click()
     const bodyTextarea = page.getByRole('textbox', {
-      name: i18nLabels.issueDetail.descriptionEditButton,
+      name: i18nLabels.issueDetail.descriptionEditLabel,
     })
     await expect(bodyTextarea).toBeVisible()
 
     // When 2 (S5). 내용 입력 후 Ctrl+Enter — 저장 버튼은 누르지 않는다
     const patch = waitForIssuePatch(page, key)
-    await bodyTextarea.fill(BODY_MARKDOWN)
+    await typeBody(page, bodyTextarea, BODY_MARKDOWN)
     await bodyTextarea.press('Control+Enter')
 
     // Then 1. 요청이 실제로 나갔고 입력값이 실려 있다 (UI 만 바뀐 가짜 그린 차단)
     const patchResponse = await patch
     expect(patchResponse.status()).toBe(200)
     const patchBody: unknown = patchResponse.request().postDataJSON()
-    expect(patchBody).toMatchObject({ description: BODY_MARKDOWN })
+    // ★2026-09-04 TipTap 전환(J8). 에디터가 마크다운이 아니라 **정화된 HTML** 을 보낸다 —
+    //   필드도 `description` → `descriptionHtml` 로 바뀌었다. 한 문단이라 `<p>` 로 감싸여 나간다.
+    expect(patchBody).toMatchObject({ descriptionHtml: `<p>${BODY_MARKDOWN}</p>` })
 
     // Then 2. 저장 성공 후에도 편집 모드는 자동으로 닫히지 않는다(선재 동작 — issue-body-meta.spec.ts:57).
     // '취소'로 읽기 모드로 전환해 **재조회된 값**이 화면에 반영됐는지 확인한다.
-    // 저장/취소 버튼은 화면에 3쌍(본문·환경·라벨)이라 tablist 를 직접 자식으로 가진 본문 편집기로 한정한다.
-    const descriptionEditor = page.locator('div:has(> [role="tablist"])')
+    // 저장/취소 버튼은 화면에 3쌍(본문·환경·라벨)이라 본문 편집기로 한정한다.
+    const descriptionEditor = bodyEditorContainer(page)
     await descriptionEditor
-      .getByRole('button', { name: i18nLabels.issueDetail.descriptionCancelButton })
+      // ★`exact` 가 없으면 TipTap 툴바의 '취소선' 버튼과 부분 일치해 strict mode 로 죽는다(2026-09-04)
+      .getByRole('button', { name: i18nLabels.issueDetail.descriptionCancelButton, exact: true })
       .click()
-    await expect(page.getByTestId('description-preview-content')).toContainText(BODY_MARKDOWN)
+    await expect(page.getByTestId('description-body')).toContainText(BODY_MARKDOWN)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -176,9 +212,9 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     await createIssueViaUI(page, ORIGINAL_SUMMARY)
     await page.getByText(i18nLabels.issueDetail.descriptionEmpty).click()
     const bodyTextarea = page.getByRole('textbox', {
-      name: i18nLabels.issueDetail.descriptionEditButton,
+      name: i18nLabels.issueDetail.descriptionEditLabel,
     })
-    await bodyTextarea.fill(UNSAVED_BODY_MARKDOWN)
+    await typeBody(page, bodyTextarea, UNSAVED_BODY_MARKDOWN)
 
     // When. Esc
     await bodyTextarea.press('Escape')
@@ -192,12 +228,12 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     })
     await expect(discardButton).toBeVisible()
     await expect(keepEditingButton).toBeVisible()
-    await expect(bodyTextarea).toHaveValue(UNSAVED_BODY_MARKDOWN)
+    await expect(bodyTextarea).toHaveText(UNSAVED_BODY_MARKDOWN)
 
     // Then 2. '계속 편집'을 고르면 확인 패널만 닫히고 편집 모드·작성분은 살아남는다
     await keepEditingButton.click()
     await expect(discardButton).toBeHidden()
-    await expect(bodyTextarea).toHaveValue(UNSAVED_BODY_MARKDOWN)
+    await expect(bodyTextarea).toHaveText(UNSAVED_BODY_MARKDOWN)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -219,17 +255,17 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     const firstSave = waitForIssuePatch(page, key)
     await page.getByText(i18nLabels.issueDetail.descriptionEmpty).click()
     const bodyTextarea = page.getByRole('textbox', {
-      name: i18nLabels.issueDetail.descriptionEditButton,
+      name: i18nLabels.issueDetail.descriptionEditLabel,
     })
-    await bodyTextarea.fill(SAVED_BODY_MARKDOWN)
+    await typeBody(page, bodyTextarea, SAVED_BODY_MARKDOWN)
     await bodyTextarea.press('Control+Enter')
     expect((await firstSave).status()).toBe(200)
     // 저장 후에도 편집 모드는 유지되므로(선재 동작) 취소로 읽기 모드에 내려놓는다
-    await page
-      .locator('div:has(> [role="tablist"])')
-      .getByRole('button', { name: i18nLabels.issueDetail.descriptionCancelButton })
+    await bodyEditorContainer(page)
+      // ★`exact` 가 없으면 TipTap 툴바의 '취소선' 버튼과 부분 일치해 strict mode 로 죽는다(2026-09-04)
+      .getByRole('button', { name: i18nLabels.issueDetail.descriptionCancelButton, exact: true })
       .click()
-    const preview = page.getByTestId('description-preview-content')
+    const preview = page.getByTestId('description-body')
     await expect(preview).toContainText(SAVED_BODY_MARKDOWN)
 
     // Given 2. 여기서부터 나가는 단건 PATCH 를 센다.
@@ -242,7 +278,7 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
 
     // Given 3. 본문을 다시 열어 초안으로 덮어쓰고 Esc 로 확인 패널을 띄운다
     await preview.click()
-    await bodyTextarea.fill(DISCARDED_BODY_MARKDOWN)
+    await typeBody(page, bodyTextarea, DISCARDED_BODY_MARKDOWN)
     await bodyTextarea.press('Escape')
     const discardButton = page.getByRole('button', {
       name: i18nLabels.issueDetail.descriptionDiscardConfirmButton,
@@ -290,9 +326,9 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     // Given. 본문 클릭으로 편집 진입 → 초안 입력 → Esc 로 확인 패널 노출
     await page.getByText(i18nLabels.issueDetail.descriptionEmpty).click()
     const bodyTextarea = page.getByRole('textbox', {
-      name: i18nLabels.issueDetail.descriptionEditButton,
+      name: i18nLabels.issueDetail.descriptionEditLabel,
     })
-    await bodyTextarea.fill(UNSAVED_BODY_MARKDOWN)
+    await typeBody(page, bodyTextarea, UNSAVED_BODY_MARKDOWN)
     await bodyTextarea.press('Escape')
     const keepEditingButton = page.getByRole('button', {
       name: i18nLabels.issueDetail.descriptionDiscardCancelButton,
@@ -308,6 +344,6 @@ test.describe('FR-UX-11 F8 인라인 편집 (이슈 상세)', () => {
     await expect(keepEditingButton).toBeHidden()
     await expect(paneHeading).toBeVisible()
     await expect(page).toHaveURL(new RegExp(`selected=${issueAtlas1Fixture.key}`))
-    await expect(bodyTextarea).toHaveValue(UNSAVED_BODY_MARKDOWN)
+    await expect(bodyTextarea).toHaveText(UNSAVED_BODY_MARKDOWN)
   })
 })
