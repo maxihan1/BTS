@@ -1,7 +1,7 @@
 // 상태 매핑 드롭 판정 테스트 — 순서 계약(빼기 먼저)과 무동작 경계 (부채 177 Task 6)
 import { describe, it, expect } from 'vitest'
 import type { BoardColumn, ColumnState } from '@/api/boards'
-import { planStateDrop, UNMAPPED_DROP_ID } from './state-mapping-drop'
+import { planStateDrop, planColumnReorder, UNMAPPED_DROP_ID } from './state-mapping-drop'
 
 const COL_A = 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891'
 const COL_B = 'c3d4e5f6-a7b8-4012-9cde-f01234567892'
@@ -80,5 +80,32 @@ describe('planStateDrop — 아무 일도 하지 않는 경계', () => {
   it('T-SD-8: 모르는 대상 id 는 던지지 않고 빈 계획이다', () => {
     // 던지면 드래그 한 번이 화면을 통째로 죽인다. 드롭 판정은 실패해도 조용해야 한다.
     expect(planStateDrop('open', COL_A, 'not-a-column', columns).changes).toEqual([])
+  })
+})
+
+describe('planColumnReorder — 전체 순서 교체 (R10 · J25)', () => {
+  const cols = [{ columnId: 'a' }, { columnId: 'b' }, { columnId: 'c' }]
+
+  it('T-SD-9: 뒤로 옮기면 그 자리에 끼워 넣은 전체 순서를 낸다', () => {
+    expect(planColumnReorder('a', 'c', cols)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('T-SD-10: 앞으로 옮기면 그 자리에 끼워 넣은 전체 순서를 낸다', () => {
+    expect(planColumnReorder('c', 'a', cols)).toEqual(['c', 'a', 'b'])
+  })
+
+  it('T-SD-11: 제자리·허공·모르는 id 는 null 이다 — 아무 요청도 보내지 않는다', () => {
+    expect(planColumnReorder('a', 'a', cols)).toBeNull()
+    expect(planColumnReorder('a', null, cols)).toBeNull()
+    expect(planColumnReorder('a', 'zzz', cols)).toBeNull()
+    expect(planColumnReorder('zzz', 'a', cols)).toBeNull()
+  })
+
+  it('T-SD-12: 결과는 항상 전 컬럼을 빠짐없이 한 번씩 담는다', () => {
+    const next = planColumnReorder('b', 'a', cols)
+    // 서버가 집합 일치를 판정해 400 을 내므로(Task 2), 여기서 새는 순간 조작이 통째로 실패한다.
+    expect(next).not.toBeNull()
+    expect(new Set(next)).toEqual(new Set(['a', 'b', 'c']))
+    expect(next).toHaveLength(3)
   })
 })

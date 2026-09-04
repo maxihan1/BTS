@@ -225,3 +225,75 @@ describe('Columns 탭 — 삭제 게이팅 (R7 · Sanity G1 · 부채 179)', () 
     ).toBeDisabled()
   })
 })
+
+describe('Columns 탭 — WIP 제한 입력 (R8 · J29 · 편차 X2)', () => {
+  it('T-CP-15: 최대 카드 수 입력이 하나 있고, 최소치 입력은 없다', () => {
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }))
+
+    // ★편차 X2 를 판정으로 지킨다. 지라는 "you can enter a minimum or maximum value"(J29) 로
+    //   둘을 받지만 BTS 스키마에 최소치 칸이 없다. 문서에만 적어 두면 나중에 누가 「지라에는
+    //   있는데」로 입력을 하나 더 붙여도 아무 판정이 안 깨진다.
+    expect(
+      screen.getByLabelText(boardLabels.settings.wipLimitInputLabel('진행 중')),
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(1)
+  })
+
+  it('T-CP-16: WIP 제한이 없으면 입력이 비어 있고 무제한을 안내한다', () => {
+    const only = column({
+      columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891',
+      name: '진행 중',
+      wipLimit: null,
+    })
+    renderPanel(board({ columns: [only] }))
+
+    const input = screen.getByLabelText(boardLabels.settings.wipLimitInputLabel('진행 중'))
+    // 빈 값이 「무제한」이다 — placeholder 가 그것을 말한다. 0 을 넣어 두면 「0장 제한」으로 읽힌다.
+    expect(input).toHaveValue(null)
+    expect(input).toHaveAttribute('placeholder', boardLabels.settings.wipUnlimited)
+  })
+
+  it('T-CP-17: WIP 제한이 있으면 그 값이 입력에 들어 있다', () => {
+    const only = column({
+      columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891',
+      name: '진행 중',
+      wipLimit: 3,
+    })
+    renderPanel(board({ columns: [only] }))
+
+    expect(screen.getByLabelText(boardLabels.settings.wipLimitInputLabel('진행 중'))).toHaveValue(3)
+  })
+})
+
+describe('Columns 탭 — 이름 편집·순서 핸들 (R9 · R10 · J24 · J25)', () => {
+  it('T-CP-18: 이름이 편집 가능한 입력이다 — 별도 편집 모드가 없다', () => {
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }))
+
+    // 지라는 "Select a column's name to edit … then press Enter"(J24) 다.
+    expect(
+      screen.getByLabelText(boardLabels.settings.renameColumnLabel('진행 중')),
+    ).toHaveValue('진행 중')
+  })
+
+  it('T-CP-19: 권한이 없으면 이름·WIP 입력과 순서 핸들이 전부 잠긴다', () => {
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }), false)
+
+    expect(screen.getByLabelText(boardLabels.settings.renameColumnLabel('진행 중'))).toBeDisabled()
+    expect(screen.getByLabelText(boardLabels.settings.wipLimitInputLabel('진행 중'))).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: boardLabels.settings.reorderHandleLabel('진행 중') }),
+    ).toBeDisabled()
+  })
+
+  it('T-CP-20: 순서 핸들에 접근성 이름이 있다 — 아이콘만 두지 않는다', () => {
+    const only = column({ columnId: 'b2c3d4e5-f6a7-4901-8bcd-ef1234567891', name: '진행 중' })
+    renderPanel(board({ columns: [only] }))
+
+    expect(
+      screen.getByRole('button', { name: boardLabels.settings.reorderHandleLabel('진행 중') }),
+    ).toBeInTheDocument()
+  })
+})
