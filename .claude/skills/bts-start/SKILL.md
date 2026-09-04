@@ -24,6 +24,17 @@ classify=$(node --experimental-strip-types scripts/workflow/classify-task.ts \
 **type ∈ {auth, backend, ui, design, migration, api, qa, bugfix, chore, feature}** — 신호 0이면 `backend` 기본값.
 `tier` 는 착수 시점의 **선언**이다. 실측 티어는 머지 전 diff 로 다시 잰다(`/bts` 판정 5문 ⑤).
 
+**분류 직후 세션 라벨을 세운다.**
+
+```bash
+node --experimental-strip-types scripts/workflow/session-label.ts
+```
+
+터미널 탭 제목과 상태줄에 `T2 feature · mention-notify` 를 띄운다.
+**병렬로 여러 작업을 돌릴 때 어느 탭이 어느 작업인지 구분하기 위한 것**이다 — 종전에는
+탭도 세션 목록도 전부 저장소명 하나라 승인 화면만 보고는 어느 작업인지 알 수 없었다.
+값은 `classify.json` 을 읽어 쓴다. 손으로 다시 적지 않는다 — 갈리면 틀린 라벨이 된다.
+
 ## Step 2. 신규 아이디어 게이트 (T2+ · 조건부)
 
 **T2/T3 이고** 입력이 「새 기능을 만들어 달라」이며 명세가 모호할 때만 `office-hours` (builder mode) 로 사전 검증한다. 산출물 `docs/specs/_idea-<slug>.md`. "만들 가치 없음" 결론이면 `AskUserQuestion` 으로 확인 후 중단.
