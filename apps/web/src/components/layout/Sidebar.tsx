@@ -1,4 +1,4 @@
-// 전역 좌측 사이드바 — 프로젝트 트리 + 메인 nav(이슈·대시보드·캘린더·즐겨찾기·최근 항목). 관리 nav 는 J9 로 상단바 허브로 이관
+// 전역 좌측 사이드바 — 메인 nav(이슈·대시보드·캘린더·즐겨찾기·최근 항목) + 그 아래 스페이스 트리(J2). 관리 nav 는 J9 로 상단바 허브로 이관
 import { type JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 import { CircleDot, LayoutDashboard, Calendar, UserCheck, type LucideIcon } from 'lucide-react'
@@ -88,9 +88,10 @@ const ISSUES_ACTIVE_OPTIONS: Record<string, { exact: boolean } | undefined> = {
 /**
  * 전역 좌측 사이드바 — 264px 고정, 독립 스크롤(`overflow-y-auto`).
  *
- * 렌더 순서는 디자인 스펙 §3.1 사이드바 섹션 순서를 그대로 따른다 — {@link ProjectTree}
- * (섹션2, `프로젝트`)가 `메인 메뉴` nav(섹션3, 이슈·대시보드·캘린더) **위**에 온다
- * (FR-UX-06 PR12 Task 3).
+ * 렌더 순서는 **Jira 새 네비게이션**을 따른다 (캠페인 PR ⑩ · J2) — `메인 메뉴` nav
+ * (내 작업·이슈·대시보드·캘린더)가 먼저고 {@link ProjectTree}(스페이스 목록)가 그 **아래**다.
+ * FR-UX-06 PR12 Task 3 이 세운 반대 순서(트리가 위)를 뒤집은 것이다. 트리는 프로젝트 수만큼
+ * 길어져 위에 두면 매일 여는 전역 링크가 스크롤 밖으로 밀린다.
  *
  * 🛑 **`관리 메뉴` nav 는 여기 없다.** Jira 패리티 J9 로 상단바 관리 허브 링크(`TopBar.tsx`)로
  * 옮겼고, 링크 목록의 정본은 `routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 하나다.
@@ -171,8 +172,6 @@ export function Sidebar(): JSX.Element {
         tabIndex={-1}
         className="flex h-full w-full flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar text-sidebar-foreground focus:outline-none"
       >
-        <ProjectTree />
-
         <nav aria-label={navLabels.mainNav} className="flex flex-col gap-1 p-2">
           {/*
           "내 작업"은 `MAIN_NAV_LINKS` 배열 **밖**에서 렌더한다 — `search`와 조건부 렌더
@@ -221,6 +220,12 @@ export function Sidebar(): JSX.Element {
         */}
           <RecentIssuesMenu />
         </nav>
+
+        {/* 🛑 스페이스 트리는 `메인 메뉴` nav **아래**다 (Jira 패리티 캠페인 PR ⑩ · J2).
+            Jira 새 네비게이션은 전역 항목(내 작업·이슈·대시보드)을 먼저 두고 그 아래에
+            스페이스 목록을 늘어놓는다. 트리는 프로젝트 수만큼 길어지므로 위에 두면 매일 여는
+            전역 링크가 스크롤 밖으로 밀린다 — 순서가 곧 도달 비용이다. */}
+        <ProjectTree />
 
         {/* 🛑 `useSidebarCollapsed().toggle` 을 직접 물리지 마라 — 모바일에서 무동작 버튼이 된다.
           폭에 따른 대상 선택은 `useSidebarToggle` 한 곳이 소유한다(상단바 버튼·`[` 단축키와 동일). */}
