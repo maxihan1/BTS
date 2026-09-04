@@ -16,10 +16,18 @@
 //     (board-kanban.spec.ts 가 세운 관례).
 //   - 다이얼로그/메뉴는 role+name 으로 컨테이너를 좁혀 잡는다. 생성 폼의 「보드 만들기」 버튼과
 //     빈 상태의 같은 버튼이 화면에 함께 있을 수 있어 strict mode 위반이 나기 쉽다.
+//   - **보드 스위처·`⋯` 트리거는 `board-helpers.ts` 의 공용 헬퍼를 쓴다.** 같은 셀렉터가
+//     scrum-board.spec.ts 에도 복붙돼 있던 것이 「사이드바가 같은 이름의 `⋯` 를 갖게 되면
+//     두 곳이 동시에 죽는다」의 원인이었다 — 헤더 컨테이너 스코프를 한 곳에서만 정의한다.
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
-import { goToBoardNameStep, selectBoardType } from './fixtures/board-helpers'
+import {
+  boardActionsTrigger,
+  boardSwitcherTrigger,
+  goToBoardNameStep,
+  selectBoardType,
+} from './fixtures/board-helpers'
 import { boardLabels } from '../src/i18n/board-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,16 +58,6 @@ const RENAMED_BOARD_NAME = '개선 보드'
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼
 // ─────────────────────────────────────────────────────────────────────────────
-
-/** 보드 스위처 트리거 — 접근성 이름이 「보드 선택, 현재 …」이라 정규식으로 잡는다 */
-function boardSwitcherTrigger(page: Page) {
-  return page.getByRole('button', { name: /보드 선택/ })
-}
-
-/** 보드 관리 `⋯` 트리거 — 접근성 이름이 「보드 관리, …」 */
-function boardActionsTrigger(page: Page) {
-  return page.getByRole('button', { name: /보드 관리/ })
-}
 
 /** 스위처를 열어 다른 보드를 고른다 */
 async function switchToBoard(page: Page, boardName: string): Promise<void> {

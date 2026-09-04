@@ -1,4 +1,4 @@
-// 보드 생성 폼(CreateBoardForm) 1단계 종류 선택 + 백로그 스프린트 시작 e2e 공통 헬퍼 — FR-BD-04 D6·D7
+// 보드 생성 폼(CreateBoardForm) 1단계 종류 선택 + 백로그 스프린트 시작 + 보드 헤더 스코프 e2e 공통 헬퍼 — FR-BD-04 D6·D7
 import { expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 import { backlogLabels } from '../../src/i18n/backlog-labels'
@@ -105,4 +105,53 @@ export async function startSprintFromBacklog(page: Page, sprintName: string): Pr
   await expect(
     column.getByLabel(`스프린트 상태: ${backlogLabels.status.ACTIVE}`),
   ).toBeVisible()
+}
+
+/**
+ * 보드 화면의 **헤더 행** — 보드 스위처와 `⋯` 관리 메뉴가 사는 컨테이너.
+ *
+ * ★**왜 앵커(`^…$` · `exact: true`)가 아니라 컨테이너인가.**
+ * 「보드 관리, {이름}」·「보드 선택, 현재 {이름}」의 문구 생산자는 `src/i18n/board-labels.ts` 의
+ * `triggerAriaLabel` **하나**뿐이다. 사이드바 프로젝트 트리의 하위 목록이 보드 목록으로 바뀌면
+ * (`components/layout/ProjectTree.tsx` 가 예고한 캠페인 PR ⑨) 같은 헬퍼가 같은 문자열을 만들어
+ * **현재 열린 보드**에 대해 헤더와 사이드바의 접근성 이름이 바이트 단위로 같아진다. 앵커는
+ * 「사이드바가 다른 이름을 쓴다」는 가정 위에서만 옳고, 컨테이너 스코프는 무슨 이름을 쓰든
+ * 불변이다 — 그래서 좁히는 축을 이름이 아니라 위치로 잡는다.
+ *
+ * 🛑 이 헬퍼를 쓰는 spec 은 진입 직후 `await expect(boardHeader(page)).toBeVisible()` 로 컨테이너
+ *    **실재를 먼저 단언**해야 한다. `data-testid` 가 어긋나면 하위 조회가 조용히 count 0 이
+ *    되는데, `toHaveCount(0)`(보드를 다 지운 뒤의 부재 단언)은 **그대로 통과**하기 때문이다.
+ *
+ * @param page Playwright Page
+ * @returns 보드 헤더 행 locator (`projects.$projectKey.board.tsx` 의 `board-header`)
+ */
+export function boardHeader(page: Page): Locator {
+  return page.getByTestId('board-header')
+}
+
+/**
+ * 보드 관리 `⋯` 트리거 — 헤더 행 안으로 좁힌 것.
+ *
+ * 🛑 **정규식을 유지한다.** 접근성 이름이 「보드 관리, {보드 이름}」이고 `board-manage.spec.ts` S3
+ *    이 테스트 중간에 보드 이름을 바꾼다 — `exact: true` 로 굳히거나 `triggerAriaLabel(name)` 을
+ *    직접 부르면 rename 단계에서 죽는다. 중복은 이름이 아니라 컨테이너로 가른다.
+ *
+ * @param page Playwright Page
+ * @returns 헤더 행의 `⋯` 버튼 locator
+ */
+export function boardActionsTrigger(page: Page): Locator {
+  return boardHeader(page).getByRole('button', { name: /보드 관리/ })
+}
+
+/**
+ * 보드 스위처 트리거 — 헤더 행 안으로 좁힌 것.
+ *
+ * 🛑 `boardActionsTrigger` 와 같은 이유로 **정규식을 유지한다**. 접근성 이름이
+ *    「보드 선택, 현재 {보드 이름}」이라 현재 보드 이름이 바뀌면 앵커·`exact` 는 즉시 깨진다.
+ *
+ * @param page Playwright Page
+ * @returns 헤더 행의 보드 선택 버튼 locator
+ */
+export function boardSwitcherTrigger(page: Page): Locator {
+  return boardHeader(page).getByRole('button', { name: /보드 선택/ })
 }

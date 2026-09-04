@@ -751,9 +751,14 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {/* 프로젝트 즐겨찾기 + 이슈 생성 진입점 (분기 공통 헤더) */}
       {projectFavoriteHeader}
 
-      {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터 */}
+      {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터
+          ★`data-testid="board-header"` 는 e2e 스코프 전용이다. 「보드 관리, {이름}」·「보드 선택,
+          현재 {이름}」의 문구 정본이 `board-labels.ts` 하나뿐이라, 사이드바 하위 목록이 보드
+          목록으로 바뀌면(`ProjectTree.tsx` 가 예고한 캠페인 PR ⑨) **현재 열린 보드**에 대해
+          헤더와 사이드바의 접근성 이름이 바이트 단위로 같아진다 — 앵커로는 못 가르므로 e2e 가
+          이 컨테이너로 좁힌다(`e2e/fixtures/board-helpers.ts`). 접근성 트리·렌더 영향 0. */}
       {(boards !== undefined && boards.length >= 1) || (boardDetail !== undefined && canCreate) ? (
-        <div className="flex items-center gap-4 flex-wrap">
+        <div data-testid="board-header" className="flex items-center gap-4 flex-wrap">
           {/* 보드 스위처 — 1개여도 상시 노출한다. N개 모델임을 드러내는 자리다 (J1) */}
           {boards !== undefined && boards.length >= 1 && (
             <BoardSelectorDropdown
