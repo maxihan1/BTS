@@ -2319,6 +2319,49 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
   })
 
   /**
+   * T1-12: 모달로 되돌릴 때는 **그 이슈를 모달에 넘긴다**.
+   *
+   * split view 에서 골랐다면 열림 상태가 URL(`selected`)에만 있다. 넘기지 않으면 페인이
+   * 닫히는 순간 상세가 화면에서 그냥 사라진다 — 모달을 열어 줄 주체가 어디에도 없다.
+   */
+  it('T1-12: sidePanel → modal 전환은 그 이슈로 openKey 를 채운다', async () => {
+    useIssueDetailModalStore.setState({ presentation: 'sidePanel', openKey: null })
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose: vi.fn() })
+
+    await screen.findByRole('button', { name: '닫기' })
+    await user.click(
+      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
+    )
+    await user.click(
+      await screen.findByRole('menuitem', { name: issueDetailStrings.openInModalItem }),
+    )
+
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-1')
+  })
+
+  /**
+   * T1-13: 반대 방향(모달 → 사이드바)은 `openKey` 를 건드리지 않는다.
+   * 이미 페인으로 보고 있는데 전역 패널까지 뜨면 같은 이슈가 두 번 그려진다.
+   */
+  it('T1-13: modal → sidePanel 전환은 openKey 를 새로 채우지 않는다', async () => {
+    useIssueDetailModalStore.setState({ presentation: 'modal', openKey: null })
+    const user = userEvent.setup()
+    renderPanePage('ATLAS-1', { onClose: vi.fn() })
+
+    await screen.findByRole('button', { name: '닫기' })
+    await user.click(
+      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
+    )
+    await user.click(
+      await screen.findByRole('menuitem', { name: issueDetailStrings.openInSidePanelItem }),
+    )
+
+    expect(useIssueDetailModalStore.getState().presentation).toBe('sidePanel')
+    expect(useIssueDetailModalStore.getState().openKey).toBeNull()
+  })
+
+  /**
    * T1-11: 전체화면(`variant='page'`)에는 `⋯` 이 없다.
    * 전체화면은 모달도 사이드바도 아니다 — 거기서 표시 방식을 물으면 무엇이 바뀌는지 알 수 없다.
    */

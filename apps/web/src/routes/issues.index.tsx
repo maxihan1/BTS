@@ -26,6 +26,7 @@ import type { IssueCellEditContext } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
 import { IssueDetailPage } from './issues.$key'
+import { useIssueListPresentation } from '@/components/issue/use-issue-list-presentation'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
 import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
@@ -906,6 +907,8 @@ export function IssueListRouteAdapter(): JSX.Element {
    */
   function handleNavigate(key: string): void {
     if (isWide) {
+      // 모달 선호(기본)면 URL 을 건드리지 않는다 — 열림 상태는 스토어가 쥔다(J1).
+      if (openViaPresentation(key)) return
       void navigate({
         to: '/issues',
         search: (prev) => ({ ...prev, selected: prev.selected === key ? undefined : key }),
@@ -922,6 +925,9 @@ export function IssueListRouteAdapter(): JSX.Element {
   function clearSelected(): void {
     void navigate({ to: '/issues', search: (prev) => ({ ...prev, selected: undefined }) })
   }
+
+  // 표시 방식 결선 (J1) — 진입 분기 + 전환 직후 URL 정리
+  const { openViaPresentation } = useIssueListPresentation({ selected, clearSelected })
 
   /**
    * split view 우측 페인에 열린 이슈 키를 교체한다.
@@ -1028,6 +1034,7 @@ export function IssueListRouteAdapter(): JSX.Element {
     )
 
   // D2 — 와이드 + selected일 때만 split view(2컬럼)로 전환한다. 그 외(미선택/좁은폭)는 목록 전체폭.
+  // ★표시 방식(J1)은 여기 걸지 않는다 — 근거는 `use-issue-list-presentation.ts` JSDoc.
   if (isWide && selected !== undefined) {
     return (
       <IssueListSplitView

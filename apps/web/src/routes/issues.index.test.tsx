@@ -23,6 +23,7 @@ import { labelHandlers } from '@/mocks/label-handlers'
 import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { IssueListPage, IssueListRouteAdapter } from './issues.index'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import { useContextShortcutsStore } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import type { IssueFilterParams } from '@/api/issues'
 import type { IssueTableSortState } from '@/components/issues/IssueTable'
@@ -1399,6 +1400,9 @@ function renderRouteAdapter() {
 
 describe('IssueListRouteAdapter — split view 결선 (Task 5)', () => {
   beforeEach(() => {
+    // ★이 블록이 재는 split view 는 **사이드바 표현**이다(J1). 기본이 모달로 바뀐 뒤로는
+    //   전제를 명시하지 않으면 「행 클릭 → selected navigate」가 성립하지 않는다.
+    useIssueDetailModalStore.setState({ presentation: 'sidePanel', openKey: null })
     server.use(createTruePermissionHandler)
     mockUseMediaQuery.mockReturnValue(true)
     mockUseSearch.mockReturnValue({})
@@ -2015,6 +2019,8 @@ describe('IssueListPage — 목록 항법 커서 (FR-UX-10 F10)', () => {
 
 describe('IssueListRouteAdapter — 커서 URL 갱신 (FR-UX-10 F10)', () => {
   beforeEach(() => {
+    // 커서는 `selected` 를 갈아끼운다 — 사이드바 표현 전제 아래에서만 페인이 함께 따라온다(J1).
+    useIssueDetailModalStore.setState({ presentation: 'sidePanel', openKey: null })
     mockNavigate.mockReset()
     useContextShortcutsStore.setState({ handlers: {} })
     // ★와이드를 **명시**한다. 이전에는 다른 describe 가 남긴 값에 얹혀 돌아서,
@@ -2163,5 +2169,105 @@ describe('IssueListPage — 「새 이슈」 접근성 이름', () => {
     const button = screen.getByTestId('new-issue-button')
     expect(button).toBeDisabled()
     expect(button.getAttribute('aria-label') ?? '').not.toMatch(NO_PERMISSION)
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 표시 방식 결선 — 목록도 모달이 기본이다 (Jira 패리티 J1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueListRouteAdapter — 표시 방식 결선 (J1)', () => {
+  beforeEach(() => {
+    useIssueDetailModalStore.setState({ presentation: 'modal', openKey: null })
+    server.use(createTruePermissionHandler)
+    mockUseMediaQuery.mockReturnValue(true)
+    mockUseSearch.mockReturnValue({})
+    mockNavigate.mockClear()
+  })
+
+  /**
+   * PR1: 기본(모달) 선호에서 행을 클릭하면 모달이 열리고 **URL 은 그대로다**.
+   *
+   * Jira 원문 — 모달이 기본이고 선호는 세션 내내 모든 뷰에서 유지된다. 목록만 예외로 두면
+   * 「보드에서는 팝업, 목록에서는 좌우 분할」이 되어 같은 설정이 화면마다 다르게 보인다.
+   */
+  it('PR1: presentation=modal 이면 행 클릭이 모달을 열고 URL 을 건드리지 않는다', async () => {
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-3')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('link', { name: 'ATLAS-3' }))
+
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-3')
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * PR2: 사이드바 선호면 종전대로 `selected` 로 간다 — 딥링크·커서·뒤로가기가 그 URL 에 걸려 있다.
+   */
+  it('PR2: presentation=sidePanel 이면 행 클릭이 selected 로 navigate 한다', async () => {
+    useIssueDetailModalStore.setState({ presentation: 'sidePanel' })
+    renderRouteAdapter()
+    await waitFor(() => expect(screen.getByText('ATLAS-3')).toBeInTheDocument())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('link', { name: 'ATLAS-3' }))
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1)
+    expect(useIssueDetailModalStore.getState().openKey).toBeNull()
+  })
+
+  /**
+   * PR3: `?selected=` 딥링크는 **모달 선호에서도 페인으로 연다**.
+   *
+   * URL 에 `selected` 가 있다는 것은 명시적 요청이다 — 북마크·공유 링크이거나, 커서 단축키
+   * `j`/`k` 가 미리보기를 옮긴 것이다. 여기에 모달 선호를 얹으면 딥링크는 빈 목록이 되고
+   * 커서는 누를 때마다 모달이 튀어나온다. 표시 방식이 가르는 것은 **행 클릭**뿐이다.
+   */
+  it('PR3: 모달 선호여도 selected 딥링크는 페인으로 열리고 URL 이 유지된다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    // 페인이 떴다 — mock IssueDetailPage 는 variant='pane' 이면 h2 로 렌더한다.
+    expect(screen.getByRole('heading', { level: 2, name: 'ATLAS-3' })).toBeInTheDocument()
+    // 모달로 승격되지도, URL 이 청소되지도 않는다.
+    expect(useIssueDetailModalStore.getState().openKey).toBeNull()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  /**
+   * PR4: `⋯` 로 모달을 고르면 페인이 모달로 옮겨가고 URL 의 `selected` 가 빠진다 (즉시 전환).
+   *
+   * 상세의 `⋯` 는 `setPresentation('modal')` 과 같은 키의 `open()` 을 함께 부른다. 그
+   * **두 값이 같아지는 순간**이 「이 이슈는 이제 모달이 들고 있다」는 뜻이고, 그때만 URL 을
+   * 비운다 — 남겨 두면 뒤로가기 한 번에 페인이 되살아나 모달과 겹친다.
+   */
+  it('PR4: 모달이 그 이슈를 들면 URL 의 selected 가 청소된다 (즉시 전환)', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    useIssueDetailModalStore.setState({ presentation: 'modal', openKey: 'ATLAS-3' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalled())
+
+    const call = getLastNavigateCall()
+    if (!('search' in call)) throw new Error('search 콜백 기반 navigate가 아닙니다')
+    expect(call.search({ selected: 'ATLAS-3', page: 2 })).toEqual({ selected: undefined, page: 2 })
+  })
+
+  /**
+   * PR5: 커서가 옮긴 `selected` 는 모달 선호에서도 살아남는다 — PR4 의 방아쇠가 좁다는 증거.
+   * 모달이 **다른 이슈**를 들고 있으면(또는 아무것도 안 들고 있으면) URL 을 건드리지 않는다.
+   */
+  it('PR5: 모달이 다른 이슈를 들고 있으면 커서의 selected 를 지우지 않는다', async () => {
+    mockUseSearch.mockReturnValue({ selected: 'ATLAS-3' })
+    useIssueDetailModalStore.setState({ presentation: 'modal', openKey: 'ATLAS-1' })
+    renderRouteAdapter()
+
+    await waitFor(() => expect(screen.getByText('ATLAS-1')).toBeInTheDocument())
+
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 })
