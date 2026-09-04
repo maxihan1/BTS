@@ -284,12 +284,21 @@ T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 �
 - 컬럼 → 미매핑 드롭이 그 상태를 뺀 집합으로 부른다 (S3)
 - **409 면 드롭을 되돌리고 전용 문구**를 보인다 (E3)
 - **네트워크 실패·500 에서도 되돌린다** (G2 — 「409 만 되돌린다」가 이 판정을 통과하면 안 된다)
+- ★**연속 드롭이 앞 변경을 덮지 않는다** (eng 리뷰 CONCERN-3 · E8). 같은 컬럼에 두 번 빠르게
+  드롭하면 두 번째는 **서버가 돌려준 집합**에서 파생한다 — 클라이언트가 들고 있던 집합이 아니라
 
 ★ 마지막 두 판정을 **한 테스트로 합치지 않는다.** 합치면 「모든 실패에서 되돌린다」를
 「409 에서 되돌린다」로 좁혀도 초록이다 — memory `invariant-satisfied-by-helptext-not-logic` 양식.
 
-**GREEN**. 기존 `@dnd-kit` + **`KanbanBoard.tsx` 의 `buildDragAnnouncements` 재사용**
-(한국어 조사 처리 완비 · 계약 §4). **새 공지 구현을 만들지 않는다.**
+- ★**키보드만으로 매핑을 바꿀 수 있다** (design 리뷰 BLOCKER-1). 포인터 없이 Tab·Space·화살표로
+  미매핑 상태를 컬럼에 넣는 판정. **이 판정이 없으면 센서 누락이 조용히 통과한다.**
+
+**GREEN**. 기존 `@dnd-kit` + **`KanbanBoard.tsx` 재사용 2종**(계약 §4).
+1. `buildDragAnnouncements` — 한국어 조사 처리 완비. 새 공지 구현을 만들지 않는다.
+2. ★**센서 구성** — `useSensor(PointerSensor, { activationConstraint: { distance: 5 } })`
+   **+ `useSensor(KeyboardSensor)`** (`KanbanBoard.tsx:536-538`). **키보드 센서를 빠뜨리면
+   보조기술 사용자에게 이 기능이 통째로 없는 것이 되는데, 드롭 판정 순수 함수 테스트는 센서를
+   모르므로 전부 초록이다** (memory `mock-swallowed-prop-is-invisible-to-unit-tests`).
 
 **REFACTOR**. 드롭 판정을 순수 함수(`state-mapping-drop.ts`)로 — `board-drop.ts` 선례와 같은 모양.
 
@@ -309,6 +318,9 @@ T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 �
 - 추가는 이름만 받고 **`category` 를 안 보낸다** (X1 — 파생값이다)
 - 추가 결과가 **상태 0개 컬럼**이고 화면이 「상태 없음」으로 표시한다 (S5·E1)
 - 삭제 다이얼로그가 **영향 카드 수**를 먼저 보인다 (S6)
+- ★**`truncated=true` 면 정확한 수를 주장하지 않고 「1000+ 건」으로 적는다** (eng 리뷰 BLOCKER-1).
+  서버는 이 수를 **삭제 후**에만 돌려주므로(`BoardApplicationService.kt:786`) 사전 표시는 클라이언트가
+  `column.cards.length` 로 세는데, 그 목록은 `BOARD_CARD_FETCH_LIMIT`(1000)에 잘린다
 - 삭제 후 그 상태가 미매핑 패널로 돌아온다 (J28)
 - ★**컬럼이 1개면 삭제가 비활성이고 사유가 보인다** (G1 — 부채 179 도달 차단)
 
@@ -360,7 +372,11 @@ T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 �
 - `agile-planning` 모듈 전량 `--rerun-tasks`
 - `apps/web` vitest 전량 · `tsc -p tsconfig.app.json --noEmit` (★루트 tsconfig 는 `files: []` 라 0개를 검사한다)
 - 표적 E2E 5 spec — `board-settings`(신규) · `board-manage` · `board-kanban` · `board-wip-swimlane` · `board-reorder`
-- 판별식 전량 `pnpm test:workflow` — ★**실행 건수를 함께 읽는다.** #444 가 `backend/` 에서 돌렸다가 「0건 실행 · EXIT=0」을 초록으로 오독할 뻔했다
+- 판별식 전량 — ★**`pnpm test:workflow` 를 쓰지 마라.** worktree 에서 pnpm 스크립트는 전부 죽는다
+  (`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` — 심볼릭 `node_modules` 를 pnpm 의 deps check 가
+  불일치로 보고 install 을 트리거한다. learning `worktree-run-binaries-not-pnpm` · 10/10 · 2026-09-03).
+  **바이너리를 직접 부른다** — `node --experimental-strip-types --test scripts/**/*.test.ts`.
+  ★**실행 건수를 함께 읽는다.** #444 가 `backend/` 에서 돌렸다가 「0건 실행 · EXIT=0」을 초록으로 오독할 뻔했다
 - `build-doc-index --check` · `verify-master-plan.sh`
 - **뮤테이션 짝 3건** — ①T2 집합 일치 판정 제거 → 400 판정 1건만 red ②G1 컬럼 1개 비활성 제거 → 1건만 red ③G2 「모든 실패에서 되돌림」을 409 한정으로 좁힘 → 1건만 red.
   ★**GREEN 선커밋 뒤에 돌린다** — 미커밋 원복은 소실이다(함정 정본).
@@ -385,4 +401,140 @@ T3 선언이지만 `grill-with-docs` 호출 조건(신규 도메인 개념)에 �
   상환하므로 `docs/plan/product/agile-planning.md` §2.3 의 그 줄을 갱신 대상으로 잡는다.
 - **N2 감시** — `BoardRepository.kt` 443줄 상한(부채 157). T2 가 가장 위험하다.
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+렌즈 2종. `type=ui` 라 `bts-review-plan` Step 2 표가 **design + eng** 을 준다
+(`/bts` 티어표의 「2종 + ceo」는 체인 [6] `bts-codereview` 의 값이지 이 단계의 값이 아니다).
+
+### `/plan-eng-review` — **BLOCKER 1 · CONCERN 3 · PASS 3**
+
+#### 🔴 BLOCKER-1. 삭제 다이얼로그의 「영향 카드 수」에 **사전 소스가 없다** (S6 · R7 · 완료기준 8)
+
+스펙 초안이 「#444 게이트 2 BLOCKER 가 그 응답 계약을 이미 만들어 뒀다」고 적었다. **거짓이다.**
+
+```kotlin
+// BoardApplicationService.kt:786-795
+val removedCardCount =
+    getBoard(boardId, actorUserId).columns
+        .firstOrNull { it.column.id == columnId }?.cards?.size ?: 0
+if (!columnStates.deleteColumn(boardId, columnId)) { throw ... }
+return removedCardCount
+```
+
+`removedCardCount` 는 **삭제한 뒤 반환값**이다. 다이얼로그가 **삭제 전에** 보여 줄 소스가 아니다.
+사전 표시는 클라이언트가 `column.cards.length` 로 세는 수밖에 없고 그 목록은
+`BOARD_CARD_FETCH_LIMIT`(1000)에 **잘린다**(`IssueRepository.kt:754·767`).
+1000장이 넘는 보드에서 다이얼로그가 **「1000건이 사라집니다」라고 거짓말**한다.
+★ 더 나쁜 것은 **서버의 `removedCardCount` 도 같은 잘린 목록에서 센다**(`:787` 이 `getBoard` 재호출).
+삭제 후 토스트도 같은 거짓말을 한다 — **두 곳이 같은 결함을 공유**하므로 대조로는 안 잡힌다.
+
+**반영.** 스펙 S6 에 근거와 함께 정정을 박고, `truncated=true` 면 **정확한 수를 주장하지 않고
+「1000+ 건」**으로 표기한다. Task 7 RED 에 그 판정을 넣었다.
+
+#### ⚠️ CONCERN-2. `pnpm test:workflow` 는 이 worktree 에서 **죽는다** (Task 9 검증)
+
+**Prior learning applied: `worktree-run-binaries-not-pnpm` (confidence 10/10, 2026-09-03).**
+심볼릭 `node_modules` 를 pnpm 의 deps check 가 불일치로 보고 install 을 트리거해
+`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 로 죽는다. plan Task 9 가 그 명령을 적고 있었다.
+**반영** — `node --experimental-strip-types --test scripts/**/*.test.ts` 로 교체.
+(다른 task 의 vitest 는 이미 `node_modules/.bin/vitest` 직접 호출로 써 두었다.)
+
+#### ⚠️ CONCERN-3. 한 사람의 **연속 드롭이 앞 변경을 덮는다** (E6 확장 → E8 신설)
+
+E6 은 「두 사람」 동시 편집만 봤다. 실제로 더 자주 밟는 것은 **한 사람이 빠르게 두 번 드래그**다.
+R5 가 **집합 전체**를 보내므로 두 요청이 같은 「이전 집합」에서 파생되면 나중 응답이 앞 변경을 덮는다.
+**서버는 둘 다 200 이고 아무도 오류를 못 본다** — 조용한 lost update.
+**반영** — E8 신설(컬럼당 뮤테이션 직렬화 · **서버가 돌려준 집합**에서 파생) + Task 6 RED 판정 추가.
+
+#### ⚠️ CONCERN-4. 설정 화면이 **카드 1000장을 끌어온다** (성능)
+
+설정 화면은 카드 **목록**이 필요 없고 **수**만 필요한데 유일한 조회 `GET /boards/{id}` 가 카드를 싣는다.
+매 드롭마다 무효화하면 1000장을 다시 끌어온다 — 드래그 체감이 나빠진다.
+**반영** — NFR **N8** 로 등재하고 **이번 PR 은 그대로 쓴다**(설정 전용 조회 API 신설은 범위 초과).
+게이트 2 요약에 싣고 부채로 남긴다.
+
+#### 흔들었으나 문제없던 것 (PASS 3)
+
+1. **상태 0개 컬럼이 500 을 내지 않나** — 안 낸다. `resolveCategory` 가
+   `categories.maxByOrNull { … } ?: "TODO"`(`BoardCardPlacement.kt:82`)라 빈 목록이 `"TODO"` 로 떨어지고
+   `BoardColumn.require(category.isNotBlank())`(`:66`)를 통과한다. E1 이 안전하다.
+2. **신규 API 2종의 권한 축** — `loadBoardWithCreate` 승계가 맞다. 컬럼 구성 변경은 이미 CREATE 게이트다.
+3. **전체 교체 API 설계**(`PUT …/states` · `PUT …/order`) — #444 가 상태 집합에 쓴 근거가 순서에도 그대로 선다.
+
+### `/plan-design-review` — **BLOCKER 1 · CONCERN 3**
+
+| Pass | 전 | 후 |
+|---|---|---|
+| 1 정보 구조 | 6/10 | 9/10 |
+| 2 상호작용 상태 | **4/10** | 9/10 |
+| 3 사용자 여정 | 7/10 | 8/10 |
+| 4 AI 슬롭 위험 | 7/10 | 8/10 |
+| 5 디자인 시스템 정합 | 6/10 | 9/10 |
+| 6 반응형·접근성 | **3/10** | 9/10 |
+| **종합** | **5.5/10** | **8.7/10** |
+
+분류 = **APP UI**(작업 표면·데이터 밀집). 하드 리젝션 7종 **0건 해당**.
+
+#### 🔴 BLOCKER-1. N5 재사용 목록에 **센서 구성이 빠졌다** — 키보드 접근이 조용히 사라진다
+
+초안 N5 는 `buildDragAnnouncements`(공지)만 재사용하라고 적었다. 그런데 키보드 접근을 실제로 여는
+것은 공지가 아니라 **센서**다.
+
+```tsx
+// KanbanBoard.tsx:536-538
+const sensors = useSensors(
+  useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  useSensor(KeyboardSensor),
+```
+
+★**실측이 이 BLOCKER 를 만들었다.** 처음에는 「키보드 드래그 대체 경로가 없다」를 BLOCKER 로 잡았는데
+코드를 읽으니 `KeyboardSensor` 가 **이미 있었다.** 진단이 뒤집혔다 — 문제는 「기능이 없다」가 아니라
+**「있는 것을 재사용하라고 안 적었다」**이다. 구현자가 `PointerSensor` 만 걸면 보조기술 사용자에게
+매핑 기능이 통째로 사라지는데, **드롭 판정 순수 함수 테스트는 센서를 모르므로 전부 초록이다**
+(memory `mock-swallowed-prop-is-invisible-to-unit-tests` 양식).
+
+**반영** — N5 에 센서 2종 명시 + Task 6 RED 에 「키보드만으로 매핑을 바꾼다」 판정 추가.
+
+#### ⚠️ CONCERN-2. **상호작용 상태 표가 없다** (Pass 2 · 4/10)
+
+로딩·빈·에러·성공·부분 5상태가 `E1` 하나뿐이었다. **빈 상태는 기능이다** — 명세가 없으면 구현자가
+「항목이 없습니다.」를 낸다. **반영** — 스펙 **§8b 상호작용 상태 표**(9행 × 5열) 신설.
+★그 표가 드러낸 것 — 이 화면의 빈 상태는 **3종이고 온도가 서로 다르다.** 컬럼 0개는 행동 유도,
+미매핑 0건은 **안심**(경고 색 금지 — 이것이 정상 상태다), 상태 0개 컬럼은 미완 표시.
+셋을 같은 회색 「없음」으로 그리면 사용자가 정상을 오류로 읽는다.
+
+#### ⚠️ CONCERN-3. **반응형 미지정** (Pass 6 · 3/10)
+
+컬럼 가로 배치 + 드래그를 375px 에서 어떻게 할지가 없었다. 새 모바일 분기를 만들면 보드 화면과
+갈린다. **반영** — NFR **N7** 로 보드 화면의 검증된 패턴 승계를 명시
+(`KanbanBoard.tsx:638` `flex gap-4 overflow-x-auto pb-4`) + 터치 타깃 44px.
+
+#### ⚠️ CONCERN-4. 디자인 시스템 프리미티브 지정 부족 (Pass 5 · 6/10)
+
+`DESIGN.md`(44KB · §4 프리미티브 24종)가 있는데 plan 이 `EmptyState`·Dialog 만 짚었다.
+**반영** — `empty-state.tsx` 실재 확인, 계약 §4 재사용 레지스트리를 Task 5·7 에 연결.
+새 프리미티브를 만들지 않는다.
+
+### 반영 결과 — **BLOCKER 2 · CONCERN 6 전부 처리**
+
+스펙 5곳(S6 · N5 · N7 · N8 · E8 · §8b) · plan 4곳(Task 6 RED 2건 · Task 7 RED 1건 · Task 9 검증)을 고쳤다.
+
+**★두 렌즈가 같은 양식을 서로 다른 축에서 잡았다.** eng BLOCKER-1 은
+「**두 곳이 같은 결함을 공유해 대조로 안 잡힌다**」이고, design BLOCKER-1 은
+「**테스트가 볼 수 없는 층에 결함이 산다**」이다. 둘 다 **초록인 채로 틀리는** 자리다.
+
+**VERDICT — 반영 완료. 게이트 1 진입 가능.**
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex CLI 미설치 |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 4 issues, 0 critical gaps (BLOCKER 1 + CONCERN 3 · 전부 반영) |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | score: 5.5/10 → 8.7/10, 4 decisions |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **VERDICT:** ENG + DESIGN CLEARED — 게이트 1 로 진행. Outside voice 는 codex CLI 부재로 미실행이고, BTS 체인의 독립 리뷰는 [6] `bts-codereview` 가 별도로 돈다.
+
+NO UNRESOLVED DECISIONS
