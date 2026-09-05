@@ -1,6 +1,6 @@
 // 이슈 상세 활동 영역의 댓글 섹션 — 목록 조회 + 작성 폼 (FR-CO-01) + 수정·삭제 (FR-CO-02)
 import type { JSX, RefObject } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertDialog } from 'radix-ui'
 import { toast } from 'sonner'
@@ -317,6 +317,13 @@ interface CommentRowProps {
   canUpdate: boolean
   /** SOFT_DELETE(모더레이터) 보유 여부 — 남의 댓글 **삭제만** 열어준다 */
   canModerate: boolean
+  /**
+   * 딥링크가 지목한 댓글인지. true 면 마운트 직후 화면 가운데로 스크롤하고 테두리로 강조한다.
+   *
+   * 알림에서 왔는데 긴 목록의 어딘가에 그냥 놓아두면 「어느 댓글 때문에 왔는지」를
+   * 사용자가 다시 찾아야 한다 — 딥링크가 절반만 동작하는 셈이다.
+   */
+  isFocusTarget: boolean
 }
 
 /**
@@ -349,10 +356,19 @@ function CommentRow({
   currentUserId,
   canUpdate,
   canModerate,
+  isFocusTarget,
 }: CommentRowProps): JSX.Element {
   const { formatDateTime } = useDateFormat()
+  const rowRef = useRef<HTMLLIElement>(null)
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+
+  // 목록은 조회가 끝난 뒤에야 마운트되므로 「대상 행이 생긴 순간」이 곧 스크롤 시점이다.
+  // ★`scrollIntoView` 를 옵셔널 호출한다 — jsdom 에는 이 메서드가 아예 없다.
+  useEffect(() => {
+    if (!isFocusTarget) return
+    rowRef.current?.scrollIntoView?.({ block: 'center' })
+  }, [isFocusTarget])
 
   const isAuthor = currentUserId !== undefined && comment.authorId === currentUserId
   const canEdit = canUpdate && isAuthor
@@ -385,7 +401,15 @@ function CommentRow({
   })
 
   return (
-    <li className="border-b border-border py-3 last:border-b-0">
+    <li
+      ref={rowRef}
+      data-testid={`comment-row-${comment.id}`}
+      data-focus-target={isFocusTarget ? 'true' : undefined}
+      className={cn(
+        'border-b border-border py-3 last:border-b-0',
+        isFocusTarget && 'rounded-md bg-primary/5 px-2 ring-2 ring-primary/40',
+      )}
+    >
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{displayName ?? comment.authorId}</span>
         <span>{formatDateTime(comment.createdAt)}</span>
@@ -469,6 +493,13 @@ interface CommentSectionProps {
    * "손잡이를 연결한 화면에만 단축키가 있다" (`IssueAssigneeSelect` 와 같은 규칙).
    */
   focusRef?: RefObject<HTMLDivElement | null>
+  /**
+   * 딥링크가 지목한 댓글 UUID (인박스 알림). 목록에 그 댓글이 있으면 강조하고 스크롤한다.
+   *
+   * 이미 삭제된 댓글의 알림을 눌렀을 수도 있다 — 그때는 아무 행도 일치하지 않고
+   * 목록이 평소대로 보인다. 「없는 댓글」을 위해 에러를 띄우지 않는다.
+   */
+  focusCommentId?: string
 }
 
 /**
@@ -495,8 +526,14 @@ interface CommentSectionProps {
  * @param issueKey 대상 이슈 키
  * @param canUpdate 쓰기 권한 여부
  * @param focusRef 댓글 작성 textarea 로 가는 ref (단축키 `m`)
+ * @param focusCommentId 딥링크가 지목한 댓글 UUID
  */
-export function CommentSection({ issueKey, canUpdate, focusRef }: CommentSectionProps): JSX.Element {
+export function CommentSection({
+  issueKey,
+  canUpdate,
+  focusRef,
+  focusCommentId,
+}: CommentSectionProps): JSX.Element {
   const currentUser = useAuthUser()
 
   /**
@@ -562,6 +599,7 @@ export function CommentSection({ issueKey, canUpdate, focusRef }: CommentSection
               currentUserId={currentUser?.userId}
               canUpdate={canUpdate}
               canModerate={canModerate}
+              isFocusTarget={comment.id === focusCommentId}
             />
           ))}
         </ul>

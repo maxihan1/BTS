@@ -224,12 +224,14 @@ export function seedComments(issueKey: string, comments: CommentResponse[]): voi
  * @param before 수정 전 본문. null 이면 작성(전체 모드).
  * @param after 저장된 본문.
  * @param request 요청 — actor 도출(자기 멘션 제외)에 쓴다.
+ * @param commentId 멘션이 실린 댓글 — 알림의 딥링크 대상이 된다.
  */
 function deriveCommentMentions(
   issueKey: string,
   before: string | null,
   after: string,
   request: Request,
+  commentId: string,
 ): void {
   const added = new Set(extractMentionedUsernames(after))
   if (before !== null) {
@@ -251,6 +253,8 @@ function deriveCommentMentions(
       title: `${issueKey} 에서 멘션되었습니다`,
       body: null,
       actorUserId,
+      // 댓글에서 난 멘션이므로 알림이 그 댓글을 가리킨다 — 백엔드는 payload.commentId 로 싣는다.
+      commentId,
       readAt: null,
       archivedAt: null,
       createdAt: new Date().toISOString(),
@@ -294,7 +298,7 @@ export const commentHandlers = [
     commentStore.set(issueKey, [...existing, created])
 
     // FR-MN-03 — 작성은 전체 모드(비교 대상 없음)
-    deriveCommentMentions(issueKey, null, body, request)
+    deriveCommentMentions(issueKey, null, body, request, created.id)
 
     return HttpResponse.json({ data: created }, { status: 201 })
   }),
@@ -341,7 +345,7 @@ export const commentHandlers = [
     }
 
     // FR-MN-03 — 수정은 diff 모드. 위 no-op 조기 반환이 '본문 동일' 무발행을 이미 보장한다.
-    deriveCommentMentions(issueKey, target.body, body, request)
+    deriveCommentMentions(issueKey, target.body, body, request, commentId)
     commentStore.set(
       issueKey,
       list.map((comment) => (comment.id === commentId ? updated : comment)),

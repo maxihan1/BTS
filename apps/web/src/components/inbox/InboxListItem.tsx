@@ -49,7 +49,7 @@ export interface InboxListItemProps {
  * - 안읽음 강조 마커(readAt === null)
  * - 읽음/안읽음 토글 버튼
  * - 보관/보관해제 토글 버튼
- * - issueKey 있으면 /issues/{issueKey} SPA Link
+ * - issueKey 있으면 /issues/{issueKey} SPA Link (commentId 가 있으면 그 댓글까지 딥링크)
  */
 export const InboxListItem = ({
   item,
@@ -102,8 +102,10 @@ export const InboxListItem = ({
           <Link
             to="/issues/$key"
             params={{ key: item.issueKey }}
+            // 새 탭·링크 복사 경로에도 딥링크가 남아야 한다 — onClick 은 좌클릭에서만 돈다.
+            search={item.commentId !== null ? { comment: item.commentId } : {}}
             className="font-medium text-primary hover:underline"
-            onClick={(e) => { openIssueDetail(item.issueKey as string, e) }}
+            onClick={(e) => { openIssueDetail(item.issueKey as string, e, item.commentId) }}
           >
             {item.issueKey}
           </Link>
