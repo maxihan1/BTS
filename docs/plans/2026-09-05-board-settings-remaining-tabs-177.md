@@ -65,6 +65,69 @@
 2. **main 이 빠르다.** 최근 하루에 `#449`~`#456` 이 들어왔다. 며칠짜리 PR 은 리베이스를 반복한다.
 3. **되돌리기 단위가 사라진다.** 한 탭이 잘못되면 4탭이 통째로 롤백된다.
 
+## Jira 대조
+
+계약 §1 절차. **Step 0(재사용)을 먼저 돌렸다** —
+`grep -rln "## Jira 대조" docs/specs/ docs/plans/ | xargs grep -ln "<표면>"` 로 62개 문서를 훑었다.
+`fr-ux-14-b2-card-fields` 스펙은 **`## Jira 대조` 를 생략**했다고 스스로 적어 승계할 행이 없었고,
+`#452` 스펙에서 화면 진입·권한 2행만 승계된다. 4탭의 **조작**은 전부 신규 조회다.
+
+### 승계 (재조회 안 함 · 계약 §1-0)
+
+| # | 원문 인용 | 출처 · 조회일 |
+|---|---|---|
+| **J8** | *"you must be either: a **space administrator** for the location of the board [or] a **board administrator** for the board itself"* | [Configure a company-managed board](https://support.atlassian.com/jira-software-cloud/docs/configure-a-company-managed-board/) · Cloud · 2026-09-03 |
+| **J22** | 진입 — *"On the **Board settings** screen, select the desired tab (**Columns**, **Swimlanes**, etc)."* | 동일 · Cloud · 2026-09-04 |
+
+### 이번에 새로 조회 (2026-09-05 · 4탭이 전부 신규 표면이다)
+
+**Card layout (갭 B)**
+
+| # | 원문 인용 | 출처 · 조회일 |
+|---|---|---|
+| **J30** | 진입 — *"Next to your board's name in the sidebar, select **More actions** (•••), then **Board settings**. Expand **Layout** in the sidebar, then select **Card layout**."* | [Customize cards](https://support.atlassian.com/jira-software-cloud/docs/customize-cards/) · Cloud · 2026-09-05 |
+| **J31** | **필드 상한 3개** — *"You can configure cards on a board to display up to three additional fields."* | 동일 · Cloud · 2026-09-05 |
+| **J32** | **카드 3층 구조** — *"Work item cards have three layers of information that are stacked on top of each other following this pattern: 1. The work item summary is always at the top on the board and backlog. 2. Any custom fields added to the card are next. 3. Then details about the work item, including work type, priority, assignee, and estimate."* | 동일 · Cloud · 2026-09-05 |
+| **J33** | **Days in column** — *"You can also enable **Days in column** to visually indicate how long a work item's in a column. This helps identify slow moving work."* | 동일 · Cloud · 2026-09-05 |
+| **J34** | **카드 색** — *"You can base your card colors on work types, priorities, assignees, or JQL."* | 동일 · Cloud · 2026-09-05 |
+
+**Estimation and tracking (갭 C)**
+
+| # | 원문 인용 | 출처 · 조회일 |
+|---|---|---|
+| **J35** | 진입 — *"Navigate to your board, select **More actions** (•••) next to the board name, then choose **Board settings** and select **Estimation**."* | [Configure estimation and tracking](https://support.atlassian.com/jira-software-cloud/docs/configure-estimation-and-tracking/) · Cloud · 2026-09-05 |
+| **J36** | **시간 추적 2종** — `None` 은 추정 방식으로 진행을 재고, `Remaining estimate and time spent` 는 *"tracks progress by subtracting the value from the **Time spent** field from the original estimate"* | 동일 · Cloud · 2026-09-05 |
+| **J37** | **적용 범위 제약** — *"This setting can only be changed for company-managed scrum teams."* | 동일 · Cloud · 2026-09-05 |
+
+**Working days (갭 D)**
+
+| # | 원문 인용 | 출처 · 조회일 |
+|---|---|---|
+| **J38** | **표준 근무일** — *"Select the days your team usually work under **Standard working days**."* | [Configure working days](https://support.atlassian.com/jira-software-cloud/docs/configure-working-days/) · Cloud · 2026-09-05 |
+| **J39** | **비근무일** — *"Specify holidays or one-off dates your team won't be working, select a date using the date picker under **Non-working days**, then select **Add date**."* | 동일 · Cloud · 2026-09-05 |
+| **J40** | **타임존** — *"Change your board's timezone, select a **Region**, then **Timezone** from the dropdowns."* | 동일 · Cloud · 2026-09-05 |
+| **J41** | **영향 범위** — *"Working days are reflected in these reports and gadgets: Burndown Chart, Sprint Report, Epic Report, Version Report, Control Chart"* | 동일 · Cloud · 2026-09-05 |
+
+**Issue detail view (갭 E)**
+
+| # | 원문 인용 | 출처 · 조회일 |
+|---|---|---|
+| **J42** | 목적 — *"customize the work item to show more fields, hide fields, and rearrange the field layout."* | [Configure the work item details](https://support.atlassian.com/jira-software-cloud/docs/configure-the-issue-detail-view/) · Cloud · 2026-09-05 |
+| **J43** | **구성 가능 필드**(문서의 표 나열 — 인용 아님) — Summary · Estimate · Status · Priority · Component · Labels · Affected versions · Fix versions · Parent · Reporter · Assignee · Date created · Date updated · Work item links · Description · Comments · Attachments · Subtasks | 동일 · Cloud · 2026-09-05 |
+| **J44** | **필드 노출 전제** — *"Fields will only appear on a work item if they have been associated with the relevant work type, and are not _hidden_."* | 동일 · Cloud · 2026-09-05 |
+
+### 착수 시점 관찰 (편차 확정은 /bts-spec 에서)
+
+- **J37 이 갭 C 의 범위를 정할 수 있다.** 지라는 이 설정을 **스크럼 보드에만** 연다.
+  BTS 는 `board_type` 이 이미 있으므로(#421) 같은 제약을 그대로 태울지, 칸반에도 열지가 쟁점이다.
+- **J41 이 갭 D 의 가치를 정한다.** 근무일 설정이 값을 내는 곳이 전부 번다운·스프린트 리포트류인데
+  BTS 에 그 리포트가 없다. 「설정은 되는데 아무 데도 안 쓰이는 칸」이 되면
+  `board-labels.ts:303` 이 경계한 「누를 수 있는데 아무 일도 안 일어나는」 화면의 재판이다.
+- **J42·J44 는 보드 설정이 아니라 스페이스/스킴 설정을 가리킨다.** 지라의 이 탭은 보드가 아니라
+  work type 레이아웃을 건드리고, 조회 결과도 `Settings > Screens` 경로를 지목했다.
+  갭 E 를 보드 단위 설정으로 만들면 **지라와 다른 모델**이 되므로 편차 등재 대상이다.
+- **J31 상한 3개는 BTS 에 커스텀 필드가 이미 있다는 전제와 맞물린다**(`FR-IS-10` 키 단위 병합 패치).
+
 ## 도메인 정리 (← /bts-spec §1 채움)
 
 ## 스펙 (← /bts-spec §2 채움)
