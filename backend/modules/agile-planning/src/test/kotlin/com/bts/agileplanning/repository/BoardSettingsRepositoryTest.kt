@@ -5,6 +5,7 @@ package com.bts.agileplanning.repository
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.jooq.tables.references.BOARDS
 import com.bts.agileplanning.jooq.tables.references.BOARD_CARD_LAYOUT_FIELDS
 import com.bts.agileplanning.jooq.tables.references.BOARD_DETAIL_VIEW_FIELDS
 import org.assertj.core.api.Assertions.assertThat
@@ -20,6 +21,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.sql.SQLException
 import java.time.Instant
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -31,6 +33,14 @@ import java.util.UUID
 private const val CHECK_VIOLATION = "23514"
 
 /**
+ * UNIQUE(PK) 제약 위반 SQLSTATE.
+ *
+ * ★추측이 아니라 **실측**이다 — 일부러 틀린 값(`"00000"`)으로 한 번 재서 `but was: "23505"` 를 봤다
+ * (Task 27 이 같은 자리에서 쓴 방법). 아무 예외로나 재면 오타·테이블 부재(42P01)도 통과한다.
+ */
+private const val UNIQUE_VIOLATION = "23505"
+
+/**
  * [BoardSettingsRepository] 통합 테스트 — 보드 설정 4탭이 실제로 **DB 에** 앉는지.
  *
  * ## 왜 [BoardRepository] 가 아니라 별도 리포지터리인가 (스펙 C-1 · 부채 157)
@@ -38,7 +48,7 @@ private const val CHECK_VIOLATION = "23514"
  * 읽기·쓰기를 거기 넣으면 그 부채가 깊어진다. `#444` 가 [BoardColumnStateRepository] 를 뺀 것과
  * 같은 이유이고, 이 task 의 존재 이유 자체가 **그 파일을 키우지 않는 것**이다.
  *
- * ## 이 클래스가 지는 판정 (10축)
+ * ## 이 클래스가 지는 판정 (12축)
  *
  * | 축 | 무엇 | 근거 |
  * |---|---|---|
@@ -50,14 +60,42 @@ private const val CHECK_VIOLATION = "23514"
  * | ⑥ 상한 | 한 뷰 4개는 **DB CHECK** 가 거부하고 기존 구성이 살아남는다 | E3 · #444 X1 |
  * | ⑦ 시간 추적 | 기본 `NONE` · 갱신 · 없는 보드는 false | R4 · J36 |
  * | ⑧ **NULL ≠ 빈 배열** | `working_days` 미설정(NULL)과 빈 배열이 **다르게** 읽힌다 | **R6** |
- * | ⑨ 비근무일 | 교체가 이전 날짜를 지우고 날짜 오름차순으로 읽힌다 | R5 · J39 |
+ * | ⑨ 비근무일 | 교체가 이전 날짜를 지우고 날짜 오름차순 · **중복 날짜는 PK 가 거부**(23505) | R5 · J39 |
  * | ⑩ 그룹 축 | 상세 필드가 그룹 4종 각자의 순서를 갖고 서로를 밀어내지 않는다 | R7 · J47 · J48 |
+ * | ⑪ soft-delete | `deleted_at` 술어 4곳이 soft-deleted 보드를 없는 보드로 만든다 | 404 신호 |
+ * | ⑫ updated_at | 설정 쓰기 2경로가 `updated_at` 을 올린다 | 형제 경로와 같은 규약 |
  *
  * ★ ⑧ 이 이 파일에서 가장 중요한 축이다. 「쓰고 읽으면 같다」만 재면 NULL 과 `{}` 를 한 값으로
  * 뭉갠 구현도 통과한다. 그러면 **미설정 보드의 번다운이 배포 순간 바뀐다**(스펙 R6 · V509 ① 의 ★★).
  *
  * ★ ①②④⑩ 은 「저장하고 읽으면 같다」로는 못 가르는 자리다 — 뷰·그룹 축이 없는 구현도,
  * `ORDER BY` 가 없는 구현도 그 단언만으로는 초록이다.
+ *
+ * ## 뮤테이션 검증 이력 — 재현 가능한 증거 (2026-09-06 실측)
+ *
+ * 「깨면 red」가 당연한 방향이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**인지를 잰 기록이다.
+ * 괄호 안은 그 뮤테이션이 **여전히 통과시키는** 시나리오 — 그것이 이 판정이 필요한 이유다.
+ * 재현은 해당 줄을 지우고 `--tests '*BoardSettingsRepositoryTest' --no-build-cache` 로 돌리면 된다.
+ *
+ * | # | 구현에 건 뮤테이션 | red 가 된 테스트 |
+ * |---|---|---|
+ * | M1 | `row[WORKING_DAYS]?.filterNotNull()` → `.orEmpty().filterNotNull()` (쓰고 읽으면 같다는 통과) | 근무일 3건 |
+ * | M2 | 카드 레이아웃 DELETE 에서 `view_scope` 술어 제거 (한 뷰만 쓰면 통과) | 뷰 축 2건 |
+ * | M3 | `findCardLayout` 의 `ORDER BY position` 제거 | 카드 position 순 1건 |
+ * | M3d | `findDetailViewFields` 의 `ORDER BY position` 제거 | 상세 position 순 1건 |
+ * | M4 | 상세 필드 DELETE 에서 `field_group` 술어 제거 | 그룹 축 2건 |
+ * | M5 | `updateTimeTracking` 의 `execute() > 0` → `>= 0` (있는 보드만 재면 통과) | 없는 보드 1건 |
+ * | M6 | `replaceNonWorkingDates` 의 DELETE 제거(누적) | 비근무일 1건 |
+ * | M7 | `replaceCardLayout` 의 DELETE 제거(누적) | 카드 3건 |
+ * | M8 | 카드 레이아웃 DELETE 에서 `board_id` 술어 제거 | 보드 격리 1건 |
+ * | D1 | `findWorkingDays` 의 `ORDER BY date` 제거 | 비근무일 1건 |
+ * | D2a~d | `deleted_at IS NULL` 술어를 네 메서드에서 **하나씩** 제거 | 각각 soft-delete 1건 |
+ * | D3 | `replaceCardLayout` 의 INSERT 를 no-op 으로 | 카드 6건(빈 목록 포함) |
+ * | D5 | `set(UPDATED_AT, now)` 두 줄 제거 | updated_at 1건 |
+ *
+ * ★M3 은 **처음에 red 가 안 됐다** — 그 사실이 [readWithSeqScan] 을 낳았다. 그리고 D1·D2·D3 은
+ * 독립 검증자가 찾은 생존 뮤턴트다(M1~M8 이 「이미 초록인 방향」을 비껴간 자리). 목록을 여기 남기는
+ * 이유가 그것이다 — 커밋 본문에만 적으면 다음 사람이 무엇이 이미 검증됐는지 알 방법이 없다.
  *
  * ## 설정 공유
  * [AgilePlanningTestcontainersConfig] 의 singleton PostgreSQL 컨테이너를 재사용한다.
@@ -132,6 +170,9 @@ class BoardSettingsRepositoryTest {
     fun `카드 레이아웃을 빈 목록으로 교체하면 그 뷰가 비고 키가 사라진다`() {
         val board = insertBoard()
         settingsRepository.replaceCardLayout(board.id, "BOARD", listOf("EPIC"))
+        // ★비-공허 짝(D3). 「비었다」만 재면 INSERT 가 no-op 인 구현도 통과한다 —
+        //   비우기 **전에 차 있었다**를 함께 재야 이 테스트가 무언가를 판정한다.
+        assertThat(rawCardLayout(board.id, "BOARD")).hasSize(1)
 
         settingsRepository.replaceCardLayout(board.id, "BOARD", emptyList())
 
@@ -272,11 +313,16 @@ class BoardSettingsRepositoryTest {
         val board = insertBoard()
         val (d1, d2, d3) = Triple(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 3, 1), LocalDate.of(2026, 10, 3))
         settingsRepository.replaceNonWorkingDates(board.id, listOf(d3, d1, d2))
-        assertThat(settingsRepository.findWorkingDays(board.id)?.nonWorkingDates).containsExactly(d1, d2, d3)
+        // ★[readWithSeqScan] 없이 재면 이 단언이 실행 계획에 얹힌다 — PK (board_id, date) 가
+        //   `SELECT date WHERE board_id = ?` 를 통째로 덮어(index-only scan) ORDER BY 를 지워도
+        //   정렬된 결과가 나온다. 카드·상세와 **같은 함정이고 같은 처방**이다(D1).
+        val ordered = readWithSeqScan { settingsRepository.findWorkingDays(board.id)?.nonWorkingDates }
+        assertThat(ordered).containsExactly(d1, d2, d3)
 
         settingsRepository.replaceNonWorkingDates(board.id, listOf(d2))
 
-        assertThat(settingsRepository.findWorkingDays(board.id)?.nonWorkingDates).containsExactly(d2)
+        assertThat(readWithSeqScan { settingsRepository.findWorkingDays(board.id)?.nonWorkingDates })
+            .containsExactly(d2)
     }
 
     @Test
@@ -291,6 +337,56 @@ class BoardSettingsRepositoryTest {
             .containsExactly(LocalDate.of(2026, 10, 3))
         assertThat(settingsRepository.findWorkingDays(other.id)?.nonWorkingDates)
             .containsExactly(LocalDate.of(2026, 12, 25))
+    }
+
+    @Test
+    fun `같은 날짜를 두 번 보내면 PK 가 거부하고 아무것도 저장되지 않는다`() {
+        // 리포지터리는 distinct() 로 삼키지 않는다 — 「판정은 DB, 이유는 서비스」가 이 파일의 규율이고
+        // 카드 3칸 상한(CHECK)과 대칭이다. Task 10 이 집합으로 정규화하지 않으면 여기서 500 이 난다.
+        val board = insertBoard()
+        val duplicated = LocalDate.of(2026, 10, 3)
+
+        val state = sqlStateOf { settingsRepository.replaceNonWorkingDates(board.id, listOf(duplicated, duplicated)) }
+
+        assertThat(state).isEqualTo(UNIQUE_VIOLATION)
+        // DELETE·INSERT 가 한 트랜잭션이라 거부되면 통째로 되돌아간다.
+        assertThat(settingsRepository.findWorkingDays(board.id)?.nonWorkingDates).isEmpty()
+    }
+
+    // ── ⑪ soft-delete 술어 (D2) ───────────────────────────────────────────────
+
+    @Test
+    fun `soft-deleted 보드는 설정 네 메서드 모두에서 없는 보드로 취급된다`() {
+        // ★KDoc 이 「없거나 soft-deleted 이면 false(404 신호)」를 계약으로 선언하는데, 그 절반을
+        //   아무도 안 재고 있었다(D2). deleted_at 술어 4곳을 지워도 전부 초록이던 자리다.
+        //   Task 9·10 이 이 반환값으로 404 를 내므로 실제 영향이 있다.
+        val board = insertBoard()
+        settingsRepository.updateTimeTracking(board.id, "REMAINING_AND_SPENT")
+        settingsRepository.updateWorkingDays(board.id, listOf("MON"), "Asia/Seoul")
+        assertThat(boardRepository.softDelete(board.id)).isTrue()
+
+        assertThat(settingsRepository.findTimeTracking(board.id)).isNull()
+        assertThat(settingsRepository.updateTimeTracking(board.id, "NONE")).isFalse()
+        assertThat(settingsRepository.findWorkingDays(board.id)).isNull()
+        assertThat(settingsRepository.updateWorkingDays(board.id, listOf("TUE"), null)).isFalse()
+    }
+
+    // ── ⑫ updated_at bump ─────────────────────────────────────────────────────
+
+    @Test
+    fun `설정 갱신 두 경로가 updated_at 을 올린다`() {
+        // set(UPDATED_AT, now) 두 줄을 지워도 초록이던 자리다. 형제 경로(updateName·updateSwimlaneField)와
+        // 같은 규약이라 조용히 빠지면 「언제 바뀌었나」가 설정 탭에서만 멈춘다.
+        val board = insertBoard()
+        val created = updatedAtOf(board.id)
+
+        settingsRepository.updateTimeTracking(board.id, "REMAINING_AND_SPENT")
+        val afterTimeTracking = updatedAtOf(board.id)
+        settingsRepository.updateWorkingDays(board.id, listOf("MON"), null)
+        val afterWorkingDays = updatedAtOf(board.id)
+
+        assertThat(afterTimeTracking).isAfter(created)
+        assertThat(afterWorkingDays).isAfter(afterTimeTracking)
     }
 
     // ── ⑩ 그룹 축 (R7 · J47 · J48) ────────────────────────────────────────────
@@ -369,6 +465,15 @@ class BoardSettingsRepositoryTest {
                 block()
             },
         ) { "readWithSeqScan 블록이 null 을 돌려줬다 — 트랜잭션이 열리지 않았을 수 있다." }
+
+    /** boards.updated_at 원본 값. */
+    private fun updatedAtOf(boardId: UUID): OffsetDateTime =
+        requireNotNull(
+            dsl.select(BOARDS.UPDATED_AT)
+                .from(BOARDS)
+                .where(BOARDS.ID.eq(boardId))
+                .fetchOne(BOARDS.UPDATED_AT),
+        ) { "boards.updated_at 이 없다 — boardId=$boardId" }
 
     /** board_card_layout_fields 원본 행 — 읽기 경로를 거치지 않고 저장된 것을 직접 본다. */
     private fun rawCardLayout(
