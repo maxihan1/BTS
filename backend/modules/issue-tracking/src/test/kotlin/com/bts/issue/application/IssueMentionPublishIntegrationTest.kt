@@ -307,6 +307,7 @@ class IssueMentionPublishIntegrationTest {
          * 나머지는 실물이다(발행 경로를 목으로 덮으면 실증이 아니다).
          */
         @Bean
+        @Suppress("LongParameterList") // 빈 팩토리 — 협력자를 컨테이너가 넘긴다(issueApplicationService 선례)
         open fun commentApplicationService(
             commentRepository: com.bts.issue.comment.repository.CommentRepository,
             repo: IssueRepository,
@@ -714,5 +715,4 @@ class IssueMentionPublishIntegrationTest {
             "mentionedUserIds 에 BOB_ID 가 없습니다. actual=${mentionedEvent.mentionedUserIds}"
         }
     }
-
 }
