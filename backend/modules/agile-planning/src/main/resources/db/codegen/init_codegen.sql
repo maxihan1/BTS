@@ -4,9 +4,11 @@
 -- board_quick_filters DDL은 V504__board_quick_filters.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- boards 의 board_type 은 V505__board_type.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- sprints 의 board_id 는 V506__sprint_board_id.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
+-- boards 의 설정 3칸 + board_non_working_dates / board_card_layout_fields / board_detail_view_fields 는
+--   V509__board_settings_tabs.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- ★ 이 정합은 이제 `scripts/workflow/codegen-mirror-parity.test.ts` 가 차집합으로 강제한다 — 주석에만 의존하지 않는다.
 
--- ── boards (V500 + V501 + V502 + V505 미러) ──────────────────────────────────────────────
+-- ── boards (V500 + V501 + V502 + V505 + V509 미러) ────────────────────────────────────────
 CREATE TABLE boards (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_key    VARCHAR(64) NOT NULL,
@@ -16,8 +18,14 @@ CREATE TABLE boards (
     deleted_at     TIMESTAMPTZ NULL,
     swimlane_field VARCHAR(16) NOT NULL DEFAULT 'NONE',  -- V502: 스윔레인 기준(NONE/ASSIGNEE/PRIORITY/EPIC)
     board_type     VARCHAR(16) NOT NULL DEFAULT 'KANBAN',  -- V505: 보드 종류(SCRUM/KANBAN)
+    time_tracking  VARCHAR(24) NOT NULL DEFAULT 'NONE',  -- V509: 시간 추적(NONE/REMAINING_AND_SPENT)
+    working_days   VARCHAR(3)[] NULL,  -- V509: 표준 근무일(NULL=미설정=달력일 전부)
+    board_timezone VARCHAR(64) NULL,  -- V509: IANA 타임존(NULL=미설정=UTC)
     CONSTRAINT boards_swimlane_field_allowed CHECK (swimlane_field IN ('NONE', 'ASSIGNEE', 'PRIORITY', 'EPIC')),
-    CONSTRAINT boards_board_type_allowed CHECK (board_type IN ('SCRUM', 'KANBAN'))
+    CONSTRAINT boards_board_type_allowed CHECK (board_type IN ('SCRUM', 'KANBAN')),
+    -- V509: 형제 둘과 같은 <테이블>_<칸>_allowed 관용구. 이것만 빠지면 같은 테이블의 같은 종류
+    -- 칸 셋이 서로 다른 규율을 받는다(마이그레이션은 DO 블록으로 같은 제약을 건다).
+    CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'))
 );
 
 CREATE INDEX idx_boards_project_key ON boards (project_key) WHERE deleted_at IS NULL;
@@ -96,3 +104,34 @@ CREATE TABLE board_quick_filters (
 );
 
 CREATE INDEX idx_board_quick_filters_board ON board_quick_filters (board_id);
+
+-- ── board_non_working_dates (V509 미러) ───────────────────────────────────────────
+-- 보드별 비근무일. 복합 PK 의 leftmost prefix(board_id)가 FK 인덱스 역할을 하므로 전용 인덱스가 없다.
+CREATE TABLE board_non_working_dates (
+    board_id UUID NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    date     DATE NOT NULL,
+    PRIMARY KEY (board_id, date)
+);
+
+-- ── board_card_layout_fields (V509 미러) ──────────────────────────────────────────
+-- 카드에 얹을 필드. 상한 3(J17)을 개수가 아니라 position 값의 범위로 표현한다.
+CREATE TABLE board_card_layout_fields (
+    board_id   UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    view_scope VARCHAR(16)  NOT NULL,
+    position   SMALLINT     NOT NULL,
+    field_key  VARCHAR(128) NOT NULL,
+    PRIMARY KEY (board_id, view_scope, position),
+    CHECK (position BETWEEN 0 AND 2),
+    CHECK (view_scope IN ('BOARD', 'BACKLOG'))
+);
+
+-- ── board_detail_view_fields (V509 미러) ──────────────────────────────────────────
+-- 이슈 상세 보기 필드. 그룹 4종(J47)이 PK 에 들어가 각 구획이 각자 0번 자리를 갖는다.
+CREATE TABLE board_detail_view_fields (
+    board_id    UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    field_group VARCHAR(16)  NOT NULL,
+    position    SMALLINT     NOT NULL,
+    field_key   VARCHAR(128) NOT NULL,
+    PRIMARY KEY (board_id, field_group, position),
+    CHECK (field_group IN ('GENERAL', 'DATE', 'PEOPLE', 'LINKS'))
+);

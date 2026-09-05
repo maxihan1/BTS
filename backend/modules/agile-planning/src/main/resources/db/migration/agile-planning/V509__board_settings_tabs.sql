@@ -62,16 +62,40 @@
 --   DROP CONSTRAINT → ADD CONSTRAINT 한 쌍으로 그 비용을 이미 치른 선례다. 뒤집으려면
 --   스펙과 이 CHECK 를 함께 고친다.
 
+-- ★ IF NOT EXISTS — 이 파일을 손으로 다시 태우는 자리(복구·재해 훈련·부분 적용 뒤 재실행)에서
+--   42701 로 죽으면 **뒤따르는 문 전부가 적용되지 않는다.** 기계 판정은
+--   BoardSettingsIdempotencyTest 다(plan Task 4 · 부채 161 · #444 가 V506 에서 밟은 자리).
 ALTER TABLE boards
-    ADD COLUMN time_tracking  VARCHAR(24)  NOT NULL DEFAULT 'NONE',
-    ADD COLUMN working_days   VARCHAR(3)[] NULL,
-    ADD COLUMN board_timezone VARCHAR(64)  NULL;
+    ADD COLUMN IF NOT EXISTS time_tracking  VARCHAR(24)  NOT NULL DEFAULT 'NONE',
+    ADD COLUMN IF NOT EXISTS working_days   VARCHAR(3)[] NULL,
+    ADD COLUMN IF NOT EXISTS board_timezone VARCHAR(64)  NULL;
 
 -- 형제 board_type · swimlane_field 와 같은 <테이블>_<칸>_allowed 관용구다(위 ★★ 가 근거).
 -- 인라인이 아니라 별도 문인 것은 의도다 — V509 의 유일한 ADD CONSTRAINT 이고,
 -- 「ADD CONSTRAINT 에는 IF NOT EXISTS 가 없다」는 멱등 요구가 감쌀 실제 대상이 된다(plan Task 4).
-ALTER TABLE boards
-    ADD CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'));
+--
+-- ★★ 그래서 DO 블록이다. ADD COLUMN·CREATE TABLE 과 달리 ADD CONSTRAINT 에는 IF NOT EXISTS
+--   **문법 자체가 없어** 재실행이 42710(duplicate_object)으로 죽는다. pg_constraint 를 먼저 보고
+--   없을 때만 거는 것이 표준 처방이다(부채 161 · #444 가 같은 자리에서 밟았다).
+--
+-- ★ conrelid 로 테이블까지 좁힌다. 제약 이름은 스키마가 아니라 **테이블 단위**로 유일하므로
+--   conname 만 보면 다른 테이블의 동명 제약에 속아 CHECK 를 조용히 건너뛴다.
+--
+-- ★ 이름 boards_time_tracking_allowed 는 계약이다. 바꾸면 이 블록이 찾지 못해 재실행마다
+--   제약을 다시 걸려 하고, BoardSettingsMigrationTest 의 이름 단언도 함께 red 가 된다.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'boards_time_tracking_allowed'
+          AND conrelid = 'boards'::regclass
+    ) THEN
+        ALTER TABLE boards
+            ADD CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'));
+    END IF;
+END
+$$;
 
 COMMENT ON COLUMN boards.time_tracking IS
     'NONE / REMAINING_AND_SPENT — 진행을 무엇으로 재는가(J36). 기본 NONE 이 현행 동작이라 백필이 무변경이다. 칸반에서는 읽는 쪽이 board_type 을 보고 무시한다(스펙 E6 — 종류를 왕복시켜도 값을 지우지 않는다).';
@@ -93,7 +117,7 @@ COMMENT ON COLUMN boards.board_timezone IS
 --
 -- ★ 스프린트 기간 **밖**의 날짜도 저장한다(스펙 E8). 기간을 아는 것은 계산 시점이지 저장 시점이
 --   아니므로 DB 가 막으면 다음 스프린트의 휴일을 미리 등록할 수 없게 된다.
-CREATE TABLE board_non_working_dates (
+CREATE TABLE IF NOT EXISTS board_non_working_dates (
     board_id UUID NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
     date     DATE NOT NULL,
     -- 복합 PK 가 「같은 보드에 같은 날짜 두 번」을 막는다. 그리고 이 PK 인덱스의 leftmost
@@ -127,7 +151,7 @@ COMMENT ON COLUMN board_non_working_dates.date     IS '쉬는 날(보드 타임�
 --   working_days NULL 과 같은 원칙이다 — 배포 순간 모든 보드의 카드가 바뀌면 안 된다.
 --
 -- ★ deleted_at 이 없다. ② 와 같은 이유로 엔티티가 아니라 보드가 소유한 설정 값 목록이다.
-CREATE TABLE board_card_layout_fields (
+CREATE TABLE IF NOT EXISTS board_card_layout_fields (
     board_id   UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
     view_scope VARCHAR(16)  NOT NULL,
     position   SMALLINT     NOT NULL,
@@ -183,7 +207,7 @@ COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또�
 --
 -- ★ 되돌리기 — 위 머리말의 DROP 목록에 이 한 줄을 더하면 완전 원복이다.
 --     DROP TABLE board_detail_view_fields;
-CREATE TABLE board_detail_view_fields (
+CREATE TABLE IF NOT EXISTS board_detail_view_fields (
     board_id    UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
     field_group VARCHAR(16)  NOT NULL,
     position    SMALLINT     NOT NULL,
