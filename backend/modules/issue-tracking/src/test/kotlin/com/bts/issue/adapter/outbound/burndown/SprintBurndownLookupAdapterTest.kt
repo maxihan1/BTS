@@ -134,8 +134,8 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
 
     /**
      * **축 ①.**
- *
- * Given  같은 UTC 날짜(06-01)에 시각이 다른 worklog 2건 — `10:00Z` 2h · `23:30Z` 1h.
+     *
+     * Given  같은 UTC 날짜(06-01)에 시각이 다른 worklog 2건 — `10:00Z` 2h · `23:30Z` 1h.
      *        `Asia/Seoul` 로 옮기면 앞은 06-01, 뒤는 06-02 다.
      * When   fetchBurndownSource 로 원천 데이터를 조회.
      * Then   두 항목이 **각자의 시각과 각자의 시간**을 달고 도착하고 합계도 보존된다.
@@ -160,8 +160,8 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
 
     /**
      * **축 ② — ①의 대조군.**
- *
- * Given  **완전히 같은 시각**(`10:00Z`)에 기록된 worklog 2건 — 30분 · 45분.
+     *
+     * Given  **완전히 같은 시각**(`10:00Z`)에 기록된 worklog 2건 — 30분 · 45분.
      * When   fetchBurndownSource 로 원천 데이터를 조회.
      * Then   시각이 같아도 합쳐지지 않고 둘로 오며, 두 값과 합계가 그대로 보존된다.
      *
@@ -185,8 +185,8 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
 
     /**
      * **축 ③.**
- *
- * Given  살아있는 worklog 1건 + soft-deleted worklog 1건 + soft-deleted 이슈에 속한 worklog 1건.
+     *
+     * Given  살아있는 worklog 1건 + soft-deleted worklog 1건 + soft-deleted 이슈에 속한 worklog 1건.
      * When   두 이슈 키 전부로 fetchBurndownSource 를 호출.
      * Then   살아있는 1건만 남는다 — 사전집계를 푸는 과정에서 삭제 술어가 함께 날아가지 않았다.
      */
