@@ -903,6 +903,13 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 **즉 같은 설정 화면의 네 탭이 서로 다른 오류 봉투를 낸다.** 프론트 T16~T19 가 각자 다르게
 파싱해야 하고, 한 탭만 고치면 나머지가 조용히 어긋난다 — 이 저장소의 지배 결함 양식이다.
 
+★★**권한 스텁 양식이 세 갈래다(2026-09-06 T9 보고).** 넷을 한 번에 고치려면 각각 손봐야 한다.
+`BoardCardLayoutApiTest`(T8)·`BoardEstimationApiTest`(T9)는 `lastPermission`/`lastScope` 필드,
+`BoardWorkingDaysApiTest`(T10)는 리스트 캡처, `BoardDetailViewApiTest`(T13)는 `Triple` 리스트다.
+**T8/T9 형태로 모으는 것이 낫다** — 스텁 필드 이름·리셋 위치·단언 형태까지 이미 일치하고,
+다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다. ★T9 는 이미 `CREATE` 라 손댈 것이 없고,
+**T29 가 실수로 다른 코드를 넣으면 T9 의 ⑩ 축이 red 로 잡는다.**
+
 ★**권한코드 통일도 이 task 가 진다(2026-09-06 추가).** 실측 —
 `BoardEstimationController` 만 `CREATE` 이고 `BoardCardLayoutController` · `BoardWorkingDaysController` ·
 `BoardDetailViewController` 는 `SOFT_DELETE` 다. **`CREATE` 로 통일한다** — 근거는 Task 8 REFACTOR 절의
