@@ -477,7 +477,7 @@ class BoardSchemaMigrationTest {
     }
 
     @Test
-    fun `V500 board_columns 6개 컬럼 존재`() {
+    fun `V501 board_columns 7개 컬럼 존재 (V501 wip_limit 누적)`() {
         assertThat(columnsOf("board_columns"))
             .containsExactlyInAnyOrderElementsOf(BOARD_COLUMNS_COLUMNS)
     }
