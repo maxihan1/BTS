@@ -56,6 +56,9 @@ ALTER TABLE boards
     ADD COLUMN working_days   VARCHAR(3)[] NULL,
     ADD COLUMN board_timezone VARCHAR(64)  NULL;
 
+ALTER TABLE boards
+    ADD CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'));
+
 COMMENT ON COLUMN boards.time_tracking IS
     'NONE / REMAINING_AND_SPENT — 진행을 무엇으로 재는가(J36). 기본 NONE 이 현행 동작이라 백필이 무변경이다. 칸반에서는 읽는 쪽이 board_type 을 보고 무시한다(스펙 E6 — 종류를 왕복시켜도 값을 지우지 않는다).';
 COMMENT ON COLUMN boards.working_days IS
