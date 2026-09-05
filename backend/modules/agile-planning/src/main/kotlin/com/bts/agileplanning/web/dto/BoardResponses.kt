@@ -216,6 +216,8 @@ data class BoardSummaryResponse(
  *   그대로 미러 노출할 뿐 생성·갱신하지 않는다(백로그 `BacklogResponses` 의 rank 노출 선례와
  *   동일한 방식). null 이면 미부여(정렬 시 NULLS LAST). 이 필드는 노출 전용이며 카드 정렬 순서는
  *   여전히 [PlacedColumn.cards] 가 결정한다(정렬 로직 자체의 변경은 별도 Task 소관).
+ * @property customFields 이슈 커스텀 필드 값 맵. 키는 커스텀 필드 키, 값은 미입력이면 null.
+ *   커스텀 필드가 없으면 **빈 맵**으로 직렬화된다(null 아님).
  */
 data class BoardCardResponse(
     val issueKey: String,
@@ -228,6 +230,7 @@ data class BoardCardResponse(
     val rank: String? = null,
     val labels: List<String> = emptyList(),
     val originalEstimateSeconds: Int? = null,
+    val customFields: Map<String, Any?> = emptyMap(),
 ) {
     companion object {
         /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
@@ -243,6 +246,7 @@ data class BoardCardResponse(
                 rank = card.rank,
                 labels = card.labels,
                 originalEstimateSeconds = card.originalEstimateSeconds,
+                customFields = card.customFields,
             )
     }
 }
