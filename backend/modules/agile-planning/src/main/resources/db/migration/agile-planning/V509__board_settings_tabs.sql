@@ -9,6 +9,25 @@
 -- 한 파일에 몰아 한 번만 상대하는 것이 4탭을 한 PR 로 묶는 유일한 기술적 이득이다(plan §착수 시점).
 --
 -- ★★ 이 파일의 핵심 판단은 「무엇을 NOT NULL 로 두지 **않았는가**」다. 아래 ① 참조.
+--
+-- ★★ 되돌리기 — **무조건** 완전 원복된다. 데이터 손실은 설정값뿐이다.
+--
+--     DROP TABLE board_non_working_dates;
+--     ALTER TABLE boards
+--         DROP COLUMN time_tracking,
+--         DROP COLUMN working_days,
+--         DROP COLUMN board_timezone;
+--
+--   V508 은 되돌리기가 **조건부**였다(state_key 를 NOT NULL 로 되돌리는 줄이 NULL 행 하나에도
+--   실패한다). 여기는 그렇지 않다 — 제약을 다시 조이는 줄이 없고, 신설한 칸·테이블에 의존하는
+--   기존 객체도 없어 순서와 데이터에 관계없이 성공한다. 「무조건」이라고 쓸 수 있는 근거가 이것이다.
+--   되돌리면 4탭의 설정값이 사라지고 보드는 마이그레이션 이전 동작으로 정확히 돌아간다 —
+--   working_days 가 NULL 이었으므로 번다운은 애초에 달력일 전부를 돌고 있었다(①의 ★★).
+--
+--   ★ 위 목록은 이 task(①·②)의 것이다. 같은 V번호에 board_card_layout_fields ·
+--   board_detail_view_fields 가 뒤이어 붙으므로 그 DROP 도 함께 세야 완전 원복이 된다.
+--   산문은 기계가 안 읽는다 — 되돌리기를 실제로 실행해 스키마가 적용 전과 같은지 재는 것은
+--   BoardSettingsIdempotencyTest 다(plan Task 4 REFACTOR · 부채 161).
 
 -- ── ① boards 설정 3칸 — 추정 탭(J36) · 작업일 탭(J38·J40) ──────────────────────
 --

@@ -101,8 +101,7 @@ class BoardSettingsMigrationTest {
             return id
         }
 
-        fun conn(): Connection =
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
+        fun conn(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
     }
 
     // ── 헬퍼 — 전부 prepared statement (SQL 문자열 결합 금지) ────────────────────
