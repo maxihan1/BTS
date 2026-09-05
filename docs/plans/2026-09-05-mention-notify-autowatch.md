@@ -155,6 +155,7 @@ V403 의 `issue.mentioned × MENTIONED × IN_APP` 이 `sourceField` 와 무관�
 | E6 | 자기 멘션만 있는 댓글 | 대상 0명 → 발행 0 · watcher 0 |
 | E7 | 아카이브된 프로젝트 | 기존 `archiveGuard` 가 본체에서 먼저 차단 — 멘션 경로 도달 안 함 |
 | E8 | 소프트 삭제된 댓글의 멘션 | 삭제 이벤트는 `IssueCommentDeleted` 소관. 멘션 회수는 하지 않는다(E2 와 같은 논리) |
+| **E9** | **`cloneIssue` 로 복제된 description 의 멘션** | **재발행하지 않는다.** `cloneIssue`(`IssueApplicationService.kt:382-405`)는 `createIssue` 를 경유하지 않는 별도 함수라 이 FR 의 변경이 자동으로 닿지 않는다. **의도적 제외다** — 멘션 대상은 원본에서 이미 알림을 받았고, 복제할 때마다 다시 알리면 대량 복제가 알림 폭탄이 된다. 코드 변경 0, 테스트는 「클론 시 `IssueMentioned` 발행 0건」 회귀 1건으로 이 판단을 고정한다 |
 
 ### 제약 조건
 
@@ -263,7 +264,11 @@ V403 의 `issue.mentioned × MENTIONED × IN_APP` 이 `sourceField` 와 무관�
 
 **GREEN**: `publishMentions` 가 `MentionTargetResolver` 를 호출하도록 교체. 확정된 `targets` 를 기존 private `autoWatch(issueId, userIds)` 에 그대로 넘긴다.
 
+★**리뷰 R2 반영 — `autoWatch` 를 배치 INSERT 로**. 현재 구현은 `userIds.distinct().forEach { repo.add(issueId, userId) }`(`:2193`) 라 **1인당 INSERT 1회**다. 기존 호출자는 최대 2명(reporter+assignee)이라 안 드러났지만 멘션은 `MAX_MENTIONS_PER_EVENT` 까지 가므로 한 트랜잭션에서 최대 50 왕복이 된다. `IssueWatcherRepository` 에 다중 VALUES `addAll(issueId, userIds)` 를 더하고 `autoWatch` 가 그것을 쓴다 — `ON CONFLICT DO NOTHING` 은 다중 VALUES 에도 그대로 걸려 멱등이 유지된다. 기존 2명 호출자도 같은 경로를 타므로 분기하지 않는다.
+
 **REFACTOR**: 발행과 watcher 등록이 **같은 `targets` 리스트**를 쓰는 것을 한 곳에서 보이게 정리 — 캡 초과 시 알림 대상과 watcher 대상이 갈리는 E5 를 구조로 막는다.
+
+★**리뷰 R4 반영 — 이관의 뮤테이션 짝(필수)**. 이 task 는 「행동 불변」을 기존 `S1~S5+cap` 통과로 주장하는데, **통과가 무엇을 덮는지 모르면 가짜 그린**이다. GREEN 선커밋 뒤 `MentionTargetResolver` 호출을 일부러 끊어 기존 S1~S5 가 **실제로 red 를 내는지 1회 확인**한다. red 가 안 나면 그 테스트는 이관을 감시하지 못하는 것이므로 감시하는 테스트를 먼저 추가한다. 뮤테이션 직후 `grep -c MUTATION` 으로 **적용 건수를 되잰다** — 「걸었다」와 「걸렸다」는 다르고, BSD sed 미매치로 뮤테이션이 파일에 안 들어갔는데 초록이던 전례가 있다(학습 `mutation-must-verify-it-actually-applied`).
 
 **검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*IssueApplicationServiceMentionTest')`
 
@@ -349,7 +354,7 @@ V403 의 `issue.mentioned × MENTIONED × IN_APP` 이 `sourceField` 와 무관�
 - depends-on: [6]
 - jira: [J2]
 
-**RED**: 스펙 `## 엣지 케이스` E1~E8 각 1건. **E5(캡 초과 시 알림 대상 == watcher 대상)** 와 **E4(이미 watcher 여도 알림은 정상)** 가 핵심이다 — 둘은 「두 목록이 서로를 검사하지 않는」 양식이라 판정이 없으면 조용히 갈린다.
+**RED**: 스펙 `## 엣지 케이스` E1~**E9** 각 1건. **E9(클론 시 `IssueMentioned` 발행 0건)** 는 「빠뜨린 것이 아니라 정한 것」을 코드로 고정하는 회귀다. **E5(캡 초과 시 알림 대상 == watcher 대상)** 와 **E4(이미 watcher 여도 알림은 정상)** 가 핵심이다 — 둘은 「두 목록이 서로를 검사하지 않는」 양식이라 판정이 없으면 조용히 갈린다.
 
 **J2 회귀**: 보안 레벨 이슈의 멘션 알림이 `applyVisibilityFilter` 로 막히는지는 **notification BC 소관**이라 이 PR 에서 코드를 건드리지 않는다. 대신 「`issue-tracking` 은 가시성 필터를 스스로 하지 않는다」는 **경계 사실**을 테스트 이름으로 남겨 후속 리뷰가 착각하지 않게 한다.
 
@@ -395,12 +400,16 @@ V403 의 `issue.mentioned × MENTIONED × IN_APP` 이 `sourceField` 와 무관�
 
 **검증**: `pnpm --filter web test:e2e -- issue-mention-render`
 
+⚠ **실행 전 필수** — 5173 을 점유한 프로세스의 cwd 가 **이 worktree 인지 증명**한다. 다른 worktree 의 서버가 포트를 쥐고 있으면 `reuseExistingServer:false` 여도 내 spec 이 **남의 앱을 재서** 가짜 red/green 이 만들어진다(학습 `port-5173-shared-across-worktrees-measures-wrong-app`).
+
 ## Plan 메타
 
 - **task 수**. 9 (각 TDD 사이클 1개)
 - **예상 wave**. 5 — `1 → 2 → 3 → 4 → (5 → 6) → (7·8) → 9`. `IssueApplicationService.kt` 와 `CommentApplicationService.kt` 가 각각 여러 task 에 걸려 **파일 겹침으로 자동 직렬화**된다. 진짜 병렬은 Task 7·8 한 구간뿐이다.
 - **구현 규율**. TDD red-first (T2). `test:` 커밋이 `feat:` 앞에 온다.
-- **추가 검증**. `./gradlew :modules:issue-tracking:test ktlintCheck detekt` · `pnpm --filter web test:e2e` · 뮤테이션 짝(GREEN 선커밋 뒤).
+- **추가 검증**. `./gradlew :modules:issue-tracking:test ktlintCheck detekt` · `pnpm --filter web test:e2e` · 뮤테이션 짝(GREEN 선커밋 뒤 · 적용 건수 `grep -c` 로 되재기).
+- **⚠ 커밋 규율**. 같은 worktree 에서 여러 task 가 돌면 **`git add` 로는 못 막는다** — git 인덱스가 프로세스 간 공유라 add 를 좁혀도 커밋 시점 인덱스에 옆 task 파일이 남아 있으면 함께 커밋된다(2026-09-04 실측). **`git commit --only <경로>`** 를 쓴다.
+- **실패 모드 결정(게이트 1 · Maxi 확정 2026-09-05)**. 멘션 해석 포트가 throw 하면 **트랜잭션 전체를 롤백해 댓글 저장도 실패**시킨다. 기존 `publishMentions` 와 같은 성질이라 신규 결함이 아니고, 「댓글은 저장됐는데 멘션 알림만 조용히 증발」보다 낫다는 판단이다.
 - **Jira 매핑**. `J1 → T3·T4·T5·T6·T8·T9` · `J2 → T7(경계 사실 기록 — 구현은 notification BC 기구현)` · `J3 → 부분 미채택 X2(본인 댓글 autowatch 는 범위 밖)` · `J4 → 대응 없음 X1(의도적 편차)`. **채택 2건 모두 task 에 물렸다 — 차집합 0.**
 
 
@@ -546,6 +555,16 @@ Task 3 은 「기존 `IssueApplicationServiceMentionTest` S1~S5+cap 이 그대�
 ⚠ **충돌 플래그**. Lane A 와 B 는 모듈이 다르지만 **같은 worktree 의 git 인덱스를 공유**한다.
 학습 `shared-worktree-git-index-defeats-narrow-git-add` 대로 `git add` 로는 못 막는다 — **`git commit --only <경로>`** 를 쓴다.
 
-**판정**. BLOCKER **0건** · P1 2건(R1·R4) · P2 3건(R2·R3·R5 — R5 는 교정 완료).
-P1 둘 다 **코드가 아니라 plan 보강**으로 닫힌다(E9 추가 · 뮤테이션 짝 명시).
+**판정**. BLOCKER **0건** · P1 2건(R1·R4) · P2 3건(R2·R3·R5).
+
+### 게이트 1 처리 (Maxi 확정 2026-09-05 · 승인)
+
+| 발견 | 처리 |
+|---|---|
+| R1 클론 경로 | **E9 신설** — 「재발행하지 않는다 + 사유(대량 복제 알림 폭탄)」를 못박고 Task 7 에 발행 0건 회귀를 물렸다. 코드 변경 0 |
+| R2 개별 INSERT | **Task 3 GREEN 에 배치 `addAll` 추가**. 기존 2명 호출자도 같은 경로 |
+| R3 억제 주석 | Task 5 REFACTOR 에서 같은 커밋으로 갱신(기존 기재 유지) |
+| R4 이관 가드 | **Task 3 REFACTOR 에 뮤테이션 짝 필수화** + 적용 건수 되재기 |
+| R5 glossary 근거 | 교정 완료 |
+| 실패 모드 1행 | **현행 유지** — 멘션 해석 실패 시 댓글 저장도 롤백. 기존 성질과 일관 |
 
