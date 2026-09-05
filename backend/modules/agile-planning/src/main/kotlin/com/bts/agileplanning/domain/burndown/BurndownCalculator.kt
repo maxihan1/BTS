@@ -49,7 +49,13 @@ object BurndownCalculator {
      * @return date 오름차순으로 정렬된 [BurndownPoint] 목록. [workingCalendar] 가 null 이면 [start]~[end]
      *   각 일자 1개씩(총 일수 개), 아니면 그 구간의 **근무일** 1개씩이다.
      * @throws IllegalArgumentException [start] 가 [end] 보다 이후이거나 [scopeSeconds] 가 음수인 경우.
+     *
+     * `LongParameterList` 를 억제한다 — 파라미터 6개로 detekt 임계값(6/6)에 정확히 걸리지만,
+     * 순수 함수라 필드로 숨길 자리가 없고 앞 5개는 호출부가 이미 쓰는 계약이다.
+     * 묶으려면 다른 task 소유 파일(`SprintBurndownService`)을 함께 고쳐야 한다.
+     * 같은 모듈 `SprintRepository` 에 동일 억제 선례가 있다.
      */
+    @Suppress("LongParameterList")
     fun calculate(
         start: LocalDate,
         end: LocalDate,
