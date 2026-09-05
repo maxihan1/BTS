@@ -20,7 +20,7 @@ SDD (docs/sdd/, v0.5.0 봉인)                           ← 설계 명세 26개
    │
 docs/plan/  ← 이 디렉토리                              ← 기능 구현 진척 (이 문서)
    ├ README.md       (이 파일 — 인덱스 + NFR 게이트 + 변경 이력)
-   ├ fr-index.md     (144 FR 역인덱스 + BC 매핑)
+   ├ fr-index.md     (145 FR 역인덱스 + BC 매핑)
    └ product/        (9개 BC 파일 — 각 BC가 자기 FR을 완전 추적)
    │
 docs/poc/   (dependencies.md, checklist.md, context-notes.md)  ← 의존성 도입 순서
@@ -104,7 +104,7 @@ identity-access  ─┐
 | BC | 파일 | FR 수 | 기술 검증 (PoC) | 진척 |
 |---|---|---|---|---|
 | identity-access | [product/identity-access.md](product/identity-access.md) | 25 (AU 10 + MF 5 + PM 10) | AuthN Provider + Keycloak | ☑ D단계 |
-| issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 37 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☑ D단계 |
+| issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 38 (IS 10 + CM 4 + VR 4 + AC 2 + MN 3 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☐ D단계 (FR-MN-03) |
 | project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☑ D단계 |
 | agile-planning | [product/agile-planning.md](product/agile-planning.md) | 15 (BD 4 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☑ D단계 |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
@@ -114,7 +114,7 @@ identity-access  ─┐
 | search-export-import | [product/search-export-import.md](product/search-export-import.md) | 12 (SR 4 + EX 2 + IM 2 + API 4) | AQL 파서 + ANTLR 4 | ☑ D단계 |
 | (메타) | (이 README §0~§6) | — | CLAUDE.md/Skills/검토 사이클 — Maxi 관찰 | 진행중 |
 
-**합계**. 144 FR.
+**합계**. 145 FR.
 
 > **진척 열 판독**. `☑ D단계` = 그 BC 에 속한 FR 전량이 D1~D7 을 마쳤다는 뜻이고,
 > **BC 완료 선언과는 다르다**. 선언은 §NFR 측정표 통과 + `CHANGELOG.md` 정리 +
@@ -128,13 +128,18 @@ identity-access  ─┐
 > 위 「전량 완료」 문장은 2026-08-07 시점의 기록이며 지금은 참이 아니다 — 숫자만 올리면
 > 거짓 진술이 되므로 시점을 명시해 남긴다. project-workflow 진척 열이 `☐` 로 내려간 이유가 이것이다.
 >
+> 2026-09-05 갱신 — **FR-MN-03 신설**로 정본이 **144 → 145** 가 됐고 그 1건이 **D 미착수**다.
+> 바로 아래 2026-09-03 의 「D 미착수 0 건 · 그 시점 정본 144 전량」 문장은 **그 시점의 기록**이며 지금은 참이 아니다 —
+> 숫자만 고치면 시점 기록이 거짓이 되므로 원문은 두고 갱신을 덧붙인다(2026-08-18 이 쓴 방식과 같다).
+> issue-tracking 진척 열이 `☐ D단계 (FR-MN-03)` 으로 내려간 이유가 이것이다.
+>
 > 2026-09-03 갱신 — **FR-WF-07 완주**(로드맵 PR 10a·10b #423·#427 로 D6·D7 · 로드맵 PR 9 #434 로
 > D8 — xyflow 다이어그램 편집기). project-workflow 의 미완 D 마커가 0 이 돼 진척 열을 `☑ D단계` 로
-> 올렸다. **D 미착수 FR 은 0 건이다** — 144 FR 전량이 D 단계를 마쳤다. BC 완료 선언은 별개다
+> 올렸다. **D 미착수 FR 은 0 건이다** — 그 시점 정본 144 전량이 D 단계를 마쳤다. BC 완료 선언은 별개다
 > (§NFR 측정 · README §7 · Maxi 선언이 남는다).
 >
 > 2026-09-02 갱신 — **FR-BD-04 완주**(PR #421 D1~D5 · #422 D6 일부 · #424 D6 잔여·D7). D 미착수는 **1건(FR-WF-07)** 이다.
-> 2026-09-01 갱신 — FR-BD-04 신설로 정본은 **144 FR** 이다. D 미착수는 2건(FR-WF-07 · FR-BD-04)이었다.
+> 2026-09-01 갱신 — FR-BD-04 신설로 정본은 **143→144** 였다. D 미착수는 2건(FR-WF-07 · FR-BD-04)이었다.
 > agile-planning 진척 열이 `☐` 로 내려간 이유가 이것이다 — 보드가 스프린트를 모르는 구조적 갭을
 > 닫는 FR 이고 설계 정본은 `docs/adr/2026-09-01-board-type-and-active-sprint.md` 다.
 >
@@ -179,7 +184,7 @@ identity-access  ─┐
 
 ## §A. 부록
 
-→ [fr-index.md](fr-index.md) — 144 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
+→ [fr-index.md](fr-index.md) — 145 FR 역인덱스 (FR ID → BC → §x.y) + Open Questions.
 
 ## §6. NFR 검증 3중 게이트
 
