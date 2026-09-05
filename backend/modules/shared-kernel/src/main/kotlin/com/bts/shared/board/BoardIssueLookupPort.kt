@@ -177,7 +177,10 @@ data class BoardIssuePage(
  * @property labels 이슈 라벨 목록. 라벨이 없으면 **빈 리스트**(null 아님) — `issues.labels` 가
  *   `NOT NULL DEFAULT '{}'` 이라 도메인에서 이미 빈 리스트다 (FR-UX-14 B2).
  * @property originalEstimateSeconds 최초 추정 작업 시간(초). 미추정이면 null (FR-UX-14 B2).
- * @property customFields 이슈 커스텀 필드 값 맵. 커스텀 필드가 없으면 빈 맵.
+ * @property customFields 이슈 커스텀 필드 값 맵. 키는 커스텀 필드 키, 값은 미입력이면 null.
+ *   **소유는 issue-tracking BC** — agile-planning 은 이 값을 그대로 미러 노출할 뿐 생성·갱신하지
+ *   않는다(`rank` 노출 방식과 동일). 커스텀 필드가 없으면 **빈 맵**(null 아님) — 기본값이 있어
+ *   기존 소비자의 생성 호출 시그니처가 그대로 유지된다.
  */
 data class BoardIssueView(
     val key: String,
