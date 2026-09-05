@@ -218,6 +218,13 @@ data class BoardSummaryResponse(
  *   여전히 [PlacedColumn.cards] 가 결정한다(정렬 로직 자체의 변경은 별도 Task 소관).
  * @property customFields 이슈 커스텀 필드 값 맵. 키는 커스텀 필드 키, 값은 미입력이면 null.
  *   커스텀 필드가 없으면 **빈 맵**으로 직렬화된다(null 아님).
+ *   [rank] 와 같은 방식이다 — **소유는 issue-tracking BC** 이고 agile-planning 은 미러 노출만 한다.
+ *
+ *   ★**여기서 다시 거르지 않는다.** 열람 권한(FR-PM-07) 마스킹은 issue-tracking 의
+ *   `BoardIssueLookupAdapter` 가 이미 끝냈고([com.bts.shared.board.BoardIssueView.customFields]
+ *   KDoc 의 포트 계약), 포트 밖으로는 안전한 값만 나온다. agile-planning 이 방어적으로 한 겹 더
+ *   두면 마스킹 주체가 둘이 되어 **두 번째 진실**이 된다 — 두 곳이 서로 어긋나는 순간 어느 쪽이
+ *   옳은지 아무도 모른다. 이 BC 는 권한 모델을 모르고, 알아야 할 이유도 없다(스펙 C-6).
  */
 data class BoardCardResponse(
     val issueKey: String,
@@ -233,7 +240,12 @@ data class BoardCardResponse(
     val customFields: Map<String, Any?> = emptyMap(),
 ) {
     companion object {
-        /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
+        /**
+         * cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다.
+         *
+         * 모든 필드는 **그대로 옮긴다**. [BoardIssueView.customFields] 에 권한 판정을 덧붙이고
+         * 싶어지면 [BoardCardResponse.customFields] KDoc 을 먼저 읽어라 — 마스킹은 이미 끝났다.
+         */
         fun from(card: BoardIssueView): BoardCardResponse =
             BoardCardResponse(
                 issueKey = card.key,
