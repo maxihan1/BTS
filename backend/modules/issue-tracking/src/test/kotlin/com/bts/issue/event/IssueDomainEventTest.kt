@@ -4,12 +4,14 @@ package com.bts.issue.event
 
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.mention.MentionSource
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import java.time.Instant
 import java.util.UUID
 
@@ -136,6 +138,43 @@ class IssueDomainEventTest : DescribeSpec({
             val json = mapper.writeValueAsString(event)
             val restored = mapper.readValue(json, IssueDomainEvent::class.java) as IssueMentioned
             restored.mentionedUserIds shouldBe listOf(bobId, carolId)
+        }
+
+        // ── FR-MN-03 ──────────────────────────────────────────────────────
+        it("본문 멘션은 sourceField 가 MentionSource.DESCRIPTION 이고 commentId 가 null 이다") {
+            event.sourceField shouldBe MentionSource.DESCRIPTION
+            event.commentId shouldBe null
+        }
+
+        it("댓글 멘션은 sourceField=comment + commentId 를 라운드트립한다") {
+            val commentId = UUID.fromString("44444444-4444-4444-4444-444444444444")
+            val commentEvent =
+                event.copy(sourceField = MentionSource.COMMENT, commentId = commentId)
+
+            val json = mapper.writeValueAsString(commentEvent)
+            json shouldContain "\"sourceField\":\"comment\""
+
+            val restored = mapper.readValue(json, IssueDomainEvent::class.java) as IssueMentioned
+            restored shouldBe commentEvent
+            restored.commentId shouldBe commentId
+        }
+
+        // ★하위호환 — 이 확장 이전에 q_issue_events 로 들어간 메시지에는 commentId 키가 아예 없다.
+        //   기본값이 없으면 워커가 그 메시지들을 역직렬화하지 못해 큐가 막힌다.
+        //   그래서 이 판정은 「필드를 추가했다」가 아니라 「기본값을 줬다」를 지킨다.
+        it("commentId 키가 없는 옛 JSON 도 역직렬화된다 (큐 잔류 메시지 하위호환)") {
+            // ★픽스처를 손으로 쓰지 않는다 — 실제 직렬화 결과에서 commentId 키만 도려낸다.
+            //   손으로 쓴 JSON 은 와이어 포맷을 추측하게 되고, 실제로 첫 시도가 그래서 틀렸다
+            //   (IssueKey 는 value class 라 {"value":...} 가 아니라 평문 String 이다).
+            //   이 방식이면 픽스처가 포맷 변경을 자동으로 따라간다.
+            val legacyJson =
+                mapper.writeValueAsString(event)
+                    .replace(Regex(""","commentId":null"""), "")
+            legacyJson shouldNotContain "commentId"
+
+            val restored = mapper.readValue(legacyJson, IssueDomainEvent::class.java) as IssueMentioned
+            restored.commentId shouldBe null
+            restored.sourceField shouldBe MentionSource.DESCRIPTION
         }
     }
 
