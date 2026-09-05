@@ -318,7 +318,12 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 **메타**.
 - agent: `backend-engineer`
 - files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardSettingsRepository.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/repository/BoardSettingsRepositoryTest.kt`]
-- depends-on: [1, 2, 3]
+- depends-on: [1, 2, 3, 4]
+
+★**`depends-on` 에 4 를 더했다(2026-09-05 · Task 1 구현자가 잡은 계획 결함).**
+`init_codegen.sql` 미러가 **Task 4 소유**인데 jOOQ 상수는 그 파일에서 생성된다 — 미러 없이
+이 task 가 먼저 돌면 **컴파일조차 안 된다**(V005 선례). 초판은 둘 다 `[1,2,3]` 이라 같은 wave 에
+병렬로 놓였고, 그대로 dispatch 했으면 이 task 가 깨졌다.
 - jira: []
 
 **RED**. 설정 4축을 읽고 쓰는 리포지터리가 없다.
