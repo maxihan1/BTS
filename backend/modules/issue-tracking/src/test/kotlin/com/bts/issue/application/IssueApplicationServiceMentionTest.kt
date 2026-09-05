@@ -228,6 +228,39 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                 // 현재 구현은 상한이 없어 51개가 모두 포함될 것이므로 이 단언이 실패해야 한다
                 mentioned.single().mentionedUserIds.size shouldBe 50
             }
+
+            // ★E5 캡 경계 — 캡이 걸리는 순간이 알림 대상과 watcher 대상이 갈릴 수 있는 유일한 자리다.
+            //   기존 판정은 캡이 안 걸린 경우만 봤으므로 여기서 경계를 직접 잰다.
+            it("캡이 걸려도 알림 대상과 watcher 등록 목록이 정확히 같다") {
+                val capWatcherRepo = mockk<IssueWatcherRepository>(relaxed = true)
+                val capSut =
+                    IssueApplicationService(
+                        repo = bulkRepo,
+                        issueTypeRepository = mockk(relaxed = true),
+                        resolutionRepository = mockk(relaxed = true),
+                        eventPublisher = bulkEventPublisher,
+                        permissionResolver = bulkPermissionResolver,
+                        workflowPort = mockk(relaxed = true),
+                        workflowKeyResolver = mockk(relaxed = true),
+                        userLookupPort = bulkUserLookupFake,
+                        componentRepository = mockk(relaxed = true),
+                        projectLeadRepository = mockk(relaxed = true),
+                        versionRepository = mockk(relaxed = true),
+                        clock = fixedClock,
+                        historyRecorder = mockk(relaxed = true),
+                        watcherRepository = capWatcherRepo,
+                    )
+                val captured = mutableListOf<IssueDomainEvent>()
+                every { bulkEventPublisher.publish(capture(captured)) } returns Unit
+                val watched = mutableListOf<List<UUID>>()
+                every { capWatcherRepo.addAll(any(), capture(watched)) } returns Unit
+
+                capSut.updateIssue(aliceActor, issueKey, request)
+
+                val mentioned = captured.filterIsInstance<IssueMentioned>().single()
+                mentioned.mentionedUserIds.size shouldBe 50
+                watched.single() shouldBe mentioned.mentionedUserIds
+            }
         }
     }
 

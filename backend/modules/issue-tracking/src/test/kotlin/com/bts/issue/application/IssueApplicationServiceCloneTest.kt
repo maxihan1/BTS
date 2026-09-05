@@ -10,7 +10,9 @@ import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
+import com.bts.issue.event.IssueDomainEvent
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueMentioned
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -299,6 +301,22 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                     repo.insert(any())
                     eventPublisher.publish(any())
                 }
+            }
+
+            // ★E9 (FR-MN-03) — 「빠뜨린 것이 아니라 정한 것」을 코드로 고정한다.
+            //   cloneIssue 는 createIssue 를 경유하지 않는 별도 함수라 멘션 발행이 자동으로 닿지 않는다.
+            //   원본에서 이미 알린 멘션을 복제마다 다시 알리면 대량 복제가 알림 폭탄이 되므로
+            //   의도적으로 제외했다. 이 판정이 없으면 다음 사람이 「누락인가 의도인가」를 다시 판정한다.
+            it("클론은 원본 description 의 멘션을 재발행하지 않는다 (E9)") {
+                every { userLookupPort.findIdsByUsernames(any()) } returns
+                    mapOf("bob" to UUID.fromString("bb000000-0000-4000-8000-0000000000e9"))
+
+                val captured = mutableListOf<IssueDomainEvent>()
+                every { eventPublisher.publish(capture(captured)) } returns Unit
+
+                sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
+
+                captured.filterIsInstance<IssueMentioned>() shouldBe emptyList()
             }
         }
 

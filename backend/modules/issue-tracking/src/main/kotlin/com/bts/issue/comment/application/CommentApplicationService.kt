@@ -16,22 +16,22 @@ import com.bts.issue.domain.IssueTextConstraints
 import com.bts.issue.event.IssueCommentDeleted
 import com.bts.issue.event.IssueCommented
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueMentioned
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
+import com.bts.issue.mention.MentionSource
+import com.bts.issue.mention.MentionTargetResolver
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.watcher.repository.IssueWatcherRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import com.bts.shared.user.UserLookupPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
-import com.bts.issue.event.IssueMentioned
-import com.bts.issue.mention.MentionSource
-import com.bts.issue.mention.MentionTargetResolver
-import com.bts.issue.watcher.repository.IssueWatcherRepository
-import com.bts.shared.user.UserLookupPort
 import java.time.Instant
 import java.util.UUID
 
