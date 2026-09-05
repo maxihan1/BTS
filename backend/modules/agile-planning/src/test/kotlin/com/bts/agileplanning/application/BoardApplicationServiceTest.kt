@@ -16,6 +16,7 @@ import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.repository.BoardSettingsRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.agileplanning.web.dto.BoardCardResponse
@@ -132,6 +133,10 @@ class BoardApplicationServiceTest {
         sprintRepo: SprintRepository = sprintRepository,
         // 기본은 실물 — X1 제약과 CASCADE 가 판정에 들어와야 한다. 경합 변환(B1) 판정만 mock 을 넣는다.
         columnStateRepo: BoardColumnStateRepository = columnStateRepository,
+        // 설정 4탭(부채 177 Task 31)은 이 클래스의 판정 축이 아니다 — 보드 조회 응답이 설정을 싣는지는
+        // BoardSettingsReadApiTest 가 실 DB 로 잰다. quickFilterRepo 와 같은 이유로 relaxed mock 이다.
+        settingsRepo: BoardSettingsRepository = mockk(relaxed = true),
+        detailViewSettings: DetailViewSettingsService = mockk(relaxed = true),
     ): BoardApplicationService =
         BoardApplicationService(
             workflowStateCatalog = catalog,
@@ -141,6 +146,8 @@ class BoardApplicationServiceTest {
             boardQuickFilterRepository = quickFilterRepo,
             sprintRepository = sprintRepo,
             columnStates = columnStateRepo,
+            boardSettingsRepository = settingsRepo,
+            detailViewSettings = detailViewSettings,
         )
 
     // ── (a) 보드 생성 시 컬럼 시드 + 영속 ────────────────────────────────────────
