@@ -32,7 +32,7 @@ object BurndownCalculator {
      *   **근무일이 하루뿐인 스프린트**가 같은 경로다. 축이 아예 비면(전 기간 비근무일 · 스펙 E2)
      *   빈 목록을 돌려주므로 나눗셈에 닿지 않는다.
      * - Scope 라인은 전 구간 [scopeSeconds] 로 평탄하다(스코프 변경 이력 미재구성, ADR D4).
-     * - [worklogByUtcDate] 의 키가 [start] 이전인 항목은 start 버킷에 선합산한다(스프린트 이전 로그는
+     * - [worklogByBoardDate] 의 키가 [start] 이전인 항목은 start 버킷에 선합산한다(스프린트 이전 로그는
      *   이미 소진된 것으로 간주). [end] 이후 키는 계산 범위 밖이라 무시한다. 그 키의 날짜 기준
      *   (UTC 인가 보드 로컬인가)은 이 함수가 정하지 않는다 — @param 설명을 보라.
      * - ★누적은 **달력일 전부**를 걸어가고 점만 축에서 낸다. 비근무일에 적힌 worklog 를 버리면
@@ -43,15 +43,11 @@ object BurndownCalculator {
      * @param start 스프린트 시작일. [end] 이하여야 한다.
      * @param end 스프린트 종료일. [start] 이상이어야 한다.
      * @param scopeSeconds 총 스코프(초). 음수 불가(Σ original_estimate_seconds, NULL=0 합산 결과).
-     * @param worklogByUtcDate 날짜별 worklog 시간 합(초). [start] 이전 키는 이 함수 안에서
+     * @param worklogByBoardDate 날짜별 worklog 시간 합(초). [start] 이전 키는 이 함수 안에서
      *   start 버킷에 합산된다.
-     *   ★**이름이 거짓이다 — 더 이상 UTC 날짜가 아니다.** 호출부(`SprintBurndownService`)가
-     *   보드 타임존 기준으로 버킷을 만든다(`aggregateByBoardDate` · 부채 177 Task 12).
-     *   **타임존 미설정 보드에서만 UTC 와 같다.** 이 함수는 키를 그대로 믿고 쓰므로
-     *   「어느 타임존의 날짜인가」는 전적으로 호출부가 정한다.
-     *   이름을 `worklogByBoardDate` 로 바꾸는 것은 named argument 로 부르는
-     *   `SprintBurndownService.kt` 와 **같은 커밋**에서만 가능하다 — 따로 바꾸면
-     *   `No value passed for parameter 'worklogByBoardDate'` 로 모듈이 컴파일되지 않는다(실측).
+     *   호출부(`SprintBurndownService`)가 **보드 타임존 기준**으로 버킷을 만든다
+     *   (`aggregateByBoardDate` · 부채 177 Task 12). **타임존 미설정 보드에서만 UTC 와 같다.**
+     *   이 함수는 키를 그대로 믿고 쓰므로 「어느 타임존의 날짜인가」는 전적으로 호출부가 정한다.
      * @param today "오늘" 날짜(UTC). asOf = min(end, today) 산출에 사용한다.
      * @param workingCalendar 보드 「작업일」 설정. **null 이면 미설정이고 달력일 전부가 축이다**(스펙 R6).
      * @return date 오름차순으로 정렬된 [BurndownPoint] 목록. [workingCalendar] 가 null 이면 [start]~[end]
@@ -68,7 +64,7 @@ object BurndownCalculator {
         start: LocalDate,
         end: LocalDate,
         scopeSeconds: Long,
-        worklogByUtcDate: Map<LocalDate, Long>,
+        worklogByBoardDate: Map<LocalDate, Long>,
         today: LocalDate,
         workingCalendar: WorkingDayCalendar? = null,
     ): List<BurndownPoint> {
@@ -80,7 +76,7 @@ object BurndownCalculator {
         // 축이 비면(전 기간 비근무일 — E2) size-1 이 -1 이다. 음수 분모를 만들지 않고
         // totalDays == 0 경로(1일 스프린트)로 합류시킨다 — 그 경로는 0 으로 나누지 않는다.
         val totalDays = (axis.size - 1).coerceAtLeast(0).toLong()
-        val preStartSum = worklogByUtcDate.filterKeys { it.isBefore(start) }.values.sum()
+        val preStartSum = worklogByBoardDate.filterKeys { it.isBefore(start) }.values.sum()
 
         val points = mutableListOf<BurndownPoint>()
         var cumulative = 0L
@@ -88,7 +84,7 @@ object BurndownCalculator {
         while (!day.isAfter(end)) {
             val future = day.isAfter(asOf)
             if (!future) {
-                cumulative += dailyContribution(day, start, preStartSum, worklogByUtcDate)
+                cumulative += dailyContribution(day, start, preStartSum, worklogByBoardDate)
             }
             if (day in axis) {
                 // 축 위 몇 번째인가가 곧 ideal 의 x 좌표다. 아직 담기 전이라 points.size 가 그 index 다.
@@ -139,9 +135,9 @@ object BurndownCalculator {
         day: LocalDate,
         start: LocalDate,
         preStartSum: Long,
-        worklogByUtcDate: Map<LocalDate, Long>,
+        worklogByBoardDate: Map<LocalDate, Long>,
     ): Long {
-        val own = worklogByUtcDate[day] ?: 0L
+        val own = worklogByBoardDate[day] ?: 0L
         return if (day == start) own + preStartSum else own
     }
 

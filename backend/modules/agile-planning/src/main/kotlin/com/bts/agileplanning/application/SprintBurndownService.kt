@@ -112,9 +112,8 @@ class SprintBurndownService(
                 start = start,
                 end = end,
                 scopeSeconds = source.totalOriginalEstimateSeconds,
-                // 계산기 쪽 파라미터명은 `worklogByUtcDate` 로 남아 있다(다른 task 소유 파일이라 손대지 않는다).
                 // 실제로 담기는 것은 **보드 timezone 기준** 버킷이다 — 이름이 아니라 이 호출부가 정본이다.
-                worklogByUtcDate = aggregateByBoardDate(source.worklogEntries, resolveBoardZone(settings?.timezone)),
+                worklogByBoardDate = aggregateByBoardDate(source.worklogEntries, resolveBoardZone(settings?.timezone)),
                 today = LocalDate.now(clock),
                 workingCalendar = toWorkingCalendar(settings),
             )

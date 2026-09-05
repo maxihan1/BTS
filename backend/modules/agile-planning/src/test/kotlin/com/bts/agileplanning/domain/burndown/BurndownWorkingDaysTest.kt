@@ -138,7 +138,7 @@ class BurndownWorkingDaysTest {
                 start = SPRINT_START,
                 end = JUL_12,
                 scopeSeconds = SCOPE_SECONDS,
-                worklogByUtcDate = emptyMap(),
+                worklogByBoardDate = emptyMap(),
                 today = JUL_12,
                 workingCalendar = mondayOnly,
             )
@@ -161,7 +161,7 @@ class BurndownWorkingDaysTest {
                 start = saturdayStart,
                 end = JUL_17,
                 scopeSeconds = SCOPE_SECONDS,
-                worklogByUtcDate = mapOf(saturdayStart to 2 * HOUR_SECONDS),
+                worklogByBoardDate = mapOf(saturdayStart to 2 * HOUR_SECONDS),
                 today = JUL_17,
                 workingCalendar = WorkingDayCalendar(WEEKDAYS),
             )
@@ -209,7 +209,7 @@ class BurndownWorkingDaysTest {
             start = SPRINT_START,
             end = SPRINT_END,
             scopeSeconds = SCOPE_SECONDS,
-            worklogByUtcDate = worklog,
+            worklogByBoardDate = worklog,
             today = SPRINT_END,
             workingCalendar = workingCalendar,
         )
