@@ -134,12 +134,7 @@ class EstimationSettingsService(
         timeTracking: String,
     ): String {
         val value = TimeTracking.from(timeTracking)
-        val board = boardRepository.findById(boardId) ?: throw EstimationBoardNotFoundException()
-
-        if (board.boardType != BoardType.SCRUM) {
-            log.info("시간 추적 변경 거부 — 스크럼이 아니다. boardId={}, boardType={}", boardId, board.boardType)
-            throw TimeTrackingBoardNotScrumException()
-        }
+        requireScrumBoard(boardId)
 
         if (!settingsRepository.updateTimeTracking(boardId, value.name)) {
             // 조회와 쓰기 사이에 보드가 사라졌다. 「저장된 줄 알았는데 아니다」를 만들지 않는다.
@@ -148,5 +143,24 @@ class EstimationSettingsService(
 
         log.info("시간 추적 갱신 — boardId={}, timeTracking={}", boardId, value.name)
         return value.name
+    }
+
+    /**
+     * 보드가 존재하고(404) **스크럼**인지(409) 확인한다 — 이 task 의 404↔409 갈림이 사는 자리다.
+     *
+     * 한 함수에 던지는 자리가 셋이면 detekt `ThrowsCount`(상한 2) 에 걸린다. 숫자를 맞추려고 자른 것이
+     * 아니라 **판정의 결이 다르다** — 여기는 「이 보드를 만질 수 있는가」이고, 부르는 쪽은 「저장이
+     * 실제로 됐는가」다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @throws EstimationBoardNotFoundException 404 — 보드 미존재 또는 소프트 삭제.
+     * @throws TimeTrackingBoardNotScrumException 409 — 칸반 보드(J37 · E5).
+     */
+    private fun requireScrumBoard(boardId: UUID) {
+        val board = boardRepository.findById(boardId) ?: throw EstimationBoardNotFoundException()
+        if (board.boardType != BoardType.SCRUM) {
+            log.info("시간 추적 변경 거부 — 스크럼이 아니다. boardId={}, boardType={}", boardId, board.boardType)
+            throw TimeTrackingBoardNotScrumException()
+        }
     }
 }
