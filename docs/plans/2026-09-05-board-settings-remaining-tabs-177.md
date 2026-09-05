@@ -581,7 +581,7 @@ timeSpentSeconds: Long)` 이고, SQL 이 `(started_at AT TIME ZONE 'UTC')::date`
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/components/board/settings/EstimationPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/components/board/settings/EstimationPanel.test.tsx`]
 - depends-on: [9, 15]
 - jira: [J36, J37]
 
@@ -636,7 +636,7 @@ timeSpentSeconds: Long)` 이고, SQL 이 `(started_at AT TIME ZONE 'UTC')::date`
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/board/BoardCard.tsx`, `apps/web/src/components/backlog/BacklogRow.tsx`, `apps/web/src/components/board/BoardCard.test.tsx`]
-- depends-on: [16, 26]
+- depends-on: [16, 26, 31]
 
 ★**26 을 더했다** — 커스텀 필드가 `BoardCardResponse` 에 실려야 화면이 그릴 것이 생긴다.
 - jira: [J17, J19, J18]
@@ -983,9 +983,53 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 ★소비측이 아직 안 고쳐진 상태라 `:modules:agile-planning:test` 가 **깨진다** — 그것이 정상이고
 Task 12 가 닫는다. 깨진 목록을 보고에 남겨 Task 12 가 받게 하라.
 
+### Task 31. 보드 조회 응답이 설정 4종을 싣는다 — 스펙 N1
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardApplicationService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardSettingsReadApiTest.kt`, `apps/web/src/mocks/board-handlers.ts`]
+- depends-on: [7, 8, 9, 10, 13]
+- jira: [J17, J18, J36, J38, J40, J47]
+
+★**계획에 없던 task 다(2026-09-06 신설). Task 16 구현자가 찾았다. 머지 차단 결함이다.**
+★**계획 결함 11건째. 이번은 「스펙이 명시 요구한 것을 아무 task 도 소유하지 않았다」다.**
+
+**무엇이 문제인가.** 스펙 **N1** 이 「보드 조회 응답에 설정을 실어 **추가 왕복을 만들지 않는다**」이고
+`§API`(157행)가 「응답은 `GET /boards/{id}` 와 **같은 모양**으로 설정을 되돌려준다」인데,
+`BoardDetailResponse`(`BoardResponses.kt:341-353`)에 **설정 필드가 하나도 없다.**
+신규 탭 컨트롤러 넷 중 GET 이 있는 것은 **T13 하나뿐**이고 셋은 PATCH/PUT 만 낸다.
+
+**방치하면.** 네 탭이 전부 「**저장은 되는데 새로고침하면 비어 있다**」가 된다. Task 16 은 지금
+빈 구성에서 시작해 PATCH **응답으로만** 상태를 채운다. 그리고 **Task 20(카드가 구성을 읽는다)이
+읽을 원천이 없다** — depends-on 인 T16·T26 둘 다 원천을 만들지 않는다.
+
+**RED**. `GET /api/v1/boards/{id}` 응답에 `cardLayout` · `timeTracking` · `workingDays` ·
+`detailViewFields` 가 없다. 네 탭에 설정을 저장한 뒤 조회해도 안 돌아온다.
+
+**GREEN**. `BoardDetailResponse` 에 네 필드를 더하고 조회 경로가 `BoardSettingsRepository` 로
+채운다. ★**추가 왕복을 만들지 마라**(N1) — 보드 조회 한 번에 함께 읽는다.
+★**미설정은 미설정대로 내보내라** — `workingDays.standardDays` 가 `null` 이면 `null` 이다.
+프론트가 「미설정」과 「빈 값」을 갈라야 하고(R6), 여기서 뭉개면 그 구분이 화면까지 못 간다.
+
+**REFACTOR**. **응답 계약을 MSW 핸들러와 맞춘다** — `apps/web/src/mocks/board-handlers.ts` 가
+`GET /boards/{id}` 를 흉내 내는데, 실제 응답에 필드가 늘면 목도 따라야 한다.
+★그 파일도 **아무 task 의 files 에 없었다** — 그래서 이 task 가 함께 진다.
+`PATCH /boards/{id}/card-layout` 등 **네 탭 쓰기 핸들러도 없다.** Task 22 의 E2E 가
+그것들 없이는 성립하지 않으므로 여기서 함께 만든다.
+
+**공허 방지**. ★**저장 → 조회 왕복을 재라.** 「필드가 있다」만 보면 **항상 빈 값을 내는** 구현이
+통과한다. 네 탭에 **서로 다른 값**을 저장한 뒤 한 번의 GET 이 **넷 다** 제 값으로 돌려주는지 재라.
+★**미설정 대조군** — 아무것도 저장 안 한 보드의 `workingDays.standardDays` 가 **`null`** 이고
+`cardLayout` 이 빈 구성인지. 「전부 기본값을 채우는」 구현을 잡는다.
+★**쿼리 수 가드** — 보드 조회의 SQL 문 수가 설정 4종 때문에 **선형으로 늘지 않는지** 재라(N1).
+
+**검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSettingsReadApiTest')`
+★`BoardControllerIntegrationTest` 도 함께 — 기존 조회 응답에 필드가 늘어도 안 깨져야 한다.
+★`(cd apps/web && pnpm vitest run src/mocks)` — MSW 핸들러 테스트가 있으면 함께.
+
 ## Plan 메타
 
-- **task 수**: 30 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 31 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
