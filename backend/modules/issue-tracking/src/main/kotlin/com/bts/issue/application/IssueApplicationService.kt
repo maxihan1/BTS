@@ -40,6 +40,7 @@ import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
 import com.bts.issue.mention.MentionParser
+import com.bts.issue.mention.MentionSource
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
@@ -1439,7 +1440,7 @@ class IssueApplicationService(
                 projectKey = key.projectPrefix,
                 mentionedUserIds = targets,
                 actorId = actor,
-                sourceField = "description",
+                sourceField = MentionSource.DESCRIPTION,
                 occurredAt = Instant.now(clock),
             ),
         )
