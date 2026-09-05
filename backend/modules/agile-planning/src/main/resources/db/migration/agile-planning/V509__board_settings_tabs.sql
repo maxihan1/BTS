@@ -12,6 +12,7 @@
 --
 -- ★★ 되돌리기 — **무조건** 완전 원복된다. 데이터 손실은 설정값뿐이다.
 --
+--     DROP TABLE board_card_layout_fields;
 --     DROP TABLE board_non_working_dates;
 --     ALTER TABLE boards
 --         DROP COLUMN time_tracking,
@@ -24,8 +25,8 @@
 --   되돌리면 4탭의 설정값이 사라지고 보드는 마이그레이션 이전 동작으로 정확히 돌아간다 —
 --   working_days 가 NULL 이었으므로 번다운은 애초에 달력일 전부를 돌고 있었다(①의 ★★).
 --
---   ★ 위 목록은 이 task(①·②)의 것이다. 같은 V번호에 board_card_layout_fields ·
---   board_detail_view_fields 가 뒤이어 붙으므로 그 DROP 도 함께 세야 완전 원복이 된다.
+--   ★ 위 목록은 ①·②·③ 의 것이다. 같은 V번호에 board_detail_view_fields 가 뒤이어 붙으므로
+--   그 DROP 도 함께 세야 완전 원복이 된다.
 --   산문은 기계가 안 읽는다 — 되돌리기를 실제로 실행해 스키마가 적용 전과 같은지 재는 것은
 --   BoardSettingsIdempotencyTest 다(plan Task 4 REFACTOR · 부채 161).
 
@@ -86,3 +87,14 @@ CREATE TABLE board_non_working_dates (
 COMMENT ON TABLE  board_non_working_dates          IS '보드별 비근무일 — 공휴일·일회성 휴무(J39). 번다운 x축에서 제외된다. 비어 있으면 표준 근무일만 적용된다';
 COMMENT ON COLUMN board_non_working_dates.board_id IS '소유 보드. 보드가 삭제되면 함께 사라진다(ON DELETE CASCADE — 고아 행을 남기지 않는다)';
 COMMENT ON COLUMN board_non_working_dates.date     IS '쉬는 날(보드 타임존 기준 달력일). 스프린트 기간 밖이어도 저장되며 계산에서 자연히 무시된다(스펙 E8)';
+
+-- ── ③ board_card_layout_fields — 카드 레이아웃 탭 (J17·J18) ────────────────────
+CREATE TABLE board_card_layout_fields (
+    board_id   UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    view_scope VARCHAR(16)  NOT NULL,
+    position   SMALLINT     NOT NULL,
+    field_key  VARCHAR(128) NOT NULL,
+    PRIMARY KEY (board_id, view_scope, position),
+    CHECK (position BETWEEN 0 AND 2),
+    CHECK (view_scope IN ('BOARD', 'BACKLOG'))
+);
