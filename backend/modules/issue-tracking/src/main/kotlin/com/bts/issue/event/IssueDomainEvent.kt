@@ -131,7 +131,14 @@ data class IssueSoftDeleted(
  * @property projectKey 소속 프로젝트 키. 예: `ATLAS`
  * @property mentionedUserIds 멘션 대상 사용자 UUID 목록 (해석·dedup·자기제외 후, UUID 오름차순 정렬 — 결정적 직렬화).
  * @property actorId 멘션을 작성한 행위자 ID.
- * @property sourceField 멘션이 포함된 필드명. 현재 `"description"`, 향후 댓글 지원 시 `"comment"`.
+ * @property sourceField 멘션이 포함된 본문의 출처. 값 집합은 [com.bts.issue.mention.MentionSource]
+ *   가 정본이며 `"description"`(이슈 본문 · 생성·수정 공용) 과 `"comment"`(댓글) **둘뿐**이다.
+ * @property commentId `sourceField` 가 `"comment"` 일 때 그 댓글의 UUID, 그 외에는 null.
+ *   ★기본값 `null` 은 **생략 가능한 편의가 아니라 하위호환 장치**다 — 이 필드가 생기기 전에
+ *   `q_issue_events` 로 들어간 메시지에는 키가 아예 없고, 기본값이 없으면 워커가 그 메시지를
+ *   역직렬화하지 못해 큐가 막힌다. 지우지 말 것.
+ *   현재 이 값을 읽는 소비자는 없다(2026-09-05 실측) — 인박스 딥링크 FR 이 쓸 자리를 미리 낸 것이고,
+ *   이벤트 스키마 변경을 두 번 하지 않으려는 선반영이다.
  * @property occurredAt 이벤트 발생 시각 (UTC).
  */
 @JsonTypeName("issue.mentioned")
@@ -142,6 +149,7 @@ data class IssueMentioned(
     val actorId: ActorId,
     val sourceField: String,
     val occurredAt: Instant,
+    val commentId: UUID? = null,
 ) : IssueDomainEvent
 
 /**

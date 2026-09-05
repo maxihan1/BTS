@@ -13,6 +13,7 @@ import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueUpdated
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.watcher.repository.IssueWatcherRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -227,6 +228,39 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                 // 현재 구현은 상한이 없어 51개가 모두 포함될 것이므로 이 단언이 실패해야 한다
                 mentioned.single().mentionedUserIds.size shouldBe 50
             }
+
+            // ★E5 캡 경계 — 캡이 걸리는 순간이 알림 대상과 watcher 대상이 갈릴 수 있는 유일한 자리다.
+            //   기존 판정은 캡이 안 걸린 경우만 봤으므로 여기서 경계를 직접 잰다.
+            it("캡이 걸려도 알림 대상과 watcher 등록 목록이 정확히 같다") {
+                val capWatcherRepo = mockk<IssueWatcherRepository>(relaxed = true)
+                val capSut =
+                    IssueApplicationService(
+                        repo = bulkRepo,
+                        issueTypeRepository = mockk(relaxed = true),
+                        resolutionRepository = mockk(relaxed = true),
+                        eventPublisher = bulkEventPublisher,
+                        permissionResolver = bulkPermissionResolver,
+                        workflowPort = mockk(relaxed = true),
+                        workflowKeyResolver = mockk(relaxed = true),
+                        userLookupPort = bulkUserLookupFake,
+                        componentRepository = mockk(relaxed = true),
+                        projectLeadRepository = mockk(relaxed = true),
+                        versionRepository = mockk(relaxed = true),
+                        clock = fixedClock,
+                        historyRecorder = mockk(relaxed = true),
+                        watcherRepository = capWatcherRepo,
+                    )
+                val captured = mutableListOf<IssueDomainEvent>()
+                every { bulkEventPublisher.publish(capture(captured)) } returns Unit
+                val watched = mutableListOf<List<UUID>>()
+                every { capWatcherRepo.addAll(any(), capture(watched)) } returns Unit
+
+                capSut.updateIssue(aliceActor, issueKey, request)
+
+                val mentioned = captured.filterIsInstance<IssueMentioned>().single()
+                mentioned.mentionedUserIds.size shouldBe 50
+                watched.single() shouldBe mentioned.mentionedUserIds
+            }
         }
     }
 
@@ -373,6 +407,102 @@ class IssueApplicationServiceMentionTest : DescribeSpec({
                     eventPublisher.publish(match { it is IssueMentioned })
                 }
             }
+        }
+    }
+
+    // ── FR-MN-03 — 멘션 대상 자동 watcher ────────────────────────────────
+    describe("updateIssue — 멘션 대상이 자동 watcher 가 된다 (FR-MN-03)") {
+
+        val watcherRepo = mockk<IssueWatcherRepository>(relaxed = true)
+        val wRepo = mockk<IssueRepository>()
+        val wEventPublisher = mockk<IssueEventPublisher>()
+        val wPermissionResolver = mockk<IssuePermissionResolver>()
+        val existingIssue = makeIssue(description = null)
+
+        val wSut =
+            IssueApplicationService(
+                repo = wRepo,
+                issueTypeRepository = mockk(relaxed = true),
+                resolutionRepository = mockk(relaxed = true),
+                eventPublisher = wEventPublisher,
+                permissionResolver = wPermissionResolver,
+                workflowPort = mockk(relaxed = true),
+                workflowKeyResolver = mockk(relaxed = true),
+                userLookupPort = userLookupFake,
+                componentRepository = mockk(relaxed = true),
+                projectLeadRepository = mockk(relaxed = true),
+                versionRepository = mockk(relaxed = true),
+                clock = fixedClock,
+                historyRecorder = mockk(relaxed = true),
+                watcherRepository = watcherRepo,
+            )
+
+        beforeEach {
+            clearMocks(watcherRepo, answers = false)
+            every { wRepo.findActiveComponentIdsByIssue(any()) } returns emptyList()
+            every { wRepo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
+            every { wRepo.findFixVersionIdsByIssue(any()) } returns emptyList()
+            every { wRepo.findProjectIdByKey(issueKey.projectPrefix) } returns anyProjectId
+            every {
+                wPermissionResolver.hasPermission(
+                    aliceActor.value,
+                    IssuePermission.UPDATE,
+                    IssueScope.Issue(issueKey.value),
+                )
+            } returns true
+            every { wRepo.findByKey(issueKey) } returns existingIssue
+            every { wRepo.updateFields(issueKey, any(), existingVersion) } returns 1
+            every { wRepo.findByKeyWithType(issueKey) } returns makeResponse()
+            every { wEventPublisher.publish(any()) } returns Unit
+        }
+
+        it("신규 멘션 대상이 watcher 로 등록된다") {
+            wSut.updateIssue(
+                aliceActor,
+                issueKey,
+                UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "@bob @carol"),
+            )
+
+            verify(exactly = 1) { watcherRepo.addAll(existingIssue.id.value, listOf(bobId, carolId).sorted()) }
+        }
+
+        // ★E5 — 알림 대상과 watcher 대상은 반드시 같은 목록이다.
+        //   두 곳이 각자 계산하면 캡이 걸렸을 때 조용히 갈린다. 같은 리스트인지 직접 대조한다.
+        it("발행된 mentionedUserIds 와 watcher 등록 목록이 정확히 같다") {
+            val captured = mutableListOf<IssueDomainEvent>()
+            every { wEventPublisher.publish(capture(captured)) } returns Unit
+            val watched = mutableListOf<List<UUID>>()
+            every { watcherRepo.addAll(any(), capture(watched)) } returns Unit
+
+            wSut.updateIssue(
+                aliceActor,
+                issueKey,
+                UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "@bob @carol"),
+            )
+
+            val mentioned = captured.filterIsInstance<IssueMentioned>().single()
+            watched.single() shouldBe mentioned.mentionedUserIds
+        }
+
+        it("대상이 0명이면 watcher 도 건드리지 않는다") {
+            wSut.updateIssue(
+                aliceActor,
+                issueKey,
+                UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "멘션 없음"),
+            )
+
+            verify(exactly = 0) { watcherRepo.addAll(any(), any()) }
+            verify(exactly = 0) { watcherRepo.add(any(), any()) }
+        }
+
+        it("자기 자신만 멘션하면 이벤트도 watcher 도 없다") {
+            wSut.updateIssue(
+                aliceActor,
+                issueKey,
+                UpdateIssueRequest(summary = null, expectedVersion = existingVersion, description = "@alice"),
+            )
+
+            verify(exactly = 0) { watcherRepo.addAll(any(), any()) }
         }
     }
 })

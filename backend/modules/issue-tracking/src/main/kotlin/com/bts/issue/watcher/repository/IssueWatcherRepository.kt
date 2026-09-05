@@ -66,6 +66,35 @@ class IssueWatcherRepository(
     }
 
     /**
+     * 워처 여러 건을 **한 문장**으로 추가한다 (FR-MN-03).
+     *
+     * ## 왜 [add] 반복이 아닌가
+     * [add] 는 1인당 INSERT 1회다. 기존 호출자는 reporter·assignee **최대 2명**이라 그 형태가
+     * 문제되지 않았는데, 멘션 자동 watcher 는 `MentionTargetResolver.MAX_MENTIONS_PER_EVENT`(50)
+     * 까지 가므로 한 트랜잭션에서 최대 50 왕복이 된다. 다중 VALUES 로 1회에 끝낸다.
+     *
+     * `ON CONFLICT (issue_id, user_id) DO NOTHING` 은 다중 VALUES 에도 그대로 걸리므로
+     * 멱등은 [add] 와 동일하다. 중복 userId 는 호출 전에 distinct 처리된다는 가정을 두지 않고
+     * 여기서 한 번 더 접는다 — 같은 문장 안의 중복은 ON CONFLICT 가 아니라 **문장 자체**가 거부한다.
+     *
+     * @param issueId 관심 등록 대상 이슈 UUID.
+     * @param userIds 관심 등록 사용자 UUID 목록. 비어 있으면 아무것도 하지 않는다.
+     */
+    @Transactional
+    fun addAll(
+        issueId: UUID,
+        userIds: List<UUID>,
+    ) {
+        val distinct = userIds.distinct()
+        if (distinct.isEmpty()) return
+        log.debug("addAll watchers issueId={} count={}", issueId, distinct.size)
+        dsl.insertInto(ISSUE_WATCHERS, ISSUE_WATCHERS.ISSUE_ID, ISSUE_WATCHERS.USER_ID)
+            .apply { distinct.forEach { userId -> values(issueId, userId) } }
+            .onConflictDoNothing()
+            .execute()
+    }
+
+    /**
      * 워처 1건을 `issue_watchers` 에서 물리 삭제한다.
      *
      * 해당 행이 존재하지 않아도 예외 없이 false 를 반환한다 (멱등 보장).

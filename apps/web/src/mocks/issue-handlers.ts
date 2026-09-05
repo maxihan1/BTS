@@ -32,6 +32,7 @@ import { userListFixture } from './user-fixtures'
 import { ISSUE_SORT_FIELDS } from '@/api/issues'
 import type { IssueResponse, IssuePage, IssueSortField } from '@/api/issues'
 import { htmlToPlainText } from '@/lib/html-text'
+import { extractMentionedUsernames, resolveActorUserIdFromRequest } from './mention-derive'
 
 /**
  * 이슈 생성 성공 응답 픽스처.
@@ -1213,43 +1214,8 @@ function applyDatePatch(
   return incoming
 }
 
-/**
- * description 텍스트에서 @멘션 사용자명을 추출한다.
- *
- * 제외 규칙.
- *   - 코드스팬(`...`) 내부의 @ (예: `@code`)
- *   - 이메일 형식의 @ — 앞에 단어문자(\w)가 있는 경우 (예: user@example.com)
- *   - 겹침 @ — 앞에 @가 있는 경우 (예: @@bob)
- *
- * 사용자명 패턴. [A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])? — 영숫자 시작·끝
- * (백엔드 MentionParser.MENTION_PATTERN 일치 — 후행 마침표 등 구두점 제외)
- *
- * @param text 원본 description 텍스트
- * @returns 중복 제거된 @뒤 사용자명 배열 (@ 기호 제외)
- */
-function extractMentionedUsernames(text: string): string[] {
-  // 코드스팬(`...`)을 제거해 내부 @ 를 보호
-  const withoutCode = text.replace(/`[^`]*`/g, '')
-  // 이메일/겹침/선행구두점 @ 제외: 앞에 [A-Za-z0-9._@-] 가 없는 @ 만 매칭 (백엔드 MentionParser 동일)
-  const matches = withoutCode.matchAll(/(?<![A-Za-z0-9._@-])@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/g)
-  return [...new Set([...matches].map((m) => m[1] as string))]
-}
 
-/** mock access token 접두사 — auth-fixtures.mockAccessToken과 동일 형식 */
-const MENTION_MOCK_TOKEN_PREFIX = 'mock-access-token-'
 
-/**
- * Authorization Bearer 헤더에서 PATCH 요청자(actor)의 userId를 도출한다.
- * 멘션 파생 시 자기 자신 멘션 제외와 actorUserId 기록에 사용한다.
- */
-function resolveActorUserIdFromRequest(request: Request): string | null {
-  const authHeader = request.headers.get('Authorization')
-  if (authHeader === null || !authHeader.startsWith('Bearer ')) return null
-  const token = authHeader.slice('Bearer '.length)
-  if (!token.startsWith(MENTION_MOCK_TOKEN_PREFIX)) return null
-  const username = token.slice(MENTION_MOCK_TOKEN_PREFIX.length)
-  return AUTH_USERS[username]?.userId ?? null
-}
 
 /**
  * 코드스팬 이외의 텍스트에서 @멘션을 <span class="mention"> 으로 강조한다.

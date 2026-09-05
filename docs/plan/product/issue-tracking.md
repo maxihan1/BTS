@@ -1,8 +1,8 @@
-<!-- issue-tracking BC — 이슈 코어 37 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/댓글/Watcher + 링크/히스토리/템플릿 + 이동 + 프로젝트 관리) -->
+<!-- issue-tracking BC — 이슈 코어 38 FR (CRUD/타입/담당자/본문/Resolution/PDF/커스텀필드 + 컴포넌트/버전 + 첨부/멘션/댓글/Watcher + 링크/히스토리/템플릿 + 이동 + 프로젝트 관리) -->
 
 # issue-tracking BC
 
-**소속 FR**. 37개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 2 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4).
+**소속 FR**. 38개 (IS 10 + CM 4 + VR 4 + AC 2 + MN 3 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4).
 **책임**. 이슈/댓글/첨부/관계/이력/템플릿/이동.
 **SDD 참조**. 05장 (데이터 모델), 11장 (API).
 **다른 BC와의 경계**. project-workflow의 상태 전환 호출, identity-access의 권한 가드 사용, notification-dashboard 이벤트 발행. **다른 BC import 금지 — 이벤트는 pgmq**.
@@ -278,7 +278,7 @@
 
 ## §4 첨부 / 멘션 / 댓글 / Watcher (7개)
 
-### §4.1 멘션 (FR-MN, 2개)
+### §4.1 멘션 (FR-MN, 3개)
 
 #### §4.1.1 FR-MN-01 — 본문/댓글 @멘션 + 즉시 알림
 
@@ -309,6 +309,32 @@
 - [x] D5. 백엔드 테스트 — **해당 없음**(백엔드 변경 0, 기존 UsersController 테스트 커버) (책임. —) — PR #158
 - [x] D6. 프론트 UI — **deviation. 마크다운 textarea `@` typeahead**(useMentionAutocomplete 훅 + MentionDropdown docked listbox, fetchUsers 재사용). caret splice·키보드 네비·IME 보류 (책임. frontend-engineer) — PR #158
 - [x] D7. E2E — issue-mention-autocomplete.spec.ts 4시나리오(클릭/키보드 선택·Escape·저장), 실 브라우저 caret 검증 (책임. qa-engineer) — PR #158
+
+#### §4.1.3 FR-MN-03 — 멘션 알림 확장(댓글·생성) + 멘션 자동 watcher
+
+**우선순위**. 높음 | **선행**. §4.1.1, §4.1.2, §4.3(FR-CO-01 댓글), §4.4(FR-WT-01 watcher) | **Plan slug**. `mention-notify-autowatch`
+
+> **범위 승계**. `docs/sdd/02-requirements.md` 는 FR-MN-01 을 「본문/**댓글** @멘션 + 즉시 알림」으로
+> 선언했으나, 구현 시점(PR #114)에 **댓글 기능 자체가 없어** §4.1.1 D4 가 「댓글은 제외」로 이연했다.
+> FR-MN-02 도 「이슈 생성 폼·댓글 멘션 → 후속 FR」로 명시 이연했다. 그 사이 FR-CO-01/02 로 댓글이
+> 생겼으므로 이 FR 이 **이연된 SDD 범위를 승계**한다 (선례. FR-UX-07 이 FR-UX-05 §4.3 의 명시 제외 범위를 승계).
+>
+> **Jira 패리티 편차 (의도적 · Maxi 확정 2026-09-05)**. 멘션 → 자동 watcher 는 **Jira Cloud 에 없다**.
+> Jira 의 autowatch 는 「본인이 생성했거나 본인이 댓글을 단」 이슈만 대상이고 멘션은 알림만 보낸다.
+> 멘션 자동 watcher 는 [JRASERVER-27430](https://jira.atlassian.com/browse/JRASERVER-27430) 으로
+> 2012년부터 열려 있는 **미구현 기능 요청**이며 실무 표준은 Automation 룰 우회다(조회일 2026-09-05).
+> `docs/design/jira-parity-contract.md` 에 편차로 등재한다.
+
+**범위 — 3경로 × 2기능**. 이슈 수정(알림 기구현 · watcher 신규) · 이슈 생성(둘 다 신규) · 댓글 작성·수정(둘 다 신규).
+자기 멘션 제외 · 미존재 username 드롭 · `MAX_MENTIONS_PER_EVENT` 캡 · diff 기반(새로 추가된 멘션만)은 §4.1.1 `publishMentions` 규칙을 승계한다.
+
+- [x] D1. 도메인 — `IssueMentioned` 재사용 확정(`IssueCommented` 는 automation 트리거 소관으로 분리 유지) · 대상 산출을 `MentionTargetResolver` 로 추출해 4경로 공유 (책임. backend-engineer) (완료. PR #456)
+- [x] D2. 명세 — 댓글 수정 diff · `MentionSource` 상수 2값 · 자동 watcher 멱등(해제 후 재멘션은 재추가 · 멘션 삭제 시 회수 안 함) · 클론 제외(E9) (책임. backend-engineer) (완료. PR #456)
+- [x] D3. 데이터 모델 — **마이그레이션 0 · 정책 시드 0**. `issue_watchers`·`q_issue_events` 재사용, V403 이 `sourceField` 무관하게 매칭. 이벤트 스키마만 `commentId` 1필드 추가(기본값 null = 큐 잔류 메시지 하위호환) (책임. db-engineer) (완료. PR #456)
+- [x] D4. 백엔드 — 4경로 발행 + 자동 watcher. `publishAndWatchMentions` 가 **같은 targets** 를 이벤트와 watcher 양쪽에 넘겨 E5(두 대상 갈림)를 구조로 막고, `IssueWatcherRepository.addAll` 배치 INSERT 로 캡 50 왕복을 1문장화 (책임. backend-engineer) (완료. PR #456)
+- [x] D5. 백엔드 테스트 — red-first(`test:` → `feat:`). Resolver 단위 9 · 이슈경로 13 · 댓글경로 8(Testcontainers 실 DB) · E1~E9 엣지 · pgmq 통합 G1-S3 · 뮤테이션 짝 4회 red 확인. issue-tracking 3520 tests 0 fail (책임. backend-engineer) (완료. PR #456)
+- [x] D6. 프론트 UI — **화면 변경 0**(TipTap 자동완성·렌더링이 이미 댓글·설명·생성 폼을 덮는다). MSW 만 백엔드를 미러해 확장하고, 멘션 헬퍼를 `mention-derive.ts` 리프 모듈로 내려 순환 의존을 끊었다 (책임. frontend-engineer) (완료. PR #456)
+- [x] D7. E2E — `issue-mention-render.spec.ts` S7(댓글 멘션 → Inbox 도착)·S8(분별 시드). S8 은 조회 실패를 삼키던 헬퍼 탓에 가짜 그린이었고 `fetchBobInboxStrict` 로 교정해 재뮤테이션에서 red 확인. 8/8 통과 (책임. qa-engineer) (완료. PR #456)
 
 ### §4.2 첨부 (FR-AC, 2개)
 
@@ -655,9 +681,9 @@ worklog 에는 automation 액션이 **0건**이라 이 질문 자체가 없었�
 
 ### BC 완료 조건
 
-- [x] §2~§7 (37 FR) 모두 `[x]` 마킹 — 2026-07-27 실측: 이 파일의 완료 D 줄 260건 / 미완 D 줄 0건 (`grep -cE '^- \[[ ~!]\] D[0-9]+\.'` = 0), FR 헤더 37건
+- [x] §2~§7 (38 FR) 모두 `[x]` 마킹 — 2026-07-27 실측(그 시점 37 FR): 완료 D 줄 260건 / 미완 D 줄 0건. 2026-09-05 멘션 확장 FR 신설(§4.1.3)로 7건이 열렸다가 **PR #456 으로 다시 닫혔다**.
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 13행의 실측 열이 전부 `___`. 측정 필요 — k6(조회/목록/생성/이동/히스토리) · Playwright(첨부 업로드·미리보기·이동 후 redirect 308) · Lighthouse CI(LCP/INP) · bundle-analyzer · axe-core · XSS 페이로드 10종
 - [ ] DATA.md §이슈키 영속성 자가 점검 — 부분 확인. 4규칙은 구현 확인됨(발번 `key_sequence` + `pg_advisory_xact_lock` · `old_key` PRIMARY KEY 로 재-redirect 차단 · `PERMANENT_REDIRECT` 308 · `deleted_at` 소프트 삭제). 미확인 1건 — DATA.md §2 "새 키 발급 시 `IssueKeyRedirect.new_key` 도 체크(옛 키와 충돌 방지)" 에 대응하는 명시적 검사가 `IssueMoveService.kt` 에 보이지 않음(시퀀스 단조 증가 + `issues.key` UNIQUE 에 의존). 이 1건 확인 후 체크. (2026-07-27 실측)
-- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` `[Unreleased] — Phase 1 §BC 요약` 에 issue-tracking 행 존재 (37 FR · 2026-05-22~07-27 · PR 67건 · 대표 산출)
+- [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` `[Unreleased] — Phase 1 §BC 요약` 에 issue-tracking 행 존재 (2026-09-05 기준 37 완료 / 38 등록 · 2026-05-22~07-27 · PR 67건 · 대표 산출)
 - [ ] README.md §7 변경 이력에 "issue-tracking BC 완료 — YYYY-MM-DD" 추가 — 미완. 2026-07-27 실측: `docs/plan/README.md` §7 에 해당 행 없음(3행 모두 2026-05-20/07-17 재편성·초안·FR 신설). Maxi 완료 선언 이후에 기재하는 항목
 - [ ] Maxi 1인 선언 — "issue-tracking BC 완료" — 🛑 Maxi 1인 선언 대기 (에이전트 수행 불가)

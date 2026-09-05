@@ -1025,12 +1025,6 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
         )
 }
 
-/**
- * 테스트 전용 [IssuePermissionResolver] — 특정 권한 하나만 거부하고 나머지는 모두 허용한다.
- *
- * 모든 호출을 [calls] 에 기록해 permission/scope 인자를 검증할 수 있게 한다.
- * (actorId, permission, scope) 순서의 [Triple] 로 기록한다.
- */
 private class RecordingPermissionResolver : IssuePermissionResolver {
     var deniedPermission: IssuePermission? = null
     val calls: MutableList<Triple<UUID, IssuePermission, IssueScope>> = mutableListOf()

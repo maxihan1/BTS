@@ -31,6 +31,7 @@
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice, i18nLabels } from './fixtures/issue-fixtures'
+import { commentStrings, issueDetailStrings } from '../src/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -136,6 +137,34 @@ async function fetchBobInboxDirect(
     }
     return data.content
   }, BOB_MOCK_TOKEN)
+}
+
+/**
+ * bob 의 inbox 를 조회하되 **조회 실패를 삼키지 않는다**.
+ *
+ * [fetchBobInboxDirect] 는 `if (!res.ok) return []` 로 실패를 빈 배열로 바꾼다. 「알림이 없다」를
+ * 단언하는 분별 시드에서는 그 형태가 **조회가 죽어도 초록**이 되게 만든다 — 2026-09-05 뮤테이션에서
+ * 실측했다(파생을 항상 켠 뮤테이션에도 S8 단독 실행이 통과했다).
+ * 음성 판정에는 이 함수를 쓴다.
+ */
+async function fetchBobInboxStrict(
+  page: import('@playwright/test').Page,
+): Promise<Array<{ eventType: string; issueKey: string | null; title: string }>> {
+  const result = await page.evaluate(async (token: string) => {
+    const res = await fetch('/api/v1/users/me/inbox', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const text = await res.text()
+    return { ok: res.ok, status: res.status, text }
+  }, BOB_MOCK_TOKEN)
+
+  if (!result.ok) {
+    throw new Error(`bob inbox 조회 실패 status=${result.status} body=${result.text.slice(0, 200)}`)
+  }
+  const parsed = JSON.parse(result.text) as {
+    content: Array<{ eventType: string; issueKey: string | null; title: string }>
+  }
+  return parsed.content
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -305,4 +334,55 @@ test.describe('FR-MN-01 본문 @멘션 강조 + Inbox 도착 (D7)', () => {
     const mentioned = bobItems.find((item) => item.eventType === 'ISSUE_MENTIONED')
     expect(mentioned).toBeUndefined()
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S7·S8 — 댓글 멘션 → Inbox 파생 (FR-MN-03)
+  //
+  // 백엔드는 `CommentApplicationServiceMentionTest`(실 DB) + `IssueMentionPublishIntegrationTest`
+  // G1-S3(실 pgmq)가 ground-truth 다. 여기서 재는 것은 **화면 배선** — 댓글 입력이
+  // 실제로 그 경로를 태우는가.
+  //
+  // S8 은 분별 시드다. S7 만 있으면 MSW 가 무조건 알림을 만들어도 초록이 된다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S7 댓글 멘션→Inbox 파생 — @bob 댓글 저장 후 bob inbox 에 ISSUE_MENTIONED', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(`/issues/${PATCH_ISSUE_KEY}`)
+
+    await page.getByRole('tab', { name: issueDetailStrings.activityCommentTabLabel }).click()
+    const section = page.getByRole('region', { name: commentStrings.commentSectionTitle })
+    const input = section.getByLabel(commentStrings.commentBodyLabel)
+    await expect(input).toBeVisible()
+
+    await input.fill('@bob 확인 부탁드립니다')
+    await section.getByRole('button', { name: commentStrings.commentAddButton }).click()
+    await expect(section.getByText('@bob 확인 부탁드립니다')).toBeVisible()
+
+    const bobItems = await fetchBobInboxDirect(page)
+    const mentioned = bobItems.find(
+      (item) => item.eventType === 'ISSUE_MENTIONED' && item.issueKey === PATCH_ISSUE_KEY,
+    )
+    expect(mentioned).toBeDefined()
+    expect(mentioned?.title).toBe(MENTION_INBOX_TITLE)
+  })
+
+  // ★S8 은 조회 실패를 삼키지 않는 fetchBobInboxStrict 를 쓴다.
+  //   fetchBobInboxDirect 의 `if (!res.ok) return []` 을 그대로 쓰면 「알림이 없다」가
+  //   조회가 죽어도 통과한다 — 2026-09-05 뮤테이션에서 실측했다(파생을 항상 켠 뮤테이션에도
+  //   S8 단독 실행이 초록이었다). 음성 판정은 조회가 살아있음을 먼저 증명해야 의미가 있다.
+  test('S8 분별 시드 — 멘션 없는 댓글은 bob inbox 를 건드리지 않는다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(`/issues/${PATCH_ISSUE_KEY}`)
+
+    await page.getByRole('tab', { name: issueDetailStrings.activityCommentTabLabel }).click()
+    const section = page.getByRole('region', { name: commentStrings.commentSectionTitle })
+    const input = section.getByLabel(commentStrings.commentBodyLabel)
+
+    await input.fill('멘션 없는 일반 댓글')
+    await section.getByRole('button', { name: commentStrings.commentAddButton }).click()
+    await expect(section.getByText('멘션 없는 일반 댓글')).toBeVisible()
+
+    const bobItems = await fetchBobInboxStrict(page)
+    expect(bobItems.filter((item) => item.eventType === 'ISSUE_MENTIONED')).toHaveLength(0)
+  })
+
 })
