@@ -316,6 +316,23 @@ class IssueApplicationService(
                 IssueAssigned(issueKey = saved.key, actorId = actor, occurredAt = Instant.now(clock)),
             )
         }
+        // FR-MN-03 — 생성 본문의 멘션. 비교 대상이 없으므로 diff 가 아니라 **전체**가 신규다.
+        // cloneIssue 는 이 경로를 타지 않는다 — 원본에서 이미 알린 멘션을 복제마다 다시 알리면
+        // 대량 복제가 알림 폭탄이 되므로 의도적으로 제외한다(스펙 E9).
+        publishAndWatchMentions(
+            key = saved.key,
+            issueId = saved.id.value,
+            actor = actor,
+            resolved =
+                MentionTargetResolver.resolve(
+                    before = null,
+                    after = resolvedDescription,
+                    actor = actor.value,
+                    userLookupPort = userLookupPort,
+                ),
+            sourceField = MentionSource.DESCRIPTION,
+            commentId = null,
+        )
         recordHistory(before = null, after = saved, actor = actor, projectId = projectId)
         log.info("issue_created key={} typeId={} actor={}", saved.key.value, resolvedTypeId.value, actor.value)
         return saved

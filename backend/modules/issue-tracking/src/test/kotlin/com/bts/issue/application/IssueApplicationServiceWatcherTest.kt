@@ -7,7 +7,10 @@ import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
+import com.bts.issue.event.IssueDomainEvent
+import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.mention.MentionSource
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
@@ -21,6 +24,7 @@ import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
 import com.bts.shared.workflow.WorkflowTransitionPort
 import io.kotest.core.spec.style.DescribeSpec
+import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -305,6 +309,60 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             // 기존 assignee 있음 → 자동재배정 미발동 → autoWatch 미호출
             verify(exactly = 0) { watcherRepository.add(any(), any()) }
             verify(exactly = 0) { watcherRepository.addAll(any(), any()) }
+        }
+    }
+
+    // ── FR-MN-03 — 생성 시 description 멘션 ─────────────────────────────
+    describe("createIssue — description 멘션 발행 + 자동 watcher") {
+
+        val bobId = UUID.fromString("bb000000-0000-0000-0000-0000000000b1")
+        val carolId = UUID.fromString("cc000000-0000-0000-0000-0000000000c1")
+
+        beforeEach {
+            every { repo.insert(any()) } answers { firstArg() }
+            every { userLookupPort.findIdsByUsernames(any()) } answers {
+                mapOf("bob" to bobId, "carol" to carolId, "me" to actor.value)
+                    .filterKeys { it in firstArg<Set<String>>() }
+            }
+        }
+
+        it("생성 본문의 멘션 전원이 대상이다 — 비교 대상이 없으므로 diff 가 아니다") {
+            val captured = mutableListOf<IssueDomainEvent>()
+            every { eventPublisher.publish(capture(captured)) } returns Unit
+
+            sut.createIssue(actor, makeCreateRequest().copy(description = "@bob 과 @carol 봐주세요"))
+
+            val mentioned = captured.filterIsInstance<IssueMentioned>().single()
+            mentioned.mentionedUserIds shouldBe listOf(bobId, carolId).sorted()
+            mentioned.sourceField shouldBe MentionSource.DESCRIPTION
+            mentioned.commentId shouldBe null
+        }
+
+        it("멘션 대상이 자동 watcher 가 된다 — reporter 등록과는 별개 호출이다") {
+            sut.createIssue(actor, makeCreateRequest().copy(description = "@bob"))
+
+            verify(exactly = 1) { watcherRepository.addAll(any(), listOf(actor.value)) }
+            verify(exactly = 1) { watcherRepository.addAll(any(), listOf(bobId)) }
+        }
+
+        it("멘션이 없으면 IssueMentioned 를 발행하지 않는다") {
+            val captured = mutableListOf<IssueDomainEvent>()
+            every { eventPublisher.publish(capture(captured)) } returns Unit
+
+            sut.createIssue(actor, makeCreateRequest().copy(description = "멘션 없는 본문"))
+
+            captured.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+        }
+
+        it("자기 자신만 멘션하면 이벤트도 멘션 watcher 도 없다") {
+            val captured = mutableListOf<IssueDomainEvent>()
+            every { eventPublisher.publish(capture(captured)) } returns Unit
+
+            sut.createIssue(actor, makeCreateRequest().copy(description = "@me 혼잣말"))
+
+            captured.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+            // reporter 등록 1회만 — 멘션발 등록은 없다
+            verify(exactly = 1) { watcherRepository.addAll(any(), any()) }
         }
     }
 })
