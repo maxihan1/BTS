@@ -558,7 +558,7 @@ timeSpentSeconds: Long)` 이고, SQL 이 `(started_at AT TIME ZONE 'UTC')::date`
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/CardLayoutPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/CardLayoutPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/api/boards.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.test.tsx`]
 - depends-on: [8, 15]
 - jira: [J17, J18]
 
@@ -584,6 +584,15 @@ Task 31 이 `BoardDetailResponse` 에 `cardLayout` 을 실으면 **이 패널이
 
 ★같은 결함이 T17·T18·T19 에도 그대로 온다 — 넷 다 「빈 상태에서 시작해 PATCH 응답으로만 채운다」면
 같은 덮어쓰기를 한다. **셋은 처음부터 `board` 의 설정을 초기값으로 읽어라.**
+
+★★**선행 — 프론트 스키마가 네 키를 모른다(2026-09-06 T31 보고).** `apps/web/src/api/boards.ts` 의
+`boardDetailSchema`(`:198`)에 `cardLayout`·`timeTracking`·`workingDays`·`detailViewFields` 가 없다.
+**백엔드가 실어도 zod 파싱에서 버려진다.** 그래서 이 task 의 files 에 그 파일을 더했다.
+
+★**네 키를 한 번에 넣어라.** 자기 것만 넣으면 T17·T18·T19 가 같은 파일에 세 번 더 손대야 하고,
+그것이 `SettingsTabs.tsx` 에서 이미 본 「넷에게 같은 파일」 문제의 재발이다.
+★`workingDays.standardDays` 는 **nullable 로 두라** — 미설정(null)과 빈 배열을 스키마에서 뭉개면
+R6 이 화면까지 못 간다. T31 이 백엔드에서 그 구분을 지켰다.
 
 ★`CardLayoutPanel.tsx:238` 의 「`BoardDetailResponse` 에 cardLayout 을 싣는 task 가 계획에 없다」는
 주석도 함께 정정하라 — Task 31 이 신설됐으므로 지금은 거짓이다.
@@ -688,7 +697,7 @@ Task 31 이 `BoardDetailResponse` 에 `cardLayout` 을 실으면 **이 패널이
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/board-settings.spec.ts`]
+- files: [`apps/web/e2e/board-settings.spec.ts`, `apps/web/src/mocks/board-handlers.test.ts`]
 - depends-on: [16]
 - jira: [J22, J17, J18]
 
