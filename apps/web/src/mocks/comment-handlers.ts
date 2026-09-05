@@ -10,7 +10,9 @@
 // 프론트가 여기서 단언해도 되는 것은 "받은 `bodyHtml` 을 그대로 렌더한다" 는 배선뿐이다.
 import { http, HttpResponse } from 'msw'
 import type { CommentResponse } from '@/api/comments'
-import { ALICE_USER_ID, BOB_USER_ID } from './auth-fixtures'
+import { ALICE_USER_ID, AUTH_USERS, BOB_USER_ID } from './auth-fixtures'
+import { appendToInbox } from './inbox-handlers'
+import { extractMentionedUsernames, resolveActorUserIdFromRequest } from './mention-derive'
 import {
   adminPermissionsFixture,
   memberPermissionsFixture,
@@ -205,6 +207,57 @@ export function seedComments(issueKey: string, comments: CommentResponse[]): voi
  * **고칠 수는** 없다). 여기서 두 판정을 한 헬퍼로 묶으면 넓은 쪽(삭제)의 술어가 좁은 쪽(수정)에
  * 이식되어, Task 7 의 버튼 게이팅이 실제 백엔드와 어긋난 채 초록이 된다.
  */
+
+/**
+ * 댓글 본문의 @멘션을 Inbox 알림으로 파생한다 (FR-MN-03).
+ *
+ * ## 왜 헬퍼를 복사하지 않는가
+ * `extractMentionedUsernames` · `resolveActorUserIdFromRequest` 는 설명 경로가 쓰는 **그 함수**를
+ * import 한다. 규칙을 복사하면 두 곳이 서로를 검사하지 않아 조용히 갈린다 — 이 저장소의 지배 결함
+ * 양식이고, 백엔드도 같은 이유로 `MentionTargetResolver` 하나를 네 경로가 공유한다.
+ *
+ * ## diff 규칙
+ * `before` 가 주어지면(수정) 이미 있던 멘션은 제외한다. 백엔드
+ * `CommentApplicationService.update` 가 `MentionTargetResolver` diff 모드로 하는 것과 같다.
+ *
+ * @param issueKey 알림에 실을 이슈 키.
+ * @param before 수정 전 본문. null 이면 작성(전체 모드).
+ * @param after 저장된 본문.
+ * @param request 요청 — actor 도출(자기 멘션 제외)에 쓴다.
+ */
+function deriveCommentMentions(
+  issueKey: string,
+  before: string | null,
+  after: string,
+  request: Request,
+): void {
+  const added = new Set(extractMentionedUsernames(after))
+  if (before !== null) {
+    for (const prev of extractMentionedUsernames(before)) added.delete(prev)
+  }
+  if (added.size === 0) return
+
+  const actorUserId = resolveActorUserIdFromRequest(request)
+  for (const username of added) {
+    const user = AUTH_USERS[username]
+    if (user === undefined) continue
+    if (user.userId === actorUserId) continue
+
+    appendToInbox(user.userId, {
+      id: crypto.randomUUID(),
+      eventType: 'ISSUE_MENTIONED',
+      issueKey,
+      // 백엔드 NotificationWorker.buildTitleBody 형식 미러 — 출처가 댓글이어도 제목은 같다
+      title: `${issueKey} 에서 멘션되었습니다`,
+      body: null,
+      actorUserId,
+      readAt: null,
+      archivedAt: null,
+      createdAt: new Date().toISOString(),
+    })
+  }
+}
+
 export const commentHandlers = [
   http.get('*/api/v1/issues/:key/comments', ({ params }) => {
     const issueKey = String(params['key'])
@@ -239,6 +292,9 @@ export const commentHandlers = [
 
     const existing = commentStore.get(issueKey) ?? []
     commentStore.set(issueKey, [...existing, created])
+
+    // FR-MN-03 — 작성은 전체 모드(비교 대상 없음)
+    deriveCommentMentions(issueKey, null, body, request)
 
     return HttpResponse.json({ data: created }, { status: 201 })
   }),
@@ -283,6 +339,9 @@ export const commentHandlers = [
       bodyHtml: `<p>${body}</p>\n`,
       updatedAt: new Date().toISOString(),
     }
+
+    // FR-MN-03 — 수정은 diff 모드. 위 no-op 조기 반환이 '본문 동일' 무발행을 이미 보장한다.
+    deriveCommentMentions(issueKey, target.body, body, request)
     commentStore.set(
       issueKey,
       list.map((comment) => (comment.id === commentId ? updated : comment)),
