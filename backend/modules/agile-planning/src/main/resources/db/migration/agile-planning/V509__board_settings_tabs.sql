@@ -129,12 +129,54 @@ COMMENT ON COLUMN board_card_layout_fields.view_scope IS 'BOARD / BACKLOG — �
 COMMENT ON COLUMN board_card_layout_fields.position   IS '카드에서의 자리(0..2). ★상한 3(J17)을 개수가 아니라 값의 범위로 표현한 것이며, 복합 PK 의 중복 금지와 합쳐져 트리거 없이 상한이 닫힌다. 서비스 사전 검사는 이 제약을 대신하지 않는다(#444 X1)';
 COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또는 커스텀 필드 키. 고른 필드가 그 이슈에 없으면 그 카드에서만 생략한다 — 빈 칸을 그리지 않는다(스펙 E4)';
 
--- ── ④ board_detail_view_fields — 상세 보기 탭 (J47·J48) ────────────────────────
+-- ── ④ board_detail_view_fields — 상세 보기 탭 (J46·J47·J48) ───────────────────
+--
+-- ★★ 그룹 4종은 어디서 왔나. **J47 원문 그대로다** —
+--   "different groups of fields: General fields, Date fields, People, and Links."
+--   지라의 Issue Detail View 설정 화면이 고를 수 있는 필드를 이 네 구획으로 나눠 보여주고,
+--   GENERAL·DATE·PEOPLE·LINKS 는 그 네 구획의 저장값이다. 우리가 정한 분류가 아니라
+--   패리티 대상의 분류이므로 마음대로 늘리거나 이름을 바꾸지 않는다 — 늘리려면 지라 근거부터 댄다.
+--
+-- ★★ 그 근거 문서가 지라 **Data Center** 다(confluence.atlassian.com/jirasoftwareserver,
+--   J46~J49). 지라 **클라우드**는 이 탭을 보드 설정에서 걷어내 work type 레이아웃
+--   (Settings > Screens)으로 옮겼으므로 **보드 단위 Issue Detail View 는 클라우드에 대응 화면이
+--   없다.** 그럼에도 보드 설정으로 내는 것이 확정이라, 근거가 DC 뿐이라는 사실을 스펙이
+--   편차 **X10** 으로 명시했다. 이 주석은 그 X10 과 **짝**이다 — 나중에 「클라우드에 없는데 왜
+--   있지」로 지워지는 것을 막는 자리이고, 지우려면 X10 을 먼저 읽어야 한다.
+--
+-- ★ 그래서 field_group 에는 CHECK 를 건다. ① 의 time_tracking 에 CHECK 를 걸지 **않은** 것과
+--   갈리는 지점이며, 스펙 §데이터 모델이 이 테이블에만 CHECK 를 명시했기 때문이다 —
+--   허용값이 지라 화면 구획에 묶여 있어 값 종류가 늘 일이 없다. 반대로 time_tracking 은
+--   늘 수 있어 판정을 서비스에 뒀다. 누락이 아니라 구분이다.
+--
+-- ★ position 에 상한이 **없다.** ③ 의 CHECK (position BETWEEN 0 AND 2) 를 여기로 복사해 오지 말 것 —
+--   상한 3은 카드(J17)의 제약이고, 상세 보기는 J48 이 순서(드래그로 위아래)만 말한다.
+--   그룹 안에서 몇 개를 보여줄지는 지라가 제한하지 않는다.
+--
+-- ★ 그룹이 PK 에 들어간다. 그래야 네 구획이 각자 0번 자리를 가진다 — (board_id, position) PK 면
+--   한 구획에 필드를 넣을 때 다른 구획의 같은 자리를 밀어낸다(③ 의 view_scope 와 같은 판단).
+--
+-- ★ 비어 있으면 **현행 상세 화면**을 그린다. 기본 행을 심지 않는 것이 ①의 working_days NULL ·
+--   ③의 빈 카드 레이아웃과 같은 원칙이다 — 배포 순간 모든 보드의 상세가 바뀌면 안 된다.
+--
+-- ★ deleted_at 이 없다. ②·③ 과 같은 이유로 엔티티가 아니라 보드가 소유한 설정 값 목록이다.
+--
+-- ★ 되돌리기 — 위 머리말의 DROP 목록에 이 한 줄을 더하면 완전 원복이다.
+--     DROP TABLE board_detail_view_fields;
 CREATE TABLE board_detail_view_fields (
     board_id    UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
     field_group VARCHAR(16)  NOT NULL,
     position    SMALLINT     NOT NULL,
     field_key   VARCHAR(128) NOT NULL,
+    -- 이 PK 인덱스의 leftmost prefix(board_id)가 FK 조회·CASCADE 점검을 덮으므로 board_id
+    -- 전용 인덱스를 따로 두지 않는다 — DATA.md §7 의 의도를 충족하면서 중복 인덱스를 피한다
+    -- (②·③ · V500:36-38 과 같은 판단).
     PRIMARY KEY (board_id, field_group, position),
     CHECK (field_group IN ('GENERAL', 'DATE', 'PEOPLE', 'LINKS'))
 );
+
+COMMENT ON TABLE  board_detail_view_fields             IS '이슈 상세 보기에 보여줄 필드 — 보드 단위 구성(J46). 그룹 4종(J47)으로 나뉘고 그룹 안에서 순서를 갖는다(J48). 비어 있으면 현행 상세 화면을 그린다';
+COMMENT ON COLUMN board_detail_view_fields.board_id    IS '소유 보드. 보드가 삭제되면 함께 사라진다(ON DELETE CASCADE — 고아 행을 남기지 않는다)';
+COMMENT ON COLUMN board_detail_view_fields.field_group IS 'GENERAL / DATE / PEOPLE / LINKS — J47 원문의 네 구획(General fields · Date fields · People · Links)이 출처다. 근거 문서가 지라 DC 뿐이라는 사실은 스펙 편차 X10 에 있다. PK 에 들어가 있어 네 구획이 각자 0번 자리를 가진다';
+COMMENT ON COLUMN board_detail_view_fields.position    IS '그룹 안에서의 순서(J48 — 드래그로 위아래). ★상한이 없다. 카드 레이아웃의 0..2(J17)는 카드의 제약이므로 여기로 복사해 오지 말 것';
+COMMENT ON COLUMN board_detail_view_fields.field_key   IS '표준 필드 키 또는 커스텀 필드 키. 모달과 사이드패널 두 표현이 같은 구성을 읽는다(스펙 R7c — 여는 방식에 따라 다르게 보이면 안 된다)';
