@@ -804,9 +804,50 @@ CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'));`
 
 **검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSettingsMigrationTest')`
 
+### Task 28. V509 가 깬 boards 컬럼 카운트 가드를 갱신한다
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSchemaMigrationTest.kt`]
+- depends-on: [1]
+- jira: []
+
+★**계획에 없던 task 다(2026-09-05 신설). Task 27 이 실측으로 찾았다. 머지 차단 결함이다.**
+
+**무엇이 문제인가.** `BoardSchemaMigrationTest > V501 boards 7개 컬럼 존재` 가 **red 다.**
+그 테스트는 `boards` 컬럼 목록을 `containsExactlyInAnyOrder` 로 **완전 일치** 검사하는데,
+Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸을 더했다.
+패키지 전체를 돌리면 `139 tests completed, 1 failed` 다.
+
+**가드는 의도대로 작동했다.** 「누가 `boards` 에 컬럼을 더하면 반드시 눈에 띈다」가 이 완전 일치
+검사의 목적이고, 정확히 그 일이 일어났다. 결함은 가드가 아니라 **갱신하지 않은 것**이다.
+
+**왜 T1 이 못 봤나 — 좁은 테스트 필터가 회귀를 숨겼다.** T1 도 T2 도 T27 도
+`--tests '*BoardSettingsMigrationTest'` 처럼 **자기 클래스만** 지목해 돌렸다. 같은 패키지의
+다른 테스트는 한 번도 실행되지 않았고, 독립 검증도 「선언 외 파일 없음」만 봤지
+**「같은 모듈의 다른 테스트가 깨졌는가」는 계약에 없었다.** 이 PR 의 검증 계약 결함이다.
+
+**★같은 자리에 결함이 하나 더 있다.** `BOARDS_COLUMNS_V501` 은 주석이 「7개 컬럼」인데
+실제 리스트는 **8개**다 — V505 가 `board_type` 을 더하며 주석을 안 고쳤다.
+**같은 양식이 이미 한 번 반복됐다는 증거**이므로 이번에 함께 닫는다.
+
+**RED**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSchemaMigrationTest')`
+가 red 다. 실패 원문을 눈으로 본다 — 「could not find」가 아니라 「unexpected」 방향이어야 한다
+(테스트가 모르는 컬럼이 DB 에 있다).
+
+**GREEN**. `BOARDS_COLUMNS_V501` 에 3칸을 더하고 **어느 V번호가 더했는지 주석으로 표시**한다
+(기존 `// V505 — 보드 종류(SCRUM/KANBAN)` 관용구를 따른다). 주석의 「7개」도 실수와 함께 정정한다.
+
+**REFACTOR**. 이 가드가 **왜 완전 일치인지**와 **갱신을 잊으면 어떻게 드러나는지**를 적는다.
+그리고 「자기 클래스만 지목해 돌리면 이 red 를 못 본다」를 남긴다 — 다음 마이그레이션 task 가
+같은 자리를 밟는다.
+
+**검증**. 자기 클래스만 돌리지 말고 **패키지 전체**를 돌린다.
+`(cd backend && ./gradlew :modules:agile-planning:test --tests 'com.bts.agileplanning.migration.*')`
+
 ## Plan 메타
 
-- **task 수**: 27 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 28 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
