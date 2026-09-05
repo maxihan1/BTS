@@ -573,6 +573,21 @@ timeSpentSeconds: Long)` 이고, SQL 이 `(started_at AT TIME ZONE 'UTC')::date`
 
 **REFACTOR**. 칸반은 뷰 토글을 **그리지 않는다**(백로그 스코프 자체가 없다).
 
+★★**후속 필수 — 초기 구성 배선(2026-09-06 T16 검증 지적, 머지 차단).**
+Task 31 이 `BoardDetailResponse` 에 `cardLayout` 을 실으면 **이 패널이 그것으로 초기화해야 한다.**
+`CardLayoutPanel.tsx` 를 files 에 가진 task 는 **이 task 하나뿐**이라 소유자가 여기다.
+
+**표시 문제가 아니라 데이터 소실이다.** `replaceCardLayout` 은 **뷰 통째 교체**이고 패널은 항상
+`layout={}` 에서 시작하므로, **마운트 후 첫 토글이 서버에 저장돼 있던 그 뷰 구성을 그 한 필드로
+덮어쓴다.** `SettingsTabs` 가 `forceMount` 없는 Radix `TabsContent` 라 **탭을 옮겼다 돌아오기만 해도
+다시 무장된다.** 이것이 닫히기 전에는 머지하면 안 된다.
+
+★같은 결함이 T17·T18·T19 에도 그대로 온다 — 넷 다 「빈 상태에서 시작해 PATCH 응답으로만 채운다」면
+같은 덮어쓰기를 한다. **셋은 처음부터 `board` 의 설정을 초기값으로 읽어라.**
+
+★`CardLayoutPanel.tsx:238` 의 「`BoardDetailResponse` 에 cardLayout 을 싣는 task 가 계획에 없다」는
+주석도 함께 정정하라 — Task 31 이 신설됐으므로 지금은 거짓이다.
+
 **검증**.
 - 기존 E2E: `apps/web/e2e/board-settings.spec.ts`
 - 눈확인: 3개 채운 뒤 4번째가 비활성 — 라이트/다크
