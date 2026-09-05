@@ -433,7 +433,7 @@ Task 9 구현자가 이 근거를 대고 혼자 `CREATE` 를 골랐고, T8·T10�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintBurndownService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BurndownTimezoneTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/SprintBurndownServiceTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/SprintBurndownIntegrationTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintBurndownService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BurndownTimezoneTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/SprintBurndownServiceTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/integration/SprintBurndownIntegrationTest.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/burndown/SprintBurndownLookupPortTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/burndown/SprintBurndownLookupAdapterIntegrationTest.kt`]
 - depends-on: [10, 11, 30]
 - jira: [J40, J41]
 
@@ -448,8 +448,17 @@ timeSpentSeconds: Long)` 이고, SQL 이 `(started_at AT TIME ZONE 'UTC')::date`
 
 **② 서비스 생성자를 넓히면 기존 테스트가 깨진다.** `SprintBurndownServiceTest.kt:65` 가 위치 인자
 4개로 생성한다. 5번째를 기본값 없이 더하면 모듈 테스트가 통째로 컴파일 불가다. 그 파일을
-**어떤 task 도 소유하지 않았다** — files 에 더한다. `SprintBurndownIntegrationTest.kt` 의
+**어떤 task 도 소유하지 않았다** — files 에 더한다. `SprintBurndownIntegrationTest.kt`(경로는 `application/` 이 아니라 **`integration/`**)의
 `BurndownPortStub` 도 포트 VO 가 바뀌면 함께 고쳐야 한다.
+
+★★**Task 30 실측 — 깨지는 것이 agile-planning 뿐이라는 전제가 틀렸다.** 소유자 없는 파일 둘이
+더 red 다. **둘 다 이 task 의 files 에 넣었다.**
+- `shared-kernel/.../SprintBurndownLookupPortTest.kt` — **컴파일 red**(`No value passed for parameter
+  'startedAt'` ×2). `:modules:shared-kernel:test` 가 지금 **컴파일 단계에서 죽는다.**
+  생성자 인자 추가 + 「UTC 날짜당 1개」 단언 문구를 계약 반전에 맞춰야 한다.
+- `issue-tracking/.../SprintBurndownLookupAdapterIntegrationTest.kt` — 어서션 red 2건
+  (`:196` `hasSize(2)`→3 · `:291` `hasSize(1)`→2). 그리고 `associateBy { startedOnUtcDate }` 가
+  **중복 키를 조용히 덮으므로** `groupBy` + `sumOf` 로 바꿔야 사전집계 해제 후 값이 맞는다.
 
 **③ 근무일 배선도 이 task 가 진다(범위 추가).** 실측 — `workingCalendar` 를 프로덕션에서 부르는 곳이
 `BurndownCalculator.kt` **자기 자신뿐**이다. Task 11 이 만든 근무일 축이 **API 응답에 한 점도 영향을
