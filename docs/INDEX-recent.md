@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (515건, 최신순)
+# 시간 축 인덱스 (516건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-09-05 | board-settings-remaining-tabs-177 | — | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
 | 2026-09-05 | mention-notify-autowatch | — | ✔ | — | — | FR-MN-01 FR-MN-02 FR-MN-03 FR-WT-01 |
 | 2026-09-04 | board-settings-screen | ✔ | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
 | 2026-09-04 | board-summary-can-delete | — | ✔ | — | — | FR-BD-01 |
