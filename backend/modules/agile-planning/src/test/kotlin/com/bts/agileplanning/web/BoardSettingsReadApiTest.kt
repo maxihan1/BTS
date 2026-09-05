@@ -36,6 +36,8 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.RequestBuilder
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
@@ -96,6 +98,35 @@ import javax.sql.DataSource
  * 데이터 양에 따라 늘 수 있는 축은 자식 테이블 셋(`board_card_layout_fields` ·
  * `board_detail_view_fields` · `board_non_working_dates`)뿐이고, 그 셋에 「행이 몇 개든 문은 1개」를
  * 건다. 나머지는 **보드 3개(설정 많음 / 적음 / 없음)의 총 문 수가 같다**로 덮는다.
+ *
+ * ## 판별력 실측 (2026-09-06 · 뮤테이션 8건)
+ * 「깨면 red」가 당연한 방향이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**인지를 확인했다.
+ * 구현을 한 군데씩 되돌려 심고 이 클래스를 돌린 결과다. 8건 모두 잡혔고, **여전히 통과시키는
+ * 시나리오**를 함께 적는다 — 그 칸이 비어 보이는 축은 짝이 없다는 뜻이라 위험하다.
+ *
+ * | # | 건 뮤테이션 | red 가 된 테스트 | 여전히 통과 |
+ * |---|---|---|---|
+ * | M1 | `standardDays` 를 `orEmpty()` 로 뭉갬 (R6 위반) | ② 미설정 대조군 **1건뿐** | 나머지 5건 전부 — 저장한 보드는 값이 같아서 ①④ 가 못 본다 |
+ * | M2 | `standardDays` 를 항상 null (「무엇이든 미설정」) | ① 왕복 · ④ 계약 일치 | ② 미설정 대조군 — **짝이 없으면 「항상 null」이 살아남는다** |
+ * | M3 | 상세 보기 필드 정규화 생략(리포지터리 원본을 그대로) | ② 미설정 대조군 · ④ 계약 일치 | ① 왕복 — 저장한 그룹은 키가 있어서 안 걸린다 |
+ * | M4 | 상세 보기 필드를 **그룹별로** 조회(4문) | ⑤ 쿼리 수 **1건뿐** | **값 축 5건 전부** — 값이 완전히 같다. 이 줄이 ⑤ 의 존재 이유다 |
+ * | M5 | 칸반이면 `timeTracking` 을 NONE 으로 갈음 (E6 위반) | ⑥ 칸반 pass-through **1건뿐** | 나머지 5건 — 그것들은 전부 스크럼 보드다 |
+ * | M6 | 카드 레이아웃을 **뷰별로** 조회(2문) | ⑤ 쿼리 수 **1건뿐** | 값 축 5건 전부 (M4 와 같은 이유) |
+ * | M7 | 설정을 서비스 필드에 캐시(보드 간 누수) | 6건 전부 | 없음 — 누수는 시끄러운 뮤테이션이다 |
+ * | M8 | **탭 쪽** 드리프트: `replaceGroups` 가 정규화를 멈춤 | ④ 계약 일치 **1건뿐** | 나머지 5건 — 조회 경로는 멀쩡하다. ④ 의 존재 이유다 |
+ *
+ * ### ★③ 보드 격리는 **고유 kill 을 못 찾았다** — 그대로 적는다
+ * M7(캐시 누수)에서 red 가 됐지만 같은 뮤테이션에 나머지 5건도 함께 죽었다. 8건 중 ③ 만 red 가
+ * 되는 뮤테이션은 없었다. 남겨 두는 이유는 「보드 간 누수」를 **한 메서드 안에서 두 보드로**
+ * 국소화해 원인을 이름 붙이기 때문이고, 그것이 판별력의 증거는 아니다 — 다음 사람이 이 축을
+ * 「검증된 가드」로 오해하지 않도록 적어 둔다.
+ *
+ * ### 실측 중 만난 함정 — 병렬 gradle 이 `build/classes/kotlin/main` 을 비웠다
+ * 같은 워크트리에서 다른 wave 가 `:modules:agile-planning:test` 를 돌리는 동안 main 클래스 출력이
+ * 사라졌는데 `compileKotlin` 은 **UP-TO-DATE** 로 보고했고, 테스트 컴파일이 무관한 파일에서
+ * `Unresolved reference 'Board'` 로 죽었다. 뮤테이션 결과로 오해하기 쉬운 자리다 —
+ * `./gradlew :modules:agile-planning:compileKotlin --rerun-tasks -x generateJooq` 로 복구했다
+ * (`-x generateJooq` 가 없으면 jOOQ 재생성이 함께 돌아 죽는다).
  */
 @SpringBootTest(
     classes = [AgilePlanningTestBootApplication::class],
@@ -356,32 +387,33 @@ class BoardSettingsReadApiTest {
     private fun saveCardLayout(
         boardId: UUID,
         body: String,
-    ): JsonNode = okData(patch("/api/v1/boards/$boardId/card-layout").contentType(MediaType.APPLICATION_JSON).content(body))
+    ): JsonNode = okData(jsonRequest(patch("/api/v1/boards/$boardId/card-layout"), body))
 
     private fun saveEstimation(
         boardId: UUID,
         body: String,
-    ): JsonNode = okData(patch("/api/v1/boards/$boardId/estimation").contentType(MediaType.APPLICATION_JSON).content(body))
+    ): JsonNode = okData(jsonRequest(patch("/api/v1/boards/$boardId/estimation"), body))
 
     private fun saveWorkingDays(
         boardId: UUID,
         body: String,
-    ): JsonNode = okData(put("/api/v1/boards/$boardId/working-days").contentType(MediaType.APPLICATION_JSON).content(body))
+    ): JsonNode = okData(jsonRequest(put("/api/v1/boards/$boardId/working-days"), body))
 
     private fun saveDetailViewFields(
         boardId: UUID,
         body: String,
-    ): JsonNode =
-        okData(
-            patch("/api/v1/boards/$boardId/detail-view-fields")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(body),
-        )
+    ): JsonNode = okData(jsonRequest(patch("/api/v1/boards/$boardId/detail-view-fields"), body))
 
     private fun getBoard(boardId: UUID): JsonNode = okData(get("/api/v1/boards/$boardId"))
 
+    /** JSON 본문을 실은 요청으로 만든다. 네 탭이 같은 media type 을 쓴다. */
+    private fun jsonRequest(
+        builder: MockHttpServletRequestBuilder,
+        body: String,
+    ): MockHttpServletRequestBuilder = builder.contentType(MediaType.APPLICATION_JSON).content(body)
+
     /** 200 을 확인하고 `{ data: ... }` 봉투를 벗긴 [JsonNode] 를 준다. */
-    private fun okData(request: org.springframework.test.web.servlet.RequestBuilder): JsonNode {
+    private fun okData(request: RequestBuilder): JsonNode {
         val response = mockMvc.perform(request).andExpect(status().isOk).andReturn().response
         return mapper.readTree(response.getContentAsString(StandardCharsets.UTF_8)).path("data")
     }

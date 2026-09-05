@@ -466,7 +466,14 @@ const getBoardHandler = http.get('/api/v1/boards/:id', ({ params, request }) => 
   }
 
   const searchParams = new URL(request.url).searchParams
-  return HttpResponse.json({ data: toResponseDetail(board, searchParams) })
+  // ★설정 4탭을 **같은 응답에** 싣는다(스펙 N1 · 부채 177 Task 31). 별도 GET 을 만들면 카드
+  //   레이아웃이 필요한 화면마다 왕복이 하나씩 늘고, 저장 뒤 새로고침에 값이 사라진다.
+  //   `toResponseDetail` 의 반환은 `BoardDetail`(zod 파생) 타입이라 설정을 그 안에서 조립하면
+  //   현재 스키마에 없는 키가 초과 프로퍼티로 걸린다 — 여기서 합친다. 스키마가 네 키를 갖게
+  //   되면(프론트 소비 task) 이 spread 는 그대로 두고 `toResponseDetail` 로 옮기면 된다.
+  return HttpResponse.json({
+    data: { ...toResponseDetail(board, searchParams), ...toSettingsPayload(boardId) },
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1336,6 +1343,333 @@ const reorderColumnsHandler = http.put(
   },
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 보드 설정 4탭 — 카드 레이아웃 · 추정(시간 추적) · 작업일 · 상세 보기 필드 (부채 177 Task 31)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// ★**보드 조회 응답이 설정을 함께 싣는다**(스펙 N1). 별도 GET 을 만들면 카드 레이아웃이 필요한
+//   화면마다 왕복이 하나씩 는다. 그래서 저장은 탭별 엔드포인트로 하고 **읽기는 보드 조회 하나**다
+//   (상세 보기 필드만 자기 GET 을 함께 갖는다 — 백엔드 `BoardDetailViewController` 와 같다).
+//
+// ★**null 과 빈 값을 뭉개지 않는다**(스펙 R6). `workingDays.standardDays` 의 `null` 은
+//   「미설정 = 달력일 전부(현행 유지)」이고 빈 배열과 뜻이 다르다. 목이 여기서 `[]` 로 뭉개면
+//   화면이 두 상태를 못 가르는 채로 초록이 되고, 진짜 서버에 붙는 순간 갈린다.
+//
+// 값·상태 코드는 실제 컨트롤러에서 읽어 맞췄다.
+//   - `CardLayoutSettingsService` — 뷰당 3개 상한(J17) · 표준 키 6종 + `cf_` 접두사 · 칸반은 BOARD 뷰뿐
+//   - `EstimationSettingsService` — 허용값 2종 · **칸반은 409**(404 가 아니다 · E5)
+//   - `WorkingDaysSettingsService` — 요일 7키 · 0개는 400(E1) · IANA 타임존 · 주 순서 정렬 + 날짜 중복 제거
+//   - `DetailViewSettingsService`  — 그룹 4종 · **응답은 항상 4종을 채운다**(R7c)
+//
+// 오류 본문은 탭마다 다르다(백엔드도 그렇다 — 부채 177 Task 29 가 통일 예정). 소비자는
+// **상태 코드로만** 갈라야 하므로 목은 `{ errorCode, message }` 한 모양으로 통일해 둔다.
+
+/** 카드에 얹을 수 있는 표준 필드 키 — 백엔드 `CardLayoutFieldKey` 미러. */
+const CARD_LAYOUT_FIELD_KEYS = ['EPIC', 'PRIORITY', 'ASSIGNEE', 'LABELS', 'ESTIMATE', 'ISSUE_TYPE']
+
+/** 커스텀 필드 접두사 — 백엔드 `CUSTOM_FIELD_PREFIX`. */
+const CUSTOM_FIELD_PREFIX = 'cf_'
+
+/** 뷰당 상한 — 백엔드 `MAX_FIELDS_PER_VIEW`(J17). */
+const MAX_FIELDS_PER_VIEW = 3
+
+/** 상세 보기 필드 그룹 4종 — 백엔드 `DETAIL_VIEW_FIELD_GROUPS`. 순서가 곧 응답의 키 순서다(J47). */
+const DETAIL_VIEW_FIELD_GROUPS = ['GENERAL', 'DATE', 'PEOPLE', 'LINKS']
+
+/** 요일 키 — 백엔드 `WEEK_ORDER`. 순서가 곧 주의 순서이자 정렬 키다. */
+const WEEK_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+
+/** 시간 추적 허용값 — 백엔드 `TimeTracking` 열거형. */
+const TIME_TRACKING_VALUES = ['NONE', 'REMAINING_AND_SPENT']
+
+/**
+ * 보드 하나의 설정 4탭 저장 상태.
+ *
+ * `standardDays`/`timezone` 은 **null 이 미설정**이다 — `undefined` 를 쓰지 않는 이유가 그것이다.
+ * 응답에서 키가 사라지면 「미설정」이 「필드 없음」으로 바뀌어 소비자가 또 다른 분기를 갖는다.
+ */
+interface StoredBoardSettings {
+  cardLayout: Record<string, string[]>
+  timeTracking: string
+  standardDays: string[] | null
+  nonWorkingDates: string[]
+  timezone: string | null
+  detailViewFields: Record<string, string[]>
+}
+
+/** 보드 조회 응답에 덧붙는 설정 4종 — 백엔드 `BoardDetailResponse` 의 신규 필드와 같은 모양이다. */
+interface BoardSettingsPayload {
+  cardLayout: Record<string, string[]>
+  timeTracking: string
+  workingDays: {
+    standardDays: string[] | null
+    nonWorkingDates: string[]
+    timezone: string | null
+  }
+  detailViewFields: Record<string, string[]>
+}
+
+/**
+ * 설정 store — boardId → 설정 4탭.
+ *
+ * ★**`boardStore` 에 종속한다.** V509 의 설정 테이블이 `boards(id)` 를 `ON DELETE CASCADE` 로
+ * 참조하는 것과 같은 규칙을 목에서도 지킨다 — 그래서 접근할 때마다 고아 항목을 턴다.
+ * 이것이 없으면 `resetBoardStore()` 뒤에도 설정이 살아남아 앞 테스트의 저장이 다음 테스트로
+ * 새고, 그 새는 값은 「보드는 비었는데 설정만 있는」 실제로는 불가능한 상태다.
+ */
+const boardSettingsStore = new Map<string, StoredBoardSettings>()
+
+/** 미설정 보드의 기본 상태 — 전 축이 비어 있다. 기본 필드를 채우지 않는 것이 요점이다(R6 · V509 ③). */
+function defaultBoardSettings(): StoredBoardSettings {
+  return {
+    cardLayout: {},
+    timeTracking: 'NONE',
+    standardDays: null,
+    nonWorkingDates: [],
+    timezone: null,
+    detailViewFields: {},
+  }
+}
+
+/**
+ * 보드의 설정을 꺼낸다. 없으면 미설정 기본값을 만들어 넣는다.
+ *
+ * 꺼내기 전에 `boardStore` 에 없는 보드의 설정을 턴다(위 CASCADE 규칙).
+ */
+function settingsFor(boardId: string): StoredBoardSettings {
+  for (const key of [...boardSettingsStore.keys()]) {
+    if (!boardStore.has(key)) boardSettingsStore.delete(key)
+  }
+  const existing = boardSettingsStore.get(boardId)
+  if (existing !== undefined) return existing
+  const created = defaultBoardSettings()
+  boardSettingsStore.set(boardId, created)
+  return created
+}
+
+/** 상세 보기 필드를 **그룹 4종이 항상 있는** 모양으로 좁힌다 — 백엔드 `readNormalized` 와 같다(R7c). */
+function normalizeDetailViewFields(stored: Record<string, string[]>): Record<string, string[]> {
+  const normalized: Record<string, string[]> = {}
+  for (const group of DETAIL_VIEW_FIELD_GROUPS) {
+    normalized[group] = stored[group] ?? []
+  }
+  return normalized
+}
+
+/**
+ * 보드 조회 응답에 실을 설정 4종을 만든다 (N1).
+ *
+ * `cardLayout` 은 **구성이 없는 뷰의 키를 만들지 않는다** — 빈 구성은 「현행 카드를 그린다」는
+ * 뜻이고, 빈 배열로 채우면 화면이 「구성 없음」과 「0개 구성」을 못 가른다.
+ */
+function toSettingsPayload(boardId: string): BoardSettingsPayload {
+  const settings = settingsFor(boardId)
+  return {
+    cardLayout: { ...settings.cardLayout },
+    timeTracking: settings.timeTracking,
+    workingDays: {
+      standardDays: settings.standardDays,
+      nonWorkingDates: [...settings.nonWorkingDates],
+      timezone: settings.timezone,
+    },
+    detailViewFields: normalizeDetailViewFields(settings.detailViewFields),
+  }
+}
+
+/** 설정 탭 공통 오류 응답 — 소비자는 상태 코드로만 갈라야 한다(본문 모양은 탭마다 다르다). */
+function settingsError(status: number, errorCode: string, message: string) {
+  return HttpResponse.json({ errorCode, message }, { status })
+}
+
+/** PATCH /api/v1/boards/:id/card-layout — 요청에 담긴 뷰만 교체 (J17 · J18). */
+const patchCardLayoutHandler = http.patch(
+  '/api/v1/boards/:id/card-layout',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+    const { board, error } = boardOr404(boardId)
+    if (error !== undefined) return error
+
+    const body = (await request.json().catch(() => ({}))) as { cardLayout?: Record<string, string[]> }
+    const requested = body.cardLayout ?? {}
+    const scopes = Object.keys(requested)
+    if (scopes.length === 0) {
+      return settingsError(400, 'AGILE_CARD_LAYOUT_INVALID', '변경할 뷰를 하나 이상 담아야 합니다.')
+    }
+
+    // ★검증을 **전부** 마친 뒤에 쓴다 — 백엔드와 같은 순서다. 돌면서 쓰면 400 을 받은 사용자의
+    //   화면과 store 가 갈린다(반쪽 저장).
+    for (const scope of scopes) {
+      if (scope !== 'BOARD' && scope !== 'BACKLOG') {
+        return settingsError(400, 'AGILE_CARD_LAYOUT_INVALID', `지원하지 않는 뷰입니다: ${scope}`)
+      }
+      if (scope === 'BACKLOG' && (board.boardType ?? DEFAULT_BOARD_TYPE) !== 'SCRUM') {
+        return settingsError(400, 'AGILE_CARD_LAYOUT_INVALID', '칸반 보드에는 백로그 뷰가 없습니다.')
+      }
+      const fieldKeys = requested[scope] ?? []
+      if (fieldKeys.length > MAX_FIELDS_PER_VIEW) {
+        return settingsError(
+          400,
+          'AGILE_CARD_LAYOUT_INVALID',
+          `카드에 추가할 수 있는 필드는 뷰당 최대 ${MAX_FIELDS_PER_VIEW}개입니다.`,
+        )
+      }
+      const unsupported = fieldKeys.filter(
+        (key) =>
+          !CARD_LAYOUT_FIELD_KEYS.includes(key) &&
+          !(key.startsWith(CUSTOM_FIELD_PREFIX) && key.length > CUSTOM_FIELD_PREFIX.length),
+      )
+      if (unsupported.length > 0) {
+        return settingsError(
+          400,
+          'AGILE_CARD_LAYOUT_INVALID',
+          `카드에 그릴 수 없는 필드입니다: ${unsupported.join(', ')}`,
+        )
+      }
+    }
+
+    const settings = settingsFor(boardId)
+    for (const scope of scopes) {
+      settings.cardLayout[scope] = [...(requested[scope] ?? [])]
+    }
+
+    // 응답은 요청 echo 가 아니라 **저장 뒤 전체 구성**이다 — 보내지 않은 뷰도 함께 돌아온다.
+    return HttpResponse.json({ data: { cardLayout: { ...settings.cardLayout } } })
+  },
+)
+
+/** PATCH /api/v1/boards/:id/estimation — 시간 추적 갱신. 칸반은 409 다(J37 · E5). */
+const patchEstimationHandler = http.patch(
+  '/api/v1/boards/:id/estimation',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+    const { board, error } = boardOr404(boardId)
+    if (error !== undefined) return error
+
+    const body = (await request.json().catch(() => ({}))) as { timeTracking?: string }
+    const requested = body.timeTracking ?? ''
+    if (!TIME_TRACKING_VALUES.includes(requested)) {
+      return settingsError(400, 'AGILE_TIME_TRACKING_INVALID', `허용하지 않는 값입니다: ${requested}`)
+    }
+    // ★404 가 아니라 409 다 — 보드는 있고 **조작이 막힌** 것이다(E5).
+    if ((board.boardType ?? DEFAULT_BOARD_TYPE) !== 'SCRUM') {
+      return settingsError(409, 'AGILE_TIME_TRACKING_NOT_SCRUM', '시간 추적은 스크럼 보드에서만 바꿀 수 있습니다.')
+    }
+
+    const settings = settingsFor(boardId)
+    settings.timeTracking = requested
+    return HttpResponse.json({ data: { timeTracking: settings.timeTracking } })
+  },
+)
+
+/** PUT /api/v1/boards/:id/working-days — 세 값 통째 교체 (J38·J39·J40). PATCH 가 아니라 PUT 이다. */
+const putWorkingDaysHandler = http.put(
+  '/api/v1/boards/:id/working-days',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+    const { error } = boardOr404(boardId)
+    if (error !== undefined) return error
+
+    const body = (await request.json().catch(() => ({}))) as {
+      standardDays?: string[] | null
+      nonWorkingDates?: string[]
+      timezone?: string | null
+    }
+
+    const rawDays = body.standardDays ?? null
+    if (rawDays !== null) {
+      // ★0개는 400 이다(E1) — ideal 선의 0 나눗셈이다. 「근무일을 쓰지 않겠다」는 값을 비우는 것이
+      //   아니라 키를 빼는 것(= 미설정)이다.
+      if (rawDays.length === 0) {
+        return settingsError(400, 'AGILE_WORKING_DAYS_INVALID', '근무일은 최소 1일 이상이어야 합니다.')
+      }
+      const unsupported = rawDays.filter((day) => !WEEK_ORDER.includes(day))
+      if (unsupported.length > 0) {
+        return settingsError(
+          400,
+          'AGILE_WORKING_DAYS_INVALID',
+          `지원하지 않는 요일 키입니다: ${unsupported.join(', ')}`,
+        )
+      }
+    }
+
+    const rawTimezone = body.timezone ?? null
+    if (rawTimezone !== null && !isIanaTimezone(rawTimezone)) {
+      return settingsError(400, 'AGILE_WORKING_DAYS_INVALID', `IANA 타임존이 아닙니다: ${rawTimezone}`)
+    }
+
+    const settings = settingsFor(boardId)
+    // 백엔드와 같은 정규화 — 요일은 주 순서, 날짜는 중복 제거 후 오름차순. 응답이 요청과 다를 수
+    // 있고, 사용자가 자기가 무엇을 저장했는지 알아야 하므로 저장값을 돌려준다.
+    settings.standardDays =
+      rawDays === null ? null : [...new Set(rawDays)].sort((a, b) => WEEK_ORDER.indexOf(a) - WEEK_ORDER.indexOf(b))
+    settings.nonWorkingDates = [...new Set(body.nonWorkingDates ?? [])].sort()
+    settings.timezone = rawTimezone
+
+    return HttpResponse.json({
+      data: {
+        standardDays: settings.standardDays,
+        nonWorkingDates: [...settings.nonWorkingDates],
+        timezone: settings.timezone,
+      },
+    })
+  },
+)
+
+/**
+ * IANA 타임존인지 확인한다.
+ *
+ * 백엔드는 `ZoneId.getAvailableZoneIds()` 멤버십으로 잰다 — `UTC+09:00` 같은 오프셋 표기를
+ * 통과시키지 않기 위해서다. 브라우저에는 그 목록이 없으므로 `Intl.DateTimeFormat` 이 지역명으로
+ * 받아들이는지로 갈음하고, `+`/`-` 가 섞인 오프셋 표기는 명시적으로 막는다.
+ */
+function isIanaTimezone(raw: string): boolean {
+  if (raw.includes('+') || raw.includes('-')) return false
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: raw })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** GET /api/v1/boards/:id/detail-view-fields — 그룹 4종이 항상 실린다(R7c). */
+const getDetailViewFieldsHandler = http.get('/api/v1/boards/:id/detail-view-fields', ({ params }) => {
+  const boardId = params['id'] as string
+  const { error } = boardOr404(boardId)
+  if (error !== undefined) return error
+
+  return HttpResponse.json({ data: { groups: normalizeDetailViewFields(settingsFor(boardId).detailViewFields) } })
+})
+
+/** PATCH /api/v1/boards/:id/detail-view-fields — 요청에 담긴 그룹만 교체 (J47 · J48). */
+const patchDetailViewFieldsHandler = http.patch(
+  '/api/v1/boards/:id/detail-view-fields',
+  async ({ params, request }) => {
+    const boardId = params['id'] as string
+    const { error } = boardOr404(boardId)
+    if (error !== undefined) return error
+
+    const body = (await request.json().catch(() => ({}))) as { groups?: Record<string, string[]> }
+    const groups = body.groups ?? {}
+    const unsupported = Object.keys(groups).filter((group) => !DETAIL_VIEW_FIELD_GROUPS.includes(group))
+    if (unsupported.length > 0) {
+      return settingsError(
+        400,
+        'AGILE_DETAIL_VIEW_GROUP_INVALID',
+        `지원하지 않는 그룹입니다: ${unsupported.join(', ')}`,
+      )
+    }
+
+    // ★카드 레이아웃과 달리 **개수 상한이 없다**(J17 은 카드의 제약이다). 복사해 오지 않는다.
+    const settings = settingsFor(boardId)
+    for (const [group, fieldKeys] of Object.entries(groups)) {
+      settings.detailViewFields[group] = [...fieldKeys]
+    }
+
+    return HttpResponse.json({ data: { groups: normalizeDetailViewFields(settings.detailViewFields) } })
+  },
+)
+
 /**
  * 칸반 보드 BC MSW 핸들러 배열.
  *
@@ -1344,6 +1678,8 @@ const reorderColumnsHandler = http.put(
  * PATCH /api/v1/boards/:id (이름·스윔레인 기준 부분 갱신) 포함.
  * DELETE /api/v1/boards/:id (보드 소프트 삭제, FR-BD-01-2b) 포함.
  * POST/PATCH/DELETE /api/v1/boards/:id/quick-filters[/:filterId] (퀵필터 CRUD, FR-UX-01) 포함.
+ * 보드 설정 4탭 쓰기(card-layout · estimation · working-days · detail-view-fields, 부채 177) 포함 —
+ * 읽기는 GET /api/v1/boards/:id 응답이 함께 싣는다(N1). 상세 보기 필드만 자기 GET 도 갖는다.
  */
 export const boardHandlers = [
   getBoardsHandler,
@@ -1360,4 +1696,9 @@ export const boardHandlers = [
   updateColumnHandler,
   replaceColumnStatesHandler,
   reorderColumnsHandler,
+  patchCardLayoutHandler,
+  patchEstimationHandler,
+  putWorkingDaysHandler,
+  getDetailViewFieldsHandler,
+  patchDetailViewFieldsHandler,
 ]
