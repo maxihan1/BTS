@@ -133,4 +133,5 @@ private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =
         rank = issue.rank,
         labels = issue.labels,
         originalEstimateSeconds = issue.originalEstimateSeconds,
+        customFields = issue.customFields,
     )
