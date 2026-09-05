@@ -250,6 +250,23 @@ class NotificationWorkerTest : DescribeSpec({
                 .isEqualTo(commentId.toString())
         }
 
+        it("commentId 가 **명시적 null** 로 실려 와도 payload 를 만들지 않는다") {
+            // ★프로듀서의 ObjectMapper 는 Boot 기본값이고 IssueDomainEvent 에 @JsonInclude 가 없다.
+            //   즉 `IssueMentioned.commentId = null`(본문 멘션)은 키 누락이 아니라
+            //   `"commentId": null` 로 실려 온다 — **아래 「키가 없다」 케이스와 다른 경로다.**
+            //   실측(2026-09-05) 상 Jackson 은 NullNode·MissingNode 둘 다 `asText(null)` 에서
+            //   실제 null 을 돌려주지만, 그건 우리가 고정한 계약이 아니라 라이브러리 구현이다.
+            //   두 경로를 각각 고정해 둔다 — 한쪽만 두면 파싱을 바꿀 때 나머지가 조용히 깨진다.
+            stubMentionMessageWithNullCommentId(dsl, actorId, mentionedId, msgId, fixedNow)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            assertThat(notificationSlot.captured.payload).isNull()
+        }
+
         it("commentId 가 없는 이벤트는 payload 를 만들지 않는다") {
             stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
             stubPipeline()
@@ -611,6 +628,35 @@ private fun stubMentionMessage(
         """.trimIndent()
 
     stubReadResult(dsl, msgId, json, readCt)
+}
+
+/**
+ * `commentId` 가 **명시적 JSON null** 인 멘션 이벤트 메시지를 스텁한다.
+ *
+ * 키 누락(`stubMentionMessage` 기본값)과 **다른 경로**다. 프로듀서가 null 을 생략하지 않으므로
+ * 실제 본문 멘션 이벤트는 이 형태로 온다.
+ */
+private fun stubMentionMessageWithNullCommentId(
+    dsl: DSLContext,
+    actorId: UUID,
+    mentionedId: UUID,
+    msgId: Long,
+    occurredAt: Instant,
+) {
+    val json =
+        """
+        {
+          "type": "issue.mentioned",
+          "issueKey": "ATLAS-1",
+          "projectKey": "ATLAS",
+          "actorId": { "value": "$actorId" },
+          "commentId": null,
+          "mentionedUserIds": ["$mentionedId"],
+          "occurredAt": "$occurredAt"
+        }
+        """.trimIndent()
+
+    stubReadResult(dsl, msgId, json, readCt = 1)
 }
 
 /**
