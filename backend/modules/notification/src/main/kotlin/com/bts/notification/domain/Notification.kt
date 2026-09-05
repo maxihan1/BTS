@@ -100,30 +100,46 @@ data class Notification(
          * 입력 중 하나라도 다르면 다른 키가 생성된다.
          *
          * 구성 원소: eventType.wireValue + issueKey("" 로 null 처리) + occurredAt ISO 문자열
-         *            + recipientUserId 문자열 + channel.name
+         *            + recipientUserId 문자열 + channel.name (+ commentId — 있을 때만)
          * 각 원소는 DEDUP_SEPARATOR 로 연결한 뒤 SHA-256 해시한다.
+         *
+         * ## commentId 는 있을 때만 원소가 된다
+         * `occurredAt` 만으로는 「어느 댓글인가」를 구분하지 못한다. import 로 들어온 댓글은
+         * 원본 시스템의 초 단위 시각을 그대로 쓰므로(`CommentApplicationService` 의
+         * `createdAt` 주입 경로), 같은 이슈에 같은 초에 달린 댓글 2건은 나머지 원소가 전부
+         * 같아진다. 그때 두 번째 알림은 UNIQUE(dedup_key) 에 걸려 「멱등이 동작했다」는
+         * 얼굴로 사라진다 — 에러가 아니라 정상 로그로 유실된다.
+         *
+         * ★`listOfNotNull` 이라 commentId 가 null 이면 **원소 자체가 없다.** `?: ""` 로 항상
+         * 붙이면 구분자가 하나 더 생겨 댓글과 무관한 알림(담당자 지정·상태 전환·스프린트…)의
+         * 키까지 전부 바뀌고, 배포 경계에 떠 있던 모든 이벤트가 재전달 시 중복 알림이 된다.
+         * 폭발 반경을 댓글 이벤트로만 가둔다.
          *
          * @param eventType 이벤트 유형
          * @param issueKey 연관 이슈 키 (없으면 null)
          * @param occurredAt 이벤트 발생 시각
          * @param recipientUserId 수신자 UUID
          * @param channel 전송 채널
+         * @param commentId 알림의 근거가 된 댓글 UUID (댓글에서 비롯되지 않았으면 null)
          * @return 64자 소문자 hex SHA-256 문자열
          */
+        @Suppress("LongParameterList") // dedup 키의 구성 원소 목록 그 자체 — 묶으면 무엇이 키에 드는지가 흐려진다
         fun computeDedupKey(
             eventType: NotificationEventType,
             issueKey: String?,
             occurredAt: Instant,
             recipientUserId: UUID,
             channel: Channel,
+            commentId: UUID? = null,
         ): String {
             val parts =
-                listOf(
+                listOfNotNull(
                     eventType.wireValue,
                     issueKey ?: "",
                     occurredAt.toString(),
                     recipientUserId.toString(),
                     channel.name,
+                    commentId?.toString(),
                 )
             val raw = parts.joinToString(DEDUP_SEPARATOR)
             val digest = MessageDigest.getInstance(DEDUP_ALGORITHM)

@@ -593,6 +593,55 @@ class NotificationWorkerTest : DescribeSpec({
             }
         }
     }
+
+    // ── DEDUP-1: 같은 순간의 서로 다른 댓글 ───────────────────────────────────
+
+    describe("DEDUP-1 같은 occurredAt 의 서로 다른 댓글은 서로 다른 알림이다") {
+        val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+        val recipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+        val commentIdA: UUID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccc01")
+        val commentIdB: UUID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccc02")
+
+        /** 멘션 이벤트 1건을 끝까지 흘려보내고 워커가 만든 알림의 dedupKey 를 돌려준다. */
+        fun dedupKeyOf(
+            msgId: Long,
+            commentId: UUID?,
+        ): String {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow, commentId = commentId)
+            every { policyEvaluator.evaluate(NotificationEventType.ISSUE_MENTIONED, "ATLAS") } returns matches
+            every { recipientResolver.resolve(any<NotificationSourceEvent>(), matches) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+
+            val captured = slot<Notification>()
+            every { repository.insertIfAbsent(capture(captured)) } returns true
+
+            worker.pollAndProcess()
+            return captured.captured.dedupKey
+        }
+
+        it("commentId 만 다른 두 이벤트의 dedupKey 가 다르다") {
+            // ★도메인 테스트만으로는 이것을 못 잡는다. `computeDedupKey` 가 commentId 파라미터를
+            // 받아도 워커가 안 넘기면 그 파라미터는 죽은 코드고, 유실은 그대로 남는다.
+            // 워커가 실제로 넘기는지를 여기서만 본다.
+            val keyA = dedupKeyOf(msgId = 101L, commentId = commentIdA)
+            val keyB = dedupKeyOf(msgId = 102L, commentId = commentIdB)
+
+            assertThat(keyA).isNotEqualTo(keyB)
+        }
+
+        it("commentId 가 없는 이벤트끼리는 여전히 같은 키다 — 재전달 멱등은 그대로다") {
+            // 「전부 다르게 만들면 통과」하는 가짜 그린을 막는다. 무엇이든 유일하게 만드는
+            // 구현(예: UUID 를 섞는다)은 이 단언에서 죽는다.
+            val key1 = dedupKeyOf(msgId = 103L, commentId = null)
+            val key2 = dedupKeyOf(msgId = 104L, commentId = null)
+
+            assertThat(key1).isEqualTo(key2)
+        }
+    }
 })
 
 // ── test helpers ───────────────────────────────────────────────────────────────
