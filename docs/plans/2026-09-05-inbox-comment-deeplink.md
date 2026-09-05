@@ -82,6 +82,41 @@ V402 이후 모든 기존 행이 payload NULL 이다. 깨진 한 건이 알림 �
 `data-testid=comment-body-*` 로 좁혀 저장된 댓글만 세게 했다 — 이 스코프 없이는 연속 작성
 테스트가 저장 중(`contenteditable=false`)에 다음 fill 을 때려 실제로 red 가 된다.
 
+## Jira 대조
+
+**조회일 2026-09-05.** 기존 문서에 이 표면(`grep -rln "## Jira 대조" | grep 댓글 딥링크`) 조사가
+없어 신규 조회했다. 전부 Cloud 사용자 문서(`support.atlassian.com`)다.
+
+| # | 조작 | Jira Cloud 실물 | BTS 현재 | 출처 |
+|---|---|---|---|---|
+| J1 | 댓글 단위 링크 | 댓글의 **More actions → Copy link** 로 「댓글·작업로그 항목 링크를 복사/붙여넣기」할 수 있다 — 댓글은 **주소 지정 가능한 단위**다 | 없음. 알림도 이슈까지만 데려간다 | [watch-share-and-comment-on-an-issue](https://support.atlassian.com/jira-work-management/docs/watch-share-and-comment-on-an-issue/) |
+| J2 | 링크를 열었을 때 | 「the issue page will automatically be scrolled down so that the linked comment is visible」 — 목록이 길면 **그 댓글이 보이도록 자동 스크롤**한다 | 없음 (상단에서 시작) | [link-to-a-comment-missing-after-an-upgrade](https://support.atlassian.com/jira/kb/link-to-a-comment-missing-after-an-upgrade/) |
+| J3 | 알림 트리거 | direct 알림은 「you're a reporter, assignee, or explicitly mentioned on a Jira work item」에서 난다 — 멘션이 1급 트리거다 | 동일 (FR-MN-03 에서 댓글 멘션까지 확장 완료) | [overview-of-in-app-notifications](https://support.atlassian.com/atlassian-cloud/kb/overview-of-in-app-notifications-in-atlassian-cloud-products/) |
+
+### 근거의 한계 — 확인하지 못한 것
+
+- **J2 의 출처는 업그레이드 KB 다.** `support.atlassian.com` 도메인이지만 문서 맥락이
+  Cloud 전용이라고 단정할 수 없다. 「스크롤해서 보이게 한다」는 동작 자체는 J1 의 Cloud
+  문서가 제공하는 「댓글 링크」와 짝이 맞아 채택하되, **Cloud 단정은 하지 않는다**(§1 4단계).
+- **알림 드로어를 눌렀을 때 댓글까지 가는지**는 1차 문서에서 확인하지 못했다. J3 문서는
+  트리거만 규정하고 착지 지점을 적지 않는다. 그래서 이 PR 은 「Jira 가 그렇게 한다」고
+  주장하지 않는다 — 근거는 **J1+J2(댓글은 주소 지정 가능하고, 열면 그리로 스크롤한다)**
+  까지이며, 그것을 알림 진입점에 잇는 것은 아래 X1 의 판단이다.
+- Jira 의 실제 쿼리 파라미터 이름(`focusedCommentId`)은 **1차 문서에 없다.** 커뮤니티
+  사용자 글에만 나오므로 근거로 쓰지 않았고, BTS 는 자체 이름 `?comment=` 를 쓴다.
+
+### 의도적 편차
+
+- **X1 — 알림에서 곧바로 댓글로 보낸다.** Jira 1차 문서로 확인된 것은 「댓글 링크가 있고,
+  열면 그 댓글로 스크롤한다」까지다. 알림 진입점을 그 링크에 잇는 것은 BTS 의 판단이다.
+  근거는 조작감이다 — 「댓글 때문에 온 알림」을 이슈 상단에 떨어뜨리면 사용자가 왔던 이유를
+  목록에서 다시 찾아야 한다. J2 가 긴 목록을 위해 자동 스크롤을 두는 이유와 같다.
+- **X2 — 강조 링을 추가한다.** Jira 문서는 스크롤만 규정한다. BTS 는 대상 행에 ring 을
+  둘러 「이 댓글이다」를 시각적으로 못박는다. 스크롤만으로는 화면 가운데 어느 행인지
+  단정되지 않는다. ADS 의 selected/focus 표현을 준용한다.
+- **X3 — 파라미터 이름은 `comment`.** Jira 의 `focusedCommentId` 는 1차 근거가 없고,
+  BTS 라우트는 `validateSearch` 로 자체 스키마를 갖는다. 흉내낼 근거가 없어 짧은 이름을 쓴다.
+
 ## Task
 
 ### 백엔드 (notification BC)

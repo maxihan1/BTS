@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-05 | inbox-comment-deeplink | — | ✔ | — | — | FR-CO-01 FR-UX-03 |
+| 2026-09-05 | inbox-comment-deeplink | — | ✔ | — | — | FR-CO-01 FR-MN-03 FR-UX-03 |
 | 2026-09-05 | mention-notify-autowatch | — | ✔ | — | — | FR-MN-01 FR-MN-02 FR-MN-03 FR-WT-01 |
 | 2026-09-04 | board-settings-screen | ✔ | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
 | 2026-09-04 | board-summary-can-delete | — | ✔ | — | — | FR-BD-01 |
