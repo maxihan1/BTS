@@ -476,10 +476,21 @@ Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 �
 **REFACTOR**. 판별식이 **못 보는 축**을 적는다 — 리플렉션·문자열 경유 의존, 그리고
 포트 필드의 **의미** 변경(이름은 같은데 뜻이 달라지는 경우)은 둘 다 못 잡는다.
 
+★★**보조선의 실제 위상**(2026-09-05 실측 정정). 초판 RED 문구 「import 한 줄을 넣어도 **아무도
+안 잡는다**」는 사실이 아니다. ①`agile-planning/build.gradle.kts` 의 project 의존은
+`shared-kernel` 하나뿐이라 `import com.bts.issue.…` 는 **컴파일이 죽는다**(미해결 참조).
+②`AgilePlanningBcArchTest.kt:74` `mustNotImportIssueTracking` 이 같은 축을 바이트코드에서 이미 막고,
+**그쪽은 backend-ci 에서 실제로 돈다**. 정확히는 「**소스 텍스트 층에는** 판별식이 없었다」다.
+
+★★★**그리고 이 TS 판별식은 어떤 PR CI 에서도 돌지 않는다.** `pnpm test:workflow` 를 부르는 유일한
+잡이 `.github/workflows/workflow-scripts-ci.yml:114` 인데 그 파일의 `on:` 은 `workflow_dispatch:` 뿐이다.
+대체 수단으로 적힌 `.husky/pre-commit` 도 `lint-staged` + `build-doc-index --check` 만 돌린다.
+**저장소 선재 상태이고 이 PR 범위 밖이다.** 그러므로 보조선의 실질 가치는 두 가지뿐이다 —
+①스펙 C-5 ④ 가 명시 요구한 이행 ②컴파일러·ArchUnit 이 사라지는 날을 위한 보험.
+**이 사실을 모르는 다음 사람이 이것을 살아 있는 방어선으로 믿는 것이 진짜 위험**이라 파일 머리에도 적는다.
+
 **검증**. `node --experimental-strip-types --test scripts/workflow/bc-isolation-agile-planning.test.ts` ·
 `(cd backend && ./gradlew :modules:shared-kernel:test --tests '*BoardIssueViewFieldSetTest')`
-
-**검증**. `node --experimental-strip-types --test scripts/workflow/bc-isolation-agile-planning.test.ts`
 
 ### Task 15. 설정 화면에 탭바를 도입한다
 
@@ -709,7 +720,17 @@ agile-planning 이 마스킹하려면 권한 모델을 복사해야 하고 그 �
 뒤엣것이 없으면 「전부 지우는」 구현도 통과한다.
 
 **GREEN**. 어댑터가 페이지당 **1회** `FieldPermissionResolver.visibleFields` 를 호출해 필터한다.
-★카드마다 부르면 N+1 이다 — Task 6 이 세운 쿼리 카운트 가드(C4·C5)가 그것을 잡아야 한다.
+★카드마다 부르면 N+1 이다.
+
+★★**초판의 「Task 6 의 쿼리 카운트 가드(C4·C5)가 그것을 잡는다」는 틀렸다**(2026-09-05 실측 정정).
+C4·C5 는 jOOQ `ExecuteListener` 로 `countingDsl` 을 지나는 **SQL 문 수**만 센다. 테스트 어댑터는
+2-인자 생성이라 resolver 가 기본값 `AlwaysAllowFieldPermissionResolver` 이고 그 구현은
+**SQL 을 한 문장도 실행하지 않는다.** 따라서 카드마다 resolver 를 불러도 카운터는 1 그대로다 —
+쿼리 카운트로 이 N+1 을 잡는 것은 **구조적으로 불가능**하다.
+그래서 **판정 호출 수**를 세는 축(M4·M5)을 따로 세운다. 스파이가 실제 비용을 대표하는 근거는
+prod 판정기 `IdentityAccessFieldPermissionResolver.visibleFields` 가 호출 1회마다
+`FieldPermissionRepository.findByProject` + `UserGroupRepository.findGroupIdsByUser` 로
+**DB 를 2회 친다**는 것이다 — 호출 수 고정이 곧 왕복 수 고정이다.
 
 **REFACTOR**. 포트 KDoc 에 「이 값은 **이미 마스킹된 것**이다 — 소비자는 다시 거르지 않는다」를 못박는다.
 마스킹 주체가 두 곳이 되면 그것이 곧 두 번째 진실이다.
