@@ -433,15 +433,38 @@ Task 9 구현자가 이 근거를 대고 혼자 `CREATE` 를 골랐고, T8·T10�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintBurndownService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BurndownTimezoneTest.kt`]
-- depends-on: [10]
-- jira: [J40]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/SprintBurndownService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/BurndownTimezoneTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/SprintBurndownServiceTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/application/SprintBurndownIntegrationTest.kt`]
+- depends-on: [10, 11, 30]
+- jira: [J40, J41]
+
+★★**2026-09-06 재정의.** 초판 files(서비스 + 새 테스트 2개)로는 **구현이 불가능하다**는 것이
+Task 12 구현자의 실측으로 드러났다. 커밋 0개로 돌아왔고 그 판단이 옳다. 두 가지가 겹쳤다.
+
+**① 시각이 서비스까지 도달하지 않는다.** 포트 VO 가 `WorklogContribution(startedOnUtcDate: LocalDate,
+timeSpentSeconds: Long)` 이고, SQL 이 `(started_at AT TIME ZONE 'UTC')::date` 로 캐스팅한 뒤
+`groupBy` 해서 **BC 를 건너기 전에 시각을 버린다.** `10:00Z` 와 `23:30Z` 가 같은 버킷에 **합산되어**
+도착하는데 `Asia/Seoul` 에서는 다른 날이다 — **비단사라 서비스가 무엇을 하든 가를 수 없다.**
+→ 포트 확장은 **Task 30** 이 진다.
+
+**② 서비스 생성자를 넓히면 기존 테스트가 깨진다.** `SprintBurndownServiceTest.kt:65` 가 위치 인자
+4개로 생성한다. 5번째를 기본값 없이 더하면 모듈 테스트가 통째로 컴파일 불가다. 그 파일을
+**어떤 task 도 소유하지 않았다** — files 에 더한다. `SprintBurndownIntegrationTest.kt` 의
+`BurndownPortStub` 도 포트 VO 가 바뀌면 함께 고쳐야 한다.
+
+**③ 근무일 배선도 이 task 가 진다(범위 추가).** 실측 — `workingCalendar` 를 프로덕션에서 부르는 곳이
+`BurndownCalculator.kt` **자기 자신뿐**이다. Task 11 이 만든 근무일 축이 **API 응답에 한 점도 영향을
+주지 않는다.** 「설정은 되는데 번다운이 안 바뀐다」는 스펙 G2 가 피하려던 그 형태이고, 초판 계획의
+어느 task 도 이 배선을 소유하지 않았다. **계획 결함 10건째.**
 
 **RED**. `23:30Z` 에 적은 worklog 가 타임존을 `Asia/Seoul` 로 바꿔도 **같은 날짜 칸**에 있다.
 ★**시각이 UTC 경계를 넘어야 한다.** 낮 시각으로 쓰면 두 타임존에서 같은 날이라
 **판정을 지워도 통과하는 공허한 테스트**가 된다(스펙 완료 기준 11).
 
 **GREEN**. `aggregateByUtcDate` 를 보드 타임존 기준으로 바꾼다. 미설정이면 UTC 유지.
+★**근무일 배선도 함께** — 서비스가 `BoardSettingsRepository.findWorkingDays(boardId)` 로 읽어
+`BurndownCalculator.calculate(..., workingCalendar = ...)` 에 넘긴다. `standardDays == null` 이면
+`workingCalendar = null` 이다(Task 11 구현자가 넘긴 매핑 — 「미설정인데 비근무일만 등록된 보드는
+비근무일 무시·달력일 전부」).
 
 **REFACTOR**. 함수 이름이 `...ByUtcDate` 로 남으면 거짓말이 된다 — `aggregateByBoardDate` 로 고친다.
 
@@ -901,9 +924,52 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 ★네 탭의 기존 테스트가 **전부 초록으로 남아야 한다.** 봉투가 바뀌므로 본문을 단언하는 테스트가
 있으면 함께 고쳐야 하는데, **그것도 네 API 테스트 파일 안이라 허용 범위다.**
 
+### Task 30. 번다운 포트가 worklog 시각을 그대로 나른다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/burndown/SprintBurndownLookupPort.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/burndown/repository/SprintBurndownQueryRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/burndown/SprintBurndownLookupAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/burndown/SprintBurndownLookupAdapterTest.kt`]
+- depends-on: []
+- jira: [J40]
+
+★**계획에 없던 task 다(2026-09-06 신설). Task 12 가 구현 불가 판정과 함께 올렸다.**
+★**cross-BC 다** — shared-kernel 포트 + issue-tracking 어댑터. 편차 **X9** 의 연장이다.
+
+**무엇이 문제인가.** 포트가 `WorklogContribution(startedOnUtcDate: LocalDate, ...)` 로 **날짜만**
+나른다. 시각은 `SprintBurndownQueryRepository.kt:22` 의 `"({0} AT TIME ZONE 'UTC')::date"` 캐스팅과
+`:69` 의 `groupBy` 에서 **BC 를 건너기 전에 버려진다.** 포트 KDoc 도 「한 `startedOnUtcDate` 당
+최대 1개(pre-aggregate)」를 계약으로 못박았다.
+
+**왜 이것이 결함인가.** 보드 타임존으로 일 귀속을 바꾸려면 시각이 필요한데 **없다.**
+`10:00Z` 와 `23:30Z` 가 같은 버킷에 합산돼 도착하고 `Asia/Seoul` 에서는 다른 날이다 —
+**비단사 함수라 소비측이 무엇을 하든 복원할 수 없다.**
+
+**왜 포트를 넓히는가(옵션 A) — 이 저장소의 확립된 원칙이다.**
+`UserCalendarLookupPort.kt:40-42` 가 이미 같은 문제를 정확히 이 방향으로 풀어 뒀다 —
+「`startedAt` 은 UTC `Instant` **원본**이고, 특정 로컬 날짜 칸에 배치하는 매핑은 **소비측 책임**」.
+번다운 포트만 그 원칙에서 벗어나 SQL 에서 미리 뭉갰다.
+**대안(옵션 B — 포트가 zone 을 받아 SQL 에서 버킷)은 배제한다.** 일 귀속 규칙이 issue-tracking 에
+남고, 그 BC 가 **보드 타임존이라는 agile-planning 의 지식**을 알아야 한다.
+
+**RED**. 같은 날 UTC 의 두 worklog(`10:00Z` · `23:30Z`)를 넣어도 포트가 **한 항목**으로 합쳐 돌려준다.
+
+**GREEN**. VO 에 시각(`startedAt: Instant`)을 더하고 SQL 의 pre-aggregate 를 푼다.
+포트 KDoc 의 「한 날짜당 최대 1개」 계약과 **책임 경계**를 `UserCalendarLookupPort` 와 같은 문형으로 고친다.
+
+**REFACTOR**. 행 수가 늘어난다(날짜별 1행 → worklog 별 1행)는 사실과 그 상한을 KDoc 에 적는다.
+소비측이 합산 책임을 진다는 것도 함께 못박는다 — **두 곳이 합산하면 그것이 두 번째 진실이다.**
+
+**공허 방지**. ★**대조군을 한 쌍으로** — 「두 worklog 가 따로 온다」만 두면 「전부 따로 오는」 것이
+당연해 판별력이 없다. **같은 시각의 두 worklog 는 여전히 둘**이고, **합계가 보존된다**를 함께 재라.
+행 수만 재면 값이 틀려도 통과한다.
+
+**검증**. `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*SprintBurndownLookupAdapterTest')`
+★소비측이 아직 안 고쳐진 상태라 `:modules:agile-planning:test` 가 **깨진다** — 그것이 정상이고
+Task 12 가 닫는다. 깨진 목록을 보고에 남겨 Task 12 가 받게 하라.
+
 ## Plan 메타
 
-- **task 수**: 29 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 30 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
