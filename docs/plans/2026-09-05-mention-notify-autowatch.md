@@ -188,6 +188,219 @@ V403 의 `issue.mentioned × MENTIONED × IN_APP` 이 `sourceField` 와 무관�
 ✅ 그 외 통과 — 6쟁점 전부 실측 근거로 확정, DB 마이그레이션 0 으로 T2 유지 확인.
 
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. 이벤트 계약 확장 — `commentId` + 멘션 출처 상수
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/event/IssueDomainEvent.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/mention/MentionSource.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/event/IssueDomainEventTest.kt`]
+- depends-on: []
+- jira: []
+
+**RED**:
+- 파일: `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/event/IssueDomainEventTest.kt`
+- 테스트 2건.
+  ```kotlin
+  @Test fun `commentId 가 없는 기존 JSON 도 역직렬화된다`()   // 하위호환 — 큐에 남은 메시지
+  @Test fun `sourceField=comment + commentId 라운드트립`()
+  ```
+- 실패 메시지 (예상). `IssueMentioned` 에 `commentId` 파라미터 없음 / `MentionSource` 미해결
+
+**GREEN**: `IssueMentioned` 에 `commentId: UUID? = null` 추가(**기본값 필수** — 없으면 기존 메시지 역직렬화가 깨진다). `MentionSource` object 에 `DESCRIPTION`·`COMMENT` 상수.
+
+**REFACTOR**: `sourceField` KDoc 을 「현재/향후」 서술에서 **확정 값 집합**으로 갱신. `IssueApplicationService:1442` 의 리터럴 `"description"` 을 상수 참조로 교체.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*IssueDomainEventTest')`
+
+---
+
+### Task 2. `MentionTargetResolver` 추출 — 멘션 대상 산출을 순수 함수로
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/mention/MentionTargetResolver.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/mention/MentionTargetResolverTest.kt`]
+- depends-on: [1]
+- jira: []
+
+**RED**:
+- 파일: `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/mention/MentionTargetResolverTest.kt` (신규)
+- 테스트: 전체 모드(생성·댓글 작성)와 diff 모드(수정) 두 진입, 자기제외, 미존재 드롭, 캡 초과 절단(알파벳 오름차순), UUID 오름차순 정렬, 대상 0명.
+  ```kotlin
+  @Test fun `전체 모드는 본문의 모든 멘션을 대상으로 낸다`()
+  @Test fun `diff 모드는 before 에 이미 있던 멘션을 뺀다`()
+  @Test fun `캡 초과 시 알파벳 오름차순 앞부분만 남기고 드롭 수를 낸다`()
+  ```
+- 실패 메시지 (예상). `MentionTargetResolver` 클래스 없음
+
+**GREEN**: `IssueApplicationService.publishMentions` 안에 인라인돼 있던 「추출 → diff → 캡 → `findIdsByUsernames` 해석 → 자기제외 → UUID 정렬」을 그대로 옮긴 순수 객체. `UserLookupPort` 는 **인자로 받는다**(빈 주입 아님 — `MentionParser` 와 동형).
+
+**REFACTOR**: 드롭 수를 반환값에 실어 호출자가 WARN 로그를 남기게 한다(로깅을 순수 함수 안에 두지 않는다).
+
+**⚠ 즉사 계약**: `MentionParser.MENTION_PATTERN` 을 **건드리지 않는다** — `MentionExtension.kt:85` 가 `\G` 앵커를 이 패턴에서 파생하므로 수정하면 **렌더링이 함께 깨진다**.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*MentionTargetResolverTest')`
+
+---
+
+### Task 3. `IssueApplicationService` 이관 — 행동 불변 + `updateIssue` 자동 watcher
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceMentionTest.kt`]
+- depends-on: [2]
+- jira: [J1]
+
+**RED**:
+- 기존 `IssueApplicationServiceMentionTest` S1~S5+cap 이 **그대로 통과**해야 한다(이관은 행동 불변).
+- 신규: 수정으로 새 멘션이 생기면 그 대상이 `issue_watchers` 에 추가된다.
+  ```kotlin
+  @Test fun `updateIssue 신규 멘션 대상이 자동 watcher 가 된다`()
+  @Test fun `대상 0명이면 watcher 도 추가하지 않는다`()
+  ```
+- 실패 메시지 (예상). `watcherRepository.add` 호출 0회 (mockk verify 실패)
+
+**GREEN**: `publishMentions` 가 `MentionTargetResolver` 를 호출하도록 교체. 확정된 `targets` 를 기존 private `autoWatch(issueId, userIds)` 에 그대로 넘긴다.
+
+**REFACTOR**: 발행과 watcher 등록이 **같은 `targets` 리스트**를 쓰는 것을 한 곳에서 보이게 정리 — 캡 초과 시 알림 대상과 watcher 대상이 갈리는 E5 를 구조로 막는다.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*IssueApplicationServiceMentionTest')`
+
+---
+
+### Task 4. `createIssue` 멘션 발행 + 자동 watcher
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueApplicationServiceMentionTest.kt`]
+- depends-on: [3]
+- jira: [J1]
+
+**RED**:
+  ```kotlin
+  @Test fun `createIssue description 멘션 전원이 대상이 된다`()   // diff 대상 없음 = 전체
+  @Test fun `createIssue 멘션 대상이 자동 watcher 가 된다`()
+  @Test fun `자기 자신만 멘션하면 이벤트도 watcher 도 없다`()
+  ```
+- 실패 메시지 (예상). `IssueMentioned` 발행 0회
+
+**GREEN**: `createIssue` 에서 `MentionTargetResolver` 전체 모드 호출 → `IssueMentioned(sourceField = MentionSource.DESCRIPTION)` 발행 + `autoWatch`. reporter/assignee 자동 watcher(FR-WT-01)와 **같은 트랜잭션**.
+
+**REFACTOR**: 생성·수정 두 경로의 발행 코드를 한 private 헬퍼로 합류.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*IssueApplicationServiceMentionTest')`
+
+---
+
+### Task 5. `insertComment` 멘션 발행 + 자동 watcher
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/comment/application/CommentApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/application/CommentApplicationServiceTest.kt`]
+- depends-on: [2, 1]
+- jira: [J1]
+
+**RED**:
+  ```kotlin
+  @Test fun `댓글 작성 시 body 멘션 대상에게 IssueMentioned 를 발행한다`()  // sourceField=comment, commentId=그 댓글
+  @Test fun `댓글 멘션 대상이 자동 watcher 가 된다`()
+  @Test fun `멘션 0건 댓글은 이벤트도 watcher 도 없다`()   // 조기 반환 — 추가 쿼리 0
+  ```
+- 실패 메시지 (예상). `IssueMentioned` 발행 0회 / `IssueWatcherRepository` 미주입
+
+**GREEN**: `IssueWatcherRepository` 를 **nullable 생성자 주입**(`IssueApplicationService:169` 선례 — 기존 단위 테스트 호환 fallback). `insertComment` 에서 전체 모드 해석 후 발행 + watcher. `IssueCommented` 발행은 **그대로 둔다**(역할이 다르다).
+
+**REFACTOR**: 댓글 쪽 `autoWatch` 헬퍼를 `insertComment`·`update` 가 공유하도록 뽑는다.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*CommentApplicationServiceTest')`
+
+---
+
+### Task 6. 댓글 수정 diff 발행 + no-op 경로 무발행
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/comment/application/CommentApplicationService.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/application/CommentApplicationServiceTest.kt`]
+- depends-on: [5]
+- jira: [J1]
+
+**RED**:
+  ```kotlin
+  @Test fun `댓글 수정은 새로 추가된 멘션만 발행한다`()        // @b 있던 댓글에 @c 추가 → c 만
+  @Test fun `멘션을 지우는 수정은 발행 0 이고 기존 watcher 를 유지한다`()  // E2
+  @Test fun `본문이 같은 no-op 수정은 발행 0`()               // 기존 조기 반환 경로
+  ```
+- 실패 메시지 (예상). 수정 시 `IssueMentioned` 발행 0회
+
+**GREEN**: `update` 에서 `MentionTargetResolver` **diff 모드**(`before = existing.body`, `after = body`) 호출. 기존 `existing.body == body` 조기 반환은 **손대지 않는다** — 그 경로가 무발행의 근거다.
+
+**REFACTOR**: `historyRecorder.recordCommentEdited` 호출 순서와 나란히 두어 부수효과를 한 곳에 모은다.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*CommentApplicationServiceTest')`
+
+---
+
+### Task 7. 엣지 E1~E8 회귀 + 뮤테이션 짝
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/mention/MentionTargetResolverTest.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/comment/application/CommentApplicationServiceTest.kt`]
+- depends-on: [6]
+- jira: [J2]
+
+**RED**: 스펙 `## 엣지 케이스` E1~E8 각 1건. **E5(캡 초과 시 알림 대상 == watcher 대상)** 와 **E4(이미 watcher 여도 알림은 정상)** 가 핵심이다 — 둘은 「두 목록이 서로를 검사하지 않는」 양식이라 판정이 없으면 조용히 갈린다.
+
+**J2 회귀**: 보안 레벨 이슈의 멘션 알림이 `applyVisibilityFilter` 로 막히는지는 **notification BC 소관**이라 이 PR 에서 코드를 건드리지 않는다. 대신 「`issue-tracking` 은 가시성 필터를 스스로 하지 않는다」는 **경계 사실**을 테스트 이름으로 남겨 후속 리뷰가 착각하지 않게 한다.
+
+**GREEN**: 필요한 최소 보강만. 대부분은 Task 2~6 구현으로 이미 통과해야 한다 — **통과하면 그 자체가 근거이고, 실패하면 설계 구멍이다.**
+
+**REFACTOR**: 뮤테이션 짝 — 각 신규 판정을 **일부러 끊어 red 1회**를 확인한다. **GREEN 선커밋 뒤에** 돌린다(미커밋 원복은 소실).
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test ktlintCheck detekt)`
+
+---
+
+### Task 8. Testcontainers 통합 — 댓글 멘션 pgmq enqueue
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/application/IssueMentionPublishIntegrationTest.kt`]
+- depends-on: [6]
+- jira: [J1]
+
+**RED**: 댓글 작성/수정이 `q_issue_events` 에 `issue.mentioned` 를 **실제로 넣는지**, 그리고 같은 트랜잭션이 롤백되면 **큐에도 안 남는지**.
+
+**GREEN**: 기존 `IssueMentionPublishIntegrationTest`(설명 경로) 형태를 댓글 경로로 확장.
+
+**REFACTOR**: 설명·댓글 두 경로가 같은 assert 헬퍼를 쓰게 한다.
+
+**검증**: `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*IssueMentionPublishIntegrationTest')` — Docker 필요
+
+---
+
+### Task 9. E2E — 댓글 멘션 → Inbox 도착 + watcher 목록 반영
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/issue-mention-render.spec.ts`]
+- depends-on: [8]
+- jira: [J1]
+
+**RED**: 시나리오 2건 — ① 댓글에 `@b` 를 써서 저장하면 b 의 Inbox 에 멘션 알림이 도착한다 ② 저장 직후 그 이슈의 watcher 목록에 b 가 보인다.
+
+**GREEN**: MSW 멘션 파생을 댓글 POST/PATCH 로 확장(기존 description PATCH 파생과 같은 형태). **ground-truth 는 Task 8 의 백엔드 통합 테스트**이고 이건 화면 배선 확인이다.
+
+**REFACTOR**: 기존 S1~S6 과 시드가 겹치지 않는지 확인.
+
+**검증**: `pnpm --filter web test:e2e -- issue-mention-render`
+
+## Plan 메타
+
+- **task 수**. 9 (각 TDD 사이클 1개)
+- **예상 wave**. 5 — `1 → 2 → 3 → 4 → (5 → 6) → (7·8) → 9`. `IssueApplicationService.kt` 와 `CommentApplicationService.kt` 가 각각 여러 task 에 걸려 **파일 겹침으로 자동 직렬화**된다. 진짜 병렬은 Task 7·8 한 구간뿐이다.
+- **구현 규율**. TDD red-first (T2). `test:` 커밋이 `feat:` 앞에 온다.
+- **추가 검증**. `./gradlew :modules:issue-tracking:test ktlintCheck detekt` · `pnpm --filter web test:e2e` · 뮤테이션 짝(GREEN 선커밋 뒤).
+- **Jira 매핑**. `J1 → T3·T4·T5·T6·T8·T9` · `J2 → T7(경계 사실 기록 — 구현은 notification BC 기구현)` · `J3 → 부분 미채택 X2(본인 댓글 autowatch 는 범위 밖)` · `J4 → 대응 없음 X1(의도적 편차)`. **채택 2건 모두 task 에 물렸다 — 차집합 0.**
+
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
