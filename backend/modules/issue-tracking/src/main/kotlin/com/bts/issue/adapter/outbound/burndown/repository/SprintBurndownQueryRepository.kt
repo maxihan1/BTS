@@ -59,6 +59,10 @@ class SprintBurndownQueryRepository(
      * `started_at` 원본을 [WorklogContribution.startedAt] 으로 그대로 나른다 — 여기서 날짜로 뭉개면
      * `10:00Z` 와 `23:30Z` 가 한 항목이 되고, `Asia/Seoul` 기준 일 귀속을 소비측이 복원할 수 없다(비단사).
      * 합산은 소비측(agile-planning)이 자기 timezone 으로 버킷을 정한 뒤 수행한다.
+     *
+     * 반환 행 수는 「날짜별 1행」에서 「worklog 별 1행」으로 늘어난다. 상한은 대상 이슈의 미삭제
+     * worklog 총건수이고 스프린트 길이와 무관하다 — 근거와 배수 추정은
+     * [WorklogContribution] KDoc 의 「행 수」 절에 있다. 이 쿼리는 LIMIT 를 두지 않는다(변경 전과 동일).
      */
     @Transactional(readOnly = true)
     fun findWorklogContributions(issueKeys: Set<String>): List<WorklogContribution> {

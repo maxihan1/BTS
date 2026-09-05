@@ -62,6 +62,34 @@ private const val TEST_PROJECT_KEY = "TPRJ"
  * ★①만 두면 판별력이 없다. 「모든 행을 따로 준다」와 「시각 단위로 뭉친다」가 ①에서는 **둘 다 초록**이고
  * ②에서만 갈린다. 그리고 ①②의 **합계 보존** 단언이 없으면 행 수만 맞추고 값을 뭉갠 구현이 통과한다.
  *
+ * ## 뮤테이션 검증 이력 — 재현 가능한 증거 (2026-09-06 실측)
+ *
+ * 「깨면 red 가 당연한 방향」이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**인지를 잰 기록이다.
+ * 재현 — [SprintBurndownQueryRepository.findWorklogContributions] 에 아래를 걸고
+ * `--tests '*SprintBurndownLookupAdapterTest' --no-build-cache` 로 돌린다.
+ *
+ * | # | 구현에 건 뮤테이션 | red | 그 뮤테이션이 여전히 통과시키는 것 |
+ * |---|---|---|---|
+ * | M1 | UTC 날짜 사전집계 복원(`groupBy(utcDate)`+`SUM`, `startedAt`=`MIN`) | ①② | ③ |
+ * | M2 | **시각 단위** 집계(`groupBy(started_at)`+`SUM`) | ② | ①③ |
+ * | M3 | `timeSpentSeconds` 를 상수 `3_600L` 로 | ①②③ | 세 테스트의 `hasSize` 단언 전부 |
+ * | M4 | `WORKLOGS.DELETED_AT.isNull` 제거 | ③ | ①② |
+ * | M5 | `ISSUES.DELETED_AT.isNull` 제거 | **없음(생존)** | ①②③ 전부 |
+ * | M6 | `startedAt` 을 그 날 자정으로 절단 | ①②③ | 세 테스트의 `hasSize`·합계 단언 전부 |
+ *
+ * ★**M2 가 이 파일의 존재 이유다.** ① 만 있으면 M2 가 살아남는다 — 시각이 다른 두 건은 시각 단위로
+ * 뭉쳐도 어차피 둘로 갈리기 때문이다. 대조군 ②가 있어야 「전혀 안 뭉친다」와 「시각 단위로 뭉친다」가
+ * 갈린다.
+ *
+ * ★**M3·M6 은 「행 수만 재면 통과한다」의 실측 증거다.** 둘 다 세 테스트의 `hasSize` 를 전부
+ * 통과시켰고, 값(M3)·시각(M6) 단언에서만 걸렸다.
+ *
+ * ★**M5 는 생존 뮤턴트다.** [SprintBurndownLookupAdapter] 가 조회 전에
+ * `IssueRepository.filterVisibleIssueKeys` 로 키 집합을 좁히는데 그 정본 술어가 이미 soft-deleted
+ * 이슈를 제외한다. 그래서 리포지터리의 `ISSUES.DELETED_AT.isNull` 은 **어댑터 경로에서 중복**이고,
+ * 어댑터를 통해 재는 한 어떤 입력으로도 죽지 않는다(이 task 의 변경 이전에도 같았다).
+ * 리포지터리를 직접 부르는 경로가 생기면 그때는 다른 판정이 필요하다.
+ *
  * ## 설정 공유
  * [IssueTestcontainersBase] JVM singleton PostgreSQL 컨테이너를 재사용한다
  * (형제 [SprintBurndownLookupAdapterIntegrationTest] 와 같은 관용구).
@@ -105,7 +133,9 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
     // ── tests ─────────────────────────────────────────────────────────────────
 
     /**
-     * Given  같은 UTC 날짜(06-01)에 시각이 다른 worklog 2건 — `10:00Z` 2h · `23:30Z` 1h.
+     * **축 ①.**
+ *
+ * Given  같은 UTC 날짜(06-01)에 시각이 다른 worklog 2건 — `10:00Z` 2h · `23:30Z` 1h.
      *        `Asia/Seoul` 로 옮기면 앞은 06-01, 뒤는 06-02 다.
      * When   fetchBurndownSource 로 원천 데이터를 조회.
      * Then   두 항목이 **각자의 시각과 각자의 시간**을 달고 도착하고 합계도 보존된다.
@@ -129,7 +159,9 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
     }
 
     /**
-     * Given  **완전히 같은 시각**(`10:00Z`)에 기록된 worklog 2건 — 30분 · 45분.
+     * **축 ② — ①의 대조군.**
+ *
+ * Given  **완전히 같은 시각**(`10:00Z`)에 기록된 worklog 2건 — 30분 · 45분.
      * When   fetchBurndownSource 로 원천 데이터를 조회.
      * Then   시각이 같아도 합쳐지지 않고 둘로 오며, 두 값과 합계가 그대로 보존된다.
      *
@@ -152,7 +184,9 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
     }
 
     /**
-     * Given  살아있는 worklog 1건 + soft-deleted worklog 1건 + soft-deleted 이슈에 속한 worklog 1건.
+     * **축 ③.**
+ *
+ * Given  살아있는 worklog 1건 + soft-deleted worklog 1건 + soft-deleted 이슈에 속한 worklog 1건.
      * When   두 이슈 키 전부로 fetchBurndownSource 를 호출.
      * Then   살아있는 1건만 남는다 — 사전집계를 푸는 과정에서 삭제 술어가 함께 날아가지 않았다.
      */

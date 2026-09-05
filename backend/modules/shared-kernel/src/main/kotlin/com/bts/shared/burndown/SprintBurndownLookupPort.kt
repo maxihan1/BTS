@@ -44,6 +44,14 @@ import java.util.UUID
  * 반대 방향(포트가 zone 을 받아 SQL 에서 버킷)은 배제했다 — 일 귀속 규칙이 issue-tracking 에 남고,
  * 그 BC 가 보드 timezone 이라는 agile-planning 의 지식을 알아야 하기 때문이다.
  *
+ * ### 합산은 소비측 한 곳에서만
+ *
+ * 구현체는 합산하지 않는다([WorklogContribution] 은 worklog 1건당 1항목이다).
+ * 합산 책임은 소비측(agile-planning)이 단독으로 진다 — 포트와 소비측이 **둘 다** 합산하면
+ * 그것이 두 번째 진실이 되고, 어느 쪽 버킷이 정본인지 알 수 없게 된다.
+ * 이전 계약이 정확히 그 형태였고(SQL 이 UTC 로 뭉치고 소비측이 다시 뭉쳤다), 그래서
+ * 보드 timezone 으로 버킷을 바꾸는 것이 원리적으로 불가능했다.
+ *
  * @see BurndownSource
  * @see WorklogContribution
  */
@@ -100,6 +108,16 @@ data class BurndownSource(
  * 이전 계약(「한 [startedOnUtcDate] 당 최대 1개」 pre-aggregate)은 시각을 BC 경계 앞에서 버렸다.
  * `10:00Z` 와 `23:30Z` 는 UTC 로 같은 날이지만 `Asia/Seoul` 에서는 다른 날이라, 한 버킷에 합산되어
  * 도착한 값은 소비측이 무엇을 하든 되돌릴 수 없다(비단사). 그래서 시각 원본을 그대로 나른다.
+ *
+ * ### 행 수 — 날짜별 1행에서 worklog 별 1행으로
+ *
+ * 사전 집계를 푼 대가로 항목 수가 늘어난다. 정의에서 나오는 상한이 이렇게 바뀐다.
+ * - 이전: worklog 가 있는 **서로 다른 UTC 날짜 수** — 사실상 스프린트 길이로 묶였다(2주면 최대 14).
+ * - 지금: 스프린트 가시 이슈의 **미삭제 worklog 총건수** — 스프린트 길이와 무관하다.
+ *
+ * 배수는 곧 하루 평균 worklog 건수(팀원 수 × 1인당 하루 기록 횟수)다. 8명이 하루 1.5건씩
+ * 10 근무일 기록하면 약 10행 → 약 120행(≈12배)이 된다. 프로덕션 실측이 아니라 위 정의에서
+ * 나오는 계산이다. 두 경로 모두 LIMIT 가 없다는 점은 바뀌지 않았다.
  *
  * @property startedOnUtcDate 이 worklog 의 `started_at`(TIMESTAMPTZ) 를 UTC 기준 날짜로 변환한 값.
  *   **일 귀속의 정본이 아니다** — UTC 축 소비자용 파생값일 뿐이고, 로컬 날짜 배치의 기준은
