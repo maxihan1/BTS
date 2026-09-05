@@ -2,6 +2,7 @@
 
 package com.bts.shared.burndown
 
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -88,8 +89,13 @@ data class BurndownSource(
  *
  * @property startedOnUtcDate worklog `started_at`(TIMESTAMPTZ) 를 UTC 기준 날짜로 변환한 값.
  * @property timeSpentSeconds 해당 UTC 날짜에 기록된 worklog `time_spent_seconds` 합계(초).
+ * @property startedAt worklog 시작 시각(UTC 기준 [Instant] 원본).
+ *   ★RED 단계 임시 기본값 — 구현이 아직 이 값을 채우지 않는다. GREEN 에서 기본값을 지우고
+ *   SQL 이 실제 시각을 채운다. 기본값이 없으면 소비측 컴파일이 먼저 깨져 RED 가
+ *   어서션 실패가 아니라 컴파일 실패로 나타난다.
  */
 data class WorklogContribution(
     val startedOnUtcDate: LocalDate,
     val timeSpentSeconds: Long,
+    val startedAt: Instant = Instant.EPOCH,
 )
