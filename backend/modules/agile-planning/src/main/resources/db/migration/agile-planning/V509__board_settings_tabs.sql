@@ -1,9 +1,10 @@
--- 보드 설정 잔여 4탭의 저장 칸 — boards 설정 3칸(추정·작업일) + 비근무일 테이블 (부채 177)
+-- 보드 설정 잔여 4탭의 저장 칸 — boards 설정 3칸(추정·작업일) + 비근무일·카드 레이아웃 테이블 (부채 177)
 -- ⚠ V번호는 머지 직전 origin/main 의 agile-planning 최신 V번호를 재확인할 것 (동시 브랜치 Flyway checksum 충돌 회피, DATA.md §4.1).
 --
 -- 설계 정본. docs/specs/2026-09-05-board-settings-remaining-tabs-177.md §데이터 모델 · R5·R6 ·
--- docs/plans/2026-09-05-board-settings-remaining-tabs-177.md Task 1.
--- 지라 근거. J36(시간 추적 2종) · J38(표준 근무일) · J39(비근무일) · J40(타임존).
+-- docs/plans/2026-09-05-board-settings-remaining-tabs-177.md Task 1·2.
+-- 지라 근거. J36(시간 추적 2종) · J38(표준 근무일) · J39(비근무일) · J40(타임존) ·
+--          J17(카드 필드 최대 3개) · J18(보드/백로그 뷰별 구성).
 --
 -- 왜 한 V번호인가. 네 탭이 각자 마이그레이션을 내면 V번호 동시 브랜치 충돌을 네 번 상대한다.
 -- 한 파일에 몰아 한 번만 상대하는 것이 4탭을 한 PR 로 묶는 유일한 기술적 이득이다(plan §착수 시점).
@@ -89,12 +90,41 @@ COMMENT ON COLUMN board_non_working_dates.board_id IS '소유 보드. 보드가 
 COMMENT ON COLUMN board_non_working_dates.date     IS '쉬는 날(보드 타임존 기준 달력일). 스프린트 기간 밖이어도 저장되며 계산에서 자연히 무시된다(스펙 E8)';
 
 -- ── ③ board_card_layout_fields — 카드 레이아웃 탭 (J17·J18) ────────────────────
+--
+-- ★★ 상한 3(J17)을 서비스가 아니라 **DB CHECK 로** 박은 이유. 서비스 검증만 두면 두 관리자가
+--   동시에 저장할 때 각자 「지금 0개니까 3개 넣어도 된다」를 통과해 6개가 들어간다.
+--   #444 가 X1 경합에서 이미 이름 붙인 양식이고, 그때 쓴 문장이 이것이다 —
+--   **사전 검사는 사용자에게 이유를 주려고 있는 것이지 DB 제약을 대신하지 않는다.**
+--   400 을 내는 쪽(카드 레이아웃 서비스)과 이 CHECK 는 둘 중 하나를 지워도 다른 하나가
+--   여전히 막는 관계여야 한다. 스펙 완료 기준 2 가 그 대조군을 요구한다.
+--
+-- ★ 상한을 「행 개수」가 아니라 **position 값의 범위**로 표현했다. 개수 제약은 트리거나 지연
+--   집계가 필요한데(그리고 트리거는 경합에 또 취약하다), 자리를 0..2 로 못 박으면 복합 PK 가
+--   중복을 막는 것만으로 「보드·뷰당 최대 3행」이 따라 나온다 — 선언만으로 닫힌다.
+--
+-- ★ 뷰마다 따로다(J18). view_scope 가 PK 에 들어가야 BOARD 구성과 BACKLOG 구성이 서로를
+--   밀어내지 않는다. (board_id, position) PK 나 boards 의 배열 한 칸이면 두 뷰가 같은 자리를
+--   다투고, 「보드에서 3개를 고르면 백로그 구성이 지워지는」 동작이 된다.
+--
+-- ★ 비어 있으면 **현행 카드**를 그린다(스펙 §데이터 모델). 기본 행을 심지 않는 것이 ① 의
+--   working_days NULL 과 같은 원칙이다 — 배포 순간 모든 보드의 카드가 바뀌면 안 된다.
+--
+-- ★ deleted_at 이 없다. ② 와 같은 이유로 엔티티가 아니라 보드가 소유한 설정 값 목록이다.
 CREATE TABLE board_card_layout_fields (
     board_id   UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
     view_scope VARCHAR(16)  NOT NULL,
     position   SMALLINT     NOT NULL,
     field_key  VARCHAR(128) NOT NULL,
+    -- 이 PK 인덱스의 leftmost prefix(board_id)가 FK 조회·CASCADE 점검을 덮으므로 board_id
+    -- 전용 인덱스를 따로 두지 않는다 — DATA.md §7 의 의도를 충족하면서 중복 인덱스를 피한다
+    -- (② board_non_working_dates · V500:36-38 과 같은 판단).
     PRIMARY KEY (board_id, view_scope, position),
     CHECK (position BETWEEN 0 AND 2),
     CHECK (view_scope IN ('BOARD', 'BACKLOG'))
 );
+
+COMMENT ON TABLE  board_card_layout_fields            IS '보드 카드에 얹을 필드 — 뷰(BOARD/BACKLOG)마다 최대 3개(J17·J18). 비어 있으면 현행 카드를 그린다(기본 행을 심지 않는 것이 무변경 보존이다)';
+COMMENT ON COLUMN board_card_layout_fields.board_id   IS '소유 보드. 보드가 삭제되면 함께 사라진다(ON DELETE CASCADE — 고아 행을 남기지 않는다)';
+COMMENT ON COLUMN board_card_layout_fields.view_scope IS 'BOARD / BACKLOG — 어느 뷰의 카드인가(J18). PK 에 들어가 있어 두 뷰의 구성이 서로를 밀어내지 않는다';
+COMMENT ON COLUMN board_card_layout_fields.position   IS '카드에서의 자리(0..2). ★상한 3(J17)을 개수가 아니라 값의 범위로 표현한 것이며, 복합 PK 의 중복 금지와 합쳐져 트리거 없이 상한이 닫힌다. 서비스 사전 검사는 이 제약을 대신하지 않는다(#444 X1)';
+COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또는 커스텀 필드 키. 고른 필드가 그 이슈에 없으면 그 카드에서만 생략한다 — 빈 칸을 그리지 않는다(스펙 E4)';
