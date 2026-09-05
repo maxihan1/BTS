@@ -64,6 +64,48 @@ import java.util.UUID
  * - **중복 날짜** (WD-6). `PRIMARY KEY (board_id, date)` 가 중복을 거부하므로 정규화하지 않으면
  *   500 이 된다. 저장 계층에 넘어간 목록에 중복이 없는지 본다.
  * - **미지원 요일** (WD-7). 검증이 없는 구현은 `VARCHAR(3)[]` 에 쓰레기 값을 그대로 넣는다.
+ *
+ * ## ★ 이 파일의 8축은 RED 를 본 적이 없다 — 그 사후 보정이 아래 표다
+ *
+ * task-10 의 RED 커밋(`78393f495`)이 **껍데기가 아니었다.** 컨트롤러 297줄에
+ * `requireSettingsAccess` 게이트와 `BoardWorkingDaysExceptionHandler` 전문이 이미 들어 있었고,
+ * 그래서 13축 중 **red 는 5건뿐**이었다 — 401 · 404 · 403 · 권한코드 · 날짜형식 · 정상저장 ·
+ * NULL 2건, 합 **8축이 태어날 때부터 초록**이었다(wave 6 통합 검증 DRIFT 판정 D1).
+ *
+ * red 를 못 본 축은 **판별력이 있는지 아무도 모른다.** 그래서 8축 전부에 뮤테이션을 걸어
+ * 실제로 red 가 되는지를 사후에 쟀고, **한 축이 실제로 공허했다**(G5 — 아래).
+ *
+ * ## 뮤테이션 검증 이력 — 재현 가능한 증거 (2026-09-06 실측)
+ *
+ * 「깨면 red」가 당연한 방향이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**인지를 잰 기록이다.
+ * 마지막 열이 그 뮤테이션이 **여전히 통과시키는** 시나리오 — 그것이 이 축이 따로 필요한 이유다.
+ * 재현은 해당 줄을 고치고 `--tests '*BoardWorkingDaysApiTest' --no-build-cache` 로 돌리면 된다.
+ *
+ * | # | 구현에 건 뮤테이션 | red 가 된 테스트 | 그래도 통과 |
+ * |---|---|---|---|
+ * | M1 | 서비스 `if (raw == null) return null` 삭제 → NULL 도 400 | WD-2 · WD-2b | WD-1 ★a |
+ * | M2 | 서비스 `.distinct()` 제거 | WD-6 | 중복 없는 payload 전부 |
+ * | M3 | 서비스에 `filter { it.year <= 2026 }` | WD-5 | 기간 안 날짜만 쓰는 12축 |
+ * | M4 | `validateTimezone` 을 무조건 throw | WD-2b · WD-3 · WD-4 | 무효 타임존 케이스 ★b |
+ * | G1 | 게이트의 `currentActorId()` → 고정 UUID | WD-9a(401) | 인증된 요청 12축 |
+ * | G2 | 게이트의 `?: throw BoardNotFoundException()` 제거 | WD-9b(404) | 보드가 있는 요청 전부 |
+ * | G3 | 게이트의 `if (!hasPermission) throw` → 판정 무시 | WD-9c(403) | allow=true 인 요청 전부 |
+ * | G4 | 권한코드 `SOFT_DELETE` → `CREATE` | WD-9c | 상태는 여전히 403 ★c |
+ * | G5 | advice 에서 `HttpMessageNotReadableException` 제거 | **0건 — 공허 적발** | 13축 전부 ★d |
+ * | G5b | G5 + WD-8 에 `$.errorCode` 단언을 더한 뒤 | WD-8 | — (처방 확인) |
+ * | G6 | `WorkingDaysResponse.from` 이 `standardDays = null` 고정 | WD-3 | 저장 `verify` ★e |
+ *
+ * - **★a** WD-1(`[]`→400)은 green 그대로다. 0개 축만 두면 이 구현이 통과하고, 그러면
+ *   **미설정 보드를 아무도 저장할 수 없다.** 두 축은 한 쌍으로만 옳다.
+ * - **★b** 무효 타임존 케이스는 green 이다. 무효측만 두면 「전부 400」인 구현이 통과한다.
+ * - **★c** 상태코드는 **여전히 403** 이다. 권한코드·스코프 단언이 없으면 아무도 못 잡는다.
+ * - **★d ★★이 표의 존재 이유다.** WD-8 이 상태코드 400 만 재고 있어, 이 컨트롤러의 advice 를
+ *   통째로 빼도 13건이 전부 초록이었다 — 그 축은 **아무것도 지키지 않고 있었다.** Spring 의
+ *   `DefaultHandlerExceptionResolver` 가 `HttpMessageNotReadableException` 을 400 으로 바꿔 주기
+ *   때문이다. 처방으로 `$.errorCode` 봉투 단언을 더했다(G5b 에서 red 확인). 이 엔드포인트는
+ *   형제 탭 셋과 달리 `AGILE_*` 봉투를 내는 유일한 자리라 그 성질 자체가 판정 대상이다.
+ * - **★e** 저장 계층 `verify` 는 green 이다. 응답 echo 축이 없으면 「저장은 맞는데 화면에는
+ *   미설정으로 보이는」 구현이 안 잡힌다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BoardWorkingDaysApiTest.TestMvcConfig::class])
@@ -278,12 +320,17 @@ class BoardWorkingDaysApiTest {
         verify(exactly = 0) { settingsRepository.updateWorkingDays(any(), any(), any()) }
     }
 
-    // ── WD-8. 날짜 형식 오류가 500 이 아니다 ───────────────────────────────────
+    // ── WD-8. 날짜 형식 오류가 500 이 아니고 **우리 봉투로** 나간다 ─────────────
 
     @Test
-    fun `비근무일 날짜 형식이 틀리면 400 이다`() {
+    fun `비근무일 날짜 형식이 틀리면 400 이고 AGILE 봉투로 나간다`() {
+        // ★상태코드만 재면 이 축은 공허하다 — 실측했다(뮤테이션 G5).
+        // 이 컨트롤러의 advice 를 통째로 빼도 Spring 의 DefaultHandlerExceptionResolver 가
+        // HttpMessageNotReadableException 을 400 으로 바꿔 주므로 13건 전부 초록이었다.
+        // 이 엔드포인트가 형제와 같은 RFC 7807 봉투(errorCode)를 내는지가 실제 판정 대상이다.
         save("""{"standardDays":["MON"],"nonWorkingDates":["2026-13-45"]}""")
             .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.errorCode").value("AGILE_VALIDATION_FAILED"))
 
         verify(exactly = 0) { settingsRepository.replaceNonWorkingDates(any(), any()) }
     }
