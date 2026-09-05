@@ -18,6 +18,15 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
+ * CHECK 제약 위반 SQLSTATE.
+ *
+ * ★ 「아무 SQLException」으로 재면 **테이블이 아예 없을 때(42P01)도 통과한다** — 부정 단언이
+ * 공허해진다. 형제 [BoardCardLayoutSchemaTest] · [BoardDetailViewSchemaTest] 와 같은 양식으로
+ * SQLSTATE 값까지 못 박는다.
+ */
+private const val CHECK_VIOLATION = "23514"
+
+/**
  * `V509__board_settings_tabs.sql` 을 검증한다 (스펙 R5·R6 · 갭 D · J38·J39·J40).
  *
  * 「작업일」·「추정」 탭이 저장할 칸을 `boards` 에 세 개 얹고, 비근무일 목록을 별도 테이블로 낸다.
@@ -36,6 +45,7 @@ import java.util.UUID
  * | ② **무변경 보존** | V509 **이전에 있던** 보드의 근무일이 NULL 로 남는다 | **R6** |
  * | ③ 비근무일 테이블 | 복합 PK · FK CASCADE · FK 인덱스 | J39 · DATA.md §7 |
  * | ④ CASCADE 실측 | 보드를 지우면 고아 행이 안 남는다 | 조인 테이블 CASCADE 규약 |
+ * | ⑤ **허용값** | `time_tracking` 이 2종만 받는다 | **J36 · 형제 `board_type`** |
  *
  * ★ **② 가 이 클래스에서 가장 중요하다.** `working_days` 를 `NOT NULL DEFAULT '{MON..FRI}'` 로
  * 두면 배포 순간 **기존 모든 스프린트의 번다운이 바뀐다**(스펙 R6 · 데이터 모델 절의 ★).
@@ -44,6 +54,10 @@ import java.util.UUID
  *
  * ★ `time_tracking` 만 `NOT NULL DEFAULT 'NONE'` 인 이유는 그 기본값이 **현행 동작 그 자체**라서다.
  * 지금 어떤 보드도 시간 추적을 하지 않으므로 `NONE` 백필은 관측 가능한 변화를 만들지 않는다.
+ *
+ * ★ 그 `time_tracking` 의 **허용값은 DB CHECK 가 지킨다**(⑤). 형제 `board_type`(`V505:11`)이 같은 모양의
+ * 닫힌 열거형을 `boards_board_type_allowed` 로 지키고 있어, 같은 테이블의 같은 종류 칸 둘이
+ * 서로 다른 규율을 받지 않게 맞춘 것이다 — 판정 근거는 스펙이 아니라 **형제 칸**이다.
  *
  * 참조. `docs/specs/2026-09-05-board-settings-remaining-tabs-177.md` §데이터 모델 · R5·R6 ·
  * `docs/plans/2026-09-05-board-settings-remaining-tabs-177.md` Task 1 · DATA.md §4·§4.1·§7.
@@ -233,6 +247,50 @@ class BoardSettingsMigrationTest {
         }
     }
 
+    private fun updateTimeTracking(
+        boardId: UUID,
+        value: String,
+    ) {
+        conn().use { c ->
+            c.prepareStatement("UPDATE boards SET time_tracking = ? WHERE id = ?").use { ps ->
+                ps.setString(1, value)
+                ps.setObject(2, boardId)
+                ps.executeUpdate()
+            }
+        }
+    }
+
+    @Suppress("NestedBlockDepth")
+    private fun timeTrackingOf(boardId: UUID): String? =
+        conn().use { c ->
+            c.prepareStatement("SELECT time_tracking FROM boards WHERE id = ?").use { ps ->
+                ps.setObject(1, boardId)
+                ps.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
+
+    /** 테이블에 걸린 CHECK 제약 이름 목록. */
+    private fun checkConstraintNames(table: String): List<String> =
+        queryStrings(
+            """
+            SELECT c.conname
+            FROM pg_constraint c
+            JOIN pg_class t ON c.conrelid = t.oid
+            JOIN pg_namespace n ON t.relnamespace = n.oid
+            WHERE n.nspname = 'public' AND t.relname = ? AND c.contype = 'c'
+            """.trimIndent(),
+            table,
+        )
+
+    /** [block] 이 던진 SQLSTATE. 죽지 **않으면** null 이라 「통과해 버렸다」가 그대로 드러난다. */
+    private fun sqlStateOf(block: () -> Unit): String? =
+        try {
+            block()
+            null
+        } catch (e: SQLException) {
+            e.sqlState
+        }
+
     // ── ① 칸 3개 (R5) ──────────────────────────────────────────────────────────
 
     @Test
@@ -375,5 +433,38 @@ class BoardSettingsMigrationTest {
             }
 
         assertThat(orphans).isZero()
+    }
+
+    // ── ⑤ time_tracking 허용값 — 형제 `board_type` 과 같은 관용구 (J36) ───────
+
+    @Test
+    fun `time_tracking 에 그 밖의 값을 넣으면 CHECK 위반으로 죽는다`() {
+        val boardId = conn().use { c -> seedBoard(c, "TTBOGUS", "허용값 판정용 보드") }
+
+        // ★ SQLSTATE 값 동등으로 고정한다. isInstanceOf(SQLException) 로 두면
+        //   테이블·칸 부재(42P01·42703)까지 삼켜 단언이 공허해진다.
+        assertThat(sqlStateOf { updateTimeTracking(boardId, "BOGUS") })
+            .isEqualTo(CHECK_VIOLATION)
+    }
+
+    @Test
+    fun `NONE 과 REMAINING_AND_SPENT 는 각각 들어간다`() {
+        // ★ 위 부정 단언의 **대조군**이다. 「BOGUS 는 죽는다」만 두면
+        //   IN ('NONE') 처럼 너무 좁거나 아예 전부를 죽이는 제약도 그대로 통과한다.
+        val boardId = conn().use { c -> seedBoard(c, "TTALLOWED", "대조군 보드") }
+
+        listOf("NONE", "REMAINING_AND_SPENT").forEach { allowed ->
+            updateTimeTracking(boardId, allowed)
+            assertThat(timeTrackingOf(boardId)).isEqualTo(allowed)
+        }
+    }
+
+    @Test
+    fun `제약 이름이 형제 board_type 의 관용구를 따른다`() {
+        // V505:11 이 boards_board_type_allowed 로 잡은 <테이블>_<칸>_allowed 형식을 그대로 쓴다.
+        // 둘을 한 단언에 두는 이유는 이름이 곧 계약이기 때문이다 —
+        // 멱등 래퍼(plan Task 4)가 pg_constraint 를 이 이름으로 찾는다.
+        assertThat(checkConstraintNames("boards"))
+            .contains("boards_time_tracking_allowed", "boards_board_type_allowed")
     }
 }
