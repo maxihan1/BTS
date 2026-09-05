@@ -5,7 +5,9 @@ package com.bts.agileplanning.application
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.burndown.BurndownCalculator
 import com.bts.agileplanning.domain.burndown.BurndownPoint
+import com.bts.agileplanning.domain.burndown.WorkingDayCalendar
 import com.bts.agileplanning.repository.BoardSettingsRepository
+import com.bts.agileplanning.repository.BoardWorkingDays
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.burndown.SprintBurndownLookupPort
 import com.bts.shared.burndown.WorklogContribution
@@ -17,7 +19,10 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.Clock
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
@@ -32,6 +37,15 @@ import java.util.UUID
  * 2. 프로젝트 BROWSE 권한 판정 (403, [SprintApplicationService.get] 미러)
  * 3. start/end 기간 존재 검증 (422, [SprintDatesRequiredException])
  * 4. 계산 수행
+ *
+ * ## 일 귀속과 근무일 축은 보드 설정을 따른다 (부채 177 Task 12 · 스펙 R6·R10)
+ * worklog 를 어느 날짜 칸에 놓을지는 **보드 timezone** 이 정하고, 차트에 그릴 x축은 **보드 근무일**이
+ * 정한다. 둘 다 미설정이면 각각 UTC · 달력일 전부이며, 그때 이 서비스는 설정 기능이 없던 시절과
+ * 한 점도 다르지 않게 동작한다.
+ *
+ * ★"오늘"([clock])은 **여전히 UTC** 다. asOf = min(end, today) 의 경계가 보드 timezone 을 따르지 않아,
+ * 보드가 `Asia/Seoul` 인 스프린트의 마지막 하루는 최대 하루 늦게 채워질 수 있다. 이 task 의 범위는
+ * worklog 일 귀속이라 함께 옮기지 않았다(범위를 넘겨 고치면 기존 결정성 계약도 함께 바뀐다).
  *
  * ## 보안 그레인 (NFR5, 리뷰 C1 강화)
  * 권한 판정은 스프린트 소속 projectKey 에 대한 프로젝트 BROWSE 1회를 게이트로 수행한다.
@@ -80,15 +94,16 @@ class SprintBurndownService(
 
         val issueKeys = sprintRepository.findIssueKeys(sprintId).toSet()
         val source = burndownPort.fetchBurndownSource(issueKeys, sprint.projectKey, actorId)
-        val worklogByUtcDate = aggregateByUtcDate(source.worklogEntries)
+        val settings = boardSettingsRepository.findWorkingDays(sprint.boardId)
 
         val points =
             BurndownCalculator.calculate(
                 start = start,
                 end = end,
                 scopeSeconds = source.totalOriginalEstimateSeconds,
-                worklogByUtcDate = worklogByUtcDate,
+                worklogByUtcDate = aggregateByUtcDate(source.worklogEntries, resolveBoardZone(settings)),
                 today = LocalDate.now(clock),
+                workingCalendar = toWorkingCalendar(settings),
             )
 
         return SprintBurndownResult(
@@ -136,18 +151,60 @@ class SprintBurndownService(
     }
 
     /**
-     * [WorklogContribution] 목록을 UTC 날짜별 합계 맵으로 변환한다.
+     * [WorklogContribution] 목록을 **보드 timezone 기준** 날짜별 합계 맵으로 변환한다.
      *
-     * 포트가 이미 UTC 날짜별로 사전 집계해 반환하므로(1:1) 통상 그대로 매핑되지만,
-     * 중복 키가 존재할 가능성에 대비해 groupBy+sum 으로 안전하게 합산한다.
+     * 포트는 worklog 1건당 1항목을 시각 원본([WorklogContribution.startedAt])과 함께 나른다 —
+     * 어느 로컬 날짜 칸에 놓을지는 소비측인 이 서비스의 책임이다([SprintBurndownLookupPort] KDoc).
+     * [WorklogContribution.startedOnUtcDate] 는 UTC 축 파생값일 뿐이라 여기서 읽지 않는다.
+     *
+     * 합산은 여기 한 곳에서만 한다 — 포트도 합산하면 그것이 두 번째 진실이 된다.
      */
-    private fun aggregateByUtcDate(entries: List<WorklogContribution>): Map<LocalDate, Long> =
-        entries.groupBy({ it.startedOnUtcDate }, { it.timeSpentSeconds })
+    private fun aggregateByUtcDate(
+        entries: List<WorklogContribution>,
+        zone: ZoneId,
+    ): Map<LocalDate, Long> =
+        entries.groupBy({ LocalDate.ofInstant(it.startedAt, zone) }, { it.timeSpentSeconds })
             .mapValues { (_, values) -> values.sum() }
+
+    /**
+     * 보드 설정에서 일 귀속의 기준 timezone 을 얻는다.
+     *
+     * 미설정(또는 보드 미조회)이면 **UTC** 다 — 설정을 한 번도 만지지 않은 보드의 차트가
+     * 배포 순간 바뀌면 안 된다(스펙 E7).
+     * 값 검증(IANA 여부)은 저장 시점의 [WorkingDaysSettingsService] 가 이미 했다.
+     */
+    private fun resolveBoardZone(settings: BoardWorkingDays?): ZoneId =
+        settings?.timezone?.let(ZoneId::of) ?: ZoneOffset.UTC
+
+    /**
+     * 보드 설정을 [BurndownCalculator] 의 근무일 축 인자로 옮긴다.
+     *
+     * ★**[BoardWorkingDays.standardDays] 가 null 이면 통째로 null 을 준다** — 「미설정 = 달력일 전부」이고,
+     * 그때는 **비근무일만 등록된 보드도 비근무일을 무시한다**([WorkingDaysSettingsService] KDoc 이 정본).
+     * 근무일 축이 없는데 비근무일만 빼면 「설정한 적 없는 규칙」이 차트를 바꾸게 된다.
+     *
+     * 요일 키는 저장 시점에 `MON`..`SUN` 으로 정규화됐다. 해석 불가 키는 [WEEKDAY_BY_KEY] 에서
+     * 걸러지며, 그 경로는 저장 검증이 이미 막았으므로 여기서 별도 판정을 복제하지 않는다.
+     */
+    private fun toWorkingCalendar(settings: BoardWorkingDays?): WorkingDayCalendar? {
+        val standardDays = settings?.standardDays ?: return null
+        return WorkingDayCalendar(
+            standardDays = standardDays.mapNotNull(WEEKDAY_BY_KEY::get).toSet(),
+            nonWorkingDates = settings.nonWorkingDates.toSet(),
+        )
+    }
 
     companion object {
         private const val DATES_REQUIRED_MESSAGE =
             "스프린트 기간(start_date, end_date)이 설정되지 않아 번다운을 계산할 수 없습니다."
+
+        /**
+         * `boards.working_days` 의 3글자 요일 키 → [DayOfWeek].
+         *
+         * 칸이 `VARCHAR(3)[]` 라 `MONDAY` 가 아니라 `MON` 이 들어간다.
+         * 표기 정본은 [WorkingDaysSettingsService] 의 `WEEK_ORDER` 이고 여기는 그 역매핑이다.
+         */
+        private val WEEKDAY_BY_KEY: Map<String, DayOfWeek> = DayOfWeek.entries.associateBy { it.name.take(3) }
     }
 }
 
