@@ -359,8 +359,19 @@ Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 �
 **GREEN**. 뷰별 저장 + 4개 이상 400 + 미지원 필드 키 400 + 칸반에 `BACKLOG` 400.
 
 **REFACTOR**. 권한은 **기존 게이트를 그대로** 탄다 —
-`permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(projectKey))`.
+`permissionResolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project(projectKey))`.
 존재 확인 ↔ 권한 확인 **순서를 기존 경로와 같게** 유지한다(403/404 의미 뒤집힘 · 로컬은 항상 허용이라 안 보인다).
+
+★★**초판은 여기에 `SOFT_DELETE` 를 적었다. 자기모순이었다**(2026-09-06 정정).
+같은 문단이 「**기존 게이트를 그대로** 탄다」고 말하는데 기존 게이트는 `CREATE` 다 —
+`PATCH /boards/{id}`(이름·스윔레인) · `PATCH /boards/{id}/columns/{columnId}` · 퀵필터 CRUD 가 전부
+`IssuePermission.CREATE` 이고, **프론트도 `settings.tsx:103` 에서 `permissions.CREATE === true` 로
+편집 UI 를 연다.**
+
+**방치하면 무슨 일이 나는가.** `CREATE` 는 있고 `SOFT_DELETE` 는 없는 사용자가 설정 화면에서
+**편집 UI 를 보지만 저장하면 403** 을 받는다. 프론트가 CREATE 로 열어 주기 때문이다.
+Task 9 구현자가 이 근거를 대고 혼자 `CREATE` 를 골랐고, T8·T10·T13 은 계획대로 `SOFT_DELETE` 를 써서
+**같은 설정 화면의 네 탭이 서로 다른 권한을 요구하는 상태**가 됐다. 통일은 **Task 29** 가 진다.
 
 **검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardCardLayoutApiTest')`
 
@@ -849,7 +860,7 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`]
 - depends-on: [8, 9, 10, 13]
 - jira: []
 
@@ -868,6 +879,12 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 
 **즉 같은 설정 화면의 네 탭이 서로 다른 오류 봉투를 낸다.** 프론트 T16~T19 가 각자 다르게
 파싱해야 하고, 한 탭만 고치면 나머지가 조용히 어긋난다 — 이 저장소의 지배 결함 양식이다.
+
+★**권한코드 통일도 이 task 가 진다(2026-09-06 추가).** 실측 —
+`BoardEstimationController` 만 `CREATE` 이고 `BoardCardLayoutController` · `BoardWorkingDaysController` ·
+`BoardDetailViewController` 는 `SOFT_DELETE` 다. **`CREATE` 로 통일한다** — 근거는 Task 8 REFACTOR 절의
+정정 문단이다. 셋의 API 테스트가 권한코드를 단언하고 있으므로 **그 테스트도 함께 고쳐야 하고,
+그 파일들은 허용 범위 밖이다** → files 에 세 API 테스트를 더한다.
 
 **GREEN**. `assignableTypes` 에 네 컨트롤러를 더한다. 그러면 기존 `handleResponseStatus` 가
 받아 `AGILE_*` 봉투로 통일된다. **동시에 네 파일의 우회 주석과 T10 의 중복 advice 를 걷어낸다** —
