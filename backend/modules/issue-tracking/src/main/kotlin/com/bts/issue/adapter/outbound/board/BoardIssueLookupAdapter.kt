@@ -130,10 +130,19 @@ class BoardIssueLookupAdapter(
      * projectId 는 조회 결과의 [Issue.projectId] 에서 얻으므로 **추가 쿼리가 없다** —
      * `findProjectIdByKey` 를 부르면 `BoardIssueLookupCustomFieldsTest` C4/C5 의 SQL 문 수 가드가 깨진다.
      *
-     * ### 결과에 없는 프로젝트는 전량 제거(fail-closed)
+     * ### 호출부의 `orEmpty()` 는 **도달하지 않는 자리**다 — 살아 있는 가드가 아니다
      *
-     * 반환 맵에 없는 projectId 의 카드는 호출부 `orEmpty()` 로 커스텀 필드가 전부 사라진다.
-     * 판정을 못 받은 값을 그대로 내보내는 fail-open 이 되지 않게 하기 위함이다.
+     * 이 맵의 키 집합은 같은 [entries] 를 `groupBy { it.issue.projectId }` 한 결과이므로
+     * 호출부가 찾는 `it.issue.projectId` 집합과 **정확히 같다**. 따라서 조회는 null 이 될 수 없고
+     * `orEmpty()` 는 한 번도 실행되지 않는다. 「판정을 못 받은 프로젝트를 막는 fail-closed 방어선」이
+     * 여기 서 있다고 읽으면 **틀린다** — 어떤 테스트도 그 분기를 재지 못한다.
+     * `groupBy` 키 구성이 바뀌면 그때 살아나는 자리이므로 방어적 코딩으로 남겨 둘 뿐이다.
+     *
+     * 실제 안전은 두 곳에서 온다.
+     * 1. [FieldPermissionResolver.visibleFields] 가 던지면 예외가 그대로 전파돼 페이지 전체가 나가지 않는다.
+     * 2. 판정이 한 키도 통과시키지 않으면 빈 집합이 내려가 그 프로젝트 카드의 커스텀 필드가 전부 사라진다
+     *    (`BoardIssueLookupMaskingTest` M2 가 그 반대 방향 — 통과시킨 키가 남는 것 — 을 잰다).
+     *
      * 커스텀 필드가 한 건도 없으면 물을 것이 없으므로 판정을 건너뛴다(빈 집합 반환).
      *
      * @param entries 보드 조회 결과 행.
@@ -204,7 +213,7 @@ class BoardIssueLookupAdapter(
  *
  * [visibleCustomFields] 에 없는 키는 여기서 **제거**된다. `IssueResponse.maskInvisible` 의
  * 커스텀 필드 절과 같은 판정식(`FieldRef(CUSTOM, key) in visible`)을 쓴다 — 규칙을 새로 만들지 않는다.
- * 빈 집합이 들어오면 커스텀 필드는 전부 사라진다(불명은 거부).
+ * 빈 집합이 들어오면 남는 키가 없다 — 판정이 한 키도 통과시키지 않은 경우가 그렇다.
  *
  * @param visibleCustomFields 이 카드의 프로젝트에서 viewer 가 열람 가능한 커스텀 필드 [FieldRef] 집합.
  */
