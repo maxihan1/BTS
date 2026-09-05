@@ -173,7 +173,8 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             sut.createIssue(actor, makeCreateRequest())
 
             // reporter(actor) 가 watcher 로 등록됐는지 검증 (issueId 는 createIssue 내부 UUID.randomUUID())
-            verify { watcherRepository.add(any(), actor.value) }
+            // FR-MN-03 이후 autoWatch 는 배치 1문장이다 — 등록 대상은 그대로고 호출 형태만 바뀌었다.
+            verify { watcherRepository.addAll(any(), listOf(actor.value)) }
         }
 
         it("생성 시 projectLead 가 있으면 reporter + projectLead 모두 watcher 로 자동 등록된다") {
@@ -186,18 +187,18 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             sut.createIssue(actor, makeCreateRequest())
 
             // reporter(actor) 와 projectLead(assignee) 모두 watcher 로 등록됐는지 검증
-            verify { watcherRepository.add(any(), actor.value) }
-            verify { watcherRepository.add(any(), leadId) }
+            // 순서는 autoWatch 가 받는 listOfNotNull(reporter, assignee) 그대로다.
+            verify { watcherRepository.addAll(any(), listOf(actor.value, leadId)) }
         }
 
-        it("reporter 와 assignee 가 같으면 add 를 1번만 호출한다") {
+        it("reporter 와 assignee 가 같으면 등록 대상이 1명으로 접힌다") {
             // projectLead = actor UUID → resolvedAssignee = actor → distinct 후 add 1회
             every { projectLeadRepository.findLeadUserId(projectId) } returns actor.value
             every { repo.insert(any()) } answers { firstArg() }
 
             sut.createIssue(actor, makeCreateRequest())
 
-            verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
+            verify(exactly = 1) { watcherRepository.addAll(any(), listOf(actor.value)) }
         }
     }
 
@@ -218,7 +219,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
                 AppChangeAssigneeRequest(assigneeId = newAssigneeId, expectedVersion = 1L),
             )
 
-            verify { watcherRepository.add(existing.id.value, newAssigneeId) }
+            verify { watcherRepository.addAll(existing.id.value, listOf(newAssigneeId)) }
         }
 
         it("unassign(null) 이면 watcher 변경 없이 add 가 호출되지 않는다") {
@@ -236,6 +237,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             )
 
             verify(exactly = 0) { watcherRepository.add(any(), any()) }
+            verify(exactly = 0) { watcherRepository.addAll(any(), any()) }
         }
 
         it("재배정 A→B 시 B 가 watcher 로 추가되고 A 는 제거되지 않는다") {
@@ -255,7 +257,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             )
 
             // B 추가
-            verify { watcherRepository.add(existing.id.value, newAssigneeId) }
+            verify { watcherRepository.addAll(existing.id.value, listOf(newAssigneeId)) }
             // A 제거 없음
             verify(exactly = 0) { watcherRepository.remove(any(), any()) }
         }
@@ -282,7 +284,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             )
 
             // resolved projectLead → autoWatch 호출
-            verify { watcherRepository.add(issueIssueId, resolvedLeadId) }
+            verify { watcherRepository.addAll(issueIssueId, listOf(resolvedLeadId)) }
         }
 
         it("기존 assignee 가 있으면 자동재배정이 발동하지 않으므로 autoWatch 도 호출되지 않는다") {
@@ -302,6 +304,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
 
             // 기존 assignee 있음 → 자동재배정 미발동 → autoWatch 미호출
             verify(exactly = 0) { watcherRepository.add(any(), any()) }
+            verify(exactly = 0) { watcherRepository.addAll(any(), any()) }
         }
     }
 })

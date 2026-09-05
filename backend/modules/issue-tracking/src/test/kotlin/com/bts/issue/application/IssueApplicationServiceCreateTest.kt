@@ -458,16 +458,17 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
             it("None 이면 워처는 reporter 한 명뿐이다") {
                 sut.createIssue(actor, request.copy(assignee = AssigneeIntent.None))
 
-                verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
-                verify(exactly = 1) { watcherRepository.add(any(), any()) }
+                // FR-MN-03 이후 autoWatch 는 배치 1문장이다. 「reporter 한 명뿐」은
+                // 호출 횟수가 아니라 **넘긴 목록**으로 단언한다 — 그래야 인원수 판정이 유지된다.
+                verify(exactly = 1) { watcherRepository.addAll(any(), listOf(actor.value)) }
             }
 
             it("User 면 워처가 reporter 와 담당자 두 명이다") {
                 sut.createIssue(actor, request.copy(assignee = AssigneeIntent.User(explicitAssignee)))
 
-                verify(exactly = 1) { watcherRepository.add(any(), actor.value) }
-                verify(exactly = 1) { watcherRepository.add(any(), explicitAssignee) }
-                verify(exactly = 2) { watcherRepository.add(any(), any()) }
+                verify(exactly = 1) {
+                    watcherRepository.addAll(any(), listOf(actor.value, explicitAssignee))
+                }
             }
 
             // ──────────────────────────────────────────────────────────
