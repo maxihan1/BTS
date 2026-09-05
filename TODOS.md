@@ -8711,3 +8711,49 @@ Task 4 가 이번에 손으로 한 절차이고, 컬럼·제약·인덱스를 �
 **착수 시 주의.** 판별식을 만들면 **일부러 끊어 red 를 1회 봐라.** 그리고 뮤테이션 방향을 따져라 —
 이 자리에서 「숫자를 틀리게 바꾸면 red」는 당연하고, 물어야 할 것은 「**리스트를 늘렸는데 숫자를
 안 고쳤을 때** red 인가」다. 판별식이 실제로 막아야 하는 것은 그쪽이다.
+
+## 빌드 — `agile-planning` 이 선언한 detekt baseline 파일이 존재하지 않는다 (부채 177 에서 발견)
+
+**쉬운 말.** 빌드 설정이 「이 파일에 적힌 기존 위반은 봐준다」고 가리키는데, 그 파일이 없다. 봐줄 목록도 없고 막을 장치도 없는 상태다.
+
+**방치하면.** 정적 분석 부채가 **동결되지도 해소되지도 않은 채** 쌓인다. 새 위반과 기존 위반을 가를 방법이 없어서, 누가 새로 넣은 것인지 아무도 모른다.
+
+**무엇.** `backend/modules/agile-planning/build.gradle.kts:36-38`
+
+```kotlin
+// detekt — 신규 모듈로 PRE_EXISTING 위반 없음. 빈 baseline으로 시작.
+detekt {
+    baseline = file("detekt-baseline.xml")
+}
+```
+
+**그 파일이 모듈 디렉터리에 없다**(`.xml` 0건). 주석은 「빈 baseline **으로 시작**」이라 말하는데
+시작 자체를 안 했다. 형제는 실물을 갖고 있다 — `identity-access` 는 `detekt-baseline.xml` +
+`detekt-baseline-test.xml` 둘, `issue-tracking` 은 `detekt-baseline.xml`.
+
+**증상.** `:modules:agile-planning:detektTest` 가 red 다(부채 177 Task 4 실측 — 28건 보고,
+건수는 미검증). 지적은 `VarCouldBeVal` · `UseOrEmpty` · `NoNameShadowing` · `IgnoredReturnValue`
+류로 타입 해석 전용 룰이며 `BoardApplicationServiceTest` · `KanbanSprintMoveMigrationTest` ·
+`repository/*Test` 등 **선재 파일**에 몰려 있다.
+
+**왜 아무도 몰랐나 — 어떤 게이트도 이것을 안 돌린다.**
+`.github/workflows/backend-ci.yml` 의 gradle 호출 네 줄에 `detektTest` 도 `check` 도 없고
+(`:modules:<m>:test` · `app:test` · `app:nonProdAssemblyTest` · `ktlintCheck detekt --rerun-tasks`),
+`.husky/pre-push` 가 부르는 `push-backend-tests.ts:121` 도 `:modules:<m>:test` 만 돌린다.
+`detekt` 는 돌지만 `detektTest`(테스트 소스셋)는 안 돈다.
+
+**왜 지금인가.** 이 저장소가 이름 붙인 「선언과 실행이 어긋난다」 양식이다 —
+[[worktree-toolchain-three-traps-done]](#377)이 같은 모양이었다. 선언은 있고 실물이 없으니
+설정을 읽은 사람은 「동결돼 있다」고 믿고, 실제로는 아무것도 동결돼 있지 않다.
+
+**처방 후보.** ① `identity-access` 선례대로 `detektTest` 부채를 `detekt-baseline-test.xml` 로
+동결하고 `agile-planning` 에도 그 짝을 만든다 — 기존은 봐주고 **새 위반만** 막는다.
+② 28건을 실제로 고친다 — 대부분 기계적 수정(`VarCouldBeVal` 등)이라 어렵지 않지만
+소스 표면이 넓어진다. ③ baseline 선언을 지운다 — 사실에 맞지만 방어선이 0이 된다.
+
+①이 답이다. ③은 문서만 정직해지고 상태는 그대로다.
+
+**착수 시 주의.** baseline 을 생성하면(`./gradlew :modules:agile-planning:detektTestBaseline`)
+**그 순간의 위반이 통째로 동결된다.** 생성 전에 목록을 눈으로 보고, 진짜 부채와 지금 고칠 것을
+갈라라. 그리고 `detektTest` 를 게이트에 넣지 않으면 baseline 이 있어도 새 위반을 못 막는다 —
+①을 하면 `push-backend-tests.ts` 에 그 태스크를 더하는 것까지가 한 벌이다.
