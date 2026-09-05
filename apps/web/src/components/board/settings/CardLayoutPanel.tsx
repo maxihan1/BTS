@@ -104,6 +104,113 @@ interface FieldCandidate {
   label: string
 }
 
+/** ViewToggle props */
+interface ViewToggleProps {
+  /** 고를 수 있는 뷰. **둘 이상일 때만** 이 컴포넌트를 그린다(칸반은 하나뿐이다). */
+  views: readonly CardLayoutViewScope[]
+  /** 지금 편집 중인 뷰. */
+  value: CardLayoutViewScope
+  /** 뷰 전환. */
+  onChange: (next: CardLayoutViewScope) => void
+  /** 컨트롤 id 접두사 — 한 화면에 이 패널이 둘일 수 있으므로 `useId` 값을 받는다. */
+  idPrefix: string
+}
+
+/**
+ * 편집할 뷰를 고르는 토글 (J18).
+ *
+ * ★**Radix Tabs 가 아니라 RadioGroup 이다.** 이 화면은 이미 설정 5탭 안에 있어, 여기 Tabs 를
+ * 겹치면 `getByRole('tab')`·`getByRole('tabpanel')` 이 바깥 탭바와 섞인다 — 설정 화면의 기존
+ * 단언(`T-BS-9`·`T-BS-11`)과 E2E 셀렉터가 그 즉시 흔들린다. 「보드/백로그 중 하나를 고른다」는
+ * 의미상으로도 라디오다.
+ */
+function ViewToggle({ views, value, onChange, idPrefix }: ViewToggleProps): JSX.Element {
+  return (
+    <RadioGroup
+      aria-label={labels.viewGroupLabel}
+      value={value}
+      onValueChange={(next) => {
+        onChange(next as CardLayoutViewScope)
+      }}
+      className="flex flex-row gap-4"
+    >
+      {views.map((scope) => (
+        <div key={scope} className="flex items-center gap-2">
+          <RadioGroupItem id={`${idPrefix}-view-${scope}`} value={scope} />
+          <label
+            htmlFor={`${idPrefix}-view-${scope}`}
+            className="text-foreground flex min-h-11 cursor-pointer items-center text-sm md:min-h-8"
+          >
+            {VIEW_LABELS[scope]}
+          </label>
+        </div>
+      ))}
+    </RadioGroup>
+  )
+}
+
+/** FieldCandidateList props */
+interface FieldCandidateListProps {
+  /** 후보 목록. 표준·커스텀 두 목록이 같은 렌더를 쓴다. */
+  candidates: readonly FieldCandidate[]
+  /** 지금 고른 필드 키. */
+  selected: readonly string[]
+  /** 편집 자체가 잠겼는가 — 권한 없음(S7) 또는 저장 중(E8 잠금). */
+  locked: boolean
+  /** 상한 3개에 닿았는가. */
+  atLimit: boolean
+  /** 컨트롤 id 접두사. */
+  idPrefix: string
+  /** 후보 토글. `checked` 는 **누른 뒤**의 상태다. */
+  onToggle: (key: string, checked: boolean) => void
+}
+
+/**
+ * 후보 체크박스 목록.
+ *
+ * 표준 필드와 커스텀 필드가 **같은 렌더를 공유한다** — 둘을 따로 그리면 잠금 규칙(상한·권한·
+ * 저장 중)이 두 벌이 되고, 한쪽만 고친 날 커스텀 필드로 상한을 넘길 수 있게 된다.
+ */
+function FieldCandidateList({
+  candidates,
+  selected,
+  locked,
+  atLimit,
+  idPrefix,
+  onToggle,
+}: FieldCandidateListProps): JSX.Element {
+  return (
+    <ul className="mt-1">
+      {candidates.map((candidate) => {
+        const checked = selected.includes(candidate.key)
+        const controlId = `${idPrefix}-${candidate.key}`
+        return (
+          <li key={candidate.key} className="flex items-center gap-2">
+            <Checkbox
+              id={controlId}
+              checked={checked}
+              // 상한에 닿아도 **고른 것은 잠그지 않는다** — 잠그면 아무것도 바꿀 수 없는
+              // 막다른 골목이 된다.
+              disabled={locked || (atLimit && !checked)}
+              onCheckedChange={(next) => {
+                onToggle(candidate.key, next === true)
+              }}
+            />
+            {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
+                데스크톱은 목록 밀도를 위해 낮춘다 — `BacklogEpicPanel` 과 같은 결. */}
+            <label
+              htmlFor={controlId}
+              className="text-foreground flex min-h-11 flex-1 cursor-pointer items-center text-sm md:min-h-8"
+            >
+              {candidate.label}
+            </label>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 /** CardLayoutPanel props */
 export interface CardLayoutPanelProps {
   /** 보드 상세. `GET /boards/{id}` 응답을 그대로 받는다 — 설정 전용 조회 API 를 만들지 않았다. */
@@ -178,33 +285,6 @@ export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): 
     submit({ view, fields, previous: selected })
   }
 
-  /** 후보 한 줄. 목록이 둘(표준·커스텀)이라 렌더를 한 곳에 모은다. */
-  function candidateRow(candidate: FieldCandidate): JSX.Element {
-    const checked = selected.includes(candidate.key)
-    const controlId = `${domId}-${candidate.key}`
-    return (
-      <li key={candidate.key} className="flex items-center gap-2">
-        <Checkbox
-          id={controlId}
-          checked={checked}
-          // 상한에 닿아도 **고른 것은 잠그지 않는다** — 잠그면 아무것도 바꿀 수 없는 막다른 골목이 된다.
-          disabled={locked || (atLimit && !checked)}
-          onCheckedChange={(next) => {
-            handleToggle(candidate.key, next === true)
-          }}
-        />
-        {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
-            데스크톱은 목록 밀도를 위해 낮춘다 — `BacklogEpicPanel` 과 같은 결. */}
-        <label
-          htmlFor={controlId}
-          className="text-foreground flex min-h-11 flex-1 cursor-pointer items-center text-sm md:min-h-8"
-        >
-          {candidate.label}
-        </label>
-      </li>
-    )
-  }
-
   const customFields: FieldCandidate[] = (customFieldsQuery.data ?? []).map((field) => ({
     key: `${CUSTOM_FIELD_PREFIX}${field.key}`,
     label: field.name,
@@ -219,28 +299,10 @@ export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): 
         <p className="text-muted-foreground text-sm">{labels.description}</p>
       </header>
 
-      {/* 뷰 토글은 **스크럼에만** 있다. 칸반은 보드 뷰 하나뿐이라 고를 것이 없다(R3). */}
+      {/* 뷰 토글은 **스크럼에만** 있다. 칸반은 보드 뷰 하나뿐이라 고를 것이 없다(R3) —
+          그 판정은 [editableViews] 가 낸 목록의 길이 하나로 끝난다. */}
       {views.length > 1 && (
-        <RadioGroup
-          aria-label={labels.viewGroupLabel}
-          value={view}
-          onValueChange={(next) => {
-            setRequestedView(next as CardLayoutViewScope)
-          }}
-          className="flex flex-row gap-4"
-        >
-          {views.map((scope) => (
-            <div key={scope} className="flex items-center gap-2">
-              <RadioGroupItem id={`${domId}-view-${scope}`} value={scope} />
-              <label
-                htmlFor={`${domId}-view-${scope}`}
-                className="text-foreground flex min-h-11 cursor-pointer items-center text-sm md:min-h-8"
-              >
-                {VIEW_LABELS[scope]}
-              </label>
-            </div>
-          ))}
-        </RadioGroup>
+        <ViewToggle views={views} value={view} onChange={setRequestedView} idPrefix={domId} />
       )}
 
       {/* 실패는 **화면에 남는다.** 토스트만 띄우면 사용자가 저장된 줄 알고 화면을 떠난다. */}
@@ -269,7 +331,14 @@ export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): 
       <div className="ring-foreground/10 space-y-4 rounded-lg p-4 ring-1">
         <div>
           <h3 className="text-muted-foreground text-xs font-semibold">{labels.standardHeading}</h3>
-          <ul className="mt-1">{STANDARD_FIELDS.map((field) => candidateRow(field))}</ul>
+          <FieldCandidateList
+            candidates={STANDARD_FIELDS}
+            selected={selected}
+            locked={locked}
+            atLimit={atLimit}
+            idPrefix={domId}
+            onToggle={handleToggle}
+          />
         </div>
 
         <div>
@@ -306,7 +375,14 @@ export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): 
               // (`UnmappedStatesPanel` 의 빈 상태와 같은 온도 · 스펙 §8b).
               <p className="text-muted-foreground mt-2 text-sm">{labels.customEmpty}</p>
             ) : (
-              <ul className="mt-1">{customFields.map((field) => candidateRow(field))}</ul>
+              <FieldCandidateList
+                candidates={customFields}
+                selected={selected}
+                locked={locked}
+                atLimit={atLimit}
+                idPrefix={domId}
+                onToggle={handleToggle}
+              />
             ))}
         </div>
       </div>
