@@ -64,7 +64,7 @@ private const val WORKLOG_SECONDS = 21_600L
  * | 축 | 무엇을 재는가 | 왜 필요한가 |
  * |---|---|---|
  * | ① 일 귀속 | worklog 가 **보드 타임존** 날짜 칸에 들어간다 | 포트는 UTC [Instant] 원본만 나른다(Task 30) — 칸 배치는 이쪽 책임이다 |
- * | ② 근무일 배선 | 보드 설정의 근무일이 **응답 point 수**를 바꾼다 | [com.bts.agileplanning.domain.burndown.BurndownCalculator] 의 근무일 축이 프로덕션 호출자 0 이었다 |
+ * | ② 근무일 배선 | 보드 설정의 근무일이 **응답 point 수**를 바꾼다 | 계산기의 근무일 축이 프로덕션 호출자 0 이었다 |
  *
  * ★②가 이 파일의 숨은 핵심이다. Task 11 이 계산기에 근무일 축을 넣었지만 그 인자를 넘기는
  * 프로덕션 코드가 없어 **설정은 저장되는데 차트가 안 바뀌는** 상태였다(스펙 G2 가 피하려던 형태).
@@ -83,6 +83,34 @@ private const val WORKLOG_SECONDS = 21_600L
  *
  * 각 대조군은 [assertSoftly] 로 묶는다 — soft 가 아니면 앞쪽이 먼저 죽어 뒤쪽 판정이 **실행조차
  * 되지 않고**, 「한쪽만 깨는 뮤테이션이 반대쪽을 초록으로 남긴다」를 기계가 보여주지 못한다.
+ *
+ * ## 뮤테이션 검증 이력 — 재현 가능한 증거 (2026-09-06 실측)
+ *
+ * 「깨면 red 가 당연한 방향」이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**인지를 잰 기록이다.
+ * 재현 — [SprintBurndownService] 에 아래를 걸고
+ * `--tests '*BurndownTimezoneTest' --tests '*BurndownWorkingDaysTest' --tests '*SprintBurndownServiceTest'
+ * --no-build-cache` 로 돌린다.
+ *
+ * | # | 구현에 건 뮤테이션 | red 가 된 판정 | 그 뮤테이션이 **여전히 통과시키는** 것 |
+ * |---|---|---|---|
+ * | M1 | 일 귀속을 `startedOnUtcDate` 로 되돌린다(Task 12 이전) | 타임존 3건의 **뒤**쪽 arm | 미설정 대조군 · 낮 시각 · 근무일 2건 |
+ * | M2 | zone 설정을 무시하고 **무조건 +9** | 타임존 3건의 **앞**쪽 arm + 뉴욕 arm | 서울 arm · 낮 시각 · 근무일 2건 |
+ * | M3 | 버킷을 **무조건 하루** 뒤로 민다 | 타임존 4건 전부 + 해피패스 2건 | 근무일 2건 |
+ * | M4 | `workingCalendar = null` 고정(= 배선 누락, Task 12 이전) | 근무일 2건의 **뒤**쪽 arm | 타임존 4건 · 계산기 단위테스트 13건 전부 |
+ * | M5 | 미설정을 월~금으로 채운다 | 근무일 2건의 **앞**쪽 arm | 월~금 arm · 타임존 4건 |
+ * | M6 | `nonWorkingDates` 를 무시한다 | 비근무일 쌍의 뒤쪽 arm **1건만** | 나머지 5건 전부 |
+ *
+ * ★**M1 과 M2 가 서로를 가리지 않는다**(실측). 같은 세 테스트가 red 인데 **깨진 arm 이 반대**다 —
+ * M1 은 `Asia/Seoul(+9) 에서 …` 쪽, M2 는 `타임존 미설정 = UTC …` 쪽이다. 미설정 대조군을 빼면
+ * **M2 가 살아남는다**. 부호를 뒤집은 구현은 뉴욕 arm 이 잡는다(`+9` 만 재면 통과한다).
+ *
+ * ★**M3 은 낮 시각 테스트가 유일한 존재 이유다.** 경계를 넘는 입력만 두면 「무조건 하루 옮기는」
+ * 구현이 그 입력들에서는 우연히 맞는 답을 낼 수 있다 — 같은 칸이어야 하는 입력이 있어야 갈린다.
+ *
+ * ★**M4 는 이 파일이 없으면 아무도 못 잡는다**(실측 — M4 에서
+ * `BurndownWorkingDaysTest` 7건과 `BurndownCalculatorTest` 6건이 **전부 초록**이다).
+ * 계산기 단위테스트는 계산기를 직접 호출하므로 **배선 부재를 원리적으로 못 잡는다** —
+ * 그것이 「설정은 저장되는데 차트가 안 바뀐다」가 Task 11 이후에도 남아 있던 이유다.
  *
  * ## 시각 상수가 실제로 경계를 넘는지도 테스트가 직접 확인한다
  * 낮 시각으로 쓰면 두 타임존에서 같은 날이라 **판정을 지워도 통과하는** 공허한 테스트가 된다.
@@ -289,8 +317,10 @@ class BurndownTimezoneTest {
      *
      * completed 는 누적값이라 「어느 날 올랐는가」가 곧 일 귀속이다.
      */
-    private fun creditedDate(points: List<BurndownPoint>): LocalDate? =
-        points.firstOrNull { (it.completedSeconds ?: 0L) > 0L }?.date
+    private fun creditedDate(points: List<BurndownPoint>): LocalDate? = points.firstOrNull { it.credited() }?.date
+
+    /** 이 지점에 누적 completed 가 잡혔는가. 미래(=null) 는 잡히지 않은 것으로 본다. */
+    private fun BurndownPoint.credited(): Boolean = (completedSeconds ?: 0L) > 0L
 
     /**
      * 누적 completed 를 날짜별 증분으로 되돌린다 — 0 인 날은 버린다.

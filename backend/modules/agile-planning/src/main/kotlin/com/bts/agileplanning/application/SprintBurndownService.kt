@@ -40,8 +40,19 @@ import java.util.UUID
  *
  * ## 일 귀속과 근무일 축은 보드 설정을 따른다 (부채 177 Task 12 · 스펙 R6·R10)
  * worklog 를 어느 날짜 칸에 놓을지는 **보드 timezone** 이 정하고, 차트에 그릴 x축은 **보드 근무일**이
- * 정한다. 둘 다 미설정이면 각각 UTC · 달력일 전부이며, 그때 이 서비스는 설정 기능이 없던 시절과
- * 한 점도 다르지 않게 동작한다.
+ * 정한다.
+ *
+ * ### ★미설정의 뜻 — 「UTC · 달력일 전부」
+ *
+ * | 보드 설정 | 이 서비스가 하는 일 |
+ * |---|---|
+ * | `board_timezone` NULL | 일 귀속 기준이 **UTC** 다([resolveBoardZone]) |
+ * | `working_days` NULL | `workingCalendar = null` — 축은 **달력일 전부**([toWorkingCalendar]) |
+ * | `working_days` NULL + 비근무일 등록됨 | **비근무일을 무시**한다. 근무일 축이 없는데 구멍만 뚫으면 설정한 적 없는 규칙이 차트를 바꾼다 |
+ *
+ * 둘 다 미설정이면 이 서비스는 설정 기능이 없던 시절과 **한 점도 다르지 않게** 동작한다 —
+ * 아무도 설정을 만지지 않았는데 배포 순간 기존 스프린트의 차트가 바뀌면 안 되기 때문이다(스펙 R6·E7).
+ * 판정 정본은 [WorkingDaysSettingsService] 의 KDoc 이다.
  *
  * ★"오늘"([clock])은 **여전히 UTC** 다. asOf = min(end, today) 의 경계가 보드 timezone 을 따르지 않아,
  * 보드가 `Asia/Seoul` 인 스프린트의 마지막 하루는 최대 하루 늦게 채워질 수 있다. 이 task 의 범위는
@@ -101,7 +112,9 @@ class SprintBurndownService(
                 start = start,
                 end = end,
                 scopeSeconds = source.totalOriginalEstimateSeconds,
-                worklogByUtcDate = aggregateByUtcDate(source.worklogEntries, resolveBoardZone(settings)),
+                // 계산기 쪽 파라미터명은 `worklogByUtcDate` 로 남아 있다(다른 task 소유 파일이라 손대지 않는다).
+                // 실제로 담기는 것은 **보드 timezone 기준** 버킷이다 — 이름이 아니라 이 호출부가 정본이다.
+                worklogByUtcDate = aggregateByBoardDate(source.worklogEntries, resolveBoardZone(settings?.timezone)),
                 today = LocalDate.now(clock),
                 workingCalendar = toWorkingCalendar(settings),
             )
@@ -153,13 +166,19 @@ class SprintBurndownService(
     /**
      * [WorklogContribution] 목록을 **보드 timezone 기준** 날짜별 합계 맵으로 변환한다.
      *
+     * ★이름이 `...ByUtcDate` 로 남으면 거짓말이다. [zone] 이 UTC 인 것은 **보드가 미설정일 때뿐**이고,
+     * 설정된 보드에서는 UTC 가 아닌 날짜 칸이 나온다. 이름이 계약을 말하게 둔다.
+     *
      * 포트는 worklog 1건당 1항목을 시각 원본([WorklogContribution.startedAt])과 함께 나른다 —
      * 어느 로컬 날짜 칸에 놓을지는 소비측인 이 서비스의 책임이다([SprintBurndownLookupPort] KDoc).
      * [WorklogContribution.startedOnUtcDate] 는 UTC 축 파생값일 뿐이라 여기서 읽지 않는다.
      *
      * 합산은 여기 한 곳에서만 한다 — 포트도 합산하면 그것이 두 번째 진실이 된다.
+     *
+     * @param entries worklog 단건 기여 목록.
+     * @param zone 일 귀속의 기준 timezone([resolveBoardZone]). 미설정 보드에서는 UTC 다.
      */
-    private fun aggregateByUtcDate(
+    private fun aggregateByBoardDate(
         entries: List<WorklogContribution>,
         zone: ZoneId,
     ): Map<LocalDate, Long> =
@@ -169,12 +188,13 @@ class SprintBurndownService(
     /**
      * 보드 설정에서 일 귀속의 기준 timezone 을 얻는다.
      *
-     * 미설정(또는 보드 미조회)이면 **UTC** 다 — 설정을 한 번도 만지지 않은 보드의 차트가
+     * 미설정(null)이면 **UTC** 다 — 설정을 한 번도 만지지 않은 보드의 차트가
      * 배포 순간 바뀌면 안 된다(스펙 E7).
      * 값 검증(IANA 여부)은 저장 시점의 [WorkingDaysSettingsService] 가 이미 했다.
+     *
+     * @param timezone `boards.board_timezone` 값. null 이면 미설정.
      */
-    private fun resolveBoardZone(settings: BoardWorkingDays?): ZoneId =
-        settings?.timezone?.let(ZoneId::of) ?: ZoneOffset.UTC
+    private fun resolveBoardZone(timezone: String?): ZoneId = timezone?.let(ZoneId::of) ?: ZoneOffset.UTC
 
     /**
      * 보드 설정을 [BurndownCalculator] 의 근무일 축 인자로 옮긴다.
