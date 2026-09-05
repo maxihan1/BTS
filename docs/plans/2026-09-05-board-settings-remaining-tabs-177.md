@@ -349,7 +349,7 @@ Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 �
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/CardLayoutSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/CardLayoutSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`]
 - depends-on: [7]
 - jira: [J17, J18]
 
@@ -368,7 +368,7 @@ Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 �
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/EstimationSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardEstimationApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/EstimationSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardEstimationApiTest.kt`]
 - depends-on: [7]
 - jira: [J36, J37]
 
@@ -385,7 +385,7 @@ Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 �
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/WorkingDaysSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/WorkingDaysSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`]
 - depends-on: [7]
 - jira: [J38, J39, J40]
 
@@ -440,7 +440,7 @@ Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 �
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/DetailViewSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/DetailViewSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`]
 - depends-on: [7]
 - jira: [J46, J47, J48, J49]
 
@@ -858,6 +858,37 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
   `git add` 로 좁혀도 커밋 시점 인덱스에 남의 파일이 있으면 함께 커밋된다.
   **경로 한정 커밋**(`git commit -- <경로>`)을 쓰고 로그 파일명에 PID 를 붙인다
   ([[shared-worktree-git-index-defeats-narrow-git-add]] · 2026-09-04 실측).
+
+### ★T8·T9·T10·T13 은 탭별 컨트롤러를 각자 만든다 — `BoardController.kt` 를 키우지 않는다
+
+**2026-09-06 발견(계획 결함 9건째).** 초판은 T8 의 files 에만 `BoardController.kt` 가 있고
+T9·T10·T13 에는 없었다. 그런데 셋의 RED/GREEN 이 전부 **HTTP 응답 코드**를 잰다
+(T9 「칸반은 409」 · T10 「0개는 400」 · T13 「미지원 그룹 400」). **엔드포인트를 놓을 파일이
+없으면 셋 다 BLOCKED 된다.**
+
+**그렇다고 넷에게 `BoardController.kt` 를 주면 안 된다.** 두 가지 이유다.
+1. **T16~T19 의 `SettingsTabs.tsx` 와 같은 충돌** — 경로 한정 커밋으로 못 막는다. 넷이 병렬로
+   같은 파일을 편집하면 나중에 쓴 쪽이 앞선 것을 덮고, 각자 자기 탭만 테스트하므로
+   **덮인 엔드포인트의 테스트를 아무도 안 돌린다.**
+2. **부채 157 · 스펙 C-1** — `BoardController.kt` 는 **이미 651줄에 엔드포인트 11개**다.
+   4탭을 더하면 800줄이 된다. Task 7 이 `BoardRepository.kt` 를 안 키우려고 리포지터리를 뺀 것과
+   **같은 이유가 컨트롤러에도 그대로 적용된다.**
+
+**처방 — 탭별 컨트롤러. 이 BC 에 이미 선례가 셋이다.**
+`BoardQuickFilterController.kt` · `SprintBurndownController.kt` · `SprintVelocityController.kt` 가
+보드/스프린트 하위 기능을 별도 컨트롤러로 빼 둔 관용구다. **`BoardQuickFilterController.kt` 를
+먼저 읽고 경로 규칙·예외 처리·권한 게이트를 그대로 맞춰라.**
+
+| task | 컨트롤러 |
+|---|---|
+| T8 | `BoardCardLayoutController.kt` |
+| T9 | `BoardEstimationController.kt` |
+| T10 | `BoardWorkingDaysController.kt` |
+| T13 | `BoardDetailViewController.kt` |
+
+**이 갈래 덕에 넷을 병렬 dispatch 할 수 있다** — 파일이 하나도 겹치지 않는다.
+★단 `BoardExceptionHandler.kt` 는 넷 다 건드리지 마라. 기존 핸들러가 못 받는 예외가 필요하면
+**자의로 고치지 말고 보고하라** — 그 파일이 넷의 공유 자원이다.
 
 ### ★T16~T19 는 병렬 dispatch 하지 마라 — `SettingsTabs.tsx` 를 넷이 공유한다
 
