@@ -260,8 +260,8 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSettingsIdempotencyTest.kt`]
-- depends-on: [1, 2, 3]
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V509__board_settings_tabs.sql`, `backend/modules/agile-planning/src/main/resources/db/codegen/init_codegen.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSettingsIdempotencyTest.kt`]
+- depends-on: [1, 2, 3, 27]
 - jira: []
 
 **RED**. 같은 SQL 을 JDBC 로 재실행하면 죽는다.
@@ -733,9 +733,54 @@ T8 은 카드 레이아웃 **설정**이고 T20 은 프론트다. 백엔드 응�
 
 **검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardCardCustomFieldsApiTest')`
 
+### Task 27. time_tracking 에 CHECK 를 건다 — 형제 board_type 과 같은 관용구
+
+**메타**.
+- agent: `db-engineer`
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V509__board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSettingsMigrationTest.kt`]
+- depends-on: [1, 3]
+- jira: [J36]
+
+★**계획에 없던 task 다(2026-09-05 신설). 게이트 2 관찰에서 올라왔다.**
+★**T4 보다 먼저 실행한다** — 번호는 뒤지만 의존은 앞이다(아래 「T4 와의 관계」).
+
+**무엇이 문제였나.** `time_tracking` 은 `NONE` / `REMAINING_AND_SPENT` 2종으로 닫힌
+열거형인데 CHECK 가 없다. 형제 `board_type`(`V505:11`)은 같은 모양의 닫힌 열거형을
+`CONSTRAINT boards_board_type_allowed CHECK (board_type IN ('SCRUM', 'KANBAN'))` 로 지킨다.
+**같은 테이블의 같은 종류 컬럼 두 개가 서로 다른 규율을 받는다.**
+
+**T1 의 반론과 그 한계.** `V509:48-50` 이 「빠뜨린 것이 아니라 스펙 §데이터 모델이 CHECK 없이
+선언했기 때문」이라고 적었다. 사실 관계는 맞다. 그러나 그것은 **스펙이 옳다는 근거가 아니라
+스펙이 형제와 어긋난다는 증거**다. 스펙의 같은 절이 `board_card_layout_fields` ·
+`board_detail_view_fields` 에는 CHECK 를 명시했다는 사실은 「구분」이 아니라
+**「셋 중 하나만 빠졌다」**로도 똑같이 읽힌다. 판정 근거는 스펙이 아니라 **형제 컬럼**이다.
+
+**T4 와의 관계 — 서로를 강화한다.** 지금 V509 의 CHECK 는 전부 `CREATE TABLE` 인라인
+정의라 `ADD CONSTRAINT` 가 **한 줄도 없다.** 그래서 T4 의 GREEN 요구인
+「`ADD CONSTRAINT` 에는 `IF NOT EXISTS` 가 없으므로 `DO $$ ... pg_constraint ... $$` 로 감싼다」
+(부채 161 · #444 가 밟은 자리)는 **현재 공허하다 — 감쌀 대상이 없다.**
+T27 이 `boards_time_tracking_allowed` 를 추가하면 T4 가 실제 대상을 얻는다.
+따라서 **T27 → T4** 순서다. T4 의 `depends-on` 에 27 을 더한다.
+
+**RED**. `time_tracking = 'BOGUS'` UPDATE 가 통과한다.
+
+**GREEN**. `ALTER TABLE boards ADD CONSTRAINT boards_time_tracking_allowed
+CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'));`
+제약 이름은 형제 `boards_board_type_allowed` 의 관용구를 따른다.
+
+**REFACTOR**. `V509:48-50` 의 「CHECK 를 걸지 않았다」 주석을 **판정 근거와 함께 뒤집는다** —
+왜 스펙을 따르지 않고 형제를 따랐는지 남긴다. 주석이 코드와 반대로 남으면 그것이
+다음 사람을 속인다.
+
+**공허 방지**. 대조군을 한 쌍으로 둔다 — 「BOGUS 는 죽는다」만 있으면 「전부 죽이는」 제약도
+통과한다. 「`NONE` 과 `REMAINING_AND_SPENT` 는 각각 들어간다」를 함께 둔다.
+부정 단언은 SQLSTATE `23514` 값 동등으로 고정한다(T2 가 같은 자리에서 42P01 을 삼켰다).
+
+**검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSettingsMigrationTest')`
+
 ## Plan 메타
 
-- **task 수**: 24 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 27 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
@@ -752,7 +797,7 @@ T8 은 카드 레이아웃 **설정**이고 T20 은 프론트다. 백엔드 응�
 | J | task | J | task |
 |---|---|---|---|
 | J8 | T8 · T13 | J35 | T9 · T17 |
-| J12 | T16 | J36 | T1 · T9 · T17 · T23 |
+| J12 | T16 | J36 | T1 · T9 · T17 · T23 · T27 |
 | J13 | T17 | J37 | T9 · T17 · T23 |
 | J14 | T18 | J38 | T1 · T10 · T18 · T23 |
 | J15 | T19 · T21 | J39 | T1 · T10 · T18 · T23 |
