@@ -128,3 +128,13 @@ COMMENT ON COLUMN board_card_layout_fields.board_id   IS '소유 보드. 보드�
 COMMENT ON COLUMN board_card_layout_fields.view_scope IS 'BOARD / BACKLOG — 어느 뷰의 카드인가(J18). PK 에 들어가 있어 두 뷰의 구성이 서로를 밀어내지 않는다';
 COMMENT ON COLUMN board_card_layout_fields.position   IS '카드에서의 자리(0..2). ★상한 3(J17)을 개수가 아니라 값의 범위로 표현한 것이며, 복합 PK 의 중복 금지와 합쳐져 트리거 없이 상한이 닫힌다. 서비스 사전 검사는 이 제약을 대신하지 않는다(#444 X1)';
 COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또는 커스텀 필드 키. 고른 필드가 그 이슈에 없으면 그 카드에서만 생략한다 — 빈 칸을 그리지 않는다(스펙 E4)';
+
+-- ── ④ board_detail_view_fields — 상세 보기 탭 (J47·J48) ────────────────────────
+CREATE TABLE board_detail_view_fields (
+    board_id    UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
+    field_group VARCHAR(16)  NOT NULL,
+    position    SMALLINT     NOT NULL,
+    field_key   VARCHAR(128) NOT NULL,
+    PRIMARY KEY (board_id, field_group, position),
+    CHECK (field_group IN ('GENERAL', 'DATE', 'PEOPLE', 'LINKS'))
+);
