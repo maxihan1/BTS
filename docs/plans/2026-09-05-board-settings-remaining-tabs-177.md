@@ -845,9 +845,48 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 **검증**. 자기 클래스만 돌리지 말고 **패키지 전체**를 돌린다.
 `(cd backend && ./gradlew :modules:agile-planning:test --tests 'com.bts.agileplanning.migration.*')`
 
+### Task 29. 탭 컨트롤러 넷을 `BoardExceptionHandler` 아래로 모은다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`]
+- depends-on: [8, 9, 10, 13]
+- jira: []
+
+★**계획에 없던 task 다(2026-09-06 신설). Task 8·10·13 이 각자 독립으로 같은 벽에 부딪혀 보고했다.**
+
+**무엇이 문제인가.** `BoardExceptionHandler` 는
+`@RestControllerAdvice(assignableTypes = [BoardController::class, BoardQuickFilterController::class])` 라
+**신규 탭 컨트롤러 넷을 안 덮는다.** 그대로 `BoardNotFoundException`·`BoardAccessDeniedException`
+(둘 다 평범한 `RuntimeException`)을 던지면 **500 으로 변질된다.**
+
+**넷이 서로 다르게 우회했다.** 그 파일이 공유 자원이라 아무도 안 건드린 결과다.
+- T8·T13 — 오류 경로를 전부 `ResponseStatusException` 계열로 냈다. Spring 의
+  `ResponseStatusExceptionResolver` 가 상태 코드는 맞게 내지만 **본문이 RFC 7807(`AGILE_*`) 봉투가 아니다.**
+- T10 — `BoardWorkingDaysExceptionHandler` 를 컨트롤러 파일 안에 두고 `assignableTypes` 를
+  자기 하나로 좁혔다(`BacklogExceptionHandler` 관용구). catch-all 은 일부러 안 넣었다.
+
+**즉 같은 설정 화면의 네 탭이 서로 다른 오류 봉투를 낸다.** 프론트 T16~T19 가 각자 다르게
+파싱해야 하고, 한 탭만 고치면 나머지가 조용히 어긋난다 — 이 저장소의 지배 결함 양식이다.
+
+**GREEN**. `assignableTypes` 에 네 컨트롤러를 더한다. 그러면 기존 `handleResponseStatus` 가
+받아 `AGILE_*` 봉투로 통일된다. **동시에 네 파일의 우회 주석과 T10 의 중복 advice 를 걷어낸다** —
+우회가 남으면 「왜 이렇게 했는지」가 거짓으로 남고, advice 가 둘이면 어느 쪽이 이기는지 불명확하다.
+
+**RED**. 네 탭이 같은 오류 상황에서 **서로 다른 봉투**를 낸다. 네 탭에 같은 오류(없는 보드 404)를
+내고 응답 본문 구조가 같은지 단언한다 — 지금은 다르다.
+
+**REFACTOR**. `assignableTypes` 가 **컨트롤러를 열거하는 방식**이라 다섯 번째 탭이 생기면
+같은 자리를 또 밟는다는 사실을 KDoc 에 적는다. 열거를 패키지 스캔이나 공통 마커 인터페이스로
+바꾸는 것은 이 PR 범위 밖이므로 **후속으로 등재한다**(등재까지가 이 task 의 몫).
+
+**검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardCardLayoutApiTest' --tests '*BoardEstimationApiTest' --tests '*BoardWorkingDaysApiTest' --tests '*BoardDetailViewApiTest')`
+★네 탭의 기존 테스트가 **전부 초록으로 남아야 한다.** 봉투가 바뀌므로 본문을 단언하는 테스트가
+있으면 함께 고쳐야 하는데, **그것도 네 API 테스트 파일 안이라 허용 범위다.**
+
 ## Plan 메타
 
-- **task 수**: 28 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 29 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
