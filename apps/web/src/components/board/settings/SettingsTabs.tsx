@@ -39,11 +39,18 @@ function PendingPanel(): null {
   return null
 }
 
-/** 탭 트리거 5개. 순서가 곧 지라 Board settings 의 탭 순서다. */
+/**
+ * 탭 트리거 5개. 순서가 곧 지라 Board settings 의 탭 순서다.
+ *
+ * ★폭은 `w-fit`(프리미티브 기본)을 그대로 둔다. `w-full` 로 늘리면 1280px 에서 탭 하나가
+ * 190px 로 벌어져 형제 탭바(`IssueActivityTabs`·`WorkflowEditorTabs`)와 생김새가 갈린다 —
+ * 눈확인에서 실제로 그렇게 보였다. 대신 `max-w-full overflow-x-auto` 로 좁은 폭에서
+ * 줄바꿈 대신 가로 스크롤이 되게 한다(sm 375px 실측 — 라벨이 잘리지 않는다).
+ */
 function SettingsTabList(): JSX.Element {
   const { tabs } = boardLabels.settings
   return (
-    <TabsList aria-label={tabs.ariaLabel} className="w-full justify-start overflow-x-auto">
+    <TabsList aria-label={tabs.ariaLabel} className="max-w-full justify-start overflow-x-auto">
       <TabsTrigger value={TAB_VALUES.columns}>{tabs.columns}</TabsTrigger>
       <TabsTrigger value={TAB_VALUES.cardLayout}>{tabs.cardLayout}</TabsTrigger>
       <TabsTrigger value={TAB_VALUES.estimation}>{tabs.estimation}</TabsTrigger>
