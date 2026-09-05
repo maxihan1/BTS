@@ -1,9 +1,12 @@
--- jOOQ 코드 생성용 초기화 SQL (agile-planning BC) — V500~V506 테이블 구조 미러 (시드 제외, codegen은 구조만 필요)
+-- jOOQ 코드 생성용 초기화 SQL (agile-planning BC) — V500~V509 테이블 구조 미러 (시드 제외, codegen은 구조만 필요)
 -- boards / board_columns DDL은 V500__boards.sql + V501__board_wip_swimlane.sql + V502__board_swimlane_epic.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- sprints / sprint_issues DDL은 V503__sprints.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- board_quick_filters DDL은 V504__board_quick_filters.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- boards 의 board_type 은 V505__board_type.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- sprints 의 board_id 는 V506__sprint_board_id.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
+-- board_column_states / board_columns 의 state_key NULL 허용은 V508__board_column_states.sql 과
+--   동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성). ★V509 보다 먼저 들어온 선재 미러이고,
+--   위 V500~V506 줄들이 그때 함께 갱신되지 않아 1행 요약만 V506 에 멈춰 있었다.
 -- boards 의 설정 3칸 + board_non_working_dates / board_card_layout_fields / board_detail_view_fields 는
 --   V509__board_settings_tabs.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- ★ 이 정합은 이제 `scripts/workflow/codegen-mirror-parity.test.ts` 가 차집합으로 강제한다 — 주석에만 의존하지 않는다.

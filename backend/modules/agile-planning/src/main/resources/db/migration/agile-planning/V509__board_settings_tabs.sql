@@ -212,8 +212,11 @@ COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또�
 --
 -- ★ deleted_at 이 없다. ②·③ 과 같은 이유로 엔티티가 아니라 보드가 소유한 설정 값 목록이다.
 --
--- ★ 되돌리기 — 위 머리말의 DROP 목록에 이 한 줄을 더하면 완전 원복이다.
+-- ★ 되돌리기 — 이 테이블의 DROP 은 위 머리말의 목록이 **이미 센다**(④ 가 달린 줄).
 --     DROP TABLE board_detail_view_fields;
+--   한때 머리말이 ①②③ 만 세고 있어 여기에 「머리말 목록에 이 한 줄을 더하라」는 포인터를
+--   남겨 뒀었다. 머리말이 갱신되면서 그 전제가 사라졌으므로 문면을 사실에 맞췄다 —
+--   두 자리가 서로 다른 사실을 말하면 다음 사람은 둘 중 어느 쪽이 낡았는지 알 방법이 없다.
 CREATE TABLE IF NOT EXISTS board_detail_view_fields (
     board_id    UUID         NOT NULL REFERENCES boards (id) ON DELETE CASCADE,
     field_group VARCHAR(16)  NOT NULL,
