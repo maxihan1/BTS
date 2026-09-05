@@ -328,13 +328,13 @@
 **범위 — 3경로 × 2기능**. 이슈 수정(알림 기구현 · watcher 신규) · 이슈 생성(둘 다 신규) · 댓글 작성·수정(둘 다 신규).
 자기 멘션 제외 · 미존재 username 드롭 · `MAX_MENTIONS_PER_EVENT` 캡 · diff 기반(새로 추가된 멘션만)은 §4.1.1 `publishMentions` 규칙을 승계한다.
 
-- [ ] D1. 도메인 — 멘션 발행 지점 3곳 통합 · `IssueCommented` ↔ `IssueMentioned` 역할 분담 · watcher 자동 등록 진입점 (책임. backend-engineer)
-- [ ] D2. 명세 — 댓글 수정 diff 규칙 · `sourceField` 값 확장(description/comment) · 자동 watcher 멱등·해제 후 재멘션 정책 (책임. backend-engineer)
-- [ ] D3. 데이터 모델 — 기존 `issue_watchers` · `q_issue_events` 재사용 여부 확정 (신규 정책 시드 필요 시 명시) (책임. db-engineer)
-- [ ] D4. 백엔드 — `createIssue` · `CommentApplicationService` 멘션 발행 + 멘션 대상 watcher 자동 등록 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — TDD red-first. 3경로 × (알림 · watcher) + 자기멘션/미존재/캡/멱등 회귀 (책임. backend-engineer)
-- [ ] D6. 프론트 UI — 변경 0 예상(TipTap 자동완성·렌더링 기구현). 실측 후 확정 (책임. frontend-engineer)
-- [ ] D7. E2E — 댓글 멘션 → Inbox 도착 + watcher 목록 반영 (책임. qa-engineer)
+- [x] D1. 도메인 — `IssueMentioned` 재사용 확정(`IssueCommented` 는 automation 트리거 소관으로 분리 유지) · 대상 산출을 `MentionTargetResolver` 로 추출해 4경로 공유 (책임. backend-engineer) (완료. PR #456)
+- [x] D2. 명세 — 댓글 수정 diff · `MentionSource` 상수 2값 · 자동 watcher 멱등(해제 후 재멘션은 재추가 · 멘션 삭제 시 회수 안 함) · 클론 제외(E9) (책임. backend-engineer) (완료. PR #456)
+- [x] D3. 데이터 모델 — **마이그레이션 0 · 정책 시드 0**. `issue_watchers`·`q_issue_events` 재사용, V403 이 `sourceField` 무관하게 매칭. 이벤트 스키마만 `commentId` 1필드 추가(기본값 null = 큐 잔류 메시지 하위호환) (책임. db-engineer) (완료. PR #456)
+- [x] D4. 백엔드 — 4경로 발행 + 자동 watcher. `publishAndWatchMentions` 가 **같은 targets** 를 이벤트와 watcher 양쪽에 넘겨 E5(두 대상 갈림)를 구조로 막고, `IssueWatcherRepository.addAll` 배치 INSERT 로 캡 50 왕복을 1문장화 (책임. backend-engineer) (완료. PR #456)
+- [x] D5. 백엔드 테스트 — red-first(`test:` → `feat:`). Resolver 단위 9 · 이슈경로 13 · 댓글경로 8(Testcontainers 실 DB) · E1~E9 엣지 · pgmq 통합 G1-S3 · 뮤테이션 짝 4회 red 확인. issue-tracking 3520 tests 0 fail (책임. backend-engineer) (완료. PR #456)
+- [x] D6. 프론트 UI — **화면 변경 0**(TipTap 자동완성·렌더링이 이미 댓글·설명·생성 폼을 덮는다). MSW 만 백엔드를 미러해 확장하고, 멘션 헬퍼를 `mention-derive.ts` 리프 모듈로 내려 순환 의존을 끊었다 (책임. frontend-engineer) (완료. PR #456)
+- [x] D7. E2E — `issue-mention-render.spec.ts` S7(댓글 멘션 → Inbox 도착)·S8(분별 시드). S8 은 조회 실패를 삼키던 헬퍼 탓에 가짜 그린이었고 `fetchBobInboxStrict` 로 교정해 재뮤테이션에서 red 확인. 8/8 통과 (책임. qa-engineer) (완료. PR #456)
 
 ### §4.2 첨부 (FR-AC, 2개)
 
@@ -681,7 +681,7 @@ worklog 에는 automation 액션이 **0건**이라 이 질문 자체가 없었�
 
 ### BC 완료 조건
 
-- [ ] §2~§7 (38 FR) 모두 `[x]` 마킹 — 2026-07-27 실측(그 시점 37 FR): 완료 D 줄 260건 / 미완 D 줄 0건, FR 헤더 37건. **2026-09-05 재개방** — 멘션 확장 FR 신설(§4.1.3)로 미완 D 줄 7건이 생겼다.
+- [x] §2~§7 (38 FR) 모두 `[x]` 마킹 — 2026-07-27 실측(그 시점 37 FR): 완료 D 줄 260건 / 미완 D 줄 0건. 2026-09-05 멘션 확장 FR 신설(§4.1.3)로 7건이 열렸다가 **PR #456 으로 다시 닫혔다**.
 - [ ] §NFR 측정표 모든 항목 임계 통과 — 미측정. 위 측정값 기록표 13행의 실측 열이 전부 `___`. 측정 필요 — k6(조회/목록/생성/이동/히스토리) · Playwright(첨부 업로드·미리보기·이동 후 redirect 308) · Lighthouse CI(LCP/INP) · bundle-analyzer · axe-core · XSS 페이로드 10종
 - [ ] DATA.md §이슈키 영속성 자가 점검 — 부분 확인. 4규칙은 구현 확인됨(발번 `key_sequence` + `pg_advisory_xact_lock` · `old_key` PRIMARY KEY 로 재-redirect 차단 · `PERMANENT_REDIRECT` 308 · `deleted_at` 소프트 삭제). 미확인 1건 — DATA.md §2 "새 키 발급 시 `IssueKeyRedirect.new_key` 도 체크(옛 키와 충돌 방지)" 에 대응하는 명시적 검사가 `IssueMoveService.kt` 에 보이지 않음(시퀀스 단조 증가 + `issues.key` UNIQUE 에 의존). 이 1건 확인 후 체크. (2026-07-27 실측)
 - [x] CHANGELOG.md 정리 — 2026-07-27 실측: 저장소 루트 `CHANGELOG.md` `[Unreleased] — Phase 1 §BC 요약` 에 issue-tracking 행 존재 (2026-09-05 기준 37 완료 / 38 등록 · 2026-05-22~07-27 · PR 67건 · 대표 산출)

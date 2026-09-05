@@ -26,7 +26,7 @@ ADR 2건 대체 — `2026-05-21-workflow-yaml-vs-db-storage`(YAML 정본 → DB 
 
 > **2026-08-26 갱신.** 위 「전량 미착수」는 2026-08-18 시점의 기록이며 지금은 참이 아니다 — FR-WF-05 는 #398, FR-WF-04 는 #400 으로 완주했고, **FR-WF-06 은 #404 로 백엔드(D1·D2·D4·D5)만 닫혔다**(D3 은 V200 기존 테이블이라 비해당 확정 · D6~D7 편집 UI·E2E 는 후속 PR). 남은 미착수는 FR-WF-06 D6~D7 과 FR-WF-07 이다. 숫자만 올리면 시점 기록이 거짓이 되므로 원문은 두고 갱신을 덧붙인다 (`docs/plan/README.md §1` 이 쓰는 방식과 같다).
 
-> **2026-09-05 갱신.** **FR-MN-03 신설**로 145 FR 이 됐고 그 1건이 D 미착수다 — 멘션 알림 확장(댓글·이슈 생성)
+> **2026-09-05 갱신.** **FR-MN-03 신설·완주**(PR #456). 145 FR 전량이 D 단계를 마쳤다 — 멘션 알림 확장(댓글·이슈 생성)
 > + 멘션 자동 watcher. `docs/sdd/02-requirements.md` 가 FR-MN-01 을 「본문/**댓글** @멘션」으로 선언했는데
 > 구현 시점(PR #114)에 댓글 기능이 없어 이연했던 범위를 승계한다. 자동 watcher 는 **Jira Cloud 편차**(의도적) —
 > Jira autowatch 는 「본인 생성/본인 댓글」만 대상이고 멘션 자동 watcher 는 JRASERVER-27430 으로 2012년부터 미구현이다.
@@ -141,7 +141,7 @@ BC "완료 선언" 은 별개 절차다 — 각 BC 의 §NFR 측정표 · 이 �
 | BC | FR | 기간 | PR | 대표 산출 |
 |---|---|---|---|---|
 | identity-access | 25 (AU 10 · MF 5 · PM 10) | 2026-05-20 ~ 07-18 | 42 (#8~#134 외) | 플러그형 AuthN Provider · LDAP/SAML/OIDC SSO · TOTP/백업코드/WebAuthn MFA · 권한 스킴 · 감사 로그 |
-| issue-tracking | 37 완료 / 38 등록 (IS 10 · CM 4 · VR 4 · PJ 4 · AC 2 · MN 2 · CO 2 · LK 2 · HS 2 · TM 2 · MV 2 · WT 1 완료 + **MN-03 1 미착수**) | 2026-05-22 ~ 07-27 | 67 (#17~#316) | 이슈 CRUD/일괄편집/클론 · JSONB 커스텀 필드 · MinIO 첨부 · flexmark 멘션 · 이슈 이동+키 리다이렉트 · 프로젝트 CRUD · 댓글 |
+| issue-tracking | 38 (IS 10 · CM 4 · VR 4 · PJ 4 · AC 2 · **MN 3** · CO 2 · LK 2 · HS 2 · TM 2 · MV 2 · WT 1) | 2026-05-22 ~ 07-27 | 67 (#17~#316) | 이슈 CRUD/일괄편집/클론 · JSONB 커스텀 필드 · MinIO 첨부 · flexmark 멘션 · 이슈 이동+키 리다이렉트 · 프로젝트 CRUD · 댓글 |
 | project-workflow | 5 완료 / 7 등록 (WF 3 + WF-04·05 완료 · **WF-06 백엔드만 완료** · WF-06 D6~D7 과 WF-07 미착수) | 2026-05-22 ~ 08-26 | 13 (#10~#404 외) | YAML FSM 워크플로우 · 워크플로우/권한 스킴 · 스킴 배정 · **전역 상태 카탈로그 + 워크플로우 CRUD(#392·#393)** · **전환 ID 다중/전역 전환(#395·#398)** · **`/admin/workflows` 목록 + 목록 모드 편집기(#400)** · **전환 규칙(validator) CRUD API(#404)** |
 | agile-planning | 15 (BD 4 · TL 3 · BL 2 · EP 2 · TT 2 · PL 2) | 2026-06-19 ~ 06-29 | 15 (#168~#202) | @dnd-kit 칸반 · LexoRank 백로그 · 에픽 링크 · Gantt(자체 SVG) · 워크로그 |
 | notification-dashboard | 14 (NT 5 · RP 4 · DB 3 · UX 2) | 2026-06-11 ~ 07-03 | 28 (#118~#231) | STOMP WebSocket 알림 · Inbox 멱등 · 대시보드 가젯 · 공유 토큰 · 번다운/CFD/사이클타임 |

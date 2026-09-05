@@ -104,7 +104,7 @@ identity-access  ─┐
 | BC | 파일 | FR 수 | 기술 검증 (PoC) | 진척 |
 |---|---|---|---|---|
 | identity-access | [product/identity-access.md](product/identity-access.md) | 25 (AU 10 + MF 5 + PM 10) | AuthN Provider + Keycloak | ☑ D단계 |
-| issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 38 (IS 10 + CM 4 + VR 4 + AC 2 + MN 3 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☐ D단계 (FR-MN-03) |
+| issue-tracking | [product/issue-tracking.md](product/issue-tracking.md) | 38 (IS 10 + CM 4 + VR 4 + AC 2 + MN 3 + CO 2 + WT 1 + LK 2 + HS 2 + TM 2 + MV 2 + PJ 4) | (없음 — pgmq 이벤트 의존) | ☑ D단계 |
 | project-workflow | [product/project-workflow.md](product/project-workflow.md) | 7 (WF 7) | 워크플로우 FSM + pgmq 트랜잭션 | ☑ D단계 |
 | agile-planning | [product/agile-planning.md](product/agile-planning.md) | 15 (BD 4 + BL 2 + EP 2 + TL 3 + TT 2 + PL 2) | LexoRank + @dnd-kit 1K + Gantt 비교 | ☑ D단계 |
 | automation | [product/automation.md](product/automation.md) | 7 (AT 7) | (없음) | ☑ D단계 |
@@ -128,7 +128,9 @@ identity-access  ─┐
 > 위 「전량 완료」 문장은 2026-08-07 시점의 기록이며 지금은 참이 아니다 — 숫자만 올리면
 > 거짓 진술이 되므로 시점을 명시해 남긴다. project-workflow 진척 열이 `☐` 로 내려간 이유가 이것이다.
 >
-> 2026-09-05 갱신 — **FR-MN-03 신설**로 정본이 **144 → 145** 가 됐고 그 1건이 **D 미착수**다.
+> 2026-09-05 재갱신 — **FR-MN-03 완주**(PR #456). D 미착수는 다시 **0 건**이고 issue-tracking 진척 열도 `☑ D단계` 로 돌아왔다.
+>
+> 2026-09-05 갱신 — **FR-MN-03 신설**로 정본이 **144 → 145** 가 됐고 그 1건이 **D 미착수**였다.
 > 바로 아래 2026-09-03 의 「D 미착수 0 건 · 그 시점 정본 144 전량」 문장은 **그 시점의 기록**이며 지금은 참이 아니다 —
 > 숫자만 고치면 시점 기록이 거짓이 되므로 원문은 두고 갱신을 덧붙인다(2026-08-18 이 쓴 방식과 같다).
 > issue-tracking 진척 열이 `☐ D단계 (FR-MN-03)` 으로 내려간 이유가 이것이다.

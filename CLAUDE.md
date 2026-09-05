@@ -8,7 +8,7 @@
 Kotlin/Spring + React 19 · Naver Cloud 단일 호스트 · Maxi 1인 + Claude Code.
 backend 10 Gradle 모듈 = 9 BC(identity-access issue-tracking project-workflow shared-kernel agile-planning
 notification search-export-import slack-integration automation) + 배포 조립 `app` · 프론트 `apps/web` SPA.
-**진척** — **145 FR 중 144 D 단계 완료** · 미착수 1건 FR-MN-03(2026-09-05 신설 — 멘션 알림 확장 + 자동 watcher) · FR-BD-04 완주(보드 종류·활성 스프린트 보드 — #421 스키마·백엔드 · #422 종류 선택 UI · #424 보드 화면·백로그 스코프·E2E) · FR-WF-04 완료(#400) · FR-WF-05 완료(#398) · FR-WF-06 완료(백엔드 #404 · UI #407) · FR-WF-07 완주(초안·발행 #411 · 이관 실행 #414·#417 · UI #423·#427 · 다이어그램 #434). **D 단계 0 은 BC 완료 선언이 아니다** — 9 BC 모두 미선언이고 §NFR 측정이 공통 관문이다. 정본 `docs/plan/README.md`.
+**진척** — **145 FR 전량 D 단계 완료**(2026-09-05 · #456 으로 FR-MN-03 완주 — 멘션 알림이 댓글·이슈 생성까지 확장되고 멘션 대상이 자동 watcher 가 된다) · FR-BD-04 완주(보드 종류·활성 스프린트 보드 — #421 스키마·백엔드 · #422 종류 선택 UI · #424 보드 화면·백로그 스코프·E2E) · FR-WF-04 완료(#400) · FR-WF-05 완료(#398) · FR-WF-06 완료(백엔드 #404 · UI #407) · FR-WF-07 완주(초안·발행 #411 · 이관 실행 #414·#417 · UI #423·#427 · 다이어그램 #434). **D 단계 0 은 BC 완료 선언이 아니다** — 9 BC 모두 미선언이고 §NFR 측정이 공통 관문이다. 정본 `docs/plan/README.md`.
 
 ## 작업 티어 — 바꾼 경로가 절차를 정한다
 
