@@ -8588,3 +8588,77 @@ N 을 4 로 두든 6 으로 올리든 **진짜 신호를 함께 죽인다** — 
 **착수 시 주의.** 글로브를 더하면 「아무 파일도 안 걸리는 글로브는 red」를 `tier-floor.test.ts` 가
 강제하므로 실파일 대조가 함께 필요하다. 가드를 고칠 때는 일부러 끊어 red 를 1회 본다.
 
+
+## 보안 — 보드 카드 경로가 코어 필드를 마스킹하지 않는다 (FR-PM-07 두 번째 표면 · 부채 177 에서 발견)
+
+**쉬운 말.** 같은 사용자가 이슈 목록에서는 담당자가 가려져 보이는데, 보드 카드에서는 그대로 보인다. 두 화면이 같은 권한 규칙을 쓰지 않는다.
+
+**방치하면.** 열람 권한으로 가려야 할 담당자·라벨이 보드 화면으로 새어 나간다. 권한 설정을 한 관리자는 가려졌다고 믿는데 실제로는 한 화면에서만 가려진다.
+
+**무엇.** issue-tracking 의 REST 경로는 `IssueResponse.maskInvisible` 이 코어 필드도 거른다 —
+`labels`(`:181`) · `assigneeId`(`:197`). 그런데 cross-BC 포트가 내보내는 `BoardIssueView` 는
+`assigneeId` · `labels` · `summary` · `priority` 를 **원시 값으로** 싣고,
+`BoardCardResponse`(`BoardResponses.kt:220-230`)가 그대로 응답에 담는다.
+
+**왜 지금인가 — 같은 결함의 첫 번째 표면은 방금 닫혔다.** 부채 177 Task 25 가 **커스텀 필드**의
+같은 누출을 어댑터 마스킹으로 닫았다(스펙 C-6 · Maxi 확정 2026-09-05 「어댑터가 마스킹한다」).
+그때 Task 25 구현자가 「코어 필드는 여전히 원시로 나간다 — 같은 결함의 두 번째 표면」을 올렸고
+독립 검증도 확인했다. 커스텀 필드 쪽 처방(`resolveVisibleCustomFields` 가 프로젝트당 1회
+`FieldPermissionResolver.visibleFields` 를 부른다)이 그대로 본이 된다.
+
+**범위 밖이었던 이유.** 코어 필드는 **이 PR 이 만든 표면이 아니다** — `BoardCardResponse` 에
+`assigneeId` · `labels` 가 이전부터 있었다. 여기서 고치면 `BoardCardResponse` 를 읽는 모든 경로로
+리뷰 표면이 번진다. 어댑터 KDoc(`BoardIssueLookupAdapter.kt:54-55`)에 「코어 필드 마스킹은 이 경로
+범위 밖」을 명시해 **조용히 빠진 것이 아님**은 남겨 뒀다.
+
+**처방 후보.** ① 어댑터가 `buildCoreCandidates()` 까지 후보에 넣어 REST 와 같은 판정을 받는다 —
+`FieldVisibilityDecider.visibleFields` 가 후보를 필드별로 독립 평가하므로 커스텀 필드 판정은 안 바뀐다.
+② `BoardIssueView` 의 코어 필드를 nullable 로 바꿔 마스킹 결과를 표현한다 — 소비측 파급이 크다.
+①이 싸고 대칭적이다.
+
+**착수 시 주의.** 대조군을 **한 쌍**으로 둬라 — 「권한 없는 뷰어는 못 본다」만 두면 **전부 지우는**
+구현도 통과한다. Task 25 의 `BoardIssueLookupMaskingTest` 가 그 짝(M1/M3 ↔ M2)을 이미 갖고 있으니
+같은 양식을 복제하면 된다. 그리고 판정 호출 수를 페이지당 1회로 고정하는 축을 **따로** 세워라 —
+Task 6 의 쿼리 카운트 가드(C4·C5)는 SQL 문만 세므로 이 N+1 을 **구조적으로 못 잡는다**(부채 177 실측).
+
+**곁가지 1건.** `FieldPermissionResolver` 주입의 방어선이 「prod 에 `IdentityAccessFieldPermissionResolver`
+빈이 실재한다」 하나뿐이다. 생성자 기본값이 **빈 주입이 아니라 직접 인스턴스화**
+(`= AlwaysAllowFieldPermissionResolver()`)라 `@Profile("!prod")` 가 걸리지 않는다.
+`IssueApplicationService:154-157` · `IssueChangeItemMasker:51` 도 같은 규약이라 이 PR 이 만든 표면은
+아니지만, prod 프로파일에서 이 포트 구현 존재를 강제하는 부팅 가드가 없다.
+
+
+## 워크플로우 — `codegen-mirror-parity` 판별식이 새 테이블과 제약을 통째로 놓친다 (부채 177 에서 발견)
+
+**쉬운 말.** 마이그레이션과 jOOQ 미러가 어긋났는지 재는 검사가 있는데, **새로 만든 테이블은 아예 안 본다.** 미러에 이미 있던 테이블의 컬럼만 대조한다.
+
+**방치하면.** 새 테이블을 미러에 안 넣어도 판별식이 초록이다. jOOQ 상수가 생성되지 않아 그 테이블을 읽는 repository 가 컴파일되지 않는데, 그 사실이 **컴파일 시점까지 안 드러난다.**
+
+**무엇.** 부채 177 이 V509 로 컬럼 3개 + **새 테이블 3개** + `ADD CONSTRAINT` 1개를 더했다.
+판별식(`node --experimental-strip-types --test scripts/workflow/codegen-mirror-parity.test.ts`)이 red 인데
+잡아낸 것은 **컬럼 3개뿐**이다.
+
+```
+미러에 없음(=jOOQ 상수 미생성): boards.board_timezone, boards.time_tracking, boards.working_days
+미러에만 있음: 없음
+```
+
+`board_non_working_dates` · `board_card_layout_fields` · `board_detail_view_fields` 는 미러에 **하나도
+없는데** 목록에 안 나온다. `boards_time_tracking_allowed` 제약도 안 나온다.
+
+**왜 그런가 — 두 자리다.** ① `parseCreateTable` 이 `CONSTRAINT|CHECK` 로 시작하는 파트를 건너뛴다.
+② `applyAlters` 의 `NO_OP_ALTER` 정규식(`:132`)이 `ADD\s+(...|CONSTRAINT|CHECK)` 를 구조 변경
+화이트리스트로 흘려보낸다. 그리고 테이블 자체는 (테이블, 컬럼) 집합 비교라 **미러 쪽에 그 테이블이
+없으면 대조 대상에서 빠진다** — 차집합의 한쪽만 보는 셈이다.
+
+**왜 지금인가.** 「두 목록이 서로를 검사하지 않는다」의 변종이다. 이 저장소가 이미 이름 붙인 지배
+결함 양식이고, `init_codegen.sql:19-20` 이 형제 CHECK 둘(`boards_swimlane_field_allowed` ·
+`boards_board_type_allowed`)을 이미 미러하고 있어 **누락이 불균일로 남는다** — 기계가 안 잡는 채로.
+
+**처방 후보.** ① 테이블 집합도 차집합 양방향으로 대조한다(마이그레이션에만 있는 테이블 = red).
+② `ADD CONSTRAINT` 를 화이트리스트에서 빼고 제약 이름 집합을 대조한다.
+①이 먼저다 — 테이블 누락이 컴파일을 깨는 쪽이라 비용이 크다.
+
+**착수 시 주의.** 화이트리스트를 좁히면 기존 마이그레이션 전량이 red 가 될 수 있다. 먼저 현행
+차집합을 재서 **기존 누락이 몇 건인지** 확인하고, 많으면 베이스라인 등록 후 신규만 막는 래칫으로 가라.
+가드를 고칠 때는 일부러 끊어 red 를 1회 본다.
