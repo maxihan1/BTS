@@ -494,9 +494,14 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/CardLayoutPanel.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/CardLayoutPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.test.tsx`]
 - depends-on: [8, 15]
 - jira: [J17, J18]
+
+★**T15 가 남긴 계약(구현자 CONCERN C2).** `SettingsTabs.tsx` 안에 `PendingPanel`(아무것도
+렌더하지 않는 컴포넌트)이 있고 4개 `TabsContent` 가 그것을 부른다. 이 task 는 자기 탭의
+`<PendingPanel />` 을 자기 패널 호출로 **한 줄 교체**한다. 넷이 다 교체되면 `PendingPanel` 은
+사라진다 — **남아 있으면 그 자체가 미완의 표시**다.
 
 **RED**(동반 테스트). 4번째 필드를 고를 수 있다. 그리고 스크럼에서 뷰 전환이 없다.
 
@@ -512,7 +517,7 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/components/board/settings/EstimationPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/components/board/settings/EstimationPanel.test.tsx`]
 - depends-on: [9, 15]
 - jira: [J36, J37]
 
@@ -528,7 +533,7 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/WorkingDaysPanel.tsx`, `apps/web/src/components/board/settings/WorkingDaysPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/WorkingDaysPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/components/board/settings/WorkingDaysPanel.test.tsx`]
 - depends-on: [10, 15]
 - jira: [J38, J39, J40]
 
@@ -544,7 +549,7 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/DetailViewPanel.tsx`, `apps/web/src/components/board/settings/DetailViewPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/DetailViewPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/components/board/settings/DetailViewPanel.test.tsx`]
 - depends-on: [13, 15]
 - jira: [J46, J47, J48]
 
@@ -555,6 +560,10 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 (그 PR 이 BLOCKER B2 로 닫은 자리다).
 
 **REFACTOR**. 새 드래그 훅을 만들지 않는다(계약 §4 재사용 자산).
+★**T15 가 넘긴 C3 을 여기서 갚는다.** `settings.pageDescription` 이 「컬럼 구성과 워크플로우 상태
+매핑을 바꿉니다」로 남아 있어 탭 5개가 된 지금 낡았다. T15 가 **일부러** 안 고쳤다 — 문구에
+`작업일`·`상세 보기` 같은 탭 라벨을 넣으면 Playwright `getByText` 부분 일치가 탭과 설명문을
+동시에 잡아 T22~T24 셀렉터를 흔든다. **4탭이 다 붙는 이 시점**에 라벨과 겹치지 않는 문구로 고친다.
 
 **검증**. 눈확인: 드래그 중 순서 표시 — 라이트/다크
 
@@ -605,9 +614,17 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 ★**리뷰 CONCERN C4 로 쪼갰다.** 초판은 `depends-on: [16..21]` 이라 프론트 6개가 전부 끝나야
 E2E 가 시작하는 직렬 꼬리였다. 탭별로 나누면 T16 완료 시점에 첫 E2E 가 돈다.
 
-**RED**. 탭 전환 시나리오가 없다.
+★★**선행 수리 — 이 spec 은 지금 red 다(T15 구현자가 실측·증명).**
+`board-settings.spec.ts:38` 이 `fixtures/board-helpers.ts` 의 `boardActionsTrigger` 를
+**import 하지 않고 같은 이름으로 로컬 재정의**해 뒀고 스코프가 없다. `#454`(사이드바 보드 `⋯`)가
+들어오면서 헤더 `⋯` 와 접근성 이름이 바이트 단위로 같아져 S1 이 strict mode violation 으로 즉사한다 —
+**캠페인 위험 R10 이 실현된 것**이고 이 브랜치 변경과 무관하다(T15 가 `4fa2cfa84^` 로 되돌려 재현 확인).
+처방은 로컬 헬퍼 삭제 + `import { boardActionsTrigger } from './fixtures/board-helpers'` **한 줄**.
+이 수리를 GREEN 앞에 둔다.
 
-**GREEN**. 탭바 5탭 전환 + 카드 레이아웃 **뷰별 저장**(보드↔백로그에 서로 다른 구성).
+**RED**. 탭 전환 시나리오가 없다. 그리고 위 S1 이 red 다.
+
+**GREEN**. ①S1 수리(위 한 줄) ②탭바 5탭 전환 + 카드 레이아웃 **뷰별 저장**(보드↔백로그에 서로 다른 구성).
 ★보드 헤더 `⋯` 와 사이드바 보드 `⋯` 는 접근성 이름이 같다(캠페인 R10) —
 `apps/web/e2e/fixtures/board-helpers.ts` 의 **컨테이너 스코프 헬퍼를 그대로 쓴다**(`#450`).
 
