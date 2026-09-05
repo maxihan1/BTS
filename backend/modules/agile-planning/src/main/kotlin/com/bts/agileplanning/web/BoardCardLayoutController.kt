@@ -111,7 +111,13 @@ class BoardCardLayoutController(
         val board =
             boardRepository.findById(boardId)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다.")
-        if (!permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, IssueScope.Project(board.projectKey))) {
+        val allowed =
+            permissionResolver.hasPermission(
+                actor,
+                IssuePermission.SOFT_DELETE,
+                IssueScope.Project(board.projectKey),
+            )
+        if (!allowed) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다.")
         }
     }
