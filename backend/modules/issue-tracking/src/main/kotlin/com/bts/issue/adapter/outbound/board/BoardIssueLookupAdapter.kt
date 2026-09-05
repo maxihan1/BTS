@@ -117,8 +117,17 @@ class BoardIssueLookupAdapter(
  * epicKey 를 직접 전달한다 (CONCERN C1 반영 — Issue 도메인 우회).
  * 동일 프로젝트 에픽만 포함되며 cross-project 에픽은 null 이다 (P1-A 회귀방지).
  * 보드 카드 배치/정렬 + **표시**에 필요한 필드를 추출한다 (FR-UX-14 B2).
- * `typeKey` 는 조인 결과라 entry 에서, `labels`·`originalEstimateSeconds` 는 `ISSUES.fields()` 로
- * 이미 채워진 [Issue] 도메인에서 가져온다. 본문(`description`) 은 카드에 안 그려지므로 여전히 제외한다.
+ * `typeKey` 는 조인 결과라 entry 에서, `labels`·`originalEstimateSeconds`·`customFields` 는
+ * `ISSUES.fields()` 로 이미 채워진 [Issue] 도메인에서 가져온다.
+ * 본문(`description`) 은 카드에 안 그려지므로 여전히 제외한다.
+ *
+ * ### customFields 는 추가 조회 없이 실린다 (FR-IS-10)
+ *
+ * `issues.custom_fields` 는 JSONB **컬럼**이라 [IssueRepository.listVisibleForBoard] 의
+ * `ISSUES.fields()` 에 이미 포함돼 있고, `toIssue()` 가 맵으로 역직렬화해 도메인에 담아 준다.
+ * 따라서 조인도 카드당 조회도 늘지 않는다 — `BoardIssueLookupCustomFieldsTest` C4/C5 가
+ * 보드·백로그 두 경로에서 SQL 문 수 1회를 고정한다.
+ * 값의 **소유는 issue-tracking BC** 이며 소비측(agile-planning)은 미러 노출만 한다.
  */
 private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =
     BoardIssueView(
