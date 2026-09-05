@@ -112,8 +112,7 @@ class BoardWorkingDaysApiTest {
         ): BoardWorkingDaysController = BoardWorkingDaysController(service, boardRepository, gate)
 
         @Bean
-        open fun boardWorkingDaysExceptionHandler(): BoardWorkingDaysExceptionHandler =
-            BoardWorkingDaysExceptionHandler()
+        open fun boardWorkingDaysExceptionHandler() = BoardWorkingDaysExceptionHandler()
     }
 
     /** allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub. */

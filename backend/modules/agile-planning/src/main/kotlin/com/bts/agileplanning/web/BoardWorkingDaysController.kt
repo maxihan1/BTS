@@ -35,9 +35,19 @@ import java.util.UUID
 /**
  * 작업일 탭 저장 요청 바디.
  *
- * @property standardDays 표준 근무일 요일 키(`MON`..`SUN`).
- * @property nonWorkingDates 비근무일(ISO `yyyy-MM-dd`).
- * @property timezone IANA 타임존.
+ * ## ★ `standardDays` 의 null 과 `[]` 는 다른 뜻이다 (스펙 R6)
+ * **null(또는 키 생략) = 미설정 = 달력일 전부**이고 200 이다. **`[]` = 근무일 0개**라 400 이다.
+ * 두 값을 뭉개는 클라이언트는 「근무일을 안 쓰겠다」는 뜻으로 `[]` 를 보내는데, 그것은
+ * 번다운 ideal 선의 0 나눗셈이다(E1). 근무일을 쓰지 않으려면 **값을 비우지 말고 키를 빼라.**
+ *
+ * Bean Validation 어노테이션을 달지 않는다 — 허용값 판정을 [WorkingDaysSettingsService] 한 곳에
+ * 모아 두 자리가 갈리지 않게 한다([com.bts.agileplanning.web.dto.CreateBoardRequest.boardType] 과
+ * 같은 판단). 위반은 named exception 으로 400 이 된다.
+ *
+ * @property standardDays 표준 근무일 요일 키(`MON`..`SUN`). **null = 미설정**(≠ 빈 리스트).
+ * @property nonWorkingDates 비근무일(ISO `yyyy-MM-dd`). 중복은 서버가 제거한다.
+ *   키를 생략하면 **기존 비근무일이 전부 지워진다** — PUT 은 교체이지 부분 갱신이 아니다.
+ * @property timezone IANA 타임존. null = 미설정(UTC).
  */
 data class WorkingDaysRequest(
     val standardDays: List<String>? = null,
@@ -46,11 +56,14 @@ data class WorkingDaysRequest(
 )
 
 /**
- * 작업일 탭 응답 바디.
+ * 작업일 탭 응답 바디 — **정규화된 뒤의** 실제 저장값이다.
  *
- * @property standardDays 저장된 표준 근무일. null 이면 미설정이다.
+ * 요청과 응답이 다를 수 있다. 중복 비근무일은 제거되고 요일은 주 순서로 정렬된다.
+ * 되돌려주는 이유가 그것이다 — 사용자가 자기가 무엇을 저장했는지 알아야 한다.
+ *
+ * @property standardDays 저장된 표준 근무일. **null 이면 미설정 = 달력일 전부**(R6).
  * @property nonWorkingDates 저장된 비근무일(오름차순 · 중복 없음).
- * @property timezone 저장된 IANA 타임존. null 이면 미설정(UTC)이다.
+ * @property timezone 저장된 IANA 타임존. null 이면 미설정(UTC).
  */
 data class WorkingDaysResponse(
     val standardDays: List<String>?,
@@ -110,6 +123,11 @@ class BoardWorkingDaysController(
     /**
      * 작업일 설정 세 값을 통째로 저장한다.
      *
+     * ★**미설정(NULL) = 달력일 전부다.** `standardDays` 를 보내지 않거나 null 로 보내면 200 이고
+     * `working_days` 에 SQL NULL 이 들어간다 — 그 보드의 번다운은 x축도 ideal 선의 분모도
+     * **달력일 수** 그대로다(R6). 「근무일 0개(`[]`)」와 뜻이 다르고 그쪽은 400 이다(E1).
+     * 판정의 정본과 근거는 [WorkingDaysSettingsService] KDoc 에 있다.
+     *
      * @param boardId path variable 대상 보드 UUID.
      * @param request 저장 요청 바디.
      * @return 200 OK + 정규화된 [WorkingDaysResponse].
@@ -148,12 +166,8 @@ class BoardWorkingDaysController(
     private fun requireSettingsAccess(boardId: UUID) {
         val actor = currentActorId()
         val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
-        if (!permissionResolver.hasPermission(
-                actor,
-                IssuePermission.SOFT_DELETE,
-                IssueScope.Project(board.projectKey),
-            )
-        ) {
+        val scope = IssueScope.Project(board.projectKey)
+        if (!permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE, scope)) {
             throw BoardAccessDeniedException()
         }
     }
