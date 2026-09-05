@@ -379,6 +379,19 @@ class BoardSchemaMigrationTest {
         assertThat(tableExists("boards")).isTrue()
     }
 
+    // ★ RED (2026-09-06 실측) — 이 테스트는 지금 실패한다. V509(부채 177 Task 1)가 boards 에
+    //   time_tracking · working_days · board_timezone 3칸을 더했는데 BOARDS_COLUMNS_V501 은
+    //   그대로라 완전 일치가 깨졌다. 아래가 실제 실패 원문이고 방향이 **unexpected** 다 —
+    //   테스트가 모르는 컬럼이 DB 에 있다(반대 방향이면 원인 진단이 틀린 것이다).
+    //
+    //     Expecting actual:
+    //       [..., "swimlane_field", "board_type", "time_tracking", "working_days", "board_timezone"]
+    //     to contain exactly in any order:
+    //       [..., "swimlane_field", "board_type"]
+    //     but the following elements were unexpected:
+    //       ["time_tracking", "working_days", "board_timezone"]
+    //
+    //   재현. (cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSchemaMigrationTest')
     @Test
     fun `V501 boards 7개 컬럼 존재 (swimlane_field 추가)`() {
         assertThat(columnsOf("boards"))
