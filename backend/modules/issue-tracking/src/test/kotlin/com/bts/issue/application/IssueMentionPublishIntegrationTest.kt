@@ -299,6 +299,38 @@ class IssueMentionPublishIntegrationTest {
             }
 
         @Bean
+        open fun commentRepository(dsl: DSLContext): com.bts.issue.comment.repository.CommentRepository =
+            com.bts.issue.comment.repository.CommentRepository(dsl)
+
+        /**
+         * FR-MN-03 — 댓글 경로의 pgmq 실증용. historyRecorder 는 이 테스트의 관심사가 아니라 목이고,
+         * 나머지는 실물이다(발행 경로를 목으로 덮으면 실증이 아니다).
+         */
+        @Bean
+        open fun commentApplicationService(
+            commentRepository: com.bts.issue.comment.repository.CommentRepository,
+            repo: IssueRepository,
+            permissionResolver: AlwaysAllowIssuePermissionResolver,
+            eventPublisher: IssueEventPublisher,
+            dsl: DSLContext,
+            userLookupPort: UserLookupPort,
+            clock: Clock,
+        ): com.bts.issue.comment.application.CommentApplicationService =
+            com.bts.issue.comment.application.CommentApplicationService(
+                commentRepository,
+                repo,
+                permissionResolver,
+                eventPublisher,
+                com.bts.issue.project.archive.ProjectArchiveGuard(
+                    com.bts.issue.project.archive.repository.ProjectArchiveStateRepository(dsl),
+                ),
+                mockk(relaxed = true),
+                clock,
+                userLookupPort,
+                com.bts.issue.watcher.repository.IssueWatcherRepository(dsl),
+            )
+
+        @Bean
         @Suppress("LongParameterList")
         open fun issueApplicationService(
             repo: IssueRepository,
@@ -335,6 +367,9 @@ class IssueMentionPublishIntegrationTest {
 
     @Autowired
     lateinit var issueApplicationService: IssueApplicationService
+
+    @Autowired
+    lateinit var commentApplicationService: com.bts.issue.comment.application.CommentApplicationService
 
     @Autowired
     lateinit var objectMapper: ObjectMapper
@@ -635,4 +670,49 @@ class IssueMentionPublishIntegrationTest {
             TestConfig.postgres.username,
             TestConfig.postgres.password,
         )
+
+    // ── G1-S3: 댓글 멘션 → pgmq (FR-MN-03) ────────────────────────────────────
+
+    /**
+     * G1-S3 — 댓글 본문의 멘션이 실제로 `q_issue_events` 에 실리는지 (FR-MN-03).
+     *
+     * 두 반쪽은 각각 이미 증명돼 있다 — `IssueDomainEventTest` 가 sourceField=comment +
+     * commentId 라운드트립을, G1-S1 이 publisher → pgmq 경로를. **검증되지 않은 것은 그 합성**이고,
+     * 이 저장소의 지배 결함이 「두 목록이 서로를 검사하지 않는다」이므로 합성을 직접 잰다.
+     *
+     * Given  이슈 1건
+     * When   댓글 "@bob 확인" 작성
+     * Then   q_issue_events 에 sourceField="comment" · commentId non-null 인 issue.mentioned 가 있다
+     */
+    @Test
+    fun `G1-S3 댓글 멘션 - q_issue_events에 sourceField=comment 로 enqueue된다`() {
+        val issueKey = insertIssue(PROJECT_KEY, "댓글 멘션 통합 검증 이슈", "open", description = null)
+
+        val comment =
+            commentApplicationService.create(
+                ACTOR_ID,
+                com.bts.issue.domain.IssueKey(issueKey),
+                "@bob 확인 부탁드립니다",
+            )
+
+        val mentionedEvent = readMentionedEventFromQueue()
+
+        check(mentionedEvent != null) {
+            "댓글 작성 후 q_issue_events 에 issue.mentioned 가 없습니다. " +
+                "CommentApplicationService 가 실제 pgmq.send 까지 도달하지 못했을 수 있습니다."
+        }
+
+        check(mentionedEvent.sourceField == "comment") {
+            "sourceField 가 'comment' 여야 하지만 '${mentionedEvent.sourceField}' 입니다."
+        }
+
+        check(mentionedEvent.commentId == comment.id) {
+            "commentId 가 작성된 댓글이어야 하지만 ${mentionedEvent.commentId} 입니다."
+        }
+
+        check(TestConfig.BOB_ID in mentionedEvent.mentionedUserIds) {
+            "mentionedUserIds 에 BOB_ID 가 없습니다. actual=${mentionedEvent.mentionedUserIds}"
+        }
+    }
+
 }
