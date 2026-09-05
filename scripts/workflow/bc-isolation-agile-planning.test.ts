@@ -25,6 +25,17 @@
 // ①이 사라지는 날(누가 `implementation(project(":modules:issue-tracking"))` 를 넣는 날)이
 // 이 판별식의 값이 오르는 날이다. 그날이 오기 전까지 이것은 **싸고 빠른 사전 경보**지
 // 유일한 방어선이 아니다.
+//
+// ## ★못 보는 축 — 이것으로 「BC 가 격리돼 있다」를 증명하지 마라
+//
+//   - **포트 경유 결합 그 자체.** 이 PR 의 실제 결합이 그것이고, 여기서는 보이지 않는다.
+//     `BoardIssueViewFieldSetTest` 가 진다.
+//   - **리플렉션·문자열 경유 의존.** `Class.forName("com.bts.issue…")` · jOOQ 생성 클래스
+//     이름 문자열 · 타 BC 테이블명을 문자열로 읽는 SQL 은 줄머리가 `import` 가 아니라 안 잡힌다.
+//   - **gradle 의존 선언.** `build.gradle.kts` 에 issue-tracking 이 추가되는 순간은 안 본다.
+//     그 뒤로 **쓰이는** 의존은 ArchUnit 이, **안 쓰여 바이트코드에 안 남는** import 줄은
+//     이 파일이 잡는다 — 둘 다 필요한 이유다.
+//   - **`src/test`.** 훑지 않는다. 테스트에는 픽스처가 살고, 픽스처의 import 는 위반이 아니다.
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'

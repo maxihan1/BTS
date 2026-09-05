@@ -35,6 +35,20 @@ import kotlin.reflect.full.memberProperties
  *
  * `containsAll` 로 두면 필드가 늘어도 초록이라 판별식이 존재 의미를 잃는다.
  * 그래서 양방향 차집합 0(= [org.assertj.core.api.IterableAssert.containsExactlyInAnyOrderElementsOf])만 쓴다.
+ *
+ * ### ★이 판별식이 못 보는 축 — 과신하지 마라
+ *
+ * 재는 것은 **이름 집합 하나**다. 아래는 전부 이 테스트가 초록인 채로 통과한다.
+ *
+ * - **의미 변경.** 이름은 그대로인데 뜻이 달라지는 경우. [BoardIssueView.customFields] 가
+ *   「뷰어 권한으로 마스킹된 값」에서 「원본 값」으로 바뀌어도 필드 이름은 `customFields` 그대로다.
+ *   그 축은 어댑터 쪽 테스트(issue-tracking 의 마스킹 테스트)가 져야 한다.
+ * - **타입 변경.** `Map<String, Any?>` 가 `Map<String, String>` 이 되어도 이름 집합은 같다.
+ *   넓히려면 [kotlin.reflect.KProperty.returnType] 을 함께 고정해야 한다.
+ * - **값이 실제로 채워지는가.** 어댑터가 매핑을 빠뜨려 늘 빈 맵이 와도 이 테스트는 초록이다.
+ * - **리플렉션·문자열 경유 의존.** `Class.forName("com.bts.issue…")` 나 타 BC 테이블 이름을
+ *   문자열로 직접 읽는 경로는 이 테스트도, 자매 판별식
+ *   `scripts/workflow/bc-isolation-agile-planning.test.ts` 도 못 본다.
  */
 class BoardIssueViewFieldSetTest {
     /**
