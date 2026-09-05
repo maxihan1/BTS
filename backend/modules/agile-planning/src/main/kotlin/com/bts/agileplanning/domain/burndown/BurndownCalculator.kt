@@ -4,7 +4,6 @@ package com.bts.agileplanning.domain.burndown
 
 import java.time.DayOfWeek
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 
 /**
  * 스프린트 번다운(Burndown) / 번업(Burnup) 시계열을 계산하는 순수 함수.
@@ -37,7 +36,9 @@ object BurndownCalculator {
      * @param worklogByUtcDate UTC 날짜별 worklog 시간 합(초). [start] 이전 키는 이 함수 안에서
      *   start 버킷에 합산된다.
      * @param today "오늘" 날짜(UTC). asOf = min(end, today) 산출에 사용한다.
-     * @return date 오름차순으로 정렬된 [BurndownPoint] 목록. [start]~[end] 각 일자 1개씩, 총 (일수) 개.
+     * @param workingCalendar 보드 「작업일」 설정. **null 이면 미설정이고 달력일 전부가 축이다**(스펙 R6).
+     * @return date 오름차순으로 정렬된 [BurndownPoint] 목록. [workingCalendar] 가 null 이면 [start]~[end]
+     *   각 일자 1개씩(총 일수 개), 아니면 그 구간의 **근무일** 1개씩이다.
      * @throws IllegalArgumentException [start] 가 [end] 보다 이후이거나 [scopeSeconds] 가 음수인 경우.
      */
     fun calculate(
@@ -51,26 +52,57 @@ object BurndownCalculator {
         require(!start.isAfter(end)) { "start ($start) must not be after end ($end)." }
         require(scopeSeconds >= 0) { "scopeSeconds ($scopeSeconds) must not be negative." }
 
-        // RED 스텁 — workingCalendar 를 받기만 하고 아직 축·분모에 반영하지 않는다(Task 11 GREEN 에서).
+        val axis = buildAxis(start, end, workingCalendar)
         val asOf = minOf(end, today)
-        val totalDays = ChronoUnit.DAYS.between(start, end)
+        val totalDays = (axis.size - 1).coerceAtLeast(0).toLong()
         val preStartSum = worklogByUtcDate.filterKeys { it.isBefore(start) }.values.sum()
 
         val points = mutableListOf<BurndownPoint>()
         var cumulative = 0L
         var day = start
         while (!day.isAfter(end)) {
-            val ideal = computeIdealSeconds(scopeSeconds, day, end, totalDays)
-            if (day.isAfter(asOf)) {
-                points += BurndownPoint(day, null, ideal, null, scopeSeconds)
-            } else {
+            val future = day.isAfter(asOf)
+            if (!future) {
                 cumulative += dailyContribution(day, start, preStartSum, worklogByUtcDate)
-                val remaining = (scopeSeconds - cumulative).coerceAtLeast(0L)
-                points += BurndownPoint(day, remaining, ideal, cumulative, scopeSeconds)
+            }
+            if (day in axis) {
+                // 축 위 몇 번째인가가 곧 ideal 의 x 좌표다. 아직 담기 전이라 points.size 가 그 index 다.
+                val ideal = computeIdealSeconds(scopeSeconds, points.size.toLong(), totalDays)
+                points +=
+                    if (future) {
+                        BurndownPoint(day, null, ideal, null, scopeSeconds)
+                    } else {
+                        val remaining = (scopeSeconds - cumulative).coerceAtLeast(0L)
+                        BurndownPoint(day, remaining, ideal, cumulative, scopeSeconds)
+                    }
             }
             day = day.plusDays(1)
         }
         return points
+    }
+
+    /**
+     * [start]~[end] 중 실제로 차트에 그릴 날짜(x축)를 오름차순으로 만든다.
+     *
+     * [calendar] 가 null 이면 **미설정**이고, 그때는 달력일 전부가 축이다 — `working_days` 가 NULL 인
+     * 보드의 번다운은 배포 전후로 한 점도 달라지지 않아야 한다(스펙 R6 · `WorkingDaysSettingsService` KDoc).
+     *
+     * 반환이 비어 있을 수 있다(스프린트 전 기간이 비근무일 — 스펙 E2). 호출부가 그 경우를 감당한다.
+     */
+    private fun buildAxis(
+        start: LocalDate,
+        end: LocalDate,
+        calendar: WorkingDayCalendar?,
+    ): Set<LocalDate> {
+        val axis = LinkedHashSet<LocalDate>()
+        var day = start
+        while (!day.isAfter(end)) {
+            if (calendar == null || calendar.isWorkingDay(day)) {
+                axis += day
+            }
+            day = day.plusDays(1)
+        }
+        return axis
     }
 
     /**
@@ -89,21 +121,25 @@ object BurndownCalculator {
     }
 
     /**
-     * Ideal 라인의 [day] 지점 값을 반올림(half-up)으로 계산한다.
+     * Ideal 라인의 [axisIndex] 번째 지점 값을 반올림(half-up)으로 계산한다.
      *
-     * [totalDays] 가 0(1일 스프린트, end == start)이면 0 나눗셈을 피해 [scopeSeconds] 를 그대로 반환한다.
-     * 그 외에는 [day]==[end] 에서 정확히 0, [day]==start 에서 정확히 [scopeSeconds] 가 나오도록
-     * `(numerator + totalDays/2) / totalDays` 형태의 정수 반올림 공식을 사용한다.
+     * ★**달력 날짜가 아니라 축 위의 순번으로 보간한다.** 축이 근무일만 담으면 분모([totalDays])도
+     * 근무일 구간 수가 되어야 한다 — x축만 좁히고 분모를 달력일로 두면 마지막 근무일의 ideal 이
+     * 0 에 닿지 않아 안내선이 차트 밖에서 끝난다(스펙 R6).
+     * 미설정 경로에서는 축이 달력일 전부라 `totalDays == ChronoUnit.DAYS.between(start, end)`,
+     * `totalDays - axisIndex == ChronoUnit.DAYS.between(day, end)` 가 성립해 값이 종전과 같다.
+     *
+     * [totalDays] 가 0 이면 0 나눗셈을 피해 [scopeSeconds] 를 그대로 반환한다. 1일 스프린트뿐 아니라
+     * **근무일이 하루뿐인 스프린트**도 이 경로로 합류한다.
      */
     private fun computeIdealSeconds(
         scopeSeconds: Long,
-        day: LocalDate,
-        end: LocalDate,
+        axisIndex: Long,
         totalDays: Long,
     ): Long {
         if (totalDays == 0L) return scopeSeconds
-        val daysRemaining = ChronoUnit.DAYS.between(day, end)
-        val numerator = scopeSeconds * daysRemaining
+        val stepsRemaining = totalDays - axisIndex
+        val numerator = scopeSeconds * stepsRemaining
         return (numerator + totalDays / HALF_ROUNDING_DIVISOR) / totalDays
     }
 }
@@ -117,4 +153,7 @@ object BurndownCalculator {
 data class WorkingDayCalendar(
     val standardDays: Set<DayOfWeek>,
     val nonWorkingDates: Set<LocalDate> = emptySet(),
-)
+) {
+    /** [date] 가 근무일인가. 표준 요일에 들고 비근무일로 등록되지 않았을 때만 참이다. */
+    fun isWorkingDay(date: LocalDate): Boolean = date.dayOfWeek in standardDays && date !in nonWorkingDates
+}
