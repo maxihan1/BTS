@@ -859,6 +859,23 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
   **경로 한정 커밋**(`git commit -- <경로>`)을 쓰고 로그 파일명에 PID 를 붙인다
   ([[shared-worktree-git-index-defeats-narrow-git-add]] · 2026-09-04 실측).
 
+### ★T16~T19 는 병렬 dispatch 하지 마라 — `SettingsTabs.tsx` 를 넷이 공유한다
+
+**2026-09-06 발견.** T16·T17·T18·T19 의 files 에 `components/board/settings/SettingsTabs.tsx` 가
+**넷 다** 들어 있다. T15 가 만든 `PendingPanel` 자리를 각자 자기 탭 한 줄씩 교체하는 설계다.
+
+**같은 워크트리 병렬이면 경로 한정 커밋으로도 못 막는다.** 경로 한정은 「남의 **파일**이 섞이는 것」을
+막는 장치이지 「같은 **파일**을 둘이 고치는 것」은 못 막는다. 넷이 동시에 그 파일을 편집하면
+나중에 쓴 쪽이 앞선 것을 덮는다 — 그리고 각자 자기 탭만 테스트하므로 **덮인 탭의 테스트를
+아무도 안 돌린다.**
+
+**처방 — 순차.** 의존이 어차피 갈린다(T16←8 · T17←9 · T18←10 · T19←13). 선행 task 가
+끝나는 순서대로 하나씩 낸다. 앞 task 가 커밋을 끝낸 뒤 다음을 dispatch 한다.
+
+**머지 전 필수 확인.** 넷이 다 끝나면 `SettingsTabs.tsx` 에 `PendingPanel` 이 **한 곳도 남아
+있지 않아야 한다.** 하나라도 남으면 그 탭은 아무것도 렌더하지 않는 채로 나간다 —
+화면에 탭은 보이는데 눌러도 빈 화면이다. 게이트 2 관찰 항목이다.
+
 ### Jira 매핑 — 채택 J 번호 ↔ task 차집합 0
 
 | J | task | J | task |
