@@ -31,7 +31,7 @@ private const val UTC_DATE_SQL_TEMPLATE = "({0} AT TIME ZONE 'UTC')::date"
  *
  * ### 쿼리 2개 이하 — N+1 없음 (NFR3)
  * 1. [sumOriginalEstimateSeconds] — `issues` 에서 `original_estimate_seconds` 합계 1쿼리.
- * 2. [aggregateWorklogsByUtcDate] — `worklogs JOIN issues` 로 UTC 날짜별 `time_spent_seconds` 합계 1쿼리.
+ * 2. [findWorklogContributions] — `worklogs JOIN issues` 로 worklog 행을 그대로 읽는 1쿼리.
  * 두 쿼리 모두 소프트 삭제(`deleted_at IS NULL`) 이슈/worklog 를 제외한다.
  *
  * @param dsl jOOQ DSLContext.
@@ -53,25 +53,31 @@ class SprintBurndownQueryRepository(
             ?.toLong() ?: 0L
     }
 
-    /** 미삭제 이슈에 속한 미삭제 worklog 를 UTC 날짜별로 합산한다. 같은 날짜당 1개 항목만 존재한다(pre-aggregate). */
+    /**
+     * 미삭제 이슈에 속한 미삭제 worklog 를 **1건당 1항목**으로 반환한다(사전 집계 없음).
+     *
+     * `started_at` 원본을 [WorklogContribution.startedAt] 으로 그대로 나른다 — 여기서 날짜로 뭉개면
+     * `10:00Z` 와 `23:30Z` 가 한 항목이 되고, `Asia/Seoul` 기준 일 귀속을 소비측이 복원할 수 없다(비단사).
+     * 합산은 소비측(agile-planning)이 자기 timezone 으로 버킷을 정한 뒤 수행한다.
+     */
     @Transactional(readOnly = true)
-    fun aggregateWorklogsByUtcDate(issueKeys: Set<String>): List<WorklogContribution> {
+    fun findWorklogContributions(issueKeys: Set<String>): List<WorklogContribution> {
         val startedOnUtcDate = utcDateField(WORKLOGS.STARTED_AT)
-        val sumField = DSL.sum(WORKLOGS.TIME_SPENT_SECONDS)
 
         return dsl
-            .select(startedOnUtcDate, sumField)
+            .select(WORKLOGS.STARTED_AT, startedOnUtcDate, WORKLOGS.TIME_SPENT_SECONDS)
             .from(WORKLOGS)
             .join(ISSUES).on(WORKLOGS.ISSUE_ID.eq(ISSUES.ID))
             .where(ISSUES.KEY.`in`(issueKeys))
             .and(ISSUES.DELETED_AT.isNull)
             .and(WORKLOGS.DELETED_AT.isNull)
-            .groupBy(startedOnUtcDate)
             .fetch { record ->
+                val startedAt = record.get(WORKLOGS.STARTED_AT)?.toInstant() ?: return@fetch null
                 val date = record.get(startedOnUtcDate) ?: return@fetch null
                 WorklogContribution(
                     startedOnUtcDate = date,
-                    timeSpentSeconds = record.get(sumField)?.toLong() ?: 0L,
+                    timeSpentSeconds = record.get(WORKLOGS.TIME_SPENT_SECONDS)?.toLong() ?: 0L,
+                    startedAt = startedAt,
                 )
             }
             .filterNotNull()

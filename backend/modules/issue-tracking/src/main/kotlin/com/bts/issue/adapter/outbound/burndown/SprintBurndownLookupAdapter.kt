@@ -15,20 +15,25 @@ import java.util.UUID
  * [SprintBurndownLookupPort] 의 issue-tracking BC 구현 (FR-RP-01 Task 3).
  *
  * agile-planning BC 가 스프린트 번다운/번업 차트를 계산할 때 이 adapter 를 통해 스프린트에 속한
- * 이슈들의 추정 시간 합계와 worklog(작업 로그) 를 UTC 날짜별로 사전 집계해 받는다.
+ * 이슈들의 추정 시간 합계와 worklog(작업 로그) 를 **1건당 1항목**으로 받는다.
  * 두 BC 는 shared-kernel 의 [SprintBurndownLookupPort] 만 공유하며 서로를 직접 gradle 의존하지 않는다.
  *
  * ### 쿼리 2개 이하 — N+1 없음 (NFR3)
  * jOOQ 쿼리 자체는 [SprintBurndownQueryRepository] 로 추출되어 있다(FR-RP-02 Task 6 — ArchUnit 룰2 준수).
  * 1. [SprintBurndownQueryRepository.sumOriginalEstimateSeconds] — `issues` 에서 `original_estimate_seconds` 합계 1쿼리.
- * 2. [SprintBurndownQueryRepository.aggregateWorklogsByUtcDate] — `worklogs JOIN issues` 로 UTC 날짜별
- *    `time_spent_seconds` 합계 1쿼리.
+ * 2. [SprintBurndownQueryRepository.findWorklogContributions] — `worklogs JOIN issues` 로 worklog 행을
+ *    그대로 읽는 1쿼리.
  * 두 쿼리 모두 소프트 삭제(`deleted_at IS NULL`) 이슈/worklog 를 제외한다.
  *
- * ### UTC 날짜 버킷 — FR-TT-02 [com.bts.issue.worklog.aggregate.repository.WorklogAggregateRepository] 선례
- * [SprintBurndownQueryRepository] 는 `(started_at AT TIME ZONE 'UTC')::date` 로 TIMESTAMPTZ 를
- * UTC 벽시계 날짜로 변환한다. `AT TIME ZONE 'UTC'` 는 세션 TimeZone GUC 값에 무관하게 항상 UTC 로
- * 변환하므로(WorklogAggregateRepository E6 회귀 방지 선례와 동일 원리), 별도 세션 TZ 보정이 필요 없다.
+ * ### 시각을 버리지 않는다 — 일 귀속은 소비측 책임 (부채 177 Task 30)
+ * 이 adapter 는 worklog 를 날짜 버킷으로 사전 집계하지 않고 `started_at` 원본을
+ * [com.bts.shared.burndown.WorklogContribution.startedAt] 으로 그대로 나른다.
+ * 사전 집계하면 `10:00Z` 와 `23:30Z` 가 한 항목이 되는데 `Asia/Seoul` 에서는 다른 날이라,
+ * 소비측이 무엇을 하든 되돌릴 수 없다(비단사). issue-tracking 이 보드 timezone 을 알아야 하는
+ * 역전을 피하는 방향이기도 하다 — [com.bts.shared.calendar.UserCalendarLookupPort] 와 같은 선례.
+ * 파생값 [com.bts.shared.burndown.WorklogContribution.startedOnUtcDate] 는 여전히
+ * `(started_at AT TIME ZONE 'UTC')::date` 로 만든다 — `AT TIME ZONE 'UTC'` 는 세션 TimeZone GUC 값과
+ * 무관하게 결정적이다(WorklogAggregateRepository E6 회귀 방지 선례와 동일 원리).
  *
  * ### 이슈별 가시성 필터 — 정본 보안 술어 재사용 (리뷰 C1)
  * 집계 전에 [IssueSecurityDirectory.accessibleLevels] 로 viewer 의 접근 가능 보안 등급 집합을 1회 조회하고,
@@ -55,7 +60,7 @@ class SprintBurndownLookupAdapter(
      * @param issueKeys 스프린트에 속한 이슈 키 집합. 빈 집합이면 조기 반환한다(jOOQ 빈 `IN` 절 함정 방지).
      * @param projectKey 이슈들이 속한 프로젝트 키. 보안 술어의 프로젝트 스코프 판정에 사용.
      * @param viewerUserId 번다운을 조회하는 viewer UUID. 이슈별 가시성 필터 기준.
-     * @return 미삭제·가시 이슈의 추정 시간 합계와 미삭제 worklog 의 UTC 날짜별 집계.
+     * @return 미삭제·가시 이슈의 추정 시간 합계와, 미삭제 worklog 1건당 1항목인 기여 목록.
      */
     @Transactional(readOnly = true)
     override fun fetchBurndownSource(
@@ -75,7 +80,7 @@ class SprintBurndownLookupAdapter(
         } else {
             BurndownSource(
                 totalOriginalEstimateSeconds = queryRepository.sumOriginalEstimateSeconds(visibleKeys),
-                worklogEntries = queryRepository.aggregateWorklogsByUtcDate(visibleKeys),
+                worklogEntries = queryRepository.findWorklogContributions(visibleKeys),
             )
         }
     }

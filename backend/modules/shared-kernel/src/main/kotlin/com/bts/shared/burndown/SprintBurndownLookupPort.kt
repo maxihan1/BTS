@@ -33,6 +33,17 @@ import java.util.UUID
  * 데이터 조회 실패는 보안 판단이 아니므로 fail-safe 방향이 적절하다
  * (권한 resolver 의 fail-closed 와 다른 방향 — IssuePermissionResolver 참조).
  *
+ * ### timezone 책임 경계
+ *
+ * [fetchBurndownSource] 가 반환하는 [WorklogContribution.startedAt] 은 UTC 기준 [Instant] 원본이다.
+ * 이 포트(및 issue-tracking adapter)는 보드 timezone 을 알지 못한다.
+ * 번다운 시계열에서 특정 로컬 날짜 칸에 worklog 를 배치하는 매핑은 소비측인 agile-planning 이
+ * 보드 timezone 설정을 적용해 수행한다
+ * ([com.bts.shared.calendar.UserCalendarLookupPort] 와 같은 방향).
+ *
+ * 반대 방향(포트가 zone 을 받아 SQL 에서 버킷)은 배제했다 — 일 귀속 규칙이 issue-tracking 에 남고,
+ * 그 BC 가 보드 timezone 이라는 agile-planning 의 지식을 알아야 하기 때문이다.
+ *
  * @see BurndownSource
  * @see WorklogContribution
  */
@@ -72,7 +83,7 @@ interface SprintBurndownLookupPort {
  *
  * @property totalOriginalEstimateSeconds 이슈들의 `original_estimate_seconds` 합계(초).
  *   NULL 추정치는 0 으로 간주해 합산한다.
- * @property worklogEntries UTC 날짜별로 사전 집계된 worklog 기여 목록.
+ * @property worklogEntries worklog 1건당 1항목인 기여 목록. 구현체는 사전 집계하지 않는다.
  */
 data class BurndownSource(
     val totalOriginalEstimateSeconds: Long,
@@ -80,22 +91,25 @@ data class BurndownSource(
 )
 
 /**
- * UTC 날짜별로 사전 집계된 worklog 기여 VO.
+ * worklog 1건의 번다운 기여 VO.
  *
- * [BurndownSource.worklogEntries] 의 원소. 같은 UTC 날짜에 기록된 여러 worklog 는
- * 구현체(issue-tracking adapter)가 조회 시점에 하나의 항목으로 합산한다 —
- * 즉 한 [startedOnUtcDate] 당 최대 1개 항목만 존재한다(pre-aggregate).
- * 소비측(agile-planning)은 날짜별로 이미 합산된 값을 그대로 시계열 계산에 사용하면 된다.
+ * [BurndownSource.worklogEntries] 의 원소. 미삭제·가시 이슈에 속한 미삭제 worklog **한 건당 한 항목**이며,
+ * 구현체(issue-tracking adapter)는 조회 시점에 아무것도 합산하지 않는다.
+ * 같은 [startedOnUtcDate] 를 가진 항목이 여러 개일 수 있고, [startedAt] 이 완전히 같은 항목도 여러 개일 수 있다.
  *
- * @property startedOnUtcDate worklog `started_at`(TIMESTAMPTZ) 를 UTC 기준 날짜로 변환한 값.
- * @property timeSpentSeconds 해당 UTC 날짜에 기록된 worklog `time_spent_seconds` 합계(초).
- * @property startedAt worklog 시작 시각(UTC 기준 [Instant] 원본).
- *   ★RED 단계 임시 기본값 — 구현이 아직 이 값을 채우지 않는다. GREEN 에서 기본값을 지우고
- *   SQL 이 실제 시각을 채운다. 기본값이 없으면 소비측 컴파일이 먼저 깨져 RED 가
- *   어서션 실패가 아니라 컴파일 실패로 나타난다.
+ * 이전 계약(「한 [startedOnUtcDate] 당 최대 1개」 pre-aggregate)은 시각을 BC 경계 앞에서 버렸다.
+ * `10:00Z` 와 `23:30Z` 는 UTC 로 같은 날이지만 `Asia/Seoul` 에서는 다른 날이라, 한 버킷에 합산되어
+ * 도착한 값은 소비측이 무엇을 하든 되돌릴 수 없다(비단사). 그래서 시각 원본을 그대로 나른다.
+ *
+ * @property startedOnUtcDate 이 worklog 의 `started_at`(TIMESTAMPTZ) 를 UTC 기준 날짜로 변환한 값.
+ *   **일 귀속의 정본이 아니다** — UTC 축 소비자용 파생값일 뿐이고, 로컬 날짜 배치의 기준은
+ *   [startedAt] + 소비측 timezone 이다(클래스 KDoc timezone 책임 경계 참조).
+ * @property timeSpentSeconds 이 worklog 의 `time_spent_seconds`(초). 합계가 아니라 단건 값이다.
+ * @property startedAt worklog 시작 시각. UTC 기준 [Instant] 원본 — 로컬 날짜 매핑은 소비측 책임
+ *   (클래스 KDoc timezone 책임 경계 참조).
  */
 data class WorklogContribution(
     val startedOnUtcDate: LocalDate,
     val timeSpentSeconds: Long,
-    val startedAt: Instant = Instant.EPOCH,
+    val startedAt: Instant,
 )
