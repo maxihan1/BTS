@@ -180,6 +180,7 @@ function renderPanel(overrides: {
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
         currentAssignee={null}
+        reporter={null}
       />
     </QueryClientProvider>,
   )
@@ -424,6 +425,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={vi.fn()}
         />
       </QueryClientProvider>,
@@ -493,6 +495,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,
@@ -560,6 +563,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,
@@ -638,6 +642,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,
@@ -720,6 +725,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,
@@ -795,6 +801,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,
@@ -870,6 +877,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,
@@ -937,6 +945,7 @@ describe('IssueMetaPanel — 커스텀 필드 섹션 (FR-IS-10 Task 9)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
           onCustomFieldsSave={onCustomFieldsSave}
         />
       </QueryClientProvider>,

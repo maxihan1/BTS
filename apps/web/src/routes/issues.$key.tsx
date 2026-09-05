@@ -21,7 +21,8 @@ import { useVersions } from '@/hooks/use-versions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { useIssueTransitions, useIssueTransitionFlow } from '@/hooks/use-issue-transitions'
-import { useUsers, useUsersByIds } from '@/hooks/use-users'
+import { useUsers } from '@/hooks/use-users'
+import { useIssuePeople } from '@/hooks/use-issue-people'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { FileDown, X } from 'lucide-react'
@@ -402,16 +403,8 @@ export function IssueDetailPage({
     [debouncedAssigneeSearchQuery, users],
   )
 
-  /**
-   * C1 버그 수정: 현재 담당자를 id 조회로 별도 확보.
-   * useUsers(검색결과)에서 find()하면 검색어 변경 시 / 50건 한도 이외 담당자가 "미지정"으로 오표시됨.
-   * assigneeId가 있을 때만 enabled — issue가 로드되기 전에는 빈 배열로 호출하지 않음.
-   */
-  const assigneeIdForLookup = issue?.assigneeId ?? null
-  const { data: assigneeList = [] } = useUsersByIds(
-    assigneeIdForLookup !== null ? [assigneeIdForLookup] : [],
-  )
-  const currentAssignee = assigneeList[0] ?? null
+  // 담당자·보고자 이름은 검색 결과가 아니라 id 조회로 확보한다 — 근거는 훅 KDoc (C1·C3 회귀).
+  const { currentAssignee, reporter } = useIssuePeople(issue?.assigneeId, issue?.reporterId)
 
   const changeAssigneeMutation = useChangeAssignee()
   const changeComponentsMutation = useChangeComponents()
@@ -1221,6 +1214,7 @@ export function IssueDetailPage({
               onAssigneeSearch={setAssigneeSearchQuery}
               onAssigneeChange={handleAssigneeChange}
               currentAssignee={currentAssignee}
+              reporter={reporter}
               componentIds={issue.componentIds}
               components={projectComponents}
               onComponentsChange={handleComponentsChange}
