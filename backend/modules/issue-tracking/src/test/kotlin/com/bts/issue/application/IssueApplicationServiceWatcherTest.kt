@@ -8,8 +8,8 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.event.IssueDomainEvent
-import com.bts.issue.event.IssueMentioned
 import com.bts.issue.event.IssueEventPublisher
+import com.bts.issue.event.IssueMentioned
 import com.bts.issue.mention.MentionSource
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueRepository

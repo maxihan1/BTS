@@ -72,6 +72,21 @@ class CommentApplicationService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    init {
+        // ★조용한 비활성을 드러낸다 (FR-MN-03 리뷰). 두 협력자는 기본값이 null 이라
+        //   빈 주입이 어긋나면 예외 없이 멘션 기능만 사라진다 — 무증상 실패다.
+        //   운영에서는 반드시 주입되므로 이 줄이 뜨면 배선이 깨진 것이고,
+        //   단위 테스트는 의도적으로 null 을 넘기므로 INFO 로 둔다(에러가 아니다).
+        if (userLookupPort == null || watcherRepository == null) {
+            log.info(
+                "comment_mention_disabled userLookupPort={} watcherRepository={} — " +
+                    "운영 배선이면 결함이고 단위 테스트면 정상이다",
+                userLookupPort != null,
+                watcherRepository != null,
+            )
+        }
+    }
+
     /**
      * 사람이 작성한 댓글을 생성한다 (REST · automation 공용).
      *
