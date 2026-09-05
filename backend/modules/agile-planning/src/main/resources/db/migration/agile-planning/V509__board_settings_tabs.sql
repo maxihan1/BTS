@@ -45,17 +45,31 @@
 --   차트가 조용히 바뀌는 것은 되돌려도 「원래 어땠는지」를 아무도 모르는 종류의 사고다.
 --   BoardSettingsMigrationTest 가 이 두 칸의 기본값 부재를 단언해 재발을 막는다.
 --
--- ★ time_tracking 에 CHECK (IN ('NONE','REMAINING_AND_SPENT')) 를 걸지 **않았다.** 빠뜨린 것이
---   아니라 스펙 §데이터 모델이 CHECK 없이 선언했기 때문이다(같은 절이 board_card_layout_fields ·
---   board_detail_view_fields 에는 CHECK 를 명시했으므로 누락이 아니라 구분이다).
---   허용값 판정은 EstimationSettingsService(Task 9)가 진다. 값 종류가 늘 때 마이그레이션이
---   따라붙지 않아도 되는 쪽을 택한 것이며, 이 선택을 뒤집으려면 스펙을 먼저 고친다.
+-- ★★ time_tracking 에 CHECK 를 **건다**(아래 boards_time_tracking_allowed). 초판은 걸지 않았고
+--   그 근거로 「스펙 §데이터 모델이 CHECK 없이 선언했다」를 댔다. 사실 관계는 맞다. 그러나 그것은
+--   **스펙이 옳다는 근거가 아니라 스펙이 형제와 어긋난다는 증거**다 — 같은 절이
+--   board_card_layout_fields · board_detail_view_fields 에는 CHECK 를 명시했다는 사실은
+--   「구분」으로도 「셋 중 하나만 빠졌다」로도 똑같이 읽힌다. 스펙 문면은 어느 쪽도 가르지 못한다.
+--
+--   그래서 판정 근거를 스펙이 아니라 **형제 칸**에서 찾았다. 같은 boards 테이블의
+--   board_type(V505:11) · swimlane_field(V501:18) 이 같은 모양의 닫힌 열거형을
+--   <테이블>_<칸>_allowed CHECK 로 지킨다. 같은 테이블의 같은 종류 칸 셋 중 하나만 다른
+--   규율을 받을 이유가 없다 — 규율이 갈리는 자리가 곧 다음 사람이 헷갈리는 자리다.
+--
+--   EstimationSettingsService(Task 9)의 검증은 이 제약을 **대신하지 않는다.** 사전 검사는
+--   사용자에게 400 의 이유를 주려고 있는 것이고 마지막 방어선은 DB 다(③ 의 #444 X1 과 같은 판단).
+--   값 종류가 늘면 마이그레이션이 따라붙는다 — V502 가 swimlane_field 에 EPIC 을 더하며
+--   DROP CONSTRAINT → ADD CONSTRAINT 한 쌍으로 그 비용을 이미 치른 선례다. 뒤집으려면
+--   스펙과 이 CHECK 를 함께 고친다.
 
 ALTER TABLE boards
     ADD COLUMN time_tracking  VARCHAR(24)  NOT NULL DEFAULT 'NONE',
     ADD COLUMN working_days   VARCHAR(3)[] NULL,
     ADD COLUMN board_timezone VARCHAR(64)  NULL;
 
+-- 형제 board_type · swimlane_field 와 같은 <테이블>_<칸>_allowed 관용구다(위 ★★ 가 근거).
+-- 인라인이 아니라 별도 문인 것은 의도다 — V509 의 유일한 ADD CONSTRAINT 이고,
+-- 「ADD CONSTRAINT 에는 IF NOT EXISTS 가 없다」는 멱등 요구가 감쌀 실제 대상이 된다(plan Task 4).
 ALTER TABLE boards
     ADD CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'));
 
@@ -147,10 +161,10 @@ COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또�
 --   편차 **X10** 으로 명시했다. 이 주석은 그 X10 과 **짝**이다 — 나중에 「클라우드에 없는데 왜
 --   있지」로 지워지는 것을 막는 자리이고, 지우려면 X10 을 먼저 읽어야 한다.
 --
--- ★ 그래서 field_group 에는 CHECK 를 건다. ① 의 time_tracking 에 CHECK 를 걸지 **않은** 것과
---   갈리는 지점이며, 스펙 §데이터 모델이 이 테이블에만 CHECK 를 명시했기 때문이다 —
---   허용값이 지라 화면 구획에 묶여 있어 값 종류가 늘 일이 없다. 반대로 time_tracking 은
---   늘 수 있어 판정을 서비스에 뒀다. 누락이 아니라 구분이다.
+-- ★ 그래서 field_group 에는 CHECK 를 건다. 허용값이 지라 화면 구획(J47)에 묶여 있어 값 종류가
+--   늘 일이 없다. ★초판은 여기에 「① 의 time_tracking 에 CHECK 를 걸지 않은 것과 갈리는
+--   지점」이라고 적었는데 **이제 갈리지 않는다** — ① 도 boards_time_tracking_allowed 를 받는다.
+--   그 「구분」의 근거였던 「스펙이 이 테이블에만 CHECK 를 명시했다」를 ① 의 ★★ 가 뒤집었다.
 --
 -- ★ position 에 상한이 **없다.** ③ 의 CHECK (position BETWEEN 0 AND 2) 를 여기로 복사해 오지 말 것 —
 --   상한 3은 카드(J17)의 제약이고, 상세 보기는 J48 이 순서(드래그로 위아래)만 말한다.
