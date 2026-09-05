@@ -171,8 +171,20 @@ gap **5건**. 3건(권한 · 타임존 소비처 · 시각 검증 기준)은 스
 - **G2 타임존** — `board_timezone` 을 만들면서 읽는 곳을 안 썼다. worklog 일 귀속을 그 타임존으로
   바꾼다(R10). 검증은 **UTC 경계를 넘는 시각**의 worklog 로만 성립한다.
 - **G5 시각 검증** — E2E 4항목 + 눈확인 4항목을 스펙에 명시.
-- **🛑 C-2** 갭 B 를 X5(기존 필드 토글)로 갈지 지라 패리티(shared-kernel 확장)로 갈지.
-- **🛑 C-3** 갭 E(상세 보기)를 뺄지 · 축소할지 · issue-tracking 까지 포함할지.
+- **✅ C-2 확정** — 갭 B 는 **지라 패리티(커스텀 필드)**. shared-kernel 포트 확장 + issue-tracking 값 공급.
+- **✅ C-3 확정** — 갭 E 는 **지라와 동일**하게 보드 단위 Issue Detail View. 근거가 DC 뿐인 것은 편차 X10.
+- **G6 (재조회로 교정)** — 확정 후 재조회에서 **초안 R3 이 틀렸음**을 찾았다. 카드 레이아웃 구성은
+  **뷰마다 따로**다(J45 원문). 데이터 모델이 배열 한 칸 → `board_card_layout_fields(view_scope)` 로 바뀌었다.
+
+## 🛑 게이트 1 요약에 실을 이탈
+
+**X9 — 이 PR 은 「한 PR = 한 BC」를 깬다.** `shared-kernel` · `issue-tracking` · `agile-planning` ·
+`apps/web` 넷을 건드린다. 그 사실을 제시한 뒤 「지라 클라우드와 동일한 스펙으로」가 Maxi 확정
+(2026-09-05)이므로 그대로 간다. 완화책은 스펙 C-5 네 항목이고, 그중 ④ **판별식으로
+`agile-planning` 의 `com.bts.issue` 직접 import 0건을 강제**하는 것만이 기계 방어선이다.
+
+**X10 — 갭 E 의 근거가 DC 문서뿐이다.** Cloud 는 이 탭을 work type 레이아웃으로 옮겼다.
+계약 §1 이 DC 를 조건부로 허용하므로 「Cloud 아님」을 행마다 표기했다.
 
 
 ## Plan (← /bts-plan 채움)
