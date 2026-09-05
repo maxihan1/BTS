@@ -104,6 +104,20 @@ describe('inboxItemSchema — InboxItemResponse 1:1 파싱', () => {
     expect(result.data.commentId).toBeNull()
   })
 
+  it('T-IB-1e: commentId 키가 통째로 없는 응답도 파싱되고 null 로 채워진다', () => {
+    // 단일 호스트라 SPA 와 백엔드가 함께 뜨지만, 롤백·캐시된 번들이면 「새 SPA + 옛 백엔드」가
+    // 성립한다. 그때 한 필드의 부재는 항목 하나가 아니라 **페이지 전체**의 파싱을 죽여
+    // 인박스가 통째로 비어 버린다. 딥링크 하나 없는 것보다 훨씬 나쁜 실패다.
+    const legacyItem = Object.fromEntries(
+      Object.entries(itemFixture).filter(([k]) => k !== 'commentId'),
+    )
+    const result = inboxPageSchema.safeParse({ ...pageFixture, content: [legacyItem] })
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.content[0]?.commentId).toBeNull()
+  })
+
   it('T-IB-1d: commentId 가 UUID 가 아니면 파싱을 거부한다', () => {
     // 딥링크는 그대로 URL 로 나간다 — 임의 문자열을 통과시키면 깨진 링크를 그리게 된다.
     const result = inboxItemSchema.safeParse({ ...itemFixture, commentId: 'not-a-uuid' })
