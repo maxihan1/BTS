@@ -1,6 +1,6 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (516건, 최신순)
+# 시간 축 인덱스 (517건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
@@ -8,6 +8,7 @@
 |---|---|---|---|---|---|---|
 | 2026-09-05 | inbox-comment-deeplink | — | ✔ | — | — | FR-CO-01 FR-MN-03 FR-UX-03 |
 | 2026-09-05 | mention-notify-autowatch | — | ✔ | — | — | FR-MN-01 FR-MN-02 FR-MN-03 FR-WT-01 |
+| 2026-09-05 | notification-dedup-comment-id | — | ✔ | — | — | FR-CO-01 FR-UX-03 |
 | 2026-09-04 | board-settings-screen | ✔ | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
 | 2026-09-04 | board-summary-can-delete | — | ✔ | — | — | FR-BD-01 |
 | 2026-09-04 | editor-polish | — | ✔ | — | — | FR-AC-01 FR-AC-02 FR-IS-04 FR-MN-02 FR-UX-11 |

@@ -12,6 +12,8 @@ class NotificationTest : DescribeSpec({
 
     val recipientId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
     val otherId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
+    val commentIdA: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000c1")
+    val commentIdB: UUID = UUID.fromString("00000000-0000-0000-0000-0000000000c2")
     val fixedNow: Instant = Instant.parse("2026-06-12T00:00:00Z")
     val laterNow: Instant = Instant.parse("2026-06-12T01:00:00Z")
 
@@ -364,6 +366,72 @@ class NotificationTest : DescribeSpec({
                         channel = Channel.IN_APP,
                     )
                 key1 shouldNotBe key2
+            }
+        }
+
+        context("computeDedupKey — 댓글은 어느 댓글인지까지 키에 들어간다") {
+            it("occurredAt 까지 전부 같아도 commentId 가 다르면 키가 다르다") {
+                // import 로 들어온 댓글은 원본 시스템의 초 단위 시각을 그대로 쓴다. 같은 이슈에
+                // 같은 초에 달린 댓글 2건이면 나머지 원소가 전부 같아지고, 키가 같으면 두 번째
+                // 알림이 UNIQUE(dedup_key) 에 걸려 「멱등이 동작했다」는 얼굴로 사라진다.
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_COMMENTED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                        commentId = commentIdA,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_COMMENTED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                        commentId = commentIdB,
+                    )
+                key1 shouldNotBe key2
+            }
+
+            it("같은 commentId 면 여전히 같은 키다 — 재전달 멱등은 그대로다") {
+                val key1 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_COMMENTED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                        commentId = commentIdA,
+                    )
+                val key2 =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_COMMENTED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                        commentId = commentIdA,
+                    )
+                key1 shouldBe key2
+            }
+
+            it("commentId 가 없는 알림의 키는 옛 5원소 키와 바이트 단위로 같다") {
+                // ★이 golden 값이 이 변경의 폭발 반경을 고정한다. commentId 를 항상 붙이면
+                // (`?: ""`) 구분자가 하나 더 생겨 담당자 지정·상태 전환·스프린트 등 **댓글과
+                // 무관한 모든 알림의 키까지** 바뀌고, 배포 경계에서 재전달되는 모든 이벤트가
+                // 중복 알림이 된다. 값은 SHA-256("issue.assigned|ATLAS-42|2026-06-12T00:00:00Z|
+                // 00000000-0000-0000-0000-000000000001|IN_APP") — 변경 이전 코드의 산출물이다.
+                val key =
+                    Notification.computeDedupKey(
+                        eventType = NotificationEventType.ISSUE_ASSIGNED,
+                        issueKey = "ATLAS-42",
+                        occurredAt = fixedNow,
+                        recipientUserId = recipientId,
+                        channel = Channel.IN_APP,
+                    )
+                key shouldBe "4f83935a6237744e294bbb107acf849827b10805d7e6451c262b7480344e0799"
             }
         }
 

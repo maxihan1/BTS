@@ -361,6 +361,10 @@ class NotificationWorker(
                 occurredAt = event.occurredAt,
                 recipientUserId = recipient.userId,
                 channel = recipient.channel,
+                // 「어느 댓글인가」까지 키에 넣는다. 이것이 없으면 같은 이슈·같은 순간의 댓글
+                // 2건이 같은 키가 되고 두 번째 알림이 UNIQUE(dedup_key) 에 걸려 사라진다
+                // (`notification_worker_duplicate_skipped` — 에러가 아니라 정상 로그로 유실된다).
+                commentId = event.commentId,
             )
         val (title, body) = buildTitleBody(event)
         return Notification(
