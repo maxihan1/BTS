@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-05 | board-settings-remaining-tabs-177 | — | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 FR-IS-10 |
+| 2026-09-05 | board-settings-remaining-tabs-177 | ✔ | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 FR-IS-10 FR-RP-01 |
 | 2026-09-05 | mention-notify-autowatch | — | ✔ | — | — | FR-MN-01 FR-MN-02 FR-MN-03 FR-WT-01 |
 | 2026-09-04 | board-settings-screen | ✔ | ✔ | — | — | FR-BD-01 FR-BD-03 FR-BD-04 |
 | 2026-09-04 | board-summary-can-delete | — | ✔ | — | — | FR-BD-01 |

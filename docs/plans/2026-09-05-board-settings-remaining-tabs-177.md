@@ -128,13 +128,52 @@
   갭 E 를 보드 단위 설정으로 만들면 **지라와 다른 모델**이 되므로 편차 등재 대상이다.
 - **J31 상한 3개는 BTS 에 커스텀 필드가 이미 있다는 전제와 맞물린다**(`FR-IS-10` 키 단위 병합 패치).
 
-## 도메인 정리 (← /bts-spec §1 채움)
+## 도메인 정리
 
-## 스펙 (← /bts-spec §2 채움)
+**BC — `agile-planning`.** classify 는 `primary_bc: null` 을 냈다(migration 타입은 BC 무관 —
+`classify-task.ts:545`). `BC_KEYWORDS` 정본으로 추출하면 「보드」·「추정」·「번다운」이 모두
+`agile-planning` 항목이다.
 
-정본은 `docs/specs/2026-09-05-board-settings-remaining-tabs-177.md` (T3 은 분리).
+**영향 엔티티** — `boards`(설정 4축 추가) · 신설 `board_non_working_dates` ·
+`BurndownCalculator`(도메인 순수 함수 · 근무일 축) · `BoardCardResponse`/`BacklogIssueResponse`(표시 구성).
 
-## Sanity Check (← /bts-spec §3 채움)
+**★cross-BC 경계가 갭 B·E 의 범위를 정한다.** `BoardIssueView` 는 **shared-kernel**
+(`BoardIssueLookupPort.kt:182~`)에 있고 커스텀 필드를 나르지 않는다. 지라 패리티대로 가면
+shared-kernel + issue-tracking 을 함께 건드리게 되어 「한 PR = 한 BC」와 충돌한다 — 스펙 `C-2`.
+
+**새 용어** — 없다. 「근무일」·「비근무일」·「카드 레이아웃」은 지라 용어의 직역이고
+`glossary.md` 에 새로 넣을 개념이 아니다. Maxi 승인 필요 항목 0건.
+
+**관련 ADR** — `docs/decisions/2026-07-02-fr-rp-01-burndown-burnup.md`.
+**무효화하지 않는다.** 갭 D 는 그 ADR 이 정한 계산 모델을 바꾸는 것이 아니라 **축을 근무일로 좁힌다.**
+미설정이면 현행 동작을 그대로 둔다(스펙 R6)므로 기존 결정과 충돌이 없다.
+
+**기존 결정 충돌** — 없음. 단 `#452` 의 편차 `X3`(스윔레인·퀵필터를 설정 탭으로 안 옮긴다)는
+그대로 승계하며, 이 PR 이 탭바를 도입해도 그 2탭은 만들지 않는다.
+
+
+## 스펙
+
+정본 — `docs/specs/2026-09-05-board-settings-remaining-tabs-177.md` (T3 이라 분리).
+
+핵심 시나리오 3줄.
+1. 보드 관리자가 카드에 표시할 필드를 **최대 3개** 고르면 보드와 백로그 카드가 함께 바뀐다(갭 B).
+2. 스크럼 보드에서 시간 추적 방식을 고르면 번다운의 진행 계산이 그것을 따른다. 칸반에서는 잠긴다(갭 C).
+3. 표준 근무일·비근무일을 등록하면 **번다운의 x축과 ideal 선이 근무일 기준으로 좁아진다**(갭 D) —
+   지금은 `BurndownCalculator` 가 달력일 전부를 돌므로 이 시나리오가 **red 다**.
+
+## Sanity Check
+
+gap **5건**. 3건(권한 · 타임존 소비처 · 시각 검증 기준)은 스펙에서 **1회 보강**했고,
+2건은 Maxi 결정이라 `/bts-plan` 을 막고 있다.
+
+- **G1 권한** — 4탭 쓰기는 `BoardController` 의 기존 게이트를 그대로 탄다(R8·R9). 편차 `X8` 등재.
+- **G2 타임존** — `board_timezone` 을 만들면서 읽는 곳을 안 썼다. worklog 일 귀속을 그 타임존으로
+  바꾼다(R10). 검증은 **UTC 경계를 넘는 시각**의 worklog 로만 성립한다.
+- **G5 시각 검증** — E2E 4항목 + 눈확인 4항목을 스펙에 명시.
+- **🛑 C-2** 갭 B 를 X5(기존 필드 토글)로 갈지 지라 패리티(shared-kernel 확장)로 갈지.
+- **🛑 C-3** 갭 E(상세 보기)를 뺄지 · 축소할지 · issue-tracking 까지 포함할지.
+
 
 ## Plan (← /bts-plan 채움)
 
