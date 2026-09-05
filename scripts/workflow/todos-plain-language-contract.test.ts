@@ -285,6 +285,8 @@ describe('TODOS.md — 비개발자 계약', () => {
       // 애자일 계획 **BC** 다. 사용자에게는 「스프린트·보드가 되느냐」로 나타나므로 `기능 동작` 이다
       // (identity-access · project-workflow 와 같은 논리).
       'agile-planning': CATEGORIES.feature.name,
+      // 2026-09-05 추가 — notification 영역 부채가 처음 등재됐다(PR #461 게이트 2 미커버).
+      'notification': CATEGORIES.feature.name,
       'search-export-import': CATEGORIES.feature.name,
       '도구': CATEGORIES.guard.name,
       '워크플로우': CATEGORIES.guard.name,

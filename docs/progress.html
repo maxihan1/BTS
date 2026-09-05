@@ -1668,10 +1668,10 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">132</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 102건 · 전체 234건</span>
+      <span class="big-pct" style="color:#9ca3af;">133</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 102건 · 전체 235건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 132건</h2>
+    <h2>⬜ 아직 안 한 것 — 133건</h2>
     <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">26건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
@@ -1936,9 +1936,19 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
       </details>
-    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">30건</span></h3>
+    </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">31건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
         <div class="todo-list"><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">notification — dedup 키 golden 핀이 <b>인앱에만</b> 있고 슬랙 쪽은 무방비다 (신규 · 미착수 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 알림이 중복인지 판정하는 열쇠를 만드는 코드가 두 벌 있다. 한쪽에는 「열쇠 모양이 바뀌면 알람이 울리는 장치」를 달았는데, 다른 한쪽에는 안 달았다. 그래서 슬랙 쪽 열쇠 모양은 아무도 모르게 바뀔 수 있다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 조용히 통과한다. 슬랙 열쇠 공식이 바뀌면 배포 순간 pgmq 에 떠 있던 이벤트가 재전달될 때 옛 키 행이 있어도 새 키로 삽입돼 <b>같은 슬랙 메시지가 두 번</b> 나간다. 그런데 그 변경을 막는 판별식이 없어 전 테스트가 초록이다. 인앱 쪽은 golden hex 가 있어 같은 실수가 즉시 red 다 — <b>같은 결함을 두 벌 고쳤는데 가드는 한 벌뿐</b>이라는 비대칭 그 자체가 이 항목이다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — notification — dedup 키 golden 핀이 **인앱에만** 있고 슬랙 쪽은 무방비다 (신규 · 미착수 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> <code>SlackChannelBroadcasterTest</code> 에 <code>Notification.computeDedupKey</code> 의 golden 단언(<code>4f83935a…</code>)과 짝이 되는 단언을 추가한다 — 「commentId 없는 이벤트의 dedupKey 가 <b>변경 이전 공식의 산출물과 바이트 단위로 같다</b>」. 값은 <code>SHA-256(&quot;&lt;projectKey&gt;|&lt;eventType.wireValue&gt;|&lt;issueKey&gt;|&lt;occurredAt&gt;&quot;)</code> 로 계산해 상수로 박는다.</p><p><b>실측(2026-09-05 · PR #461).</b> 현재 <code>BC-7</code> 은 「두 무댓글 이벤트의 dedupKey 가 <b>서로</b> 같다」만 단언한다. 이것은 결정성만 재고 <b>옛 키와의 동일성은 재지 않는다</b> — 공식이 통째로 바뀌어도 두 호출은 여전히 서로 같으므로 초록이다.</p><p><b>왜 지금 안 했나.</b> PR #461 게이트 2 에서 자기 리뷰로 적발했고 Maxi 가 「4건 전부 승인, 별도 후속」으로 확정했다. 결손은 <b>가드의 부재</b>이지 동작 결함이 아니라 머지를 막을 사유가 아니었다.</p><p><b>착수 시 읽을 것.</b> <code>docs/plans/2026-09-05-notification-dedup-comment-id.md</code> D1 — 「부재하면 원소 자체를 뺀다」가 폭발 반경을 댓글 이벤트로만 가둔 근거이고, golden 핀이 지키는 것이 정확히 그 결정이다.</p></div>
+      </details>
+    </div><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">issue-tracking — OpenAPI required 오표기 <b>잔여 26 프로퍼티</b> + 전수 판별식 부재 (선재 · 미착수 · T2)</span></div>
       <div class="todo-plain">
         <p class="todo-easy"><b>쉬운 말.</b> API 설명서가 「반드시 넣어야 하는 값」을 <b>26곳에서</b> 잘못 표시한다.</p>
