@@ -77,7 +77,7 @@ class DetailViewSettingsService(
      * @return `fieldGroup → 필드 키 목록`. 키는 항상 [DETAIL_VIEW_FIELD_GROUPS] 4종이고 순서도 그대로다.
      */
     @Transactional(readOnly = true)
-    fun findFields(boardId: UUID): Map<String, List<String>> = normalize(repository.findDetailViewFields(boardId))
+    fun findFields(boardId: UUID): Map<String, List<String>> = readNormalized(boardId)
 
     /**
      * 요청에 실린 그룹만 통째로 교체한다 (J47 · J48).
@@ -108,15 +108,24 @@ class DetailViewSettingsService(
         groups.forEach { (fieldGroup, fieldKeys) ->
             repository.replaceDetailViewFields(boardId, fieldGroup, fieldKeys)
         }
-        return normalize(repository.findDetailViewFields(boardId))
+        return readNormalized(boardId)
     }
 
     /**
-     * 저장된 구성을 그룹 4종이 항상 존재하는 모양으로 좁힌다.
+     * 저장된 구성을 읽어 그룹 4종이 항상 존재하는 모양으로 좁힌다.
      *
      * `associateWith` 라 결과는 [DETAIL_VIEW_FIELD_GROUPS] 의 **선언 순서**를 그대로 갖는다(J47).
      * 그룹 **안**의 순서는 손대지 않는다 — 리포지터리가 `position` 순으로 준 목록 그대로다.
+     *
+     * ## ★왜 [replaceGroups] 가 [findFields] 를 부르지 않고 이 private 함수를 부르나
+     * 둘이 하는 일은 같지만 [findFields] 는 `@Transactional(readOnly = true)` 다. 같은 클래스 안에서
+     * 부르면 Spring 프록시를 타지 않아 그 속성이 **무시된다**(self-invocation). 지금은 쓰기
+     * 트랜잭션에 합류하는 것이 의도한 동작이라 결과가 우연히 맞지만, 「어노테이션이 붙어 있는데
+     * 적용되지 않는」 호출을 남겨 두면 다음 사람이 그것을 근거로 삼는다. private 함수로 빼면
+     * 프록시가 개입할 자리 자체가 없어져 그 착시가 생기지 않는다.
      */
-    private fun normalize(stored: Map<String, List<String>>): Map<String, List<String>> =
-        DETAIL_VIEW_FIELD_GROUPS.associateWith { stored[it].orEmpty() }
+    private fun readNormalized(boardId: UUID): Map<String, List<String>> {
+        val stored = repository.findDetailViewFields(boardId)
+        return DETAIL_VIEW_FIELD_GROUPS.associateWith { stored[it].orEmpty() }
+    }
 }

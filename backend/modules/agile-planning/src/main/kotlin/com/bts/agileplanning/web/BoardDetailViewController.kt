@@ -64,9 +64,13 @@ data class DetailViewFieldsResponse(
  * ### ★편차 X8 — 보드 단위 권한이 없어 프로젝트 권한으로 갈음한다
  * J49 는 이 화면을 *"a user with the **Jira admin** or a **board admin** permissions"* 로 제한한다.
  * BTS 에는 **보드 단위 권한 모델이 없다**(`#450` 이 T3 이연으로 등재). 그래서 쓰기는 보드 설정 변경과
- * 같은 무게의 프로젝트 권한인 [IssuePermission.SOFT_DELETE] 로 갈음한다 — Task 8(카드 레이아웃)이
- * 타는 게이트와 **같은 것**이다. 4탭이 서로 다른 권한을 타면 「보드 설정」이라는 한 화면 안에서
- * 탭마다 403 이 갈리게 된다.
+ * 같은 무게의 프로젝트 권한인 [IssuePermission.SOFT_DELETE] 로 갈음한다 —
+ * [BoardCardLayoutController](Task 8)가 타는 게이트와 **같은 것**이고, 같은 wave 에서 서로를 보지 않고
+ * 작성했는데도 권한코드·스코프·검사 순서가 일치했다. 4탭이 서로 다른 권한을 타면 「보드 설정」이라는
+ * 한 화면 안에서 탭마다 403 이 갈린다.
+ *
+ * ★**타 BC 의 멤버십 role 을 직접 조회하지 않는다.** 권한 판정은 권한코드 + [IssuePermissionResolver]
+ * 창구만 쓴다(FR-PM-07). 보드 단위 권한이 생기면 갈음을 걷어낼 자리는 [requireBoardAccess] 한 곳이다.
  *
  * 읽기는 [IssuePermission.BROWSE] 다 — 보드를 볼 수 있으면 그 보드의 상세 보기 구성도 볼 수 있어야
  * 이슈 상세 화면이 그려진다(R7c). 쓰기 권한을 읽기에까지 요구하면 일반 사용자의 이슈 상세가 깨진다.
@@ -77,8 +81,12 @@ data class DetailViewFieldsResponse(
  * 말고 보고하라」). 그래서 오류 경로를 전부 [ResponseStatusException](또는 그것을 상속한 도메인 예외)로
  * 낸다 — Spring 의 `ResponseStatusExceptionResolver` 가 advice 없이도 상태를 그대로 내보내므로
  * catch-all 500 변질이 일어나지 않는다.
- * [com.bts.agileplanning.application.BoardAccessDeniedException] 계열(평범한 `RuntimeException`)을 쓰면
- * 이 컨트롤러에서는 **500 이 된다** — 나중에 `assignableTypes` 에 이 클래스를 더한 뒤에야 바꿀 수 있다.
+ * [BoardAccessDeniedException]·[BoardNotFoundException](평범한 `RuntimeException`)을 쓰면 이 컨트롤러에서는
+ * **500 이 된다** — 나중에 `assignableTypes` 에 이 클래스를 더한 뒤에야 바꿀 수 있다.
+ *
+ * ★이것은 T8·T9·T10 과 **공유하는 미결 사항**이다. [BoardCardLayoutController] 도 같은 이유로 같은
+ * 우회를 택했다. 넷이 합류할 때 `assignableTypes` 에 네 컨트롤러를 더하면 `handleResponseStatus` 가
+ * 이 예외들을 받아 `AGILE_` 봉투로 통일된다 — 그때 이 우회 주석도 함께 걷어낸다.
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다. 트랜잭션은 [DetailViewSettingsService] 가 개시한다.
