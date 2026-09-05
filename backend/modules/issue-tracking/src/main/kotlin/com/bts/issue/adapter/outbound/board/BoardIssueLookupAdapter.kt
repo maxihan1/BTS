@@ -39,6 +39,21 @@ import java.util.UUID
  * 행위자 단위로 별도 강제한다. 행단위 보안필터는 항상 적용되므로, 이 adapter 가 반환하는 목록에는
  * viewer 가 볼 수 없는 등급의 이슈가 절대 포함되지 않는다.
  *
+ * ### 포트 계약 — 나가는 값은 **이미 마스킹된 것**이다 (FR-PM-07 · 스펙 C-6)
+ *
+ * [BoardIssueView.customFields] 는 이 adapter 가 [FieldPermissionResolver.visibleFields] 로
+ * 이미 걸러 낸 값이다. **소비자(agile-planning)는 받은 것을 다시 거르지 않는다** — 그대로 미러한다.
+ *
+ * 마스킹 주체를 여기 하나로 둔 이유는 두 가지다.
+ * 1. 권한 판정은 issue-tracking 이 소유한 지식이다. 소비측이 마스킹하려면 권한 모델을 복사해야 하고,
+ *    그 순간 서로를 검사하지 않는 **두 번째 진실**이 생긴다.
+ * 2. 판정 규칙이 REST 경로(`IssueApplicationService.maskFieldsForPage` +
+ *    `IssueResponse.maskInvisible`)와 **한 곳에서 갈라지지 않게** 하려면 같은 포트를 같은 규칙으로
+ *    호출하는 곳이 하나여야 한다. 규칙이 갈라지면 같은 사용자가 화면에 따라 다른 것을 보게 된다.
+ *
+ * 코어 필드(assigneeId/labels 등)의 필드 수준 마스킹은 이 경로의 범위가 **아니다** —
+ * 보드 카드는 REST 응답과 필드 집합이 다르므로 별도 판정이 필요하다(부채 177 Task 25 범위 밖).
+ *
  * @see BoardIssueLookupPort
  * @see IssueRepository.listVisibleForBoard
  */
@@ -60,7 +75,7 @@ class BoardIssueLookupAdapter(
      *
      * @param projectKey 조회할 프로젝트 키. 예: `"ATLAS"`.
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
-     * @return 가시 이슈를 매핑한 [BoardIssuePage].
+     * @return 가시 이슈를 매핑한 [BoardIssuePage]. `customFields` 는 이미 마스킹된 값이다(클래스 KDoc 포트 계약).
      */
     @Transactional(readOnly = true)
     override fun listVisibleIssuesByProject(
@@ -79,6 +94,7 @@ class BoardIssueLookupAdapter(
      * @param viewerUserId 보드를 조회하는 사용자 UUID. visibility 필터 기준.
      * @param filter 보드 카드 필터 조건. [BoardCardFilter.EMPTY] 이면 무필터와 동일.
      * @return 필터와 가시성 술어를 모두 적용한 [BoardIssuePage].
+     *   `customFields` 는 열람 권한으로 이미 마스킹돼 있다 — 소비자는 다시 거르지 않는다(포트 계약).
      */
     @Transactional(readOnly = true)
     override fun listVisibleIssuesByProject(
@@ -183,6 +199,14 @@ class BoardIssueLookupAdapter(
  * 따라서 조인도 카드당 조회도 늘지 않는다 — `BoardIssueLookupCustomFieldsTest` C4/C5 가
  * 보드·백로그 두 경로에서 SQL 문 수 1회를 고정한다.
  * 값의 **소유는 issue-tracking BC** 이며 소비측(agile-planning)은 미러 노출만 한다.
+ *
+ * ### 나가는 맵은 마스킹을 통과한 것만 담는다 (FR-PM-07)
+ *
+ * [visibleCustomFields] 에 없는 키는 여기서 **제거**된다. `IssueResponse.maskInvisible` 의
+ * 커스텀 필드 절과 같은 판정식(`FieldRef(CUSTOM, key) in visible`)을 쓴다 — 규칙을 새로 만들지 않는다.
+ * 빈 집합이 들어오면 커스텀 필드는 전부 사라진다(불명은 거부).
+ *
+ * @param visibleCustomFields 이 카드의 프로젝트에서 viewer 가 열람 가능한 커스텀 필드 [FieldRef] 집합.
  */
 private fun IssueRepository.BoardIssueEntry.toBoardIssueView(visibleCustomFields: Set<FieldRef>): BoardIssueView =
     BoardIssueView(

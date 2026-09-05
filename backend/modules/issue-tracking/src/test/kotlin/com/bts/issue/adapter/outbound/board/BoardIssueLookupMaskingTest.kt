@@ -8,6 +8,7 @@ import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
 import com.bts.shared.board.BoardCardFilter
+import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.FieldKind
@@ -140,8 +141,7 @@ class BoardIssueLookupMaskingTest : IssueTestcontainersBase() {
 
     private fun insertIssues(count: Int) = repeat(count) { insertIssue(seq = 1L + it) }
 
-    private fun cardsOf(page: com.bts.shared.board.BoardIssuePage): Map<String, BoardIssueView> =
-        page.issues.associateBy { it.key }
+    private fun cardsOf(page: BoardIssuePage): Map<String, BoardIssueView> = page.issues.associateBy { it.key }
 
     @Test
     fun `M1 - 열람 권한 없는 뷰어의 보드 카드에서 제한 커스텀 필드가 사라진다`() {
