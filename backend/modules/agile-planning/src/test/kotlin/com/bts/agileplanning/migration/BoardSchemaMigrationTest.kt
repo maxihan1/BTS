@@ -22,7 +22,8 @@ import java.util.UUID
  * 요구하지 않으므로 postgres:16-alpine 이미지로 충분하다 (UserNotificationSubsSchemaTest 동일 결정).
  *
  * 검증 범위 (FR-BD-01 §데이터 모델 + FR-BD-03 V501 WIP/스윔레인).
- * - boards 테이블 존재 + 7개 컬럼(id/project_key/name/created_at/updated_at/deleted_at/swimlane_field)
+ * - boards 테이블 존재 + 11개 컬럼(id/project_key/name/created_at/updated_at/deleted_at/swimlane_field
+ *   + V505 board_type + V509 time_tracking/working_days/board_timezone)
  * - boards.deleted_at NULL 허용(소프트 삭제) / project_key·name·created_at·updated_at NOT NULL
  * - 부분 인덱스 idx_boards_project_key — boards(project_key) WHERE deleted_at IS NULL
  * - board_columns 테이블 존재 + 7개 컬럼(id/board_id/state_key/name/category/display_order/wip_limit)
@@ -74,7 +75,9 @@ class BoardSchemaMigrationTest {
                 "wip_limit",
             )
 
-        // boards 가 V501 이후 보유해야 하는 7개 컬럼 (swimlane_field 추가).
+        // boards 가 V509 이후 보유해야 하는 11개 컬럼.
+        // ★ 숫자는 리스트와 **함께** 갱신한다 — V505 가 board_type 을 더하면서 이 주석만 「7개」로
+        //   남겨 8칸 리스트와 어긋나 있었다(부채 177 Task 28 에서 정정). 정본은 언제나 리스트다.
         private val BOARDS_COLUMNS_V501 =
             listOf(
                 "id",
@@ -86,6 +89,11 @@ class BoardSchemaMigrationTest {
                 "swimlane_field",
                 // V505 — 보드 종류(SCRUM/KANBAN)
                 "board_type",
+                // V509 — 추정 탭 시간 추적(J36)
+                "time_tracking",
+                // V509 — 작업일 탭 표준 근무일(J38) · 보드 타임존(J40)
+                "working_days",
+                "board_timezone",
             )
 
         // board_quick_filters 가 보유해야 하는 6개 컬럼 (V504 FR-UX-01 퀵 필터).
@@ -379,10 +387,10 @@ class BoardSchemaMigrationTest {
         assertThat(tableExists("boards")).isTrue()
     }
 
-    // ★ RED (2026-09-06 실측) — 이 테스트는 지금 실패한다. V509(부채 177 Task 1)가 boards 에
-    //   time_tracking · working_days · board_timezone 3칸을 더했는데 BOARDS_COLUMNS_V501 은
-    //   그대로라 완전 일치가 깨졌다. 아래가 실제 실패 원문이고 방향이 **unexpected** 다 —
-    //   테스트가 모르는 컬럼이 DB 에 있다(반대 방향이면 원인 진단이 틀린 것이다).
+    // ★ 2026-09-06 red 이력 — V509(부채 177 Task 1)가 boards 에 time_tracking · working_days ·
+    //   board_timezone 3칸을 더했는데 BOARDS_COLUMNS_V501 이 그대로라 완전 일치가 깨져 있었다.
+    //   아래가 그때의 실패 원문이고 방향이 **unexpected** 였다 —
+    //   테스트가 모르는 컬럼이 DB 에 있다(반대 방향이면 마이그레이션이 안 돈 것이다).
     //
     //     Expecting actual:
     //       [..., "swimlane_field", "board_type", "time_tracking", "working_days", "board_timezone"]
@@ -393,7 +401,7 @@ class BoardSchemaMigrationTest {
     //
     //   재현. (cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSchemaMigrationTest')
     @Test
-    fun `V501 boards 7개 컬럼 존재 (swimlane_field 추가)`() {
+    fun `V509 boards 11개 컬럼 존재 (V505 종류 · V509 설정 3칸 누적)`() {
         assertThat(columnsOf("boards"))
             .containsExactlyInAnyOrderElementsOf(BOARDS_COLUMNS_V501)
     }
