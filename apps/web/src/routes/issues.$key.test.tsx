@@ -2833,3 +2833,44 @@ describe('IssueDetailPage — 제목 진입 가드/포커스 복귀 (FR-UX-11 F8
     expect(titleButton.className).toContain('select-text')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 인박스 댓글 딥링크 — focusCommentId
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 댓글 딥링크 (인박스 알림)', () => {
+  const DEEP_LINK_COMMENT_ID = 'c0000000-0000-4000-a000-0000000000aa'
+
+  function renderWithFocus(commentId?: string) {
+    const client = makeClient()
+    return render(
+      <QueryClientProvider client={client}>
+        <IssueDetailPage issueKey="ATLAS-1" focusCommentId={commentId} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('focusCommentId 가 있으면 활동 영역이 댓글 탭으로 시작한다', async () => {
+    setupIssueFoundHandler()
+
+    renderWithFocus(DEEP_LINK_COMMENT_ID)
+
+    const commentTab = await screen.findByRole('tab', {
+      name: issueDetailStrings.activityCommentTabLabel,
+    })
+    // ★첫 렌더부터 열려 있어야 한다. Radix Tabs 는 비활성 탭을 언마운트하므로 이력 탭으로
+    //   시작하면 스크롤할 댓글이 애초에 DOM 에 없다.
+    expect(commentTab).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('focusCommentId 가 없으면 기존대로 이력 탭에서 시작한다 (회귀 고정)', async () => {
+    setupIssueFoundHandler()
+
+    renderWithFocus()
+
+    const historyTab = await screen.findByRole('tab', {
+      name: issueDetailStrings.activityHistoryTabLabel,
+    })
+    expect(historyTab).toHaveAttribute('aria-selected', 'true')
+  })
+})

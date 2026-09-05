@@ -27,6 +27,7 @@ function makeItem(overrides: Partial<InboxItem>): InboxItem {
     title: '테스트 알림',
     body: null,
     actorUserId: null,
+    commentId: null,
     readAt: null,
     archivedAt: null,
     createdAt: '2026-06-25T00:00:00Z',

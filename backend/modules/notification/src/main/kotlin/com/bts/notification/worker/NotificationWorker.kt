@@ -371,13 +371,31 @@ class NotificationWorker(
             issueKey = event.issueKey,
             title = title,
             body = body,
-            payload = null,
+            payload = buildPayload(event),
             status = NotificationStatus.PENDING,
             dedupKey = dedupKey,
             readAt = null,
             createdAt = event.occurredAt,
             actorUserId = event.actorId,
         )
+    }
+
+    /**
+     * Inbox 딥링크용 `payload` JSON 을 만든다.
+     *
+     * `notifications.payload` 는 V402 가 「원본 이벤트 컨텍스트 JSONB (Inbox 딥링크/재렌더링용)」로
+     * 정의한 자리다. 지금 싣는 것은 [NotificationSourceEvent.commentId] 하나뿐이다.
+     *
+     * ★실을 것이 없으면 `{}` 가 아니라 **null 을 낸다.** 빈 객체를 넣으면 「딥링크가 없는 알림」과
+     * 「딥링크가 있었는데 빠진 알림」을 구분할 수 없고, 소비하는 쪽이 payload 존재만 보고
+     * 링크를 그리게 된다.
+     *
+     * @param event 원본 이벤트
+     * @return 딥링크 컨텍스트 JSON 문자열. 실을 것이 없으면 null
+     */
+    private fun buildPayload(event: NotificationSourceEvent): String? {
+        val commentId = event.commentId ?: return null
+        return objectMapper.writeValueAsString(mapOf("commentId" to commentId.toString()))
     }
 
     /**
@@ -441,12 +459,17 @@ class NotificationWorker(
         // 다른 이벤트에서는 path() 가 missing 을 돌려주고 parseActorId 가 null 을 낸다.
         val commentAuthorId = parseActorId(node.path("commentAuthorId"))
 
+        // 딥링크의 근거가 되는 댓글 — `issue.commented` 와, 댓글에서 발생한 `issue.mentioned`
+        // (`sourceField="comment"`) 페이로드에만 있다. 그 외 이벤트에서는 missing → null.
+        val commentId = parseUuid(node.path("commentId").asText(null))
+
         return NotificationSourceEvent(
             eventType = eventType,
             issueKey = issueKey,
             projectKey = projectKey,
             mentionedUserIds = mentionedUserIds,
             commentAuthorId = commentAuthorId,
+            commentId = commentId,
             reporterId = reporterId,
             actorId = actorId,
             occurredAt = occurredAt,

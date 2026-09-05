@@ -72,6 +72,13 @@ export const inboxItemSchema = z.object({
   body: z.string().nullable(),
   /** 발신자 사용자 UUID (시스템 발송이면 null) */
   actorUserId: z.string().uuid().nullable(),
+  /**
+   * 딥링크 대상 댓글 UUID — 댓글에서 비롯된 알림(멘션·댓글 작성)에만 있다.
+   *
+   * 이 값이 있으면 알림을 눌렀을 때 이슈만 여는 게 아니라 **그 댓글까지** 데려간다.
+   * 백엔드는 `notifications.payload` JSONB 에서 꺼내 채운다.
+   */
+  commentId: z.string().uuid().nullable(),
   /** 읽음 처리 시각 (미읽음이면 null, ISO-8601) */
   readAt: z.string().datetime().nullable(),
   /** 보관 처리 시각 (미보관이면 null, ISO-8601) */

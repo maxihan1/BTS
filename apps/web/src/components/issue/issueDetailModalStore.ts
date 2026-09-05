@@ -35,13 +35,25 @@ function writePreference(value: IssueDetailPresentation): void {
 interface IssueDetailModalState {
   /** 모달로 열려 있는 이슈 키. null 이면 닫힘. */
   openKey: string | null
+  /**
+   * 열자마자 데려갈 댓글 UUID. null 이면 평소대로 이슈 상단에서 시작한다.
+   *
+   * 인박스 알림처럼 「그 댓글 때문에」 상세를 여는 진입점이 채운다.
+   * `openKey` 와 함께 살고 함께 죽는다 — 닫으면 같이 비운다.
+   */
+  openCommentId: string | null
   /** 세션 내 표시 방식 선호 (J1 — "persist across Jira views within the same session"). */
   presentation: IssueDetailPresentation
 }
 
 interface IssueDetailModalActions {
-  /** 이슈 상세를 모달로 연다. */
-  open: (issueKey: string) => void
+  /**
+   * 이슈 상세를 모달로 연다.
+   *
+   * @param issueKey 열 이슈 키
+   * @param commentId 열자마자 데려갈 댓글 UUID (선택). 생략하면 이슈 상단에서 시작한다.
+   */
+  open: (issueKey: string, commentId?: string | null) => void
   /** 모달을 닫는다. */
   close: () => void
   /** 표시 방식을 바꾸고 세션에 기억한다. */
@@ -69,9 +81,12 @@ interface IssueDetailModalActions {
 export const useIssueDetailModalStore = create<IssueDetailModalState & IssueDetailModalActions>()(
   (set) => ({
     openKey: null,
+    openCommentId: null,
     presentation: readPreference(),
-    open: (issueKey) => { set({ openKey: issueKey }) },
-    close: () => { set({ openKey: null }) },
+    // ★두 번째 인자를 항상 덮어쓴다. 생략 시 `null` 로 되돌리지 않으면 이전에 딥링크로 연
+    //   댓글이 다음 번 평범한 열기까지 따라와 엉뚱한 댓글로 스크롤한다.
+    open: (issueKey, commentId = null) => { set({ openKey: issueKey, openCommentId: commentId }) },
+    close: () => { set({ openKey: null, openCommentId: null }) },
     setPresentation: (value) => {
       writePreference(value)
       set({ presentation: value })

@@ -40,6 +40,7 @@ import { useIssueDetailModalStore } from './issueDetailModalStore'
  */
 export function IssueDetailSidePanel(): JSX.Element | null {
   const openKey = useIssueDetailModalStore((s) => s.openKey)
+  const openCommentId = useIssueDetailModalStore((s) => s.openCommentId)
   const presentation = useIssueDetailModalStore((s) => s.presentation)
   const close = useIssueDetailModalStore((s) => s.close)
   const open = useIssueDetailModalStore((s) => s.open)
@@ -82,6 +83,8 @@ export function IssueDetailSidePanel(): JSX.Element | null {
         <IssueDetailPage
           key={openKey}
           issueKey={openKey}
+          // 모달과 같은 스토어 값에서 온다 — 표시 방식이 달라도 딥링크는 같게 동작해야 한다.
+          focusCommentId={openCommentId ?? undefined}
           variant="pane"
           onClose={close}
           // 옛 키로 열었을 때 새 키로 갈아탄다 — 패널을 닫고 다시 열 필요가 없다.

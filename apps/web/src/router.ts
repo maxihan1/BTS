@@ -185,13 +185,22 @@ const issuesNewRoute = createRoute({
   }),
 })
 
-/** 이슈 상세 라우트 — /issues/$key, requireAuth */
+/**
+ * 이슈 상세 라우트 — /issues/$key, requireAuth.
+ *
+ * `comment` 는 인박스 알림의 댓글 딥링크다. 알림을 평범하게 좌클릭하면 모달이 가로채
+ * 스토어로 댓글을 넘기지만, ⌘클릭·새 탭·링크 복사는 이 URL 만 남는다 — 두 경로가 같게
+ * 동작하려면 쿼리로도 실려야 한다.
+ */
 const issuesKeyRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/issues/$key',
   component: IssueDetailRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: (search: Record<string, unknown>): { comment?: string } => ({
+    comment: typeof search['comment'] === 'string' ? search['comment'] : undefined,
+  }),
 })
 
 /** 워크플로우 스킴 목록 라우트 — /admin/workflow-schemes, requireAuth + requireSystemAdmin + requirePasswordChanged + requireMfaEnrolled (다른 admin 라우트와 동일 4-가드, FR-UX-06 PR13 Task 8, PL-8) */

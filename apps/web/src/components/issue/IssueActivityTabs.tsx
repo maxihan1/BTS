@@ -74,6 +74,8 @@ export interface IssueActivityTabsProps {
   onValueChange?: (value: ActivityTabValue) => void
   /** 댓글 작성 textarea 로 통과시킬 ref — 단축키 `m` 의 포커스 대상 */
   commentInputRef?: RefObject<HTMLDivElement | null>
+  /** 딥링크로 데려갈 댓글 UUID — 그대로 `CommentSection` 에 넘긴다 */
+  focusCommentId?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +104,7 @@ export interface IssueActivityTabsProps {
  * @param value 활성 탭 값 (controlled). 미전달이면 「이력」 기본 uncontrolled
  * @param onValueChange 탭 전환 콜백 — `value` 와 짝
  * @param commentInputRef 댓글 작성 textarea 로 통과시킬 ref (단축키 `m`)
+ * @param focusCommentId 딥링크로 데려갈 댓글 UUID
  */
 export function IssueActivityTabs({
   issueKey,
@@ -111,6 +114,7 @@ export function IssueActivityTabs({
   value,
   onValueChange,
   commentInputRef,
+  focusCommentId,
 }: IssueActivityTabsProps): JSX.Element {
   const showEpicSection = issue.typeKey !== 'epic' && issue.typeKey !== 'subtask'
 
@@ -140,7 +144,12 @@ export function IssueActivityTabs({
       </TabsList>
 
       <TabsContent value={ACTIVITY_TABS.COMMENT}>
-        <CommentSection issueKey={issueKey} canUpdate={canUpdate} focusRef={commentInputRef} />
+        <CommentSection
+          issueKey={issueKey}
+          canUpdate={canUpdate}
+          focusRef={commentInputRef}
+          focusCommentId={focusCommentId}
+        />
       </TabsContent>
 
       <TabsContent value={ACTIVITY_TABS.HISTORY}>

@@ -4,7 +4,7 @@
 import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import { useParams, useNavigate } from '@tanstack/react-router'
+import { useParams, useNavigate, useSearch } from '@tanstack/react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fetchIssue, updateIssue, IssueRedirectError } from '@/api/issues'
@@ -175,6 +175,13 @@ interface IssueDetailPageProps {
   onIssueRedirect?: (newKey: string) => void
   /** pane 전용 — 삭제 성공 시 fullscreen navigate('/issues') 대신 호출 */
   onIssueClosed?: () => void
+  /**
+   * 열자마자 데려갈 댓글 UUID (인박스 알림 딥링크).
+   *
+   * 주어지면 활동 영역이 **댓글 탭으로 시작**하고 그 댓글까지 스크롤한다. Radix Tabs 는
+   * 비활성 탭을 언마운트하므로 탭을 먼저 열지 않으면 스크롤할 대상이 DOM 에 없다.
+   */
+  focusCommentId?: string
 }
 
 
@@ -228,12 +235,46 @@ function buildChangelogRefs(
   }
 }
 
+/**
+ * 활동 영역 활성 탭 상태 — 기본값과 **댓글 딥링크**를 함께 다룬다.
+ *
+ * 라우트가 탭을 소유하는 이유는 단축키 `m` 이다(Radix Tabs 가 비활성 탭을 언마운트해서,
+ * 탭을 먼저 열지 않으면 포커스 줄 입력이 DOM 에 없다). 딥링크도 같은 제약을 받는다 —
+ * 댓글 탭이 닫혀 있으면 스크롤할 행 자체가 없다.
+ *
+ * ★초기값과 effect **둘 다** 필요하다.
+ * - 초기값만 두면 모달이 열린 채로 다른 알림을 눌렀을 때(`focusCommentId` 만 교체) 못 따라간다.
+ * - effect 만 두면 첫 렌더가 이력 탭이라 한 프레임 번쩍이고, 그 사이 댓글 목록이 마운트되지
+ *   않아 스크롤 대상이 없다.
+ *
+ * `IssueDetailPage` 밖에 두는 것은 200줄 래칫(`lint-ratchet`) 때문이기도 하다 —
+ * 베이스라인 숫자를 올리는 대신 쪼갠다(`buildChangelogRefs` 선례).
+ *
+ * @param focusCommentId 딥링크가 지목한 댓글 UUID (없으면 undefined)
+ * @returns `[활성 탭, 탭 변경 함수]`
+ */
+function useActivityTab(
+  focusCommentId: string | undefined,
+): [ActivityTabValue, (value: ActivityTabValue) => void] {
+  const [activityTab, setActivityTab] = useState<ActivityTabValue>(
+    focusCommentId !== undefined ? ACTIVITY_TABS.COMMENT : ACTIVITY_TABS.HISTORY,
+  )
+
+  useEffect(() => {
+    if (focusCommentId === undefined) return
+    setActivityTab(ACTIVITY_TABS.COMMENT)
+  }, [focusCommentId])
+
+  return [activityTab, setActivityTab]
+}
+
 export function IssueDetailPage({
   issueKey,
   variant = 'page',
   onClose,
   onIssueRedirect,
   onIssueClosed,
+  focusCommentId,
 }: IssueDetailPageProps): JSX.Element {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -271,12 +312,8 @@ export function IssueDetailPage({
   // WYSIWYG 전환으로 대상이 contenteditable 컨테이너가 됐다 — `.focus()` 는 그대로 동작한다.
   const commentInputRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * 활동 영역 활성 탭 — 단축키 `m` 이 댓글 탭을 열어야 해서 라우트가 소유한다.
-   * Radix Tabs 는 비활성 탭 콘텐츠를 언마운트하므로, 탭을 열지 않으면 댓글 입력이
-   * DOM 에 없어 포커스를 줄 대상이 없다.
-   */
-  const [activityTab, setActivityTab] = useState<ActivityTabValue>(ACTIVITY_TABS.HISTORY)
+  /** 활동 영역 활성 탭 — 소유 이유와 딥링크 규칙은 {@link useActivityTab} 참조. */
+  const [activityTab, setActivityTab] = useActivityTab(focusCommentId)
 
   const { data: issue, isLoading, error } = useQuery({
     queryKey: issueQueryKey(issueKey),
@@ -1131,6 +1168,7 @@ export function IssueDetailPage({
             issue={issue}
             changelogRefs={changelogRefs}
             value={activityTab}
+            focusCommentId={focusCommentId}
             onValueChange={setActivityTab}
             commentInputRef={commentInputRef}
           />
@@ -1263,5 +1301,7 @@ export function IssueDetailPage({
  */
 export function IssueDetailRouteAdapter(): JSX.Element {
   const { key } = useParams({ strict: false })
-  return <IssueDetailPage issueKey={key ?? ''} />
+  // 인박스 알림을 새 탭/⌘클릭으로 연 경로. 좌클릭은 모달이 가로채 스토어로 넘긴다.
+  const { comment } = useSearch({ strict: false }) as { comment?: string }
+  return <IssueDetailPage issueKey={key ?? ''} focusCommentId={comment} />
 }

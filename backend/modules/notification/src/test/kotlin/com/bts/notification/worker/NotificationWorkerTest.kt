@@ -204,6 +204,82 @@ class NotificationWorkerTest : DescribeSpec({
         }
     }
 
+    // ── 댓글 딥링크: commentId → Notification.payload ─────────────────────────
+
+    describe("댓글 딥링크 payload") {
+        val msgId = 11L
+        val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+        val recipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+        val commentId: UUID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+        fun stubPipeline() {
+            every { policyEvaluator.evaluate(any(), any()) } returns matches
+            every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
+            every { repository.insertIfAbsent(any()) } returns true
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+        }
+
+        it("이벤트의 commentId 를 NotificationSourceEvent 로 파싱한다") {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow, commentId = commentId)
+            stubPipeline()
+            val sourceSlot = slot<NotificationSourceEvent>()
+            every { recipientResolver.resolve(capture(sourceSlot), any()) } returns listOf(recipient)
+
+            worker.pollAndProcess()
+
+            assertThat(sourceSlot.captured.commentId).isEqualTo(commentId)
+        }
+
+        it("commentId 를 payload JSON 에 실어 Inbox 딥링크의 근거를 남긴다") {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow, commentId = commentId)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            // payload 는 V402 주석이 명시한 「Inbox 딥링크」 자리다. 여기가 null 이면
+            // 인박스에서 댓글로 가는 경로가 통째로 없어진다.
+            val payload = notificationSlot.captured.payload
+            assertThat(payload).isNotNull()
+            assertThat(ObjectMapper().readTree(payload).path("commentId").asText())
+                .isEqualTo(commentId.toString())
+        }
+
+        it("commentId 가 **명시적 null** 로 실려 와도 payload 를 만들지 않는다") {
+            // ★프로듀서의 ObjectMapper 는 Boot 기본값이고 IssueDomainEvent 에 @JsonInclude 가 없다.
+            //   즉 `IssueMentioned.commentId = null`(본문 멘션)은 키 누락이 아니라
+            //   `"commentId": null` 로 실려 온다 — **아래 「키가 없다」 케이스와 다른 경로다.**
+            //   실측(2026-09-05) 상 Jackson 은 NullNode·MissingNode 둘 다 `asText(null)` 에서
+            //   실제 null 을 돌려주지만, 그건 우리가 고정한 계약이 아니라 라이브러리 구현이다.
+            //   두 경로를 각각 고정해 둔다 — 한쪽만 두면 파싱을 바꿀 때 나머지가 조용히 깨진다.
+            stubMentionMessageWithNullCommentId(dsl, actorId, mentionedId, msgId, fixedNow)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            assertThat(notificationSlot.captured.payload).isNull()
+        }
+
+        it("commentId 가 없는 이벤트는 payload 를 만들지 않는다") {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            // 빈 껍데기 `{}` 를 넣으면 「딥링크가 있다」와 「없다」를 구분할 수 없다.
+            assertThat(notificationSlot.captured.payload).isNull()
+        }
+    }
+
     // ── POLL-4: 성공 후 delete ─────────────────────────────────────────────────
 
     describe("POLL-4 성공 처리 후 pgmq.delete 호출") {
@@ -534,6 +610,38 @@ private fun stubMentionMessage(
     msgId: Long,
     occurredAt: Instant,
     readCt: Int = 1,
+    commentId: UUID? = null,
+) {
+    // commentId 는 `IssueMentioned.commentId` 가 null 이면 아예 빠진다(sourceField != "comment").
+    // 그 부재를 그대로 재현한다 — 항상 넣으면 「없을 때」 경로를 영영 안 본다.
+    val commentIdLine = commentId?.let { """  "commentId": "$it",""" + "\n" } ?: ""
+    val json =
+        """
+        {
+          "type": "issue.mentioned",
+          "issueKey": "ATLAS-1",
+          "projectKey": "ATLAS",
+          "actorId": { "value": "$actorId" },
+        $commentIdLine  "mentionedUserIds": ["$mentionedId"],
+          "occurredAt": "$occurredAt"
+        }
+        """.trimIndent()
+
+    stubReadResult(dsl, msgId, json, readCt)
+}
+
+/**
+ * `commentId` 가 **명시적 JSON null** 인 멘션 이벤트 메시지를 스텁한다.
+ *
+ * 키 누락(`stubMentionMessage` 기본값)과 **다른 경로**다. 프로듀서가 null 을 생략하지 않으므로
+ * 실제 본문 멘션 이벤트는 이 형태로 온다.
+ */
+private fun stubMentionMessageWithNullCommentId(
+    dsl: DSLContext,
+    actorId: UUID,
+    mentionedId: UUID,
+    msgId: Long,
+    occurredAt: Instant,
 ) {
     val json =
         """
@@ -542,12 +650,13 @@ private fun stubMentionMessage(
           "issueKey": "ATLAS-1",
           "projectKey": "ATLAS",
           "actorId": { "value": "$actorId" },
+          "commentId": null,
           "mentionedUserIds": ["$mentionedId"],
           "occurredAt": "$occurredAt"
         }
         """.trimIndent()
 
-    stubReadResult(dsl, msgId, json, readCt)
+    stubReadResult(dsl, msgId, json, readCt = 1)
 }
 
 /**
