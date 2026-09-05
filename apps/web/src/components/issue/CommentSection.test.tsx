@@ -738,4 +738,32 @@ describe('CommentSection — (g) 댓글 딥링크', () => {
       expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
     })
   })
+
+  it('강조된 댓글로 포커스를 옮겨 스크린리더가 그 행을 읽게 한다', async () => {
+    // 스크롤은 눈에만 보인다 — 포커스를 옮기지 않으면 스크린리더 사용자는
+    // "왜 이 화면에 왔는지" 를 끝까지 듣지 못한다. 강조의 유일한 비시각 통로다.
+    renderSection(true, CM_ID_2)
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId(`comment-row-${CM_ID_2}`))
+    })
+    // 모든 행에 tabIndex 를 붙이면 위 단언이 통과해 버린다 — 대상만 프로그램 포커스 대상이다.
+    expect(screen.getByTestId(`comment-row-${CM_ID_1}`)).not.toHaveAttribute('tabindex')
+  })
+
+  it('강조된 행에만 스크린리더용 안내 문구가 붙는다', async () => {
+    // 포커스가 읽어 주는 것은 댓글 내용뿐이라 "이게 알림이 지목한 그 댓글" 이라는
+    // 사실은 링·배경색(시각)에만 남는다. sr-only 문구가 그 의미를 텍스트로 옮긴다.
+    renderSection(true, CM_ID_2)
+
+    const target = await screen.findByTestId(`comment-row-${CM_ID_2}`)
+    expect(
+      within(target).getByText(commentStrings.commentFocusTargetScreenReader),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId(`comment-row-${CM_ID_1}`)).queryByText(
+        commentStrings.commentFocusTargetScreenReader,
+      ),
+    ).toBeNull()
+  })
 })
