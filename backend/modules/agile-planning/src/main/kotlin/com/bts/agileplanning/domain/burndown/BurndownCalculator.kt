@@ -2,6 +2,7 @@
 
 package com.bts.agileplanning.domain.burndown
 
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -45,10 +46,12 @@ object BurndownCalculator {
         scopeSeconds: Long,
         worklogByUtcDate: Map<LocalDate, Long>,
         today: LocalDate,
+        workingCalendar: WorkingDayCalendar? = null,
     ): List<BurndownPoint> {
         require(!start.isAfter(end)) { "start ($start) must not be after end ($end)." }
         require(scopeSeconds >= 0) { "scopeSeconds ($scopeSeconds) must not be negative." }
 
+        // RED 스텁 — workingCalendar 를 받기만 하고 아직 축·분모에 반영하지 않는다(Task 11 GREEN 에서).
         val asOf = minOf(end, today)
         val totalDays = ChronoUnit.DAYS.between(start, end)
         val preStartSum = worklogByUtcDate.filterKeys { it.isBefore(start) }.values.sum()
@@ -104,3 +107,14 @@ object BurndownCalculator {
         return (numerator + totalDays / HALF_ROUNDING_DIVISOR) / totalDays
     }
 }
+
+/**
+ * 보드 「작업일」 설정을 번다운 축 계산에 넘기는 값 객체 (스펙 R5·R6 · J38·J39).
+ *
+ * @property standardDays 표준 근무일 요일 집합.
+ * @property nonWorkingDates 비근무일. 스프린트 기간 밖 날짜가 섞여 있어도 된다(스펙 E8).
+ */
+data class WorkingDayCalendar(
+    val standardDays: Set<DayOfWeek>,
+    val nonWorkingDates: Set<LocalDate> = emptySet(),
+)
