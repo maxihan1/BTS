@@ -37,6 +37,13 @@ private const val V509_RESOURCE = "/db/migration/agile-planning/V509__board_sett
  * | ② 재실행 2차 | 한 번 더 돌려도 실패가 없다 | 1차만 특별하지 않음을 확인 |
  * | ③ 멱등 | **1차 재실행 후 ↔ 2차 재실행 후** 스키마가 같다 | `#444` 실측 |
  * | ④ 비-공허 짝 | V509 가 실제로 3칸·3테이블·제약 1개를 더했다 | ③ 이 공허해지는 것을 막는다 |
+ * | ⑤ 되돌리기 | 머리말의 DROP 목록이 실제로 돈다 | 리뷰 CONCERN C3 |
+ * | ⑥ 완전 원복 | 되돌린 뒤 스키마가 **적용 전과 같다** | 부채 161 |
+ *
+ * ★ ⑥ 이 잡는 것은 「머리말이 세지 않은 객체」다. V509 머리말의 되돌리기 목록은 한때
+ * `DROP TABLE` 을 **둘**만 셌고, 그 사이 ④ 절이 세 번째 테이블을 더했다. 산문 목록은
+ * 기계가 읽지 않으므로 그런 어긋남이 조용히 남는다 — 여기서는 스냅숏 **전체**를 비교하므로
+ * 되돌리기가 빠뜨린 객체가 차집합에 그대로 남아 red 가 된다.
  *
  * ★ ③ 의 기준선이 「적용 전」이 아니라 **「1차 재실행 후」**인 것이 핵심이다.
  * 「적용 전 ↔ 1차 후」로 재면 앞선 단계가 만든 행을 1차 재실행이 **정당하게** 백필하는 것까지
@@ -80,6 +87,27 @@ class BoardSettingsIdempotencyTest {
         private lateinit var replay1Failures: List<String>
         private lateinit var replay2Failures: List<String>
 
+        private lateinit var afterRollback: List<String>
+        private lateinit var rollbackFailures: List<String>
+
+        /**
+         * V509 머리말이 산문으로 적어 둔 되돌리기를 **실행 가능한 형태**로 옮긴 것.
+         *
+         * ★ 목록을 머리말에서 베끼지 않았다 — 파일 본문의 절(①②③④)을 세어 만들었다.
+         * 머리말은 한때 `DROP TABLE` 을 둘만 셌고 ④ 절이 세 번째 테이블을 더한 뒤에도
+         * 그대로였다. 이 목록이 부족하면 ⑥ 이 red 가 된다.
+         */
+        private val ROLLBACK_STATEMENTS =
+            listOf(
+                "DROP TABLE board_non_working_dates",
+                "DROP TABLE board_card_layout_fields",
+                "DROP TABLE board_detail_view_fields",
+                "ALTER TABLE boards" +
+                    " DROP COLUMN time_tracking," +
+                    " DROP COLUMN working_days," +
+                    " DROP COLUMN board_timezone",
+            )
+
         private fun flyway(target: String?) =
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -89,7 +117,7 @@ class BoardSettingsIdempotencyTest {
                 .load()
 
         /**
-         * V508 → 스냅숏 → V509 → 재실행 1차 → 스냅숏 → 재실행 2차 → 스냅숏.
+         * V508 → 스냅숏 → V509 → 재실행 1차 → 스냅숏 → 재실행 2차 → 스냅숏 → 되돌리기 → 스냅숏.
          *
          * 전 과정을 `@BeforeAll` 에 몰아 넣고 `@Test` 는 **찍어 둔 스냅숏만 비교**한다.
          * 재실행이 스키마를 건드리므로 테스트 메서드 실행 순서에 판정이 의존하면 안 된다.
@@ -110,6 +138,11 @@ class BoardSettingsIdempotencyTest {
 
             replay2Failures = runStatements(statements)
             afterReplay2 = schemaSnapshot()
+
+            // ★ 되돌리기는 **맨 마지막**이다. 스키마를 V508 로 되돌려 놓으므로 앞의 스냅숏을
+            //   전부 찍은 뒤에 돌려야 판정이 테스트 실행 순서에 의존하지 않는다.
+            rollbackFailures = runStatements(ROLLBACK_STATEMENTS)
+            afterRollback = schemaSnapshot()
         }
 
         fun conn(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
@@ -328,7 +361,30 @@ class BoardSettingsIdempotencyTest {
         assertThat(addedByV509).anyMatch { it.startsWith("con boards.boards_time_tracking_allowed :: ") }
     }
 
-    // ── ⑤ 분할기 비-공허 가드 — 0건이면 ①②③ 이 전부 공허해진다 ───────────────
+    // ── ⑤ · ⑥ 되돌리기 (리뷰 CONCERN C3 · 부채 161) ─────────────────────────────
+
+    @Test
+    fun `머리말의 되돌리기가 한 문도 실패 없이 돈다`() {
+        assertThat(rollbackFailures).isEmpty()
+    }
+
+    @Test
+    fun `되돌린 뒤 스키마가 V509 적용 전과 완전히 같다`() {
+        // ★ 대상을 V509 가 만든 객체로 좁히지 않고 public 스키마 전체를 비교한다.
+        //   되돌리기가 빠뜨린 테이블·컬럼·제약·인덱스가 차집합에 그대로 남는다 —
+        //   「DROP TABLE 을 둘만 세는」 산문 목록이 여기서 red 가 된다.
+        //
+        // ★ isEqualTo 가 아니라 **차집합 두 방향**이다. 목록 동등으로 두면 실패 메시지가
+        //   스키마 100여 줄을 두 번 쏟아내 「무엇이 남았는가」가 그 안에 묻힌다.
+        assertThat(afterRollback - beforeV509.toSet())
+            .describedAs("되돌리기가 지우지 못하고 남긴 것")
+            .isEmpty()
+        assertThat(beforeV509 - afterRollback.toSet())
+            .describedAs("되돌리기가 원래 있던 것까지 지웠다")
+            .isEmpty()
+    }
+
+    // ── 분할기 비-공허 가드 — 0건이면 ①②③ 이 전부 공허해진다 ────────────────
 
     @Test
     fun `재실행 대상 문 목록이 V509 의 DDL 을 빠짐없이 담는다`() {

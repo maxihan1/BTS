@@ -1,10 +1,10 @@
--- 보드 설정 잔여 4탭의 저장 칸 — boards 설정 3칸(추정·작업일) + 비근무일·카드 레이아웃 테이블 (부채 177)
+-- 보드 설정 잔여 4탭의 저장 칸 — boards 설정 3칸(추정·작업일) + 신설 테이블 3개(비근무일·카드 레이아웃·상세 보기) (부채 177)
 -- ⚠ V번호는 머지 직전 origin/main 의 agile-planning 최신 V번호를 재확인할 것 (동시 브랜치 Flyway checksum 충돌 회피, DATA.md §4.1).
 --
 -- 설계 정본. docs/specs/2026-09-05-board-settings-remaining-tabs-177.md §데이터 모델 · R5·R6 ·
--- docs/plans/2026-09-05-board-settings-remaining-tabs-177.md Task 1·2.
+-- docs/plans/2026-09-05-board-settings-remaining-tabs-177.md Task 1·2·3·4.
 -- 지라 근거. J36(시간 추적 2종) · J38(표준 근무일) · J39(비근무일) · J40(타임존) ·
---          J17(카드 필드 최대 3개) · J18(보드/백로그 뷰별 구성).
+--          J17(카드 필드 최대 3개) · J18(보드/백로그 뷰별 구성) · J46·J47·J48(상세 보기 필드).
 --
 -- 왜 한 V번호인가. 네 탭이 각자 마이그레이션을 내면 V번호 동시 브랜치 충돌을 네 번 상대한다.
 -- 한 파일에 몰아 한 번만 상대하는 것이 4탭을 한 PR 로 묶는 유일한 기술적 이득이다(plan §착수 시점).
@@ -12,11 +12,13 @@
 -- ★★ 이 파일의 핵심 판단은 「무엇을 NOT NULL 로 두지 **않았는가**」다. 아래 ① 참조.
 --
 -- ★★ 되돌리기 — **무조건** 완전 원복된다. 데이터 손실은 설정값뿐이다.
+--   ★이 목록은 ①②③④ **네 절 전부**를 센다. DROP TABLE 은 둘이 아니라 **셋**이다.
 --
---     DROP TABLE board_card_layout_fields;
---     DROP TABLE board_non_working_dates;
+--     DROP TABLE board_non_working_dates;   -- ②
+--     DROP TABLE board_card_layout_fields;  -- ③
+--     DROP TABLE board_detail_view_fields;  -- ④
 --     ALTER TABLE boards
---         DROP COLUMN time_tracking,
+--         DROP COLUMN time_tracking,        -- ① (boards_time_tracking_allowed 도 함께 사라진다)
 --         DROP COLUMN working_days,
 --         DROP COLUMN board_timezone;
 --
@@ -26,10 +28,15 @@
 --   되돌리면 4탭의 설정값이 사라지고 보드는 마이그레이션 이전 동작으로 정확히 돌아간다 —
 --   working_days 가 NULL 이었으므로 번다운은 애초에 달력일 전부를 돌고 있었다(①의 ★★).
 --
---   ★ 위 목록은 ①·②·③ 의 것이다. 같은 V번호에 board_detail_view_fields 가 뒤이어 붙으므로
---   그 DROP 도 함께 세야 완전 원복이 된다.
+--   ★ 이 머리말만 읽고 DROP 을 옮겨 적는 사람이 있다. 한때 이 목록은 ①②③ 만 세고 있었고
+--   ④ board_detail_view_fields 가 뒤이어 붙은 뒤에도 그대로였다 — 그러면 되돌린 뒤에도
+--   테이블 하나가 남는다. 절을 더할 때 이 목록도 함께 세는 것이 규율이다.
 --   산문은 기계가 안 읽는다 — 되돌리기를 실제로 실행해 스키마가 적용 전과 같은지 재는 것은
 --   BoardSettingsIdempotencyTest 다(plan Task 4 REFACTOR · 부채 161).
+--
+-- ★★ 재실행 안전. 이 파일은 손으로 다시 태워도 죽지 않는다 — ADD COLUMN·CREATE TABLE 은
+--   IF NOT EXISTS 를 달고, 문법이 없는 ADD CONSTRAINT 는 pg_constraint 를 보는 DO 블록으로
+--   감쌌다(①). 같은 판정을 BoardSettingsIdempotencyTest 가 「1차 재실행 후 ↔ 2차 재실행 후」로 잰다.
 
 -- ── ① boards 설정 3칸 — 추정 탭(J36) · 작업일 탭(J38·J40) ──────────────────────
 --
