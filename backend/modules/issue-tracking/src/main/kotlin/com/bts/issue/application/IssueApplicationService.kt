@@ -39,8 +39,9 @@ import com.bts.issue.event.TransitionEventPublisher
 import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.history.IssueHistoryRecorder
 import com.bts.issue.markdown.MarkdownRenderer
-import com.bts.issue.mention.MentionParser
 import com.bts.issue.mention.MentionSource
+import com.bts.issue.mention.MentionTargetResolver
+import com.bts.issue.mention.MentionTargets
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.repository.ProjectLeadRepository
 import com.bts.issue.repository.IssueFieldPatch
@@ -1401,14 +1402,15 @@ class IssueApplicationService(
         }
 
     /**
-     * description 변경 시 새로 추가된 멘션을 해석해 [IssueMentioned] 이벤트를 발행한다 (FR-MN-01).
+     * description 변경 시 새로 추가된 멘션을 해석해 [IssueMentioned] 발행 + 자동 watcher 등록 (FR-MN-01 · FR-MN-03).
      *
      * diff 기반 처리.
      * - 기존 description 에 이미 있던 멘션은 신규가 아니므로 제외한다.
      * - 자기 멘션(actor == 대상 userId) 은 제외한다. 알림 발행 시 자기 자신에게 알림을 보내지 않아야 하기 때문이다.
      * - 미존재 username(findIdsByUsernames 에서 드롭된 username) 은 자동 제외된다.
-     * - 신규 멘션 username 집합이 [MAX_MENTIONS_PER_EVENT] 를 초과하면 알파벳 오름차순 앞부분만 취한다.
-     *   이유: IN 파라미터 비대 + 거대 payload 방지 (H1). 드롭된 수는 WARN 로그로 기록한다.
+     * - 상한 초과 절단(알파벳 오름차순)·자기제외·정렬은 [MentionTargetResolver] 가 담당한다 —
+     *   FR-MN-03 이 같은 규칙을 네 경로(이슈 생성·수정 · 댓글 작성·수정)에서 쓰게 되면서 뽑았다.
+     *   드롭 수 WARN 로그는 [publishAndWatchMentions] 가 남긴다(순수 함수에 로거를 두지 않는다).
      * - 남은 대상이 없으면 이벤트를 발행하지 않는다.
      * - mentionedUserIds 는 UUID 오름차순 정렬로 결정적 직렬화를 보장한다 (IssueMentioned KDoc N3).
      *
@@ -1426,24 +1428,63 @@ class IssueApplicationService(
         request: UpdateIssueRequest,
         actor: ActorId,
     ) {
-        val added = MentionParser.extract(request.description) - MentionParser.extract(existing.description)
-        if (added.isEmpty()) return
+        val resolvedTargets =
+            MentionTargetResolver.resolve(
+                before = existing.description,
+                after = request.description,
+                actor = actor.value,
+                userLookupPort = userLookupPort,
+            )
+        publishAndWatchMentions(
+            key = key,
+            issueId = existing.id.value,
+            actor = actor,
+            resolved = resolvedTargets,
+            sourceField = MentionSource.DESCRIPTION,
+            commentId = null,
+        )
+    }
 
-        val capped = capMentions(added, key)
-        val resolved = userLookupPort.findIdsByUsernames(capped)
-        val targets = (resolved.values.toSet() - actor.value).sorted()
-        if (targets.isEmpty()) return
+    /**
+     * 산출된 멘션 대상에게 이벤트를 발행하고 **같은 목록**을 watcher 로 등록한다 (FR-MN-03).
+     *
+     * ## 왜 한 함수인가 — E5 방어
+     * 발행 대상과 watcher 대상이 갈리면 「알림은 왔는데 watcher 가 아니다」가 조용히 생긴다.
+     * 두 목록이 서로를 검사하지 않으므로 테스트로만 막으면 새어나간다. 같은 `resolved.targets`
+     * 를 두 곳에 넘기는 **한 곳**을 만들어 갈릴 자리 자체를 없앤다.
+     *
+     * 캡 절단 로그는 여기서 남긴다 — [MentionTargetResolver] 는 순수 함수라 로거를 갖지 않는다.
+     */
+    private fun publishAndWatchMentions(
+        key: IssueKey,
+        issueId: UUID,
+        actor: ActorId,
+        resolved: MentionTargets,
+        sourceField: String,
+        commentId: UUID?,
+    ) {
+        if (resolved.droppedByCap > 0) {
+            log.warn(
+                "mention_cap_exceeded key={} cap={} dropped={}",
+                key.value,
+                MentionTargetResolver.MAX_MENTIONS_PER_EVENT,
+                resolved.droppedByCap,
+            )
+        }
+        if (resolved.targets.isEmpty()) return
 
         eventPublisher.publish(
             IssueMentioned(
                 issueKey = key,
                 projectKey = key.projectPrefix,
-                mentionedUserIds = targets,
+                mentionedUserIds = resolved.targets,
                 actorId = actor,
-                sourceField = MentionSource.DESCRIPTION,
+                sourceField = sourceField,
                 occurredAt = Instant.now(clock),
+                commentId = commentId,
             ),
         )
+        autoWatch(issueId, resolved.targets)
     }
 
     /**
@@ -1462,36 +1503,7 @@ class IssueApplicationService(
         }
     }
 
-    /**
-     * 신규 멘션 username 집합을 [MAX_MENTIONS_PER_EVENT] 이하로 제한한다 (H1).
-     *
-     * 초과 시 알파벳 오름차순 앞부분을 결정적으로 선택하고, 드롭된 수를 WARN 로그로 기록한다.
-     * DB IN 파라미터 비대 및 이벤트 payload 크기를 bound 하기 위한 보호 장치다.
-     *
-     * @param added 신규 멘션 username 집합.
-     * @param key 로그 컨텍스트용 이슈 키.
-     * @return 상한 이하로 잘린 username 집합.
-     */
-    private fun capMentions(
-        added: Set<String>,
-        key: IssueKey,
-    ): Set<String> {
-        if (added.size <= MAX_MENTIONS_PER_EVENT) return added
-        val dropped = added.size - MAX_MENTIONS_PER_EVENT
-        log.warn(
-            "mention_cap_exceeded key={} total={} cap={} dropped={}",
-            key.value,
-            added.size,
-            MAX_MENTIONS_PER_EVENT,
-            dropped,
-        )
-        return added.sorted().take(MAX_MENTIONS_PER_EVENT).toSet()
-    }
-
     companion object {
-        /** 이벤트 1건당 최대 멘션 수. IN 파라미터 비대 및 payload 크기를 bound 한다 (H1). */
-        private const val MAX_MENTIONS_PER_EVENT = 50
-
         /** 템플릿 date 토큰 포맷 — ISO-8601 날짜(yyyy-MM-dd). */
         private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     }
@@ -2191,6 +2203,10 @@ class IssueApplicationService(
         userIds: List<UUID>,
     ) {
         val repo = watcherRepository ?: return
-        userIds.distinct().forEach { userId -> repo.add(issueId, userId) }
+        val distinct = userIds.distinct()
+        if (distinct.isEmpty()) return
+        // ★1인당 INSERT 가 아니라 배치 1문장. 멘션 경로가 최대 50명을 넘기므로
+        //   기존 「최대 2명」 전제가 더 이상 성립하지 않는다 (리뷰 R2).
+        repo.addAll(issueId, distinct)
     }
 }

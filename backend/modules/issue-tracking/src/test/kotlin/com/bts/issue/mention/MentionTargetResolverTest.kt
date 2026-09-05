@@ -25,8 +25,9 @@ class MentionTargetResolverTest : DescribeSpec({
         object : UserLookupPort {
             override fun exists(userId: UUID) = true
 
-            override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> =
-                pairs.toMap().filterKeys { it in usernames }
+            override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> {
+                return pairs.toMap().filterKeys { it in usernames }
+            }
         }
 
     describe("전체 모드 (이슈 생성 · 댓글 작성)") {
@@ -146,8 +147,9 @@ class MentionTargetResolverTest : DescribeSpec({
                         object : UserLookupPort {
                             override fun exists(userId: UUID) = true
 
-                            override fun findIdsByUsernames(usernames: Set<String>) =
-                                ids.filterKeys { it in usernames }
+                            override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> {
+                                return ids.filterKeys { it in usernames }
+                            }
                         },
                 )
 
