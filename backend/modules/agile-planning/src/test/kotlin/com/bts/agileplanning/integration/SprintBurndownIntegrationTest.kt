@@ -33,6 +33,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -239,7 +240,14 @@ class SprintBurndownIntegrationTest {
         burndownPortStub.source =
             BurndownSource(
                 totalOriginalEstimateSeconds = 57_600,
-                worklogEntries = listOf(WorklogContribution(LocalDate.of(2020, 1, 2), 21_600)),
+                worklogEntries =
+                    listOf(
+                        WorklogContribution(
+                            startedOnUtcDate = LocalDate.of(2020, 1, 2),
+                            timeSpentSeconds = 21_600,
+                            startedAt = Instant.parse("2020-01-02T09:00:00Z"),
+                        ),
+                    ),
             )
 
         mockMvc.perform(get("/api/v1/sprints/$sprintId/burndown"))

@@ -4,6 +4,8 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardSettingsRepository
+import com.bts.agileplanning.repository.BoardWorkingDays
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.burndown.BurndownSource
 import com.bts.shared.burndown.SprintBurndownLookupPort
@@ -57,12 +59,32 @@ class SprintBurndownServiceTest {
             every { it.hasPermission(any(), any(), any()) } returns true
         }
 
+    /**
+     * 「작업일」 탭을 한 번도 만지지 않은 보드 — 타임존·근무일 모두 미설정이다.
+     *
+     * 이 파일의 시나리오는 전부 미설정 경로다. 보드 타임존·근무일 축의 판정은
+     * [BurndownTimezoneTest] 가 대조군 쌍으로 진다.
+     */
+    private fun unsetBoardSettings(): BoardSettingsRepository =
+        mockk<BoardSettingsRepository>().also {
+            every { it.findWorkingDays(any()) } returns
+                BoardWorkingDays(standardDays = null, timezone = null, nonWorkingDates = emptyList())
+        }
+
     private fun makeService(
         sprintRepository: SprintRepository = mockk(),
         permissionResolver: IssuePermissionResolver = allowAllResolver(),
         burndownPort: SprintBurndownLookupPort = mockk(),
+        boardSettingsRepository: BoardSettingsRepository = unsetBoardSettings(),
         clock: Clock = fixedClock,
-    ): SprintBurndownService = SprintBurndownService(sprintRepository, permissionResolver, burndownPort, clock)
+    ): SprintBurndownService =
+        SprintBurndownService(
+            sprintRepository,
+            permissionResolver,
+            burndownPort,
+            boardSettingsRepository,
+            clock,
+        )
 
     @Test
     fun `BROWSE 권한이 없으면 403을 던진다`() {
@@ -116,7 +138,14 @@ class SprintBurndownServiceTest {
                 } returns
                     BurndownSource(
                         totalOriginalEstimateSeconds = 57_600,
-                        worklogEntries = listOf(WorklogContribution(LocalDate.of(2026, 7, 1), 21_600)),
+                        worklogEntries =
+                            listOf(
+                                WorklogContribution(
+                                    startedOnUtcDate = LocalDate.of(2026, 7, 1),
+                                    timeSpentSeconds = 21_600,
+                                    startedAt = Instant.parse("2026-07-01T09:00:00Z"),
+                                ),
+                            ),
                     )
             }
 

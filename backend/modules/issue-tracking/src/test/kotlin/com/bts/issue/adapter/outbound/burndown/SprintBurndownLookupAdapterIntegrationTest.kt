@@ -1,4 +1,4 @@
-// SprintBurndownLookupAdapter Testcontainers 통합 테스트 — 추정시간 합계 + UTC 날짜별 worklog 집계, 삭제 제외 (FR-RP-01 Task 3)
+// SprintBurndownLookupAdapter Testcontainers 통합 테스트 — 추정시간 합계 + worklog 단건 나열, 삭제 제외 (FR-RP-01 Task 3)
 
 package com.bts.issue.adapter.outbound.burndown
 
@@ -8,6 +8,7 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.shared.burndown.WorklogContribution
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
@@ -23,6 +24,13 @@ import java.util.UUID
  * [SprintBurndownLookupAdapter] Testcontainers 통합 테스트 (FR-RP-01 Task 3).
  *
  * [IssueTestcontainersBase] JVM singleton PostgreSQL 컨테이너를 재사용한다 (WorklogAggregateRepositoryTest 선례).
+ *
+ * ## ★ 사전집계 해제 이후의 합산은 이 테스트가 직접 한다 (부채 177 Task 30)
+ * 포트는 **worklog 1건당 1항목**을 돌려준다 — 같은 UTC 날짜가 여러 번 나온다.
+ * 그래서 날짜별 합계를 볼 때 `associateBy` 를 쓰면 **중복 키를 조용히 덮어** 마지막 1건만 남고,
+ * 값이 틀렸는데도 단언이 통과한다. [sumByUtcDate] 처럼 `groupBy` + `sumOf` 로 합산해야 한다.
+ * 날짜 축의 계약과 보드 timezone 일 귀속은 형제 [SprintBurndownLookupAdapterTest] 와
+ * `BurndownTimezoneTest`(agile-planning) 가 진다.
  */
 class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
     /** V003 seed 의 task 타입 id — value class 는 lateinit 불가, nullable var 사용 */
@@ -160,11 +168,11 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
      *        1번 이슈에 worklog 3건(같은 UTC 날짜 2건 + 다른 날짜 1건) + 소프트 삭제된 worklog 1건.
      *        소프트 삭제된 3번 이슈에도 worklog 1건(제외 대상).
      * When   fetchBurndownSource 를 3개 키 전부로 호출.
-     * Then   추정 합계는 미삭제 이슈만(8h+4h=12h). worklog 는 UTC 날짜별로 사전 집계되고
-     *        소프트 삭제된 worklog · 소프트 삭제된 이슈 소속 worklog 는 결과에서 제외된다.
+     * Then   추정 합계는 미삭제 이슈만(8h+4h=12h). worklog 는 **건별로 3항목** 그대로 오고
+     *        (사전집계 없음 — Task 30), 소프트 삭제된 worklog · 소프트 삭제된 이슈 소속 worklog 는 제외된다.
      */
     @Test
-    fun `sums original_estimate and aggregates worklog by UTC date, excludes deleted`() {
+    fun `sums original_estimate and lists each worklog, excludes deleted`() {
         val hourInSeconds = 3600
         val issue1 = insertIssue(seqNum = 1L, originalEstimateSeconds = 8 * hourInSeconds)
         val issue2 = insertIssue(seqNum = 2L, originalEstimateSeconds = 4 * hourInSeconds)
@@ -193,8 +201,9 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
             )
 
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo(((8 + 4) * hourInSeconds).toLong())
-        assertThat(source.worklogEntries).hasSize(2)
-        val byDate = source.worklogEntries.associateBy({ it.startedOnUtcDate }, { it.timeSpentSeconds })
+        // 6/1 에 2건 + 6/2 에 1건 = 3항목. 사전집계 시절에는 날짜 2개였다.
+        assertThat(source.worklogEntries).hasSize(3)
+        val byDate = sumByUtcDate(source.worklogEntries)
         assertThat(byDate[LocalDate.parse("2024-06-01")]).isEqualTo((3 * hourInSeconds).toLong())
         assertThat(byDate[LocalDate.parse("2024-06-02")]).isEqualTo((3 * hourInSeconds).toLong())
     }
@@ -251,7 +260,7 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo((8 * hourInSeconds).toLong())
         // 기밀 이슈 worklog(5h) 제외 → 공개 이슈 worklog 3h 만.
         assertThat(source.worklogEntries).hasSize(1)
-        val byDate = source.worklogEntries.associateBy({ it.startedOnUtcDate }, { it.timeSpentSeconds })
+        val byDate = sumByUtcDate(source.worklogEntries)
         assertThat(byDate[LocalDate.parse("2024-06-01")]).isEqualTo((3 * hourInSeconds).toLong())
     }
 
@@ -259,6 +268,7 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
      * Given  공개 이슈(추정 8h) + static 보안등급 이슈(추정 4h). 각각 같은 UTC 날짜에 worklog 보유.
      * When   viewer 가 staticLevel 소속인 access 로 fetchBurndownSource 호출.
      * Then   두 이슈 모두 가시 → estimate 12h·worklog 8h(3h+5h) 전부 집계에 포함된다.
+     *        worklog 는 사전집계되지 않으므로 **2항목**으로 오고, 합산은 이 테스트가 한다(Task 30).
      */
     @Test
     fun `허가된 viewer 는 보안등급 이슈의 estimate·worklog 를 집계에 포함한다`() {
@@ -288,11 +298,21 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
             )
 
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo(((8 + 4) * hourInSeconds).toLong())
-        assertThat(source.worklogEntries).hasSize(1)
-        val byDate = source.worklogEntries.associateBy({ it.startedOnUtcDate }, { it.timeSpentSeconds })
+        // 두 이슈의 worklog 가 같은 UTC 날짜지만 각각 1항목이다 — associateBy 로 받으면 한쪽이 조용히 사라진다.
+        assertThat(source.worklogEntries).hasSize(2)
+        val byDate = sumByUtcDate(source.worklogEntries)
         assertThat(byDate[LocalDate.parse("2024-06-01")]).isEqualTo(((3 + 5) * hourInSeconds).toLong())
     }
 }
+
+/**
+ * worklog 항목을 UTC 날짜별 **합계**로 접는다.
+ *
+ * `associateBy` 는 같은 키가 두 번 오면 **뒤엣것으로 덮는다** — 사전집계가 풀린 지금은 그것이
+ * 「6/1 에 3h 인데 1h 로 읽히는」 조용한 오답이 된다. `groupBy` + `sumOf` 여야 합계가 맞는다.
+ */
+private fun sumByUtcDate(entries: List<WorklogContribution>): Map<LocalDate, Long> =
+    entries.groupBy { it.startedOnUtcDate }.mapValues { (_, group) -> group.sumOf { it.timeSpentSeconds } }
 
 /**
  * accessibleLevels 반환값을 테스트별로 제어하는 [IssueSecurityDirectory] stub.

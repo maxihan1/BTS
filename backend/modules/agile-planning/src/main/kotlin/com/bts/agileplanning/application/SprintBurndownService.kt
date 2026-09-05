@@ -5,6 +5,7 @@ package com.bts.agileplanning.application
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.burndown.BurndownCalculator
 import com.bts.agileplanning.domain.burndown.BurndownPoint
+import com.bts.agileplanning.repository.BoardSettingsRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.burndown.SprintBurndownLookupPort
 import com.bts.shared.burndown.WorklogContribution
@@ -43,6 +44,9 @@ import java.util.UUID
  * @param sprintRepository sprints / sprint_issues jOOQ repository.
  * @param permissionResolver cross-BC 권한 판정 포트(fail-closed, non-null 주입).
  * @param burndownPort 이슈 추정/worklog 원천 데이터 cross-BC 조회 포트(issue-tracking 구현).
+ * @param boardSettingsRepository 보드 설정 4탭 저장 칸 접근. 「작업일」 탭의 타임존·근무일을 읽는다.
+ *   **기본값을 두지 않는다** — 기본값이 있으면 배선을 빠뜨려도 조용히 현행 동작(UTC·달력일 전부)으로
+ *   fail-open 하고, 「설정은 되는데 번다운이 안 바뀐다」가 컴파일 에러 없이 배포된다.
  * @param clock "오늘" 날짜 산출용 Clock(UTC). 시각 의존 로직을 테스트 가능하게 만든다
  *   (AuthController time-bomb 회귀 학습). 별도 Clock 빈이 없는 컨텍스트에서도 부팅되도록
  *   default 값을 둔다(WorklogService 등 기존 Clock default 관례 — 전용 @Bean 미배선).
@@ -52,6 +56,7 @@ class SprintBurndownService(
     private val sprintRepository: SprintRepository,
     private val permissionResolver: IssuePermissionResolver,
     private val burndownPort: SprintBurndownLookupPort,
+    private val boardSettingsRepository: BoardSettingsRepository,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
