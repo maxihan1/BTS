@@ -296,11 +296,20 @@ export const boardLabels = {
   },
 
   /**
-   * 보드 설정 화면 (부채 177 · 지라 Board settings 의 Columns 탭).
+   * 보드 설정 화면 (부채 177 · 지라 Board settings).
    *
-   * 이 PR 은 **Columns 하나만** 만든다. 나머지 6탭을 비활성 골격으로 미리 그리지 않는다 —
-   * 「누를 수 있는데 아무 일도 안 일어나는」 화면을 6개 배포하는 것이라, 장부가 경계한
-   * 「도달할 UI 가 없는 기능」의 거울상이다(Maxi 확정 2026-09-04).
+   * ### 종전 주석과 무엇이 달라졌나 — 지우지 않고 남긴다
+   * `#452` 시점의 이 자리에는 「이 PR 은 **Columns 하나만** 만든다. 나머지 6탭을 비활성
+   * 골격으로 미리 그리지 않는다 — 「누를 수 있는데 아무 일도 안 일어나는」 화면을 6개
+   * 배포하는 것이라, 장부가 경계한 「도달할 UI 가 없는 기능」의 거울상이다」가 적혀 있었다
+   * (Maxi 확정 2026-09-04).
+   *
+   * ★**그 금지는 지금도 유효하다.** 달라진 것은 탭 수가 아니라 **누가 탭을 동작시키는가**다 —
+   * 부채 177 이 카드 레이아웃·추정·작업일·상세 보기 4탭을 **같은 PR 안에서 전부 동작시키므로**
+   * [settings.tabs] 의 5탭에 비활성 골격이 하나도 없다. 「준비 중」 류 문구도 두지 않는다.
+   * 그 문구야말로 위 금지가 가리키던 것이다.
+   *
+   * 스윔레인·퀵필터는 여전히 탭이 아니다 — 보드 화면 인라인에 그대로 둔다(편차 X3).
    */
   settings: {
     /** 화면 h1. 즉사 계약상 화면당 하나뿐이고 문자열이 곧 e2e 셀렉터다. */
@@ -311,6 +320,35 @@ export const boardLabels = {
 
     /** 보드 화면으로 돌아가는 링크 */
     backToBoard: '보드로 돌아가기',
+
+    /**
+     * 탭바 라벨 5종 (부채 177 R1 · **J22** — *"On the Board settings screen, select the
+     * desired tab (Columns, Swimlanes, etc)"*).
+     *
+     * ★**서로 substring 이 되면 안 된다.** Playwright `getByRole('tab', { name })` 은 기본이
+     * 부분 일치라, 한 라벨이 다른 라벨을 품는 순간 두 탭이 잡혀 strict mode 로 즉사한다 —
+     * `workflow-editor-labels` 가 「다이어그램」을 고른 것과 같은 계약이고, 판정은
+     * `routes/projects.$projectKey.board.settings.test.tsx` 의 **T-BS-12** 가 진다.
+     */
+    tabs: {
+      /** 탭바(tablist) 의 접근성 이름. 이 화면의 tablist 는 하나뿐이다 */
+      ariaLabel: '보드 설정 탭',
+
+      /** Columns — `#452` 가 만든 기존 탭. 기본 탭이다 */
+      columns: '컬럼',
+
+      /** Card layout (J12 · J17 상한 3개 · J18 뷰별 구성) */
+      cardLayout: '카드 레이아웃',
+
+      /** Estimation (J13 · J36 시간 추적 · J37 스크럼 전용) */
+      estimation: '추정',
+
+      /** Working days (J14 · J38 근무일 · J39 비근무일 · J40 타임존) */
+      workingDays: '작업일',
+
+      /** Issue detail view (J15 · J47 그룹 4종 · J48 추가/삭제/정렬) */
+      detailView: '상세 보기',
+    },
 
     /**
      * `?board=` 없이 들어왔을 때의 안내.
