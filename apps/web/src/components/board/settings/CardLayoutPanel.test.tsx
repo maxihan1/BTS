@@ -132,7 +132,8 @@ function renderPanel(detail: BoardDetail = board(), canConfigure = true): void {
  */
 async function toggleField(name: string | RegExp, stub: CardLayoutStub): Promise<void> {
   const before = stub.requests.length
-  await userEvent.click(screen.getByRole('checkbox', { name }))
+  // ★`findBy` 로 기다린다 — 커스텀 필드 후보는 조회가 끝난 뒤에야 목록에 붙는다.
+  await userEvent.click(await screen.findByRole('checkbox', { name }))
   await waitFor(() => {
     expect(stub.requests).toHaveLength(before + 1)
   })

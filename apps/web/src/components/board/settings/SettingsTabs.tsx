@@ -4,6 +4,7 @@ import type { BoardDetail } from '@/api/boards'
 import { boardLabels } from '@/i18n/board-labels'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ColumnSettingsPanel } from './ColumnSettingsPanel'
+import { CardLayoutPanel } from './CardLayoutPanel'
 
 /**
  * 탭 value — DOM 속성(`data-state` 대상)으로 나가므로 한국어 라벨과 분리한다.
@@ -90,7 +91,7 @@ export function SettingsTabs({ board, canConfigure }: SettingsTabsProps): JSX.El
       </TabsContent>
 
       <TabsContent value={TAB_VALUES.cardLayout}>
-        <PendingPanel />
+        <CardLayoutPanel key={board.boardId} board={board} canConfigure={canConfigure} />
       </TabsContent>
 
       <TabsContent value={TAB_VALUES.estimation}>
