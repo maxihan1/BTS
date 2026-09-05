@@ -202,6 +202,7 @@ function renderPanel(
           onAssigneeSearch={onAssigneeSearch}
           onAssigneeChange={onAssigneeChange}
           currentAssignee={currentAssignee}
+          reporter={null}
         />
       </QueryClientProvider>
     )
@@ -312,6 +313,7 @@ describe('IssueMetaPanel — 셀렉터 옵션', () => {
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
         currentAssignee={null}
+        reporter={null}
       />,
     )
 
@@ -485,6 +487,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
         />
       </QueryClientProvider>,
     )
@@ -518,6 +521,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
         />
       </QueryClientProvider>,
     )
@@ -551,6 +555,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
         />
       </QueryClientProvider>,
     )
@@ -629,6 +634,7 @@ describe('IssueMetaPanel — 우선순위 셀렉터', () => {
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
         currentAssignee={null}
+        reporter={null}
       />,
     )
     const select = screen.getByRole('combobox', { name: issueDetailStrings.prioritySelectLabel }) as HTMLSelectElement
@@ -842,6 +848,7 @@ describe('IssueMetaPanel — 환경 편집', () => {
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
         currentAssignee={null}
+        reporter={null}
       />,
     )
     const textarea = screen.getByPlaceholderText(issueDetailStrings.environmentPlaceholder) as HTMLTextAreaElement
@@ -1032,6 +1039,7 @@ describe('IssueMetaPanel — 라벨 칩', () => {
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
         currentAssignee={null}
+        reporter={null}
       />,
     )
     expect(screen.getByText('refactored')).toBeInTheDocument()
@@ -1352,6 +1360,7 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={null}
+          reporter={null}
         />
       </QueryClientProvider>,
     )
@@ -1388,6 +1397,7 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
           onAssigneeSearch={vi.fn()}
           onAssigneeChange={vi.fn()}
           currentAssignee={alice}
+          reporter={null}
         />
       </QueryClientProvider>,
     )
@@ -1641,5 +1651,72 @@ describe('IssueMetaPanel — 클론 버튼 CREATE 게이트', () => {
 
     const clone = await screen.findByTestId('issue-clone')
     expect(clone).not.toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IMP-RP. 보고자 행 — UUID 가 아니라 사람 이름
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IMP-RP 보고자 표시', () => {
+  const reporterUser: UserSummary = {
+    id: issueFixture.reporterId,
+    username: 'hong',
+    displayName: '홍길동',
+    email: 'hong@bts.test',
+  }
+
+  /** 보고자 prop 만 바꿔 패널을 렌더한다. */
+  function renderWithReporter(reporter: UserSummary | null) {
+    setupFullPermissions()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueMetaPanel
+          issue={issueFixture}
+          availableTypes={availableTypes}
+          onTypeChange={vi.fn()}
+          onDeleteClick={vi.fn()}
+          onCloneClick={vi.fn()}
+          transitions={[]}
+          onTransition={vi.fn()}
+          isTransitioning={false}
+          onPriorityChange={vi.fn()}
+          onImpactChange={vi.fn()}
+          onEnvironmentSave={vi.fn()}
+          onLabelsSave={vi.fn()}
+          users={[]}
+          onAssigneeSearch={vi.fn()}
+          onAssigneeChange={vi.fn()}
+          currentAssignee={null}
+          reporter={reporter}
+        />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('보고자를 UUID 가 아니라 표시 이름으로 보여준다', () => {
+    // 「보고자 / 86ef7063-4532-…」는 사람에게 아무 정보도 주지 않는다. 담당자는 이미
+    // `currentAssignee` 로 이름을 해석해 그리는데 보고자만 원시 UUID 로 남아 있었다.
+    renderWithReporter(reporterUser)
+
+    expect(screen.getByTestId('issue-reporter-name')).toHaveTextContent('홍길동')
+    expect(screen.queryByText(issueFixture.reporterId)).toBeNull()
+  })
+
+  it('displayName 이 없으면 username 으로 내려간다', () => {
+    // 담당자 표시(`getDisplayName`)와 같은 사다리를 쓴다 — 두 자리가 다른 규칙으로
+    // 갈라지면 같은 사람이 화면 위치에 따라 다른 이름으로 보인다.
+    renderWithReporter({ ...reporterUser, displayName: null })
+
+    expect(screen.getByTestId('issue-reporter-name')).toHaveTextContent('hong')
+  })
+
+  it('보고자를 해석하지 못하면 UUID 를 그대로 보여준다', () => {
+    // 탈퇴·비활성 사용자이거나 조회가 아직 안 끝난 경우. 빈칸으로 두면 「보고자 없는 이슈」로
+    // 읽히고, 그건 UUID 보다 나쁜 거짓말이다.
+    renderWithReporter(null)
+
+    expect(screen.getByTestId('issue-reporter-name')).toHaveTextContent(issueFixture.reporterId)
   })
 })

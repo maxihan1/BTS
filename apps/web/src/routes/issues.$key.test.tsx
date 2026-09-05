@@ -2874,3 +2874,50 @@ describe('IssueDetailPage — 댓글 딥링크 (인박스 알림)', () => {
     expect(historyTab).toHaveAttribute('aria-selected', 'true')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 보고자 배선 — route 가 이름을 해석해 메타패널에 넘기는지
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailPage — 보고자 배선', () => {
+  beforeEach(() => {
+    server.use(...issueTypeHandlers)
+    setupIssueFoundHandler()
+    setupTransitionsHandler()
+  })
+
+  /** `?ids=` 를 실제로 읽어 해당 id 만 돌려주는 핸들러 — 무엇을 조회했는지가 판정에 들어간다. */
+  function setupUsersByIdsHandler(resolved: Record<string, string>) {
+    server.use(
+      http.get('/api/v1/users', ({ request }) => {
+        const ids = new URL(request.url).searchParams.get('ids')
+        const name = ids !== null ? resolved[ids] : undefined
+        if (ids === null || name === undefined) return HttpResponse.json([])
+        return HttpResponse.json([{ id: ids, username: 'hong', displayName: name, email: null }])
+      }),
+    )
+  }
+
+  it('보고자를 UUID 가 아니라 이름으로 보여준다', async () => {
+    // ★패널 단위 테스트만으로는 이걸 못 잡는다. route 가 `reporter` 를 안 넘겨도 패널은
+    // 폴백으로 UUID 를 그리며 조용히 통과한다. 배선이 끊긴 것을 여기서만 본다.
+    setupUsersByIdsHandler({ [issueAtlas1Fixture.reporterId]: '홍길동' })
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-reporter-name')).toHaveTextContent('홍길동')
+    })
+  })
+
+  it('보고자를 해석하지 못하면 UUID 를 그대로 보여준다', async () => {
+    // 탈퇴·비활성 사용자. 빈칸으로 두면 「보고자 없는 이슈」로 읽힌다.
+    setupUsersByIdsHandler({})
+
+    renderPage('ATLAS-1')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-reporter-name')).toHaveTextContent(issueAtlas1Fixture.reporterId)
+    })
+  })
+})

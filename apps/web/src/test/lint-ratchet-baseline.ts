@@ -32,7 +32,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   ★상환은 #453 쪽 몫이다 — 함수를 쪼개는 것이 정처방이고, 그 리팩터를 이 PR 이 하면
   //     보드 설정 화면의 리뷰 범위를 남의 컴포넌트로 넓히게 된다.
   "src/components/issue/AttachmentPreviewModal.tsx::Function 'AttachmentPreviewModal'": 237,
-  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 317,
+  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 314,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
   "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,
@@ -42,7 +42,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   // J1 표시 방식 토글이 조건 렌더 1줄을 더했다(1011 → 1012). 함께 들어온 40줄 중 39줄은
   // `IssueDetailPresentationMenu` 로 떼어내 갚았고, 남은 한 줄은 「이 기능이 존재한다」는
   // 최소 렌더라 0줄로 만들려면 기능을 지우는 수밖에 없다.
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1010,
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1003,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
   //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다
