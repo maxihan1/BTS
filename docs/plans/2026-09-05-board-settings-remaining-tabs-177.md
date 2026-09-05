@@ -270,8 +270,13 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 `DO $$ ... pg_constraint ... $$` 로 감싼다(★`ADD CONSTRAINT` 에는 `IF NOT EXISTS` 가 없다 — 부채 161 · #444 가 같은 자리에서 밟았다).
 `init_codegen.sql` 도 함께 고친다 — **jOOQ 코드젠은 마이그레이션이 아니라 이 파일을 읽는다**(부채 54).
 
-**REFACTOR**. 되돌리기도 함께 잰다(리뷰 CONCERN C3) — `DROP COLUMN` 3개 + `DROP TABLE` 2개를
-JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1 의 되돌리기 주석은 산문이라
+**REFACTOR**. 되돌리기도 함께 잰다(리뷰 CONCERN C3) — `DROP COLUMN` 3개 + `DROP TABLE` **3개**를
+JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다.
+★**2개가 아니라 3개다** — Task 3 이 `board_detail_view_fields` 를 더했다(2026-09-05 갱신).
+대상은 `board_card_layout_fields` · `board_non_working_dates` · `board_detail_view_fields`.
+V509 머리말의 되돌리기 목록은 아직 ①②③ 만 세므로 **머리말을 믿지 말고 파일 본문의 절을 세라** —
+Task 3 이 ④ 절 안에 `DROP TABLE board_detail_view_fields;` 를 명시해 뒀다.
+머리말 갱신도 Task 4 가 맡는다(V509 가 Task 4 의 files 에 있다). T1 의 되돌리기 주석은 산문이라
 기계가 안 읽는다. `#444` 가 `V506` 되돌리기에서 밟은 자리다(부채 161).
 
 멱등 판정은 **「1차 재실행 후 ↔ 2차 재실행 후」** 로 잰다.
