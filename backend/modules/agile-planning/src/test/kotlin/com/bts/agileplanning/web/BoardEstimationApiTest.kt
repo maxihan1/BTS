@@ -4,6 +4,7 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.application.EstimationSettingsService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.jooq.tables.references.BOARDS
@@ -16,12 +17,14 @@ import org.assertj.core.api.Assertions.assertThat
 import org.jooq.DSLContext
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -34,6 +37,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -58,6 +62,7 @@ private const val REMAINING_AND_SPENT = "REMAINING_AND_SPENT"
  * | ⑥ 읽기 경로 | 칸반인 동안에도 [BoardSettingsRepository.findTimeTracking] 이 값을 준다 | 읽기를 `board_type` 으로 거르는 구현(E6 가 무너진다) |
  * | ⑦ 허용값 | 허용값 밖은 **400** | 문자열을 그대로 DB 로 보내 CHECK 위반 500 을 내는 구현 |
  * | ⑧ 게이트 순서 | 미인증은 보드 조회 **이전에** 401 · 권한 미충족은 종류 판정 **이전에** 403 | 존재/종류를 미인증자에게 흘리는 구현 |
+ * | ⑨ **서비스 층의 404↔409** | 서비스를 직접 불러도 없는 보드는 404 · 칸반은 409 | 서비스가 「무조건 409」인 구현. ③ 은 컨트롤러 게이트가 가려 준다(뮤테이션 B) |
  *
  * ★**⑤ 가 이 파일의 진짜 판정이다.** 그리고 API 응답만 보면 「지우고 안 보여주는」 구현도 통과하므로
  * **jOOQ 로 `boards.time_tracking` 을 직접 읽어** 판정한다([rawTimeTracking] — 서비스·리포지터리를
@@ -68,6 +73,20 @@ private const val REMAINING_AND_SPENT = "REMAINING_AND_SPENT"
  * 값(`REMAINING_AND_SPENT`)과 **다른 값**을 보내야 그 축이 산다. ② 도 같은 이유로 기본값 `NONE` 인
  * 보드에 `REMAINING_AND_SPENT` 를 보낸다(양방향).
  *
+ * ## 뮤테이션 실측 (2026-09-06 — 이 파일이 **실제로** 무엇을 가르는지)
+ *
+ * | # | 구현을 이렇게 망가뜨리면 | 결과 |
+ * |---|---|---|
+ * | A | 칸반에서 409 대신 404 를 던진다 | ②⑤ red — **죽는다** |
+ * | B | 서비스의 「없는 보드」 404 를 409 로 바꾼다 | 보강 전 **8건 전부 초록 — 살아남았다** / 보강 후 ⑨ red |
+ * | C | [BoardSettingsRepository.findTimeTracking] 이 `board_type = 'SCRUM'` 으로 거른다 | ⑤ red — **죽는다** |
+ * | D | 저장을 건너뛰고 200 만 준다 | ①⑤ red — **죽는다** |
+ *
+ * ★**B 가 살아남은 것이 이 파일의 실제 발견이다.** HTTP 로만 재면 컨트롤러 권한 게이트가 먼저 보드를
+ * 조회해 404 를 내주므로 **서비스 안의 404↔409 갈림에는 도달하지 않는다** — 서비스가 「보드를 못 찾으면
+ * 409」여도 8건이 전부 초록이었다. 그래서 ⑨ 를 더해 서비스를 **직접** 부른다. 컨트롤러를 거치는
+ * 판정만으로는 서비스의 계약을 못 잡는다는 것이 이 축의 교훈이다.
+ *
  * ## 이 파일이 재지 **않는** 것
  * - 에러 바디의 `errorCode` — [BoardExceptionHandler] 의 `assignableTypes` 에 이 컨트롤러가 없다.
  *   그 파일은 Task 8·10·13 과 공유하는 자원이라 이 task 가 건드리지 않는다. 예외가
@@ -75,6 +94,9 @@ private const val REMAINING_AND_SPENT = "REMAINING_AND_SPENT"
  *   RFC 7807 바디는 붙지 않는다(보고 대상).
  * - 보드 종류 변경 API — 도메인이 변경 경로를 두지 않는다([BoardType] KDoc). ⑤ 는 `board_type` 을
  *   jOOQ 로 직접 뒤집어 「운영 중 종류가 바뀐 보드」를 만든다.
+ * - 조회와 쓰기 **사이에** 보드가 소프트 삭제되는 경합 —
+ *   [EstimationSettingsService.updateTimeTracking] 의 `updateTimeTracking(...) == false` 가지는
+ *   그 경합에서만 도달한다. 훅 없이 재현할 수 없어 이 파일은 그 가지를 재지 않는다.
  *
  * ## 트랜잭션
  * 클래스에 `@Transactional` 을 걸지 **않는다** — MockMvc 요청이 각자 커밋한 결과를 봐야 ⑤ 가 성립한다.
@@ -122,6 +144,10 @@ class BoardEstimationApiTest {
 
     @Autowired
     private lateinit var permissionStub: PermissionStub
+
+    /** ⑨ 축 전용 — 컨트롤러 게이트를 거치지 않고 서비스의 계약을 직접 잰다. */
+    @Autowired
+    private lateinit var estimationSettingsService: EstimationSettingsService
 
     private lateinit var mockMvc: MockMvc
 
@@ -244,6 +270,33 @@ class BoardEstimationApiTest {
 
         patchEstimation(board.id, REMAINING_AND_SPENT)
             .andExpect(status().isForbidden)
+    }
+
+    // ── ⑨ 서비스 층의 404 ↔ 409 (뮤테이션 B 가 살아남아 보강한 축) ────────────
+
+    @Test
+    fun `서비스는 없는 보드에 404 를 준다 — 409 가 아니다`() {
+        // ③ 은 컨트롤러 권한 게이트의 404 를 재고 있었다. 서비스가 「무조건 409」여도 ③ 은 초록이다.
+        val thrown =
+            assertThrows<ResponseStatusException> {
+                estimationSettingsService.updateTimeTracking(UUID.randomUUID(), REMAINING_AND_SPENT)
+            }
+
+        assertThat(thrown.statusCode.value()).isEqualTo(HttpStatus.NOT_FOUND.value())
+    }
+
+    @Test
+    fun `서비스는 칸반 보드에 409 를 준다 — 404 가 아니다`() {
+        // 짝을 함께 둔다. 앞엣것만 두면 「무조건 404」인 서비스가 통과한다.
+        val board = insertBoard(BoardType.KANBAN)
+
+        val thrown =
+            assertThrows<ResponseStatusException> {
+                estimationSettingsService.updateTimeTracking(board.id, REMAINING_AND_SPENT)
+            }
+
+        assertThat(thrown.statusCode.value()).isEqualTo(HttpStatus.CONFLICT.value())
+        assertThat(rawTimeTracking(board.id)).isEqualTo(NONE)
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
