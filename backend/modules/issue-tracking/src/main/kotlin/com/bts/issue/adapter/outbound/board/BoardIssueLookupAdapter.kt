@@ -3,11 +3,13 @@
 package com.bts.issue.adapter.outbound.board
 
 import com.bts.issue.domain.Issue
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
+import com.bts.shared.permission.FieldPermissionResolver
 import com.bts.shared.permission.IssueSecurityDirectory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -42,6 +44,10 @@ import java.util.UUID
 class BoardIssueLookupAdapter(
     private val issueRepository: IssueRepository,
     private val securityDirectory: IssueSecurityDirectory,
+    // 기본값은 Spring 이 관리하지 않는 단위 테스트 컨텍스트 호환용 fallback 이다 ([IssueApplicationService] 동형).
+    // prod 컨텍스트에서는 IdentityAccessFieldPermissionResolver(@Profile("prod")) 또는
+    // AlwaysAllowFieldPermissionResolver(@Profile("!prod")) Bean 이 타입으로 주입돼 이 기본값을 대체한다.
+    private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
 ) : BoardIssueLookupPort {
     /**
      * 프로젝트의 가시 이슈 목록을 [BoardIssuePage] 로 반환한다.
