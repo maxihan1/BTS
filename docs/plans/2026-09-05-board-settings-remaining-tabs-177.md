@@ -204,7 +204,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V___board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSettingsMigrationTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V509__board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardSettingsMigrationTest.kt`]
 - depends-on: []
 - jira: [J36, J38, J39, J40]
 
@@ -225,7 +225,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V___board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardCardLayoutSchemaTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V509__board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardCardLayoutSchemaTest.kt`]
 - depends-on: [1]
 - jira: [J17, J18]
 
@@ -244,7 +244,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `db-engineer`
-- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V___board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardDetailViewSchemaTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V509__board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardDetailViewSchemaTest.kt`]
 - depends-on: [1]
 - jira: [J47]
 
