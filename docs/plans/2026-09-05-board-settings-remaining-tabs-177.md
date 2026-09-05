@@ -67,66 +67,73 @@
 
 ## Jira 대조
 
-계약 §1 절차. **Step 0(재사용)을 먼저 돌렸다** —
-`grep -rln "## Jira 대조" docs/specs/ docs/plans/ | xargs grep -ln "<표면>"` 로 62개 문서를 훑었다.
-`fr-ux-14-b2-card-fields` 스펙은 **`## Jira 대조` 를 생략**했다고 스스로 적어 승계할 행이 없었고,
-`#452` 스펙에서 화면 진입·권한 2행만 승계된다. 4탭의 **조작**은 전부 신규 조회다.
+계약 §1 절차. **B2 로 재작성했다** — 초판은 §1-0 재사용을 놓쳐 4탭을 통째로 재조회했다.
 
-### 승계 (재조회 안 함 · 계약 §1-0)
+### ★재사용 실패와 그 수복 (2026-09-05)
 
-| # | 원문 인용 | 출처 · 조회일 |
-|---|---|---|
-| **J8** | *"you must be either: a **space administrator** for the location of the board [or] a **board administrator** for the board itself"* | [Configure a company-managed board](https://support.atlassian.com/jira-software-cloud/docs/configure-a-company-managed-board/) · Cloud · 2026-09-03 |
-| **J22** | 진입 — *"On the **Board settings** screen, select the desired tab (**Columns**, **Swimlanes**, etc)."* | 동일 · Cloud · 2026-09-04 |
+초판의 §1-0 grep 은 계약이 적어 둔 `docs/specs/ docs/plans/` 범위였고, **조회 결과의 실제
+보관처인 `TODOS.md:1499~1516`** 을 못 봤다. 그 블록은 `## Jira 대조` 가 아니라
+`### 지라 근거` 헤딩이라 **범위를 넓혀도 헤딩 하나만 보면 여전히 못 찾는다.**
 
-### 이번에 새로 조회 (2026-09-05 · 4탭이 전부 신규 표면이다)
+**대가.** J18 이 「백로그와 활성 스프린트가 서로 다른 설정을 갖는다」를 2026-09-03 에 이미
+기록해 뒀는데 못 보고 초안 R3 을 「구성 공유」로 잘못 썼다가 재조회로 뒤집었다(G6).
 
-**Card layout (갭 B)**
+**근본 수복.** 계약 §1-0 의 명령을 두 헤딩 + `TODOS.md` 를 함께 보도록 고쳤고,
+`bts-spec/SKILL.md` 가 들고 있던 **낡은 사본을 없애고 정본 포인터로 바꿨다**
+(사본이 범위 확장을 따라오지 않는 것이 이 저장소가 이름 붙인 지배 결함 양식이다).
 
-| # | 원문 인용 | 출처 · 조회일 |
-|---|---|---|
-| **J30** | 진입 — *"Next to your board's name in the sidebar, select **More actions** (•••), then **Board settings**. Expand **Layout** in the sidebar, then select **Card layout**."* | [Customize cards](https://support.atlassian.com/jira-software-cloud/docs/customize-cards/) · Cloud · 2026-09-05 |
-| **J31** | **필드 상한 3개** — *"You can configure cards on a board to display up to three additional fields."* | 동일 · Cloud · 2026-09-05 |
-| **J32** | **카드 3층 구조** — *"Work item cards have three layers of information that are stacked on top of each other following this pattern: 1. The work item summary is always at the top on the board and backlog. 2. Any custom fields added to the card are next. 3. Then details about the work item, including work type, priority, assignee, and estimate."* | 동일 · Cloud · 2026-09-05 |
-| **J33** | **Days in column** — *"You can also enable **Days in column** to visually indicate how long a work item's in a column. This helps identify slow moving work."* | 동일 · Cloud · 2026-09-05 |
-| **J34** | **카드 색** — *"You can base your card colors on work types, priorities, assignees, or JQL."* | 동일 · Cloud · 2026-09-05 |
+### 승계 — 재조회 안 함 (계약 §1-0)
 
-**Estimation and tracking (갭 C)**
+`TODOS.md:1499~1516` (부채 177 등재 세션 · 2026-09-03 · Cloud) + `#452` 스펙.
 
-| # | 원문 인용 | 출처 · 조회일 |
-|---|---|---|
-| **J35** | 진입 — *"Navigate to your board, select **More actions** (•••) next to the board name, then choose **Board settings** and select **Estimation**."* | [Configure estimation and tracking](https://support.atlassian.com/jira-software-cloud/docs/configure-estimation-and-tracking/) · Cloud · 2026-09-05 |
-| **J36** | **시간 추적 2종** — `None` 은 추정 방식으로 진행을 재고, `Remaining estimate and time spent` 는 *"tracks progress by subtracting the value from the **Time spent** field from the original estimate"* | 동일 · Cloud · 2026-09-05 |
-| **J37** | **적용 범위 제약** — *"This setting can only be changed for company-managed scrum teams."* | 동일 · Cloud · 2026-09-05 |
+| # | 내용 | 원문 인용 | 출처 |
+|---|---|---|---|
+| **J8** | 권한 | *"you must be either: a **space administrator** for the location of the board [or] a **board administrator** for the board itself"* | [Configure a company-managed board](https://support.atlassian.com/jira-software-cloud/docs/configure-a-company-managed-board/) |
+| **J12** | Card layout 탭 | *"Customize the layout, colors, and fields on the cards on your board"* | 동일 |
+| **J13** | Estimation 탭 | *"Configure how you estimate work and track time"* | 동일 |
+| **J14** | Working days 탭 | *"Configure the timezone, and your team's standard working and non-working days"* | 동일 |
+| **J15** | Issue detail view 탭 | *"Customize the work item to show more fields, hide fields, and rearrange"* | 동일 |
+| **J16** | 카드 레이아웃 경로 | *"…select **Board settings**. Expand **Layout** in the sidebar, then select **Card layout**."* | [Customize cards](https://support.atlassian.com/jira-software-cloud/docs/customize-cards/) |
+| **J17** | **추가 필드 상한 3개** | *"You can configure cards on a board to display up to three additional fields."* | 동일 |
+| **J18** | **뷰별 구성** | *"The fields can be different for the backlog and Active sprints, if you are using a Scrum board."* | 동일 |
+| **J19** | 카드 3층 구조 | *"The work item summary is always at the top on the board and backlog. Any custom fields added to the card are next. Then details about the work item, including work type, priority, assignee, and estimate."* | 동일 |
+| **J20** | Days in column | *"You can also enable **Days in column** to visually indicate how long a work item's in a column."* | 동일 |
+| **J21** | 카드 색 | *"You can base your card colors on work types, priorities, assignees, or JQL."* | 동일 |
+| **J22** | 탭 진입 | *"On the **Board settings** screen, select the desired tab (**Columns**, **Swimlanes**, etc)."* | 동일 · `#452` |
 
-**Working days (갭 D)**
+### 이번에 새로 조회 (2026-09-05 · 승계로 부족한 것만)
 
-| # | 원문 인용 | 출처 · 조회일 |
-|---|---|---|
-| **J38** | **표준 근무일** — *"Select the days your team usually work under **Standard working days**."* | [Configure working days](https://support.atlassian.com/jira-software-cloud/docs/configure-working-days/) · Cloud · 2026-09-05 |
-| **J39** | **비근무일** — *"Specify holidays or one-off dates your team won't be working, select a date using the date picker under **Non-working days**, then select **Add date**."* | 동일 · Cloud · 2026-09-05 |
-| **J40** | **타임존** — *"Change your board's timezone, select a **Region**, then **Timezone** from the dropdowns."* | 동일 · Cloud · 2026-09-05 |
-| **J41** | **영향 범위** — *"Working days are reflected in these reports and gadgets: Burndown Chart, Sprint Report, Epic Report, Version Report, Control Chart"* | 동일 · Cloud · 2026-09-05 |
+승계된 J12~J15 는 **탭 한 줄 설명**뿐이라 조작의 형태를 알 수 없었다. 그 부분만 조회했다.
 
-**Issue detail view (갭 E)**
+| # | 갭 | 원문 인용 | 출처 · 조회일 |
+|---|---|---|---|
+| **J35** | C | 진입 — *"Navigate to your board, select **More actions** (•••) next to the board name, then choose **Board settings** and select **Estimation**."* | [Configure estimation and tracking](https://support.atlassian.com/jira-software-cloud/docs/configure-estimation-and-tracking/) · Cloud · 2026-09-05 |
+| **J36** | C | **시간 추적 2종** — `None` 은 추정 방식으로 진행을 재고, `Remaining estimate and time spent` 는 *"tracks progress by subtracting the value from the **Time spent** field from the original estimate"* | 동일 · Cloud · 2026-09-05 |
+| **J37** | C | **적용 범위 제약** — *"This setting can only be changed for company-managed scrum teams."* | 동일 · Cloud · 2026-09-05 |
+| **J38** | D | **표준 근무일** — *"Select the days your team usually work under **Standard working days**."* | [Configure working days](https://support.atlassian.com/jira-software-cloud/docs/configure-working-days/) · Cloud · 2026-09-05 |
+| **J39** | D | **비근무일** — *"Specify holidays or one-off dates your team won't be working, select a date using the date picker under **Non-working days**, then select **Add date**."* | 동일 · Cloud · 2026-09-05 |
+| **J40** | D | **타임존** — *"Change your board's timezone, select a **Region**, then **Timezone** from the dropdowns."* | 동일 · Cloud · 2026-09-05 |
+| **J41** | D | **영향 범위** — *"Working days are reflected in these reports and gadgets: Burndown Chart, Sprint Report, Epic Report, Version Report, Control Chart"* | 동일 · Cloud · 2026-09-05 |
+| **J43** | E | **구성 가능 필드**(문서의 표 나열 — 인용 아님) — Summary · Estimate · Status · Priority · Component · Labels · Affected versions · Fix versions · Parent · Reporter · Assignee · Date created · Date updated · Work item links · Description · Comments · Attachments · Subtasks | [Configure the work item details](https://support.atlassian.com/jira-software-cloud/docs/configure-the-issue-detail-view/) · Cloud · 2026-09-05 |
+| **J44** | E | **필드 노출 전제** — *"Fields will only appear on a work item if they have been associated with the relevant work type, and are not _hidden_."* | 동일 · Cloud · 2026-09-05 |
+| **J46** | E | **진입** — *"Go to the desired board and select **Board** > **Configure**. In the left-side menu, select **Issue Detail View**."* | [Configuring the issue view](https://confluence.atlassian.com/jirasoftwareserver/configuring-the-issue-view-938845334.html) · **DC (Cloud 아님)** · 2026-09-05 |
+| **J47** | E | **필드 그룹 4종** — *"different groups of fields: General fields, Date fields, People, and Links."* | 동일 · **DC (Cloud 아님)** · 2026-09-05 |
+| **J48** | E | **조작** — *"To add a new field, select the field from one of the dropdown menus, and then select **Add.**"* · *"If you want to hide a field from the issue details view, select **Delete**."* · 순서는 *"drag and drop the field up or down in the list."* | 동일 · **DC (Cloud 아님)** · 2026-09-05 |
+| **J49** | E | **권한** — *"as a user with the **Jira admin** or a **board admin** permissions."* | 동일 · **DC (Cloud 아님)** · 2026-09-05 |
 
-| # | 원문 인용 | 출처 · 조회일 |
-|---|---|---|
-| **J42** | 목적 — *"customize the work item to show more fields, hide fields, and rearrange the field layout."* | [Configure the work item details](https://support.atlassian.com/jira-software-cloud/docs/configure-the-issue-detail-view/) · Cloud · 2026-09-05 |
-| **J43** | **구성 가능 필드**(문서의 표 나열 — 인용 아님) — Summary · Estimate · Status · Priority · Component · Labels · Affected versions · Fix versions · Parent · Reporter · Assignee · Date created · Date updated · Work item links · Description · Comments · Attachments · Subtasks | 동일 · Cloud · 2026-09-05 |
-| **J44** | **필드 노출 전제** — *"Fields will only appear on a work item if they have been associated with the relevant work type, and are not _hidden_."* | 동일 · Cloud · 2026-09-05 |
+**폐기된 번호** — 초판의 `J30`·`J31`·`J32`·`J33`·`J34`·`J42`·`J45` 는 각각
+`J16`·`J17`·`J19`·`J20`·`J21`·`J15`·`J18` 의 중복이라 **지웠다.**
+번호를 재사용하지 않는다 — 커밋 이력에 남은 옛 번호가 다른 것을 가리키면 안 된다.
 
-### 착수 시점 관찰 (편차 확정은 /bts-spec 에서)
+### 착수 시점 관찰 (편차 확정은 §제약)
 
-- **J37 이 갭 C 의 범위를 정할 수 있다.** 지라는 이 설정을 **스크럼 보드에만** 연다.
-  BTS 는 `board_type` 이 이미 있으므로(#421) 같은 제약을 그대로 태울지, 칸반에도 열지가 쟁점이다.
-- **J41 이 갭 D 의 가치를 정한다.** 근무일 설정이 값을 내는 곳이 전부 번다운·스프린트 리포트류인데
-  BTS 에 그 리포트가 없다. 「설정은 되는데 아무 데도 안 쓰이는 칸」이 되면
-  `board-labels.ts:303` 이 경계한 「누를 수 있는데 아무 일도 안 일어나는」 화면의 재판이다.
-- **J42·J44 는 보드 설정이 아니라 스페이스/스킴 설정을 가리킨다.** 지라의 이 탭은 보드가 아니라
-  work type 레이아웃을 건드리고, 조회 결과도 `Settings > Screens` 경로를 지목했다.
-  갭 E 를 보드 단위 설정으로 만들면 **지라와 다른 모델**이 되므로 편차 등재 대상이다.
-- **J31 상한 3개는 BTS 에 커스텀 필드가 이미 있다는 전제와 맞물린다**(`FR-IS-10` 키 단위 병합 패치).
+- **J37 이 갭 C 의 범위를 정한다.** 지라는 이 설정을 스크럼 보드에만 연다.
+  BTS 는 `board_type` 이 이미 있으므로(#421) 같은 제약을 그대로 태운다.
+- **J41 이 갭 D 의 소비처다.** 실측 — `FR-RP-01` 은 D 완료이고 `BurndownCalculator.calculate` 가
+  `day.plusDays(1)` 로 달력일 전부를 돈다. 갭 D 는 죽은 설정이 아니라 그 차트의 정확도 결함을 닫는다.
+- **J43·J44 는 보드가 아니라 스페이스/스킴 설정을 가리킨다.** 보드 단위로 내는 것이 편차 X10.
+- **J17 상한 3개는 커스텀 필드 전제와 맞물린다** — `FR-IS-10` 이 원천이고
+  `BoardIssueView`(shared-kernel)가 그 값을 아직 안 나른다.
 
 ## 도메인 정리
 
@@ -174,7 +181,7 @@ gap **5건**. 3건(권한 · 타임존 소비처 · 시각 검증 기준)은 스
 - **✅ C-2 확정** — 갭 B 는 **지라 패리티(커스텀 필드)**. shared-kernel 포트 확장 + issue-tracking 값 공급.
 - **✅ C-3 확정** — 갭 E 는 **지라와 동일**하게 보드 단위 Issue Detail View. 근거가 DC 뿐인 것은 편차 X10.
 - **G6 (재조회로 교정)** — 확정 후 재조회에서 **초안 R3 이 틀렸음**을 찾았다. 카드 레이아웃 구성은
-  **뷰마다 따로**다(J45 원문). 데이터 모델이 배열 한 칸 → `board_card_layout_fields(view_scope)` 로 바뀌었다.
+  **뷰마다 따로**다(J18 원문). 데이터 모델이 배열 한 칸 → `board_card_layout_fields(view_scope)` 로 바뀌었다.
 
 ## 🛑 게이트 1 요약에 실을 이탈
 
@@ -220,7 +227,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 - agent: `db-engineer`
 - files: [`backend/modules/agile-planning/src/main/resources/db/migration/agile-planning/V___board_settings_tabs.sql`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/migration/BoardCardLayoutSchemaTest.kt`]
 - depends-on: [1]
-- jira: [J31, J45]
+- jira: [J17, J18]
 
 **RED**. `position = 3` 인 행 INSERT 가 **성공해 버린다**(테이블이 없으므로 테스트가 먼저 죽는다 →
 테이블 생성 후 CHECK 없으면 통과해 버린다). 두 단언을 **한 쌍**으로 둔다 —
@@ -263,7 +270,11 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 `DO $$ ... pg_constraint ... $$` 로 감싼다(★`ADD CONSTRAINT` 에는 `IF NOT EXISTS` 가 없다 — 부채 161 · #444 가 같은 자리에서 밟았다).
 `init_codegen.sql` 도 함께 고친다 — **jOOQ 코드젠은 마이그레이션이 아니라 이 파일을 읽는다**(부채 54).
 
-**REFACTOR**. 멱등 판정은 **「1차 재실행 후 ↔ 2차 재실행 후」** 로 잰다.
+**REFACTOR**. 되돌리기도 함께 잰다(리뷰 CONCERN C3) — `DROP COLUMN` 3개 + `DROP TABLE` 2개를
+JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1 의 되돌리기 주석은 산문이라
+기계가 안 읽는다. `#444` 가 `V506` 되돌리기에서 밟은 자리다(부채 161).
+
+멱등 판정은 **「1차 재실행 후 ↔ 2차 재실행 후」** 로 잰다.
 「적용 전 ↔ 1차 후」로 재면 앞선 테스트가 만든 행을 1차가 **정당하게** 백필하는 것을 결함으로 오판한다(#444 실측).
 
 **검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardSettingsIdempotencyTest')`
@@ -274,7 +285,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 - agent: `backend-engineer`
 - files: [`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/board/BoardIssueLookupPort.kt`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardIssueViewContractTest.kt`]
 - depends-on: []
-- jira: [J32]
+- jira: [J19]
 
 **RED**. `BoardIssueView` 에 `customFields` 가 없어 컴파일이 안 된다.
 
@@ -292,7 +303,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 - agent: `backend-engineer`
 - files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/BoardIssueLookupCustomFieldsTest.kt`]
 - depends-on: [5]
-- jira: [J32]
+- jira: [J19]
 
 **RED**. 커스텀 필드가 있는 이슈를 보드 조회로 읽으면 `customFields` 가 비어 있다.
 
@@ -323,9 +334,9 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/CardLayoutSettingsService.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`]
 - depends-on: [7]
-- jira: [J31, J45]
+- jira: [J17, J18]
 
 **RED**. ① `BOARD` 와 `BACKLOG` 에 **다른** 필드 집합을 저장하면 둘이 같아진다(구성 공유 구현이 통과하는 것을 막는다).
 ② 한 뷰에 4개를 보내면 200 이 온다.
@@ -342,7 +353,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardEstimationApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/EstimationSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardEstimationApiTest.kt`]
 - depends-on: [7]
 - jira: [J36, J37]
 
@@ -359,7 +370,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/WorkingDaysSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`]
 - depends-on: [7]
 - jira: [J38, J39, J40]
 
@@ -414,7 +425,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/BoardSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/application/DetailViewSettingsService.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`]
 - depends-on: [7]
 - jira: [J46, J47, J48, J49]
 
@@ -426,21 +437,32 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardDetailViewApiTest')`
 
-### Task 14. BC 경계 판별식 — 직접 import 0건
+### Task 14. BC 경계 판별식 — 포트 계약 고정 + 직접 import 0건
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`scripts/workflow/bc-isolation-agile-planning.test.ts`]
-- depends-on: [6]
+- files: [`scripts/workflow/bc-isolation-agile-planning.test.ts`, `backend/modules/shared-kernel/src/test/kotlin/com/bts/shared/board/BoardIssueViewFieldSetTest.kt`]
+- depends-on: [5, 6]
 - jira: []
 
-**RED**. 판별식이 없다. 일부러 `agile-planning` 에 `import com.bts.issue.…` 한 줄을 넣어 **red 1회를 눈으로 본다**
-(가드는 끊어 봐야 산다 — CLAUDE.md 함정).
+★**리뷰 BLOCKER B1 로 재작성했다.** 초판은 `com.bts.issue` **직접 import 0건**만 쟀는데,
+이 PR 이 만드는 결합은 직접 import 가 **아니라 shared-kernel 포트 경유**(T5·T6)다.
+즉 초판 판별식은 **초록인 채로 X9 의 위험을 통과시킨다** — 「가드를 지웠는데 통과했다」의 사전 판본.
 
-**GREEN**. `agile-planning/src/main` 전수에 `com.bts.issue` import 가 0건임을 잰다.
-스펙 C-5 ④ — X9(여러 BC 를 건드린다)의 **유일한 기계 방어선**이다.
+**RED**. ① 포트 계약 테스트가 없다 ② `agile-planning` 에 `import com.bts.issue.…` 한 줄을
+일부러 넣어도 아무도 안 잡는다. **둘 다 red 를 눈으로 본다**(가드는 끊어 봐야 산다).
 
-**REFACTOR**. 판별식이 무엇을 **못 보는지** 적는다 — 리플렉션·문자열 경유 의존은 못 잡는다.
+**GREEN**. 두 축을 함께 세운다.
+- **주 방어선** — `BoardIssueView` 의 **필드 이름 집합**을 shared-kernel 테스트가 고정한다.
+  필드가 늘면 그 테스트가 red 가 되어 **cross-BC 계약 변경이 반드시 눈에 띈다.**
+  포트를 넓히는 것 자체는 허용된 경로이므로 금지가 아니라 **가시화**가 처방이다.
+- **보조선** — `agile-planning/src/main` 에 `com.bts.issue` import 0건.
+
+**REFACTOR**. 판별식이 **못 보는 축**을 적는다 — 리플렉션·문자열 경유 의존, 그리고
+포트 필드의 **의미** 변경(이름은 같은데 뜻이 달라지는 경우)은 둘 다 못 잡는다.
+
+**검증**. `node --experimental-strip-types --test scripts/workflow/bc-isolation-agile-planning.test.ts` ·
+`(cd backend && ./gradlew :modules:shared-kernel:test --tests '*BoardIssueViewFieldSetTest')`
 
 **검증**. `node --experimental-strip-types --test scripts/workflow/bc-isolation-agile-planning.test.ts`
 
@@ -469,7 +491,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/board/settings/CardLayoutPanel.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.test.tsx`]
 - depends-on: [8, 15]
-- jira: [J31, J45]
+- jira: [J17, J18]
 
 **RED**(동반 테스트). 4번째 필드를 고를 수 있다. 그리고 스크럼에서 뷰 전환이 없다.
 
@@ -537,11 +559,11 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/board/BoardCard.tsx`, `apps/web/src/components/backlog/BacklogRow.tsx`, `apps/web/src/components/board/BoardCard.test.tsx`]
 - depends-on: [16]
-- jira: [J31, J32, J45]
+- jira: [J17, J19, J18]
 
 **RED**(동반 테스트). 구성을 바꿔도 카드가 그대로다. 그리고 **보드와 백로그에 다른 구성**을 주면 같아진다.
 
-**GREEN**. 뷰 스코프에 맞는 구성을 읽어 3층 순서로 그린다(J32) — 요약 → 추가 필드 → 상세.
+**GREEN**. 뷰 스코프에 맞는 구성을 읽어 3층 순서로 그린다(J19) — 요약 → 추가 필드 → 상세.
 필드가 그 이슈에 없으면 **그 카드에서만 생략**한다(E4 · 빈 칸을 그리지 않는다).
 
 **REFACTOR**. 요약은 토글 대상이 아님을 타입으로 막는다.
@@ -556,7 +578,7 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/issue/IssueMetaPanel.tsx`, `apps/web/src/routes/issues.$key.tsx`, `apps/web/src/components/issue/IssueMetaPanel.test.tsx`]
 - depends-on: [19]
-- jira: [J42, J46]
+- jira: [J15, J46]
 
 **RED**(동반 테스트). 구성이 모달에만 반영되고 사이드패널은 그대로다.
 
@@ -567,41 +589,110 @@ worktree 루트에서 `backend/gradlew` 를 부르면 「does not contain a Grad
 
 **검증**. 눈확인: 모달과 사이드패널에서 같은 필드 집합 — 라이트/다크
 
-### Task 22. E2E — 탭바 + 4탭 한 바퀴
+### Task 22. E2E — 탭바 + 카드 레이아웃 (선행 짧게)
 
 **메타**.
 - agent: `qa-engineer`
 - files: [`apps/web/e2e/board-settings.spec.ts`]
-- depends-on: [16, 17, 18, 19, 20, 21]
-- jira: [J22, J31, J36, J38, J46]
+- depends-on: [16]
+- jira: [J22, J17, J18]
+
+★**리뷰 CONCERN C4 로 쪼갰다.** 초판은 `depends-on: [16..21]` 이라 프론트 6개가 전부 끝나야
+E2E 가 시작하는 직렬 꼬리였다. 탭별로 나누면 T16 완료 시점에 첫 E2E 가 돈다.
 
 **RED**. 탭 전환 시나리오가 없다.
 
-**GREEN**. 탭바 5탭 전환 → 카드 레이아웃 뷰별 저장 → 추정 칸반 잠금 → 작업일 등록 → 상세 필드 드래그.
+**GREEN**. 탭바 5탭 전환 + 카드 레이아웃 **뷰별 저장**(보드↔백로그에 서로 다른 구성).
 ★보드 헤더 `⋯` 와 사이드바 보드 `⋯` 는 접근성 이름이 같다(캠페인 R10) —
 `apps/web/e2e/fixtures/board-helpers.ts` 의 **컨테이너 스코프 헬퍼를 그대로 쓴다**(`#450`).
 
-**REFACTOR**. 기존 3건이 탭바 도입으로 깨지지 않았는지 함께 확인한다.
+**REFACTOR**. 기존 3건(`#452`)이 탭바 도입으로 깨지지 않았는지 함께 확인한다.
 
 **검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings.spec.ts)`
 
+### Task 23. E2E — 추정 · 작업일
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/board-settings-estimation.spec.ts`]
+- depends-on: [17, 18]
+- jira: [J36, J37, J38, J39]
+
+**RED**. 칸반에서 추정 탭이 잠기는지, 근무일 등록이 번다운을 좁히는지 아무도 안 잰다.
+
+**GREEN**. 칸반 잠금 표시 + 근무일·비근무일 등록 후 번다운 x축 축소.
+★**타임존만 바꾸는 경로도 함께 잰다** — 리뷰가 critical gap 으로 지목한 침묵 실패다
+(설정은 되는데 차트가 안 바뀌면 아무도 모른다).
+
+**REFACTOR**. 근무일 미설정 보드가 **현행 그대로**인 대조군을 같은 spec 에 둔다.
+
+**검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-estimation.spec.ts)`
+
+### Task 24. E2E — 상세 보기 (모달 + 사이드패널 양쪽)
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/board-settings-detail-view.spec.ts`]
+- depends-on: [19, 21]
+- jira: [J46, J47, J48]
+
+★**리뷰 CONCERN C2 로 신설했다.** 완료 기준 9c 와 T21 에는 「모달·사이드패널 양쪽」 축이 있는데
+**E2E 에는 없었다.** `#455` 가 방금 그 토글을 냈으므로 한쪽만 반영되는 회귀가 지금 가장 나기 쉽다.
+
+**RED**. 상세 구성을 바꾼 뒤 모달로 열면 반영되는데 **사이드패널로 열면 그대로다** —
+이 단언이 없으면 그 회귀가 침묵한다.
+
+**GREEN**. 그룹 4종 편집 + 드래그 정렬 → **두 표현 모두** 같은 필드 집합을 그린다.
+
+**REFACTOR**. 두 표현을 여는 헬퍼를 spec 안에서 한 곳으로 모은다.
+
+**검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-detail-view.spec.ts)`
+
 ## Plan 메타
 
-- **task 수**: 22 · **예상 wave**: 5
-  (A 마이그레이션 1~4 · B 포트 5~6 · C 백엔드 7~14 · D 프론트 15~21 · E E2E 22)
+- **task 수**: 24 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+  - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
+  - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
 - **추가 검증**: `tsc --noEmit -p tsconfig.app.json` · `eslint src` · `vitest run` ·
-  `playwright test e2e/board-settings.spec.ts` · `ktlint` · `detekt` ·
+  `playwright test e2e/board-settings*.spec.ts` · `ktlint` · `detekt` ·
   `node --experimental-strip-types --test 'scripts/**/*.test.ts'` · `build-doc-index.mjs --check`
-- **Jira 매핑**:
-  J8→T8·T13(권한 게이트 승계) · J22→T15·T22 · J31→T2·T8·T16·T20 · J32→T5·T6·T20 ·
-  J36→T1·T9·T17 · J37→T9·T17 · J38→T1·T10·T18 · J39→T1·T10·T18 · J40→T1·T10·T12·T18 ·
-  J41→T11 · J42→T21 · J45→T2·T8·T16·T20 · J46→T13·T19·T21 · J47→T3·T13·T19 · J48→T13·T19 ·
-  J49→T13 · **J33 범위 밖** (편차 X6 — 컬럼 진입 시각을 아무도 기록하지 않아 별도 이력 테이블이 필요하다) ·
-  **J44 범위 밖** (work type 연관·hidden 판정은 issue-tracking 의 필드 스킴 영역이고, 이 PR 은
-  보드 단위 구성만 낸다 — 편차 X10 과 같은 경계)
+- ★**병렬 wave 주의** — 같은 worktree 의 병렬 dispatch 는 git 인덱스를 공유한다.
+  `git add` 로 좁혀도 커밋 시점 인덱스에 남의 파일이 있으면 함께 커밋된다.
+  **경로 한정 커밋**(`git commit -- <경로>`)을 쓰고 로그 파일명에 PID 를 붙인다
+  ([[shared-worktree-git-index-defeats-narrow-git-add]] · 2026-09-04 실측).
 
+### Jira 매핑 — 채택 J 번호 ↔ task 차집합 0
 
+| J | task | J | task |
+|---|---|---|---|
+| J8 | T8 · T13 | J35 | T9 · T17 |
+| J12 | T16 | J36 | T1 · T9 · T17 · T23 |
+| J13 | T17 | J37 | T9 · T17 · T23 |
+| J14 | T18 | J38 | T1 · T10 · T18 · T23 |
+| J15 | T19 · T21 | J39 | T1 · T10 · T18 · T23 |
+| J16 | T15 · T16 | J40 | T1 · T10 · T12 · T18 · T23 |
+| J17 | T2 · T8 · T16 · T20 | J41 | T11 |
+| J18 | T2 · T8 · T16 · T20 · T22 | J43 | T13 · T19 |
+| J19 | T5 · T6 · T20 | J46 | T13 · T19 · T21 · T24 |
+| J22 | T15 · T22 | J47 | T3 · T13 · T19 · T24 |
+| | | J48 | T13 · T19 · T24 |
+| | | J49 | T13 |
+
+**범위 밖 3건 — 전부 사유를 적는다.**
+
+- **J20 `Days in column`** — 편차 **X6**. 컬럼 진입 시각을 아무도 기록하지 않는다.
+  별도 이력 테이블 + issue-tracking 전환 이력 포트가 필요해 마이그레이션이 두 종류가 된다.
+- **J21 카드 색** — 편차 **X11** (리뷰 BLOCKER B3 로 신설). 세 가지 이유다.
+  ① 지라에서 카드 색은 **Card layout 탭이 아니라 별도 설정**이고 부채 177 의 7탭 목록에 없다 —
+  이 PR 의 대상이 아니다. ② 색 기준 4종 중 **JQL 은 `search-export-import` BC 소관**이라
+  이 PR 이 건드리면 BC 를 하나 더 늘린다(X9 가 이미 4개다).
+  ③ `TODOS.md:1518` 이 「카드 색의 JQL 기준은 search BC 소관이라 배제 대상인지」를 착수 시
+  풀 질문으로 남겨 뒀고, **이 편차가 그 질문에 대한 답이다** — 배제하고 후속으로 등재한다.
+  ★초판은 J21(당시 J34)을 조회해 표에 싣고 FR·편차·task 어디에도 안 올렸다.
+  분해가 조용히 삼킨 조작은 구현·리뷰·머지 어디서도 안 드러난다.
+- **J44 필드 노출 전제** — work type 연관·hidden 판정은 issue-tracking 의 **필드 스킴** 영역이고
+  이 PR 은 보드 단위 구성만 낸다. 편차 X10 과 같은 경계.
 
 ## 리뷰 결과
 
@@ -740,7 +831,25 @@ A·B 동시 → C·D → E 로 실질 3~4단계다. 그 사실이 plan 메타에
 
 ### 판정
 
-**BLOCKER 3 · CONCERNS 4 · critical gap 2.**
-`type == migration` 이라 **BLOCKER 무시 옵션이 없다**(절대 규칙).
+**초판 판정 — BLOCKER 3 · CONCERNS 4 · critical gap 2.**
+`type == migration` 이라 BLOCKER 무시 옵션이 없다(절대 규칙).
+
+### ✅ 처리 결과 (Maxi 확정 2026-09-05 — 「3건 고치고 계약 근본원인까지 닫는다」)
+
+| 항목 | 처리 |
+|---|---|
+| **B1** 판별식이 실제 위험을 안 지킨다 | T14 재작성. **주 방어선을 `BoardIssueView` 필드 이름 집합 고정**(shared-kernel 계약 테스트)으로 바꿨다 — 포트를 넓히는 것 자체는 허용 경로이므로 **금지가 아니라 가시화**가 처방이다. `com.bts.issue` import 0건은 보조선으로 남겼다 |
+| **B2** J 번호 두 벌 | 장부 축(J12~J21)으로 통합. 초판의 J30·J31·J32·J33·J34·J42·J45 를 폐기하고 **번호를 재사용하지 않는다**. plan·스펙 전수 치환 |
+| **B2 근본원인** | 계약 §1-0 의 재사용 명령을 **두 헤딩(`## Jira 대조` \| `### 지라 근거`) + `TODOS.md`** 로 넓혔다. `bts-spec/SKILL.md` 가 들고 있던 **낡은 사본을 제거**하고 정본 포인터로 바꿨다 — 사본이 범위 확장을 따라오지 않는 것이 이 저장소의 지배 결함 양식이다. **비-공허 확인** — 새 명령이 `TODOS.md` 를 실제로 잡는다 |
+| **B3** 카드 색 누락 | 편차 **X11** 신설. `TODOS.md:1518` 이 남긴 질문(「JQL 기준은 search BC 소관이라 배제 대상인지」)에 **답으로** 배제하고 사유 3건을 적었다 |
+| **C1** 서비스 층에 부채 157 복제 | 탭별 서비스 4개로 분리(`CardLayoutSettingsService` 등). wave 병렬성도 함께 산다 |
+| **C2** 상세 보기 양쪽 판정이 E2E 에 없음 | **T24 신설** — 모달·사이드패널 양쪽을 재는 spec. critical gap 1건 해소 |
+| **C3** 되돌리기 판정 부재 | T4 REFACTOR 에 되돌리기 검증 추가(`DROP` 후 스키마가 적용 전과 같음) |
+| **C4** wave E 직렬 꼬리 | E2E 를 T22·T23·T24 로 쪼갰다. T22 는 `depends-on: [16]` 이라 T16 완료 즉시 시작 |
+| **critical gap** 「타임존만 설정」 | T23 이 그 경로를 잰다 |
+| **critical gap** 「상세 구성 한쪽만」 | T24 가 그 경로를 잰다 |
+
+**재판정 — BLOCKER 0 · CONCERNS 0 · critical gap 0.** task 22 → **24**.
+검증 — 가드 7/7 · 판별식 557/557 · doc-index drift 0.
 
 
