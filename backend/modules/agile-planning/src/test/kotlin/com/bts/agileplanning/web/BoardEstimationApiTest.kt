@@ -63,6 +63,7 @@ private const val REMAINING_AND_SPENT = "REMAINING_AND_SPENT"
  * | ⑦ 허용값 | 허용값 밖은 **400** | 문자열을 그대로 DB 로 보내 CHECK 위반 500 을 내는 구현 |
  * | ⑧ 게이트 순서 | 미인증은 보드 조회 **이전에** 401 · 권한 미충족은 종류 판정 **이전에** 403 | 존재/종류를 미인증자에게 흘리는 구현 |
  * | ⑨ **서비스 층의 404↔409** | 서비스를 직접 불러도 없는 보드는 404 · 칸반은 409 | 서비스가 「무조건 409」인 구현. ③ 은 컨트롤러 게이트가 가려 준다(뮤테이션 B) |
+ * | ⑩ **게이트 인자** | 권한 판정이 `CREATE` + `Project` 스코프로 간다 | 다른 권한코드(BROWSE·SOFT_DELETE)로 묻는 구현. ⑧ 은 「거부되면 403」만 재서 못 잡는다 |
  *
  * ★**⑤ 가 이 파일의 진짜 판정이다.** 그리고 API 응답만 보면 「지우고 안 보여주는」 구현도 통과하므로
  * **jOOQ 로 `boards.time_tracking` 을 직접 읽어** 판정한다([rawTimeTracking] — 서비스·리포지터리를
@@ -81,6 +82,7 @@ private const val REMAINING_AND_SPENT = "REMAINING_AND_SPENT"
  * | B | 서비스의 「없는 보드」 404 를 409 로 바꾼다 | 보강 전 **8건 전부 초록 — 살아남았다** / 보강 후 ⑨ red |
  * | C | [BoardSettingsRepository.findTimeTracking] 이 `board_type = 'SCRUM'` 으로 거른다 | ⑤ red — **죽는다** |
  * | D | 저장을 건너뛰고 200 만 준다 | ①⑤ red — **죽는다** |
+ * | E | 컨트롤러의 권한코드를 `CREATE` → `SOFT_DELETE` 로 바꾼다 | ⑩ red — **죽는다**(⑩ 도입 전에는 10건 전부 초록) |
  *
  * ★**B 가 살아남은 것이 이 파일의 실제 발견이다.** HTTP 로만 재면 컨트롤러 권한 게이트가 먼저 보드를
  * 조회해 404 를 내주므로 **서비스 안의 404↔409 갈림에는 도달하지 않는다** — 서비스가 「보드를 못 찾으면
@@ -119,15 +121,27 @@ class BoardEstimationApiTest {
         fun permissionStub(): PermissionStub = PermissionStub()
     }
 
-    /** allowAll=false 면 모든 권한 판정을 거부하는 [IssuePermissionResolver] stub. */
+    /**
+     * allow/deny 토글 + **전달 인자 캡처**가 가능한 [IssuePermissionResolver] stub.
+     *
+     * ★캡처가 없으면 컨트롤러가 어떤 권한코드로 묻든 전부 초록이다 — 게이트가 「돌았다」만 재고
+     * 「무엇으로 물었는가」는 아무도 안 본다. 형제 [BoardCardLayoutApiTest.PermissionStub] 과
+     * **같은 필드 이름**을 쓴다(Task 29 가 네 탭의 권한코드를 한 번에 고칠 수 있어야 한다).
+     */
     class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true
+        var lastPermission: IssuePermission? = null
+        var lastScope: IssueScope? = null
 
         override fun hasPermission(
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
-        ): Boolean = allowAll
+        ): Boolean {
+            lastPermission = permission
+            lastScope = scope
+            return allowAll
+        }
     }
 
     @Autowired
@@ -158,6 +172,9 @@ class BoardEstimationApiTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).build()
         authenticate()
         permissionStub.allowAll = true
+        // 앞 테스트가 남긴 값으로 ⑩ 이 초록이 되지 않게 매번 비운다.
+        permissionStub.lastPermission = null
+        permissionStub.lastScope = null
     }
 
     // ── ① 대조군 (J36) ────────────────────────────────────────────────────────
@@ -270,6 +287,21 @@ class BoardEstimationApiTest {
 
         patchEstimation(board.id, REMAINING_AND_SPENT)
             .andExpect(status().isForbidden)
+    }
+
+    // ── ⑩ 게이트 인자 — 어떤 권한코드로 물었는가 ─────────────────────────────
+
+    @Test
+    fun `권한 게이트는 CREATE 권한과 프로젝트 스코프로 판정한다`() {
+        // ⑧ 은 「거부되면 403」만 잰다 — 컨트롤러가 BROWSE 로 묻든 SOFT_DELETE 로 묻든 초록이다.
+        // 설정 화면의 다른 쓰기 경로와 프론트(settings.tsx:103)가 CREATE 로 편집 여부를 가르므로
+        // 이 탭도 CREATE 여야 한다. 그 선택을 여기서 못박는다.
+        val board = insertBoard(BoardType.SCRUM)
+
+        patchEstimation(board.id, REMAINING_AND_SPENT).andExpect(status().isOk)
+
+        assertThat(permissionStub.lastPermission).isEqualTo(IssuePermission.CREATE)
+        assertThat(permissionStub.lastScope).isEqualTo(IssueScope.Project(board.projectKey))
     }
 
     // ── ⑨ 서비스 층의 404 ↔ 409 (뮤테이션 B 가 살아남아 보강한 축) ────────────
