@@ -55,6 +55,9 @@ class BoardIssueViewFieldSetTest {
             "rank",
             "labels",
             "originalEstimateSeconds",
+            // ★부채 177 Task 5 가 넓힌 자리 — 커스텀 필드 값은 issue-tracking BC 소유이고
+            //   agile-planning 은 그대로 미러 노출만 한다(`rank` 와 같은 취급).
+            "customFields",
         )
 
     @Test
@@ -72,7 +75,7 @@ class BoardIssueViewFieldSetTest {
     fun `계약 목록이 비어 있지 않다 — 빈 집합끼리 비교하는 가짜 초록 차단`() {
         // expectedFieldNames 가 실수로 비면 위 단언은 「실제도 비었나」만 보게 되고,
         // 리플렉션이 아무것도 못 읽는 상황과 구분되지 않는다.
-        assertThat(expectedFieldNames).hasSize(11)
+        assertThat(expectedFieldNames).hasSize(12)
     }
 
     @Test
