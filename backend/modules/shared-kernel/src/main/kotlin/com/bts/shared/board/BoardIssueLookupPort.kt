@@ -177,6 +177,7 @@ data class BoardIssuePage(
  * @property labels 이슈 라벨 목록. 라벨이 없으면 **빈 리스트**(null 아님) — `issues.labels` 가
  *   `NOT NULL DEFAULT '{}'` 이라 도메인에서 이미 빈 리스트다 (FR-UX-14 B2).
  * @property originalEstimateSeconds 최초 추정 작업 시간(초). 미추정이면 null (FR-UX-14 B2).
+ * @property customFields 이슈 커스텀 필드 값 맵. 커스텀 필드가 없으면 빈 맵.
  */
 data class BoardIssueView(
     val key: String,
@@ -190,4 +191,5 @@ data class BoardIssueView(
     val rank: String? = null,
     val labels: List<String> = emptyList(),
     val originalEstimateSeconds: Int? = null,
+    val customFields: Map<String, Any?> = emptyMap(),
 )
