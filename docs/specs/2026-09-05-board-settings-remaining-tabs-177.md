@@ -232,6 +232,14 @@ CREATE TABLE board_detail_view_fields (
   ③ BC 별 커밋을 **분리**해 되돌리기 단위를 남긴다.
   ④ 판별식으로 ①을 강제한다 — `agile-planning` 소스에 `com.bts.issue` import 가 0건임을 잰다.
 - **C-4** `Days in column`(J20)은 X6 으로 범위 밖.
+- **C-6 ✅ 확정(2026-09-05).** **커스텀 필드 열람 권한 마스킹(FR-PM-07)은 `BoardIssueLookupAdapter`
+  가 진다.** Task 6 구현자가 올린 잠재 결함이다 — issue-tracking 자기 REST 경로는
+  `IssueResponse.maskFields()` + `maskFieldsForPage()` 로 마스킹하는데 **cross-BC 포트 경로에는
+  그 게이트가 없어**, 보드 응답이 커스텀 필드를 미러하는 순간 열람 권한 없는 값이 카드에 실린다.
+  어댑터를 고른 이유 — 권한 판정은 issue-tracking 이 소유한 지식이고, agile-planning 이 마스킹하려면
+  권한 모델을 복사해야 해 그 순간 「두 목록이 서로를 검사하지 않는다」가 된다.
+  **포트 밖으로는 이미 안전한 값만 나가고, 미러하는 쪽은 다시 거르지 않는다** — 마스킹 주체가
+  두 곳이 되면 그것이 두 번째 진실이다. Task 25 가 이것을 구현하고 Task 26 이 미러한다.
 
 ## 측정 가능한 완료 기준
 

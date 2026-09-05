@@ -577,7 +577,9 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 **메타**.
 - agent: `frontend-engineer`
 - files: [`apps/web/src/components/board/BoardCard.tsx`, `apps/web/src/components/backlog/BacklogRow.tsx`, `apps/web/src/components/board/BoardCard.test.tsx`]
-- depends-on: [16]
+- depends-on: [16, 26]
+
+★**26 을 더했다** — 커스텀 필드가 `BoardCardResponse` 에 실려야 화면이 그릴 것이 생긴다.
 - jira: [J17, J19, J18]
 
 **RED**(동반 테스트). 구성을 바꿔도 카드가 그대로다. 그리고 **보드와 백로그에 다른 구성**을 주면 같아진다.
@@ -674,6 +676,62 @@ E2E 가 시작하는 직렬 꼬리였다. 탭별로 나누면 T16 완료 시점�
 **REFACTOR**. 두 표현을 여는 헬퍼를 spec 안에서 한 곳으로 모은다.
 
 **검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-detail-view.spec.ts)`
+
+### Task 25. 어댑터가 커스텀 필드를 열람 권한으로 마스킹한다
+
+**메타**.
+- agent: `security-engineer`
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupMaskingTest.kt`]
+- depends-on: [6]
+- jira: []
+
+★**Task 6 구현자가 올린 보안 결함 후보를 닫는다. Maxi 확정 2026-09-05 — 「어댑터가 마스킹한다」.**
+
+**무엇이 문제였나.** issue-tracking 자기 REST 경로는 커스텀 필드를 마스킹한다 —
+`IssueResponse.maskFields()` 가 열람 권한 없는 키를 제거하고
+`IssueApplicationService.maskFieldsForPage()`(`:1869`)가 페이지당 1회
+`FieldPermissionResolver.visibleFields` 로 적용한다(FR-PM-07).
+**cross-BC 포트 경로에는 그 게이트가 없다.** Task 6 이 `BoardIssueView.customFields` 를
+원시 값으로 채웠으므로, Task 26 이 이 값을 보드 응답에 미러하는 순간 **열람 권한 없는
+커스텀 필드가 카드에 실려 나간다.** 지금은 아직 아무도 직렬화하지 않아 잠재 결함이다.
+
+**왜 어댑터인가.** 권한 판정은 issue-tracking 이 소유한 지식이고 FR-PM-07 구현이 거기 있다.
+agile-planning 이 마스킹하려면 권한 모델을 복사해야 하고 그 순간 「두 목록이 서로를 검사하지
+않는다」가 된다. **포트 밖으로는 이미 안전한 값만 나간다** — 미러하는 쪽은 받은 것을 그대로 쓴다.
+
+**RED**. 열람 권한이 없는 뷰어로 보드 카드를 조회해도 `customFields` 에 그 키가 **그대로 들어 있다**.
+★**대조군을 한 쌍으로 둔다** — 권한이 **있는** 뷰어는 같은 키를 **본다**는 단언을 함께 둔다.
+뒤엣것이 없으면 「전부 지우는」 구현도 통과한다.
+
+**GREEN**. 어댑터가 페이지당 **1회** `FieldPermissionResolver.visibleFields` 를 호출해 필터한다.
+★카드마다 부르면 N+1 이다 — Task 6 이 세운 쿼리 카운트 가드(C4·C5)가 그것을 잡아야 한다.
+
+**REFACTOR**. 포트 KDoc 에 「이 값은 **이미 마스킹된 것**이다 — 소비자는 다시 거르지 않는다」를 못박는다.
+마스킹 주체가 두 곳이 되면 그것이 곧 두 번째 진실이다.
+
+**검증**. `(cd backend && ./gradlew :modules:issue-tracking:test --tests '*BoardIssueLookupMaskingTest' --tests '*BoardIssueLookupCustomFieldsTest')`
+
+### Task 26. 보드 응답이 커스텀 필드를 미러한다
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/dto/BoardResponses.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardCustomFieldsApiTest.kt`]
+- depends-on: [25]
+- jira: [J17, J19]
+
+★**계획에 없던 task 다(2026-09-05 신설).** Task 5 구현자가 「Task 6 이 값을 채우고 나면
+`BoardCardResponse` 에도 미러해야 화면까지 닿는다」를 넘겼는데 그 미러를 소유한 task 가 없었다 —
+T8 은 카드 레이아웃 **설정**이고 T20 은 프론트다. 백엔드 응답에 필드가 없으면 화면이 그릴 것이 없다.
+
+**RED**. 커스텀 필드가 있는 이슈를 보드 조회로 읽어도 응답 카드에 `customFields` 가 없다.
+
+**GREEN**. `BoardCardResponse` 에 `customFields: Map<String, Any?> = emptyMap()` 를 더하고
+`from(card: BoardIssueView)` 가 그대로 옮긴다. **다시 거르지 않는다** — Task 25 가 이미 걸렀다.
+
+**REFACTOR**. `rank` 의 「소유는 issue-tracking BC · 미러 노출만 한다」 문구를 따라 KDoc 을 단다.
+`agile-planning` 이 `com.bts.issue` 를 import 하지 않는지 확인한다(Task 14 판별식과 같은 축).
+
+**검증**. `(cd backend && ./gradlew :modules:agile-planning:test --tests '*BoardCardCustomFieldsApiTest')`
 
 ## Plan 메타
 
