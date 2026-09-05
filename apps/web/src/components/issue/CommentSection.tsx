@@ -365,9 +365,14 @@ function CommentRow({
 
   // 목록은 조회가 끝난 뒤에야 마운트되므로 「대상 행이 생긴 순간」이 곧 스크롤 시점이다.
   // ★`scrollIntoView` 를 옵셔널 호출한다 — jsdom 에는 이 메서드가 아예 없다.
+  //
+  // 스크롤 뒤에 포커스까지 옮긴다. 스크롤은 눈에만 보이므로 그것만으로는 스크린리더
+  // 사용자에게 "왜 이 화면에 왔는지" 가 전달되지 않는다. `preventScroll` 은 방금 맞춘
+  // `block: 'center'` 를 브라우저 기본 스크롤(`nearest`)이 되밀지 않게 한다.
   useEffect(() => {
     if (!isFocusTarget) return
     rowRef.current?.scrollIntoView?.({ block: 'center' })
+    rowRef.current?.focus?.({ preventScroll: true })
   }, [isFocusTarget])
 
   const isAuthor = currentUserId !== undefined && comment.authorId === currentUserId
@@ -405,11 +410,17 @@ function CommentRow({
       ref={rowRef}
       data-testid={`comment-row-${comment.id}`}
       data-focus-target={isFocusTarget ? 'true' : undefined}
+      // 대상 행만 프로그램 포커스를 받는다. 모든 행에 붙이면 Tab 이동이 댓글 수만큼 늘어난다.
+      tabIndex={isFocusTarget ? -1 : undefined}
       className={cn(
         'border-b border-border py-3 last:border-b-0',
         isFocusTarget && 'rounded-md bg-primary/5 px-2 ring-2 ring-primary/40',
       )}
     >
+      {/* 강조의 의미를 텍스트로 옮긴다 — 링·배경색은 시각 밖에서 존재하지 않는다 */}
+      {isFocusTarget && (
+        <span className="sr-only">{commentStrings.commentFocusTargetScreenReader}</span>
+      )}
       <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{displayName ?? comment.authorId}</span>
         <span>{formatDateTime(comment.createdAt)}</span>
