@@ -9,7 +9,9 @@ import com.bts.shared.board.BoardCardFilter
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.board.BoardIssuePage
 import com.bts.shared.board.BoardIssueView
+import com.bts.shared.permission.FieldKind
 import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.permission.IssueSecurityDirectory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -87,11 +89,58 @@ class BoardIssueLookupAdapter(
         // 목록당 1회 cross-BC 호출 — N+1 없음. unrestricted=true 이면 WHERE 술어 미적용(빠른경로).
         val access = securityDirectory.accessibleLevels(viewerUserId, projectKey)
         val fetchResult = issueRepository.listVisibleForBoard(projectKey, viewerUserId, access, filter)
+        val visibleCustomFields = resolveVisibleCustomFields(fetchResult.entries, viewerUserId)
         return BoardIssuePage(
-            issues = fetchResult.entries.map { it.toBoardIssueView() },
+            issues =
+                fetchResult.entries.map {
+                    it.toBoardIssueView(visibleCustomFields[it.issue.projectId].orEmpty())
+                },
             truncated = fetchResult.truncated,
         )
     }
+
+    /**
+     * 페이지 전체의 커스텀 필드 열람 판정을 **프로젝트당 1회** 로 모아 수행한다 (FR-PM-07).
+     *
+     * REST 목록 경로(`IssueApplicationService.maskFieldsForPage`)와 **같은 판정 규칙**이다 —
+     * 같은 [FieldPermissionResolver.visibleFields] 에 페이지 내 커스텀 필드 키의 합집합을
+     * candidates 로 넘기고, 결과 집합에 없는 키를 [toBoardIssueView] 가 제거한다.
+     * 규칙이 갈라지면 같은 사용자가 화면에 따라 다른 것을 보게 된다.
+     *
+     * ### 카드마다 부르지 않는다
+     *
+     * 판정은 페이지당 1회다. 카드마다 부르면 보드 한 번에 수백 회 판정이 된다
+     * (`BoardIssueLookupMaskingTest` M4/M5 가 호출 수를 1로 고정한다).
+     * projectId 는 조회 결과의 [Issue.projectId] 에서 얻으므로 **추가 쿼리가 없다** —
+     * `findProjectIdByKey` 를 부르면 `BoardIssueLookupCustomFieldsTest` C4/C5 의 SQL 문 수 가드가 깨진다.
+     *
+     * ### 결과에 없는 프로젝트는 전량 제거(fail-closed)
+     *
+     * 반환 맵에 없는 projectId 의 카드는 호출부 `orEmpty()` 로 커스텀 필드가 전부 사라진다.
+     * 판정을 못 받은 값을 그대로 내보내는 fail-open 이 되지 않게 하기 위함이다.
+     * 커스텀 필드가 한 건도 없으면 물을 것이 없으므로 판정을 건너뛴다(빈 집합 반환).
+     *
+     * @param entries 보드 조회 결과 행.
+     * @param viewerUserId 보드를 조회하는 사용자 UUID.
+     * @return `projectId -> 열람 가능한 커스텀 필드 [FieldRef] 집합`.
+     */
+    private fun resolveVisibleCustomFields(
+        entries: List<IssueRepository.BoardIssueEntry>,
+        viewerUserId: UUID,
+    ): Map<UUID, Set<FieldRef>> =
+        entries
+            .groupBy { it.issue.projectId }
+            .mapValues { (projectId, group) ->
+                val candidates =
+                    group.flatMapTo(mutableSetOf()) { entry ->
+                        entry.issue.customFields.keys.map { FieldRef(FieldKind.CUSTOM, it) }
+                    }
+                if (candidates.isEmpty()) {
+                    emptySet()
+                } else {
+                    fieldPermissionResolver.visibleFields(viewerUserId, projectId, candidates)
+                }
+            }
 
     /**
      * 지정 이슈가 뷰어에게 가시적인 프로젝트 내 활성 이슈인지 단건으로 확인한다 (FR-BL-02 Task 8).
@@ -135,7 +184,7 @@ class BoardIssueLookupAdapter(
  * 보드·백로그 두 경로에서 SQL 문 수 1회를 고정한다.
  * 값의 **소유는 issue-tracking BC** 이며 소비측(agile-planning)은 미러 노출만 한다.
  */
-private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =
+private fun IssueRepository.BoardIssueEntry.toBoardIssueView(visibleCustomFields: Set<FieldRef>): BoardIssueView =
     BoardIssueView(
         key = issue.key.value,
         summary = issue.summary,
@@ -148,5 +197,5 @@ private fun IssueRepository.BoardIssueEntry.toBoardIssueView(): BoardIssueView =
         rank = issue.rank,
         labels = issue.labels,
         originalEstimateSeconds = issue.originalEstimateSeconds,
-        customFields = issue.customFields,
+        customFields = issue.customFields.filterKeys { FieldRef(FieldKind.CUSTOM, it) in visibleCustomFields },
     )
