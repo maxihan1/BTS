@@ -9,11 +9,14 @@ import com.bts.agileplanning.jooq.tables.references.BOARD_CARD_LAYOUT_FIELDS
 import com.bts.agileplanning.jooq.tables.references.BOARD_DETAIL_VIEW_FIELDS
 import org.assertj.core.api.Assertions.assertThat
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.sql.SQLException
 import java.time.Instant
 import java.time.LocalDate
@@ -64,6 +67,10 @@ private const val CHECK_VIOLATION = "23514"
 @SpringBootTest(classes = [AgilePlanningTestBootApplication::class])
 @Import(AgilePlanningTestcontainersConfig::class)
 @ActiveProfiles("test")
+// detekt VarCouldBeVal 오탐 — 필드 주입은 `lateinit var` 뿐이고 `lateinit` 은 val 에 못 쓴다.
+// 형제 리포지터리 테스트 4종이 같은 자리로 detektTest 선재 red 를 차지하고 있다. 남의 것은 손대지 않되
+// 신규 파일이 그 숫자를 늘리지는 않는다(모듈에 detekt-baseline.xml 이 없어 동결할 자리도 없다).
+@Suppress("VarCouldBeVal")
 class BoardSettingsRepositoryTest {
     @Autowired
     private lateinit var boardRepository: BoardRepository
@@ -73,6 +80,9 @@ class BoardSettingsRepositoryTest {
 
     @Autowired
     private lateinit var dsl: DSLContext
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
 
     // ── ① 뷰 축 (R3 · J18) ────────────────────────────────────────────────────
 
@@ -133,14 +143,16 @@ class BoardSettingsRepositoryTest {
 
     @Test
     fun `카드 레이아웃은 행이 뒤섞여 들어가 있어도 position 순으로 읽는다`() {
-        // ORDER BY 가 없는 구현은 힙 순서(third·first·second)를 그대로 돌려준다.
+        // ORDER BY 가 없는 구현은 힙 순서(third·first·second)를 그대로 돌려준다 —
+        // 단 [readWithSeqScan] 으로 인덱스 스캔을 꺼야 그렇다. 이유는 그 헬퍼의 KDoc 에 있다.
         val board = insertBoard()
         insertCardLayoutRow(board.id, "BOARD", 2, "third")
         insertCardLayoutRow(board.id, "BOARD", 0, "first")
         insertCardLayoutRow(board.id, "BOARD", 1, "second")
 
-        assertThat(settingsRepository.findCardLayout(board.id)["BOARD"])
-            .containsExactly("first", "second", "third")
+        val layout = readWithSeqScan { settingsRepository.findCardLayout(board.id) }
+
+        assertThat(layout["BOARD"]).containsExactly("first", "second", "third")
     }
 
     // ── ⑤ 보드 격리 ───────────────────────────────────────────────────────────
@@ -317,8 +329,9 @@ class BoardSettingsRepositoryTest {
         insertDetailViewRow(board.id, "GENERAL", 0, "first")
         insertDetailViewRow(board.id, "GENERAL", 1, "second")
 
-        assertThat(settingsRepository.findDetailViewFields(board.id)["GENERAL"])
-            .containsExactly("first", "second", "third")
+        val fields = readWithSeqScan { settingsRepository.findDetailViewFields(board.id) }
+
+        assertThat(fields["GENERAL"]).containsExactly("first", "second", "third")
     }
 
     @Test
@@ -336,6 +349,26 @@ class BoardSettingsRepositoryTest {
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
+
+    /**
+     * 인덱스 스캔을 끈 트랜잭션 안에서 [block] 을 실행한다 — **정렬 판정을 공허하지 않게 만드는 장치**다.
+     *
+     * ★실측(뮤테이션 M3)에서 `findCardLayout` 의 `ORDER BY` 를 통째로 지워도 **19개가 전부 초록**이었다.
+     * `WHERE board_id = ?` 가 PK 인덱스 `(board_id, view_scope, position)` 를 타고, 그 인덱스 순서가
+     * 곧 `position` 순이라 정렬 없이도 정렬된 결과가 나왔기 때문이다. 그대로 두면 「position 순으로
+     * 읽는다」는 판정이 **구현이 아니라 실행 계획**을 재고 있는 것이다.
+     *
+     * seq 스캔을 강제하면 일부러 뒤섞어 심은 힙 순서(2·0·1)가 그대로 나오므로 `ORDER BY` 의 유무가
+     * 결과를 가른다. `SET LOCAL` 이라 트랜잭션이 끝나면 세션 설정이 원복돼 다른 테스트에 새지 않는다.
+     */
+    private fun <T> readWithSeqScan(block: () -> T): T =
+        requireNotNull(
+            TransactionTemplate(transactionManager).execute {
+                dsl.setLocal(DSL.name("enable_indexscan"), DSL.value("off")).execute()
+                dsl.setLocal(DSL.name("enable_bitmapscan"), DSL.value("off")).execute()
+                block()
+            },
+        ) { "readWithSeqScan 블록이 null 을 돌려줬다 — 트랜잭션이 열리지 않았을 수 있다." }
 
     /** board_card_layout_fields 원본 행 — 읽기 경로를 거치지 않고 저장된 것을 직접 본다. */
     private fun rawCardLayout(

@@ -45,6 +45,21 @@ data class BoardWorkingDays(
  * 읽기·쓰기를 거기 넣으면 그 부채가 깊어진다 — `#444` 가 [BoardColumnStateRepository] 를 뺀 것과
  * **같은 이유이고 같은 모양**이다. 설정 4탭은 보드 애그리게이트의 속성이지만 자체 응집이 있다.
  *
+ * ## 줄수 무증가 — 확인 방법과 실측 (스펙 C-1 · 완료 기준 9)
+ * 이 task 는 `BoardRepository.kt` 를 **한 줄도 건드리지 않았다.** 다음 사람이 재현할 수 있게 적는다.
+ *
+ * ```
+ * BR=backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/repository/BoardRepository.kt
+ * git diff --stat $(git merge-base HEAD origin/main)..HEAD -- $BR   # 출력이 비어야 한다
+ * wc -l $BR
+ * ```
+ *
+ * 실측(2026-09-06) — merge-base `73de1313` 447줄 · task-7 착수 직전 447줄 · 세 커밋 뒤 447줄.
+ * `git diff --stat` 은 **빈 출력**이다.
+ *
+ * ★줄수만 세면 「447줄을 유지한 채 내용만 바뀐」 경우를 못 잡는다. 그래서 숫자와 **diff 가 비었다**를
+ * 함께 잰다 — 숫자 하나만 남기면 다음 사람이 그 사각을 물려받는다.
+ *
  * ## 담는 것
  *
  * | 축 | 저장 칸 | 키 |
