@@ -164,7 +164,10 @@ COMMENT ON COLUMN board_card_layout_fields.field_key  IS '표준 필드 키 또�
 -- ★ 그래서 field_group 에는 CHECK 를 건다. 허용값이 지라 화면 구획(J47)에 묶여 있어 값 종류가
 --   늘 일이 없다. ★초판은 여기에 「① 의 time_tracking 에 CHECK 를 걸지 않은 것과 갈리는
 --   지점」이라고 적었는데 **이제 갈리지 않는다** — ① 도 boards_time_tracking_allowed 를 받는다.
---   그 「구분」의 근거였던 「스펙이 이 테이블에만 CHECK 를 명시했다」를 ① 의 ★★ 가 뒤집었다.
+--   ★그리고 초판이 든 근거 「스펙이 이 테이블에만 CHECK 를 명시했다」는 **애초에 사실이 아니다.**
+--   스펙 §데이터 모델은 ③ board_card_layout_fields 에도 CHECK 를 둘(position · view_scope) 적었고
+--   ③ 절이 실제로 그 둘을 갖고 있다. 남는 사실은 「스펙이 time_tracking 에만 CHECK 를 안 썼다」뿐이고,
+--   그것이 구분의 근거가 못 된다는 판정이 ① 의 ★★ 다.
 --
 -- ★ position 에 상한이 **없다.** ③ 의 CHECK (position BETWEEN 0 AND 2) 를 여기로 복사해 오지 말 것 —
 --   상한 3은 카드(J17)의 제약이고, 상세 보기는 J48 이 순서(드래그로 위아래)만 말한다.

@@ -3,7 +3,6 @@
 package com.bts.agileplanning.migration
 
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -27,6 +26,14 @@ import java.util.UUID
 private const val CHECK_VIOLATION = "23514"
 
 /**
+ * UNIQUE 제약 위반 SQLSTATE.
+ *
+ * ★ [CHECK_VIOLATION] 과 같은 이유로 값까지 고정한다 — 「같은 날짜 두 번」을 아무 SQLException 으로
+ * 재면 테이블이 아예 없을 때(42P01)도 초록이 된다.
+ */
+private const val UNIQUE_VIOLATION = "23505"
+
+/**
  * `V509__board_settings_tabs.sql` 을 검증한다 (스펙 R5·R6 · 갭 D · J38·J39·J40).
  *
  * 「작업일」·「추정」 탭이 저장할 칸을 `boards` 에 세 개 얹고, 비근무일 목록을 별도 테이블로 낸다.
@@ -37,7 +44,7 @@ private const val CHECK_VIOLATION = "23514"
  * `@Container` 로 전용 컨테이너를 띄우고 `target("508")` → 픽스처 → `target(null)` 로 나눈다.
  * 마지막 단계에 숫자를 박지 않는 것도 그 선례를 따른다 — `V510` 이 들어와도 체인 전체가 돈다.
  *
- * ## 이 클래스가 지는 판정 4축
+ * ## 이 클래스가 지는 판정 5축
  *
  * | 축 | 무엇 | 근거 |
  * |---|---|---|
@@ -389,8 +396,8 @@ class BoardSettingsMigrationTest {
         val boardId = conn().use { c -> seedBoard(c, "DUPDATE", "중복 날짜 판정용 보드") }
         insertNonWorkingDate(boardId, LocalDate.of(2026, 10, 3))
 
-        assertThatThrownBy { insertNonWorkingDate(boardId, LocalDate.of(2026, 10, 3)) }
-            .isInstanceOf(SQLException::class.java)
+        assertThat(sqlStateOf { insertNonWorkingDate(boardId, LocalDate.of(2026, 10, 3)) })
+            .isEqualTo(UNIQUE_VIOLATION)
     }
 
     @Test
