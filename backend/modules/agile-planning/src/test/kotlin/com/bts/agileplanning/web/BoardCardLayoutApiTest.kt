@@ -4,6 +4,7 @@ package com.bts.agileplanning.web
 
 import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
+import com.bts.agileplanning.application.CardLayoutSettingsService
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardType
 import com.bts.agileplanning.repository.BoardRepository
@@ -16,12 +17,14 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -34,6 +37,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 
@@ -59,10 +63,18 @@ import java.util.UUID
  * | ⑧ 칸반 | 칸반 `BACKLOG` 400 ↔ 칸반 `BOARD` 200 | `BACKLOG` 전면 거부 · 칸반 전면 거부 ↔ 조합 판정 |
  * | ⑨ 권한 | 403 · 401 · 404 순서 | 권한을 존재보다 먼저 봄(403 누설) ↔ 존재 → 권한 |
  * | ⑩ 게이트 인자 | `SOFT_DELETE` + `Project` | 아무 권한코드나 통과 ↔ 계획이 지정한 게이트 |
+ * | ⑪ 서비스 층 상태 | 없는 보드 **404** ↔ 칸반 백로그 **400** | 무엇에나 404 · 무엇에나 400 ↔ 원인별 상태 |
  *
- * ★**①⑥⑧ 은 짝으로만 산다.** 「저장하고 읽으면 같다」·「무엇이든 400」은 틀린 구현도 통과시킨다 —
+ * ★**①⑥⑧⑪ 은 짝으로만 산다.** 「저장하고 읽으면 같다」·「무엇이든 400」은 틀린 구현도 통과시킨다 —
  * 그래서 ⑥ 은 거부(`SUMMARY`)와 허용(`cf_story_points`)을 한 쌍으로, ⑧ 은 칸반 거부와 칸반 허용을
  * 한 쌍으로 둔다. 어느 한쪽만 두면 「전부 거부」 구현이 초록이다.
+ *
+ * ★**⑪ 은 HTTP 로 도달할 수 없어 서비스를 직접 부른다.** 컨트롤러 게이트가 **먼저** 보드를 조회해
+ * 404 를 내므로, 서비스가 자기 자리에서 내는 404 에는 MockMvc 요청이 절대 닿지 않는다 —
+ * 그 코드를 400 이나 409 로 바꿔도 HTTP 15건이 전부 초록이었다(wave 6 검증자 적발 · 아래 실측).
+ * 도달 불가한 분기를 지키는 테스트는 그 자체가 도달 불가다. 그래서 `assertThrows` 로 서비스를
+ * 직접 부르고, **같은 서비스가 내는 다른 상태**(400)를 반대편에 세워 「무조건 404」도 함께 막는다.
+ * [BoardEstimationApiTest] 의 404↔409 짝과 같은 양식이다(부채 177 Task 9 가 먼저 찾았다).
  *
  * ★**순서 판정은 여기서 `ORDER BY` 를 재지 않는다.** `BoardSettingsRepositoryTest.readWithSeqScan`
  * KDoc 이 밝힌 대로 PK 인덱스 `(board_id, view_scope, position)` 순서가 곧 position 순이라 리포지터리
@@ -73,9 +85,10 @@ import java.util.UUID
  * 모든 저장 축은 HTTP 응답 **그리고** [BoardSettingsRepository] 로 다시 읽은 DB 값을 함께 단언한다.
  * 응답만 재면 요청을 그대로 되돌려주고(echo) 저장은 안 하는 구현이 통과한다.
  *
- * ## 판별력 실측 (2026-09-06 · 뮤테이션 12건)
+ * ## 판별력 실측 (2026-09-06 · 뮤테이션 14건)
  * 「깨면 red」가 당연한 방향이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**인지를 확인했다.
- * 구현을 한 군데씩 되돌려 심고 이 클래스를 돌린 결과다 — 12건 모두 잡혔고, 잡은 테스트가 하나씩이다.
+ * 구현을 한 군데씩 되돌려 심고 이 클래스를 돌린 결과다 — 14건 모두 잡혔다. 앞의 12건은 HTTP 축이고,
+ * 뒤의 2건(⑪)은 HTTP 로 도달하지 않아 서비스를 직접 부르는 축이다.
  *
  * | 뮤테이션 | 잡은 테스트 |
  * |---|---|
@@ -91,6 +104,19 @@ import java.util.UUID
  * | 필드 키 정렬(요청 순서 버림) | 뷰 축 · 커스텀 필드 · 3개 200 (3건) |
  * | 응답을 요청 echo 로 | 뷰 생존 |
  * | 게이트 순서 뒤집기(권한을 존재보다 먼저) | 없는 보드 404 — **403** 이 됐다 |
+ *
+ * ### ⑪ 을 더하며 잰 것 — 「여전히 통과시키는 시나리오」까지 적는다
+ * 앞의 12건은 **잡은 테스트**만 적었다. 이 축은 「무엇을 여전히 통과시키느냐」가 존재 이유라
+ * 세 칸으로 적는다.
+ *
+ * **뮤테이션 A — 서비스의 없는 보드 404 → 409**
+ * - red 가 된 테스트: 「서비스는 없는 보드에 404 를 준다」 **1건뿐**
+ * - 여전히 통과: 나머지 16건 전부. **HTTP 15건**(없는 보드 404 · 미인증 401 · 권한 403 포함)
+ *   + ⑪ 의 400 쪽. 컨트롤러 게이트가 먼저 404 를 내 서비스의 그 줄에 닿지 않기 때문이다
+ *
+ * **뮤테이션 B — 칸반 백로그 400 → 404(「무조건 404」 서비스)**
+ * - red 가 된 테스트: 칸반 백로그 400(HTTP) · 「서비스는 칸반 백로그에 400 을 준다」 2건
+ * - 여전히 통과: 「서비스는 없는 보드에 404 를 준다」 — **짝이 없으면 무조건 404 가 살아남는다**
  */
 @SpringBootTest(
     classes = [AgilePlanningTestBootApplication::class],
@@ -137,6 +163,9 @@ class BoardCardLayoutApiTest {
 
     @Autowired
     private lateinit var permissionStub: PermissionStub
+
+    @Autowired
+    private lateinit var cardLayoutSettingsService: CardLayoutSettingsService
 
     private lateinit var mockMvc: MockMvc
 
@@ -346,6 +375,38 @@ class BoardCardLayoutApiTest {
 
         assertThat(permissionStub.lastPermission).isEqualTo(IssuePermission.SOFT_DELETE)
         assertThat(permissionStub.lastScope).isEqualTo(IssueScope.Project(board.projectKey))
+    }
+
+    // ── ⑪ 서비스 층의 404 ↔ 400 (HTTP 로 도달 불가한 축) ──────────────────────
+
+    @Test
+    fun `서비스는 없는 보드에 404 를 준다 — 400 이 아니다`() {
+        // ⑨ 의 「없는 보드 404」는 **컨트롤러** 게이트가 낸 것이다. 서비스가 자기 자리에서 내는 404 는
+        // 그 앞에서 이미 걸러져 HTTP 로 도달하지 않는다 — 그래서 400 이나 409 로 바꿔도 HTTP 15건이
+        // 전부 초록이다(wave 6 검증자 적발). 도달 불가한 코드는 그것을 지키는 테스트도 도달 불가다.
+        // 보드 말고는 흠잡을 데 없는 입력을 준다 — 페이로드가 유효해야 「없는 보드」만이 원인이 된다.
+        val thrown =
+            assertThrows<ResponseStatusException> {
+                cardLayoutSettingsService.replaceCardLayout(UUID.randomUUID(), mapOf("BOARD" to listOf("EPIC")))
+            }
+
+        assertThat(thrown.statusCode.value()).isEqualTo(HttpStatus.NOT_FOUND.value())
+    }
+
+    @Test
+    fun `서비스는 칸반 보드의 백로그 뷰에 400 을 준다 — 404 가 아니다`() {
+        // 짝이다. 앞엣것만 두면 **무엇에나 404 를 던지는** 서비스가 통과한다 — 이 서비스가 내는
+        // 다른 상태 코드는 400 하나뿐이라(CardLayoutInvalidException) 그것이 반대편이다.
+        // 보드가 **있는데** 400 이라는 점이 「무조건 404」와 갈리는 자리다.
+        val board = insertBoard(BoardType.KANBAN)
+
+        val thrown =
+            assertThrows<ResponseStatusException> {
+                cardLayoutSettingsService.replaceCardLayout(board.id, mapOf("BACKLOG" to listOf("EPIC")))
+            }
+
+        assertThat(thrown.statusCode.value()).isEqualTo(HttpStatus.BAD_REQUEST.value())
+        assertThat(settingsRepository.findCardLayout(board.id)).isEmpty()
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
