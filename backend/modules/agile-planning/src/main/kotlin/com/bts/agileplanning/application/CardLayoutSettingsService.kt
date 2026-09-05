@@ -190,8 +190,10 @@ class CardLayoutSettingsService(
      * @throws CardLayoutInvalidException 400 — 카탈로그에 없고 커스텀 필드 접두사도 아닐 때.
      */
     private fun requireSupportedFieldKey(fieldKey: String?) {
-        val isCustomField = fieldKey != null && fieldKey.length > CUSTOM_FIELD_PREFIX.length &&
-            fieldKey.startsWith(CUSTOM_FIELD_PREFIX)
+        val isCustomField =
+            fieldKey != null &&
+                fieldKey.length > CUSTOM_FIELD_PREFIX.length &&
+                fieldKey.startsWith(CUSTOM_FIELD_PREFIX)
         val isStandardField = CardLayoutFieldKey.entries.any { it.name == fieldKey }
         if (!isCustomField && !isStandardField) {
             throw CardLayoutInvalidException("카드에 표시할 수 없는 필드입니다: $fieldKey")
