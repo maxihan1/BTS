@@ -301,8 +301,13 @@ JDBC 로 실행한 뒤 스키마가 **적용 전과 같음**을 단언한다. T1
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/BoardIssueLookupCustomFieldsTest.kt`]
+- files: [`backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/repository/IssueRepository.kt`, `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/adapter/outbound/board/BoardIssueLookupAdapter.kt`, `backend/modules/issue-tracking/src/test/kotlin/com/bts/issue/repository/BoardIssueLookupCustomFieldsTest.kt`]
 - depends-on: [5]
+
+★**`BoardIssueLookupAdapter.kt` 를 files 에 더했다(2026-09-05 · Task 5 구현자가 넘긴 사실).**
+`BoardIssueView` 를 실제로 만드는 곳은 `IssueRepository` 가 아니라 어댑터의
+`BoardIssueEntry.toBoardIssueView()`(`:123-124`)다. 초판 files 에 어댑터가 없어 이 task 가
+「선언 외 파일 수정」으로 BLOCKED 됐을 자리다 — 값을 읽어도 옮길 곳이 없다.
 - jira: [J19]
 
 **RED**. 커스텀 필드가 있는 이슈를 보드 조회로 읽으면 `customFields` 가 비어 있다.
