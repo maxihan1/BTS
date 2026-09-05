@@ -27,6 +27,11 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
+import com.bts.issue.event.IssueMentioned
+import com.bts.issue.mention.MentionSource
+import com.bts.issue.mention.MentionTargetResolver
+import com.bts.issue.watcher.repository.IssueWatcherRepository
+import com.bts.shared.user.UserLookupPort
 import java.time.Instant
 import java.util.UUID
 
@@ -47,10 +52,13 @@ import java.util.UUID
  * @param archiveGuard 아카이브된 프로젝트의 쓰기를 잠그는 가드 (FR-PJ-04).
  * @param historyRecorder 댓글 본문 수정 이력 기록 facade (FR-CO-02 — [update] 전용).
  * @param clock 현재 시각 공급자 (테스트 제어 가능).
+ * @param userLookupPort username → id 해석 포트 (FR-MN-03 멘션). null 이면 멘션 경로를 건너뛴다 —
+ *   기존 단위 테스트 호환 fallback 이며 `IssueApplicationService.watcherRepository` 와 같은 형태다.
+ * @param watcherRepository 멘션 대상 자동 watcher 등록용 (FR-MN-03). null 이면 등록하지 않는다.
  */
 @Service
 @Transactional
-@Suppress("LongParameterList") // 협력자 6 + clock. IssueAttachmentService 와 동일 사유(모듈 선례)
+@Suppress("LongParameterList") // 협력자 8 + clock. FR-MN-03 이 멘션 협력자 2를 더했다(모듈 선례 IssueAttachmentService)
 class CommentApplicationService(
     private val commentRepository: CommentRepository,
     private val issueRepository: IssueRepository,
@@ -59,6 +67,8 @@ class CommentApplicationService(
     private val archiveGuard: ProjectArchiveGuard,
     private val historyRecorder: IssueHistoryRecorder,
     private val clock: Clock = Clock.systemUTC(),
+    private val userLookupPort: UserLookupPort? = null,
+    private val watcherRepository: IssueWatcherRepository? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -237,6 +247,17 @@ class CommentApplicationService(
             commentId = commentId,
             beforeBody = existing.body,
             afterBody = body,
+        )
+
+        // FR-MN-03 — 새로 추가된 멘션만. 위의 `existing.body == body` 조기 반환이
+        // no-op 수정의 무발행을 이미 보장하므로 여기서 다시 검사하지 않는다.
+        publishAndWatchMentions(
+            issueKey = issueKey,
+            issueId = issue.id.value,
+            actor = actor,
+            before = existing.body,
+            after = body,
+            commentId = commentId,
         )
 
         log.info("comment_updated issueKey={} commentId={} actor={}", issueKey.value, commentId, actor.value)
@@ -438,6 +459,15 @@ class CommentApplicationService(
             ),
         )
 
+        publishAndWatchMentions(
+            issueKey = issueKey,
+            issueId = issue.id.value,
+            actor = actor,
+            before = null,
+            after = body,
+            commentId = comment.id,
+        )
+
         log.info(
             "comment_created issueKey={} commentId={} actor={} authorId={}",
             issueKey.value,
@@ -483,5 +513,62 @@ class CommentApplicationService(
          * 좁았다 — 근거와 숫자가 어긋난 상태였다. [IssueTextConstraints] 를 단일 출처로 삼아 맞췄다.
          */
         const val MAX_BODY_LENGTH: Int = IssueTextConstraints.COMMENT_BODY_MAX
+    }
+
+    /**
+     * 댓글 본문의 멘션 대상에게 [IssueMentioned] 를 발행하고 **같은 목록**을 watcher 로 등록한다 (FR-MN-03).
+     *
+     * ## 왜 한 함수인가
+     * 발행 대상과 watcher 대상이 갈리면 「알림은 왔는데 watcher 가 아니다」가 조용히 생긴다.
+     * `IssueApplicationService.publishAndWatchMentions` 와 같은 이유·같은 모양이다 —
+     * 두 BC 가 아니라 같은 BC 안의 두 서비스라 로직은 [MentionTargetResolver] 로 공유하고
+     * 발행 지점만 각자 갖는다.
+     *
+     * [userLookupPort] 가 null 이면 **아무것도 하지 않는다** — 멘션 협력자를 주입하지 않는
+     * 기존 단위 테스트가 그대로 돌게 하는 fallback 이다.
+     *
+     * @param before 수정 전 본문. null 이면 전체 모드(작성).
+     * @param after 저장되는 본문.
+     * @param commentId 멘션이 실린 댓글 — 이벤트 페이로드에 그대로 실린다.
+     */
+    private fun publishAndWatchMentions(
+        issueKey: IssueKey,
+        issueId: UUID,
+        actor: ActorId,
+        before: String?,
+        after: String,
+        commentId: UUID,
+    ) {
+        val port = userLookupPort ?: return
+        val resolved =
+            MentionTargetResolver.resolve(
+                before = before,
+                after = after,
+                actor = actor.value,
+                userLookupPort = port,
+            )
+        if (resolved.droppedByCap > 0) {
+            log.warn(
+                "mention_cap_exceeded issueKey={} commentId={} cap={} dropped={}",
+                issueKey.value,
+                commentId,
+                MentionTargetResolver.MAX_MENTIONS_PER_EVENT,
+                resolved.droppedByCap,
+            )
+        }
+        if (resolved.targets.isEmpty()) return
+
+        eventPublisher.publish(
+            IssueMentioned(
+                issueKey = issueKey,
+                projectKey = issueKey.projectPrefix,
+                mentionedUserIds = resolved.targets,
+                actorId = actor,
+                sourceField = MentionSource.COMMENT,
+                occurredAt = Instant.now(clock),
+                commentId = commentId,
+            ),
+        )
+        watcherRepository?.addAll(issueId, resolved.targets)
     }
 }

@@ -4,6 +4,14 @@
 
 package com.bts.issue.comment.application
 
+import io.mockk.every
+import com.bts.issue.event.IssueDomainEvent
+import com.bts.issue.event.IssueMentioned
+import com.bts.issue.mention.MentionSource
+import com.bts.issue.watcher.repository.IssueWatcherRepository
+import com.bts.shared.user.UserLookupPort
+import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.shouldBe
 import com.bts.issue.comment.application.CommentApplicationService.Companion.MAX_BODY_LENGTH
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.comment.domain.CommentBodyBlankException
@@ -1023,14 +1031,161 @@ class CommentApplicationServiceTest : IssueTestcontainersBase() {
             createdAt = createdAt,
             updatedAt = createdAt,
         )
+
+    // ── FR-MN-03 — 댓글 멘션 알림 + 자동 watcher ────────────────────────────
+
+    private val bobUuid: UUID = UUID.fromString("bb000000-0000-4000-8000-0000000000b1")
+    private val carolUuid: UUID = UUID.fromString("cc000000-0000-4000-8000-0000000000c1")
+
+    /** bob·carol·me(=actor) 만 해석하는 포트. 그 외 username 은 미존재로 드롭된다. */
+    private fun mentionLookupPort(): UserLookupPort =
+        object : UserLookupPort {
+            override fun exists(userId: UUID): Boolean = true
+
+            override fun findIdsByUsernames(usernames: Set<String>): Map<String, UUID> {
+                return mapOf("bob" to bobUuid, "carol" to carolUuid, "me" to actorUuid)
+                    .filterKeys { it in usernames }
+            }
+        }
+
+    /** 멘션 협력자를 붙인 서비스. 기존 sut 은 두 인자가 null 이라 멘션 경로를 타지 않는다. */
+    private fun mentionService(watcherRepo: IssueWatcherRepository): CommentApplicationService =
+        CommentApplicationService(
+            commentRepository,
+            repository,
+            resolver,
+            eventPublisher,
+            archiveGuard,
+            historyRecorder,
+            Clock.systemUTC(),
+            mentionLookupPort(),
+            watcherRepo,
+        )
+
+    @Test
+    @Order(40)
+    fun `MN3-1 댓글 작성 시 본문 멘션 대상에게 IssueMentioned 를 발행한다`() {
+        val issue = insertIssue(940)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        val comment = mentionService(watcherRepo).create(actor, issue.key, "@bob 확인 부탁")
+
+        val mentioned = events.filterIsInstance<IssueMentioned>().single()
+        mentioned.mentionedUserIds shouldBe listOf(bobUuid)
+        mentioned.sourceField shouldBe MentionSource.COMMENT
+        mentioned.commentId shouldBe comment.id
+    }
+
+    @Test
+    @Order(41)
+    fun `MN3-2 댓글 멘션 대상이 자동 watcher 로 등록된다`() {
+        val issue = insertIssue(941)
+        val watcherRepo = IssueWatcherRepository(dsl)
+
+        mentionService(watcherRepo).create(actor, issue.key, "@bob @carol 보세요")
+
+        val watchers = watcherRepo.listByIssue(issue.id.value).map { it.userId }
+        watchers shouldContainAll listOf(bobUuid, carolUuid)
+    }
+
+    @Test
+    @Order(42)
+    fun `MN3-3 멘션 0건 댓글은 이벤트도 watcher 도 만들지 않는다`() {
+        val issue = insertIssue(942)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        mentionService(watcherRepo).create(actor, issue.key, "멘션 없는 댓글")
+
+        events.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+        watcherRepo.listByIssue(issue.id.value) shouldBe emptyList()
+    }
+
+    @Test
+    @Order(43)
+    fun `MN3-4 자기 자신만 멘션한 댓글은 이벤트도 watcher 도 없다`() {
+        val issue = insertIssue(943)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        mentionService(watcherRepo).create(actor, issue.key, "@me 혼잣말")
+
+        events.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+        watcherRepo.listByIssue(issue.id.value) shouldBe emptyList()
+    }
+
+    @Test
+    @Order(44)
+    fun `MN3-5 댓글 수정은 새로 추가된 멘션만 발행한다`() {
+        val issue = insertIssue(944)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val svc = mentionService(watcherRepo)
+        val comment = svc.create(actor, issue.key, "@bob 확인")
+
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        svc.update(actor, issue.key, comment.id, "@bob 확인 @carol 도")
+
+        // bob 은 수정 전에 이미 있었으므로 재알림 대상이 아니다
+        val mentioned = events.filterIsInstance<IssueMentioned>().single()
+        mentioned.mentionedUserIds shouldBe listOf(carolUuid)
+        mentioned.commentId shouldBe comment.id
+    }
+
+    @Test
+    @Order(45)
+    fun `MN3-6 멘션을 지우는 수정은 발행 0 이고 기존 watcher 를 유지한다`() {
+        val issue = insertIssue(945)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val svc = mentionService(watcherRepo)
+        val comment = svc.create(actor, issue.key, "@bob 확인")
+
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        svc.update(actor, issue.key, comment.id, "확인")
+
+        events.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+        // E2 — 멘션을 지워도 이미 붙은 watcher 는 회수하지 않는다
+        watcherRepo.listByIssue(issue.id.value).map { it.userId } shouldBe listOf(bobUuid)
+    }
+
+    @Test
+    @Order(46)
+    fun `MN3-7 본문이 같은 no-op 수정은 발행 0`() {
+        val issue = insertIssue(946)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val svc = mentionService(watcherRepo)
+        val comment = svc.create(actor, issue.key, "@bob 확인")
+
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        svc.update(actor, issue.key, comment.id, "@bob 확인")
+
+        events.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+    }
+
+    @Test
+    @Order(47)
+    fun `MN3-8 코드블록 안의 골뱅이는 멘션이 아니다`() {
+        val issue = insertIssue(947)
+        val watcherRepo = IssueWatcherRepository(dsl)
+        val events = mutableListOf<IssueDomainEvent>()
+        every { eventPublisher.publish(capture(events)) } returns Unit
+
+        mentionService(watcherRepo).create(actor, issue.key, "```\n@bob\n```")
+
+        events.filterIsInstance<IssueMentioned>() shouldBe emptyList()
+        watcherRepo.listByIssue(issue.id.value) shouldBe emptyList()
+    }
 }
 
-/**
- * 테스트 전용 [IssuePermissionResolver] — 특정 권한 하나만 거부하고 나머지는 모두 허용한다.
- *
- * 모든 호출을 [calls] 에 기록해 permission/scope 인자를 검증할 수 있게 한다.
- * (actorId, permission, scope) 순서의 [Triple] 로 기록한다.
- */
 private class RecordingPermissionResolver : IssuePermissionResolver {
     var deniedPermission: IssuePermission? = null
     val calls: MutableList<Triple<UUID, IssuePermission, IssueScope>> = mutableListOf()
