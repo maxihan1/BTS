@@ -4,6 +4,7 @@ package com.bts.agileplanning.domain.burndown
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
+import org.assertj.core.api.SoftAssertions.assertSoftly
 import org.junit.jupiter.api.Test
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -36,9 +37,14 @@ import java.time.temporal.ChronoUnit
  * | M8 | 축의 첫 점을 `start` 로 고정한다 | 주말 시작·종료 | 첫 point 7/6 ↔ 7/4 |
  * | M9 | 비근무일에 적힌 worklog 를 버린다 | 비근무일 worklog 2건 | completed 포함 ↔ 누락 |
  *
- * **M1·M2 가 서로를 가리지 않는다** — M1 은 미설정 경로를 건드리지 않으므로 앞쪽 단언이 초록으로
- * 남고, M2 는 월~금 경로를 건드리지 않으므로 뒤쪽 단언이 초록으로 남는다. 한쪽만 두면 반대쪽
- * 구현이 통과한다.
+ * **M1·M2 가 서로를 가리지 않는다**(실측). 대조군은 `assertSoftly` 로 묶어 두 판정이 **항상 둘 다**
+ * 실행되게 했다 — 그래서 한쪽만 깨는 뮤테이션에서 반대쪽이 초록으로 남는 것을 기계가 보여준다.
+ * - M1 → 뒤쪽만 red. `Expected size: 10 but was: 14`. 미설정 판정과 [BurndownCalculatorTest] 6건은 초록.
+ * - M2 → 앞쪽만 red. `Expected size: 14 but was: 10`. 월~금 판정은 초록
+ *   (덤으로 [BurndownCalculatorTest] 의 7/1~7/4 스프린트 2건이 함께 깨진다 — 미설정 경로를 건드린 증거).
+ *
+ * **M3 은 개수 판정으로는 절대 안 잡힌다**(실측). M3 에서 대조군 한 쌍은 그대로 초록이고 ideal 값
+ * 판정 3건만 red 다 — 「point 개수」만 재는 테스트로는 분모 버그가 통과한다.
  */
 class BurndownWorkingDaysTest {
     @Test
@@ -51,18 +57,22 @@ class BurndownWorkingDaysTest {
         val unset = calculate(workingCalendar = null)
         val monToFri = calculate(workingCalendar = WorkingDayCalendar(WEEKDAYS))
 
-        assertThat(unset.map { it.date })
-            .describedAs("미설정(NULL) = 달력일 전부 — 배포 순간 기존 차트가 바뀌면 안 된다(R6)")
-            .hasSize(14)
-            .containsExactlyElementsOf(SPRINT_START.datesUntil(SPRINT_END.plusDays(1)).toList())
+        // ★ soft 로 묶는다 — 앞쪽이 먼저 죽으면 뒤쪽 판정이 아예 실행되지 않아
+        //   「한쪽만 깨는 뮤테이션이 반대쪽을 초록으로 남긴다」를 기계가 보여주지 못한다.
+        assertSoftly { softly ->
+            softly.assertThat(unset.map { it.date })
+                .describedAs("미설정(NULL) = 달력일 전부 — 배포 순간 기존 차트가 바뀌면 안 된다(R6)")
+                .hasSize(14)
+                .containsExactlyElementsOf(SPRINT_START.datesUntil(SPRINT_END.plusDays(1)).toList())
 
-        assertThat(monToFri.map { it.date })
-            .describedAs("월~금 = 근무일 10개. 주말 4일이 축에서 빠진다(R6)")
-            .hasSize(10)
-            .containsExactly(
-                JUL_06, JUL_07, JUL_08, JUL_09, JUL_10,
-                JUL_13, JUL_14, JUL_15, JUL_16, JUL_17,
-            )
+            softly.assertThat(monToFri.map { it.date })
+                .describedAs("월~금 = 근무일 10개. 주말 4일이 축에서 빠진다(R6)")
+                .hasSize(10)
+                .containsExactly(
+                    JUL_06, JUL_07, JUL_08, JUL_09, JUL_10,
+                    JUL_13, JUL_14, JUL_15, JUL_16, JUL_17,
+                )
+        }
     }
 
     @Test

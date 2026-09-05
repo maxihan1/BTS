@@ -17,16 +17,25 @@ object BurndownCalculator {
     private const val HALF_ROUNDING_DIVISOR = 2L
 
     /**
-     * [start] ~ [end] (inclusive) 각 캘린더 일자의 번다운/번업 지점을 계산한다.
+     * [start] ~ [end] (inclusive) 구간의 번다운/번업 지점을 **축(axis) 일자마다** 계산한다.
+     *
+     * ### 축이 무엇인가 (스펙 R6)
+     * [workingCalendar] 가 null 이면 축은 **달력일 전부**이고, 그때 이 함수는 근무일 기능이 없던
+     * 시절과 한 점도 다르지 않게 동작한다 — `working_days` 가 NULL 인 기존 보드의 차트가 배포
+     * 순간 바뀌면 안 되기 때문이다(`WorkingDaysSettingsService` KDoc 이 그 계약의 정본이다).
+     * 설정이 있으면 축은 그 구간의 **근무일**이고, ideal 의 분모도 함께 근무일 구간 수가 된다.
      *
      * ### 알고리즘 (스펙 §계산 알고리즘)
      * - asOf = min(end, today). Actual/Completed 는 asOf 까지만 산출하고, 이후 미래 일자는 null.
-     * - Ideal 은 start 에서 [scopeSeconds], end 에서 0 으로 선형 보간(반올림 half-up, d==start 는 정확히
-     *   scopeSeconds, d==end 는 정확히 0 을 보장). end == start(1일 스프린트)면 0 나눗셈을 피해 단일
-     *   지점(ideal = scopeSeconds)으로 처리한다.
+     * - Ideal 은 축의 첫 점에서 [scopeSeconds], 마지막 점에서 0 으로 선형 보간(반올림 half-up).
+     *   축의 점이 1개 이하면 0 나눗셈을 피해 [scopeSeconds] 를 그대로 준다 — 1일 스프린트와
+     *   **근무일이 하루뿐인 스프린트**가 같은 경로다. 축이 아예 비면(전 기간 비근무일 · 스펙 E2)
+     *   빈 목록을 돌려주므로 나눗셈에 닿지 않는다.
      * - Scope 라인은 전 구간 [scopeSeconds] 로 평탄하다(스코프 변경 이력 미재구성, ADR D4).
      * - [worklogByUtcDate] 의 키가 [start] 이전인 항목은 start 버킷에 선합산한다(스프린트 이전 로그는
      *   이미 소진된 것으로 간주). [end] 이후 키는 계산 범위 밖이라 무시한다.
+     * - ★누적은 **달력일 전부**를 걸어가고 점만 축에서 낸다. 비근무일에 적힌 worklog 를 버리면
+     *   잔여가 그만큼 영원히 줄지 않는다 — 축 밖의 로그는 다음 축 일자에 합류한다.
      * - remainingSeconds 는 음수가 되지 않도록 0 으로 클램프한다. completedSeconds 는 클램프하지 않아
      *   [scopeSeconds] 를 초과할 수 있다(로그가 추정치보다 많은 경우, 문서화된 한계).
      *
@@ -54,6 +63,8 @@ object BurndownCalculator {
 
         val axis = buildAxis(start, end, workingCalendar)
         val asOf = minOf(end, today)
+        // 축이 비면(전 기간 비근무일 — E2) size-1 이 -1 이다. 음수 분모를 만들지 않고
+        // totalDays == 0 경로(1일 스프린트)로 합류시킨다 — 그 경로는 0 으로 나누지 않는다.
         val totalDays = (axis.size - 1).coerceAtLeast(0).toLong()
         val preStartSum = worklogByUtcDate.filterKeys { it.isBefore(start) }.values.sum()
 
