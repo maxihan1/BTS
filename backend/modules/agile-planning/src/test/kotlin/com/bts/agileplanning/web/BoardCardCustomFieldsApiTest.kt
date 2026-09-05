@@ -222,8 +222,7 @@ class BoardCardCustomFieldsApiTest {
     private fun card(
         key: String,
         customFields: Map<String, Any?>,
-    ): BoardIssueView =
-        cardWithoutCustomFields(key).copy(customFields = customFields)
+    ): BoardIssueView = cardWithoutCustomFields(key).copy(customFields = customFields)
 
     private fun cardWithoutCustomFields(key: String): BoardIssueView =
         BoardIssueView(
