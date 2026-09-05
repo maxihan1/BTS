@@ -76,7 +76,8 @@ Maxi 가 2026-09-05 의도적 이탈로 확정 → `docs/design/jira-parity-cont
 
 **영향 엔티티**. `Issue`(description) · `Comment`(body) · `issue_watchers` · 도메인 이벤트 `IssueMentioned`.
 
-**새 용어**. 없음 — `Maxi_wiki/BTS/glossary.md` 에 「멘션」·「watcher」 헤딩이 없어 충돌 대상이 없다. glossary 갱신 불요.
+**새 용어**. 없음. 「워처」는 **이미 등재돼 있다** — `glossary.md:53 | 워처 | Watcher. 이슈 변경 알림 수신자`. 이 FR 은 그 정의를 넓히지 않고 **등록 계기만** 추가하므로 glossary 갱신 불요다.
+> ⚠ 착수 시 이 자리에 「헤딩이 없어 충돌 대상이 없다」고 적었는데 **거짓 근거였다** — `^## ` 헤딩만 grep 했고 glossary 는 표 행 형식이다. 결론은 같지만 근거가 틀렸으므로 리뷰에서 교정했다.
 
 **관련 ADR**. 직접 무효화 **0건**. 인접 2건은 전제로만 쓴다 —
 `docs/decisions/2026-07-27-fr-co-comment-feature.md`(댓글 도입) ·
@@ -403,4 +404,148 @@ V403 의 `issue.mentioned × MENTIONED × IN_APP` 이 `sourceField` 와 무관�
 - **Jira 매핑**. `J1 → T3·T4·T5·T6·T8·T9` · `J2 → T7(경계 사실 기록 — 구현은 notification BC 기구현)` · `J3 → 부분 미채택 X2(본인 댓글 autowatch 는 범위 밖)` · `J4 → 대응 없음 X1(의도적 편차)`. **채택 2건 모두 task 에 물렸다 — 차집합 0.**
 
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+**렌즈**. `/plan-eng-review` 1종 (TYPE=backend · T2 · UI 미포함이라 design 렌즈 미추가).
+**아웃사이드 보이스**. 건너뜀 — `codex_reviews=disabled` 설정. 계약이 폴백 금지를 명시해 Claude 서브에이전트도 띄우지 않았다.
+**Step 0 복잡도 게이트**. 11파일 · 신규 클래스 2개로 임계값(8파일) 초과 → `AskUserQuestion` 발행 → **Maxi 확정 A: 그대로 간다**(파일 수를 민 것은 추상화가 아니라 실재 호출지점 4개 + 그 테스트).
+
+> **절차 편차 1건 (의도적)**. `plan-eng-review` 는 「이슈 1건 = `AskUserQuestion` 1회」를 요구하지만,
+> 이 체인의 바깥 계약인 `bts-review-plan` 은 「plan 에 append 후 **합산해 게이트 1 에서 한 번에** 판정」이다.
+> 바깥 계약을 따랐다 — 발견을 삼킨 것이 아니라 묶은 것이고, 전량이 아래에 있으며 게이트 1 이 그 질문 자리다.
+
+### 발견 5건 (실측 인용 있는 것만)
+
+| # | 심각도 | 확신 | 위치 | 내용 |
+|---|---|---|---|---|
+| R1 | P1 | 9/10 | `IssueApplicationService.kt:382-405` | **`cloneIssue` 가 5번째 생성 경로인데 plan 이 「4경로」로 세었다** |
+| R2 | P2 | 9/10 | `IssueApplicationService.kt:2193` | **`autoWatch` 가 개별 INSERT N회** — 캡 50 이면 50 라운드트립 |
+| R3 | P2 | 9/10 | `CommentApplicationService.kt:56` | `@Suppress("LongParameterList")` 주석의 **「협력자 6」이 7이 되어 거짓이 된다** |
+| R4 | P1 | 10/10 | Task 3 | 「행동 불변」의 회귀 가드가 **기존 테스트 재사용뿐** |
+| R5 | P2 | 10/10 | 스펙 §도메인 정리 | glossary 근거가 거짓이었다 (**교정 완료**) |
+
+#### R1 — `cloneIssue` 가 세어지지 않은 다섯 번째 경로 (P1)
+
+```kotlin
+// IssueApplicationService.kt:382-391 — clone 은 createIssue 를 경유하지 않는 별도 함수다
+val saved = repo.insert(clone)
+eventPublisher.publish(IssueCreated(issueKey = saved.key, ...))
+```
+
+`cloneIssue` 는 `createIssue` 를 **경유하지 않고** `IssueCreated` 만 발행하며 `autoWatch` 도 부르지 않는다
+(`:294-295` 의 createIssue 와 대비 · TODOS 6105 가 이미 「클론 배정자는 인앱 알림을 단 1건도 못 받는다」로 등재).
+따라서 **원본 description 의 `@멘션` 을 그대로 복사한 클론본은 이 FR 이 끝나도 멘션 알림이 안 간다.**
+
+「원본에서 이미 알렸으니 재알림 안 하는 게 맞다」가 유력한 답이지만 **plan 에 그 판단이 없다**.
+판단이 없으면 다음 사람이 「빠뜨렸나 일부러인가」를 다시 판정해야 한다 — TODOS 6105 가 정확히 그 상태다.
+
+**처방**. 엣지 케이스에 **E9** 를 추가해 「클론은 멘션 재발행하지 않는다 + 사유」를 못박는다. 코드 변경 0.
+
+#### R2 — 자동 watcher 등록이 개별 INSERT N회 (P2)
+
+```kotlin
+// IssueApplicationService.kt:2192-2193
+val repo = watcherRepository ?: return
+userIds.distinct().forEach { userId -> repo.add(issueId, userId) }
+```
+
+기존 호출자는 **최대 2명**(reporter + assignee)이라 이 형태가 문제가 안 됐다.
+멘션은 `MAX_MENTIONS_PER_EVENT` 까지 가므로 **한 트랜잭션 안에서 최대 50회 왕복**이 된다.
+치명적이진 않지만(수 ms 규모) 「기존 사용처의 전제가 바뀌는데 구현은 그대로」인 전형적 자리다.
+
+**처방**. Task 3 GREEN 에서 `IssueWatcherRepository` 에 배치 add 를 더하고 `autoWatch` 가 그것을 쓰게 한다.
+`ON CONFLICT DO NOTHING` 은 다중 VALUES 에도 그대로 걸리므로 멱등은 유지된다.
+
+#### R3 — 억제 주석이 거짓이 된다 (P2)
+
+```kotlin
+// CommentApplicationService.kt:56
+@Suppress("LongParameterList") // 협력자 6 + clock. IssueAttachmentService 와 동일 사유(모듈 선례)
+```
+
+Task 5 가 `IssueWatcherRepository` 를 주입하면 협력자가 **7**이 되어 이 주석은 그 자리에서 거짓이 된다.
+**처방**. Task 5 REFACTOR 에서 같은 커밋으로 주석을 갱신한다. 「주석 유지보수는 변경의 일부」.
+
+#### R4 — 이관 리팩터의 가드가 부족하다 (P1)
+
+Task 3 은 「기존 `IssueApplicationServiceMentionTest` S1~S5+cap 이 그대로 통과」를 행동 불변의 근거로 삼는다.
+그런데 Task 2 REFACTOR 가 **드롭 수를 WARN 로그에서 반환값으로 옮긴다** — 로그 동작 변화는 기존 테스트가 잡지 않는다.
+「통과했으니 불변」은 **통과가 무엇을 덮는지 모를 때 가짜 그린**이다.
+
+**처방**. Task 3 에 뮤테이션 짝을 명시 요구한다 — `MentionTargetResolver` 호출을 일부러 끊어 기존 S1~S5 가
+**실제로 red 를 내는지** 1회 확인한다. 안 내면 그 테스트는 이관을 감시하지 못한다.
+
+#### R5 — 교정 완료
+
+스펙 §도메인 정리의 「glossary 에 헤딩이 없다」가 거짓이었다(표 행으로 실재). 결론은 불변, 근거만 교정했다.
+
+### 학습 반영 3건 (이번 세션 preamble 로드)
+
+| 학습 | 반영처 |
+|---|---|
+| `mutation-must-verify-it-actually-applied` (10/10) | Task 7 REFACTOR — 뮤테이션 직후 `grep -c MUTATION` 으로 **적용 건수를 되잰다**. sed 미매치로 「걸었다 ≠ 걸렸다」가 실측된 전례 |
+| `shared-worktree-git-index-defeats-narrow-git-add` (10/10) | Plan 메타 — 병렬 구간(T7·T8)은 `git add` 가 아니라 **`git commit --only <경로>`** 로 커밋. git 인덱스가 프로세스 간 공유라 좁힌 add 로는 못 막는다 |
+| `port-5173-shared-across-worktrees-measures-wrong-app` (10/10) | Task 9 — e2e 실행 전 **5173 점유 프로세스의 cwd 가 이 worktree 인지 증명**. 남의 앱을 재면 가짜 red/green |
+
+### NOT in scope
+
+| 항목 | 사유 |
+|---|---|
+| 인박스 딥링크(알림 → 해당 댓글) | Maxi 확정 2026-09-05. `notification` + `apps/web` 까지 걸려 「한 PR = 한 BC」를 깬다. `commentId` 만 남겨 후속 FR 이 쓰게 한다 |
+| `cloneIssue` 멘션·watcher | R1 로 **판단만** 명시(E9). 코드는 안 건드린다 — TODOS 6105 의 별건이고 회귀 표면을 동시에 넓히지 않는다 |
+| 본인 댓글 작성 시 autowatch | Jira 는 하지만(J3) 이번 범위 밖. 편차 X2 로 기록 |
+| 그룹 멘션(`@team`) | FR-MN-01 이 이미 이연. `glossary.md:79` 이 사용자 그룹의 후속 소비처로 예고 |
+| `sourceField` 를 enum 으로 | 두 값뿐이고 이벤트는 JSON 직렬화 계약이라 String 상수가 더 안전하다 |
+
+### What already exists — 재사용 대 재건축
+
+| 자산 | 위치 | 이 plan 의 처리 |
+|---|---|---|
+| `MentionParser` (코드블록·이메일·`@@` 제외) | `mention/MentionParser.kt` | **재사용**. 패턴 수정 금지(즉사 계약) |
+| `autoWatch` private 헬퍼 (멱등) | `IssueApplicationService.kt:2188` | **재사용** + R2 로 배치화 |
+| `IssueWatcherRepository.add` (`ON CONFLICT DO NOTHING`) | `watcher/repository/` | **재사용** |
+| `IssueMentioned` + `sourceField` 확장 여지 | `event/IssueDomainEvent.kt:134` | **재사용**. KDoc 이 이 확장을 예고해 뒀다 |
+| `EventRecipientResolver.resolveMentioned` | notification BC | **재사용 · 코드 변경 0** |
+| `applyVisibilityFilter` (fail-closed) | `EventRecipientResolver.kt:109-118` | **재사용**. 보안 레벨 누출 방어가 이미 있다 |
+| V403 정책 시드 | `notification/db/migration/V403` | **재사용 · 시드 0** |
+| TipTap 멘션 자동완성·렌더링 | `apps/web/src/components/editor/` | **재사용 · 프론트 변경 0 예상** |
+| `nullable 생성자 주입` fallback 패턴 | `IssueApplicationService.kt:169` | **선례 승계** — Task 5 가 같은 형태 |
+
+**재건축 0건.** 이 plan 이 새로 만드는 것은 `MentionTargetResolver`(4경로 공유를 위한 추출)와 `MentionSource`(상수 2개)뿐이다.
+
+### 실패 모드 — 신규 코드경로별 1건
+
+| 경로 | 현실적 실패 | 테스트 | 에러 처리 | 사용자가 보는 것 | 판정 |
+|---|---|---|---|---|---|
+| 댓글 멘션 발행 | `findIdsByUsernames` 가 DB 장애로 throw | Task 5 | **없음 — 전파** | 댓글 저장 자체가 500 으로 실패 | ⚠ **논의 필요**. 알림 때문에 댓글을 못 쓰는 게 맞나 |
+| 자동 watcher 등록 | `issue_watchers` INSERT 충돌 | Task 3·5 | `ON CONFLICT DO NOTHING` | 정상 | ✅ |
+| 캡 초과 | 51명 멘션 | Task 7 (E5) | 절단 + WARN | 50명만 알림·watcher | ✅ |
+| 댓글 수정 diff | `existing.body` 가 null/공백 | Task 6 | `MentionParser` 가 빈 집합 | 발행 0 | ✅ |
+| 이벤트 역직렬화 | 큐에 남은 구 JSON 에 `commentId` 부재 | Task 1 | 기본값 `null` | 정상 | ✅ |
+
+**critical gap 0건.** 다만 첫 행은 **설계 판단이 필요**하다 — 현재 `publishMentions` 도 같은 성질이라
+(수정 경로에서 포트가 throw 하면 이슈 수정이 실패한다) **신규 결함은 아니고 기존 성질의 확산**이다.
+댓글은 이슈 수정보다 훨씬 자주 일어나므로 노출 빈도가 올라간다. 게이트 1 판단 항목으로 올린다.
+
+### 병렬화 전략
+
+| 단계 | 모듈 | 의존 |
+|---|---|---|
+| T1 이벤트 계약 | `issue-tracking/event`, `/mention` | — |
+| T2 Resolver | `issue-tracking/mention` | T1 |
+| T3·T4 이슈 경로 | `issue-tracking/application` | T2 |
+| T5·T6 댓글 경로 | `issue-tracking/comment` | T2 |
+| T7 엣지 | `issue-tracking/mention`, `/comment` | T6 |
+| T8 통합 | `issue-tracking/application`(test) | T6 |
+| T9 E2E | `apps/web/e2e` | T8 |
+
+- **Lane A**. T3 → T4 (순차 · `application/` 공유)
+- **Lane B**. T5 → T6 (순차 · `comment/` 공유)
+- **실행 순서**. T1 → T2 → **A ∥ B** → T7 ∥ T8 → T9.
+
+⚠ **충돌 플래그**. Lane A 와 B 는 모듈이 다르지만 **같은 worktree 의 git 인덱스를 공유**한다.
+학습 `shared-worktree-git-index-defeats-narrow-git-add` 대로 `git add` 로는 못 막는다 — **`git commit --only <경로>`** 를 쓴다.
+
+**판정**. BLOCKER **0건** · P1 2건(R1·R4) · P2 3건(R2·R3·R5 — R5 는 교정 완료).
+P1 둘 다 **코드가 아니라 plan 보강**으로 닫힌다(E9 추가 · 뮤테이션 짝 명시).
+
