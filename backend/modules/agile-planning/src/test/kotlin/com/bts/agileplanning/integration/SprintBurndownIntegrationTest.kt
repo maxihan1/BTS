@@ -376,7 +376,7 @@ class SprintBurndownIntegrationTest {
             .andExpect(jsonPath("$.data.unit").value("ISSUE_COUNT"))
             .andExpect(jsonPath("$.data.totalScopeSeconds").value(3))
             .andExpect(jsonPath("$.data.points.length()").value(3))
-            // 1일차 — 완료 이전이라 3개 그대로.
+            // 1일차 — 아직 완료되지 않아 3개 그대로.
             .andExpect(jsonPath("$.data.points[0].remainingSeconds").value(3))
             .andExpect(jsonPath("$.data.points[0].scopeSeconds").value(3))
             // 2일차 — 이슈 하나 완료로 2개.
