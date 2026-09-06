@@ -621,7 +621,7 @@ R6 이 화면까지 못 간다. T31 이 백엔드에서 그 구분을 지켰다.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/WorkingDaysPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/components/board/settings/WorkingDaysPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/WorkingDaysPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/components/board/settings/WorkingDaysPanel.test.tsx`]
 - depends-on: [10, 15]
 - jira: [J38, J39, J40]
 
@@ -637,7 +637,7 @@ R6 이 화면까지 못 간다. T31 이 백엔드에서 그 구분을 지켰다.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/settings/DetailViewPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/components/board/settings/DetailViewPanel.test.tsx`]
+- files: [`apps/web/src/components/board/settings/DetailViewPanel.tsx`, `apps/web/src/components/board/settings/SettingsTabs.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/i18n/board-labels.ts`, `apps/web/src/routes/projects.$projectKey.board.settings.tsx`, `apps/web/src/components/board/settings/DetailViewPanel.test.tsx`]
 - depends-on: [13, 15]
 - jira: [J46, J47, J48]
 
@@ -697,7 +697,7 @@ R6 이 화면까지 못 간다. T31 이 백엔드에서 그 구분을 지켰다.
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/board-settings.spec.ts`, `apps/web/src/mocks/board-handlers.test.ts`]
+- files: [`apps/web/e2e/board-settings.spec.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/board-fixtures.ts`]
 - depends-on: [16]
 - jira: [J22, J17, J18]
 
@@ -935,6 +935,12 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 
 **즉 같은 설정 화면의 네 탭이 서로 다른 오류 봉투를 낸다.** 프론트 T16~T19 가 각자 다르게
 파싱해야 하고, 한 탭만 고치면 나머지가 조용히 어긋난다 — 이 저장소의 지배 결함 양식이다.
+
+★**PATCH 클라이언트 함수가 흩어졌다(2026-09-06 T17 보고).** T17 은 허용 파일에
+`api/board-settings.ts` 가 없어 `updateTimeTracking` 을 **`EstimationPanel.tsx` 안에** 뒀다.
+T16 은 `api/board-settings.ts` 에, T18·T19 도 거기 넣는다(files 확장했다). **T17 것만 밖에 있다.**
+「api 모듈은 `api/` 에」 관례와 어긋나므로 이 task 가 옮긴다 — files 에 `EstimationPanel.tsx` 와
+`api/board-settings.ts` 를 더해야 한다.
 
 ★★**권한 스텁 양식이 세 갈래다(2026-09-06 T9 보고).** 넷을 한 번에 고치려면 각각 손봐야 한다.
 `BoardCardLayoutApiTest`(T8)·`BoardEstimationApiTest`(T9)는 `lastPermission`/`lastScope` 필드,
