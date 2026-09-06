@@ -305,6 +305,9 @@ function BacklogCardInner({
  * - 보드 카드(`BoardCard`)와 대부분 동형이지만 **`P{priority}` 칩을 그대로 유지**한다 —
  *   보드는 컬럼 자체가 우선순위 정보를 대신하지 않지만, 백로그는 스프린트 계획 단계에서
  *   우선순위를 한눈에 봐야 하므로 칩을 없애지 않는다.
+ * - **J19 3층 구조**(부채 177 Task 20). 1층 요약 → 2층 `CardExtraFields`(보드와 **공유**하는
+ *   조각) → 3층 라벨 칩 행 + 하단 상세 행. 2층은 `cardLayout` 의 **`BACKLOG` 스코프만** 읽는다 —
+ *   같은 보드의 보드 카드와 **다른 필드 집합**을 가질 수 있는 것이 J18 이다.
  * - 라벨·추정 배지는 각각 `CardLabelChips`/`CardEstimateBadge`(보드와 공유) 에 위임한다 —
  *   값이 없으면 두 컴포넌트 모두 DOM 자체를 만들지 않는다.
  * - `typeIconName`/`typeName`은 부모가 `issueTypesByKey` 맵으로 미리 해석해 원시 문자열로

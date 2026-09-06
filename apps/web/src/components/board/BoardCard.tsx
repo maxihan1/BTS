@@ -60,6 +60,16 @@ const CUSTOM_FIELD_PREFIX = 'cf_'
  *
  * ★키 선언 순서는 **카드에서의 순서가 아니다.** 카드 순서는 저장된 구성 배열의 순서다.
  *
+ * ★★**타입 판정과 런타임 판정이 이 객체 하나를 함께 읽는다.** 카드가 그릴 수 있는 키의 타입
+ * ({@link CardExtraStandardField})은 `keyof typeof` 로, 서버 문자열을 떨어뜨리는 런타임 판정
+ * ({@link isStandardExtraField})은 `hasOwnProperty` 로 **같은 객체**를 본다. 두 벌로 적으면
+ * 한쪽만 늘어난 날 「고를 수는 있는데 카드엔 안 뜨는」 필드가 조용히 생긴다.
+ *
+ * ★**아직 닫히지 않은 축이 하나 있다.** 후보를 나열하는 `settings/CardLayoutPanel.STANDARD_FIELDS`
+ * 와 이 카탈로그는 **서로를 검사하지 않는다** — 패널에만 필드를 더하면 사용자가 고를 수는 있지만
+ * 카드에는 아무것도 안 뜬다(값이 없어 생략된 것과 화면상 구분되지 않는다). 두 목록을 한 정본으로
+ * 모으는 것은 이 task 의 허용 파일 밖이라 후속으로 남긴다.
+ *
  * 문구를 `i18n/card-labels.ts` 가 아니라 이 파일이 소유하는 이유는 부채 177 Task 20 의
  * 허용 파일이 셋뿐이기 때문이다 — `CardLayoutPanel` 이 같은 이유로 쓴 관용구다.
  */
@@ -100,6 +110,12 @@ type AssertTrue<T extends true> = T
  * `CardExtraField` 에 `'SUMMARY'` 가 섞여 들어오는 순간 `Extract<…>` 가 `'SUMMARY'` 가 되고,
  * `IsNever<…>` 가 `false` 가 되어 이 별칭이 **TS2344 로 깨진다.** 값이 아니라 타입이므로
  * 런타임 비용이 0 이고, 카탈로그를 늘리는 사람이 실수로 요약을 넣으면 `tsc` 가 먼저 막는다.
+ *
+ * ★**판정이 실제로 문다는 것을 실측했다.** `EXTRA_STANDARD_FIELDS` 에 `SUMMARY` 를 넣고
+ * `tsc --noEmit -p tsconfig.app.json` 을 돌리면
+ * `error TS2344: Type 'false' does not satisfy the constraint 'true'` 가 이 줄에서 난다
+ * (그리고 {@link extraFieldEntry} 의 switch 가 TS2366 으로 함께 깨져 **두 겹**으로 막힌다).
+ * 「판정을 지워도 통과하는」 장식 단언이 아니다.
  */
 export type SummaryIsNotAnExtraField = AssertTrue<IsNever<Extract<CardExtraField, 'SUMMARY'>>>
 
@@ -466,6 +482,10 @@ function BoardCardInner({
  *   같은 셀 내 포인터/키보드 순서변경에 참여한다.
  * - 카드 클릭 시 이슈 상세(`/issues/:key`)로 이동하며, 드래그 중엔 네비게이션이 막힌다.
  * - 드래그 중(`isDragging`)에는 원위치 카드에 `opacity-50`을 적용해 placeholder처럼 흐리게 표시한다.
+ * - **J19 3층 구조**(부채 177 Task 20). 1층 요약(항상 최상단·토글 대상이 아니다) →
+ *   2층 `CardExtraFields`(보드 설정이 고른 추가 필드) → 3층 라벨 칩 행 + 하단 상세 행.
+ *   2층은 `cardLayout` 의 **`BOARD` 스코프만** 읽는다 — 백로그 카드는 같은 조각을 `BACKLOG`
+ *   로 부르므로 **한 보드에서 두 뷰가 서로 다른 필드 집합**을 가질 수 있다(R3 · J18).
  * - FR-UX-14 F14 3요소 — `CardLabelChips`(FR9, 라벨 없으면 DOM 미생성) · 하단 행의
  *   `IssueTypeIcon`(FR6, 해석 실패 시 typeKey 원문 + Circle fallback) · `CardEstimateBadge`
  *   (FR10, null이면 DOM 미생성)를 렌더한다. 카드 루트의 `aria-label`/`aria-roledescription`은
