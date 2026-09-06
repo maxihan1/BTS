@@ -1,4 +1,4 @@
-// 보드 설정 화면의 탭바 — 5탭 전환 골격과 각 탭 본문의 자리 (부채 177 R1 · J22)
+// 보드 설정 화면의 탭바 — 5탭 전환과 각 탭 본문 배선 (부채 177 R1 · J22)
 import type { JSX } from 'react'
 import type { BoardDetail } from '@/api/boards'
 import { boardLabels } from '@/i18n/board-labels'
@@ -7,6 +7,7 @@ import { ColumnSettingsPanel } from './ColumnSettingsPanel'
 import { CardLayoutPanel } from './CardLayoutPanel'
 import { EstimationPanel } from './EstimationPanel'
 import { WorkingDaysPanel } from './WorkingDaysPanel'
+import { DetailViewPanel } from './DetailViewPanel'
 
 /**
  * 탭 value — DOM 속성(`data-state` 대상)으로 나가므로 한국어 라벨과 분리한다.
@@ -27,19 +28,6 @@ export interface SettingsTabsProps {
   board: BoardDetail
   /** 편집 권한(CREATE). 없으면 각 탭 본문이 편집만 잠근다 — 읽기는 열린다(S7). */
   canConfigure: boolean
-}
-
-/**
- * 아직 본문이 없는 탭의 자리.
- *
- * ★**「준비 중」 같은 문구를 넣지 않는다.** 그 문구가 곧 `#452` 가 금지한
- * 「누를 수 있는데 아무 일도 안 일어나는」 탭이다. 후속 task 가 이 자리를 채운다 —
- * 카드 레이아웃은 `CardLayoutPanel`, 추정은 `EstimationPanel`, 작업일은
- * `WorkingDaysPanel`, 상세 보기는 `DetailViewPanel` 이 각각 들어온다.
- * 넷이 다 들어오면 이 컴포넌트는 사라진다 — 남아 있다면 그것이 미완의 표시다.
- */
-function PendingPanel(): null {
-  return null
 }
 
 /**
@@ -105,7 +93,7 @@ export function SettingsTabs({ board, canConfigure }: SettingsTabsProps): JSX.El
       </TabsContent>
 
       <TabsContent value={TAB_VALUES.detailView}>
-        <PendingPanel />
+        <DetailViewPanel key={board.boardId} board={board} canConfigure={canConfigure} />
       </TabsContent>
     </Tabs>
   )

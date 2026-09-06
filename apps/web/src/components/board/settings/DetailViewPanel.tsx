@@ -405,6 +405,13 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
   }
 
   function handleDragEnd(event: DragEndEvent): void {
+    // ★★in-flight 중에는 드롭을 **버린다**(스펙 E8 · `#452` BLOCKER B2 와 같은 처방).
+    //   드롭 하나가 서버에 가 있는 동안 두 번째를 허용하면 둘 다 **같은 낡은 목록**에서 파생돼
+    //   나중 것이 앞 변경을 덮는다(lost update). 서버는 둘 다 200 이라 아무도 오류를 못 본다.
+    //   화면의 핸들도 `draggable={!locked}` 로 함께 잠그지만, 그것만으로는 부족하다 —
+    //   `locked` 는 다음 렌더에야 반영되므로 같은 틱에 들어온 두 번째 드롭은 그 잠금을 지나친다.
+    if (locked) return
+
     const active = event.active.data.current as FieldDragData | undefined
     const over = event.over?.data.current as FieldDragData | undefined
     if (active === undefined || over === undefined) return
@@ -413,9 +420,11 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
 
     const current = fields[active.group]
     const next = planFieldReorder(current, active.fieldKey, over.fieldKey)
+    // 제자리·모르는 키는 아무 일도 하지 않는다 — 요청을 만들면 저장 한 번이 통째로 낭비되고,
+    // 그 사이 잠금이 걸려 진짜 드래그가 막힌다.
     if (next === null) return
 
-    setFields((prev) => ({ ...prev, [active.group]: next }))
+    submit({ group: active.group, fields: next, previous: current })
   }
 
   return (
