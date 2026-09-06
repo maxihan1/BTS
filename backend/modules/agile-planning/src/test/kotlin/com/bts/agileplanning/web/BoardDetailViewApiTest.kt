@@ -83,7 +83,7 @@ private val LINKS_FIELDS = listOf("issueLinks")
  * | D 부분 갱신 | 요청에 **없는** 그룹은 살아남는다 | 매 PATCH 마다 4종을 전부 덮는 구현 |
  * | E 비우기 | 빈 목록이 그 그룹만 비운다 | 빈 목록을 무시하고 건너뛰는 구현 |
  * | F 미지원 그룹 | 400 이고 **같은 요청의 유효한 그룹도 저장되지 않는다** | 돌면서 쓰다가 도중에 터지는 구현 |
- * | G·H 권한 | 쓰기 SOFT_DELETE · 읽기 BROWSE · 프로젝트 스코프 | 아무 권한이나 물어보는 구현 |
+ * | G·H 권한 | 쓰기 CREATE · 읽기 BROWSE · 프로젝트 스코프 | 아무 권한이나 물어보는 구현 |
  * | I 미인증 | 401 이고 **보드 조회조차 안 한다** | 존재 probe 를 열어 주는 구현 |
  * | J 검사 순서 | 보드 없음 + 권한 거부 = **404** | 권한을 먼저 봐서 403 을 내는 구현 |
  *
@@ -118,7 +118,7 @@ private val LINKS_FIELDS = listOf("issueLinks")
  *
  * ## 편차 X8 — 보드 단위 권한이 없다
  * J49 는 *board admin* 을 요구하지만 BTS 에는 보드 단위 권한 모델이 없다. 프로젝트 권한으로 갈음하며
- * 쓰기는 Task 8 과 **같은 게이트**([IssuePermission.SOFT_DELETE])를 탄다.
+ * 쓰기는 설정 4탭 공통 게이트([IssuePermission.CREATE])를 탄다(Task 29 가 넷을 통일했다).
  *
  * ## 예외 핸들러 — [BoardExceptionHandler] 는 이 컨트롤러를 덮지 않는다
  * 그 advice 의 `assignableTypes` 는 [BoardController]·[BoardQuickFilterController] 뿐이고 그 파일은
@@ -161,20 +161,27 @@ class BoardDetailViewApiTest {
         fun clear() = rows.clear()
     }
 
-    /** 테스트별 allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub. */
-    open class PermissionGate : IssuePermissionResolver {
-        /** false 면 모든 권한 판정을 거부한다. */
+    /**
+     * 테스트별 allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub.
+     *
+     * 형제 [BoardCardLayoutApiTest.PermissionStub] · [BoardEstimationApiTest.PermissionStub] 과
+     * **같은 필드 이름**이다(Task 29) — 다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다.
+     * `Triple` 리스트에서 마지막 값 캡처로 바꾸면서 **actorId 동일성**과 **호출 횟수** 단언은
+     * 사라졌다. actorId 는 「미인증 요청은 401 이고 보드 조회조차 하지 않는다」가 여전히
+     * actor 추출 자체를 지고, 호출 횟수는 이 컨트롤러가 요청당 한 번만 판정하므로 축이 없다.
+     */
+    open class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true
-
-        /** [hasPermission] 호출마다 전달된 (actorId, permission, scope) 를 순서대로 기록한다. */
-        val calls: MutableList<Triple<UUID, IssuePermission, IssueScope>> = mutableListOf()
+        var lastPermission: IssuePermission? = null
+        var lastScope: IssueScope? = null
 
         override fun hasPermission(
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
         ): Boolean {
-            calls.add(Triple(actorId, permission, scope))
+            lastPermission = permission
+            lastScope = scope
             return allowAll
         }
     }
@@ -193,7 +200,7 @@ class BoardDetailViewApiTest {
         open fun boardRepository(): BoardRepository = mockk()
 
         @Bean
-        open fun permissionGate(): PermissionGate = PermissionGate()
+        open fun permissionStub(): PermissionStub = PermissionStub()
 
         @Bean
         open fun detailViewSettingsService(repository: BoardSettingsRepository): DetailViewSettingsService =
@@ -203,7 +210,7 @@ class BoardDetailViewApiTest {
         open fun boardDetailViewController(
             service: DetailViewSettingsService,
             repository: BoardRepository,
-            gate: PermissionGate,
+            gate: PermissionStub,
         ): BoardDetailViewController = BoardDetailViewController(service, repository, gate)
 
         // 이 advice 는 assignableTypes 에 BoardDetailViewController 가 없어 적용되지 않는다.
@@ -222,7 +229,7 @@ class BoardDetailViewApiTest {
     lateinit var boardRepository: BoardRepository
 
     @Autowired
-    lateinit var permissionGate: PermissionGate
+    lateinit var permissionStub: PermissionStub
 
     @Autowired
     lateinit var store: FakeSettingsStore
@@ -239,8 +246,10 @@ class BoardDetailViewApiTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         clearMocks(settingsRepository, boardRepository)
         store.clear()
-        permissionGate.allowAll = true
-        permissionGate.calls.clear()
+        permissionStub.allowAll = true
+        // 앞 테스트가 남긴 값으로 권한코드 축이 초록이 되지 않게 매번 비운다.
+        permissionStub.lastPermission = null
+        permissionStub.lastScope = null
 
         every { boardRepository.findById(any()) } returns sampleBoard()
         every { settingsRepository.findDetailViewFields(any()) } answers { store.read(firstArg()) }
@@ -367,15 +376,17 @@ class BoardDetailViewApiTest {
     // ── G·H. 권한 ────────────────────────────────────────────────────────────
 
     @Test
-    fun `PATCH 는 SOFT_DELETE 를 프로젝트 스코프로 판정하고 거부되면 저장하지 않는다`() {
-        permissionGate.allowAll = false
+    fun `PATCH 는 CREATE 를 프로젝트 스코프로 판정하고 거부되면 저장하지 않는다`() {
+        permissionStub.allowAll = false
 
         val result = patchGroups(mapOf("GENERAL" to GENERAL_FIELDS))
 
         assertThat(result.response.status).isEqualTo(403)
         // 권한코드·스코프까지 고정한다 — 「아무 권한이나 물어보는」 구현도 403 만으로는 통과한다.
-        assertThat(permissionGate.calls)
-            .containsExactly(Triple(actorId, IssuePermission.SOFT_DELETE, IssueScope.Project(projectKey)))
+        // 4탭 공통 CREATE 다(Task 29). 프론트가 `permissions.CREATE` 하나로 편집 UI 를 열기 때문에
+        // 이 탭만 SOFT_DELETE 를 요구하면 CREATE 만 가진 사용자가 편집 UI 를 보고 403 을 맞는다.
+        assertThat(permissionStub.lastPermission).isEqualTo(IssuePermission.CREATE)
+        assertThat(permissionStub.lastScope).isEqualTo(IssueScope.Project(projectKey))
         verify(exactly = 0) { settingsRepository.replaceDetailViewFields(any(), any(), any()) }
     }
 
@@ -383,10 +394,10 @@ class BoardDetailViewApiTest {
     fun `GET 은 BROWSE 로 판정하고 거부되면 403 이다`() {
         val allowed = performGet()
         assertThat(allowed.response.status).isEqualTo(200)
-        assertThat(permissionGate.calls)
-            .containsExactly(Triple(actorId, IssuePermission.BROWSE, IssueScope.Project(projectKey)))
+        assertThat(permissionStub.lastPermission).isEqualTo(IssuePermission.BROWSE)
+        assertThat(permissionStub.lastScope).isEqualTo(IssueScope.Project(projectKey))
 
-        permissionGate.allowAll = false
+        permissionStub.allowAll = false
         assertThat(performGet().response.status).isEqualTo(403)
     }
 
@@ -410,7 +421,7 @@ class BoardDetailViewApiTest {
         // 403↔404 는 검사 순서로 의미가 뒤집힌다. 기존 경로(loadBoardWithCreate)와 같은 순서
         // — 존재 확인 먼저, 권한 판정 나중 — 를 이 단언이 고정한다.
         every { boardRepository.findById(any()) } returns null
-        permissionGate.allowAll = false
+        permissionStub.allowAll = false
 
         assertThat(patchGroups(mapOf("GENERAL" to GENERAL_FIELDS)).response.status).isEqualTo(404)
         assertThat(performGet().response.status).isEqualTo(404)

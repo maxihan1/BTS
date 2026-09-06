@@ -90,7 +90,7 @@ import java.util.UUID
  * | G1 | 게이트의 `currentActorId()` → 고정 UUID | WD-9a(401) | 인증된 요청 12축 |
  * | G2 | 게이트의 `?: throw BoardNotFoundException()` 제거 | WD-9b(404) | 보드가 있는 요청 전부 |
  * | G3 | 게이트의 `if (!hasPermission) throw` → 판정 무시 | WD-9c(403) | allow=true 인 요청 전부 |
- * | G4 | 권한코드 `SOFT_DELETE` → `CREATE` | WD-9c | 상태는 여전히 403 ★c |
+ * | G4 | 권한코드 `CREATE` → `SOFT_DELETE` | WD-9c | 상태는 여전히 403 ★c |
  * | G5 | advice 에서 `HttpMessageNotReadableException` 제거 | **0건 — 공허 적발** | 13축 전부 ★d |
  * | G5b | G5 + WD-8 에 `$.errorCode` 단언을 더한 뒤 | WD-8 | — (처방 확인) |
  * | G6 | `WorkingDaysResponse.from` 이 `standardDays = null` 고정 | WD-3 | 저장 `verify` ★e |
@@ -140,7 +140,7 @@ class BoardWorkingDaysApiTest {
         open fun boardRepository(): BoardRepository = mockk(relaxed = true)
 
         @Bean
-        open fun permissionGate(): PermissionGate = PermissionGate()
+        open fun permissionStub(): PermissionStub = PermissionStub()
 
         @Bean
         open fun workingDaysSettingsService(settingsRepository: BoardSettingsRepository): WorkingDaysSettingsService =
@@ -150,28 +150,34 @@ class BoardWorkingDaysApiTest {
         open fun boardWorkingDaysController(
             service: WorkingDaysSettingsService,
             boardRepository: BoardRepository,
-            gate: PermissionGate,
+            gate: PermissionStub,
         ): BoardWorkingDaysController = BoardWorkingDaysController(service, boardRepository, gate)
 
         @Bean
         open fun boardWorkingDaysExceptionHandler() = BoardWorkingDaysExceptionHandler()
     }
 
-    /** allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub. */
-    open class PermissionGate : IssuePermissionResolver {
-        /** false 면 모든 권한 판정을 거부한다. */
-        var allow: Boolean = true
-
-        /** 판정에 실제로 쓰인 (권한, 스코프) 쌍. 권한코드 축 단언에 쓴다. */
-        val calls: MutableList<Pair<IssuePermission, IssueScope>> = mutableListOf()
+    /**
+     * allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub.
+     *
+     * 형제 [BoardCardLayoutApiTest.PermissionStub] · [BoardEstimationApiTest.PermissionStub] 과
+     * **같은 필드 이름**이다(Task 29) — 다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다.
+     * 리스트 캡처에서 마지막 값 캡처로 바꾸면서 「정확히 한 번 호출」 단언은 사라졌다 —
+     * 이 컨트롤러는 요청당 판정이 한 번뿐이라 그 축을 지고 있던 테스트가 없다.
+     */
+    open class PermissionStub : IssuePermissionResolver {
+        var allowAll: Boolean = true
+        var lastPermission: IssuePermission? = null
+        var lastScope: IssueScope? = null
 
         override fun hasPermission(
             actorId: UUID,
             permission: IssuePermission,
             scope: IssueScope,
         ): Boolean {
-            calls += permission to scope
-            return allow
+            lastPermission = permission
+            lastScope = scope
+            return allowAll
         }
     }
 
@@ -185,7 +191,7 @@ class BoardWorkingDaysApiTest {
     lateinit var boardRepository: BoardRepository
 
     @Autowired
-    lateinit var permissionGate: PermissionGate
+    lateinit var permissionStub: PermissionStub
 
     lateinit var mockMvc: MockMvc
 
@@ -196,8 +202,10 @@ class BoardWorkingDaysApiTest {
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         clearMocks(settingsRepository, boardRepository)
-        permissionGate.allow = true
-        permissionGate.calls.clear()
+        permissionStub.allowAll = true
+        // 앞 테스트가 남긴 값으로 권한코드 축이 초록이 되지 않게 매번 비운다.
+        permissionStub.lastPermission = null
+        permissionStub.lastScope = null
         every { boardRepository.findById(boardId) } returns board()
         every { settingsRepository.updateWorkingDays(any(), any(), any()) } returns true
         authenticate()
@@ -355,25 +363,25 @@ class BoardWorkingDaysApiTest {
         save("""{"standardDays":["MON"],"nonWorkingDates":[]}""")
             .andExpect(status().isNotFound)
 
-        assertThat(permissionGate.calls)
+        assertThat(permissionStub.lastPermission)
             .describedAs("존재 확인이 권한 판정보다 먼저다 — 뒤집으면 403 과 404 의 의미가 갈린다(R9)")
-            .isEmpty()
+            .isNull()
     }
 
     @Test
     fun `권한이 없으면 403 이고 아무것도 저장되지 않는다`() {
-        permissionGate.allow = false
+        permissionStub.allowAll = false
 
         save("""{"standardDays":["MON"],"nonWorkingDates":[]}""")
             .andExpect(status().isForbidden)
 
         verify(exactly = 0) { settingsRepository.updateWorkingDays(any(), any(), any()) }
-        assertThat(permissionGate.calls.map { it.first })
-            .describedAs("설정 쓰기 게이트는 SOFT_DELETE 권한코드를 쓴다(계획 Task 8 REFACTOR)")
-            .containsExactly(IssuePermission.SOFT_DELETE)
-        assertThat(permissionGate.calls.map { it.second })
+        assertThat(permissionStub.lastPermission)
+            .describedAs("설정 4탭은 같은 권한코드 CREATE 를 쓴다 — 프론트가 permissions.CREATE 하나로 편집 UI 를 연다")
+            .isEqualTo(IssuePermission.CREATE)
+        assertThat(permissionStub.lastScope)
             .describedAs("스코프는 보드가 속한 프로젝트다")
-            .containsExactly(IssueScope.Project("BTS"))
+            .isEqualTo(IssueScope.Project("BTS"))
     }
 
     // ── WD-10. 저장 직전 경합 — 보드가 사라지면 404 ────────────────────────────

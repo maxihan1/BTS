@@ -62,7 +62,7 @@ import java.util.UUID
  * | ⑦ 뷰 스코프 | `SPRINT` → 400 | 스코프를 그대로 DB 로 넘김(500) ↔ 서비스가 400 |
  * | ⑧ 칸반 | 칸반 `BACKLOG` 400 ↔ 칸반 `BOARD` 200 | `BACKLOG` 전면 거부 · 칸반 전면 거부 ↔ 조합 판정 |
  * | ⑨ 권한 | 403 · 401 · 404 순서 | 권한을 존재보다 먼저 봄(403 누설) ↔ 존재 → 권한 |
- * | ⑩ 게이트 인자 | `SOFT_DELETE` + `Project` | 아무 권한코드나 통과 ↔ 계획이 지정한 게이트 |
+ * | ⑩ 게이트 인자 | `CREATE` + `Project` | 아무 권한코드나 통과 ↔ 4탭 공통 게이트 |
  * | ⑪ 서비스 층 상태 | 없는 보드 **404** ↔ 칸반 백로그 **400** | 무엇에나 404 · 무엇에나 400 ↔ 원인별 상태 |
  *
  * ★**①⑥⑧⑪ 은 짝으로만 산다.** 「저장하고 읽으면 같다」·「무엇이든 400」은 틀린 구현도 통과시킨다 —
@@ -368,12 +368,15 @@ class BoardCardLayoutApiTest {
     // ── ⑩ 게이트 인자 ─────────────────────────────────────────────────────────
 
     @Test
-    fun `권한 게이트는 SOFT_DELETE 권한과 프로젝트 스코프로 판정한다`() {
+    fun `권한 게이트는 CREATE 권한과 프로젝트 스코프로 판정한다`() {
+        // 설정 4탭이 같은 권한코드를 타야 한다(Task 29). 프론트가 `permissions.CREATE` 하나로 편집 UI 를
+        // 여므로(`projects.$projectKey.board.settings.tsx:103`), 이 탭만 SOFT_DELETE 를 요구하면
+        // **CREATE 만 가진 사용자가 편집 UI 를 보고 403 을 맞는다.**
         val board = insertBoard(BoardType.SCRUM)
 
         patchCardLayout(board.id, mapOf("BOARD" to listOf("EPIC"))).andExpect(status().isOk)
 
-        assertThat(permissionStub.lastPermission).isEqualTo(IssuePermission.SOFT_DELETE)
+        assertThat(permissionStub.lastPermission).isEqualTo(IssuePermission.CREATE)
         assertThat(permissionStub.lastScope).isEqualTo(IssueScope.Project(board.projectKey))
     }
 
