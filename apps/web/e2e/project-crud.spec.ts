@@ -183,7 +183,7 @@ test.describe('S4 프로젝트 설정 이름 변경 (FR-PJ PR-5 Task 8)', () => 
     // Given. SYSTEM_ADMIN alice 로그인 + ATLAS 프로젝트 설정(details) 진입
     await loginAsSystemAdmin(page)
     await page.goto('/projects/ATLAS/settings/details')
-    await expect(page.getByRole('heading', { name: 'Atlas 프로젝트', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Atlas 프로젝트', exact: true, level: 2 })).toBeVisible()
 
     // When. 이름 입력값을 비우고 새 이름으로 채운 뒤 저장
     const nameInput = page.getByLabel('프로젝트 이름')
@@ -195,7 +195,7 @@ test.describe('S4 프로젝트 설정 이름 변경 (FR-PJ PR-5 Task 8)', () => 
 
     // Then. 단건 재조회(invalidate) 결과로 PageHeader 제목이 새 이름으로 반영된다
     await expect(
-      page.getByRole('heading', { name: 'Atlas 프로젝트 개편', exact: true }),
+      page.getByRole('heading', { name: 'Atlas 프로젝트 개편', exact: true, level: 2 }),
     ).toBeVisible()
   })
 })
@@ -211,7 +211,7 @@ test.describe('S5 아카이브/해제 왕복 (FR-PJ PR-5 Task 8)', () => {
     // Given. SYSTEM_ADMIN alice 로그인 + ATLAS 프로젝트 설정(details) 진입(활성 상태)
     await loginAsSystemAdmin(page)
     await page.goto('/projects/ATLAS/settings/details')
-    await expect(page.getByRole('heading', { name: 'Atlas 프로젝트', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Atlas 프로젝트', exact: true, level: 2 })).toBeVisible()
     await expect(page.getByRole('button', { name: '아카이브', exact: true })).toBeVisible()
 
     // When. 아카이브 클릭 → 인라인 확인 → 확인 클릭

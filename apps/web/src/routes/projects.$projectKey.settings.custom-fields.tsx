@@ -59,7 +59,7 @@ export function ProjectCustomFieldsSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{customFieldLabels.page.heading}</h1>
+        <h2 className="text-xl font-semibold">{customFieldLabels.page.heading}</h2>
         <p className="text-muted-foreground text-sm">{customFieldLabels.page.description}</p>
       </header>
       <CustomFieldList projectKey={projectKey} />

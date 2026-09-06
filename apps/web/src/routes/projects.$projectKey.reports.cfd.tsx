@@ -39,7 +39,7 @@ export function CfdReportPage({ projectKey }: CfdReportPageProps): JSX.Element {
   return (
     <div className="p-8 space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{cfdLabels.page.title}</h1>
+        <h2 className="text-xl font-semibold">{cfdLabels.page.title}</h2>
         <p className="text-muted-foreground text-sm">{cfdLabels.page.description}</p>
       </header>
       <CfdReport projectKey={projectKey} />

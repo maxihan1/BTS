@@ -122,9 +122,9 @@ export function ProjectDetailsSettingsPage({
     <div className={SETTINGS_PAGE_CLASS}>
       {/* h1 문구는 한 글자도 바꾸지 않는다 — 컨테이너 정렬만 형제 탭에 맞춘다(F21 성공 조건). */}
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">
+        <h2 className="text-xl font-semibold">
           {project?.name ?? detailsLabels.page.fallbackHeading}
-        </h1>
+        </h2>
         <p className="text-muted-foreground text-sm">{detailsLabels.page.description}</p>
       </header>
       {isLoading || project === undefined ? (

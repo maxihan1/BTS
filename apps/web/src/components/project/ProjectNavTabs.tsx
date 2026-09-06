@@ -50,15 +50,14 @@ export interface ProjectNavTabsProps {
 /**
  * 탭 하나가 실을 URL search. 없으면 `undefined`.
  *
- * 이슈 탭은 `?projectKey=` 로만 프로젝트를 좁힐 수 있고(편차 X9), 보드·백로그 탭은 보드
- * 스코프를 승계한다(편차 X7). 나머지는 경로에 프로젝트가 들어 있어 search 가 필요 없다.
+ * 보드·백로그 탭만 보드 스코프를 승계한다(편차 X7). 나머지 7탭은 경로에 프로젝트가 들어 있어
+ * search 가 필요 없다 — 이슈 탭이 `?projectKey=` 를 싣던 것은 편차 X9 시절의 일이고,
+ * 지금은 `/projects/$projectKey/issues` 가 params 로 받는다.
  */
 function tabSearch(
   tab: ProjectViewTab,
-  projectKey: string,
   boardScope: ProjectNavTabsProps['boardScope'],
 ): Readonly<Record<string, string>> | undefined {
-  if (tab.projectKeySearchParam !== undefined) return { [tab.projectKeySearchParam]: projectKey }
   if (tab.key === 'board') return boardScope?.board
   if (tab.key === 'backlog') return boardScope?.backlog
   return undefined
@@ -75,7 +74,7 @@ function ProjectViewTabLink(props: {
     <Link
       to={tab.to}
       {...(tab.usesProjectParam ? { params: { projectKey } } : {})}
-      search={tabSearch(tab, projectKey, boardScope)}
+      search={tabSearch(tab, boardScope)}
       activeOptions={{ exact: tab.exact }}
       activeProps={{ 'aria-current': 'page' }}
       className={TAB_LINK_CLASS}

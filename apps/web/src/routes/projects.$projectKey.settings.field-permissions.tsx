@@ -44,7 +44,7 @@ export function ProjectFieldPermissionsSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">필드 권한 규칙 관리</h1>
+        <h2 className="text-xl font-semibold">필드 권한 규칙 관리</h2>
         <p className="text-muted-foreground text-sm">
           프로젝트 필드에 대한 그룹별 접근 권한을 설정합니다.
         </p>

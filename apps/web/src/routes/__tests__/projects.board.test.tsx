@@ -1168,7 +1168,10 @@ describe('BoardPage', () => {
     await renderBoardPage()
 
     // 🛑 앵커 먼저. 부재만 단언하면 보드가 통째로 안 그려져도 초록이다.
-    expect(await screen.findByRole('heading', { level: 1, name: '보드' })).toBeInTheDocument()
+    //    제목 h1 은 셸이 가져갔으므로(J5-11) 페이지가 확실히 소유한 것으로 앵커를 잡는다.
+    expect(
+      await screen.findByRole('button', { name: boardLabels.page.createIssue }),
+    ).toBeInTheDocument()
 
     expect(screen.queryByRole('navigation', { name: '프로젝트 뷰 전환' })).not.toBeInTheDocument()
   })
@@ -1666,7 +1669,9 @@ describe('BoardPage', () => {
       await screen.findByText(scrumEmptyStateLabels.noActiveSprint.title),
     ).toBeInTheDocument()
 
-    expect(screen.getByRole('heading', { name: boardLabels.page.title })).toBeInTheDocument()
+    // 제목은 셸의 `ProjectViewHeader` 가 소유한다(J5-11) — 대신 페이지가 모든 분기에서
+    // 유지해야 하는 「이슈 추가」 진입점을 잰다. 그 버튼도 같은 early-return 회귀로 사라진다.
+    expect(screen.getByRole('button', { name: boardLabels.page.createIssue })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /보드 선택/ })).toBeInTheDocument()
     expect(screen.getByTestId('board-filter-bar')).toBeInTheDocument()
 
@@ -1811,43 +1816,36 @@ describe('FavoriteButton 렌더', () => {
   })
 
   /**
-   * T-UX02-BD8-FAV1. 보드 페이지 정상 렌더 시 헤더 영역에 FavoriteButton이 렌더된다.
-   * targetType="PROJECT", targetId=projectKey가 전달돼야 한다.
+   * T-UX02-BD8-FAV1~3 (재작성 · Jira 패리티 J5-8). 즐겨찾기 ☆ 를 **페이지가 소유하지 않는다.**
+   *
+   * 옛 단언 3건은 보드 페이지가 제목행에 심은 ☆ 를 로딩·빈 보드·정상 3분기에서 봤다.
+   * 그 버튼은 셸의 `ProjectViewHeader` 로 옮겨갔다 — Jira 는 ☆ 가 뷰가 아니라 스페이스에
+   * 붙어 있어 탭을 바꿔도 남는다(J5-10). 페이지에 두면 형제 뷰마다 다시 심어야 하고
+   * 하나 빠뜨린 화면만 ☆ 가 사라진다.
+   *
+   * 옮겨간 보증의 자리 — 지우지 말 것.
+   * - ☆ 가 `PROJECT`·projectKey 로 렌더된다 → `components/project/__tests__/ProjectViewHeader.test.tsx`
+   * - 헤더가 프로젝트 경로 전 화면에 마운트된다 → `components/project/__tests__/ProjectViewChrome.test.tsx`
+   *
+   * 여기서는 **페이지가 그 일을 다시 하지 않는다**만 지킨다. 세 분기를 그대로 유지하는
+   * 이유는 옛 결함이 「분기마다 있고 없고가 달랐다」는 것이었기 때문이다 — 되살아나면
+   * 어느 한 분기에서 먼저 튀어나온다.
    */
-  it('T-UX02-BD8-FAV1: 보드 로드 후 헤더에 FavoriteButton(PROJECT, projectKey)이 렌더된다', async () => {
-    mockUseBoards.mockReturnValue({ data: [BOARD_A], isLoading: false, error: null, isError: false })
+  it.each([
+    ['정상', { data: [BOARD_A], isLoading: false, error: null, isError: false }],
+    ['보드 목록 로딩 중', { data: undefined, isLoading: true, error: null, isError: false }],
+    ['보드 0개', { data: [], isLoading: false, error: null, isError: false }],
+  ])('T-UX02-BD8-FAV: %s 분기에서 페이지가 ☆ 를 렌더하지 않는다 (셸이 소유)', async (_label, boardsState) => {
+    mockUseBoards.mockReturnValue(boardsState as ReturnType<typeof mockUseBoards>)
 
     await renderBoardPage('ATLAS')
 
-    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
-    expect(capturedFavTargetType).toBe('PROJECT')
-    expect(capturedFavTargetId).toBe('ATLAS')
-  })
-
-  /**
-   * T-UX02-BD8-FAV2. 보드 목록 로딩 중에도 FavoriteButton이 렌더된다.
-   * (projectKey는 라우트 파라미터에서 즉시 알 수 있으므로 보드 로딩과 무관)
-   */
-  it('T-UX02-BD8-FAV2: 보드 목록 로딩 중에도 FavoriteButton이 렌더된다', async () => {
-    mockUseBoards.mockReturnValue({ data: undefined, isLoading: true, error: null, isError: false })
-
-    await renderBoardPage('ATLAS')
-
-    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
-    expect(capturedFavTargetType).toBe('PROJECT')
-    expect(capturedFavTargetId).toBe('ATLAS')
-  })
-
-  /**
-   * T-UX02-BD8-FAV3. 보드 0개(CreateBoardForm 표시) 상황에서도 FavoriteButton이 렌더된다.
-   */
-  it('T-UX02-BD8-FAV3: 보드 0개 시에도 FavoriteButton이 렌더된다', async () => {
-    mockUseBoards.mockReturnValue({ data: [], isLoading: false, error: null, isError: false })
-
-    await renderBoardPage('ATLAS')
-
-    await waitFor(() => expect(screen.getByTestId('favorite-button')).toBeInTheDocument())
-    expect(capturedFavTargetType).toBe('PROJECT')
-    expect(capturedFavTargetId).toBe('ATLAS')
+    // 🛑 앵커 먼저 — 페이지가 통째로 안 그려져도 「☆ 가 없다」는 초록이다.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: boardLabels.page.createIssue })).toBeInTheDocument(),
+    )
+    expect(screen.queryByTestId('favorite-button')).not.toBeInTheDocument()
+    expect(capturedFavTargetType).toBeNull()
+    expect(capturedFavTargetId).toBeNull()
   })
 })

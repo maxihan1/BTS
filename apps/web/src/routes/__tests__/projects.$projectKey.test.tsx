@@ -139,13 +139,17 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ProjectSummaryPage — 성공', () => {
-  it('h1 이 정확히 하나이고 프로젝트 이름을 싣는다', async () => {
+  it('프로젝트 이름을 페이지가 다시 쓰지 않는다 — h1 은 셸이 소유한다 (J5-11)', async () => {
+    // 셸의 `ProjectViewHeader` 가 **같은 문자열**을 탭바 위에서 이미 h1 으로 그린다.
+    // 여기서 또 그리면 같은 이름이 두 줄로 겹치고 문서에 h1 이 2개가 된다.
+    // ☆ 와 이름 자체의 보증은 `components/project/__tests__/ProjectViewHeader.test.tsx` 로 옮겼다.
     useHandlers({})
     renderPage()
 
-    // 이름이 도착할 때까지 기다린다 — 도착 전에는 projectKey 폴백이 h1 에 들어 있다
-    expect(await screen.findByText('Atlas 프로젝트')).toBeInTheDocument()
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    // 🛑 앵커 먼저 — 페이지가 통째로 안 그려져도 「h1 이 없다」는 초록이다.
+    expect(await screen.findByLabelText(labels.cards.completed)).toBeInTheDocument()
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0)
+    expect(screen.queryByText('Atlas 프로젝트')).not.toBeInTheDocument()
   })
 
   it('카드 4종이 값과 델타 문구를 함께 보여준다', async () => {
@@ -311,9 +315,12 @@ describe('ProjectSummaryRouteAdapter', () => {
   }
 
   it('URL params 의 projectKey 를 페이지로 넘긴다', async () => {
+    // 프로젝트 이름은 이제 셸 헤더의 것이라 여기서 잴 수 없다(J5-11). 대신 페이지가
+    // **그 키로 실제 조회를 했는가**를 잰다 — 집계 카드는 `useProjectSummary(projectKey)`
+    // 응답이 있어야만 뜨므로 키가 안 넘어가면 나타나지 않는다.
     useHandlers({})
     renderAdapter()
 
-    expect(await screen.findByText('Atlas 프로젝트')).toBeInTheDocument()
+    expect(await screen.findByLabelText(labels.cards.completed)).toBeInTheDocument()
   })
 })

@@ -131,7 +131,7 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
     await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT_KEY}/reports/cycle-time(\\?.*)?$`))
 
     // Then. Cycle/Lead Time 페이지 헤더 표시
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
     await page.goto(cycleTimeUrl(PROJECT_KEY))
 
     // Then. 페이지 헤더 표시
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
 
     // Then. Cycle Time 섹션 — 히스토그램·박스플롯 컨테이너 표시 + 중앙값 타일 텍스트 존재
     // (픽셀/bbox 단언 금지 — recharts/SVG는 실브라우저에서도 bbox 폭 0 함정이 있어 컨테이너
@@ -184,7 +184,7 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
     await page.goto(cycleTimeUrl(EMPTY_PROJECT_KEY))
 
     // Then. 페이지 헤더는 정상 표시 (조회 자체는 200 성공)
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
 
     // Then. 빈 상태 안내 문구 표시
     await expect(page.getByText(labels.status.empty, { exact: true })).toBeVisible()
@@ -210,7 +210,7 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
     await page.goto(cycleTimeUrl(FORBIDDEN_PROJECT_KEY))
 
     // Then. 페이지 헤더는 정상 표시 (헤더는 CycleTimeReportPage 레벨, 403은 하위 CycleTimeReport에서만 처리)
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
 
     // Then. 403 접근 거부 안내 문구 표시 (exact:true — backlogLabels.page.accessDenied는
     // 마침표 없는 동일 어두 문자열이라 substring 매칭 시 혼동 가능성을 차단)

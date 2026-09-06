@@ -54,7 +54,7 @@ export function ProjectComponentsSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{componentLabels.page.heading}</h1>
+        <h2 className="text-xl font-semibold">{componentLabels.page.heading}</h2>
         <p className="text-muted-foreground text-sm">{componentLabels.page.description}</p>
       </header>
       <ComponentList projectKey={projectKey} />

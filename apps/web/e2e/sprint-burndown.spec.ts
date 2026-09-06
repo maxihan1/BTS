@@ -109,7 +109,7 @@ test.describe('FR-RP-01 D6/D7 스프린트 번다운/번업 차트', () => {
     )
 
     // Then. 번다운 페이지 헤더 표시
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
 
     // Then. 차트 컨테이너(role="img") 표시 — recharts 실렌더는 SVG bbox 좌표 대신
     // 컨테이너 가시성으로 검증한다 (SVG E2E 함정 선례).
@@ -131,7 +131,7 @@ test.describe('FR-RP-01 D6/D7 스프린트 번다운/번업 차트', () => {
     await page.goto(BURNDOWN_URL)
 
     // Given. 기본 뷰=번다운 — 차트 컨테이너 표시 확인
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
     await expect(page.getByRole('img', { name: labels.chart.ariaLabel })).toBeVisible()
 
     const burndownTab = page.getByRole('tab', { name: labels.toggle.burndown, exact: true })

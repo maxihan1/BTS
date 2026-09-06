@@ -29,9 +29,9 @@ export interface ProjectViewTab {
   /**
    * `$projectKey` path param 을 받는가.
    *
-   * 전역 링크(`/calendar`·`/dashboards`·`/issues`)는 `false` 다. `Link` 에 그 라우트가 모르는
-   * param 을 넘기면 TanStack 이 조용히 무시하지만, 무시에 기대면 라우트가 나중에 param 을
-   * 갖게 될 때 엉뚱한 값이 실린다.
+   * 편차 X9 폐기(2026-09-07) 이후 **정본 9탭은 전부 `true`** 다. 축 자체는 남긴다 — `Link` 에
+   * 그 라우트가 모르는 param 을 넘기면 TanStack 이 조용히 무시하는데, 무시에 기대면 라우트가
+   * 나중에 param 을 갖게 될 때 엉뚱한 값이 실린다. 전역 탭이 다시 생기는 날의 안전장치다.
    */
   readonly usesProjectParam: boolean
   /**
@@ -43,13 +43,6 @@ export interface ProjectViewTab {
    * 활성 탭이 2개 이상이 되지 않는다」가 이 필드를 지킨다.
    */
   readonly exact: boolean
-  /**
-   * 프로젝트 키를 URL search 로 실을 파라미터 이름. 없으면 싣지 않는다.
-   *
-   * 이슈 탭 전용이다 — `/issues` 는 프로젝트 스코프 라우트가 아니고 `?projectKey=` 로만
-   * 좁힐 수 있다(`router.ts` 의 `issuesIndexRoute.validateSearch`).
-   */
-  readonly projectKeySearchParam?: 'projectKey'
 }
 
 /**
@@ -64,13 +57,16 @@ export interface ProjectViewTab {
  * - 「스프린트」라는 탭은 **없다**. 스프린트는 백로그 화면 안에서 계획된다 — "In Jira scrum
  *   spaces, sprints are planned on the Backlog screen" ([use your scrum backlog])
  *
- * ### 의도적 편차 X9 — 캘린더·대시보드·이슈는 프로젝트 스코프 라우트가 없다
- * BTS 의 `/calendar` 는 개인 캘린더(identity-access BC · FR-CA-01), `/dashboards` 는 전역
- * 대시보드 목록(FR-DB-01)이라 프로젝트로 좁힐 수단이 없다. 이슈만 `?projectKey=` 로 좁힌다.
- * **셋 다 누르면 탭바 자체가 사라진다** — `ProjectViewChrome` 은 경로에 `projectKey` 가 있을
- * 때만 마운트하기 때문이다. 그래서 이 셋은 어떤 라우트에서도 활성이 되지 않는다(아래
- * `resolveActiveTabIndex` 가 그것을 그대로 반영하고 판별식이 단언한다).
- * Maxi 확정 2026-09-03 — 목업 v2 의 탭 형태를 지키는 쪽을 택했다.
+ * ### 편차 X9 는 폐기됐다 (Maxi 확정 2026-09-07)
+ * 한때 캘린더·대시보드·이슈 세 탭이 전역 라우트(`/calendar`·`/dashboards`·`/issues`)를 가리켰고,
+ * `ProjectViewChrome` 의 마운트 조건이 `params.projectKey` 라 **누르는 순간 헤더와 탭바가
+ * 통째로 사라졌다.** Jira 는 캘린더·목록도 스페이스 안의 탭이라 눌러도 스페이스 크롬이 남는다
+ * (J5-12 · 실물 조회 2026-09-07). 그래서 `router.ts` 에 프로젝트 스코프 형제 라우트 3종을
+ * 신설하고 **9탭 전부가 `$projectKey` 를 받는다**.
+ *
+ * ⚠️ 남은 편차는 **X-J5-13** 이다 — 프로젝트 캘린더·대시보드는 *탐색* 패리티까지고 내용은
+ * 아직 프로젝트로 좁히지 않는다(백킹 API 에 프로젝트 축이 없다). 근거와 대안 기각 사유는
+ * `router.ts` 의 `projectCalendarRoute` KDoc 에 있다.
  *
  * [space navigation]: https://support.atlassian.com/jira-software-cloud/docs/manage-and-customize-the-project-navigation/
  * [use your scrum backlog]: https://support.atlassian.com/jira-software-cloud/docs/use-your-scrum-backlog/
@@ -107,16 +103,16 @@ export const PROJECT_VIEW_TABS: readonly ProjectViewTab[] = [
   },
   {
     key: 'calendar',
-    to: '/calendar',
+    to: '/projects/$projectKey/calendar',
     label: projectViewLabels.calendar,
-    usesProjectParam: false,
+    usesProjectParam: true,
     exact: false,
   },
   {
     key: 'dashboards',
-    to: '/dashboards',
+    to: '/projects/$projectKey/dashboards',
     label: projectViewLabels.dashboards,
-    usesProjectParam: false,
+    usesProjectParam: true,
     exact: false,
   },
   {
@@ -128,11 +124,10 @@ export const PROJECT_VIEW_TABS: readonly ProjectViewTab[] = [
   },
   {
     key: 'issues',
-    to: '/issues',
+    to: '/projects/$projectKey/issues',
     label: projectViewLabels.issues,
-    usesProjectParam: false,
+    usesProjectParam: true,
     exact: false,
-    projectKeySearchParam: 'projectKey',
   },
   {
     key: 'versions',

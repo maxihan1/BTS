@@ -32,8 +32,8 @@ import { boardLabels } from '@/i18n/board-labels'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch } from '@/lib/board-filter'
 import type { BoardFilterSearch } from '@/lib/board-filter'
-import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
+import { ProjectHeaderActions } from '@/components/project/ProjectChrome'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
 import { issueCreateStrings } from '@/i18n/ko'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -385,19 +385,18 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
     }
   }
 
-  // ── 공통 헤더 — projectKey 기반 즐겨찾기 버튼 + 이슈 생성 진입점
+  // ── 공통 헤더 — 이슈 생성 진입점 + 생성 모달
   //    (로딩/빈 보드 분기 무관하게 항상 노출)
   //
   // 🛑 진입점을 아래 「헤더 행」(보드 2+개이거나 보드 상세가 있을 때만 렌더)에 두면
   //    보드가 없거나 로딩 중일 때 사라진다. 이 변수는 **모든 분기가 공유**한다.
-  const projectFavoriteHeader = (
-    <div className="flex items-center justify-between px-6 pt-4 pb-0">
-      {/* 🛑 제목 없이 별 아이콘만 두지 마라 — 형제 뷰(백로그·타임라인)는 같은 자리에 h1 이 있어
-          보드만 헤더가 비어 보이고, 문서당 h1 이 0개가 된다(랜드마크·스크린리더 계약). */}
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-semibold">{boardLabels.page.title}</h1>
-        <FavoriteButton targetType="PROJECT" targetId={projectKey} />
-      </div>
+  //
+  // 🛑 **제목 h1 과 ☆ 는 여기 없다** (J5-11) — 셸의 `ProjectViewHeader` 가 탭바 위에서
+  //    소유한다. 되살리면 문서에 h1 이 2개가 된다. 「이슈 추가」만 `ProjectHeaderActions`
+  //    로 그 제목행에 올린다(J5-9) — 소유는 여기 그대로다(아래 `onCreated` 무효화 때문).
+  const boardHeaderPortals = (
+    <>
+      <ProjectHeaderActions>
       {/* 🛑 컬럼별이 아니라 보드 1곳이다 — 생성 계약에 상태(stateKey)가 없어
           컬럼별 버튼은 「여기서 만들면 여기에 생긴다」는 지키지 못할 약속이 된다.
           근거 = ADR docs/decisions/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md D-3.
@@ -408,6 +407,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
         canCreate={canCreate}
         onClick={() => { setCreateIssueOpen(true) }}
       />
+      </ProjectHeaderActions>
       {/* 이슈 생성 모달 — 화면당 1개. 성공 후 이동은 진입 경로가 정한다(F2 D-8) —
           보드는 상단바와 같이 **제자리에 머물고 토스트로 갈 길을 남긴다**. */}
       <CreateIssueDialog
@@ -429,7 +429,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           })
         }}
       />
-    </div>
+    </>
   )
 
   // ── 로딩 ──────────────────────────────────────────────────────────────────
@@ -437,7 +437,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   if (boardsLoading) {
     return (
       <div>
-        {projectFavoriteHeader}
+        {boardHeaderPortals}
         <div className="p-6 space-y-4">
           <Skeleton className="h-8 w-48" aria-hidden="true" />
           <div className="flex gap-4">
@@ -455,7 +455,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   if (isAccessDenied) {
     return (
       <div>
-        {projectFavoriteHeader}
+        {boardHeaderPortals}
         <div className="p-8 flex flex-col items-center justify-center min-h-48 gap-4 text-center">
           <p className="text-lg font-medium">접근 권한이 없습니다</p>
           <p className="text-sm text-muted-foreground">
@@ -471,7 +471,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   if (boards !== undefined && boards.length === 0) {
     return (
       <div>
-        {projectFavoriteHeader}
+        {boardHeaderPortals}
         <CreateBoardForm projectKey={projectKey} />
       </div>
     )
@@ -482,7 +482,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   return (
     <div className="p-6 space-y-4">
       {/* 프로젝트 즐겨찾기 + 이슈 생성 진입점 (분기 공통 헤더) */}
-      {projectFavoriteHeader}
+      {boardHeaderPortals}
 
       {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터. `data-testid` 는 e2e 스코프 전용이고 접근성 트리·렌더 영향 0 이다 (사유. `e2e/fixtures/board-helpers.ts` · `docs/design/jira-parity-contract.md` §2) */}
       {(boards !== undefined && boards.length >= 1) || (boardDetail !== undefined && canCreate) ? (

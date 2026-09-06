@@ -55,7 +55,7 @@ test.describe('컴포넌트 관리 권한 게이팅 (FR-PM-03 D7)', () => {
 
     // When. 컴포넌트 설정 페이지 진입
     await page.goto(COMPONENTS_URL)
-    await expect(page.getByRole('heading', { name: '컴포넌트 설정', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '컴포넌트 설정', level: 2 })).toBeVisible()
 
     // Then. "컴포넌트 추가" 버튼 활성(enabled)
     const addButton = page.getByRole('button', { name: '컴포넌트 추가' })
@@ -107,7 +107,7 @@ test.describe('컴포넌트 관리 권한 게이팅 (FR-PM-03 D7)', () => {
 
     // When. 컴포넌트 설정 페이지 진입 (이 goto부터 플래그 적용)
     await page.goto(COMPONENTS_URL)
-    await expect(page.getByRole('heading', { name: '컴포넌트 설정', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '컴포넌트 설정', level: 2 })).toBeVisible()
 
     // Then. "컴포넌트 추가" 버튼 disabled (fail-closed 게이팅)
     const addButton = page.getByRole('button', { name: '컴포넌트 추가' })
@@ -142,7 +142,7 @@ test.describe('버전 관리 권한 게이팅 (FR-PM-03 D7)', () => {
 
     // When. 버전 설정 페이지 진입
     await page.goto(VERSIONS_URL)
-    await expect(page.getByRole('heading', { name: '버전 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '버전 관리', level: 2 })).toBeVisible()
 
     // Then. "버전 추가" 버튼 활성(enabled)
     const addButton = page.getByRole('button', { name: '버전 추가' })
@@ -189,7 +189,7 @@ test.describe('버전 관리 권한 게이팅 (FR-PM-03 D7)', () => {
 
     // When. 버전 설정 페이지 진입 (이 goto부터 플래그 적용)
     await page.goto(VERSIONS_URL)
-    await expect(page.getByRole('heading', { name: '버전 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '버전 관리', level: 2 })).toBeVisible()
 
     // Then. "버전 추가" 버튼 disabled (fail-closed 게이팅)
     const addButton = page.getByRole('button', { name: '버전 추가' })

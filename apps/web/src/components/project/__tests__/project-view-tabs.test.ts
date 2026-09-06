@@ -8,7 +8,6 @@ import {
   resolveBacklogTabSearch,
   resolveBoardTabSearch,
   resolveTabHref,
-  type ProjectViewTab,
 } from '@/components/project/project-view-tabs'
 
 /** 실 라우트를 흉내낼 때 쓰는 프로젝트 키 — 아무 값이어도 되지만 한 벌로 고정한다 */
@@ -39,7 +38,7 @@ function toPathname(routeId: string): string {
 /** `_shell` 하위의 실 라우트만 — 루트·로그인·pathless 자신은 활성 판정 대상이 아니다 */
 const shellRouteIds = routeIds.filter((id) => id.startsWith(`${SHELL}/`))
 
-/** 활성 탭이 될 수 있는 탭 — 전역 링크 3종(편차 X9)은 탭바가 사라지므로 제외된다 */
+/** 활성 탭이 될 수 있는 탭 — 편차 X9 폐기(2026-09-07) 이후 9탭 전부다 */
 const projectScopedTabs = PROJECT_VIEW_TABS.filter((tab) => tab.usesProjectParam)
 
 describe('PROJECT_VIEW_TABS — 정본 구성', () => {
@@ -79,26 +78,28 @@ describe('PROJECT_VIEW_TABS — 정본 구성', () => {
     expect(exactKeys).toEqual(['summary'])
   })
 
-  it('전역 링크 3종만 `usesProjectParam: false` 다 (편차 X9 전수)', () => {
+  it('9탭 전부가 `$projectKey` 를 받는다 (편차 X9 폐기 · J5-12)', () => {
+    // 🛑 하나라도 전역 경로로 돌아가면 그 탭을 누르는 순간 헤더·탭바가 사라진다 —
+    //    `ProjectViewChrome` 의 마운트 조건이 `params.projectKey` 이기 때문이다.
     const global = PROJECT_VIEW_TABS.filter((tab) => !tab.usesProjectParam).map((tab) => tab.key)
-    expect(global).toEqual(['calendar', 'dashboards', 'issues'])
+    expect(global).toEqual([])
   })
 
-  it('프로젝트 키를 search 로 싣는 탭은 이슈 하나뿐이고 라우트가 그 키를 검증한다', () => {
-    const withSearch = PROJECT_VIEW_TABS.filter(
-      (tab) => tab.projectKeySearchParam !== undefined,
-    ).map((tab) => tab.key)
-    expect(withSearch).toEqual(['issues'])
+  it('9탭의 `to` 가 전부 `/projects/$projectKey` 로 시작한다', () => {
+    // 위 단언은 플래그만 본다. 플래그를 true 로 둔 채 `to` 만 전역 경로로 적으면
+    // `resolveTabHref` 가 치환할 것이 없어 그대로 전역으로 나가는데 플래그 검사는 통과한다.
+    const escaping = PROJECT_VIEW_TABS.filter(
+      (tab) => !tab.to.startsWith('/projects/$projectKey'),
+    ).map((tab) => `${tab.key} → ${tab.to}`)
+    expect(escaping).toEqual([])
+  })
 
-    // 짝 검사 — 라우트가 `projectKey` 를 실제로 파싱하지 않으면 링크가 조용히 무시된다.
-    // `validateSearch` 는 함수 말고도 여러 형태를 받는 유니온이라 좁히고 쓴다. 함수가 아니면
-    // `parsed` 가 undefined 로 남아 아래 단언이 red 가 된다 — 조용히 통과하지 않는다.
-    const validateSearch = router.routesById[`${SHELL}/issues`]?.options.validateSearch
-    const parsed =
-      typeof validateSearch === 'function'
-        ? (validateSearch({ projectKey: PROJECT_KEY }) as { projectKey?: string })
-        : undefined
-    expect(parsed?.projectKey).toBe(PROJECT_KEY)
+  it('스코프 라우트 3종이 실제로 등록돼 있다 (편차 X9 폐기의 짝 검사)', () => {
+    // 탭 정의만 바꾸고 라우트를 안 만들면 「죽은 링크 0」 단언이 red 가 되지만, 그 단언 하나에
+    // 기대면 무엇이 왜 필요한지가 코드에서 사라진다. 신설 3종을 이름으로 못박는다.
+    for (const path of ['/projects/$projectKey/issues', '/projects/$projectKey/calendar', '/projects/$projectKey/dashboards']) {
+      expect(routeIds).toContain(`${SHELL}${path}`)
+    }
   })
 })
 
@@ -220,24 +221,37 @@ describe('resolveActiveTabIndex — 실 라우트 전수', () => {
     expect(resolveActiveTabIndex('/projects/ATLAS/settings/members', PROJECT_KEY)).toBe(-1)
   })
 
-  it('전역 링크 3종(편차 X9)은 어떤 실 라우트에서도 활성이 되지 않는다', () => {
-    // 탭바는 경로에 projectKey 가 있을 때만 마운트되므로 `/calendar` 등에서는 존재하지 않는다.
-    // 「활성이 될 수 있다」고 적으면 그 화면에 탭바가 있다는 거짓 인상을 남긴다.
-    const globalTabs: readonly ProjectViewTab[] = PROJECT_VIEW_TABS.filter(
-      (tab) => !tab.usesProjectParam,
-    )
-    expect(globalTabs).toHaveLength(3)
+  it('스코프 라우트 3종에서 각자의 탭이 활성이 된다 (편차 X9 폐기 · J5-12)', () => {
+    // 편차 X9 시절 이 자리에는 「전역 3탭은 어떤 라우트에서도 활성이 안 된다」가 있었다.
+    // 이제 반대가 계약이다 — 캘린더·대시보드·이슈 화면에서도 탭바가 남고 자기 탭이 강조된다.
+    const expectations: readonly (readonly [string, string])[] = [
+      ['/projects/ATLAS/issues', 'issues'],
+      ['/projects/ATLAS/calendar', 'calendar'],
+      ['/projects/ATLAS/dashboards', 'dashboards'],
+    ]
 
-    const reachable = shellRouteIds
+    for (const [pathname, key] of expectations) {
+      const index = resolveActiveTabIndex(pathname, PROJECT_KEY)
+      expect(PROJECT_VIEW_TABS[index]?.key).toBe(key)
+    }
+  })
+
+  it('9탭 어디서도 활성 탭이 2개 이상이 되지 않는다 (전수)', () => {
+    // 🛑 스코프 라우트 3종이 늘면서 접두 충돌 위험도 늘었다. 실 라우트 전수로 다시 확인한다.
+    expect(shellRouteIds.length).toBeGreaterThan(50)
+
+    const conflicts = shellRouteIds
       .map(toPathname)
       .filter((pathname) => pathname.startsWith('/projects/'))
-      .flatMap((pathname) =>
-        globalTabs
-          .filter((tab) => isTabActive(tab, pathname, PROJECT_KEY))
-          .map((tab) => `${pathname} → ${tab.key}`),
-      )
+      .map((pathname) => ({
+        pathname,
+        active: PROJECT_VIEW_TABS.filter((tab) => isTabActive(tab, pathname, PROJECT_KEY)).map(
+          (tab) => tab.key,
+        ),
+      }))
+      .filter((row) => row.active.length > 1)
 
-    expect(reachable).toEqual([])
+    expect(conflicts).toEqual([])
   })
 })
 

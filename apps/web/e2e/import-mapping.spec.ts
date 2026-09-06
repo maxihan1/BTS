@@ -83,7 +83,7 @@ const LS_KEY_IMPORT_FAIL = '__bts_e2e_import_fail'
 async function loginAndNavigateToImportPage(page: Page): Promise<void> {
   await loginAsAlice(page)
   await page.goto(IMPORT_URL)
-  await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 2 })).toBeVisible()
 }
 
 /**

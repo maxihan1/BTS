@@ -65,7 +65,7 @@ export function ProjectSlackChannelSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">Slack 채널</h1>
+        <h2 className="text-xl font-semibold">Slack 채널</h2>
         <p className="text-muted-foreground text-sm">
           이 프로젝트의 활동을 브로드캐스트할 Slack 채널을 관리합니다.
         </p>

@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 62개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가 | Jira 패리티 J4 캠페인 PR ④: projectSummaryRoute /projects/$projectKey 추가 — 프로젝트 기본 착지 | 부채 177: projectBoardSettingsRoute /projects/$projectKey/board/settings 추가 — 지라 Board settings Columns 탭)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 65개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가 | Jira 패리티 J4 캠페인 PR ④: projectSummaryRoute /projects/$projectKey 추가 — 프로젝트 기본 착지 | 부채 177: projectBoardSettingsRoute /projects/$projectKey/board/settings 추가 — 지라 Board settings Columns 탭 | Jira 패리티 J5-12 (2026-09-07): 편차 X9 폐기 — projectIssuesRoute /projects/$projectKey/issues · projectCalendarRoute /projects/$projectKey/calendar · projectDashboardsRoute /projects/$projectKey/dashboards 추가, 9탭 전량 프로젝트 스코프)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards, redirectToStartPage } from './auth/routeGuard'
 
@@ -116,31 +116,30 @@ const workflowsKeyRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/** 이슈 목록 search 파서의 반환 형태 — 전역·프로젝트 스코프 두 라우트가 공유한다 */
+interface IssueListSearch {
+  page?: number
+  status?: string | string[]
+  assignee?: string | string[]
+  label?: string | string[]
+  component?: string | string[]
+  sort?: string
+  selected?: string
+  projectKey?: string
+}
+
 /**
- * 이슈 목록 라우트 — /issues, requireAuth.
- * validateSearch로 page + status/assignee/label/component 필터 + sort 쿼리 파라미터 타입 선언.
- * 단일 문자열·배열 양쪽 허용 — 런타임 정규화는 searchToIssueFilter가 담당 (projectBoardRoute 패턴 미러).
- * sort는 `<field>,<dir>` 원문 문자열을 그대로 보존 — 파싱/검증은 issues.index.tsx parseSortParam이 담당
- * (FR-UX-06 Phase 5 PR18 Task 5 — 새로고침·공유 시 정렬 상태 URL 보존).
- * selected는 split view에서 상세 패널로 열린 이슈 키를 URL에 보존한다 (FR-UX-06 Phase 5 PR20 Task 4).
- * N4: page 기존 타입 보존, 타 search 콜백과 충돌 없음.
+ * 이슈 목록 쿼리 파라미터 파서.
+ *
+ * 🛑 **두 라우트가 이 함수 하나를 쓴다** — 전역 `/issues` 와 프로젝트 스코프
+ *    `/projects/$projectKey/issues`. 각자 적으면 한쪽에 필터를 추가했을 때 다른 쪽이 조용히
+ *    그 파라미터를 버린다(URL 공유가 반쪽이 된다). 이 저장소가 이름 붙인 「두 목록이 서로를
+ *    검사하지 않는다」 양식이라 목록을 아예 하나만 둔다.
+ *
+ * 스코프 라우트에서 `projectKey` 는 **params 가 이긴다** — 어댑터가 그렇게 해소한다.
  */
-const issuesIndexRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/issues',
-  component: IssueListRouteAdapter,
-  staticData: { requireAuth: true },
-  beforeLoad: requireAuthAndPasswordChanged,
-  validateSearch: (search: Record<string, unknown>): {
-    page?: number
-    status?: string | string[]
-    assignee?: string | string[]
-    label?: string | string[]
-    component?: string | string[]
-    sort?: string
-    selected?: string
-    projectKey?: string
-  } => ({
+function parseIssueListSearch(search: Record<string, unknown>): IssueListSearch {
+  return {
     page: typeof search['page'] === 'number' ? search['page'] : undefined,
     status: Array.isArray(search['status'])
       ? (search['status'] as string[])
@@ -166,7 +165,25 @@ const issuesIndexRoute = createRoute({
     selected: typeof search['selected'] === 'string' ? search['selected'] : undefined,
     // FR-UX-07 — 활성 프로젝트 명시 지정. 부재 시 어댑터가 저장값 → 첫 프로젝트로 해소한다.
     projectKey: typeof search['projectKey'] === 'string' ? search['projectKey'] : undefined,
-  }),
+  }
+}
+
+/**
+ * 이슈 목록 라우트 — /issues, requireAuth.
+ * validateSearch로 page + status/assignee/label/component 필터 + sort 쿼리 파라미터 타입 선언.
+ * 단일 문자열·배열 양쪽 허용 — 런타임 정규화는 searchToIssueFilter가 담당 (projectBoardRoute 패턴 미러).
+ * sort는 `<field>,<dir>` 원문 문자열을 그대로 보존 — 파싱/검증은 issues.index.tsx parseSortParam이 담당
+ * (FR-UX-06 Phase 5 PR18 Task 5 — 새로고침·공유 시 정렬 상태 URL 보존).
+ * selected는 split view에서 상세 패널로 열린 이슈 키를 URL에 보존한다 (FR-UX-06 Phase 5 PR20 Task 4).
+ * N4: page 기존 타입 보존, 타 search 콜백과 충돌 없음.
+ */
+const issuesIndexRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/issues',
+  component: IssueListRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: parseIssueListSearch,
 })
 
 /**
@@ -315,6 +332,65 @@ const projectTimelineRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/timeline',
   component: TimelineRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 프로젝트 스코프 이슈·캘린더·대시보드 — 편차 X9 폐기 (Jira 패리티 J5-12, Maxi 확정 2026-09-07)
+//
+// 정본 9탭 중 이 셋만 전역 라우트를 가리켜서, 누르는 순간 `ProjectViewChrome` 의 마운트 조건
+// (`params.projectKey` 존재)이 깨지고 **헤더와 탭바가 통째로 사라졌다**. Jira 는 캘린더·목록도
+// 스페이스 안의 탭이라 눌러도 스페이스 크롬이 남는다(J5-12, 실물 조회 2026-09-07).
+//
+// 전역 라우트 3종은 **그대로 둔다** — 사이드바의 「내 작업」 진입점이고 컴포넌트를 공유한다.
+// 같은 화면이 크롬 유무 두 문맥에서 도는 것을 `project-chrome-context.tsx` 가 흡수한다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 이슈 목록 라우트 — /projects/$projectKey/issues, requireAuth (FR-IS-01 · J5-12).
+ *
+ * 전역 `/issues` 와 **같은 컴포넌트·같은 search 파서**를 쓴다. 다른 것은 프로젝트 출처뿐이다 —
+ * 여기서는 `params.projectKey` 가 정하고, 전역에서는 `?projectKey=` → 저장값 → 첫 프로젝트로
+ * 해소한다(`useResolvedActiveProject`).
+ */
+const projectIssuesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/issues',
+  component: IssueListRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+  validateSearch: parseIssueListSearch,
+})
+
+/**
+ * 프로젝트 캘린더 라우트 — /projects/$projectKey/calendar, requireAuth (FR-CA-01 · J5-12).
+ *
+ * ⚠️ **편차 X-J5-13 — 탐색 패리티까지다.** 백킹 API 가 `GET /api/v1/users/me/calendar` 로
+ *    **개인** 캘린더고 프로젝트 파라미터가 없다(identity-access BC). 그래서 이 경로는 탭바를
+ *    유지하고 왕복을 가능하게 할 뿐, 내용을 프로젝트로 좁히지 않는다.
+ *
+ * 🛑 클라이언트에서 이슈 키 접두(`ATLAS-`)로 거르지 않는다 — 응답에 `truncated` 가 있어
+ *    **잘린 뒤 거르면 조용히 빈 화면**이 된다. 「좁힌 척」이 「안 좁힘」보다 나쁘다.
+ *    내용 필터는 백엔드 신규 계약이라 별건이다.
+ */
+const projectCalendarRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/calendar',
+  component: CalendarRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/**
+ * 프로젝트 대시보드 목록 라우트 — /projects/$projectKey/dashboards, requireAuth (FR-DB-01 · J5-12).
+ *
+ * ⚠️ **편차 X-J5-13 동일 적용.** 대시보드에는 프로젝트 연관 필드 자체가 없다. 탭바 유지가 목적이다.
+ */
+const projectDashboardsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/dashboards',
+  component: DashboardsRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
 })
@@ -932,6 +1008,10 @@ export const routeTree = rootRoute.addChildren([
     projectBoardSettingsRoute,
     // agile-planning BC — 프로젝트 타임라인(Gantt) (FR-TL-01)
     projectTimelineRoute,
+    // 프로젝트 스코프 이슈·캘린더·대시보드 — 편차 X9 폐기 (J5-12)
+    projectIssuesRoute,
+    projectCalendarRoute,
+    projectDashboardsRoute,
     // agile-planning BC — 스프린트 번다운/번업 차트 (FR-RP-01 D6/D7)
     projectSprintBurndownRoute,
     // issue-tracking BC — 프로젝트 목록·생성·일반 설정(details) (FR-PJ PR-5 Task 7)

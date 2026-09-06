@@ -44,7 +44,7 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
 
     // 3. 멤버 설정 페이지 직접 진입 (workflow-scheme E2E 와 동일 패턴 — 네비 링크 없음)
     await page.goto('/projects/ATLAS/settings/members')
-    await expect(page.getByRole('heading', { name: '멤버 설정', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '멤버 설정', level: 2 })).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────────

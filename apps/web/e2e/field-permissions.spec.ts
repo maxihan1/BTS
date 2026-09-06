@@ -120,7 +120,7 @@ test.describe('S1 필드 권한 규칙 생성 (FR-PM-07)', () => {
     await loginAsAlice(page)
     await seedXsrfCookie(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 2 })).toBeVisible()
   })
 
   test('S1-A CORE/environment + 개발팀 + VIEW 규칙 생성 → 목록 표시', async ({ page }) => {
@@ -189,7 +189,7 @@ test.describe('S2 필드 권한 규칙 삭제 (FR-PM-07)', () => {
     await loginAsAlice(page)
     await seedXsrfCookie(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 2 })).toBeVisible()
   })
 
   test('S2 삭제 — 인라인 확인 후 삭제 → 목록에서 사라짐', async ({ page }) => {
@@ -366,7 +366,7 @@ test.describe('S4 필드 권한 관리 권한 게이팅 (FR-PM-07)', () => {
 
     // When. 필드 권한 규칙 관리 페이지 진입 (이 goto부터 nonMemberProjectPermissions 반환)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 2 })).toBeVisible()
 
     // Then. "규칙 추가" 버튼 disabled (fail-closed)
     const addButton = page.getByRole('button', { name: '규칙 추가' })
@@ -380,7 +380,7 @@ test.describe('S4 필드 권한 관리 권한 게이팅 (FR-PM-07)', () => {
 
     // When. 필드 권한 규칙 관리 페이지 진입
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 2 })).toBeVisible()
 
     // Then. "규칙 추가" 버튼 disabled
     const addButton = page.getByRole('button', { name: '규칙 추가' })
@@ -414,7 +414,7 @@ test.describe('S4 필드 권한 관리 권한 게이팅 (FR-PM-07)', () => {
     // alice의 GET 권한은 여전히 adminProjectPermissions이므로 canManage=true.
     // msw-field-permission-403 플래그는 write 요청에만 403을 적용한다.
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '필드 권한 규칙 관리', level: 2 })).toBeVisible()
 
     // 규칙 추가 버튼 클릭 (alice는 canManage=true)
     await page.getByRole('button', { name: '규칙 추가' }).click()

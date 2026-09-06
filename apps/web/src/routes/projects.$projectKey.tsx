@@ -3,7 +3,6 @@ import type { JSX } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { ApiError } from '@/api/client'
 import { isProjectSummaryEmpty } from '@/api/project-summary'
-import { useProject } from '@/hooks/use-project'
 import { useProjectSummary } from '@/hooks/use-project-summary'
 import { SummaryCards } from '@/components/project/summary/SummaryCards'
 import { DistributionWidget } from '@/components/project/summary/DistributionWidget'
@@ -94,19 +93,19 @@ interface ProjectSummaryPageProps {
 /**
  * 프로젝트 요약 페이지 — `/projects/{key}` 의 착지 화면.
  *
- * 세 영역이 각자 자기 상태를 처리한다. 헤더(프로젝트 이름)는 `useProject`,
- * 집계는 `useProjectSummary`, 활동은 `useProjectActivity` 로 **서로 다른 쿼리**를 쓰므로
- * 하나가 죽어도 나머지가 남는다.
+ * 두 영역이 각자 자기 상태를 처리한다. 집계는 `useProjectSummary`, 활동은
+ * `useProjectActivity` 로 **서로 다른 쿼리**를 쓰므로 하나가 죽어도 나머지가 남는다.
+ * 프로젝트 이름은 셸의 `ProjectViewHeader` 가 소유하므로 이 화면은 조회하지 않는다(J5-11).
  *
  * @param projectKey 프로젝트 키
  */
 export function ProjectSummaryPage({ projectKey }: ProjectSummaryPageProps): JSX.Element {
-  const { data: project } = useProject(projectKey)
-
   return (
     <div className="space-y-6 p-8">
+      {/* 🛑 프로젝트 이름 h1 은 여기 없다 (Jira 패리티 J5-11 · 2026-09-07) — 셸의
+          `ProjectViewHeader` 가 **같은 문자열**을 탭바 위에서 이미 h1 으로 그린다.
+          되살리면 같은 이름이 두 줄로 겹치고 문서에 h1 이 2개가 된다. */}
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{project?.name ?? projectKey}</h1>
         <p className="text-muted-foreground text-sm">{labels.page.description}</p>
         <div className="flex gap-3 pt-2 text-sm">
           <Link

@@ -224,7 +224,7 @@ test.describe('보드 설정 (부채 177)', () => {
     await page.getByRole('menuitem', { name: boardLabels.actions.settingsItem }).click()
 
     await expect(
-      page.getByRole('heading', { level: 1, name: boardLabels.settings.pageHeading }),
+      page.getByRole('heading', { level: 2, name: boardLabels.settings.pageHeading }),
     ).toBeVisible()
     // 보드가 URL 로 실려 왔다 — 설정 화면은 기본 보드를 스스로 고르지 않는다(S8 의 짝).
     await expect(page).toHaveURL(new RegExp(`board=${BOARD_ID}`))
@@ -413,7 +413,7 @@ test.describe('보드 설정 (부채 177)', () => {
     await boardActionsTrigger(page).click()
     await page.getByRole('menuitem', { name: boardLabels.actions.settingsItem }).click()
     await expect(
-      page.getByRole('heading', { level: 1, name: boardLabels.settings.pageHeading }),
+      page.getByRole('heading', { level: 2, name: boardLabels.settings.pageHeading }),
     ).toBeVisible()
 
     const tabBar = settingsTabBar(page)

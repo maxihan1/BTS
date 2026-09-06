@@ -58,7 +58,7 @@ test.describe('E1 변수 삽입 — 커서 위치에 토큰 삽입 (FR-TM-02)', 
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('E1 본문에 보고자: 입력 후 작성자 변수 삽입 버튼 클릭 → {{author}} 토큰 삽입', async ({ page }) => {
@@ -123,7 +123,7 @@ test.describe('E2 변수 라운드트립 — create → store → refetch → ed
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('E2 생성 시 {{author}} 토큰 저장 → 수정 다이얼로그 프리필에 잔존', async ({ page }) => {
@@ -185,7 +185,7 @@ test.describe('E4 edit 프리필 + 본문 미포커스 → 끝에 append (FR-TM-
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('E4 본문 미포커스 상태에서 일자 변수 삽입 버튼 클릭 → 끝에 append', async ({ page }) => {
@@ -226,7 +226,7 @@ test.describe('E3 변수 도움말 표시 (FR-TM-02)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('E3 생성 다이얼로그 — 사용 가능 변수 도움말 + {{author}} 토큰 표시', async ({ page }) => {
