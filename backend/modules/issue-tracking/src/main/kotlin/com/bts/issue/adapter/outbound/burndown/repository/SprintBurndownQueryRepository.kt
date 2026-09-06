@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.util.UUID
 
 /**
  * TIMESTAMPTZ 컬럼을 UTC 벽시계 날짜로 변환하는 SQL 템플릿 (jOOQ `DSL.field` 바인딩용).
@@ -29,10 +30,12 @@ private const val UTC_DATE_SQL_TEMPLATE = "({0} AT TIME ZONE 'UTC')::date"
  * 어댑터에 있던 두 jOOQ 쿼리(추정 시간 합계·UTC 날짜별 worklog 집계)를 이 클래스로 추출했다
  * (동작 변경 없음, 순수 이동).
  *
- * ### 쿼리 2개 이하 — N+1 없음 (NFR3)
+ * ### 쿼리 고정 — N+1 없음 (NFR3)
  * 1. [sumOriginalEstimateSeconds] — `issues` 에서 `original_estimate_seconds` 합계 1쿼리.
- * 2. [aggregateWorklogsByUtcDate] — `worklogs JOIN issues` 로 UTC 날짜별 `time_spent_seconds` 합계 1쿼리.
- * 두 쿼리 모두 소프트 삭제(`deleted_at IS NULL`) 이슈/worklog 를 제외한다.
+ * 2. [findWorklogContributions] — `worklogs JOIN issues` 로 worklog 행을 그대로 읽는 1쿼리.
+ * 3. [findIssueStatusRows] — 개수 축(부채 177 task-35)의 완료 판정에 필요한 `issues` 스칼라 1쿼리.
+ * 세 쿼리 모두 소프트 삭제(`deleted_at IS NULL`) 이슈를 제외한다(2번은 worklog 도).
+ * ★쿼리 수는 이슈 수와 무관하게 고정이다 — 축이 하나 늘어난 만큼 문이 하나 늘었을 뿐이다.
  *
  * @param dsl jOOQ DSLContext.
  */
@@ -53,30 +56,87 @@ class SprintBurndownQueryRepository(
             ?.toLong() ?: 0L
     }
 
-    /** 미삭제 이슈에 속한 미삭제 worklog 를 UTC 날짜별로 합산한다. 같은 날짜당 1개 항목만 존재한다(pre-aggregate). */
+    /**
+     * 미삭제 이슈에 속한 미삭제 worklog 를 **1건당 1항목**으로 반환한다(사전 집계 없음).
+     *
+     * `started_at` 원본을 [WorklogContribution.startedAt] 으로 그대로 나른다 — 여기서 날짜로 뭉개면
+     * `10:00Z` 와 `23:30Z` 가 한 항목이 되고, `Asia/Seoul` 기준 일 귀속을 소비측이 복원할 수 없다(비단사).
+     * 합산은 소비측(agile-planning)이 자기 timezone 으로 버킷을 정한 뒤 수행한다.
+     *
+     * 반환 행 수는 「날짜별 1행」에서 「worklog 별 1행」으로 늘어난다. 상한은 대상 이슈의 미삭제
+     * worklog 총건수이고 스프린트 길이와 무관하다 — 근거와 배수 추정은
+     * [WorklogContribution] KDoc 의 「행 수」 절에 있다. 이 쿼리는 LIMIT 를 두지 않는다(변경 전과 동일).
+     */
     @Transactional(readOnly = true)
-    fun aggregateWorklogsByUtcDate(issueKeys: Set<String>): List<WorklogContribution> {
+    fun findWorklogContributions(issueKeys: Set<String>): List<WorklogContribution> {
         val startedOnUtcDate = utcDateField(WORKLOGS.STARTED_AT)
-        val sumField = DSL.sum(WORKLOGS.TIME_SPENT_SECONDS)
 
         return dsl
-            .select(startedOnUtcDate, sumField)
+            .select(WORKLOGS.STARTED_AT, startedOnUtcDate, WORKLOGS.TIME_SPENT_SECONDS)
             .from(WORKLOGS)
             .join(ISSUES).on(WORKLOGS.ISSUE_ID.eq(ISSUES.ID))
             .where(ISSUES.KEY.`in`(issueKeys))
             .and(ISSUES.DELETED_AT.isNull)
             .and(WORKLOGS.DELETED_AT.isNull)
-            .groupBy(startedOnUtcDate)
             .fetch { record ->
+                val startedAt = record.get(WORKLOGS.STARTED_AT)?.toInstant() ?: return@fetch null
                 val date = record.get(startedOnUtcDate) ?: return@fetch null
                 WorklogContribution(
                     startedOnUtcDate = date,
-                    timeSpentSeconds = record.get(sumField)?.toLong() ?: 0L,
+                    timeSpentSeconds = record.get(WORKLOGS.TIME_SPENT_SECONDS)?.toLong() ?: 0L,
+                    startedAt = startedAt,
                 )
             }
             .filterNotNull()
     }
+
+    /**
+     * 미삭제 이슈의 (id, 키, 타입 id, 현재 상태 키)를 스칼라 컬럼만으로 단일 조회한다
+     * (부채 177 task-35 · cartesian 위험 없음 — JOIN 이 없다).
+     *
+     * 개수 축의 완료 판정이 이 셋을 모두 필요로 한다.
+     * - `현재 상태 키` + `타입 id` — 지금 DONE 카테고리인가(타입별 워크플로우가 다르다).
+     * - `id` — 전환 이력([com.bts.issue.statushistory.repository.StatusHistoryRepository])의 조인 키.
+     *
+     * 형제 `SprintVelocityQueryRepository.fetchVelocityRows` 와 같은 모양이지만 그것을 재사용하지
+     * 않는다 — 그쪽은 추정 시간을 싣고 이슈 id 를 싣지 않는다. 남의 기능의 행 모양에 이 기능을
+     * 묶으면 한쪽이 칸을 바꿀 때 다른 쪽이 조용히 따라 바뀐다.
+     *
+     * [issueKeys] 가 비어 있으면 호출부가 이미 조기 반환하므로 빈 `IN` 절에 닿지 않는다.
+     */
+    @Transactional(readOnly = true)
+    fun findIssueStatusRows(issueKeys: Set<String>): List<BurndownIssueRow> =
+        dsl
+            .select(ISSUES.ID, ISSUES.KEY, ISSUES.TYPE_ID, ISSUES.CURRENT_STATE_KEY)
+            .from(ISSUES)
+            .where(ISSUES.KEY.`in`(issueKeys))
+            .and(ISSUES.DELETED_AT.isNull)
+            .fetch { record ->
+                BurndownIssueRow(
+                    issueId = record.get(ISSUES.ID) ?: error("issues.id must not be null"),
+                    issueKey = record.get(ISSUES.KEY) ?: error("issues.key must not be null"),
+                    typeId = record.get(ISSUES.TYPE_ID) ?: error("issues.type_id must not be null"),
+                    currentStateKey =
+                        record.get(ISSUES.CURRENT_STATE_KEY)
+                            ?: error("issues.current_state_key must not be null"),
+                )
+            }
 }
+
+/**
+ * [SprintBurndownQueryRepository.findIssueStatusRows] 조회 결과 1행 — 개수 축의 완료 판정 입력.
+ *
+ * @property issueId 이슈 UUID. 상태 전환 이력 조회의 키다.
+ * @property issueKey 이슈 키. 완료 목록이 실어 나르는 식별자다.
+ * @property typeId `issue_types.id`. 타입마다 워크플로우가 달라 카테고리 맵이 달라진다.
+ * @property currentStateKey 현재 상태 키. 「**지금** 완료인가」를 여기서 판정한다.
+ */
+data class BurndownIssueRow(
+    val issueId: UUID,
+    val issueKey: String,
+    val typeId: Long,
+    val currentStateKey: String,
+)
 
 /**
  * TIMESTAMPTZ 컬럼을 UTC 날짜([LocalDate])로 변환하는 jOOQ 표현식을 생성한다.

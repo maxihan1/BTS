@@ -305,6 +305,33 @@ function buildDragAnnouncements(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 카드 레이아웃 배선 — prop 이 네 겹을 지난다 (부채 177 Task 32 · J17·J18·J19)
+//
+// 보드 체인은 이렇다.
+//   `routes/projects.$projectKey.board.tsx`(`useBoard` 로 설정을 읽는다)
+//     → `KanbanBoard`(여기 · `board.cardLayout` 을 꺼낸다)
+//       → `BoardColumn`(두 렌더 분기 + 드래그 고스트)
+//         → `BoardCard`
+//           → `CardExtraFields`(`BOARD` 스코프만 읽어 2층을 그린다)
+// 백로그 체인은 `BacklogBoard` 가 같은 구성을 자기 조회로 읽어 두 칸에 나른다(그 파일 참조).
+//
+// ## 왜 context 로 안 바꾸나
+//
+// 겹이 깊다는 이유로 여기만 context 로 바꾸면 **관례가 갈린다.** 이 화면의 다른 축
+// (`assigneeNames` · `issueTypesByKey` · `isFilterActive` · `swimlaneField`)이 전부 같은
+// 깊이의 prop drilling 이고, 백로그도 마찬가지다. 하나만 context 가 되면 다음 사람이
+// 「무엇이 context 이고 무엇이 prop 인가」를 매번 확인해야 하고, 그 확인을 빠뜨린 자리가
+// 다시 배선 부재가 된다 — 이 task 가 닫는 결함이 정확히 그것이다.
+// 옮기려면 네 축을 **함께** 옮겨야 하고, 그것은 이 PR 의 범위가 아니다.
+//
+// ## 중간 겹이 값을 읽지 않는다는 규약
+//
+// `KanbanBoard`·`BoardColumn` 은 `cardLayout` 을 **해석하지 않는다.** 어느 스코프를 그릴지는
+// 카드 한 곳에서만 판정한다(Task 20). 중간에서 `?? []` 나 `BOARD ?? BACKLOG` 같은 보정을
+// 얹는 순간 판정이 두 곳이 되고, 그때부터 어느 쪽이 옳은지 아무도 모른다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -638,6 +665,10 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
               swimlaneField={board.swimlaneField}
               isFilterActive={isFilterActive}
               issueTypesByKey={issueTypesByKey}
+              // 카드 레이아웃 구성 — 컬럼을 지나 카드까지 내려간다 (부채 177 Task 32 · J17).
+              // ★새 조회가 아니라 **이미 손에 있는 `board`** 에서 꺼낸다. 보드 조회 응답이
+              //   설정을 함께 싣기 때문이다(Task 31 · N1) — 탭마다 왕복을 만들지 않는다.
+              cardLayout={board.cardLayout}
             />
           ))}
         </div>
@@ -651,6 +682,9 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
               assignee={assigneeNames.get(activeCard.issueKey) ?? UNASSIGNED}
               typeIconName={issueTypesByKey.get(activeCard.typeKey)?.iconName ?? null}
               typeName={issueTypesByKey.get(activeCard.typeKey)?.name ?? activeCard.typeKey}
+              // 드래그 고스트도 **같은 구성**을 받는다 — 빠뜨리면 집어 올리는 순간 카드가
+              // 한 층 줄어 들며 크기가 튄다 (`issueTypesByKey` 를 여기에도 넘기는 것과 같은 이유).
+              cardLayout={board.cardLayout}
             />
           ) : null}
         </DragOverlay>

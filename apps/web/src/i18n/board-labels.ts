@@ -296,21 +296,71 @@ export const boardLabels = {
   },
 
   /**
-   * 보드 설정 화면 (부채 177 · 지라 Board settings 의 Columns 탭).
+   * 보드 설정 화면 (부채 177 · 지라 Board settings).
    *
-   * 이 PR 은 **Columns 하나만** 만든다. 나머지 6탭을 비활성 골격으로 미리 그리지 않는다 —
-   * 「누를 수 있는데 아무 일도 안 일어나는」 화면을 6개 배포하는 것이라, 장부가 경계한
-   * 「도달할 UI 가 없는 기능」의 거울상이다(Maxi 확정 2026-09-04).
+   * ### 종전 주석과 무엇이 달라졌나 — 지우지 않고 남긴다
+   * `#452` 시점의 이 자리에는 「이 PR 은 **Columns 하나만** 만든다. 나머지 6탭을 비활성
+   * 골격으로 미리 그리지 않는다 — 「누를 수 있는데 아무 일도 안 일어나는」 화면을 6개
+   * 배포하는 것이라, 장부가 경계한 「도달할 UI 가 없는 기능」의 거울상이다」가 적혀 있었다
+   * (Maxi 확정 2026-09-04).
+   *
+   * ★**그 금지는 지금도 유효하다.** 달라진 것은 탭 수가 아니라 **누가 탭을 동작시키는가**다 —
+   * 부채 177 이 카드 레이아웃·추정·작업일·상세 보기 4탭을 **같은 PR 안에서 전부 동작시키므로**
+   * [settings.tabs] 의 5탭에 비활성 골격이 하나도 없다. 「준비 중」 류 문구도 두지 않는다.
+   * 그 문구야말로 위 금지가 가리키던 것이다.
+   *
+   * 스윔레인·퀵필터는 여전히 탭이 아니다 — 보드 화면 인라인에 그대로 둔다(편차 X3).
    */
   settings: {
     /** 화면 h1. 즉사 계약상 화면당 하나뿐이고 문자열이 곧 e2e 셀렉터다. */
     pageHeading: '보드 설정',
 
-    /** h1 아래 설명 */
-    pageDescription: '컬럼 구성과 워크플로우 상태 매핑을 바꿉니다.',
+    /**
+     * h1 아래 설명.
+     *
+     * ★**탭 라벨 5종(`컬럼`·`카드 레이아웃`·`추정`·`작업일`·`상세 보기`)을 한 글자도 넣지 않는다.**
+     * Playwright `getByText` 는 기본이 부분 일치라, 설명문이 탭 이름을 품으면 탭과 설명이 함께
+     * 잡혀 셀렉터가 strict mode 로 즉사한다 — 종전 문구(「컬럼 구성과 워크플로우 상태 매핑을
+     * 바꿉니다」)는 `컬럼` 을 품고 있었고, 그것이 Task 15 가 이 문구를 **일부러 그대로 둔** 이유다
+     * (탭이 다 붙기 전에 고치면 어느 라벨을 피해야 하는지 알 수 없었다).
+     *
+     * 내용도 함께 바꿨다. 종전 문구는 탭이 하나(Columns)일 때 쓴 것이라 탭이 다섯인 지금은
+     * 거짓이다. 대신 **다섯 탭이 공유하는 사실**을 말한다 — 이 화면의 모든 설정은 보드 단위다
+     * (스펙 R7 · 편차 X7). 그것이 사용자가 여기서 가장 자주 오해하는 축이다.
+     */
+    pageDescription: '이 보드에만 적용되는 설정입니다. 같은 프로젝트의 다른 보드는 바뀌지 않습니다.',
 
     /** 보드 화면으로 돌아가는 링크 */
     backToBoard: '보드로 돌아가기',
+
+    /**
+     * 탭바 라벨 5종 (부채 177 R1 · **J22** — *"On the Board settings screen, select the
+     * desired tab (Columns, Swimlanes, etc)"*).
+     *
+     * ★**서로 substring 이 되면 안 된다.** Playwright `getByRole('tab', { name })` 은 기본이
+     * 부분 일치라, 한 라벨이 다른 라벨을 품는 순간 두 탭이 잡혀 strict mode 로 즉사한다 —
+     * `workflow-editor-labels` 가 「다이어그램」을 고른 것과 같은 계약이고, 판정은
+     * `routes/projects.$projectKey.board.settings.test.tsx` 의 **T-BS-12** 가 진다.
+     */
+    tabs: {
+      /** 탭바(tablist) 의 접근성 이름. 이 화면의 tablist 는 하나뿐이다 */
+      ariaLabel: '보드 설정 탭',
+
+      /** Columns — `#452` 가 만든 기존 탭. 기본 탭이다 */
+      columns: '컬럼',
+
+      /** Card layout (J12 · J17 상한 3개 · J18 뷰별 구성) */
+      cardLayout: '카드 레이아웃',
+
+      /** Estimation (J13 · J36 시간 추적 · J37 스크럼 전용) */
+      estimation: '추정',
+
+      /** Working days (J14 · J38 근무일 · J39 비근무일 · J40 타임존) */
+      workingDays: '작업일',
+
+      /** Issue detail view (J15 · J47 그룹 4종 · J48 추가/삭제/정렬) */
+      detailView: '상세 보기',
+    },
 
     /**
      * `?board=` 없이 들어왔을 때의 안내.
@@ -476,6 +526,412 @@ export const boardLabels = {
 
     /** WIP 제한 표시 — 무제한일 때 */
     wipUnlimited: 'WIP 제한 없음',
+
+    /**
+     * 「추정」 탭 문구 (부채 177 Task 17 · **J36**·**J37**).
+     *
+     * ★**화면에 문자열을 박지 않는다.** `CardLayoutPanel` 이 문구를 자기 파일에 둔 것은 그
+     * task 의 허용 파일에 이 파일이 없었기 때문이고(`BacklogEpicPanel` 선례), 예외였다.
+     * 잠금 사유처럼 **사용자에게 규칙을 설명하는 문장**은 특히 i18n 자리에 있어야 한다 —
+     * 영어로 갈 때 길이가 크게 갈리는 문장이다.
+     */
+    estimation: {
+      /** 섹션 제목 */
+      estimationHeading: '시간 추적',
+
+      /**
+       * 섹션 설명.
+       *
+       * ★옵션 라벨(`잔여 추정 + 소요 시간`)을 **그대로 되풀이하지 않는다.** Playwright
+       * `getByText` 는 기본이 부분 일치라, 설명문이 라벨을 품으면 라디오와 설명이 함께 잡혀
+       * strict mode 로 즉사한다 — 탭 라벨끼리 substring 을 금지한 것과 같은 계약이다.
+       */
+      estimationDescription: '번다운이 진행을 계산하는 방식입니다.',
+
+      /** 라디오 그룹의 접근성 이름 */
+      groupLabel: '시간 추적 방식',
+
+      /** 시간을 추적하지 않는다 (J36) */
+      optionNone: '없음',
+
+      /**
+       * 원래 추정치에서 소요 시간을 뺀 값으로 진행을 잰다 (J36 —
+       * *"tracks progress by subtracting the value from the **Time spent** field from the
+       * original estimate"*).
+       */
+      optionRemainingAndSpent: '잔여 추정 + 소요 시간',
+
+      /**
+       * 칸반에서 잠기는 사유 (J37 — *"This setting can only be changed for company-managed
+       * scrum teams."*).
+       *
+       * ★**두 문장인 것이 요점이다.** 앞 문장이 J37 이고, 뒤 문장이 스펙 **E6** 다 —
+       * 보드 종류를 바꿔도 `time_tracking` 은 지워지지 않고 되돌리면 살아난다. 뒤 문장이 없으면
+       * 사용자는 잠긴 화면을 보고 「값이 날아갔다」고 읽는다.
+       *
+       * 서버가 뒤늦게 낸 **409** 에도 같은 문구를 쓴다 — 사용자가 할 다음 행동이 같기 때문이다.
+       */
+      kanbanLocked: '시간 추적은 스크럼 보드에서만 바꿀 수 있습니다. 저장된 값은 지워지지 않습니다.',
+
+      /** 저장 실패 — 상태 코드를 모르거나 그 밖의 실패 */
+      saveFailed: '시간 추적을 저장하지 못했습니다.',
+
+      /** 저장 실패 — 403 */
+      saveForbidden: '시간 추적을 바꿀 권한이 없습니다.',
+
+      /** 저장 재시도 버튼. 409 에는 그리지 않는다 — 재시도로 풀리지 않는 실패다 */
+      saveRetry: '다시 시도',
+    },
+
+    /**
+     * 「작업일」 탭 문구 (부채 177 Task 18 · **J38**·**J39**·**J40**).
+     *
+     * ★★**「미설정」과 「0개」는 다른 상태이고, 이 라벨 묶음이 그 구분을 화면에서 말한다**(스펙 R6).
+     * `standardDays` 가 `null` 이면 미설정이고 번다운은 **달력일 전부**를 센다(= 현행 동작 유지).
+     * 빈 배열은 「근무일 0개」라 서버가 400 이다(E1 · ideal 선 0 나눗셈). 두 상태에 각각
+     * [unsetNotice] 와 [zeroDaysHint] 라는 **다른 문구**가 있는 이유가 그것이다 — 한 문구로
+     * 뭉개면 설정을 한 번도 만지지 않은 보드가 「근무일 0개」로 읽히고, 사용자는 자기가 아무것도
+     * 안 했는데 무언가 잘못됐다고 믿는다.
+     */
+    workingDays: {
+      /** 표준 근무일 섹션 제목 (J38 — *"Standard working days"*) */
+      standardHeading: '표준 근무일',
+
+      /**
+       * 표준 근무일 섹션 설명.
+       *
+       * ★요일 라벨(`월요일` 등)을 되풀이하지 않는다 — Playwright `getByText` 부분 일치가
+       * 체크박스 라벨과 설명문을 함께 잡는다(형제 `estimation.estimationDescription` 과 같은 계약).
+       */
+      standardDescription: '팀이 보통 일하는 요일입니다. 번다운의 x축과 ideal 선이 이 요일만 셉니다.',
+
+      /** 요일 체크박스 묶음의 접근성 이름 */
+      daysGroupLabel: '표준 근무일 요일',
+
+      /**
+       * 요일 라벨 — 키는 백엔드 `WEEK_ORDER`(`VARCHAR(3)[]` 표기)와 같다.
+       *
+       * 「월」이 아니라 「월요일」인 것은 접근성 이름이기 때문이다. 한 글자짜리 이름은
+       * 스크린리더에서 무엇인지 알 수 없고, 다른 한 글자 라벨과 부분 일치로 엉킨다.
+       */
+      dayLabels: {
+        /** MON */
+        MON: '월요일',
+        /** TUE */
+        TUE: '화요일',
+        /** WED */
+        WED: '수요일',
+        /** THU */
+        THU: '목요일',
+        /** FRI */
+        FRI: '금요일',
+        /** SAT */
+        SAT: '토요일',
+        /** SUN */
+        SUN: '일요일',
+      },
+
+      /**
+       * **미설정** 안내 (스펙 R6).
+       *
+       * ★이 문구가 없으면 미설정 보드는 「요일 7개가 다 꺼진 화면」으로 보이고, 그것은
+       * 「근무일 0개」와 구분되지 않는다. 두 상태의 뜻이 정반대다 — 미설정은 달력일 **전부**,
+       * 0개는 근무일이 **하나도 없음**이다.
+       */
+      unsetNotice: '표준 근무일을 아직 설정하지 않았습니다. 번다운은 지금처럼 달력일 전부를 셉니다.',
+
+      /** 미설정 상태에서 요일 고르기를 시작하는 버튼 */
+      configureDays: '근무일 고르기',
+
+      /**
+       * 설정된 근무일을 다시 미설정으로 되돌리는 버튼.
+       *
+       * ★**막다른 골목을 여는 유일한 출구다.** 근무일 0개는 저장이 막히므로([zeroDaysHint]),
+       * 「근무일을 쓰지 않겠다」는 뜻은 값을 비우는 것이 아니라 미설정으로 되돌리는 것이다
+       * (백엔드 `WorkingDaysSettingsService` KDoc 이 사용자에게 그렇게 안내한다).
+       */
+      resetToUnset: '미설정으로 되돌리기',
+
+      /** 근무일을 전부 해제했을 때의 안내 — 저장이 막힌 이유와 다음 행동을 함께 말한다 (E1) */
+      zeroDaysHint: '근무일을 최소 하루 골라야 저장할 수 있습니다. 근무일을 쓰지 않으려면 미설정으로 되돌리세요.',
+
+      /** 비근무일 섹션 제목 (J39 — *"Non-working days"*) */
+      nonWorkingHeading: '비근무일',
+
+      /**
+       * 비근무일 섹션 설명 (스펙 E8).
+       *
+       * 스프린트 기간 밖 날짜도 저장된다는 사실을 화면에서 말한다 — 보드는 스프린트 기간을
+       * 모르고, 화면이 기간으로 걸러 버리면 스프린트가 바뀔 때마다 설정이 소실된다.
+       */
+      nonWorkingDescription: '휴일처럼 팀이 일하지 않는 날짜입니다. 지금 스프린트 기간 밖 날짜도 등록해 둘 수 있습니다.',
+
+      /** 날짜 입력의 접근성 이름 (J39 — *"select a date using the date picker"*) */
+      dateInputLabel: '비근무일 날짜',
+
+      /** 날짜 추가 버튼 (J39 — *"then select Add date"*) */
+      addDate: '날짜 추가',
+
+      /**
+       * 비근무일 삭제 버튼의 접근성 이름.
+       *
+       * 날짜를 이름에 넣는 이유는 목록에 같은 이름의 버튼이 여러 개 생기기 때문이다 —
+       * 이름이 같으면 셀렉터가 strict mode 로 즉사한다(`reorderHandleLabel` 과 같은 관용구).
+       *
+       * @param date ISO-8601 날짜.
+       */
+      removeDate: (date: string): string => `비근무일 ${date} 삭제`,
+
+      /** 비근무일이 하나도 없을 때 — 회색 빈칸으로 두면 조회 실패로 읽힌다 */
+      noDates: '등록된 비근무일이 없습니다.',
+
+      /** 타임존 섹션 제목 (J40) */
+      timezoneHeading: '타임존',
+
+      /** 타임존 섹션 설명 — 소비처가 무엇인지 말한다 (스펙 R10) */
+      timezoneDescription: '작업 기록이 어느 날짜에 속하는지 가르는 기준입니다.',
+
+      /** 지역 드롭다운 라벨 (J40 — *"select a Region"*) */
+      regionLabel: '지역',
+
+      /** 지역 드롭다운의 값 없음 표시 */
+      regionPlaceholder: '지역을 고르세요',
+
+      /** 지역 검색 입력 placeholder */
+      regionSearch: '지역 검색',
+
+      /** 타임존 드롭다운 라벨 (J40 — *"then Timezone from the dropdowns"*) */
+      timezoneLabel: '타임존',
+
+      /** 타임존 드롭다운의 값 없음 표시 */
+      timezonePlaceholder: '타임존을 고르세요',
+
+      /** 타임존 검색 입력 placeholder */
+      timezoneSearch: '타임존 검색',
+
+      /** 검색 결과가 없을 때 */
+      comboboxEmpty: '일치하는 항목이 없습니다.',
+
+      /** 타임존 미설정 안내 — 미설정은 UTC 기준이다 (스펙 E7) */
+      timezoneUnset: '타임존을 설정하지 않으면 UTC 기준으로 셉니다.',
+
+      /**
+       * 저장 버튼.
+       *
+       * ★그냥 「저장」이 아닌 이유는 이 화면에 다른 저장 조작이 함께 설 수 있기 때문이다 —
+       * Playwright `getByRole('button', { name })` 은 기본이 부분 일치라 짧은 이름은 다른
+       * 버튼에 먹힌다(탭 라벨 substring 금지와 같은 계약).
+       */
+      save: '작업일 설정 저장',
+
+      /** 저장 성공 — 조작 즉시 저장이 아니라 버튼 저장이므로 결과를 화면에 남긴다 */
+      saved: '작업일 설정을 저장했습니다.',
+
+      /** 저장 실패 — 상태 코드를 모르거나 그 밖의 실패 */
+      saveFailed: '작업일 설정을 저장하지 못했습니다.',
+
+      /** 저장 실패 — 403 */
+      saveForbidden: '작업일 설정을 바꿀 권한이 없습니다.',
+
+      /**
+       * 저장 실패 — 400.
+       *
+       * 화면이 0개와 비-IANA 타임존을 미리 막는데도 이 문구가 필요한 이유는 **경합과 시간대 DB
+       * 차이** 때문이다. 다른 관리자가 그 사이 보드를 바꿨거나, 브라우저의 타임존 목록에는 있고
+       * 서버 JVM 의 tzdb 에는 없는 지역을 고를 수 있다. 재시도로 풀리지 않으므로 재시도 버튼을
+       * 주지 않는다(형제 `estimation.kanbanLocked` 와 같은 결).
+       */
+      saveInvalid: '작업일 설정 값을 확인해 주세요. 근무일과 타임존을 다시 고르면 저장할 수 있습니다.',
+
+      /** 저장 재시도 버튼. 400 에는 그리지 않는다 — 같은 값을 다시 보내도 같은 400 이다 */
+      saveRetry: '다시 시도',
+    },
+
+    /**
+     * 「상세 보기」 탭 문구 (부채 177 Task 19 · **J46**·**J47**·**J48**).
+     *
+     * 이 구성의 소비자는 **이슈 상세 화면**이다 — 모달과 사이드패널 두 표현이 같은 구성을
+     * 읽어야 한다(스펙 R7c). 그래서 [description] 이 「어디에 반영되는지」를 화면에서 말한다.
+     * 한쪽만 반영되는 회귀는 문구가 없으면 사용자가 설정 화면에서 알아챌 방법이 없다.
+     *
+     * ★**그룹 라벨과 필드 라벨이 서로 substring 이 되면 안 된다.** Playwright `getByText` 는
+     * 기본이 부분 일치라, 「링크」 그룹 안에 「이슈 링크」 필드를 두면 그룹 제목과 필드 이름이
+     * 함께 잡혀 strict mode 로 즉사한다 — 그래서 그 필드는 [fieldLabels.issueLinks] 처럼
+     * 「연결된 이슈」다(탭 라벨끼리 substring 을 금지한 것과 같은 계약).
+     *
+     * ★**탭 라벨 5종(`컬럼`·`카드 레이아웃`·`추정`·`작업일`·`상세 보기`)을 문구에 넣지 않는다.**
+     * 같은 이유이고, 이 탭은 탭 라벨이 `상세 보기` 라 특히 가깝다.
+     */
+    detailView: {
+      /** 섹션 제목 (J46 — *"Issue Detail View"*) */
+      heading: '이슈를 열었을 때 보이는 필드',
+
+      /**
+       * 섹션 설명.
+       *
+       * 소비처를 말한다(R7c) — 「모달과 사이드패널 양쪽」이 이 구성을 읽는다. 그 사실을 화면에
+       * 두지 않으면 사용자는 어느 화면이 바뀌는지 모른 채 설정하게 된다.
+       */
+      description: '이슈를 모달로 열든 사이드패널로 열든 여기서 정한 필드가 같은 순서로 보입니다.',
+
+      /**
+       * 필드 그룹 4종의 이름 (J47 — *"General fields, Date fields, People, and Links"*).
+       *
+       * 키는 백엔드 `DETAIL_VIEW_FIELD_GROUPS` 와 같고, 선언 순서가 곧 화면 4구획의 위→아래 순서다.
+       */
+      groupLabels: {
+        /** GENERAL — *"General fields"* */
+        GENERAL: '일반 필드',
+        /** DATE — *"Date fields"* */
+        DATE: '날짜 필드',
+        /** PEOPLE — *"People"* */
+        PEOPLE: '사람',
+        /** LINKS — *"Links"* */
+        LINKS: '링크',
+      },
+
+      /**
+       * 필드 키 → 사람이 읽는 이름.
+       *
+       * ★**이 목록이 곧 후보 카탈로그의 허용 키다.** `DetailViewPanel` 의 그룹별 후보 배열이
+       * `keyof typeof fieldLabels` 로 타입 지어져 있어, 여기 없는 키를 후보에 넣으면 `tsc` 가
+       * 막는다 — 「두 목록이 서로를 검사하지 않는」 자리를 타입으로 닫은 것이다.
+       *
+       * 키는 `IssueResponse`(`api/issues.ts`)의 필드 이름을 따른다. 이 구성을 읽어 실제로
+       * 그리는 것은 Task 21 이고, 그때 키 하나가 렌더러 하나에 대응한다.
+       */
+      fieldLabels: {
+        /** currentStateKey — 워크플로우 상태 */
+        status: '상태',
+        /** typeKey */
+        issueType: '이슈 종류',
+        /** priority */
+        priority: '우선순위',
+        /** impact */
+        impact: '영향도',
+        /** resolution */
+        resolution: '해결',
+        /** labels */
+        labels: '라벨',
+        /** componentIds */
+        components: '컴포넌트',
+        /** environment */
+        environment: '환경',
+        /** securityLevelId */
+        securityLevel: '보안 등급',
+        /** fixVersionIds */
+        fixVersions: '수정 버전',
+        /** affectsVersionIds */
+        affectsVersions: '영향 버전',
+        /** createdAt */
+        createdAt: '생성일',
+        /** updatedAt */
+        updatedAt: '수정일',
+        /** startDate */
+        startDate: '시작일',
+        /** dueDate */
+        dueDate: '마감일',
+        /** assigneeId */
+        assignee: '담당자',
+        /** reporterId */
+        reporter: '보고자',
+        /** watchers */
+        watchers: '감시자',
+        /** ★그룹 이름 「링크」를 품지 않는다 — 위 substring 계약 */
+        issueLinks: '연결된 이슈',
+        /** parent */
+        parent: '상위 이슈',
+        /** epic */
+        epic: '에픽',
+      },
+
+      /**
+       * 한 그룹의 필드 목록(ul)의 접근성 이름.
+       *
+       * 그룹 이름을 넣는 이유는 목록이 화면에 넷이기 때문이다 — 이름이 같으면 셀렉터가
+       * strict mode 로 즉사한다.
+       *
+       * @param group 그룹 이름([groupLabels] 의 값).
+       */
+      listLabel: (group: string): string => `${group} 목록`,
+
+      /**
+       * 그 그룹에 필드가 하나도 없을 때 (빈 상태).
+       *
+       * ★회색 빈칸으로 두지 않는다 — 사용자가 조회 실패로 읽는다(형제 `workingDays.noDates`
+       * 와 같은 온도). 그룹 이름을 넣어 넷이 동시에 비어도 문구가 겹치지 않게 한다.
+       *
+       * @param group 그룹 이름.
+       */
+      emptyGroup: (group: string): string => `${group}에 표시할 필드가 없습니다. 아래에서 골라 추가하세요.`,
+
+      /**
+       * 후보 드롭다운의 접근성 이름이자 값 없을 때의 표시 문구 (J48 — *"select the field from
+       * one of the dropdown menus"*).
+       *
+       * @param group 그룹 이름.
+       */
+      candidateLabel: (group: string): string => `${group}에 추가할 필드`,
+
+      /**
+       * 추가 버튼 (J48 — *"and then select **Add**"*).
+       *
+       * 그냥 「추가」가 아닌 이유는 이 화면에 추가 버튼이 넷이기 때문이다 —
+       * `getByRole('button', { name })` 이 기본 부분 일치라 짧은 이름은 넷을 다 잡는다.
+       *
+       * @param group 그룹 이름.
+       */
+      addField: (group: string): string => `${group}에 추가`,
+
+      /**
+       * 삭제 버튼의 접근성 이름 (J48 — *"select **Delete**"*).
+       *
+       * @param group 그룹 이름.
+       * @param field 필드 이름.
+       */
+      removeField: (group: string, field: string): string => `${group}에서 ${field} 삭제`,
+
+      /**
+       * 순서 드래그 핸들의 접근성 이름 (J48 — *"drag and drop the field up or down"*).
+       *
+       * @param group 그룹 이름.
+       * @param field 필드 이름.
+       */
+      reorderHandle: (group: string, field: string): string => `${group}의 ${field} 순서 바꾸기`,
+
+      /**
+       * 그 그룹의 후보를 다 쓴 상태.
+       *
+       * 비활성 드롭다운만 남기면 사용자가 고장으로 읽는다 — 사유를 문장으로 준다.
+       *
+       * @param group 그룹 이름.
+       */
+      allAdded: (group: string): string => `${group}에 고를 수 있는 필드를 모두 추가했습니다.`,
+
+      /** 후보 검색 입력 placeholder. 팝오버는 한 번에 하나만 열리므로 그룹별로 나누지 않는다 */
+      candidateSearch: '필드 검색',
+
+      /** 후보 검색 결과가 없을 때 */
+      candidateEmpty: '일치하는 필드가 없습니다.',
+
+      /** 저장 실패 — 상태 코드를 모르거나 그 밖의 실패 */
+      saveFailed: '상세 화면 구성을 저장하지 못했습니다.',
+
+      /** 저장 실패 — 403 */
+      saveForbidden: '상세 화면 구성을 바꿀 권한이 없습니다.',
+
+      /**
+       * 저장 실패 — 400.
+       *
+       * 화면은 그룹 4종만 보내므로 정상 경로에서는 나오지 않는다. 그럼에도 문구를 두는 이유는
+       * 서버가 그룹 집합을 좁히는 날 화면이 **raw 코드**를 내보이지 않게 하기 위해서다.
+       * 재시도로 풀리지 않으므로 재시도 버튼을 주지 않는다(형제 `workingDays.saveInvalid` 와 같은 결).
+       */
+      saveInvalid: '이 보드가 지원하지 않는 필드 묶음입니다. 화면을 새로고침한 뒤 다시 시도하세요.',
+
+      /** 저장 재시도 버튼. 400 에는 그리지 않는다 */
+      saveRetry: '다시 시도',
+    },
 
   },
 } as const

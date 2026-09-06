@@ -40,6 +40,8 @@ const burndownFixture: BurndownResponse = {
   startDate: '2026-07-01',
   endDate: '2026-07-10',
   totalScopeSeconds: 36000,
+  // 백엔드 `BurndownResponse.unit` 은 non-null 이라 스키마도 필수다(부채 177 task-38).
+  unit: 'SECONDS',
   points: [pointFixture, futurePointFixture],
 }
 

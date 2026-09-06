@@ -246,7 +246,13 @@ class AgilePlanningTestcontainersConfig {
                 issueKeys: Set<String>,
                 projectKey: String,
                 viewerUserId: UUID,
-            ): BurndownSource = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
+            ): BurndownSource =
+                BurndownSource(
+                    totalOriginalEstimateSeconds = 0,
+                    worklogEntries = emptyList(),
+                    visibleIssueCount = 0,
+                    issueCompletions = emptyList(),
+                )
         }
 
     /**

@@ -22,7 +22,8 @@ import java.util.UUID
  * 요구하지 않으므로 postgres:16-alpine 이미지로 충분하다 (UserNotificationSubsSchemaTest 동일 결정).
  *
  * 검증 범위 (FR-BD-01 §데이터 모델 + FR-BD-03 V501 WIP/스윔레인).
- * - boards 테이블 존재 + 7개 컬럼(id/project_key/name/created_at/updated_at/deleted_at/swimlane_field)
+ * - boards 테이블 존재 + 11개 컬럼(id/project_key/name/created_at/updated_at/deleted_at/swimlane_field
+ *   + V505 board_type + V509 time_tracking/working_days/board_timezone)
  * - boards.deleted_at NULL 허용(소프트 삭제) / project_key·name·created_at·updated_at NOT NULL
  * - 부분 인덱스 idx_boards_project_key — boards(project_key) WHERE deleted_at IS NULL
  * - board_columns 테이블 존재 + 7개 컬럼(id/board_id/state_key/name/category/display_order/wip_limit)
@@ -74,7 +75,9 @@ class BoardSchemaMigrationTest {
                 "wip_limit",
             )
 
-        // boards 가 V501 이후 보유해야 하는 7개 컬럼 (swimlane_field 추가).
+        // boards 가 V509 이후 보유해야 하는 11개 컬럼.
+        // ★ 숫자는 리스트와 **함께** 갱신한다 — V505 가 board_type 을 더하면서 이 주석만 「7개」로
+        //   남겨 8칸 리스트와 어긋나 있었다(부채 177 Task 28 에서 정정). 정본은 언제나 리스트다.
         private val BOARDS_COLUMNS_V501 =
             listOf(
                 "id",
@@ -86,6 +89,11 @@ class BoardSchemaMigrationTest {
                 "swimlane_field",
                 // V505 — 보드 종류(SCRUM/KANBAN)
                 "board_type",
+                // V509 — 추정 탭 시간 추적(J36)
+                "time_tracking",
+                // V509 — 작업일 탭 표준 근무일(J38) · 보드 타임존(J40)
+                "working_days",
+                "board_timezone",
             )
 
         // board_quick_filters 가 보유해야 하는 6개 컬럼 (V504 FR-UX-01 퀵 필터).
@@ -379,8 +387,37 @@ class BoardSchemaMigrationTest {
         assertThat(tableExists("boards")).isTrue()
     }
 
+    /**
+     * boards 의 컬럼 집합을 [BOARDS_COLUMNS_V501] 과 **완전 일치**로 잰다.
+     * (목록 이름의 V501 은 이 상수가 생긴 이력일 뿐 범위가 아니다 — 지금은 V509 까지 누적이다.)
+     *
+     * **왜 완전 일치인가.** 부분집합(`containsAll`)으로 재면 「빠진 칸」만 잡고 「새로 생긴 칸」은
+     * 조용히 통과시킨다. 이 가드의 목적은 정확히 그 반대다 — **누가 boards 에 칸을 더하면 반드시
+     * 눈에 띄게** 하는 것. boards 에 칸이 소리 없이 늘면 init_codegen.sql 미러 누락(jOOQ 상수가
+     * 안 생겨 repository 가 컴파일조차 안 된다)·응답 DTO 누락이 리뷰를 그냥 통과한다.
+     * 그러므로 이 단언을 느슨하게 바꾸지 말 것 — `containsExactlyInAnyOrder` 를 `containsAll` 이나
+     * 부분집합으로 바꾸는 순간 이 가드는 죽는다. **목록을 갱신하는 것이 정답이다.**
+     *
+     * **갱신을 잊으면 어떻게 드러나는가.** 실패 원문의 마지막 줄 방향으로 바로 갈린다.
+     * - `but the following elements were unexpected: [...]` — DB 에는 있는데 목록이 모른다.
+     *   마이그레이션이 칸을 더했고 이 목록을 안 고친 것이다. 고칠 곳은 **목록**이다.
+     * - `but could not find the following elements: [...]` — 목록에는 있는데 DB 에 없다.
+     *   마이그레이션이 안 돌았거나 칸이 사라진 것이다. 고칠 곳은 목록이 아니라 **마이그레이션**이다.
+     *
+     * ★ **자기 클래스만 지목해 돌리면 이 red 를 못 본다.** 2026-09-06 실측 이력 — V509(부채 177
+     *   Task 1)가 time_tracking · working_days · board_timezone 3칸을 더했을 때 그 task 도
+     *   후속 task 도 `--tests '*BoardSettingsMigrationTest'` 로 **자기 클래스만** 돌렸다.
+     *   같은 패키지의 이 클래스는 한 번도 실행되지 않아 red 가 머지 직전까지 숨어 있었다.
+     *   그때의 실패 원문이 아래이고, 방향은 unexpected 였다.
+     *
+     *       but the following elements were unexpected:
+     *         ["time_tracking", "working_days", "board_timezone"]
+     *
+     *   boards 에 칸을 더하는 task 는 **패키지 전체**를 돌린다.
+     *   `./gradlew :modules:agile-planning:test --tests 'com.bts.agileplanning.migration.*'`
+     */
     @Test
-    fun `V501 boards 7개 컬럼 존재 (swimlane_field 추가)`() {
+    fun `V509 boards 11개 컬럼 존재 (V505 종류 · V509 설정 3칸 누적)`() {
         assertThat(columnsOf("boards"))
             .containsExactlyInAnyOrderElementsOf(BOARDS_COLUMNS_V501)
     }
@@ -440,7 +477,7 @@ class BoardSchemaMigrationTest {
     }
 
     @Test
-    fun `V500 board_columns 6개 컬럼 존재`() {
+    fun `V501 board_columns 7개 컬럼 존재 (V501 wip_limit 누적)`() {
         assertThat(columnsOf("board_columns"))
             .containsExactlyInAnyOrderElementsOf(BOARD_COLUMNS_COLUMNS)
     }

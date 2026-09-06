@@ -55,8 +55,20 @@ export const burndownLabels = {
   chart: {
     /** 차트 컨테이너 aria-label — 차트 목적과 시리즈를 서술 */
     ariaLabel: '번다운 차트, 스프린트의 잔여 작업량과 이상적인 소진 추이, 범위 변화를 선으로 보여줍니다',
-    /** Y축 제목 — 값 단위(시간) */
-    yAxisTitle: '시간',
+    /**
+     * Y축 제목 — **단위별**. 키는 백엔드 `BurndownUnit` 값이다(부채 177 task-38).
+     *
+     * ★한 문자열로 두면 안 된다. 보드 「추정」 탭이 `NONE` 이면 세로축이 이슈 **개수**라
+     * 「시간」이라는 제목 자체가 거짓이 된다. 소비처(`BurndownChart`)가 이 객체를
+     * `Record<BurndownUnit, string>` 으로 받으므로, 백엔드 열거형에 값이 늘면 **컴파일이 깨져**
+     * 여기를 빠뜨릴 수 없다.
+     */
+    yAxisTitle: {
+      /** 초 축 — `time_tracking = REMAINING_AND_SPENT` */
+      SECONDS: '시간',
+      /** 개수 축 — `time_tracking = NONE` */
+      ISSUE_COUNT: '개',
+    },
   },
 } as const
 

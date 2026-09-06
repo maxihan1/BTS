@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 import type { IssueTypeResponse } from '@/api/issue-types'
+import type { CardLayout } from '@/api/boards'
 import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { SprintColumnHeader } from './SprintColumnHeader'
@@ -41,6 +42,13 @@ export interface SprintColumnProps {
    * 원문 fallback 경로를 탄다 (FR6).
    */
   issueTypesByKey: Map<string, IssueTypeResponse>
+  /**
+   * 이 보드의 **뷰별** 카드 레이아웃 구성 (부채 177 Task 32 · J18).
+   *
+   * 칸은 값을 **읽지 않고** 카드에 그대로 넘긴다 — 스코프(`BACKLOG`) 판정은 카드가 한 곳에서만
+   * 한다(Task 20). 스프린트 칸과 백로그 칸은 **같은 뷰**라 같은 구성을 그린다.
+   */
+  cardLayout?: CardLayout
   /** 드래그 카드가 이 칸 위에 있는지 여부. 하이라이트에 사용 */
   isOver?: boolean
   /**
@@ -87,6 +95,7 @@ function SprintColumnInner({
   issues,
   assigneeNames,
   issueTypesByKey,
+  cardLayout,
   isOver = false,
   onStart,
   onComplete,
@@ -165,6 +174,7 @@ function SprintColumnInner({
                   assigneeName={assigneeNames.get(issue.key)}
                   typeIconName={cardType.iconName}
                   typeName={cardType.typeName}
+                  cardLayout={cardLayout}
                 />
               )
             })

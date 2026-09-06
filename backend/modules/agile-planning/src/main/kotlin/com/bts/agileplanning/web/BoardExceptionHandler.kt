@@ -3,14 +3,21 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardStateNotMappedException
+import com.bts.agileplanning.application.CardLayoutInvalidException
 import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.DetailViewFieldGroupInvalidException
 import com.bts.agileplanning.application.DuplicateStateKeysException
+import com.bts.agileplanning.application.EstimationBoardNotFoundException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.QuickFilterEmptyQueryException
 import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
 import com.bts.agileplanning.application.StateAlreadyMappedException
+import com.bts.agileplanning.application.TimeTrackingBoardNotScrumException
+import com.bts.agileplanning.application.TimeTrackingInvalidException
+import com.bts.agileplanning.application.WorkingDaysBoardNotFoundException
+import com.bts.agileplanning.application.WorkingDaysInvalidException
 import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardTypeInvalidException
 import org.slf4j.LoggerFactory
@@ -44,13 +51,38 @@ class BoardAccessDeniedException : RuntimeException("권한이 없습니다.")
  */
 class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니다.")
 
+private const val VALIDATION_FALLBACK_DETAIL = "요청 값이 올바르지 않습니다."
+private const val CONFLICT_FALLBACK_DETAIL = "다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요."
+
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [assignableTypes] 를 [BoardController]·[BoardQuickFilterController] 로 한정하여 SprintController 등
- * 다른 컨트롤러의 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
+ * [assignableTypes] 를 보드 계열 컨트롤러 여섯으로 한정하여 SprintController 등 다른 컨트롤러의 예외를
+ * 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
  * [BoardQuickFilterController](FR-UX-01) 가 재사용하는 401/403/404 가 catch-all 로 500 변질되지 않으려면
  * 이 목록에 포함되어야 한다(리뷰 BLOCKER-B/C — 별도 전역 advice 신설 대신 assignableTypes 를 확장한다).
+ *
+ * ### 보드 설정 탭 컨트롤러 넷도 이 목록에 있다 (부채 177 Task 29)
+ * [BoardCardLayoutController] · [BoardEstimationController] · [BoardWorkingDaysController] ·
+ * [BoardDetailViewController] 는 **같은 설정 화면의 네 탭**이다. 이 목록에 없던 동안 넷이 서로 다르게
+ * 우회했다 — 둘은 [ResponseStatusException] 계열만 던져 상태 코드만 맞췄고(본문이 빈 채로 나갔다),
+ * 하나는 자기 파일 안에 별도 advice 를 뒀다. 그 결과 한 화면의 네 탭이 **서로 다른 오류 본문**을 냈고
+ * 프론트가 탭마다 다르게 파싱해야 했다. 넷을 여기로 모아 봉투를 하나로 만든다
+ * (`BoardSettingsTabErrorEnvelopeTest` 가 네 탭의 404 본문이 서로 같은지를 잰다).
+ *
+ * ### ★ [assignableTypes] 는 **열거**다 — 다섯 번째 탭이 같은 자리를 또 밟는다
+ * 이 목록은 컨트롤러를 하나씩 적어 두는 방식이라, 새 컨트롤러를 만든 사람이 여기에 자기 이름을
+ * 더하는 것을 잊으면 **조용히 안 덮인다.** 컴파일도 통과하고 정상 경로 테스트도 전부 초록이라
+ * 오류를 실제로 내 보기 전에는 드러나지 않는다. 넷이 각자 우회를 만든 원인이 바로 그것이다.
+ *
+ * ★게다가 오류 경로가 [ResponseStatusException] 계열이면 이 advice 를 통째로 지워도 **상태 코드는
+ * 그대로 나온다**(Spring 의 `ResponseStatusExceptionResolver`). 「404 인가」만 재는 테스트는
+ * 덮였는지 아닌지를 전혀 재지 못한다 — `BoardSettingsTabErrorEnvelopeTest` KDoc 의 뮤테이션 X2 가
+ * 그 실측이다. 그래서 그 파일은 상태 코드가 아니라 본문 봉투를 잰다.
+ *
+ * 열거를 패키지 스캔이나 공통 마커 인터페이스로 바꾸는 것은 이 자리에서 하지 않는다 —
+ * 스코프가 넓어지면 [SprintExceptionHandler] 등 형제 advice 관할까지 삼킨다. 후속 처방 후보는
+ * `TODOS.md` 의 「agile-planning — 보드 오류 봉투 advice 가 대상 컨트롤러를 손으로 열거한다」에 있다.
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/404/409/422 등을 500 으로 변질시키지 못하게 한다
@@ -65,7 +97,9 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  *   맨 [IllegalArgumentException] 이 아니라 이 한 타입만 잡는다 — 넓히면 두 컨트롤러 호출 사슬의
  *   내부 `require`/`check` 버그와 [NumberFormatException] 까지 400 으로 나가 5xx 경보에서 사라진다.
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
- * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
+ * - [BoardNotFoundException] · [WorkingDaysBoardNotFoundException] · [EstimationBoardNotFoundException]
+ *   → 404 + AGILE_BOARD_NOT_FOUND
+ * - [WorkingDaysInvalidException] → 400 + AGILE_VALIDATION_FAILED (사유를 detail 에 싣는다)
  * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
  * - [QuickFilterLimitExceededException] → 409 + AGILE_QUICK_FILTER_LIMIT_EXCEEDED (코드리뷰 CONCERN-1/2 — 상한 초과를
  *   OCC 충돌 문구와 구분)
@@ -81,7 +115,16 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라 클래스 단위로 억제한다.
  */
 @Suppress("TooManyFunctions")
-@RestControllerAdvice(assignableTypes = [BoardController::class, BoardQuickFilterController::class])
+@RestControllerAdvice(
+    assignableTypes = [
+        BoardController::class,
+        BoardQuickFilterController::class,
+        BoardCardLayoutController::class,
+        BoardEstimationController::class,
+        BoardWorkingDaysController::class,
+        BoardDetailViewController::class,
+    ],
+)
 class BoardExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -144,6 +187,28 @@ class BoardExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * 작업일 설정 값 위반 — 400 (스펙 E1 · J38·J40).
+     *
+     * 근무일 0개 · 미지원 요일 키 · 비-IANA 타임존이 여기로 온다.
+     * 다른 400 과 달리 [WorkingDaysInvalidException.reason] 을 detail 에 그대로 싣는다 —
+     * 그 문자열은 사용자에게 무엇을 고쳐야 하는지 알리는 문구이고 내부 식별자를 담지 않는다
+     * (정본은 [com.bts.agileplanning.application.WorkingDaysSettingsService] 의 검증 함수들).
+     *
+     * @param ex 사유를 담은 검증 예외.
+     */
+    @ExceptionHandler(WorkingDaysInvalidException::class)
+    fun handleWorkingDaysInvalid(ex: WorkingDaysInvalidException): ProblemDetail {
+        log.info("AGILE_400 working_days_invalid reason='{}'", ex.reason)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = ex.reason,
         )
     }
 
@@ -322,13 +387,22 @@ class BoardExceptionHandler {
     // ── 404 BOARD_NOT_FOUND ───────────────────────────────────────────────────
 
     /**
-     * [BoardNotFoundException] — 보드 미존재 또는 soft-deleted — 404.
+     * 보드 미존재 또는 soft-deleted — 404.
+     *
+     * 세 타입을 한 봉투로 합류시킨다. [BoardNotFoundException] 은 컨트롤러 게이트가,
+     * [WorkingDaysBoardNotFoundException] 과 [EstimationBoardNotFoundException] 은 서비스가
+     * **게이트와 저장 사이의 경합**에서 던진다 — 사용자에게는 같은 사실("보드가 없다")이라
+     * 코드를 나누면 프론트가 같은 화면을 두 갈래로 다뤄야 한다.
      *
      * @param ex 보드 미존재 예외(내부 식별자 미포함).
      */
-    @ExceptionHandler(BoardNotFoundException::class)
+    @ExceptionHandler(
+        BoardNotFoundException::class,
+        WorkingDaysBoardNotFoundException::class,
+        EstimationBoardNotFoundException::class,
+    )
     fun handleBoardNotFound(
-        @Suppress("UnusedParameter") ex: BoardNotFoundException,
+        @Suppress("UnusedParameter") ex: RuntimeException,
     ): ProblemDetail {
         log.info("AGILE_404 board_not_found")
         return problem(
@@ -510,10 +584,16 @@ class BoardExceptionHandler {
      * `@RestControllerAdvice` 는 Spring 의 ResponseStatusExceptionResolver 보다 먼저 실행되므로,
      * [Exception] 보다 구체적인 이 핸들러를 등록해 Spring 이 우선 선택하도록 한다.
      *
-     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다(원본 사유는 로그에만 기록).
+     * 보안 — 401·403·404·409 등은 상태 코드 기반 **일반 메시지**를 쓴다(원본 사유는 로그에만).
+     *
+     * ★**400 만 예외다**(리뷰 C7 · 2026-09-06). 서비스들이 사전 검증의 존재 이유를 「사용자에게
+     * 400 의 **이유**를 주려고」라고 KDoc 에 적어 두는데 그것을 버리면 그 문장이 거짓이 된다.
+     * 400 의 `reason` 은 서버가 만든 고정 문구(허용값·상한)이고 요청 값을 되비추지 않는다 —
+     * 그 규율은 각 예외 클래스가 진다(`QuickFilterEmptyQueryException` 이 세운 선례).
      *
      * @param ex 컨트롤러/서비스 계층에서 던진 상태 코드 보유 예외.
      */
+
     @ExceptionHandler(ResponseStatusException::class)
     fun handleResponseStatus(ex: ResponseStatusException): ProblemDetail {
         val status = HttpStatus.valueOf(ex.statusCode.value())
@@ -527,11 +607,27 @@ class BoardExceptionHandler {
                 HttpStatus.NOT_FOUND ->
                     AGILE_BOARD_NOT_FOUND to "보드를 찾을 수 없습니다."
                 HttpStatus.CONFLICT ->
-                    AGILE_CONFLICT to "다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요."
+                    // ★탭 예외는 자기 사유를 싣는다(재리뷰 ②). 종전 고정 문구는
+                    //   「다시 시도해 주세요」인데 `TimeTrackingBoardNotScrumException` 이 뜻하는
+                    //   「칸반 보드에서는 바꿀 수 없다」는 **재시도로 영원히 성공하지 않는다** —
+                    //   그 예외 KDoc 이 「이 보드에서 영영 불가능하다」고 적는다.
+                    //   400 에서 C7 이 고친 것과 같은 결함이 409 에 남아 있었다.
+                    AGILE_CONFLICT to conflictReason(ex)
                 HttpStatus.UNPROCESSABLE_ENTITY ->
                     AGILE_UNPROCESSABLE to "요청을 처리할 수 없습니다. 워크플로우 또는 해결 방안 설정을 확인해 주세요."
                 HttpStatus.BAD_REQUEST ->
-                    AGILE_VALIDATION_FAILED to "요청 값이 올바르지 않습니다."
+                    // ★`ex.reason` 을 싣되 **설정 4탭의 예외 타입에서만** 싣는다(리뷰 C7 · 재리뷰 C1).
+                    //   서비스들이 사전 검증의 존재 이유를 「사용자에게 400 의 **이유**를 주려고」라고
+                    //   KDoc 에 적어 두는데, 버리면 그 문장이 거짓이 되고 「최대 3개입니다」·
+                    //   「칸반에는 백로그 뷰가 없습니다」가 로그에만 남는다.
+                    //
+                    // ★★**타입으로 좁히는 이유.** 이 advice 는 컨트롤러 6개를 덮고, 그중
+                    //   `BoardController` 경로의 `BoardFilterQueryParser` 는 `reason` 에
+                    //   **요청 값을 그대로 되비춘다**(`... 유효한 UUID 형식이 아닙니다: $value`).
+                    //   상태 코드만 보고 전부 통과시키면 사용자 입력이 길이 제한 없이 응답 본문에
+                    //   실린다 — 재리뷰가 이 델타가 새로 연 표면으로 지목했다. C7 이 실제로 지명한
+                    //   것은 **설정 탭의 고정 문구**(허용값·상한)이고 그것들은 요청 값을 담지 않는다.
+                    AGILE_VALIDATION_FAILED to settingsTabReason(ex)
                 else ->
                     AGILE_INTERNAL_ERROR to "요청을 처리할 수 없습니다."
             }
@@ -541,6 +637,70 @@ class BoardExceptionHandler {
             title = status.reasonPhrase,
             errorCode = errorCode,
             detail = detail,
+        )
+    }
+
+    /**
+     * 400 의 `detail` 에 실을 문구를 고른다 — **설정 4탭의 예외만** 자기 `reason` 을 쓴다.
+     *
+     * 나머지(필터 파싱 등)는 종전 고정 문구로 되돌아간다. 그 경로들은 `reason` 에 요청 값을
+     * 되비추므로 통째로 열면 사용자 입력이 응답 본문에 실린다(재리뷰 C1).
+     *
+     * ★새 설정 탭을 더하면 이 목록에도 더해야 한다 — 두 목록이 서로를 검사하지 않는 자리다.
+     *   `BoardSettingsTabErrorEnvelopeTest` 의 400 detail 축이 빠진 탭을 잡는다.
+     */
+    private fun settingsTabReason(ex: ResponseStatusException): String =
+        when (ex) {
+            is CardLayoutInvalidException,
+            is DetailViewFieldGroupInvalidException,
+            is TimeTrackingInvalidException,
+            -> ex.reason ?: VALIDATION_FALLBACK_DETAIL
+            else -> VALIDATION_FALLBACK_DETAIL
+        }
+
+    /**
+     * 409 의 `detail` — **설정 탭의 예외만** 자기 `reason` 을 쓴다([settingsTabReason] 과 같은 규율).
+     *
+     * `TimeTrackingBoardNotScrumException` 의 「칸반 보드에서만 바꿀 수 없다」는 재시도로 풀리지
+     * 않는 조건이라, 고정 문구 「다시 시도해 주세요」가 사용자를 잘못 인도한다.
+     */
+    private fun conflictReason(ex: ResponseStatusException): String =
+        when (ex) {
+            is TimeTrackingBoardNotScrumException -> ex.reason ?: CONFLICT_FALLBACK_DETAIL
+            else -> CONFLICT_FALLBACK_DETAIL
+        }
+
+    /**
+     * 저장 계층의 무결성 제약 위반을 **409** 로 거둔다 — 500 이 아니다(리뷰 C2).
+     *
+     * **왜 생기나.** 설정 4탭 중 셋(`replaceCardLayout` · `replaceNonWorkingDates` ·
+     * `replaceDetailViewFields`)이 OCC 없이 `DELETE` → `INSERT` 다. READ COMMITTED 에서 두 관리자가
+     * 같은 보드를 동시에 저장하면 뒤 트랜잭션의 `DELETE` 가 자기 스냅샷 밖인 앞 트랜잭션의 신규 행을
+     * 못 지우고, 이어지는 `INSERT` 가 PK 중복(23505)으로 죽는다. 리포지터리 KDoc 이 예고한
+     * CHECK 위반도 같은 경로다. 핸들러가 없으면 둘 다 catch-all 로 떨어져 `AGILE_INTERNAL_ERROR` 가 된다.
+     *
+     * ★**추정 탭은 이 경로가 아니다.** `UPDATE` 한 문장이라 이 경합이 성립하지 않는다.
+     *
+     * ★**프론트의 드래그 잠금은 한 브라우저 안의 lost update 만 닫는다.** 두 관리자 경합은
+     * 그것과 다른 층이고, 여기가 그 층의 유일한 방어선이다.
+     *
+     * 두 갈래를 다 잡는다 — Spring `PersistenceExceptionTranslator` 가 개입하면
+     * [DataIntegrityViolationException], 미개입이면 jOOQ 가 직접 던진다.
+     * 형제 `BoardQuickFilterService.tryPersist` 가 세운 관용구를 advice 한 곳으로 모은 것이다
+     * (세 서비스에 복제하면 그 자체가 「서로를 검사하지 않는 세 목록」이 된다).
+     */
+    @ExceptionHandler(
+        org.springframework.dao.DataIntegrityViolationException::class,
+        org.jooq.exception.IntegrityConstraintViolationException::class,
+    )
+    fun handleIntegrityViolation(ex: Exception): ProblemDetail {
+        log.warn("보드 설정 저장 무결성 위반 — {}", ex.javaClass.simpleName)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-settings-conflict",
+            title = "Conflict",
+            errorCode = AGILE_CONFLICT,
+            detail = "다른 관리자가 방금 이 보드의 설정을 저장했습니다. 새로고침 후 다시 시도해 주세요.",
         )
     }
 

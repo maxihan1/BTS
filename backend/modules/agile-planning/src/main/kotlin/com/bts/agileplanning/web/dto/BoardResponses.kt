@@ -4,6 +4,7 @@ package com.bts.agileplanning.web.dto
 
 import com.bts.agileplanning.application.BoardCardMoveResult
 import com.bts.agileplanning.application.BoardPlacementResult
+import com.bts.agileplanning.application.BoardSettingsView
 import com.bts.agileplanning.domain.Board
 import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.domain.PlacedColumn
@@ -216,6 +217,15 @@ data class BoardSummaryResponse(
  *   그대로 미러 노출할 뿐 생성·갱신하지 않는다(백로그 `BacklogResponses` 의 rank 노출 선례와
  *   동일한 방식). null 이면 미부여(정렬 시 NULLS LAST). 이 필드는 노출 전용이며 카드 정렬 순서는
  *   여전히 [PlacedColumn.cards] 가 결정한다(정렬 로직 자체의 변경은 별도 Task 소관).
+ * @property customFields 이슈 커스텀 필드 값 맵. 키는 커스텀 필드 키, 값은 미입력이면 null.
+ *   커스텀 필드가 없으면 **빈 맵**으로 직렬화된다(null 아님).
+ *   [rank] 와 같은 방식이다 — **소유는 issue-tracking BC** 이고 agile-planning 은 미러 노출만 한다.
+ *
+ *   ★**여기서 다시 거르지 않는다.** 열람 권한(FR-PM-07) 마스킹은 issue-tracking 의
+ *   `BoardIssueLookupAdapter` 가 이미 끝냈고([com.bts.shared.board.BoardIssueView.customFields]
+ *   KDoc 의 포트 계약), 포트 밖으로는 안전한 값만 나온다. agile-planning 이 방어적으로 한 겹 더
+ *   두면 마스킹 주체가 둘이 되어 **두 번째 진실**이 된다 — 두 곳이 서로 어긋나는 순간 어느 쪽이
+ *   옳은지 아무도 모른다. 이 BC 는 권한 모델을 모르고, 알아야 할 이유도 없다(스펙 C-6).
  */
 data class BoardCardResponse(
     val issueKey: String,
@@ -228,9 +238,15 @@ data class BoardCardResponse(
     val rank: String? = null,
     val labels: List<String> = emptyList(),
     val originalEstimateSeconds: Int? = null,
+    val customFields: Map<String, Any?> = emptyMap(),
 ) {
     companion object {
-        /** cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다. */
+        /**
+         * cross-BC [BoardIssueView] 를 [BoardCardResponse] 로 변환한다.
+         *
+         * 모든 필드는 **그대로 옮긴다**. [BoardIssueView.customFields] 에 권한 판정을 덧붙이고
+         * 싶어지면 [BoardCardResponse.customFields] KDoc 을 먼저 읽어라 — 마스킹은 이미 끝났다.
+         */
         fun from(card: BoardIssueView): BoardCardResponse =
             BoardCardResponse(
                 issueKey = card.key,
@@ -243,6 +259,7 @@ data class BoardCardResponse(
                 rank = card.rank,
                 labels = card.labels,
                 originalEstimateSeconds = card.originalEstimateSeconds,
+                customFields = card.customFields,
             )
     }
 }
@@ -321,6 +338,16 @@ data class BoardColumnWithCardsResponse(
  * @property boardType 보드 종류(`"SCRUM"`/`"KANBAN"`). 클라이언트가 화면 의미를 가르는 축이다(FR-BD-04).
  * @property activeSprint 스크럼 보드의 활성 스프린트. **칸반은 항상 `null`** 이고, 스크럼이라도 시작된
  *   스프린트가 없으면 `null` 이다. `null` 이면 「스프린트를 시작하세요」 빈 상태를 그린다.
+ * @property cardLayout 카드에 추가로 그릴 필드 구성(`viewScope → 필드 키 목록`, 부채 177 · R3 · J18).
+ *   **구성이 없는 뷰는 키가 아예 없다** — 빈 구성은 「현행 카드를 그린다」는 뜻이다.
+ *   `PATCH /boards/{id}/card-layout` 응답의 `cardLayout` 과 **같은 값**이다.
+ * @property timeTracking 시간 추적 설정(`"NONE"`/`"REMAINING_AND_SPENT"`, R4 · J36).
+ *   보드 종류와 무관하게 저장값 그대로다 — 칸반에서 무시할지는 클라이언트가 [boardType] 으로 정한다(E6).
+ *   `PATCH /boards/{id}/estimation` 응답의 `timeTracking` 과 같은 값이다.
+ * @property workingDays 근무일 설정(R5 · J38~J40). `PUT /boards/{id}/working-days` 응답 본문과
+ *   **같은 모양**이라 클라이언트가 파서를 한 벌만 두면 된다.
+ * @property detailViewFields 이슈 상세 보기 필드 구성(`fieldGroup → 필드 키 목록`, R7 · J47·J48).
+ *   **그룹 4종이 항상 실린다** — `GET/PATCH /boards/{id}/detail-view-fields` 응답의 `groups` 와 같은 값이다.
  */
 data class BoardDetailResponse(
     val boardId: UUID,
@@ -335,6 +362,10 @@ data class BoardDetailResponse(
     val canDelete: Boolean,
     val boardType: String,
     val activeSprint: ActiveSprintResponse?,
+    val cardLayout: Map<String, List<String>>,
+    val timeTracking: String,
+    val workingDays: BoardWorkingDaysResponse,
+    val detailViewFields: Map<String, List<String>>,
 ) {
     companion object {
         /**
@@ -342,6 +373,8 @@ data class BoardDetailResponse(
          *
          * @param board 보드 메타(boardId/projectKey/name/swimlaneField 출처).
          * @param result 카드 배치 + 신호 필드(truncated/unplacedCount) 결과.
+         *   설정 4종(부채 177 · N1)도 여기서 온다 — 컨트롤러가 설정을 따로 조회하지 않게 하려고
+         *   보드 조회 서비스가 같은 트랜잭션에서 함께 읽어 실어 보낸다.
          * @param quickFilters 보드에 저장된 퀵필터 도메인 목록(created_at ASC). 기본값은 빈 목록.
          * @param canDelete 삭제 권한 보유 여부. 기본값 false 는 fail-closed — 권한을 넘기지 않은
          *   호출부가 삭제 UI 를 열어버리는 쪽으로 기울지 않게 한다.
@@ -367,8 +400,50 @@ data class BoardDetailResponse(
                 canDelete = canDelete,
                 boardType = board.boardType.name,
                 activeSprint = result.activeSprint?.let(ActiveSprintResponse::from),
+                cardLayout = result.settings.cardLayout,
+                timeTracking = result.settings.timeTracking,
+                workingDays = BoardWorkingDaysResponse.from(result.settings),
+                detailViewFields = result.settings.detailViewFields,
             )
         }
+    }
+}
+
+/**
+ * 보드 조회 응답에 실리는 근무일 설정 (부채 177 Task 31 · R5·R6 · J38~J40).
+ *
+ * ## ★null 은 「미설정」이다 — 빈 배열과 뜻이 다르다 (스펙 R6)
+ * [standardDays] 가 null 이면 **미설정 = 달력일 전부(현행 동작 유지)** 다. 여기서 빈 배열로 뭉개면
+ * 클라이언트가 「미설정」과 「0개 설정」을 못 가르고, 그 구분이 무너지면 설정을 한 번도 만지지 않은
+ * 보드의 번다운이 배포 순간 바뀐다. `working_days` 를 `NOT NULL DEFAULT` 로 두지 않은 이유가 그것이다.
+ *
+ * ★**nullable 필드라도 키는 항상 나간다.** 이 모듈에는 `@JsonInclude` 관용구가 0건이라 Jackson 기본값
+ * (null 도 키와 함께 직렬화)에 기대고 있다 — 누가 `NON_NULL` 을 붙이면 키가 사라져 프론트가 파싱
+ * 단계에서 깨진다([BoardDetailResponse] 카드 필드가 같은 계약을 이미 지고 있다).
+ *
+ * ## 왜 `com.bts.agileplanning.web.WorkingDaysResponse` 를 재사용하지 않았나
+ * 그 클래스는 작업일 탭 컨트롤러 파일(`web` 패키지)에 있다. `web.dto` 가 `web` 을 import 하면
+ * `web → web.dto` 와 맞물려 패키지 순환이 된다 — 이 BC 는 계층 역전을 ArchUnit 으로 막는 쪽이라
+ * 그 방향을 새로 열지 않는다. 대신 **두 응답이 JSON 으로 같은지**를 통합테스트가 잰다
+ * (`BoardSettingsReadApiTest` ④) — 모양이 갈리면 그 자리에서 red 다.
+ *
+ * @property standardDays 표준 근무일(`MON`..`SUN`, 주 순서). **null = 미설정**(≠ 빈 리스트).
+ * @property nonWorkingDates 비근무일(날짜 오름차순 · 중복 없음). 없으면 빈 목록.
+ * @property timezone IANA 타임존. null = 미설정(UTC · E7).
+ */
+data class BoardWorkingDaysResponse(
+    val standardDays: List<String>?,
+    val nonWorkingDates: List<LocalDate>,
+    val timezone: String?,
+) {
+    companion object {
+        /** 설정 읽기 결과에서 근무일 세 값만 옮긴다. null 을 null 그대로 옮기는 것이 핵심이다(R6). */
+        fun from(settings: BoardSettingsView): BoardWorkingDaysResponse =
+            BoardWorkingDaysResponse(
+                standardDays = settings.standardDays,
+                nonWorkingDates = settings.nonWorkingDates,
+                timezone = settings.timezone,
+            )
     }
 }
 

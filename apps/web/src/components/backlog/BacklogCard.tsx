@@ -10,7 +10,10 @@ import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
+import { CardExtraFields } from '@/components/board/BoardCard'
+import type { CardCustomFieldValues } from '@/components/board/BoardCard'
 import type { BacklogIssue } from '@/api/backlog'
+import type { CardLayout } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 드래그 컨텍스트 타입
@@ -61,8 +64,14 @@ export interface BacklogCardDropData {
 
 /** BacklogCard 컴포넌트 Props */
 export interface BacklogCardProps {
-  /** 카드에 표시할 이슈 데이터 */
-  issue: BacklogIssue
+  /**
+   * 카드에 표시할 이슈 데이터.
+   *
+   * `CardCustomFieldValues` 를 교차한 이유는 보드 카드와 같다 — 커스텀 필드 값이 실려 오면
+   * 카드 2층이 그것을 그리고, 아직 없으면 그 칸만 생략된다(E4). 백로그 조회 응답
+   * (`BacklogIssueResponse`)은 아직 이 키를 싣지 않는다.
+   */
+  issue: BacklogIssue & CardCustomFieldValues
   /** 카드가 위치한 컨텍스트 (백로그 또는 스프린트) */
   context: BacklogCardContext
   /**
@@ -91,6 +100,13 @@ export interface BacklogCardProps {
    * 부모가 맵에서 못 찾으면 `issue.typeKey` 원문을 그대로 넘긴다 (FR6 fallback).
    */
   typeName: string
+  /**
+   * 이 보드의 **뷰별** 카드 레이아웃 구성 (`BoardDetail.cardLayout` · R3 · J18).
+   *
+   * 백로그 카드는 이 중 **`BACKLOG` 스코프만** 읽는다 — 보드 카드와 **다른 구성**을 가질 수
+   * 있는 것이 J18 이다. 미지정이거나 그 뷰의 키가 없으면 추가 필드 층의 DOM 이 생기지 않는다.
+   */
+  cardLayout?: CardLayout
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,6 +172,7 @@ function BacklogCardInner({
   assigneeName,
   typeIconName,
   typeName,
+  cardLayout,
 }: BacklogCardProps) {
   const openIssueDetail = useOpenIssueDetail()
   const resolvedSprintId = sprintId ?? null
@@ -231,6 +248,21 @@ function BacklogCardInner({
         {issue.summary}
       </Link>
 
+      {/* J19 2층 — 구성이 고른 추가 필드. 요약 바로 아래이고 상세(3층)보다 위다 */}
+      <CardExtraFields
+        layout={cardLayout}
+        view="BACKLOG"
+        source={{
+          epicKey: issue.epicKey,
+          priority: issue.priority,
+          labels: issue.labels,
+          originalEstimateSeconds: issue.originalEstimateSeconds,
+          assigneeName: assigneeName ?? null,
+          typeName,
+          customFields: issue.customFields,
+        }}
+      />
+
       {/* 라벨 칩 행 — 라벨이 없으면 DOM 자체가 없다 (`CardLabelChips` FR9) */}
       <CardLabelChips labels={issue.labels} />
 
@@ -273,6 +305,9 @@ function BacklogCardInner({
  * - 보드 카드(`BoardCard`)와 대부분 동형이지만 **`P{priority}` 칩을 그대로 유지**한다 —
  *   보드는 컬럼 자체가 우선순위 정보를 대신하지 않지만, 백로그는 스프린트 계획 단계에서
  *   우선순위를 한눈에 봐야 하므로 칩을 없애지 않는다.
+ * - **J19 3층 구조**(부채 177 Task 20). 1층 요약 → 2층 `CardExtraFields`(보드와 **공유**하는
+ *   조각) → 3층 라벨 칩 행 + 하단 상세 행. 2층은 `cardLayout` 의 **`BACKLOG` 스코프만** 읽는다 —
+ *   같은 보드의 보드 카드와 **다른 필드 집합**을 가질 수 있는 것이 J18 이다.
  * - 라벨·추정 배지는 각각 `CardLabelChips`/`CardEstimateBadge`(보드와 공유) 에 위임한다 —
  *   값이 없으면 두 컴포넌트 모두 DOM 자체를 만들지 않는다.
  * - `typeIconName`/`typeName`은 부모가 `issueTypesByKey` 맵으로 미리 해석해 원시 문자열로

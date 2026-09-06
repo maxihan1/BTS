@@ -7,6 +7,7 @@ import com.bts.agileplanning.application.SprintBurndownService
 import com.bts.agileplanning.application.SprintDatesRequiredException
 import com.bts.agileplanning.domain.SprintStatus
 import com.bts.agileplanning.domain.burndown.BurndownPoint
+import com.bts.agileplanning.domain.burndown.BurndownUnit
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.mockk.clearMocks
@@ -123,6 +124,8 @@ class SprintBurndownControllerTest {
             startDate = LocalDate.of(2026, 7, 1),
             endDate = LocalDate.of(2026, 7, 14),
             totalScopeSeconds = 57_600L,
+            // 이 파일은 컨트롤러 위임·직렬화를 잰다 — 축은 시간으로 고정한다(게이팅 판정은 서비스 테스트).
+            unit = BurndownUnit.SECONDS,
             points =
                 listOf(
                     BurndownPoint(

@@ -32,7 +32,15 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   ★상환은 #453 쪽 몫이다 — 함수를 쪼개는 것이 정처방이고, 그 리팩터를 이 PR 이 하면
   //     보드 설정 화면의 리뷰 범위를 남의 컴포넌트로 넓히게 된다.
   "src/components/issue/AttachmentPreviewModal.tsx::Function 'AttachmentPreviewModal'": 237,
-  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 314,
+  // ★두 PR 이 같은 함수를 서로 다른 근거로 줄여 머지에서 만났다. 어느 쪽 값도 아니고 **실측**이다.
+  //   - 부채 177 이 상세 보기 구성 읽기를 배선하며 317 → 333 (머지 블로커였다).
+  //     baseline 을 올리는 대신 하단 액션 두 개(클론·삭제)를 `IssueMetaActions` 로 순수 추출 → 298.
+  //   - #462 가 보고자 행을 `IssueReporterRow` 로 빼며 → 314.
+  //   두 추출이 함께 적용된 머지 결과가 295 였고, 그 뒤 리뷰 C1 이 지목한 reporter 해석 경로를
+  //   `IssueReporterRow` 와 맞추며 **296** 이 됐다(같은 화면에 UUID·이름 두 모양이 나오던 자리다).
+  //   어느 PR 의 값도 아니고 매번 **실측**이다 — 양쪽 값을 그대로 고르면 둘 다 틀린다.
+  //   여전히 200 위라 줄을 지우지 않는다. 200 밑으로 내리는 것은 #453 몫이라는 위 문단 그대로다.
+  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 296,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
   "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,

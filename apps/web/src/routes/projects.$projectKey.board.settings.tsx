@@ -1,4 +1,4 @@
-// 보드 설정 화면 — 지라 Board settings 의 Columns 탭 (부채 177 · FR-BD-01/03)
+// 보드 설정 화면 — 지라 Board settings 탭 5종의 껍데기 (부채 177 · FR-BD-01/03)
 import type { JSX } from 'react'
 import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { ArrowLeft } from 'lucide-react'
@@ -8,7 +8,7 @@ import { boardLabels } from '@/i18n/board-labels'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
-import { ColumnSettingsPanel } from '@/components/board/settings/ColumnSettingsPanel'
+import { SettingsTabs } from '@/components/board/settings/SettingsTabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -82,15 +82,19 @@ function NoBoardSelected({ projectKey }: { projectKey: string }): JSX.Element {
 }
 
 /**
- * 보드 설정 화면 — 이 PR 은 **Columns 탭 하나**만 그린다.
+ * 보드 설정 화면 — 탭 5종을 [SettingsTabs] 가 진다.
  *
- * 나머지 6탭(Swimlanes · Quick filters · Card layout · Estimation · Working days ·
- * Issue detail view)을 비활성 골격으로 미리 만들지 않는다. 「누를 수 있는데 아무 일도 안 일어나는」
- * 화면을 6개 배포하는 것이고, 그것이 장부가 경계한 「도달할 UI 가 없는 기능」의 거울상이다.
- * 탭이 하나라 **탭바 자체를 안 만든다** — 두 번째 탭을 만드는 PR 이 탭바를 도입한다.
+ * ### `#452` 의 주석을 소진했다 — 지우지 않고 무엇이 바뀌었는지 남긴다
+ * 이 자리에는 「이 PR 은 **Columns 탭 하나**만 그린다 … 탭이 하나라 **탭바 자체를 안 만든다**
+ * — 두 번째 탭을 만드는 PR 이 탭바를 도입한다」가 적혀 있었다. **부채 177 Task 15 가 그
+ * 예약을 집행했다** — 탭바는 이제 있다.
  *
- * 스윔레인·퀵필터는 보드 화면 인라인에 그대로 둔다(편차 X3, Maxi 확정) — 오늘 한 번에 되는
- * 조작을 설정 화면 안으로 숨기면 UX 가 나빠진다.
+ * ★**바뀌지 않은 것**이 더 중요하다. 「누를 수 있는데 아무 일도 안 일어나는」 탭 금지는
+ * 그대로다. 이 PR 이 탭바를 낼 수 있는 이유는 카드 레이아웃·추정·작업일·상세 보기 4탭을
+ * **같은 PR 이 전부 동작시키기** 때문이지, 그 금지가 풀려서가 아니다.
+ *
+ * 스윔레인·퀵필터는 여전히 탭이 아니다. 보드 화면 인라인에 그대로 둔다(편차 X3, Maxi 확정) —
+ * 오늘 한 번에 되는 조작을 설정 화면 안으로 숨기면 UX 가 나빠진다.
  */
 export function BoardSettingsPage({ projectKey, boardId }: BoardSettingsPageProps): JSX.Element {
   const permissions = useProjectPermissions(projectKey)
@@ -138,7 +142,7 @@ export function BoardSettingsPage({ projectKey, boardId }: BoardSettingsPageProp
       )}
 
       {boardQuery.data !== undefined && (
-        <ColumnSettingsPanel board={boardQuery.data} canConfigure={canConfigure} />
+        <SettingsTabs board={boardQuery.data} canConfigure={canConfigure} />
       )}
     </div>
   )

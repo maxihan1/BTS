@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue } from '@/api/backlog'
 import type { IssueTypeResponse } from '@/api/issue-types'
+import type { CardLayout } from '@/api/boards'
 import { Button } from '@/components/ui/button'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { resolveCardType } from '@/components/issue/resolve-card-type'
@@ -50,6 +51,13 @@ export interface BacklogColumnProps {
    * 원문 fallback 경로를 탄다 (FR6).
    */
   issueTypesByKey: Map<string, IssueTypeResponse>
+  /**
+   * 이 보드의 **뷰별** 카드 레이아웃 구성 (부채 177 Task 32 · J18).
+   *
+   * 칸은 값을 **읽지 않고** 카드에 그대로 넘긴다 — 스코프(`BACKLOG`) 판정은 카드가 한 곳에서만
+   * 한다(Task 20). 미지정이면 카드 2층(J19)의 DOM 자체가 생기지 않는다.
+   */
+  cardLayout?: CardLayout
   /** 드래그 카드가 이 칸 위에 있는지 여부. 하이라이트에 사용 */
   isOver?: boolean
   /**
@@ -94,6 +102,7 @@ function BacklogColumnInner({
   issues,
   assigneeNames,
   issueTypesByKey,
+  cardLayout,
   isOver = false,
   onCreateIssue,
   canCreateIssue = false,
@@ -206,6 +215,7 @@ function BacklogColumnInner({
                   assigneeName={assigneeNames.get(issue.key)}
                   typeIconName={cardType.iconName}
                   typeName={cardType.typeName}
+                  cardLayout={cardLayout}
                 />
               )
             })

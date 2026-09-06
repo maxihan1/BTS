@@ -36,6 +36,10 @@ import java.util.UUID
  * 이 포트를 소비하는 agile-planning 은 필터 여부를 알지 못한다.
  * 필터 미적용 시 보안 등급 이슈 데이터 누출로 이어지므로 구현체 책임이 중요하다.
  *
+ * 같은 원칙이 **필드 수준**에도 적용된다 — [BoardIssueView.customFields] 는 구현체가 뷰어의
+ * 필드 열람 권한(FR-PM-07)으로 이미 걸러서 넣는다. 소비자는 그것을 다시 거르지 않는다
+ * (해당 property KDoc 의 포트 계약 참조).
+ *
  * @see BoardIssueView
  * @see BoardIssuePage
  */
@@ -88,6 +92,11 @@ interface BoardIssueLookupPort {
      * 다시 걸러야 한다. `BoardApplicationService.getBoard` 가 [BoardCardFilter.issueKeys] 를
      * 실어 보내면서도 Kotlin 사후 필터를 **유지하는** 이유가 이것이다 — 그것을 지우면 filter 를
      * 드롭하는 구현에서 스크럼 보드가 다른 스프린트·백로그 이슈까지 그린다.
+     *
+     * ★이 「다시 걸러야 한다」는 **행 필터**([BoardCardFilter]) 축에 한한 이야기다.
+     * [BoardIssueView.customFields] 의 **필드 마스킹은 처방이 반대** — 구현체가 이미 걸러서 주고
+     * 소비측은 그대로 미러한다(해당 property KDoc). 두 문장을 뭉뚱그려 읽으면 마스킹 주체가
+     * 둘이 된다.
      *
      * 그럼에도 SQL 푸시다운이 필요한 이유는 [BoardIssuePage.truncated] 다. 사후 필터는
      * **이미 잘린 결과**를 거르므로, LIMIT 창 밖으로 밀려난 이슈는 사후 필터가 되살릴 수 없다
@@ -177,6 +186,23 @@ data class BoardIssuePage(
  * @property labels 이슈 라벨 목록. 라벨이 없으면 **빈 리스트**(null 아님) — `issues.labels` 가
  *   `NOT NULL DEFAULT '{}'` 이라 도메인에서 이미 빈 리스트다 (FR-UX-14 B2).
  * @property originalEstimateSeconds 최초 추정 작업 시간(초). 미추정이면 null (FR-UX-14 B2).
+ * @property customFields 이슈 커스텀 필드 값 맵. 키는 커스텀 필드 키, 값은 미입력이면 null.
+ *   **소유는 issue-tracking BC** — agile-planning 은 이 값을 그대로 미러 노출할 뿐 생성·갱신하지
+ *   않는다(`rank` 노출 방식과 동일). 커스텀 필드가 없으면 **빈 맵**(null 아님) — 기본값이 있어
+ *   기존 소비자의 생성 호출 시그니처가 그대로 유지된다.
+ *
+ *   ★**이 맵은 이미 마스킹된 것이다 — 소비자는 다시 거르지 않는다** (스펙 C-6 · FR-PM-07 ·
+ *   Maxi 확정 2026-09-05 「어댑터가 마스킹한다」). 구현체(issue-tracking `BoardIssueLookupAdapter`)가
+ *   뷰어의 **필드 열람 권한**으로 걸러서 넣으므로 포트 밖으로는 볼 수 있는 키만 나온다.
+ *   소비측은 받은 것을 **그대로** 옮긴다 — 방어적으로 한 겹 더 거르면 마스킹 주체가 둘이 되고,
+ *   두 곳이 어긋나는 순간 어느 쪽이 옳은지 아무도 모른다(두 번째 진실). 게다가 소비 BC 는
+ *   권한 모델을 모르므로 재필터를 하려면 그 모델을 복사해야 하고, 그 순간 BC 경계가 무너진다.
+ *
+ *   위 CONCERN-1 의 「소비측은 결과를 **다시 걸러야 한다**」와 헷갈리지 마라. 그것은
+ *   [BoardCardFilter] **행 필터** 축이고, 구현체가 3-인자를 override 하지 않으면 filter 가
+ *   통째로 드롭되는 default 위임이 **계약으로 허용**되기 때문에 나온 처방이다. 이 필드에는 그런
+ *   우회로가 없다 — 마스킹을 건너뛴 값이 나오는 것은 허용된 동작이 아니라 **계약 위반**이다.
+ *   그래서 처방이 반대다. **행은 다시 거르고, 이 맵은 그대로 옮긴다.**
  */
 data class BoardIssueView(
     val key: String,
@@ -190,4 +216,5 @@ data class BoardIssueView(
     val rank: String? = null,
     val labels: List<String> = emptyList(),
     val originalEstimateSeconds: Int? = null,
+    val customFields: Map<String, Any?> = emptyMap(),
 )

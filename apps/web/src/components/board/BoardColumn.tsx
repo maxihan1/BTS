@@ -3,7 +3,7 @@ import { memo } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { cn } from '@/lib/utils'
-import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
+import type { BoardColumn as BoardColumnType, CardLayout, SwimlaneField } from '@/api/boards'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { boardLabels } from '@/i18n/board-labels'
 import { resolveCardType } from '@/components/issue/resolve-card-type'
@@ -46,6 +46,14 @@ export interface BoardColumnProps {
    * 조회 실패·로딩 중이면 빈 맵 — 전 카드가 typeKey 원문 fallback으로 렌더된다(FR6).
    */
   issueTypesByKey: Map<string, IssueTypeResponse>
+  /**
+   * 이 보드의 **뷰별** 카드 레이아웃 구성 (`BoardDetail.cardLayout` · 부채 177 Task 32 · J17·J18).
+   *
+   * 컬럼은 이 값을 **읽지 않는다** — 두 렌더 분기(스윔레인 그룹 · 단일 목록)의 `BoardCard` 에
+   * 그대로 흘려보낼 뿐이다. 스코프(`BOARD`/`BACKLOG`) 판정은 카드가 한 곳에서만 한다(Task 20).
+   * 미지정이면 카드 2층(J19)의 DOM 자체가 생기지 않는다.
+   */
+  cardLayout?: CardLayout
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,11 +66,13 @@ function SwimlaneSection({
   assigneeNames,
   columnId,
   issueTypesByKey,
+  cardLayout,
 }: {
   group: SwimlaneGroup
   assigneeNames: Map<string, CardAssigneeDisplay>
   columnId: string
   issueTypesByKey: Map<string, IssueTypeResponse>
+  cardLayout?: CardLayout
 }): React.ReactElement {
   const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
   // 셀(컬럼 × 이 그룹) 안에서의 정렬 순서 — rank 순서(원본 배열 순서) 그대로
@@ -94,6 +104,7 @@ function SwimlaneSection({
                 assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
                 typeIconName={iconName}
                 typeName={typeName}
+                cardLayout={cardLayout}
               />
             )
           })}
@@ -109,7 +120,7 @@ function SwimlaneSection({
 
 const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 
-function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false, issueTypesByKey }: BoardColumnProps) {
+function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false, issueTypesByKey, cardLayout }: BoardColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.columnId,
     data: { category: column.category },
@@ -170,6 +181,7 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
               assigneeNames={assigneeNames}
               columnId={column.columnId}
               issueTypesByKey={issueTypesByKey}
+              cardLayout={cardLayout}
             />
           ))
         ) : (
@@ -188,6 +200,7 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
                   assignee={assigneeNames.get(card.issueKey) ?? UNASSIGNED}
                   typeIconName={iconName}
                   typeName={typeName}
+                  cardLayout={cardLayout}
                 />
               )
             })}

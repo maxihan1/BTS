@@ -4,6 +4,8 @@ package com.bts.agileplanning.application
 
 import com.bts.agileplanning.domain.Sprint
 import com.bts.agileplanning.domain.SprintStatus
+import com.bts.agileplanning.repository.BoardSettingsRepository
+import com.bts.agileplanning.repository.BoardWorkingDays
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.shared.burndown.BurndownSource
 import com.bts.shared.burndown.SprintBurndownLookupPort
@@ -57,12 +59,35 @@ class SprintBurndownServiceTest {
             every { it.hasPermission(any(), any(), any()) } returns true
         }
 
+    /**
+     * 「작업일」 탭을 한 번도 만지지 않은 보드 — 타임존·근무일 모두 미설정이다.
+     *
+     * 이 파일의 시나리오는 전부 미설정 경로다. 보드 타임존·근무일 축의 판정은
+     * [BurndownTimezoneTest] 가 대조군 쌍으로 진다.
+     */
+    private fun unsetBoardSettings(): BoardSettingsRepository =
+        mockk<BoardSettingsRepository>().also {
+            // ★세로축은 **시간**으로 고정한다(task-35). DB 기본값 'NONE' 은 개수 축이라, 이 값을 빼면
+            //   해피패스의 초 단위 단언이 개수를 재게 된다. 게이팅 판정은 [BurndownIssueCountAxisTest] 가 진다.
+            every { it.findTimeTracking(any()) } returns "REMAINING_AND_SPENT"
+            every { it.findWorkingDays(any()) } returns
+                BoardWorkingDays(standardDays = null, timezone = null, nonWorkingDates = emptyList())
+        }
+
     private fun makeService(
         sprintRepository: SprintRepository = mockk(),
         permissionResolver: IssuePermissionResolver = allowAllResolver(),
         burndownPort: SprintBurndownLookupPort = mockk(),
+        boardSettingsRepository: BoardSettingsRepository = unsetBoardSettings(),
         clock: Clock = fixedClock,
-    ): SprintBurndownService = SprintBurndownService(sprintRepository, permissionResolver, burndownPort, clock)
+    ): SprintBurndownService =
+        SprintBurndownService(
+            sprintRepository,
+            permissionResolver,
+            burndownPort,
+            boardSettingsRepository,
+            clock,
+        )
 
     @Test
     fun `BROWSE 권한이 없으면 403을 던진다`() {
@@ -116,7 +141,17 @@ class SprintBurndownServiceTest {
                 } returns
                     BurndownSource(
                         totalOriginalEstimateSeconds = 57_600,
-                        worklogEntries = listOf(WorklogContribution(LocalDate.of(2026, 7, 1), 21_600)),
+                        worklogEntries =
+                            listOf(
+                                WorklogContribution(
+                                    startedOnUtcDate = LocalDate.of(2026, 7, 1),
+                                    timeSpentSeconds = 21_600,
+                                    startedAt = Instant.parse("2026-07-01T09:00:00Z"),
+                                ),
+                            ),
+                        // 이 파일은 시간 축만 잰다 — 개수 축 입력은 판정에 쓰이지 않는다.
+                        visibleIssueCount = 2L,
+                        issueCompletions = emptyList(),
                     )
             }
 

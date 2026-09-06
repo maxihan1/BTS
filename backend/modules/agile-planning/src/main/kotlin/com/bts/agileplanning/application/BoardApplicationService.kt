@@ -15,6 +15,7 @@ import com.bts.agileplanning.domain.WipLimitChange
 import com.bts.agileplanning.repository.BoardColumnStateRepository
 import com.bts.agileplanning.repository.BoardQuickFilterRepository
 import com.bts.agileplanning.repository.BoardRepository
+import com.bts.agileplanning.repository.BoardSettingsRepository
 import com.bts.agileplanning.repository.SprintRepository
 import com.bts.agileplanning.web.BoardNotFoundException
 import com.bts.shared.board.BoardCardFilter
@@ -33,7 +34,66 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
+
+/**
+ * 보드 설정 4탭의 **읽기 결과** — 보드 조회 응답이 함께 싣는 값들 (부채 177 Task 31 · 스펙 N1).
+ *
+ * 스펙 N1 이 「보드 조회 응답에 설정을 실어 **추가 왕복을 만들지 않는다**」다. 카드 레이아웃은 보드·
+ * 백로그 모든 렌더에 필요해서, 별도 GET 이면 화면마다 왕복이 하나씩 는다. 그래서 [BoardPlacementResult]
+ * 가 이 VO 를 함께 들고 나온다 — 컨트롤러가 설정을 따로 조회하지 않게 하는 것이 이 타입의 존재 이유다.
+ *
+ * ## ★근무일은 null 이 두 층이다 — 뭉개면 안 된다 (스펙 R6)
+ * [standardDays] 가 null 이면 **미설정 = 달력일 전부(현행 유지)** 이고, 빈 리스트는 사용자가 명시적으로
+ * 0개를 저장한 상태다. 빈 리스트로 뭉개면 프론트가 「미설정」과 「0개 설정」을 못 가르고, 그 구분이
+ * 무너지면 설정을 한 번도 만지지 않은 보드의 번다운이 배포 순간 바뀐다 — R6 이 막으려는 바로 그것이다.
+ * (「보드가 없다」를 뜻하는 [BoardSettingsRepository.findWorkingDays] 의 바깥 null 은 여기까지 오지
+ * 않는다. 이 VO 를 만드는 시점에 보드는 이미 조회돼 있다.)
+ *
+ * @property cardLayout `viewScope → 필드 키 목록(position 순)`. **구성이 없는 뷰는 키가 아예 없다** —
+ *   빈 구성은 「현행 카드를 그린다」는 뜻이라 기본 필드를 채우지 않는다(R3 · J18).
+ * @property timeTracking `"NONE"` 또는 `"REMAINING_AND_SPENT"`. 보드 종류와 무관하게 저장값 그대로다 —
+ *   칸반에서 무시할지는 **읽는 쪽**이 `boardType` 을 보고 정한다(E6). 여기서 갈음하면 스크럼 → 칸반 →
+ *   스크럼 왕복에 값이 사라진 것처럼 보인다.
+ * @property standardDays 표준 근무일(`MON`..`SUN`, 주 순서). **null = 미설정**(≠ 빈 리스트, 위 참조).
+ * @property nonWorkingDates 비근무일(날짜 오름차순). 미설정이면 빈 목록이다 — 근무일과 달리 「없음」과
+ *   「미설정」을 가를 필요가 없다(둘 다 「빼는 날이 없다」로 같은 계산을 낸다).
+ * @property timezone IANA 타임존. null = 미설정(UTC · E7).
+ * @property detailViewFields `fieldGroup → 필드 키 목록`. **그룹 4종이 항상 실린다**(R7c) —
+ *   [DetailViewSettingsService.findFields] 가 정규화한 결과 그대로다.
+ */
+data class BoardSettingsView(
+    val cardLayout: Map<String, List<String>>,
+    val timeTracking: String,
+    val standardDays: List<String>?,
+    val nonWorkingDates: List<LocalDate>,
+    val timezone: String?,
+    val detailViewFields: Map<String, List<String>>,
+) {
+    companion object {
+        /**
+         * 설정을 읽지 않은 조립본의 기본값 — 전 축이 **미설정**이다.
+         *
+         * 기존 테스트가 [BoardPlacementResult] 를 직접 조립하는 자리를 깨지 않기 위한 기본값이고
+         * ([BoardPlacementResult.stateCatalog] 와 같은 판단), 실제 조회 경로는 항상 채운다.
+         * 「전부 기본값을 채우는」 구현으로 오해하지 않도록 `timeTracking` 만 DB 기본값과 같은
+         * `"NONE"` 이고 나머지는 비어 있다.
+         */
+        val UNSET =
+            BoardSettingsView(
+                cardLayout = emptyMap(),
+                timeTracking = TIME_TRACKING_NONE,
+                standardDays = null,
+                nonWorkingDates = emptyList(),
+                timezone = null,
+                detailViewFields = emptyMap(),
+            )
+    }
+}
+
+/** `boards.time_tracking` 의 DB 기본값. 보드가 설정을 한 번도 만지지 않았을 때의 값이다. */
+private const val TIME_TRACKING_NONE = "NONE"
 
 /**
  * [BoardApplicationService.getBoard] 반환 VO.
@@ -48,6 +108,9 @@ import java.util.UUID
  * @property activeSprint 스크럼 보드의 활성 스프린트. **칸반 보드는 항상 `null`** 이고, 스크럼이라도
  *   시작된 스프린트가 없으면 `null` 이다. 클라이언트는 `null` 이면 「스프린트를 시작하세요」 빈 상태를
  *   그린다(FR-BD-04 D6, PR ③).
+ * @property settings 보드 설정 4탭의 읽기 결과([BoardSettingsView]). 보드 조회 **한 번**이 설정까지
+ *   함께 실어 나르게 하는 자리다(스펙 N1). 기본값 [BoardSettingsView.UNSET] 은 이 VO 를 직접
+ *   조립하는 테스트를 깨지 않기 위한 것이고, 실제 조회 경로는 항상 채운다.
  * @property stateCatalog 이 보드 프로젝트의 워크플로우 상태 전량(`listStates(projectKey, null)`).
  *   컬럼이 담은 상태의 `name`·`category` 는 도메인([BoardColumn])에 없고 여기에만 있다 —
  *   `board_column_states` 는 키와 순서만 저장하기 때문이다(BC 격리). 기본값 빈 목록은
@@ -60,6 +123,7 @@ data class BoardPlacementResult(
     val quickFilters: List<QuickFilter> = emptyList(),
     val activeSprint: Sprint? = null,
     val stateCatalog: List<WorkflowStateView> = emptyList(),
+    val settings: BoardSettingsView = BoardSettingsView.UNSET,
 ) {
     /**
      * 어느 컬럼에도 매핑되지 않은 상태 (R8 · J2). [stateCatalog] 순서를 보존한다.
@@ -121,6 +185,11 @@ data class BoardCardMoveResult(
  * @param sprintRepository sprints/sprint_issues jOOQ repository — 스크럼 보드 카드 필터용 (FR-BD-04 D4).
  *   같은 BC 이므로 포트를 거치지 않는다. [BoardIssueLookupPort] 는 shared-kernel 이라 스프린트를 모르고,
  *   거기에 스프린트를 알리면 토폴로지 변경(T3)이 된다 — 재료가 이 BC 안에 이미 있어 그럴 이유가 없다.
+ * @param boardSettingsRepository 보드 설정 4탭 jOOQ repository (부채 177 Task 7). 보드 조회가 설정을
+ *   **같은 트랜잭션에서** 함께 읽어 추가 왕복을 없앤다(N1).
+ * @param detailViewSettings 상세 보기 필드 읽기. 리포지터리를 직접 부르지 않는 축이 이것 하나뿐인
+ *   이유는 **그룹 4종 정규화**가 거기 있기 때문이다(R7c). 그룹 목록을 여기 복사하면 T13 의 GET 과
+ *   이 조회가 서로를 모른 채 갈린다 — 「두 목록이 서로를 검사하지 않는다」 양식이다.
  */
 @Service
 // 보드 CRUD(생성·조회·목록·갱신·삭제) + 카드 이동 + WIP + 스크럼 분기가 한 Aggregate 의 유스케이스라
@@ -136,6 +205,8 @@ class BoardApplicationService(
     private val boardQuickFilterRepository: BoardQuickFilterRepository,
     private val sprintRepository: SprintRepository,
     private val columnStates: BoardColumnStateRepository,
+    private val boardSettingsRepository: BoardSettingsRepository,
+    private val detailViewSettings: DetailViewSettingsService,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -318,6 +389,35 @@ class BoardApplicationService(
             quickFilters = quickFilters,
             activeSprint = activeSprint,
             stateCatalog = stateCatalogOf(board.projectKey),
+            settings = readSettings(boardId),
+        )
+    }
+
+    /**
+     * 보드 설정 4탭을 **같은 트랜잭션에서** 한 번씩 읽는다 (스펙 N1).
+     *
+     * 축마다 조회 1회다. 뷰별·그룹별·날짜별로 나누면 설정이 늘 때 문 수가 함께 늘고, 그것이 N1 이
+     * 막으려는 「화면마다 N+1」이다 — 리포지터리가 그 묶음 조회를 이미 제공한다.
+     *
+     * ★[BoardSettingsRepository.findTimeTracking] 의 null 은 「보드가 없다」는 뜻뿐인데, 이 자리에서는
+     * 같은 트랜잭션이 이미 보드를 읽은 뒤라 도달하지 않는다. 그래도 `!!` 를 쓰지 않고 DB 기본값과 같은
+     * `NONE` 으로 받는다 — 조회 경로를 지금보다 나쁘게(500) 만들지 않는 것이 우선이다.
+     *
+     * ★근무일은 [com.bts.agileplanning.repository.BoardWorkingDays.standardDays] 의 null 을 **그대로** 옮긴다. `orEmpty()` 를 쓰면
+     * 미설정이 「0개 설정」으로 바뀌어 R6 이 무너진다.
+     *
+     * @param boardId 대상 보드 UUID.
+     * @return 설정 4축의 읽기 결과.
+     */
+    private fun readSettings(boardId: UUID): BoardSettingsView {
+        val workingDays = boardSettingsRepository.findWorkingDays(boardId)
+        return BoardSettingsView(
+            cardLayout = boardSettingsRepository.findCardLayout(boardId),
+            timeTracking = boardSettingsRepository.findTimeTracking(boardId) ?: TIME_TRACKING_NONE,
+            standardDays = workingDays?.standardDays,
+            nonWorkingDates = workingDays?.nonWorkingDates.orEmpty(),
+            timezone = workingDays?.timezone,
+            detailViewFields = detailViewSettings.findFields(boardId),
         )
     }
 
