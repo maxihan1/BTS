@@ -171,7 +171,9 @@ PATCH /api/v1/boards/{boardId}/detail-view-fields   // 요청에 담긴 그룹�
 - 400 — 한 뷰의 `cardLayout` 이 4개 이상(J17) · 미지원 필드 키 · `timezone` 이 IANA 가 아님 ·
   칸반 보드에 `BACKLOG` 스코프를 보냈다(칸반은 보드 뷰 하나뿐)
 - 409 — `timeTracking` 을 칸반 보드에 보냈다(J37)
-- 404 — 보드가 없다. **403 보다 먼저 판정하지 않는다**(R9 · 순서를 뒤집으면 403/404 의 의미가 갈린다)
+- 404 — 보드가 없다(soft-deleted 포함). 판정 순서는 **401 → 404 → 403** 이다 — 인증을 먼저 보고
+  (미인증자가 404 로 보드 존재를 probe 하지 못하게), 그다음 존재, 마지막이 권한이다(R9).
+  넷 다 같은 헬퍼 모양을 복제해 이 순서를 맞춘다(실측 — `requireBoardAccess` · `requireCreateAccess`)
 - 오류 본문은 넷 다 **같은 RFC 7807 봉투**(`AGILE_*`)다 — Task 29 가 네 컨트롤러를
   `BoardExceptionHandler` 의 `assignableTypes` 아래로 모아 통일했다.
 - 나머지 셋의 현재 값은 `GET /boards/{id}` 가 같은 모양으로 되돌려준다(N1)
