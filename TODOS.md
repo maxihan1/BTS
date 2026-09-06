@@ -824,6 +824,30 @@ PR #400 은 그 죽은 `nav` 블록을 **지웠다** — 소비처 없는 선언
 
 # 기능 동작
 
+## ⬜ notification — dedup 키 golden 핀이 **인앱에만** 있고 슬랙 쪽은 무방비다 (신규 · 미착수 · T1)
+
+**쉬운 말.** 알림이 중복인지 판정하는 열쇠를 만드는 코드가 두 벌 있다. 한쪽에는 「열쇠 모양이 바뀌면 알람이 울리는 장치」를 달았는데, 다른 한쪽에는 안 달았다. 그래서 슬랙 쪽 열쇠 모양은 아무도 모르게 바뀔 수 있다.
+
+**방치하면.** 조용히 통과한다. 슬랙 열쇠 공식이 바뀌면, 배포 경계를 넘어 **상류 알림 큐**(`NotificationWorker` 가 소비하는 큐)에 떠 있던 이벤트가 재전달될 때 열쇠가 **새 공식으로 다시 계산**돼 영속 기록의 옛 행과 안 맞고, **같은 슬랙 메시지가 두 번** 나간다. 그런데 그 변경을 막는 판별식이 없어 전 테스트가 초록이다. 인앱 쪽은 golden hex 가 있어 같은 실수가 즉시 red 다 — **같은 결함을 두 벌 고쳤는데 가드는 한 벌뿐**이라는 비대칭 그 자체가 이 항목이다.
+
+**무엇.** 두 단이다.
+
+- **㉮ 하한 — golden 핀 한 벌 추가.** `SlackChannelBroadcasterTest` 에 `Notification.computeDedupKey` 의 golden 단언(`4f83935a…`)과 짝이 되는 단언을 추가한다 — 「commentId 없는 이벤트의 dedupKey 가 **변경 이전 공식의 산출물과 바이트 단위로 같다**」. 값은 `SHA-256("<projectKey>|<eventType.wireValue>|<issueKey 또는 빈 문자열>|<occurredAt>")` 로 계산해 상수로 박는다. 코드가 `event.issueKey ?: ""` 라 `issueKey` 가 없어도 **빈 문자열 원소가 남으므로**, 상수 계산에 쓰는 픽스처는 `issueKey` 유무를 명시적으로 고정한다(스프린트 이벤트처럼 `issueKey` 가 없는 케이스로 계산하면 값이 달라진다).
+- **㉯ 본체 — 목록 대조 장치.** `computeDedupKey` 구현을 **전수 열거해 golden 핀이 없는 구현에서 red 를 내는 판별식**을 세우고, 비-공허 짝(핀을 지웠을 때 실제로 red 인지)을 붙여 CI 에 건다.
+
+㉮ 만 하면 **오늘 아는 두 벌**이 맞을 뿐 「구현 목록」과 「핀 목록」을 대조하는 장치가 없다. 세 번째 계산기가 생기는 순간 이 항목이 그대로 재현되고 그때도 전 테스트가 초록이다 — 이 저장소가 이름 붙인 지배 결함 양식 `two-lists-never-check-each-other` 이고, 처방 정본은 **차집합 판별식 + 비-공허 짝 + CI** 다.
+
+**티어 근거(실측).** **T1** 이다. ㉮ 의 `SlackChannelBroadcasterTest` 도, ㉯ 를 이 저장소 관례대로 `scripts/workflow/<이름>.test.ts` 단독으로 짜는 것도 둘 다 `TEST` 표면이다 — `SURFACE_PRECEDENCE` 가 `TEST` 를 `GUARD_CI` 보다 **앞**에 두기 때문이고(`scripts/workflow/surfaces.ts`, 이유는 「보안 모듈의 테스트 1파일이 보안 표면으로 세어지면 규칙 ④ 가 깨진다」), `tier-floor.test.ts` 가 `scripts/workflow/*.test.ts` 입력에 `T1` 을 이미 단언한다. 실측으로도 `detect-tier.ts` 에 `scripts/workflow/<이름>.test.ts` 를 넣으면 `TIER: T1 · SURFACES: TEST` 다. **㉯ 를 비-test 파일(`scripts/workflow/*.ts` · `*.mjs`)로 분리하면 그때 `GUARD_CI` 가 걸려 T2 가 된다** — 착수자가 구현 형태를 고르는 순간 티어가 갈리므로, 형태를 정한 뒤 `detect-tier.ts` 로 다시 재어라.
+
+**실측(2026-09-05 · PR #461).** 현재 `BC-7` 은 「두 무댓글 이벤트의 dedupKey 가 **서로** 같다」만 단언한다. 이것은 결정성만 재고 **옛 키와의 동일성은 재지 않는다** — 공식이 통째로 바뀌어도 두 호출은 여전히 서로 같으므로 초록이다. 키가 재계산되는 자리는 `NotificationWorker.dispatch` → `broadcastToSlackChannel` → `SlackChannelBroadcaster` 이고, 중복 억제는 `SlackChannelBroadcastWorker` 의 `perChannelKey`(`dedupKey` + `:` + `channelId`)가 영속 테이블 `slack_channel_broadcast_log`(`V705`)를 조회하는 방식이다. **하류 `q_slack_channel_broadcasts` 큐는 payload 에 키를 문자열로 박아 보내므로 그 큐의 재전달은 이 결함과 무관하다** — 재계산이 일어나는 자리는 상류다.
+
+**왜 지금 안 했나.** PR #461 게이트 2 에서 자기 리뷰로 적발했고 Maxi 가 「4건 전부 승인, 별도 후속」으로 확정했다. 결손은 **가드의 부재**이지 동작 결함이 아니라 머지를 막을 사유가 아니었다.
+
+**착수 시 읽을 것.** `docs/plans/2026-09-05-notification-dedup-comment-id.md` D1 — 「부재하면 원소 자체를 뺀다」가 폭발 반경을 댓글 이벤트로만 가둔 근거이고, golden 핀이 지키는 것이 정확히 그 결정이다.
+
+**★함정(선재 오기).** `SlackChannelBroadcaster` 의 KDoc 과 `SlackChannelBroadcasterTest` 의 `BC-6` 주석이 이 키의 소비자를 `SlackDeliveryWorker` · `slack_delivery_skip_duplicate` 로 적는데 그것은 **DM 경로**다. 채널 브로드캐스트 키의 실제 소비자는 `slack-integration` BC 의 `SlackChannelBroadcastWorker` 이고 영속 기록은 `slack_channel_broadcast_log` 다. 그 주석을 믿고 착수하면 **틀린 중복 억제 경로**를 대상으로 테스트를 짜게 된다. 이 PR 이 만든 오기가 아니라 선재이며, ㉮ 착수 시 같이 고친다.
+
+---
 ## ⬜ issue-tracking — OpenAPI required 오표기 **잔여 26 프로퍼티** + 전수 판별식 부재 (선재 · 미착수 · T2)
 
 **쉬운 말.** API 설명서가 「반드시 넣어야 하는 값」을 **26곳에서** 잘못 표시한다.
