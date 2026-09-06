@@ -126,7 +126,7 @@ private val LINKS_FIELDS = listOf("issueLinks")
  * [org.springframework.web.server.ResponseStatusException] 계열로 던진다. 테스트 컨텍스트도 그 advice 를
  * 등록해 production 과 같은 배선으로 잰다.
  *
- * ★**이 파일은 상태 코드만 잰다.** 네 탭의 **본문 봉투가 서로 같은지**는
+ * ★**오류 경로에서는 상태 코드만 잰다.** 네 탭의 **오류 본문 봉투가 서로 같은지**는
  * [BoardSettingsTabErrorEnvelopeTest] 가 따로 진다 — 여기서 겹쳐 재면 어느 쪽이 봉투를 지키는지
  * 구분할 수 없다.
  */

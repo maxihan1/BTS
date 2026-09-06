@@ -92,7 +92,7 @@ import java.util.UUID
  * | G3 | 게이트의 `if (!hasPermission) throw` → 판정 무시 | WD-9c(403) | allow=true 인 요청 전부 |
  * | G4 | 권한코드 `CREATE` → `SOFT_DELETE` | WD-9c | 상태는 여전히 403 ★c |
  * | G5 | advice 에서 `HttpMessageNotReadableException` 제거 | **0건 — 공허 적발** | 13축 전부 ★d |
- * | G7 | `BoardExceptionHandler` 의 `assignableTypes` 에서 이 컨트롤러 제거(Task 29) | WD-8 | 상태만 재는 12축 |
+ * | G7 | 공용 advice 의 `assignableTypes` 에서 이 컨트롤러 제거 | WD-1·4·7·8·9b·9c·10 (7건) | 200/401 축 6건 ★f |
  * | G5b | G5 + WD-8 에 `$.errorCode` 단언을 더한 뒤 | WD-8 | — (처방 확인) |
  * | G6 | `WorkingDaysResponse.from` 이 `standardDays = null` 고정 | WD-3 | 저장 `verify` ★e |
  *
@@ -105,6 +105,8 @@ import java.util.UUID
  *   `DefaultHandlerExceptionResolver` 가 `HttpMessageNotReadableException` 을 400 으로 바꿔 주기
  *   때문이다. 처방으로 `$.errorCode` 봉투 단언을 더했다(G5b 에서 red 확인). 봉투 자체가 판정
  *   대상이라는 이 성질은 Task 29 가 네 탭을 한 advice 아래로 모은 뒤에도 그대로다(G7).
+ * - **★f** 여전히 통과하는 6건은 WD-2 · WD-2b · WD-3 · WD-5 · WD-6 · WD-9a 다 — 200 응답 축과 401 축은
+ *   이 advice 를 지나지 않는다(2026-09-06 Task 29 실측).
  * - **★e** 저장 계층 `verify` 는 green 이다. 응답 echo 축이 없으면 「저장은 맞는데 화면에는
  *   미설정으로 보이는」 구현이 안 잡힌다.
  */

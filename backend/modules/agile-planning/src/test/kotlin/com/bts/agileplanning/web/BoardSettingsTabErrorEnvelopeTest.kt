@@ -72,6 +72,33 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  * ★**①~④ 와 ⑤ 는 짝으로만 산다.** ①~④ 만 두면 「넷이 각자 같은 문자열을 낸다」를 넷이 따로
  * 주장할 뿐 서로를 검사하지 않고, ⑤ 만 두면 「넷이 똑같이 틀린 봉투」를 통과시킨다.
  *
+ * ## 뮤테이션 실측 (2026-09-06 · 5건) — 재현 가능한 증거
+ *
+ * 구현을 한 군데씩 되돌려 심고 아래 명령을 돌린 결과다. 재현은
+ * `./gradlew :modules:agile-planning:test --rerun --no-build-cache --tests '*BoardSettingsTabErrorEnvelopeTest'
+ * --tests '*BoardCardLayoutApiTest' --tests '*BoardEstimationApiTest' --tests '*BoardWorkingDaysApiTest'
+ * --tests '*BoardDetailViewApiTest'`(전체 57건) 로 한다.
+ *
+ * | # | 뮤테이션 | red 가 된 테스트 | 그래도 통과 |
+ * |---|---|---|---|
+ * | X1 | `assignableTypes` 에서 [BoardDetailViewController] 제거 | 5건 ★a | 나머지 세 탭의 봉투 단언 |
+ * | X5 | `assignableTypes` 에서 [BoardWorkingDaysController] 제거 | 9건 ★b | 나머지 세 탭의 봉투 단언 |
+ * | **X2** | `@RestControllerAdvice` 를 떼어 advice 무력화 | 18건 — 이 파일 5건 **전부** | 상태만 재는 단언 ★★c |
+ * | X3 | [BoardWorkingDaysController] 권한코드를 `SOFT_DELETE` 로 | 1건 ★d | 상태는 여전히 403 |
+ * | X4 | [BoardDetailViewController] PATCH 권한코드를 `SOFT_DELETE` 로 | 1건 ★e | 상태는 여전히 403 |
+ *
+ * - **★a** 「상세 보기 탭은 …」 · 「네 탭의 … 서로 같다」 · [BoardDetailViewApiTest] 의 403/404 3건.
+ *   탭 하나가 목록에서 빠지면 **그 탭만** 죽는다 — 단언이 뭉뚱그려져 있지 않다는 증거다.
+ * - **★b** 「작업일 탭은 …」 · 「네 탭의 …」 · [BoardWorkingDaysApiTest] 의 400/403/404 7건. 같은 성질이다.
+ * - **★★c 이 표의 존재 이유다.** 넷 중 셋의 오류 경로가 [ResponseStatusException] 계열을 지나므로
+ *   advice 를 통째로 지워도 **상태 코드는 그대로 나온다.** 실측으로 초록으로 남은 것 —
+ *   [BoardEstimationApiTest] 의 「없는 보드는 404 다 — 409 가 아니다」·「소프트 삭제된 스크럼 보드는
+ *   404 다」, [BoardCardLayoutApiTest] 의 「미인증이면 존재하는 보드라도 401 이다」.
+ *   「404 인가」만 재는 테스트는 핸들러가 있는지 없는지를 **전혀 재지 않는다.**
+ * - **★d** [BoardWorkingDaysApiTest] 「권한이 없으면 403 이고 아무것도 저장되지 않는다」.
+ * - **★e** [BoardDetailViewApiTest] 「PATCH 는 CREATE 를 프로젝트 스코프로 판정하고 …」.
+ *   ★d·★e 둘 다 상태는 **여전히 403** 이라 권한코드 캡처 단언만이 가른다.
+ *
  * ## 이 파일이 재지 **않는** 것
  * - 401/403/400 봉투 — 이 task 가 닫는 것은 404 한 자리다. 나머지 상태는 탭별 API 테스트가 진다.
  * - 저장 동작 — 게이트에서 404 로 끝나므로 서비스는 호출되지 않는다.

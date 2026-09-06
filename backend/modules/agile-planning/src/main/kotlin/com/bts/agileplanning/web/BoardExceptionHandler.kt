@@ -63,6 +63,20 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * 프론트가 탭마다 다르게 파싱해야 했다. 넷을 여기로 모아 봉투를 하나로 만든다
  * (`BoardSettingsTabErrorEnvelopeTest` 가 네 탭의 404 본문이 서로 같은지를 잰다).
  *
+ * ### ★ [assignableTypes] 는 **열거**다 — 다섯 번째 탭이 같은 자리를 또 밟는다
+ * 이 목록은 컨트롤러를 하나씩 적어 두는 방식이라, 새 컨트롤러를 만든 사람이 여기에 자기 이름을
+ * 더하는 것을 잊으면 **조용히 안 덮인다.** 컴파일도 통과하고 정상 경로 테스트도 전부 초록이라
+ * 오류를 실제로 내 보기 전에는 드러나지 않는다. 넷이 각자 우회를 만든 원인이 바로 그것이다.
+ *
+ * ★게다가 오류 경로가 [ResponseStatusException] 계열이면 이 advice 를 통째로 지워도 **상태 코드는
+ * 그대로 나온다**(Spring 의 `ResponseStatusExceptionResolver`). 「404 인가」만 재는 테스트는
+ * 덮였는지 아닌지를 전혀 재지 못한다 — `BoardSettingsTabErrorEnvelopeTest` KDoc 의 뮤테이션 X2 가
+ * 그 실측이다. 그래서 그 파일은 상태 코드가 아니라 본문 봉투를 잰다.
+ *
+ * 열거를 패키지 스캔이나 공통 마커 인터페이스로 바꾸는 것은 이 자리에서 하지 않는다 —
+ * 스코프가 넓어지면 [SprintExceptionHandler] 등 형제 advice 관할까지 삼킨다. 후속 처방 후보는
+ * `TODOS.md` 의 「agile-planning — 보드 오류 봉투 advice 가 대상 컨트롤러를 손으로 열거한다」에 있다.
+ *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/404/409/422 등을 500 으로 변질시키지 못하게 한다
  * (memory: catch-all-exceptionhandler-swallows-responsestatusexception 교훈).
