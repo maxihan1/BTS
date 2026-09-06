@@ -175,7 +175,10 @@ function FieldRow({
       ref={drop.setNodeRef}
       className={cn(
         'flex min-h-11 items-center gap-2 rounded-md px-1 md:min-h-9',
-        drop.isOver && 'bg-accent',
+        // 드롭 대상 표시는 형제 드래그 표면 3곳(`BoardColumn`·`BacklogColumn`·`SprintColumn`)과
+        // **같은 조합**이다. `bg-accent` 만 쓰면 다크에서 대비가 약해 「어디에 놓이는지」가
+        // 눈확인에서 흐렸다 — 링을 더해 같은 문제의 답을 한 벌로 유지한다.
+        drop.isOver && 'bg-accent ring-primary ring-2',
         drag.isDragging && 'opacity-50',
       )}
     >
