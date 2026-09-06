@@ -26,6 +26,23 @@
 // | ⑨ 목 파생(초) | `REMAINING_AND_SPENT` 저장 → 목이 `SECONDS` 를 낸다 (T-BU-10) | 하드코딩 ↔ `timeTracking` 파생 |
 // | ⑩ 목 파생(개수) | `NONE` 저장 → 목이 `ISSUE_COUNT` 를 낸다 (T-BU-11) | 하드코딩 ↔ `timeTracking` 파생 |
 //
+// ## 뮤테이션 실측 — 2026-09-06, 표를 적기 전에 **실제로 걸어서** 쟀다
+//
+// 잰 명령. `(cd apps/web && node_modules/.bin/vitest run src/components/burndown src/api/burndown.test.ts src/mocks)`
+// 기준선 54 files / 1008 tests · exit 0.
+//
+// | 뮤테이션 | exit | 죽은 테스트 (실측) | 가르는 것 |
+// |---|---|---|---|
+// | **M-A** `FORMATTERS.ISSUE_COUNT` → `formatSecondsValue` (단위를 무시하고 항상 시간 포맷) | 1 | **T-BU-6 · T-BU-7 · T-BU-8** (3건) | 「값이 온다」 ↔ 「값에 따라 **포맷이 갈린다**」 |
+// | **M-B** 스키마에서 `unit:` 줄 삭제 (zod strip 복원) | 1 | **T-BU-1·2·3·4·5·6** (6건) | 스키마가 키를 아는가 — 파싱 축과 포맷 축이 함께 죽는다(포맷이 파싱 위에 선다) |
+// | **M-C** `unitOfTimeTracking` 이 항상 `'SECONDS'` (목이 파생을 안 함) | 1 | **T-BU-11 단 1건** | 목이 **보드 설정에서 파생**하는가 ↔ 상수를 박았는가 |
+//
+// ★**M-C 가 1건만 죽는 것이 판별력의 증거다.** 목 파생 축이 좁게 특정되므로,
+//   이 행이 죽으면 「목이 백엔드에 대해 거짓말한다」를 정확히 그 자리에서 읽을 수 있다.
+// ★**M-A 가 T-BU-5(초 축)를 죽이지 않는다.** 초 축은 뮤테이션 뒤에도 여전히 시간 표기라 통과한다 —
+//   그래서 ⑥(분기 짝)이 필요하다. 한 축만 재는 설계였다면 M-A 가 통과했을 것이다.
+// ★뮤테이션 3건 모두 원복 후 재실행해 **1008 tests · exit 0** 을 확인했다.
+//
 // ★**⑥ 이 이 파일의 핵심이다.** ④ 나 ⑤ 를 **하나만** 두면 「항상 개수로 그리는」 구현이
 //   통과한다. 두 축이 **같은 숫자**를 서로 다르게 그린다는 것을 짝으로 재야 분기가 강제된다.
 // ★**⑨⑩ 도 짝이다.** 하나만 두면 `unit` 을 상수로 박은 목이 통과한다.
@@ -231,7 +248,9 @@ describe('번다운 차트 — 단위가 축 포맷과 제목을 가른다', () 
   it('T-BU-8: 개수 축은 소수점을 그리지 않는다', async () => {
     // recharts 는 도메인이 좁으면 `2.5` 같은 tick 을 만든다. 「2.5개」는 존재하지 않는 값이다.
     await renderChartWithUnit('ISSUE_COUNT')
-    expect(yAxisTick(2.5)).not.toContain('.')
+    // ★`not.toContain('.')` 만 두면 `formatSeconds(2.5)` = `0m` 도 통과한다(실측 — 뮤테이션 A 에서
+    //   이 줄만 살아남았다). 정확한 정수 문자열을 못 박는다.
+    expect(yAxisTick(2.5)).toBe('3')
     // 포맷터만으로는 tick **생성**을 막지 못한다 — 같은 값이 두 tick 으로 접힐 수 있다.
     expect(capture.yAxisAllowDecimals).toBe(false)
   })

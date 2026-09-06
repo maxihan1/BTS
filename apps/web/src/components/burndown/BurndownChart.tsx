@@ -11,7 +11,7 @@ import {
   Legend,
   CartesianGrid,
 } from 'recharts'
-import type { BurndownResponse, BurndownView } from '@/api/burndown'
+import type { BurndownResponse, BurndownUnit, BurndownView } from '@/api/burndown'
 import { formatSeconds } from '@/lib/duration'
 import { burndownLabels } from '@/i18n/burndown-labels'
 
@@ -32,8 +32,18 @@ const COLOR_IDEAL = 'var(--chart-4)'
 /** 범위(scope) 라인 색상 — 중립 계열 얇은 선. */
 const COLOR_SCOPE = 'var(--chart-3)'
 
-/** Y축 제목. burndown-labels.ts 는 Task-2 산출물(파일 범위 밖)이라 로컬 상수로 유지한다. */
-const Y_AXIS_LABEL_PROPS = { value: burndownLabels.chart.yAxisTitle, angle: -90, position: 'insideLeft' } as const
+/**
+ * Y축 제목 — **단위별**(부채 177 task-38).
+ *
+ * ★`Record<BurndownUnit, string>` 으로 못 박는 것이 방어선이다. 백엔드 `BurndownUnit` 에 값이
+ * 늘면 여기가 **컴파일 에러**가 되어 「축이 새 단위인데 제목은 옛것」이 조용히 생기지 않는다.
+ */
+const Y_AXIS_TITLE: Record<BurndownUnit, string> = burndownLabels.chart.yAxisTitle
+
+/** Y축 label prop — 단위에 맞는 제목을 싣는다. */
+function yAxisLabelProps(unit: BurndownUnit): { value: string; angle: number; position: 'insideLeft' } {
+  return { value: Y_AXIS_TITLE[unit], angle: -90, position: 'insideLeft' }
+}
 
 /** 축 tick 공통 스타일. */
 const AXIS_TICK_STYLE = { fontSize: 12 }
@@ -116,6 +126,30 @@ function formatSecondsValue(value: unknown): string {
   return formatSeconds(value)
 }
 
+/**
+ * 이슈 **개수** 포맷터 — 정수만 낸다.
+ *
+ * ★`2.5개` 는 존재하지 않는 값이다. recharts 는 도메인이 좁으면 소수 tick 을 만들므로
+ * 포맷에서 접고, 생성 자체는 `allowDecimals={false}` 가 막는다(둘 다 필요하다 — 포맷만 접으면
+ * 서로 다른 두 tick 이 같은 글자로 겹쳐 보인다).
+ */
+function formatIssueCountValue(value: unknown): string {
+  if (typeof value !== 'number') return ''
+  return String(Math.round(value))
+}
+
+/**
+ * 단위별 값 포맷터 (부채 177 task-38).
+ *
+ * ★★**축 tick 과 툴팁이 이 표 하나를 함께 읽는다.** 두 벌로 적으면 한쪽만 고친 날 축은
+ * 「12」인데 툴팁은 「0m」이라고 말한다 — 한 화면이 두 단위를 주장하는 상태다.
+ * ★`Record<BurndownUnit, …>` 이라 백엔드 열거형이 늘면 컴파일이 깨진다.
+ */
+const VALUE_FORMATTER: Record<BurndownUnit, (value: unknown) => string> = {
+  SECONDS: formatSecondsValue,
+  ISSUE_COUNT: formatIssueCountValue,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,7 +166,9 @@ interface BurndownChartProps {
  * 두 뷰가 공유하는 축/툴팁/범례/범위(scope) 라인을 반환한다.
  * (Line/Axis 컴포넌트는 recharts 제네릭 기본값이 `any`라 뷰별 데이터 타입과 무관하게 재사용 가능하다.)
  */
-function renderCommonElements(): JSX.Element[] {
+function renderCommonElements(unit: BurndownUnit): JSX.Element[] {
+  // 축과 툴팁이 **같은 함수 참조**를 쓴다 — 두 번 꺼내 쓰지 않는다(위 [VALUE_FORMATTER] ★★).
+  const formatValue = VALUE_FORMATTER[unit]
   return [
     <CartesianGrid key="grid" strokeDasharray="3 3" />,
     <XAxis
@@ -142,8 +178,14 @@ function renderCommonElements(): JSX.Element[] {
       interval="preserveStartEnd"
       tick={AXIS_TICK_STYLE}
     />,
-    <YAxis key="yaxis" tickFormatter={formatSecondsValue} tick={AXIS_TICK_STYLE} label={Y_AXIS_LABEL_PROPS} />,
-    <Tooltip key="tooltip" labelFormatter={formatDateTick} formatter={formatSecondsValue} />,
+    <YAxis
+      key="yaxis"
+      tickFormatter={formatValue}
+      allowDecimals={unit !== 'ISSUE_COUNT'}
+      tick={AXIS_TICK_STYLE}
+      label={yAxisLabelProps(unit)}
+    />,
+    <Tooltip key="tooltip" labelFormatter={formatDateTick} formatter={formatValue} />,
     <Legend key="legend" />,
     <Line
       key="scope"
@@ -200,7 +242,10 @@ function renderPrimaryLines(view: BurndownView): JSX.Element[] {
  * - view=burnup → 범위(scope) + 완료(completed, 미래 null 끊김) 2개 라인
  * - 다중 라인 가독성을 위해 `<Legend>` 표시, 색-단독 구분 금지(WCAG) → 색 + 선 스타일 이중 구분
  * - 접근성: 컨테이너 `role="img"` + aria-label 로 차트 목적·시리즈 서술
- * - Y축은 초→시간(formatSeconds) 표시, X축은 날짜 틱 밀도 축약(MM/DD) + `preserveStartEnd`
+ * - Y축 포맷과 제목은 **응답 `unit` 이 가른다**(부채 177 task-38) — `SECONDS` 면 초→시간
+ *   (`formatSeconds`)이고 `ISSUE_COUNT` 면 정수 개수다. 보드 「추정」 탭이 `NONE` 이면 백엔드가
+ *   개수로 계산해 보내므로, 안 가르면 「12개」가 「12초」로 그려진다.
+ * - X축은 날짜 틱 밀도 축약(MM/DD) + `preserveStartEnd`
  * - view 별로 `toBurndownSeries` 오버로드를 리터럴 인자로 호출해 LineChart 의 `data` 제네릭이
  *   구체 타입(BurndownSeriesPoint[] 또는 BurnupSeriesPoint[])으로 추론되도록 분기 렌더한다
  *   (union 배열을 그대로 넘기면 recharts 제네릭 추론이 실패한다).
@@ -215,12 +260,12 @@ export function BurndownChart({ response, view }: BurndownChartProps): JSX.Eleme
       <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
         {view === 'burndown' ? (
           <LineChart data={toBurndownSeries(response, 'burndown')} margin={CHART_MARGIN}>
-            {renderCommonElements()}
+            {renderCommonElements(response.unit)}
             {renderPrimaryLines('burndown')}
           </LineChart>
         ) : (
           <LineChart data={toBurndownSeries(response, 'burnup')} margin={CHART_MARGIN}>
-            {renderCommonElements()}
+            {renderCommonElements(response.unit)}
             {renderPrimaryLines('burnup')}
           </LineChart>
         )}

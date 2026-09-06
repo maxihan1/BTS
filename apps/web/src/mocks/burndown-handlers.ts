@@ -5,7 +5,7 @@
 //   - fr-bd-01: 신규 store는 모듈 로드 시 자동 시드 필수(dev/E2E 빈 화면 방지, 단위 테스트는 MODE='test'에서 건너뜀)
 //
 import { http, HttpResponse } from 'msw'
-import type { BurndownPoint, BurndownResponse } from '@/api/burndown'
+import type { BurndownPoint, BurndownResponse, BurndownUnit } from '@/api/burndown'
 import { findSprintInStore } from './backlog-fixtures'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +57,9 @@ export const DEFAULT_BURNDOWN: BurndownResponse = {
   startDate: '2026-06-01',
   endDate: '2026-06-05',
   totalScopeSeconds: 36000,
+  // 시드 값이 초 스케일이므로 시드 자신의 단위는 SECONDS 다. 보드를 찾으면 아래
+  // [unitOfTimeTracking] 이 「추정」 탭 값으로 **덮는다**.
+  unit: 'SECONDS',
   points: [
     { date: '2026-06-01', remainingSeconds: 36000, idealSeconds: 36000, completedSeconds: 0, scopeSeconds: 36000 },
     { date: '2026-06-02', remainingSeconds: 27000, idealSeconds: 27000, completedSeconds: 9000, scopeSeconds: 36000 },
@@ -105,6 +108,8 @@ if (import.meta.env.MODE !== 'test') {
 // | 누적은 **달력일 전부**를 걸어가고 점만 축에서 낸다(비근무일 worklog 를 버리지 않는다) | `BurndownCalculator.calculate` 의 while 루프 |
 // | worklog 일 귀속은 **보드 타임존** 기준이고 미설정이면 UTC 다 | `SprintBurndownService.aggregateByBoardDate` · `resolveBoardZone` |
 // | remaining 은 0 미만으로 내려가지 않고 completed 는 클램프하지 않는다 | `coerceAtLeast(0L)` |
+// | 세로축 **단위**는 보드 「추정」 탭의 `time_tracking` 이 정한다 | `SprintBurndownService.resolveUnit` |
+// | `REMAINING_AND_SPENT`→`SECONDS` · 그 밖(`NONE`·모르는 값)→`ISSUE_COUNT` | `TimeTracking.fromStored` 가 모르는 값을 `NONE` 으로 접는다 |
 //
 // ## ★목이 백엔드와 **다른** 것 — 목은 근사이지 재구현이 아니다
 //
@@ -119,6 +124,12 @@ if (import.meta.env.MODE !== 'test') {
 // - **스프린트 시작 이전 worklog 선합산이 없다.** 백엔드는 start 이전 키를 start 버킷에 미리
 //   더한다(`preStartSum`). 시드가 전부 기간 안이라 그 경로를 두지 않았다.
 // - **요일 키 검증이 없다.** 저장 시점(`board-handlers` PUT)이 이미 걸렀다고 믿는다.
+// - ★**`ISSUE_COUNT` 축에서도 값을 다시 계산하지 않는다.** 백엔드는 그 축에서 잔여/이상/완료를
+//   **가시 이슈 수**로 다시 낸다(`scopeOf` · `visibleIssueCount`). 목은 `unit` 만 파생하고
+//   `points` 는 시드 그대로다 — 즉 개수 축 보드에서 목이 내는 숫자는 초 스케일 시드다.
+//   값까지 흉내내려면 스코프 집계를 재구현해야 하고(위 「스코프가 고정이다」와 같은 이유),
+//   그 순간 기존 e2e 의 곡선 기준선이 통째로 바뀐다. **단위 배선을 재는 데는 필요하지 않다** —
+//   프론트가 `unit` 을 읽고 포맷을 가르는지가 이 축의 판정이고 그것은 값 스케일과 무관하다.
 
 /** 목이 파생에 쓰는 worklog 한 건 — 백엔드 `WorklogContribution` 의 최소 미러. */
 interface WorklogSeed {
@@ -150,6 +161,25 @@ const SPRINT_WORKLOG_SEED: Record<string, readonly WorklogSeed[]> = {
 
 /** `boards.working_days` 3글자 요일 키 — `Date.getUTCDay()` 순서(0=일). 백엔드 `WEEKDAY_BY_KEY` 의 짝. */
 const WEEKDAY_KEYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const
+
+/**
+ * 보드 「추정」 탭의 `time_tracking` → 세로축 단위. 백엔드 `SprintBurndownService.resolveUnit` 의 짝이다.
+ *
+ * ★**「필드 부재」와 「값이 NONE」은 다르다.** 부재는 보드 조회가 실패했거나 목이 그 축을 안 싣는
+ * 상태라 「설정을 읽지 못했다」는 뜻이고, 그때는 호출자가 **시드의 단위를 유지**한다(아래
+ * [withBoardSettings] — 작업일 축이 「보드를 못 찾으면 시드 그대로」인 것과 같은 규칙이다).
+ * `?? 'NONE'` 으로 뭉개면 목 배선이 끊긴 순간 조용히 개수 축이 되어 원인이 안 보인다.
+ *
+ * ★값이 **있을 때**는 백엔드와 같게 접는다 — `TimeTracking.fromStored` 가 모르는 문자열을
+ * `NONE` 으로 떨어뜨리므로 `REMAINING_AND_SPENT` 만 `SECONDS` 고 나머지는 전부 `ISSUE_COUNT` 다.
+ *
+ * @param timeTracking 보드 조회 응답의 `timeTracking`. `undefined` 면 **읽지 못한 것**이다.
+ * @returns 파생한 단위. 읽지 못했으면 `undefined`.
+ */
+function unitOfTimeTracking(timeTracking: string | undefined): BurndownUnit | undefined {
+  if (timeTracking === undefined) return undefined
+  return timeTracking === 'REMAINING_AND_SPENT' ? 'SECONDS' : 'ISSUE_COUNT'
+}
 
 /** 보드 조회 응답이 싣는 「작업일」 3축 — `board-handlers.BoardSettingsPayload.workingDays` 미러. */
 interface BoardWorkingDaysPayload {
@@ -273,24 +303,32 @@ function deriveFromWorkingDays(stored: BurndownResponse, workingDays: BoardWorki
 }
 
 /**
- * 스프린트가 속한 보드의 작업일 설정을 읽어 [stored] 를 파생한다.
+ * 스프린트가 속한 보드 설정을 **한 번 읽어** [stored] 를 파생한다 — 작업일(points)과 추정(unit).
  *
  * 보드를 못 찾거나 조회가 실패하면 **시드를 그대로** 돌려준다 — 미설정과 같은 취급이라
  * 기존 화면이 조용히 망가지지 않는다(대신 S5·S6 이 red 로 알린다).
  *
+ * ★**두 축이 같은 응답을 읽는다.** 조회를 두 번 하면 그 사이에 설정이 바뀔 때 한 응답이
+ * 서로 다른 두 시점을 섞어 말하게 된다 — 목에서도 그런 상태를 만들지 않는다.
+ * ★**`unit` 은 축이 비어도(=points 0개) 파생한다.** 「그릴 것이 없다」와 「단위를 모른다」는
+ * 다른 사실이고, 화면은 빈 상태에서도 축 제목을 그린다.
+ *
  * @param stored 시드된 응답.
  */
-async function withBoardWorkingDays(stored: BurndownResponse): Promise<BurndownResponse> {
+async function withBoardSettings(stored: BurndownResponse): Promise<BurndownResponse> {
   const boardId = findSprintInStore(stored.sprintId)?.storedSprint.boardId
   if (boardId === undefined || boardId === null) return stored
 
   try {
     const response = await fetch(`/api/v1/boards/${boardId}`)
     if (!response.ok) return stored
-    const body = (await response.json()) as { data?: { workingDays?: BoardWorkingDaysPayload } }
+    const body = (await response.json()) as {
+      data?: { workingDays?: BoardWorkingDaysPayload; timeTracking?: string }
+    }
     const workingDays = body.data?.workingDays
-    if (workingDays === undefined) return stored
-    return deriveFromWorkingDays(stored, workingDays)
+    const derived = workingDays === undefined ? stored : deriveFromWorkingDays(stored, workingDays)
+    const unit = unitOfTimeTracking(body.data?.timeTracking)
+    return unit === undefined ? derived : { ...derived, unit }
   } catch {
     return stored
   }
@@ -309,8 +347,9 @@ async function withBoardWorkingDays(stored: BurndownResponse): Promise<BurndownR
  * - store에 없는 sprintId → 404 AGILE_SPRINT_NOT_FOUND
  * - store에 있으면 → 200 { data: BurndownResponse }
  *
- * ★200 경로의 `points` 는 **보드 「작업일」 설정에서 파생**한다([withBoardWorkingDays]).
- * 설정이 미설정이면 시드를 그대로 낸다 — 경계는 위 「목이 백엔드와 같은/다른 것」 표가 정본이다.
+ * ★200 경로의 `points` 는 **보드 「작업일」 설정**에서, `unit` 은 **보드 「추정」 설정**에서
+ * 파생한다([withBoardSettings]). 설정을 못 읽으면 시드를 그대로 낸다 — 경계는 위
+ * 「목이 백엔드와 같은/다른 것」 두 표가 정본이다.
  *
  * 에러 body 형식은 backlog-handlers.ts(같은 agile-planning BC) 선례를 따른다 — { errorCode, message }.
  */
@@ -339,7 +378,7 @@ const getSprintBurndownHandler = http.get('/api/v1/sprints/:id/burndown', async 
     )
   }
 
-  return HttpResponse.json({ data: await withBoardWorkingDays(stored) })
+  return HttpResponse.json({ data: await withBoardSettings(stored) })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
