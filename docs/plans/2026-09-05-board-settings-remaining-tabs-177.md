@@ -697,14 +697,31 @@ R6 이 화면까지 못 간다. T31 이 백엔드에서 그 구분을 지켰다.
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/board-settings.spec.ts`, `apps/web/src/mocks/board-handlers.test.ts`, `apps/web/src/mocks/board-fixtures.ts`]
-- depends-on: [16]
+- files: [`apps/web/e2e/board-settings.spec.ts`, `apps/web/src/mocks/board-handlers.test.ts`]
+- depends-on: [16, 31]
 - jira: [J22, J17, J18]
+
+★**정정 2건 (2026-09-06 · Task 22 구현자 실측).**
+- **`board-fixtures.ts` 를 files 에서 뺐다 — 건드리면 안 되는 파일이었다.** S10 은 백로그 뷰가
+  필요한데 그 뷰는 스크럼에만 있고(R3) 시드는 **전부 칸반**이다. 시드에 스크럼 보드를 하나
+  더 넣는 것이 최단 경로처럼 보이지만, `backlog-handlers.ts:180` 이 「그 프로젝트의 **첫
+  스크럼 보드**가 백로그 기본 스코프」라 ATLAS 에 스크럼을 시드하는 순간 그 판정이 뒤집혀
+  **백로그 계열 spec 이 통째로** 흔들린다. 폭발 반경이 이 task 밖이므로 `scrum-board.spec.ts`
+  S1 처럼 **화면에서 만들어** 쓴다(goto 1회 규약을 지키면 store 가 살아 있다).
+- **depends-on 에 31 을 더했다.** S10 의 판정은 「다른 탭에 갔다 와서 **재마운트**된 패널이
+  자기 뷰 구성만 갖는가」인데, 그 초기값의 출처가 **보드 조회 응답의 `cardLayout`** 이다
+  (Task 31 이 그것을 실었다). 31 이 없으면 재마운트가 빈 구성에서 시작해 S10 이 red 다 —
+  재마운트를 빼면 로컬 state 위에서만 참인 가짜 초록이 되므로 이 의존은 우회 불가다.
 
 ★**리뷰 CONCERN C4 로 쪼갰다.** 초판은 `depends-on: [16..21]` 이라 프론트 6개가 전부 끝나야
 E2E 가 시작하는 직렬 꼬리였다. 탭별로 나누면 T16 완료 시점에 첫 E2E 가 돈다.
 
-★★**선행 수리 — 이 spec 은 지금 red 다(T15 구현자가 실측·증명).**
+★★**선행 수리 — 이 spec 은 지금 red 다(T15 구현자가 실측·증명 · Task 22 구현자가 재확인).**
+★**재확인 실측(2026-09-06 · HEAD `755994743`).** `2 failed / 3 passed` · 종료 코드 1.
+S1 이 `strict mode violation: … resolved to 2 elements` 로 죽는다 — 전역 `/보드 관리/` 에
+매치되는 버튼이 **정확히 2개**다(사이드바 「최근 방문」 목록의 ATLAS 보드 `⋯` + 보드 헤더 `⋯`).
+그 **개수 2** 를 S1 안에 단언으로 박아 뒀다 — 「우연히 하나뿐이라 통과 중」과
+「진짜로 좁혀 놨다」를 가르는 것은 그 수뿐이다.
 `board-settings.spec.ts:38` 이 `fixtures/board-helpers.ts` 의 `boardActionsTrigger` 를
 **import 하지 않고 같은 이름으로 로컬 재정의**해 뒀고 스코프가 없다. `#454`(사이드바 보드 `⋯`)가
 들어오면서 헤더 `⋯` 와 접근성 이름이 바이트 단위로 같아져 S1 이 strict mode violation 으로 즉사한다 —
