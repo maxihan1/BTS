@@ -386,6 +386,166 @@ function toDetailViewRows(
   return rows
 }
 
+/** 한 그룹의 화면 조각 — 그릴 줄이 있는 그룹만 담는다. */
+interface DetailViewGroupRows {
+  /** 그룹 키. 표시 이름과 목록 접근성 이름을 여기서 뽑는다. */
+  group: (typeof DETAIL_VIEW_FIELD_GROUPS)[number]
+  /** 그 그룹에 그릴 줄. **비어 있는 그룹은 이 목록에 들어오지 않는다.** */
+  rows: DetailViewRow[]
+}
+
+/** [useIssueDetailViewFields] 반환. */
+interface IssueDetailViewFieldsState {
+  /** 그릴 그룹 — 구성이 없으면 빈 배열이고, 그때 화면은 이 구획을 통째로 그리지 않는다. */
+  groups: DetailViewGroupRows[]
+  /** 구성 조회가 실패했는가. 보드가 **없는** 것은 실패가 아니다. */
+  isError: boolean
+  /** 재시도 — 보드 목록과 구성을 함께 다시 부른다. */
+  retry: () => void
+}
+
+/**
+ * 이 이슈를 그릴 때 쓸 **보드 상세 보기 구성**을 읽는다 (스펙 R7·R7c · J46~J48).
+ *
+ * ## ★이 훅이 하나뿐이어야 하는 이유 (R7c)
+ *
+ * 상세는 세 자리에 뜬다 — 전체화면(`/issues/$key`) · 모달(`IssueDetailModal`) ·
+ * 사이드패널(`IssueDetailSidePanel`). 뒤의 둘은 `#455` 가 낸 토글이고 **셋 다 같은
+ * `IssueDetailPage`(variant='pane')를 그리며, 그 안의 메타패널은 이 컴포넌트 하나**다.
+ * 그래서 구성 읽기를 **여기** 두는 한 「같은 이슈가 열기 방식에 따라 다르게 보인다」가
+ * 구조적으로 불가능하다 — 분기가 없기 때문이다.
+ *
+ * 🛑 **이 읽기를 껍데기(`IssueDetailModal`/`IssueDetailSidePanel`)로 끌어올리지 마라.**
+ * 그 순간 같은 로직이 두 벌이 되고, 한쪽만 고치는 날 R7c 가 깨진다. 그것이 이 task 의
+ * RED 가 재현한 상태이고 판정은 `IssueMetaPanel.test.tsx` 의 T21-1 ↔ T21-2 짝이 진다
+ * (실측 — 이 훅이 `presentation === 'modal'` 일 때만 구성을 내게 바꾸면 T21-2 **만** red 다).
+ *
+ * ## ★어느 보드의 구성인가 — 판단과 근거
+ *
+ * 이슈는 보드가 아니라 **프로젝트**에 속하는데 상세 보기 구성은 **보드 단위**다(J46 · 편차
+ * X8·X10). 스펙(R7·R7c)과 계획(Task 21) 어디에도 「보드가 여럿일 때 어느 것인가」에 대한
+ * 답이 없다. 그래서 **가장 단순한 해석**을 택했다 — **그 프로젝트의 첫 보드**(`useBoards`
+ * 응답의 0번). 근거 셋.
+ *
+ * 1. 보드 화면이 `?board=` 없이 열렸을 때 고르는 것과 **같은 보드**다
+ *    (`projects.$projectKey.board.tsx` 의 `boards[0]?.boardId`). 새 「기본 보드」 규칙을
+ *    만들지 않는다 — 그 규칙이 이미 세 곳에서 갈렸다는 것이 부채 164 다.
+ * 2. 상세는 진입점이 13곳(보드·백로그·목록·인박스·검색·대시보드…)이라 「열린 맥락의 보드」를
+ *    쓰려면 그 13곳 전부가 보드 id 를 실어 와야 한다. 실어 오지 않는 곳에서는 같은 이슈가
+ *    **어디서 열었느냐에 따라** 다르게 보이게 되고, 그것은 R7c 가 막으려는 증상과 같은 종류다.
+ * 3. 보드 id 를 상세로 흘리는 배선은 이 task 의 허용 파일 셋(메타패널·상세 라우트·그 테스트)
+ *    밖이다(스토어·보드 라우트·백로그를 함께 고쳐야 한다).
+ *
+ * ★**알면서 남기는 한계** — 한 프로젝트에 보드가 둘 이상이면 **둘째 보드의 구성은 상세에
+ * 반영되지 않는다.** 보드 스코프를 상세까지 흘리기로 결정하면 **고칠 자리는 이 훅 한 곳**이다.
+ *
+ * ## 상태 3종
+ *
+ * - 로딩 — 아무것도 그리지 않는다. 이 구획은 **구성이 있는 보드에서만** 뜨는 보조 정보라,
+ *   스켈레톤을 깔면 대부분의 보드에서 「떴다가 사라지는 빈 상자」가 된다.
+ * - 에러 — 화면에 남는 안내 + 재시도([IssueDetailViewFieldsState.isError]). 토스트 단독으로
+ *   두면 지나친 사용자는 「구성이 비었다」와 「못 읽었다」를 가를 수 없다.
+ * - 빈 — 구획 자체가 없다(현행 유지). 보드가 아예 없는 프로젝트도 같다 — **실패가 아니다.**
+ *
+ * @param context 값 도출에 쓰는 것들. 이 패널이 이미 들고 있는 것만 담는다.
+ * @returns 그릴 그룹 · 에러 여부 · 재시도.
+ */
+function useIssueDetailViewFields(context: DetailViewValueContext): IssueDetailViewFieldsState {
+  const boardsQuery = useBoards(context.issue.projectKey)
+  const boardId = boardsQuery.data?.[0]?.boardId
+
+  // queryKey 는 `boardKeys.detail` 을 접두로 쓴다 — 설정 화면이 저장 후 무효화하는 키가
+  // `boardKeys.detail(boardId)` 라(`DetailViewPanel`), 접두 일치로 이 구성도 함께 신선해진다.
+  const fieldsQuery = useQuery({
+    queryKey: [...boardKeys.detail(boardId), 'detail-view-fields'],
+    queryFn: (): Promise<BoardDetailViewFields> => {
+      // `enabled` 가 막지만 타입은 그것을 모른다 — `useBoard` 와 같은 형태로 둔다.
+      if (boardId === undefined) {
+        throw new Error('boardId is required')
+      }
+      return fetchDetailViewFields(boardId)
+    },
+    enabled: boardId !== undefined,
+    staleTime: DETAIL_VIEW_STALE_TIME_MS,
+  })
+
+  const fields = fieldsQuery.data
+  const groups =
+    fields === undefined
+      ? []
+      : DETAIL_VIEW_FIELD_GROUPS.map((group) => ({
+          group,
+          rows: toDetailViewRows(fields[group], context),
+        })).filter((entry) => entry.rows.length > 0)
+
+  return {
+    groups,
+    isError: boardsQuery.isError || fieldsQuery.isError,
+    retry: () => {
+      void boardsQuery.refetch()
+      void fieldsQuery.refetch()
+    },
+  }
+}
+
+/**
+ * 보드가 정한 상세 보기 필드를 그린다 (J47 그룹 4종 · J48 순서).
+ *
+ * 그릴 것이 없으면 **아무것도 렌더하지 않는다** — 빈 칸을 그리면 사용자가 조회 실패로 읽는다.
+ * (`DESIGN.md` §4 의 빈 상태 규칙은 「조회 결과 없음」에 대한 것이고, 여기 빈 것은
+ * 「이 보드는 구성을 두지 않았다」라 안내할 내용 자체가 없다.)
+ *
+ * @param props.state [useIssueDetailViewFields] 결과.
+ */
+function DetailViewFieldsSection({ state }: { state: IssueDetailViewFieldsState }): JSX.Element | null {
+  if (state.isError) {
+    return (
+      <div
+        className="border border-border rounded-xl px-3.5 py-3"
+        role="alert"
+        data-testid="detail-view-error"
+      >
+        <p className="text-sm mb-2">{boardLabels.settings.loadError}</p>
+        <Button variant="outline" size="sm" className="w-full min-h-[44px]" onClick={state.retry}>
+          {boardLabels.settings.retry}
+        </Button>
+      </div>
+    )
+  }
+
+  if (state.groups.length === 0) return null
+
+  return (
+    <div className="border border-border rounded-xl overflow-hidden" data-testid="detail-view-fields">
+      {state.groups.map(({ group, rows }) => (
+        <div key={group} className="px-3.5 py-3 border-b border-border last:border-b-0">
+          <p className="text-xs text-muted-foreground mb-1.5">{detailViewLabels.groupLabels[group]}</p>
+          <ul
+            className="flex flex-col gap-1.5"
+            aria-label={detailViewLabels.listLabel(detailViewLabels.groupLabels[group])}
+          >
+            {rows.map((row) => (
+              <li
+                key={row.fieldKey}
+                data-field-key={row.fieldKey}
+                className="flex items-baseline justify-between gap-2"
+              >
+                <span
+                  className="text-xs text-muted-foreground shrink-0"
+                  data-testid="detail-view-field-name"
+                >
+                  {row.label}
+                </span>
+                <span className="text-sm font-medium truncate">{row.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
@@ -447,24 +607,8 @@ export function IssueMetaPanel({
   // 로그인 사용자의 date_format 환경설정을 반영한 날짜 포맷터 (FR-PF-01 Task 8)
   const { formatDate, formatDateTime } = useDateFormat()
 
-  // ── 보드 상세 보기 구성 (부채 177 Task 21 · R7·R7c · J46~J48) ──────────────
-  // 이슈는 보드가 아니라 **프로젝트**에 속하는데 구성은 보드 단위다 — 어느 보드로 그릴지는
-  // 아래 `useBoards` 주석에 근거를 적었다.
-  const boardsQuery = useBoards(issue.projectKey)
-  const detailViewBoardId = boardsQuery.data?.[0]?.boardId
-  const detailViewQuery = useQuery({
-    queryKey: [...boardKeys.detail(detailViewBoardId), 'detail-view-fields'],
-    queryFn: (): Promise<BoardDetailViewFields> => {
-      if (detailViewBoardId === undefined) {
-        throw new Error('boardId is required')
-      }
-      return fetchDetailViewFields(detailViewBoardId)
-    },
-    enabled: detailViewBoardId !== undefined,
-    staleTime: DETAIL_VIEW_STALE_TIME_MS,
-  })
-
-  const detailViewContext: DetailViewValueContext = {
+  // 보드가 정한 상세 보기 구성 — **모달·사이드패널·전체화면이 공유하는 단 하나의 읽기**(R7c).
+  const detailView = useIssueDetailViewFields({
     issue,
     currentAssignee,
     componentIds,
@@ -474,16 +618,7 @@ export function IssueMetaPanel({
     fixVersionIds,
     formatDate,
     formatDateTime,
-  }
-  const detailViewFields = detailViewQuery.data
-  const detailViewGroups = DETAIL_VIEW_FIELD_GROUPS.map((group) => ({
-    group,
-    rows:
-      detailViewFields === undefined
-        ? []
-        : toDetailViewRows(detailViewFields[group], detailViewContext),
-  })).filter((entry) => entry.rows.length > 0)
-  const isDetailViewError = boardsQuery.isError || detailViewQuery.isError
+  })
 
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
@@ -510,62 +645,8 @@ export function IssueMetaPanel({
 
   return (
     <aside className="flex flex-col gap-3">
-      {/* 보드 상세 보기 구성 조회 실패 — 화면에 남는다. 토스트 단독이면 사용자가 못 보고 지나간다. */}
-      {isDetailViewError && (
-        <div
-          className="border border-border rounded-xl px-3.5 py-3"
-          role="alert"
-          data-testid="detail-view-error"
-        >
-          <p className="text-sm mb-2">{boardLabels.settings.loadError}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full min-h-[44px]"
-            onClick={() => {
-              void boardsQuery.refetch()
-              void detailViewQuery.refetch()
-            }}
-          >
-            {boardLabels.settings.retry}
-          </Button>
-        </div>
-      )}
-
-      {/* 보드가 정한 상세 보기 필드 (J47 그룹 4종 · J48 순서).
-          ★구성이 없는 그룹은 **아무것도 그리지 않는다** — 빈 칸이 있으면 사용자가 조회 실패로 읽는다.
-          ★구성이 통째로 비면 이 카드 자체가 없다(현행 유지). */}
-      {detailViewGroups.length > 0 && (
-        <div className="border border-border rounded-xl overflow-hidden" data-testid="detail-view-fields">
-          {detailViewGroups.map(({ group, rows }) => (
-            <div key={group} className="px-3.5 py-3 border-b border-border last:border-b-0">
-              <p className="text-xs text-muted-foreground mb-1.5">
-                {detailViewLabels.groupLabels[group]}
-              </p>
-              <ul
-                className="flex flex-col gap-1.5"
-                aria-label={detailViewLabels.listLabel(detailViewLabels.groupLabels[group])}
-              >
-                {rows.map((row) => (
-                  <li
-                    key={row.fieldKey}
-                    data-field-key={row.fieldKey}
-                    className="flex items-baseline justify-between gap-2"
-                  >
-                    <span
-                      className="text-xs text-muted-foreground shrink-0"
-                      data-testid="detail-view-field-name"
-                    >
-                      {row.label}
-                    </span>
-                    <span className="text-sm font-medium truncate">{row.value}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* 보드가 정한 상세 보기 필드 — 조회 실패 안내와 빈 상태 판단은 섹션이 쥔다. */}
+      <DetailViewFieldsSection state={detailView} />
 
       {/* 메타 패널 카드 */}
       <div className="border border-border rounded-xl overflow-hidden">
