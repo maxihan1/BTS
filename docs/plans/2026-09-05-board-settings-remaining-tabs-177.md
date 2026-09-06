@@ -947,7 +947,7 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardSettingsTabErrorEnvelopeTest.kt`, `TODOS.md`, `apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/api/board-settings.ts`]
 - depends-on: [8, 9, 10, 13]
 - jira: []
 
@@ -1169,9 +1169,53 @@ T23 이 그 자리를 `test.fail()` 로 박았다(S5·S6). `test.skip` 이 아�
 **검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-estimation.spec.ts)`
 ★**`test.fail` 이 0건**이어야 한다.
 
+### Task 34. 뮤테이션 표가 코드보다 많이(또는 적게) 주장하는 자리를 닫는다
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/board-settings.spec.ts`, `apps/web/e2e/board-settings-detail-view.spec.ts`, `apps/web/e2e/board-settings-estimation.spec.ts`]
+- depends-on: [22, 23, 24, 33]
+- jira: []
+
+★**계획에 없던 task 다(2026-09-06 신설). 독립 검증이 적발했다.**
+
+**무엇이 문제인가.** 이 PR 은 「뮤테이션 목록을 코드에 남긴다」를 규율로 세웠다 —
+보고서에만 쓰면 검증자가 재현하지 못하기 때문이다. **그런데 그 표 자신이
+「문서가 코드보다 많이 주장한다」의 새 사례가 됐다.** 검증자가 vitest 로 4건을 재현해 반증했다.
+
+| 자리 | 표의 주장 | 실측 |
+|---|---|---|
+| `board-settings.spec.ts:26` ③ | 「S10 **단독**」 | `CardLayoutPanel.test.tsx` T-CL-1·T-CL-8·T-CL-16 **도** 죽는다 |
+| `board-settings.spec.ts:24` ① | S9 · S10 | `projects.$projectKey.board.settings.test.tsx` T-BS-11 **누락** |
+| `board-settings-detail-view.spec.ts:19-20` ①② | `useIssueDetailViewFields` 가 `presentation` 으로 갈린다 | 그 훅은 **`presentation` 파라미터를 받지 않는다**(`IssueMetaPanel.tsx:453`) — 그 형태의 뮤테이션은 존재할 수 없다 |
+| `board-settings-detail-view.spec.ts:21` ③ | D1·D2·D3 | `IssueMetaPanel.test.tsx` T21-1·T21-2·T21-4 **도** 죽는다 |
+
+**그리고 T23 은 번호가 통째로 썩었다.** `19dcdc0e7` 가 표를 ①~⑪ → ①~⑦ 로 재번호하며
+**머리말 두 줄만** 고쳐, 본문 인라인 참조 **7군데**가 옛 번호를 가리킨다
+(`:327` · `:353`(⑧ 부재) · `:413` · `:432`(자기 파일과 모순) · `:445` · `:481`(⑨ 부재) · `:504`(⑩ 부재)).
+
+★**반대 방향도 하나 있다 — 표가 코드보다 *적게* 주장한다.** 옛 ⑧
+「저장이 보드 단위가 아니라 프로젝트 단위로 샌다(편차 X7)」가 새 표에서 사라졌는데
+`:444-455`(옆 칸반 보드가 여전히 미설정)가 **여전히 그 축을 지고 있다.** 행을 되살려야 한다.
+
+★**T24 는 축 중복을 공개하지 않았다.** `IssueMetaPanel.test.tsx:7-22`(Task 21)의 표가 이미
+모달·사이드패널 패리티(R7c)·순서 3축을 단위로 지고 있고, `:22` 에는 **T24 와 동일한 뮤테이션**이
+적혀 있다. E2E 고유 가치(설정 화면 편집 경로·키보드 드래그·SPA 영속)는 실재하지만
+「이 축의 유일한 판정자」라는 함의는 성립하지 않는다. 그 관계를 표에 적는다.
+
+**RED**. 표의 「죽는 테스트」 열을 **실제로 재현**해 어긋난 행을 드러낸다.
+
+**GREEN**. 표를 실측으로 교체한다. 「단독」이라 적을 때는 **교차 스위트까지 재고 나서** 적는다.
+
+**REFACTOR**. 표 머리에 **어느 명령으로 잰 결과인지**를 적는다 — 스코프를 밝히지 않은 「단독」이
+이 결함의 근본 원인이다(T23 표는 스코프를 명시해 이 문제에서 자유로웠다).
+
+**검증**. `(cd apps/web && node_modules/.bin/vitest run <표가 지목한 경로들>)` · 종료 코드로 판정.
+★**표에 적힌 모든 행을 재현하라.** 재현 못 한 행은 「확인 못 함」으로 표에 적는다 — 지어내지 않는다.
+
 ## Plan 메타
 
-- **task 수**: 33 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 34 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
