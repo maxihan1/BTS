@@ -2013,4 +2013,69 @@ describe('IMP-RP 보고자 표시', () => {
 
     expect(screen.getByTestId('issue-reporter-name')).toHaveTextContent(issueFixture.reporterId)
   })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // IMP-RP-4·5 — 구성으로 켠 보고자 행이 기본 보고자 행과 **같은 모양**인가
+  //
+  // `#462` 가 기본 보고자 행을 UUID → 이름으로 고쳤다. 그런데 보드 상세 보기 구성
+  // (부채 177 T21)이 새로 낸 `PEOPLE/reporter` 행은 `issue.reporterId` 를 그대로 그려서,
+  // **한 패널 안에서 같은 사람이 두 모양**(이름 / UUID)으로 보였다. 방금 고친 버그가 다른
+  // 표면에 복제된 것이고, 그 회귀를 잡는 판정이 없었다.
+  //
+  // ★**「같은 문자열」만 재면 공허하다** — 둘 다 UUID 여도 통과한다. 그래서 IMP-RP-4 는
+  //   그 공통값이 **이름**임을 함께 못 박고, IMP-RP-5 가 반대편(해석 실패 → 둘 다 UUID)을
+  //   맡는다. 둘이 짝이라 「이름만 그린다」도 「UUID 만 그린다」도 살아남지 못한다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** 보고자 한 줄만 켠 보드를 실제 PATCH 창구로 심고 패널을 렌더한다. */
+  async function renderWithConfiguredReporter(reporter: UserSummary | null): Promise<void> {
+    resetBoardStore()
+    const boardId = generateUUID()
+    seedBoard({ ...DEFAULT_BOARD, boardId })
+    // 스텁을 손으로 짓지 않는다 — 응답 정규화(R7c)까지 실제 핸들러가 흉내 낸다(T21 과 같은 이유).
+    server.use(...appHandlers)
+    await replaceDetailViewFields(boardId, 'PEOPLE', ['reporter'])
+    renderWithReporter(reporter)
+  }
+
+  /** 구성으로 켠 `reporter` 줄의 **값 칸** 텍스트. 이름 칸(`detail-view-field-name`)은 뺀다. */
+  async function configuredReporterValue(): Promise<string> {
+    const dvLabels = boardLabels.settings.detailView
+    const list = await screen.findByRole('list', {
+      name: dvLabels.listLabel(dvLabels.groupLabels.PEOPLE),
+    })
+    const row = within(list)
+      .getAllByRole('listitem')
+      .find((item) => item.dataset['fieldKey'] === 'reporter')
+    if (row === undefined) throw new Error('구성으로 켠 reporter 줄이 화면에 없다')
+    const value = row.querySelector('span[data-testid="detail-view-field-name"] ~ span')
+    if (value === null) throw new Error('reporter 줄의 값 칸을 찾지 못했다')
+    return value.textContent ?? ''
+  }
+
+  it('IMP-RP-4: 구성으로 켠 보고자 행이 기본 보고자 행과 같은 **이름**을 보여준다', async () => {
+    await renderWithConfiguredReporter(reporterUser)
+
+    const configured = await configuredReporterValue()
+    // ① 같은 화면 안에서 두 모양이 되지 않는다.
+    expect(configured).toBe(screen.getByTestId('issue-reporter-name').textContent)
+    // ② 그 공통값이 **이름**이다 — 이것이 없으면 「둘 다 UUID」도 ① 을 통과한다.
+    expect(configured).toBe('홍길동')
+    expect(configured).not.toBe(issueFixture.reporterId)
+  })
+
+  it('IMP-RP-5: 보고자를 해석하지 못하면 구성 행도 기본 행과 같은 UUID 로 폴백한다', async () => {
+    // 폴백 사다리까지 `IssueReporterRow` 와 같은 경로여야 한다. 여기서 `—` 를 그리면
+    // 「보고자 없는 이슈」라는 기본 행이 하지 않는 거짓말을 구성 행만 하게 된다.
+    await renderWithConfiguredReporter(null)
+
+    const configured = await configuredReporterValue()
+    expect(configured).toBe(screen.getByTestId('issue-reporter-name').textContent)
+    expect(configured).toBe(issueFixture.reporterId)
+  })
+
+  afterEach(() => {
+    // 보드 store 는 파일 수명 동안 살아 있다 — 다음 스위트가 이 구성을 물려받지 않게 턴다.
+    resetBoardStore()
+  })
 })

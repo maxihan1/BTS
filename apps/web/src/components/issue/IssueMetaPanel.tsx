@@ -234,6 +234,14 @@ interface DetailViewValueContext {
   issue: IssueResponse
   /** 현재 담당자(별도 조회 결과). null 이면 미지정. */
   currentAssignee: UserSummary | null
+  /**
+   * 보고자(별도 조회 결과). null 이면 **해석 실패**(탈퇴·비활성 사용자, 조회 미완)다.
+   *
+   * ★[IssueReporterRow] 가 받는 것과 **같은 값**이다. 같은 패널 안에서 기본 보고자 행은
+   * 이름을, 구성으로 켠 `reporter` 행은 UUID 를 그리는 두 모양이 되지 않게 하려면 두 자리가
+   * 같은 출처를 봐야 한다 — `#462` 가 기본 행에서 고친 버그를 여기에 복제하지 않는다.
+   */
+  reporter: UserSummary | null
   /** 이 이슈의 컴포넌트 UUID 목록. */
   componentIds: string[]
   /** 프로젝트 컴포넌트 전체 — 이름 해석용. */
@@ -323,7 +331,15 @@ const DETAIL_VIEW_FIELD_SPECS: Record<DetailViewFieldKey, DetailViewFieldSpec> =
         ? null
         : (c.currentAssignee.displayName ?? c.currentAssignee.username),
   },
-  reporter: { restrictedAs: null, resolve: (c) => c.issue.reporterId },
+  // ★해석 사다리와 폴백은 [IssueReporterRow] 와 **글자 단위로 같다** — `displayName ?? username`,
+  //   실패하면 원시 UUID. 담당자(`assignee`)처럼 null 을 돌려 `—` 로 그리지 않는다. 보고자는
+  //   이슈 생성 시 반드시 정해지므로 「없음」이라는 상태 자체가 없고, 비우면 「보고자가 없는 이슈」
+  //   라는 더 나쁜 거짓말이 된다(그 근거는 `IssueReporterRow` KDoc 에 있다).
+  reporter: {
+    restrictedAs: null,
+    resolve: (c) =>
+      c.reporter !== null ? (c.reporter.displayName ?? c.reporter.username) : c.issue.reporterId,
+  },
   watchers: { restrictedAs: null, resolve: () => null },
   issueLinks: { restrictedAs: null, resolve: () => null },
   parent: { restrictedAs: null, resolve: (c) => c.issue.parent?.key ?? null },
@@ -680,6 +696,7 @@ export function IssueMetaPanel({
   const detailView = useIssueDetailViewFields({
     issue,
     currentAssignee,
+    reporter,
     componentIds,
     components,
     versions,
