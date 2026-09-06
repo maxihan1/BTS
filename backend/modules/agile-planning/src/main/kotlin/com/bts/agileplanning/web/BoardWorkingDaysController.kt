@@ -92,7 +92,8 @@ data class WorkingDaysResponse(
  * 같게 유지한다 — 뒤집으면 403 과 404 의 의미가 갈리고 로컬은 항상 허용이라 눈에 안 띈다.
  * 권한코드는 설정 4탭 공통인 [IssuePermission.CREATE] 다(부채 177 Task 29 가 통일했다).
  * 보드 단위 관리자 권한이 BTS 에 없어 프로젝트 단위로 갈음한다(편차 X8). 화면이
- * `permissions.CREATE` 하나로 편집 UI 를 열기 때문에(`settings.tsx:103`), 이 탭만 다른 권한코드를
+ * `permissions.CREATE` 하나로 편집 UI 를 열기 때문에
+ * (`apps/web/src/routes/projects.$projectKey.board.settings.tsx:103`), 이 탭만 다른 권한코드를
  * 요구하면 CREATE 만 가진 사용자가 편집 UI 를 보고 403 을 맞는다.
  *
  * ### 예외 매핑

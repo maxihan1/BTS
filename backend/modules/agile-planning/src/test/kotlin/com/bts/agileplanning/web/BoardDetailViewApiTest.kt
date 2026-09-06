@@ -86,14 +86,20 @@ private val LINKS_FIELDS = listOf("issueLinks")
  * | G·H 권한 | 쓰기 CREATE · 읽기 BROWSE · 프로젝트 스코프 | 아무 권한이나 물어보는 구현 |
  * | I 미인증 | 401 이고 **보드 조회조차 안 한다** | 존재 probe 를 열어 주는 구현 |
  * | J 검사 순서 | 보드 없음 + 권한 거부 = **404** | 권한을 먼저 봐서 403 을 내는 구현 |
+ * | **K 판정 횟수** | 그룹 4종 PATCH 의 권한 판정이 **정확히 1회** | 그룹마다 게이트를 부르는 N+1 구현 |
  *
  * ★**대조군을 함께 둔다.** F 의 400 만 재면 「전부 400」인 구현이 통과한다 — B 가 유효한 4종이
  * **200 으로 저장된다**를 같은 파일에서 재는 것이 그 대조군이다.
  *
- * ## 뮤테이션 실측 (2026-09-06 · 9개 전부 사살)
+ * ## 뮤테이션 실측 (M1~M8 은 2026-09-06 Task 13 · M9 는 같은 날 Task 29b)
  *
  * 다음 사람이 「이 단언들이 정말 무언가를 가르는가」를 다시 유도하지 않도록 결과를 남긴다.
  * 각 행의 왼쪽이 **느슨한 구현**, 오른쪽이 그것을 잡은 테스트다.
+ *
+ * M9 를 잰 명령(전체 59건 · `FROM-CACHE` 없음 · 결과 XML mtime 으로 신선도 확인).
+ * `./gradlew :modules:agile-planning:test --rerun --no-build-cache --tests '*BoardCardLayoutApiTest'
+ * --tests '*BoardEstimationApiTest' --tests '*BoardWorkingDaysApiTest' --tests '*BoardDetailViewApiTest'
+ * --tests '*BoardSettingsTabErrorEnvelopeTest'`
  *
  * | 뮤턴트 | 잡은 테스트 |
  * |---|---|
@@ -106,6 +112,11 @@ private val LINKS_FIELDS = listOf("issueLinks")
  * | M6 쓰기 권한코드를 `BROWSE` 로 느슨화 | G (1) |
  * | M7 검사 순서 뒤집기(권한 먼저) | J (1) |
  * | M8 응답 정규화 제거 | A (1) |
+ * | **M9 `patchFields` 게이트를 `groups.keys.forEach { … }` 로** | **K** (1 — 59건 중 이것만) |
+ *
+ * ★**M9 는 상태 코드로는 전혀 보이지 않는다.** allow 면 그대로 200 이고 deny 면 첫 그룹에서
+ * 403 이라 판정 횟수마저 1로 돌아온다. 그래서 K 는 **allow 경로**에서만 잰다.
+ * 실패 원문 — `[그룹 4종 PATCH 의 권한 판정 횟수] expected: 1 but was: 4`.
  *
  * ★**M1b 가 이 파일의 존재 이유다.** 「깨면 red 가 당연한」 방향(M1a)만 재면 판별력을 증명한 것이
  * 아니다. M1b 는 멤버십이 같고 **순서만** 다른 저장이라, 집합으로 판단하는 구현과 순서를 지키는
@@ -170,9 +181,18 @@ class BoardDetailViewApiTest {
      *
      * 형제 [BoardCardLayoutApiTest.PermissionStub] · [BoardEstimationApiTest.PermissionStub] 과
      * **같은 필드 이름**이다(Task 29) — 다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다.
-     * `Triple` 리스트에서 마지막 값 캡처로 바꾸면서 **actorId 동일성**과 **호출 횟수** 단언은
-     * 사라졌다. actorId 는 「미인증 요청은 401 이고 보드 조회조차 하지 않는다」가 여전히
-     * actor 추출 자체를 지고, 호출 횟수는 이 컨트롤러가 요청당 한 번만 판정하므로 축이 없다.
+     *
+     * ★**Task 29 는 이 본으로 수렴하면서 두 축을 잃었고 Task 29b 가 되살렸다.** 그때 여기 적혀
+     * 있던 「actorId 는 401 테스트가 대신 진다」는 **과장이었다** — 401 은 actor 추출이
+     * *일어났음*만 증명하지 그 값이 게이트에 *닿았음*을 증명하지 않는다. 실측이 그 증거다.
+     * 네 컨트롤러의 `hasPermission` 첫 인자를 `UUID.randomUUID()` 로 바꿔도 당시 57건이 전부
+     * 초록이었다. 「호출 횟수는 요청당 한 번뿐이라 축이 없다」도 순환 논증이었다 —
+     * 「한 번뿐」이 바로 그 단언이 지키던 불변식이다.
+     *
+     * 두 축은 각자 한 곳에만 선다. 여기에 복제하지 않는다.
+     * - `lastActorId` — [BoardSettingsTabErrorEnvelopeTest] 의 ⑥. 네 컨트롤러가 한 컨텍스트에
+     *   배선된 유일한 파일이라 탭 표 하나로 네 뮤테이션을 모두 잡는다.
+     * - `callCount` — 이 파일의 축 K. 네 탭 중 **한 요청에 그룹 4종을 받는 것은 이 엔드포인트뿐**이다.
      */
     open class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true

@@ -1,4 +1,4 @@
-// 보드 설정 4탭이 같은 오류(없는 보드 404)에 같은 RFC 7807 봉투를 내는지 재는 HTTP 슬라이스 테스트 (부채 177 Task 29)
+// 보드 설정 4탭의 교차 축을 재는 HTTP 슬라이스 테스트 — 404 봉투 동일성(Task 29) + 게이트 actor 동일성(Task 29b)
 
 package com.bts.agileplanning.web
 
@@ -48,7 +48,11 @@ private const val NOT_FOUND_TYPE = "https://bts.example.com/problems/agile-board
 private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
 
 /**
- * 보드 설정 4탭이 **같은 오류에 같은 봉투**를 내는지 재는 교차 탭 테스트 (부채 177 Task 29).
+ * 보드 설정 4탭의 **교차 축**을 재는 테스트 (부채 177 Task 29 · Task 29b).
+ *
+ * 이 파일은 네 컨트롤러가 **한 컨텍스트에 함께 배선된 유일한 곳**이다. 그래서 「네 탭이 서로
+ * 같아야 하는 것」은 여기에 모은다 — 탭별 API 테스트 넷에 같은 단언을 복제하면 목록이 둘로
+ * 갈려 서로를 검사하지 못하고, 다섯 번째 탭이 한쪽에만 들어가도 아무도 못 잡는다.
  *
  * ## 무엇이 문제였나
  * [BoardExceptionHandler] 의 `assignableTypes` 가 탭 컨트롤러 넷을 덮지 않아 넷이 **서로 다르게
@@ -71,6 +75,16 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  * |---|---|---|
  * | ①~④ 탭별 봉투 | 각 탭의 404 본문이 `agile-board-not-found` 봉투다 | 상태만 맞고 본문이 빈 응답 ↔ RFC 7807 봉투 |
  * | ⑤ 교차 동일성 | 네 탭의 본문이 `timestamp`·`instance` 를 빼면 **서로 같다** | 탭마다 다른 봉투 ↔ 한 봉투 |
+ * | **⑥ 게이트 actor** | 네 탭이 **인증된 그 주체**를 권한 게이트에 넘긴다 | 아무 UUID 나 넘기는 구현 ↔ actor 를 넘기는 구현 |
+ *
+ * ★**⑥ 은 Task 29b 가 되살린 축이다.** Task 29 가 네 탭의 권한 스텁을 `Triple` 리스트에서
+ * 마지막 값 캡처로 통일하면서 actorId 캡처가 사라졌고, 그 결과 네 컨트롤러의 `hasPermission`
+ * 첫 인자를 **전부 `UUID.randomUUID()` 로 바꿔도 57건이 초록**이었다(2026-09-06 실측).
+ * 「미인증이면 401」은 actor 추출이 *일어났음*만 증명하지 그 값이 게이트에 *닿았음*을
+ * 증명하지 않는다 — 그 둘을 가르는 것이 ⑥ 이다.
+ *
+ * ⑥ 은 **거부(allow=false) 경로**로 잰다. 게이트까지만 가고 서비스는 돌지 않아 이 축이 탭별
+ * 저장 경로(추정 탭의 스크럼/칸반 판정 등)에 얽히지 않는다.
  *
  * ★**①~④ 와 ⑤ 는 짝으로만 산다.** ①~④ 만 두면 「넷이 각자 같은 문자열을 낸다」를 넷이 따로
  * 주장할 뿐 서로를 검사하지 않고, ⑤ 만 두면 「넷이 똑같이 틀린 봉투」를 통과시킨다.
@@ -89,6 +103,7 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  * | **X2** | `@RestControllerAdvice` 를 떼어 advice 무력화 | 18건 — 이 파일 5건 **전부** | 상태만 재는 단언 ★★c |
  * | X3 | [BoardWorkingDaysController] 권한코드를 `SOFT_DELETE` 로 | 1건 ★d | 상태는 여전히 403 |
  * | X4 | [BoardDetailViewController] PATCH 권한코드를 `SOFT_DELETE` 로 | 1건 ★e | 상태는 여전히 403 |
+ * | **A1~A4** | 네 컨트롤러의 게이트 1인자를 **한 번에 하나씩** `UUID.randomUUID()` 로 | 각각 ⑥ 1건 단독 ★f | 나머지 58건 |
  *
  * - **★a** 「상세 보기 탭은 …」 · 「네 탭의 … 서로 같다」 · [BoardDetailViewApiTest] 의 403/404 3건.
  *   탭 하나가 목록에서 빠지면 **그 탭만** 죽는다 — 단언이 뭉뚱그려져 있지 않다는 증거다.
@@ -98,13 +113,24 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  *   [BoardEstimationApiTest] 의 「없는 보드는 404 다 — 409 가 아니다」·「소프트 삭제된 스크럼 보드는
  *   404 다」, [BoardCardLayoutApiTest] 의 「미인증이면 존재하는 보드라도 401 이다」.
  *   「404 인가」만 재는 테스트는 핸들러가 있는지 없는지를 **전혀 재지 않는다.**
+ * - **★f** Task 29b 실측(2026-09-06 · 전체 59건 · 네 번 따로 쟀다 · `FROM-CACHE` 없음).
+ *   네 번 모두 red 는 ⑥ **한 건뿐**이고 `describedAs` 가 어느 탭인지 지목한다 — 예컨대 A4 는
+ *   `[working-days — 게이트가 받은 주체는 인증된 주체와 같아야 한다] expected: 1111…1111
+ *   but was: 52907af7-…`. 한 탭이 새면 **그 탭 이름과 함께** 죽는다는 뜻이라, 축이 뭉뚱그려져
+ *   있지 않다. 잰 명령은 이 KDoc 위쪽의 재현 명령과 같다.
  * - **★d** [BoardWorkingDaysApiTest] 「권한이 없으면 403 이고 아무것도 저장되지 않는다」.
  * - **★e** [BoardDetailViewApiTest] 「PATCH 는 CREATE 를 프로젝트 스코프로 판정하고 …」.
  *   ★d·★e 둘 다 상태는 **여전히 403** 이라 권한코드 캡처 단언만이 가른다.
  *
  * ## 이 파일이 재지 **않는** 것
- * - 401/403/400 봉투 — 이 task 가 닫는 것은 404 한 자리다. 나머지 상태는 탭별 API 테스트가 진다.
- * - 저장 동작 — 게이트에서 404 로 끝나므로 서비스는 호출되지 않는다.
+ * - 401/403/400 **봉투** — 봉투 축이 닫는 것은 404 한 자리다. 나머지 상태의 본문은 탭별 API
+ *   테스트가 진다(⑥ 은 403 을 내지만 **상태 코드와 actor 만** 보고 본문은 보지 않는다).
+ * - 권한코드·스코프 — 「무슨 권한을 물었나」는 탭마다 다를 수 있어(읽기 BROWSE·쓰기 CREATE)
+ *   탭별 API 테스트가 각자 진다. 여기서 겹쳐 재면 어느 층이 지키는지 구분이 사라진다.
+ * - 판정 **횟수** — 한 요청에 여러 항목을 받는 것은 상세 보기 PATCH(그룹 4종)뿐이라
+ *   [BoardDetailViewApiTest] 의 축 K 가 진다. 거부 경로인 ⑥ 에서는 첫 판정에서 403 이 나가
+ *   N+1 구현이어도 횟수가 1로 돌아오므로, 여기 두면 공허한 단언이 된다.
+ * - 저장 동작 — 게이트에서 404(①~⑤) 또는 403(⑥) 으로 끝나므로 서비스는 호출되지 않는다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BoardSettingsTabErrorEnvelopeTest.TestMvcConfig::class])
@@ -184,6 +210,7 @@ class BoardSettingsTabErrorEnvelopeTest {
      *
      * 형제 [BoardCardLayoutApiTest.PermissionStub] · [BoardEstimationApiTest.PermissionStub] 과
      * **같은 필드 이름**이다 — 다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다.
+     * 이 파일이 읽는 것은 `lastActorId`(⑥)뿐이고, 나머지 필드는 본을 갈라놓지 않으려고 함께 둔다.
      */
     open class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true

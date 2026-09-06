@@ -167,8 +167,9 @@ class BoardWorkingDaysApiTest {
      *
      * 형제 [BoardCardLayoutApiTest.PermissionStub] · [BoardEstimationApiTest.PermissionStub] 과
      * **같은 필드 이름**이다(Task 29) — 다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다.
-     * 리스트 캡처에서 마지막 값 캡처로 바꾸면서 「정확히 한 번 호출」 단언은 사라졌다 —
-     * 이 컨트롤러는 요청당 판정이 한 번뿐이라 그 축을 지고 있던 테스트가 없다.
+     * 필드별로 축이 **어디에** 서는지는 정본인 [BoardCardLayoutApiTest.PermissionStub] 의 표에 있다.
+     * 이 파일이 읽는 것은 `lastPermission`·`lastScope` 뿐이고, 이 탭의 게이트에 actor 가 닿는지는
+     * [BoardSettingsTabErrorEnvelopeTest] 의 ⑥ 이 `working-days` 행으로 진다.
      */
     open class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true

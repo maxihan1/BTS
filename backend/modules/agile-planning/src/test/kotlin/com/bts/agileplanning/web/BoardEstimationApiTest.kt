@@ -127,6 +127,7 @@ class BoardEstimationApiTest {
      * ★캡처가 없으면 컨트롤러가 어떤 권한코드로 묻든 전부 초록이다 — 게이트가 「돌았다」만 재고
      * 「무엇으로 물었는가」는 아무도 안 본다. 형제 [BoardCardLayoutApiTest.PermissionStub] 과
      * **같은 필드 이름**을 쓴다(Task 29 가 네 탭의 권한코드를 한 번에 고칠 수 있어야 한다).
+     * 필드별로 축이 **어디에** 서는지는 정본인 [BoardCardLayoutApiTest.PermissionStub] 의 표에 있다.
      */
     class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true
@@ -300,7 +301,8 @@ class BoardEstimationApiTest {
     @Test
     fun `권한 게이트는 CREATE 권한과 프로젝트 스코프로 판정한다`() {
         // ⑧ 은 「거부되면 403」만 잰다 — 컨트롤러가 BROWSE 로 묻든 SOFT_DELETE 로 묻든 초록이다.
-        // 설정 화면의 다른 쓰기 경로와 프론트(settings.tsx:103)가 CREATE 로 편집 여부를 가르므로
+        // 설정 화면의 다른 쓰기 경로와 프론트
+        // (apps/web/src/routes/projects.$projectKey.board.settings.tsx:103)가 CREATE 로 편집 여부를 가르므로
         // 이 탭도 CREATE 여야 한다. 그 선택을 여기서 못박는다.
         val board = insertBoard(BoardType.SCRUM)
 

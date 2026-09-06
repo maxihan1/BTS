@@ -66,7 +66,8 @@ data class DetailViewFieldsResponse(
  * BTS 에는 **보드 단위 권한 모델이 없다**(`#450` 이 T3 이연으로 등재). 그래서 쓰기는 프로젝트 권한인
  * [IssuePermission.CREATE] 로 갈음한다 — 설정 4탭 공통 게이트다(부채 177 Task 29).
  * 4탭이 서로 다른 권한을 타면 「보드 설정」이라는 한 화면 안에서 탭마다 403 이 갈린다. 실제로 그랬다 —
- * 화면이 `permissions.CREATE` 하나로 편집 UI 를 열어(`settings.tsx:103`) CREATE 만 가진 사용자가
+ * 화면이 `permissions.CREATE` 하나로 편집 UI 를 열어
+ * (`apps/web/src/routes/projects.$projectKey.board.settings.tsx:103`) CREATE 만 가진 사용자가
  * 편집 UI 를 보고 이 탭에서 403 을 맞았다.
  *
  * ★**타 BC 의 멤버십 role 을 직접 조회하지 않는다.** 권한 판정은 권한코드 + [IssuePermissionResolver]

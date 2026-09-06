@@ -135,7 +135,23 @@ class BoardCardLayoutApiTest {
         fun permissionStub(): PermissionStub = PermissionStub()
     }
 
-    /** allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub. */
+    /**
+     * allow/deny 토글 + 전달 인자 캡처가 가능한 [IssuePermissionResolver] stub.
+     *
+     * ★**설정 4탭 + 교차 테스트 다섯 파일이 공유하는 본이다.** 형제들이 이 클래스를 지목하므로
+     * 필드는 다섯 곳에서 **같은 이름·같은 집합**으로 유지한다 — 다섯 번째 탭이 생겨도 복제할
+     * 원본이 하나로 남는다. 그래서 이 파일이 직접 읽지 않는 필드도 함께 둔다.
+     *
+     * 각 필드를 **어디서** 재는지(부채 177 Task 29b).
+     * | 필드 | 축이 선 곳 | 왜 거기인가 |
+     * |---|---|---|
+     * | `lastPermission`·`lastScope` | 탭별 API 테스트 각자 | 탭마다 권한코드가 다를 수 있다(읽기 BROWSE·쓰기 CREATE) |
+     * | `lastActorId` | [BoardSettingsTabErrorEnvelopeTest] ⑥ **한 곳** | 네 컨트롤러가 한 컨텍스트에 배선된 유일한 파일이라 탭 표 하나로 넷을 다 잡는다 |
+     * | `callCount` | [BoardDetailViewApiTest] 축 K **한 곳** | 한 요청에 그룹 4종을 받는 것은 상세 보기 PATCH 뿐이라 N+1 퇴화가 거기서만 성립한다 |
+     *
+     * 뒤 둘을 다섯 곳에 복제하지 않는 이유는 「두 목록이 서로를 검사하지 않는」 양식을 피하기
+     * 위해서다 — 탭 목록과 단언 목록이 갈리면 새 탭이 한쪽에만 들어가도 아무도 못 잡는다.
+     */
     class PermissionStub : IssuePermissionResolver {
         var allowAll: Boolean = true
         var lastPermission: IssuePermission? = null
