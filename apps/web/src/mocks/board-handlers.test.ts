@@ -8,6 +8,9 @@ import { boardHandlers, QUICK_FILTER_PERM_SEED } from './board-handlers'
 // audit-log-handlers.test.ts(fetchAuditLogs) · workflow-admin-handlers.test.ts(fetchWorkflows)가
 // 같은 관례로 API 함수를 직접 호출한다.
 import { createBoard, boardCreatedSchema, fetchBoard, fetchBoards } from '@/api/boards'
+// 부채 177 Task 22 — 카드 레이아웃 PATCH 도 **API 함수로** 부른다. 핸들러 JSON 을 직접 읽으면
+// `cardLayoutResponseSchema` 를 타지 않아 응답에서 뷰가 통째로 빠져도 아무 테스트도 안 깨진다.
+import { replaceCardLayout } from '@/api/board-settings'
 import {
   resetBoardStore,
   seedBoard,
@@ -1207,5 +1210,52 @@ describe('GET /api/v1/boards/:id — 스크럼 보드 활성 스프린트 (FR-BD
     const after = await fetchBoard(DEFAULT_BOARD.boardId)
     expect(after.activeSprint).toBeNull()
     expect(responseCardKeys(after)).toEqual(before)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/v1/boards/:id/card-layout — 뷰별 구성 (부채 177 Task 22 · J17 · J18)
+//
+// ★**E2E `board-settings.spec.ts` S10 이 기대는 계약을 여기서 못박는다.** S10 은 두 뷰에 서로
+//   다른 값을 넣고 패널을 재마운트해 「보드 뷰는 자기 것만」을 재는데, 그 재마운트가 읽는 값이
+//   바로 이 목의 `GET /boards/:id` 응답이다. 목이 뷰를 뭉개면 S10 은 화면이 옳아도 red 가 되고,
+//   반대로 목이 요청을 echo 하기만 하면 S10 은 저장이 안 돼도 초록이 된다 — 어느 쪽이든
+//   **화면이 아니라 목이 판정을 정하게 된다.** 그 자리를 단위로 고정한다.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('PATCH /api/v1/boards/:id/card-layout — 뷰별 구성 (부채 177 Task 22)', () => {
+  /** 시드는 전부 칸반이고 칸반에 `BACKLOG` 를 보내면 400 이다(R3) — 스크럼을 하나 만들어 쓴다. */
+  let scrumBoardId = ''
+
+  beforeEach(() => {
+    scrumBoardId = createBoardInStore('ATLAS', '설정용 스크럼 보드', 'SCRUM').created.boardId
+  })
+
+  it('T-MSW-CL-1: 요청한 뷰만 저장된다 — 보내지 않은 뷰의 키는 생기지 않는다', async () => {
+    // ★`toEqual` 로 **통째** 잰다. `BACKLOG` 를 빈 배열로 채우는 구현이면 화면이
+    //   「구성 없음」과 「0개 구성」을 못 가른다(`boards.ts:228` 계약).
+    expect(await replaceCardLayout(scrumBoardId, 'BOARD', ['EPIC'])).toEqual({ BOARD: ['EPIC'] })
+  })
+
+  it('T-MSW-CL-2: 다른 뷰를 저장해도 앞 뷰가 살아남는다 (통째 교체 금지)', async () => {
+    await replaceCardLayout(scrumBoardId, 'BOARD', ['EPIC'])
+
+    // ★**일부러 다른 값**이다. 같은 값을 넣으면 「한 벌만 저장하는」 구현도 통과한다(J18).
+    expect(await replaceCardLayout(scrumBoardId, 'BACKLOG', ['PRIORITY', 'LABELS'])).toEqual({
+      BOARD: ['EPIC'],
+      BACKLOG: ['PRIORITY', 'LABELS'],
+    })
+  })
+
+  it('T-MSW-CL-3: 보드 조회가 두 뷰의 구성을 그대로 실어 온다 — E2E 재마운트가 읽는 값', async () => {
+    // 대조군 — 저장 전에는 키가 없다. 이게 없으면 「원래 실려 있었을 뿐」과 구별되지 않는다.
+    expect((await fetchBoard(scrumBoardId)).cardLayout).toEqual({})
+
+    await replaceCardLayout(scrumBoardId, 'BOARD', ['EPIC'])
+    await replaceCardLayout(scrumBoardId, 'BACKLOG', ['PRIORITY', 'LABELS'])
+
+    expect((await fetchBoard(scrumBoardId)).cardLayout).toEqual({
+      BOARD: ['EPIC'],
+      BACKLOG: ['PRIORITY', 'LABELS'],
+    })
   })
 })
