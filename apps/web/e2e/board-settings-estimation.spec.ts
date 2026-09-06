@@ -113,6 +113,19 @@ function toTick(isoDate: string): string {
 }
 
 /**
+ * 번다운 뷰의 라인 수 미러 — `BurndownChart` 의 `renderCommonElements()` 가 **범위** 1개를,
+ * `renderPrimaryLines('burndown')` 이 **이상선 → 잔여** 2개를 그 뒤에 붙인다. DOM 순서가 곧
+ * 아래 두 index 다.
+ */
+const BURNDOWN_CURVE_COUNT = 3
+
+/** 범위(scope) 라인의 자리 — 전 구간 평탄해서 **타임존이 바뀌어도 같아야 한다**(공허 방지 대조군) */
+const SCOPE_CURVE_INDEX = 0
+
+/** 잔여(remaining) 라인의 자리 — worklog 일 귀속이 바뀌면 **여기가 달라진다** */
+const REMAINING_CURVE_INDEX = 2
+
+/**
  * `CreateBoardForm` 2단계 제출 버튼 문구.
  *
  * 🛑 `boardLabels` 에 키가 없다(폼이 직접 들고 있다). `board-manage.spec.ts` 가 같은 문자열을
@@ -295,6 +308,32 @@ async function burndownAxisTicks(page: Page): Promise<string[]> {
   await expect(ticks.last()).toHaveText(toTick(BURNDOWN_DATES[BURNDOWN_DATES.length - 1]))
 
   return (await ticks.allTextContents()).map((text) => text.trim())
+}
+
+/**
+ * 번다운 뷰가 그리는 라인 3개의 SVG path `d` 를 DOM 순서대로 읽는다.
+ *
+ * ★**왜 축이 아니라 라인인가.** 보드 타임존은 x축을 바꾸지 않는다 — 백엔드 `BurndownCalculator`
+ * 의 축은 `LocalDate` 만 보고(`buildAxis`), 타임존이 바꾸는 것은 worklog 가 **어느 날짜 칸에
+ * 붙는가**뿐이다(`SprintBurndownService.aggregateByBoardDate` · 스펙 R10 · 완료 기준 11).
+ * 그 결과는 point 의 `remainingSeconds` 값이고, 이 화면에서 값이 나타나는 곳은 선의 모양뿐이다
+ * (페이지에 수치를 글자로 내는 자리가 없다 — `SprintBurndownPage` 는 차트 하나만 그린다).
+ *
+ * 🛑 `.recharts-xAxis-tick-labels` 와 함께 recharts 내부 클래스에 기대는 두 번째 자리다.
+ *    `<Curve className="recharts-line-curve">` 는 recharts 3.8.1 의 Line 구현이다.
+ * 🛑 **개수를 먼저 못 박는다.** 부분 렌더 중에 읽으면 배열이 짧게 돌아오고, 짧은 배열은
+ *    「달라졌다」를 공짜로 만족시킨다 — `burndownAxisTicks` 가 양 끝 tick 을 기다리는 것과
+ *    같은 함정이다(2026-09-06 실측 · 커밋 `19dcdc0e7`).
+ */
+async function burndownCurvePaths(page: Page): Promise<string[]> {
+  const curves = page
+    .getByRole('img', { name: burndownLabels.chart.ariaLabel })
+    .locator('.recharts-line-curve')
+
+  await expect(curves).toHaveCount(BURNDOWN_CURVE_COUNT)
+  const paths = await curves.evaluateAll((nodes) => nodes.map((node) => node.getAttribute('d') ?? ''))
+  expect(paths.filter((d) => d.length > 0)).toHaveLength(BURNDOWN_CURVE_COUNT)
+  return paths
 }
 
 /**
@@ -488,8 +527,6 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
   //   실측 원문 — `Received array: ["06/01", "06/02", "06/03", "06/04", "06/05"]`.
   // ───────────────────────────────────────────────────────────────────────────
   test('S5 근무일을 저장하면 번다운 x축에서 비근무일이 빠진다', async ({ page }) => {
-    test.fail(true, 'MSW burndown-handlers 가 보드 작업일 설정에서 파생하지 않는다 (파일 머리말 ★★)')
-
     await loginAsAlice(page)
     await page.goto(BOARD_URL)
     await openBoardSettings(page)
@@ -501,18 +538,21 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S6 — 타임존 배선 (뮤테이션 ⑩). **지금 깨져 있다.**
+  // S6 — 타임존 배선. **지금 깨져 있다.**
   //
   // Given  칸반 보드의 표준 근무일은 월~금으로 **고정**이고 타임존만 서울이다
   // When   근무일 요일에는 손대지 않고 **타임존만** 뉴욕으로 바꾼다
-  // Then   번다운 x축이 달라진다 (J40 · 리뷰가 critical gap 으로 지목한 침묵 실패)
+  // Then   x축은 **그대로**이고 잔여 라인만 달라진다 (J40 · 스펙 R10 · 완료 기준 11)
   //
   // ★설정은 저장되는데 차트가 안 바뀌면 아무도 모른다 — 이 단언이 그 침묵을 깬다.
-  //   실측 원문 — 서울과 뉴욕의 x축이 둘 다 `["06/01","06/02","06/03","06/04","06/05"]` 였다.
+  // ★★**두 Then 이 짝으로만 산다.**
+  //   - 축만 재면(옛 판정) 「타임존이 축을 좁히는」 **틀린 구현**을 요구하게 된다. 타임존은
+  //     축을 바꾸지 않는다 — 백엔드 `BurndownCalculator.buildAxis` 는 `LocalDate` 와 근무일만
+  //     본다. 그래서 첫 Then 은 **같음**을 못 박는다.
+  //   - 라인만 재면 컨테이너 폭이 달라져도 전 라인이 함께 달라져 공짜로 통과한다. 그래서 두
+  //     번째 Then 은 **범위 라인은 같고 잔여 라인만 다름**을 함께 재 레이아웃 차이를 배제한다.
   // ───────────────────────────────────────────────────────────────────────────
-  test('S6 타임존만 서울→뉴욕으로 바꾸면 번다운 x축이 달라진다', async ({ page }) => {
-    test.fail(true, 'MSW burndown-handlers 가 보드 타임존에서 파생하지 않는다 (파일 머리말 ★★)')
-
+  test('S6 타임존만 서울→뉴욕으로 바꾸면 x축은 그대로고 잔여 라인이 달라진다', async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(BOARD_URL)
     await openBoardSettings(page)
@@ -525,6 +565,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
 
     await goToBurndownViaSpa(page)
     const seoulTicks = await burndownAxisTicks(page)
+    const seoulCurves = await burndownCurvePaths(page)
 
     // When. 근무일은 그대로 두고 **타임존만** 뉴욕으로 바꾼다
     await clickProjectViewTab(page, '보드')
@@ -535,10 +576,20 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
     await submitWorkingDays(page)
 
     await goToBurndownViaSpa(page)
-    const newYorkTicks = await burndownAxisTicks(page)
 
-    // Then. 같은 근무일·같은 스프린트인데 타임존만 다르면 x축이 달라야 한다.
-    expect(newYorkTicks).not.toEqual(seoulTicks)
+    // Then ①. 근무일이 같으면 축도 같다 — 타임존은 x축을 만지지 않는다(스펙 E7 의 앞짝).
+    expect(await burndownAxisTicks(page)).toEqual(seoulTicks)
+
+    // Then ②. 같은 worklog 가 다른 날짜 칸에 붙어 **잔여 라인만** 달라진다.
+    //
+    // 🛑 `toPass` 로 감싼다. 돌아온 차트는 React Query 캐시(서울 응답)를 먼저 그리고 refetch 로
+    //    뉴욕 응답을 받는다 — 그 정착을 sleep 없이 기다리는 유일한 수단이 재시도다.
+    //    단정이 「달라짐」이라 첫 읽기가 캐시여도 조용히 통과하지 않는다(같으면 재시도한다).
+    await expect(async () => {
+      const newYorkCurves = await burndownCurvePaths(page)
+      expect(newYorkCurves[SCOPE_CURVE_INDEX]).toBe(seoulCurves[SCOPE_CURVE_INDEX])
+      expect(newYorkCurves[REMAINING_CURVE_INDEX]).not.toBe(seoulCurves[REMAINING_CURVE_INDEX])
+    }).toPass({ timeout: 15_000 })
   })
 
   // ───────────────────────────────────────────────────────────────────────────
