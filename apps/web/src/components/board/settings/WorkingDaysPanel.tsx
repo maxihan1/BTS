@@ -87,6 +87,276 @@ interface WorkingDaysFailure {
   status: number | null
 }
 
+/** {@link StandardDaysSection} props */
+interface StandardDaysSectionProps {
+  /** 라벨·컨트롤 id 접두사. */
+  domId: string
+  /** 표준 근무일. **`null` 은 미설정이고 `[]` 는 근무일 0개다 — 뜻이 정반대다**(스펙 R6 · E1). */
+  days: readonly string[] | null
+  /** 편집이 잠겼는가 — 권한 없음(S7) 또는 저장 중. */
+  locked: boolean
+  /** 근무일 0개인가. **판정은 부모가 한다** — 여기서 다시 재면 두 번째 진실이 된다. */
+  zeroDays: boolean
+  /** 요일 한 칸 토글. */
+  onToggleDay: (key: string, checked: boolean) => void
+  /** 요일 값 통째 교체 — 「근무일 고르기」와 「미설정으로 되돌리기」가 함께 쓴다. */
+  onReplaceDays: (next: readonly string[] | null) => void
+}
+
+/**
+ * 표준 근무일 구획 (J38).
+ *
+ * ★★**미설정(`null`)과 근무일 0개(`[]`)를 다른 화면으로 그린다.** 그 분기가 이 컴포넌트의
+ * 존재 이유이고, `days` 를 `?? []` 로 받으면 미설정이 조용히 「0개」가 된다.
+ */
+function StandardDaysSection({
+  domId,
+  days,
+  locked,
+  zeroDays,
+  onToggleDay,
+  onReplaceDays,
+}: StandardDaysSectionProps): JSX.Element {
+  return (
+    <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
+      {days === null ? (
+        // ★★**미설정을 「요일 7개가 다 꺼진 화면」으로 그리지 않는다**(스펙 R6).
+        //   그 모습은 「근무일 0개」와 구분되지 않는데 두 상태의 뜻은 정반대다 —
+        //   미설정은 달력일 **전부**이고 0개는 근무일이 **하나도 없음**이다. 설정을 한 번도
+        //   만지지 않은 보드가 「0개」로 보이면 사용자는 자기가 아무것도 안 했는데 무언가
+        //   잘못됐다고 읽는다. 판정은 T-WD-18 · T-WD-19 가 **짝으로** 진다.
+        <div className="space-y-3">
+          <p className="text-muted-foreground text-sm">{labels.unsetNotice}</p>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={locked}
+            onClick={() => {
+              onReplaceDays([...DEFAULT_WORKING_DAYS])
+            }}
+          >
+            {labels.configureDays}
+          </Button>
+        </div>
+      ) : (
+        <>
+          <ul aria-label={labels.daysGroupLabel}>
+            {WEEK_ORDER.map((key) => {
+              const controlId = `${domId}-${key}`
+              return (
+                <li key={key} className="flex items-center gap-2">
+                  <Checkbox
+                    id={controlId}
+                    checked={days.includes(key)}
+                    disabled={locked}
+                    onCheckedChange={(next) => {
+                      onToggleDay(key, next === true)
+                    }}
+                  />
+                  {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
+                      데스크톱은 목록 밀도를 위해 낮춘다 — 형제 패널과 같은 결. */}
+                  <label
+                    htmlFor={controlId}
+                    className="text-foreground flex min-h-11 flex-1 cursor-pointer items-center text-sm md:min-h-8"
+                  >
+                    {labels.dayLabels[key]}
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* ★**막다른 골목의 출구다.** 근무일 0개는 저장이 막히므로, 「근무일을 쓰지 않겠다」는
+              뜻은 값을 비우는 것이 아니라 미설정으로 되돌리는 것이다 — 백엔드가 400 응답에
+              적어 보내는 안내와 같은 문장이다(`WorkingDaysSettingsService`). */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={locked}
+            onClick={() => {
+              onReplaceDays(null)
+            }}
+          >
+            {labels.resetToUnset}
+          </Button>
+        </>
+      )}
+
+      {/* 저장이 막힌 이유와 다음 행동을 함께 말한다 — 사유 없이 비활성만 하면 「고장」으로 읽힌다. */}
+      {zeroDays && <p className="text-muted-foreground text-xs">{labels.zeroDaysHint}</p>}
+    </div>
+  )
+}
+
+/** {@link NonWorkingDatesSection} props */
+interface NonWorkingDatesSectionProps {
+  /** 라벨·컨트롤 id 접두사. */
+  domId: string
+  /** 비근무일 목록. 스프린트 기간으로 거르지 않는다(E8). */
+  dates: readonly string[]
+  /** 날짜 입력칸의 현재 값. */
+  draftDate: string
+  /** 편집이 잠겼는가 — 권한 없음(S7) 또는 저장 중. */
+  locked: boolean
+  /** 입력칸 변경. */
+  onDraftDateChange: (next: string) => void
+  /** 「추가」 — 입력칸 값을 목록에 담는다. */
+  onAddDate: () => void
+  /** 한 줄 삭제. */
+  onRemoveDate: (date: string) => void
+}
+
+/**
+ * 비근무일 구획 (J39).
+ *
+ * ### 상태 3종 중 「빈」이 여기 있다
+ * 목록이 비었을 때 회색 빈칸으로 두면 사용자가 조회 실패로 읽는다 — 안심 문구를 그린다.
+ */
+function NonWorkingDatesSection({
+  domId,
+  dates,
+  draftDate,
+  locked,
+  onDraftDateChange,
+  onAddDate,
+  onRemoveDate,
+}: NonWorkingDatesSectionProps): JSX.Element {
+  return (
+    <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
+      <h3 className="text-sm font-semibold">{labels.nonWorkingHeading}</h3>
+      <p className="text-muted-foreground text-sm">{labels.nonWorkingDescription}</p>
+
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${domId}-date`}>{labels.dateInputLabel}</Label>
+          <Input
+            id={`${domId}-date`}
+            type="date"
+            className="w-44"
+            value={draftDate}
+            disabled={locked}
+            onChange={(event) => {
+              onDraftDateChange(event.target.value)
+            }}
+          />
+        </div>
+        <Button type="button" variant="outline" disabled={locked} onClick={onAddDate}>
+          {labels.addDate}
+        </Button>
+      </div>
+
+      {dates.length === 0 ? (
+        // 안심 문구다 — 「없음」을 회색으로 비워 두면 사용자가 조회 실패로 읽는다.
+        <p className="text-muted-foreground text-sm">{labels.noDates}</p>
+      ) : (
+        <ul aria-label={labels.nonWorkingHeading} className="space-y-1">
+          {dates.map((date) => (
+            <li key={date} data-date={date} className="flex items-center gap-2">
+              <span className="text-foreground flex-1 text-sm">{date}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={labels.removeDate(date)}
+                disabled={locked}
+                onClick={() => {
+                  onRemoveDate(date)
+                }}
+              >
+                <XIcon aria-hidden="true" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** {@link TimezoneSection} props */
+interface TimezoneSectionProps {
+  /** 라벨·컨트롤 id 접두사. */
+  domId: string
+  /** 고른 지역. 미설정이면 null. */
+  region: string | null
+  /** 고른 타임존. 미설정이면 null. */
+  timezone: string | null
+  /** 편집이 잠겼는가 — 권한 없음(S7) 또는 저장 중. */
+  locked: boolean
+  /** 지역 변경 — 부모가 이전 타임존을 함께 비운다. */
+  onRegionChange: (next: string | null) => void
+  /** 타임존 변경. */
+  onTimezoneChange: (next: string | null) => void
+}
+
+/**
+ * 타임존 구획 (J40 — *"select a Region, then Timezone from the dropdowns"*).
+ *
+ * 후보 목록은 고른 지역으로 좁힌 **표시용 파생**이라 여기서 만든다. 저장 값을 정하는 판정은
+ * 하나도 갖지 않는다 — 지역이 바뀔 때 타임존을 비우는 것도 부모의 몫이다.
+ */
+function TimezoneSection({
+  domId,
+  region,
+  timezone,
+  locked,
+  onRegionChange,
+  onTimezoneChange,
+}: TimezoneSectionProps): JSX.Element {
+  const zoneOptions = ALL_ZONES.filter((zone) => regionOf(zone) === region).map((zone) => ({
+    value: zone,
+    label: zone.slice((region?.length ?? 0) + 1).replaceAll('_', ' '),
+  }))
+
+  return (
+    <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
+      <h3 className="text-sm font-semibold">{labels.timezoneHeading}</h3>
+      <p className="text-muted-foreground text-sm">{labels.timezoneDescription}</p>
+
+      {/* J40 — *"select a Region, then Timezone from the dropdowns"*. 지역을 먼저 고르는
+          것이 지라의 조작이자, 400여 개를 한 목록에 쏟지 않는 필터이기도 하다. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${domId}-region`}>{labels.regionLabel}</Label>
+          <Combobox
+            id={`${domId}-region`}
+            options={REGION_OPTIONS}
+            value={region}
+            onChange={(next) => {
+              onRegionChange(next)
+            }}
+            ariaLabel={labels.regionLabel}
+            placeholder={labels.regionSearch}
+            emptyText={labels.comboboxEmpty}
+            triggerPlaceholder={labels.regionPlaceholder}
+            disabled={locked}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={`${domId}-timezone`}>{labels.timezoneLabel}</Label>
+          <Combobox
+            id={`${domId}-timezone`}
+            options={zoneOptions}
+            value={timezone}
+            onChange={(next) => {
+              onTimezoneChange(next)
+            }}
+            ariaLabel={labels.timezoneLabel}
+            placeholder={labels.timezoneSearch}
+            emptyText={labels.comboboxEmpty}
+            triggerPlaceholder={labels.timezonePlaceholder}
+            disabled={locked || region === null}
+          />
+        </div>
+      </div>
+
+      <p className="text-muted-foreground text-xs">{labels.timezoneUnset}</p>
+    </div>
+  )
+}
+
 /**
  * 지라 Board settings 의 **Working days 탭** 본문 (J38·J39·J40).
  *
@@ -205,12 +475,36 @@ export function WorkingDaysPanel({ board, canConfigure }: WorkingDaysPanelProps)
     setJustSaved(false)
   }
 
+  /** 요일 값 통째 교체 — 「근무일 고르기」(월~금 채움)와 「미설정으로 되돌리기」가 함께 쓴다. */
+  function replaceDays(next: readonly string[] | null): void {
+    setDays(next)
+    setJustSaved(false)
+  }
+
+  // 지역이 바뀌면 이전 타임존은 그 지역에 없다 — 남겨 두면 트리거가 값 없음으로
+  // 보이면서 저장 요청에는 옛 값이 실린다(보이는 것과 보내는 것이 어긋난다).
+  function changeRegion(next: string | null): void {
+    setRegion(next)
+    setTimezone(null)
+    setJustSaved(false)
+  }
+
+  function changeTimezone(next: string | null): void {
+    setTimezone(next)
+    setJustSaved(false)
+  }
+
   function addDate(): void {
     if (draftDate === '') return
     // ★스프린트 기간으로 거르지 않는다(E8). 중복만 막는다 — 목록에 같은 날짜가 두 줄이면
     //   삭제 버튼의 접근성 이름이 겹친다.
     setDates((prev) => (prev.includes(draftDate) ? prev : [...prev, draftDate]))
     setDraftDate('')
+    setJustSaved(false)
+  }
+
+  function removeDate(date: string): void {
+    setDates((prev) => prev.filter((entry) => entry !== date))
     setJustSaved(false)
   }
 
@@ -225,11 +519,6 @@ export function WorkingDaysPanel({ board, canConfigure }: WorkingDaysPanelProps)
         : failure.status === 403
           ? labels.saveForbidden
           : labels.saveFailed
-
-  const zoneOptions = ALL_ZONES.filter((zone) => regionOf(zone) === region).map((zone) => ({
-    value: zone,
-    label: zone.slice((region?.length ?? 0) + 1).replaceAll('_', ' '),
-  }))
 
   return (
     <section aria-labelledby={`${domId}-heading`} className="max-w-2xl space-y-4">
@@ -263,176 +552,33 @@ export function WorkingDaysPanel({ board, canConfigure }: WorkingDaysPanelProps)
         </div>
       )}
 
-      <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
-        {days === null ? (
-          // ★★**미설정을 「요일 7개가 다 꺼진 화면」으로 그리지 않는다**(스펙 R6).
-          //   그 모습은 「근무일 0개」와 구분되지 않는데 두 상태의 뜻은 정반대다 —
-          //   미설정은 달력일 **전부**이고 0개는 근무일이 **하나도 없음**이다. 설정을 한 번도
-          //   만지지 않은 보드가 「0개」로 보이면 사용자는 자기가 아무것도 안 했는데 무언가
-          //   잘못됐다고 읽는다. 판정은 T-WD-18 · T-WD-19 가 **짝으로** 진다.
-          <div className="space-y-3">
-            <p className="text-muted-foreground text-sm">{labels.unsetNotice}</p>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={locked}
-              onClick={() => {
-                setDays([...DEFAULT_WORKING_DAYS])
-                setJustSaved(false)
-              }}
-            >
-              {labels.configureDays}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <ul aria-label={labels.daysGroupLabel}>
-              {WEEK_ORDER.map((key) => {
-                const controlId = `${domId}-${key}`
-                return (
-                  <li key={key} className="flex items-center gap-2">
-                    <Checkbox
-                      id={controlId}
-                      checked={days.includes(key)}
-                      disabled={locked}
-                      onCheckedChange={(next) => {
-                        toggleDay(key, next === true)
-                      }}
-                    />
-                    {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
-                        데스크톱은 목록 밀도를 위해 낮춘다 — 형제 패널과 같은 결. */}
-                    <label
-                      htmlFor={controlId}
-                      className="text-foreground flex min-h-11 flex-1 cursor-pointer items-center text-sm md:min-h-8"
-                    >
-                      {labels.dayLabels[key]}
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
+      <StandardDaysSection
+        domId={domId}
+        days={days}
+        locked={locked}
+        zeroDays={zeroDays}
+        onToggleDay={toggleDay}
+        onReplaceDays={replaceDays}
+      />
 
-            {/* ★**막다른 골목의 출구다.** 근무일 0개는 저장이 막히므로, 「근무일을 쓰지 않겠다」는
-                뜻은 값을 비우는 것이 아니라 미설정으로 되돌리는 것이다 — 백엔드가 400 응답에
-                적어 보내는 안내와 같은 문장이다(`WorkingDaysSettingsService`). */}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={locked}
-              onClick={() => {
-                setDays(null)
-                setJustSaved(false)
-              }}
-            >
-              {labels.resetToUnset}
-            </Button>
-          </>
-        )}
+      <NonWorkingDatesSection
+        domId={domId}
+        dates={dates}
+        draftDate={draftDate}
+        locked={locked}
+        onDraftDateChange={setDraftDate}
+        onAddDate={addDate}
+        onRemoveDate={removeDate}
+      />
 
-        {/* 저장이 막힌 이유와 다음 행동을 함께 말한다 — 사유 없이 비활성만 하면 「고장」으로 읽힌다. */}
-        {zeroDays && <p className="text-muted-foreground text-xs">{labels.zeroDaysHint}</p>}
-      </div>
-
-      <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
-        <h3 className="text-sm font-semibold">{labels.nonWorkingHeading}</h3>
-        <p className="text-muted-foreground text-sm">{labels.nonWorkingDescription}</p>
-
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${domId}-date`}>{labels.dateInputLabel}</Label>
-            <Input
-              id={`${domId}-date`}
-              type="date"
-              className="w-44"
-              value={draftDate}
-              disabled={locked}
-              onChange={(event) => {
-                setDraftDate(event.target.value)
-              }}
-            />
-          </div>
-          <Button type="button" variant="outline" disabled={locked} onClick={addDate}>
-            {labels.addDate}
-          </Button>
-        </div>
-
-        {dates.length === 0 ? (
-          // 안심 문구다 — 「없음」을 회색으로 비워 두면 사용자가 조회 실패로 읽는다.
-          <p className="text-muted-foreground text-sm">{labels.noDates}</p>
-        ) : (
-          <ul aria-label={labels.nonWorkingHeading} className="space-y-1">
-            {dates.map((date) => (
-              <li key={date} data-date={date} className="flex items-center gap-2">
-                <span className="text-foreground flex-1 text-sm">{date}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={labels.removeDate(date)}
-                  disabled={locked}
-                  onClick={() => {
-                    setDates((prev) => prev.filter((entry) => entry !== date))
-                    setJustSaved(false)
-                  }}
-                >
-                  <XIcon aria-hidden="true" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
-        <h3 className="text-sm font-semibold">{labels.timezoneHeading}</h3>
-        <p className="text-muted-foreground text-sm">{labels.timezoneDescription}</p>
-
-        {/* J40 — *"select a Region, then Timezone from the dropdowns"*. 지역을 먼저 고르는
-            것이 지라의 조작이자, 400여 개를 한 목록에 쏟지 않는 필터이기도 하다. */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${domId}-region`}>{labels.regionLabel}</Label>
-            <Combobox
-              id={`${domId}-region`}
-              options={REGION_OPTIONS}
-              value={region}
-              onChange={(next) => {
-                setRegion(next)
-                // 지역이 바뀌면 이전 타임존은 그 지역에 없다 — 남겨 두면 트리거가 값 없음으로
-                // 보이면서 저장 요청에는 옛 값이 실린다(보이는 것과 보내는 것이 어긋난다).
-                setTimezone(null)
-                setJustSaved(false)
-              }}
-              ariaLabel={labels.regionLabel}
-              placeholder={labels.regionSearch}
-              emptyText={labels.comboboxEmpty}
-              triggerPlaceholder={labels.regionPlaceholder}
-              disabled={locked}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${domId}-timezone`}>{labels.timezoneLabel}</Label>
-            <Combobox
-              id={`${domId}-timezone`}
-              options={zoneOptions}
-              value={timezone}
-              onChange={(next) => {
-                setTimezone(next)
-                setJustSaved(false)
-              }}
-              ariaLabel={labels.timezoneLabel}
-              placeholder={labels.timezoneSearch}
-              emptyText={labels.comboboxEmpty}
-              triggerPlaceholder={labels.timezonePlaceholder}
-              disabled={locked || region === null}
-            />
-          </div>
-        </div>
-
-        <p className="text-muted-foreground text-xs">{labels.timezoneUnset}</p>
-      </div>
+      <TimezoneSection
+        domId={domId}
+        region={region}
+        timezone={timezone}
+        locked={locked}
+        onRegionChange={changeRegion}
+        onTimezoneChange={changeTimezone}
+      />
 
       <div className="flex items-center gap-3">
         <Button
