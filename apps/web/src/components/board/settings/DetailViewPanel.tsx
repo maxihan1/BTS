@@ -1,6 +1,6 @@
 // 보드 설정 — 상세 보기 탭 본문 (그룹 4종 · 추가 · 삭제 · 드래그 정렬 · 부채 177 Task 19 · J46~J48)
 import type { JSX } from 'react'
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { DndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
@@ -361,6 +361,14 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
     null,
   )
 
+  /**
+   * 저장이 **지금 날고 있는가** — 렌더가 아니라 틱 단위의 잠금이다.
+   *
+   * `mutation.isPending` 과 목적이 겹치지만 **반영 시점이 다르다.** `isPending` 은 다음 렌더에야
+   * 보이고, `handleDragEnd` 는 그 렌더 전에 다시 불릴 수 있다. state 로 두면 그 창을 못 닫는다.
+   */
+  const inFlightRef = useRef(false)
+
   const mutation = useMutation<BoardDetailViewFields, unknown, DetailViewSave>({
     mutationFn: (save) => replaceDetailViewFields(board.boardId, save.group, save.fields),
     onSuccess: (saved) => {
@@ -378,6 +386,8 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
       setFailure({ save, status: error instanceof ApiError ? error.status : null })
     },
     onSettled: async () => {
+      // 동기 잠금을 여기서 푼다 — 성공·실패 어느 쪽이든 in-flight 는 끝났다.
+      inFlightRef.current = false
       // ★실패해도 재조회한다. 실패의 흔한 원인이 동시 편집이고, 그때야말로 화면이 아니라
       //   서버가 정본이다. 이 무효화가 없으면 탭을 옮겼다 돌아왔을 때 **저장 전 캐시**가
       //   초기값이 되어, 그 다음 조작이 방금 저장한 것을 도로 덮는다.
@@ -388,6 +398,10 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
   const locked = !canConfigure || mutation.isPending
 
   function submit(save: DetailViewSave): void {
+    // ★★**동기 잠금.** `mutation.isPending` 은 다음 렌더에야 반영되므로, 재렌더 전에 들어온
+    //   두 번째 드롭은 `locked` 로 못 막는다(실측 — T-DV-14 가 그 창에서 요청 2건을 냈다).
+    //   여기서 세우고 `onSettled` 에서 푼다.
+    inFlightRef.current = true
     setFields((prev) => ({ ...prev, [save.group]: [...save.fields] }))
     setFailure(null)
     mutation.mutate(save)
@@ -412,9 +426,20 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
     // ★★in-flight 중에는 드롭을 **버린다**(스펙 E8 · `#452` BLOCKER B2 와 같은 처방).
     //   드롭 하나가 서버에 가 있는 동안 두 번째를 허용하면 둘 다 **같은 낡은 목록**에서 파생돼
     //   나중 것이 앞 변경을 덮는다(lost update). 서버는 둘 다 200 이라 아무도 오류를 못 본다.
-    //   화면의 핸들도 `draggable={!locked}` 로 함께 잠그지만, 그것만으로는 부족하다 —
-    //   `locked` 는 다음 렌더에야 반영되므로 같은 틱에 들어온 두 번째 드롭은 그 잠금을 지나친다.
-    if (locked) return
+    //
+    //   ★**방어선이 둘이고 서로 다른 창을 막는다. 하나로는 부족하다.**
+    //   - `draggable={!locked}` 와 아래 `locked` — **재렌더 뒤**에 들어온 드롭을 막는다.
+    //     `locked` 는 `mutation.isPending` 에서 파생된 **렌더 스코프 상수**라, 핸들러 안에서
+    //     읽어도 `draggable` 이 읽는 것과 정확히 **같은 낡은 값**이다. 그래서 재렌더 전에
+    //     들어온 두 번째 드롭은 이 줄을 그냥 지나간다(실측 — 같은 틱에 두 드롭을 넣으면
+    //     요청이 2건 나갔다. T-DV-14 가 그 창을 잰다).
+    //   - `inFlightRef` — [submit] 이 **동기적으로** 세우므로 같은 틱의 두 번째 드롭을 막는다.
+    //     이쪽이 lost update 를 실제로 닫는 방어선이다.
+    //
+    //   ★브라우저 포인터 이벤트는 별개 매크로태스크라 React 가 사이에서 flush 한다 —
+    //   실전에서 이 창이 열릴 확률은 낮다. 그래도 닫아 두는 이유는, 「닫혀 있다」고 적힌
+    //   주석을 다음 사람이 근거로 삼기 때문이다(이 주석의 초판이 실제로 그랬다).
+    if (locked || inFlightRef.current) return
 
     const active = event.active.data.current as FieldDragData | undefined
     const over = event.over?.data.current as FieldDragData | undefined

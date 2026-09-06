@@ -236,15 +236,45 @@ function registeredNode(
   return { id, data: { current: data } }
 }
 
+/** 드롭 한 건의 이벤트 조각 — 화면이 **실제로 등록한** 노드로만 만든다. */
+function dropEvent(
+  from: { group: DetailViewFieldGroup; key: string },
+  to: { group: DetailViewFieldGroup; key: string },
+): DragEndEvent {
+  return {
+    active: registeredNode(draggableNodes, from.group, from.key),
+    over: registeredNode(droppableNodes, to.group, to.key),
+  } as unknown as DragEndEvent
+}
+
 /** 드래그 한 번 — `from` 을 `to` 자리에 놓는다. */
 async function drag(
   from: { group: DetailViewFieldGroup; key: string },
   to: { group: DetailViewFieldGroup; key: string },
 ): Promise<void> {
-  const active = registeredNode(draggableNodes, from.group, from.key)
-  const over = registeredNode(droppableNodes, to.group, to.key)
   await act(async () => {
-    capturedOnDragEnd?.({ active, over } as unknown as DragEndEvent)
+    capturedOnDragEnd?.(dropEvent(from, to))
+    await Promise.resolve()
+  })
+}
+
+/**
+ * 드롭 **여러 건을 한 틱 안에서** 보낸다 — 사이에 재렌더가 없다.
+ *
+ * ★이것이 [drag] 를 두 번 부르는 것과 다른 점이자 이 하네스의 요점이다. `drag` 는 호출마다
+ * `act` 로 flush 하므로 두 번째 드롭은 이미 `mutation.isPending` 이 반영된 **새 렌더**에서
+ * 들어온다 — 즉 `draggable={!locked}` 가 이미 막는 상태만 재게 된다.
+ * 같은 틱에 몰아 넣어야 **렌더 스코프 `locked` 로는 못 막는 창**이 실제로 열린다.
+ */
+async function dragSameTick(
+  ...drops: [
+    from: { group: DetailViewFieldGroup; key: string },
+    to: { group: DetailViewFieldGroup; key: string },
+  ][]
+): Promise<void> {
+  const events = drops.map(([from, to]) => dropEvent(from, to))
+  await act(async () => {
+    for (const event of events) capturedOnDragEnd?.(event)
     await Promise.resolve()
   })
 }
@@ -506,24 +536,35 @@ describe('상세 보기 탭 — 저장돼 있던 구성을 읽는다 (N1 · Task
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('상세 보기 탭 — 연속 드롭 lost update 차단 (E8)', () => {
-  it('T-DV-14: 저장 중에는 두 번째 드롭이 먹지 않고 핸들이 잠긴다', async () => {
+  it('T-DV-14: **같은 틱**에 들어온 두 번째 드롭이 먹지 않는다', async () => {
     // ★잠금이 없으면 두 드롭이 **같은 낡은 목록**에서 파생돼 나중 것이 앞 변경을 덮는다.
     //   서버는 둘 다 200 이라 아무도 오류를 못 본다 — `#452` 가 B2 로 닫은 자리와 같다.
+    //
+    // ★★**두 드롭 사이에 `waitFor` 를 두지 않는다.** 종전 판정은 두 번째 드롭 **전에**
+    //   핸들이 disabled 가 되기를 기다렸다 — 즉 `draggable={!locked}` 가 이미 막는 상태만
+    //   쟀고, 정작 「재렌더 전에 들어온 드롭」이라는 창은 아무도 재지 않았다. 그 창은 렌더
+    //   스코프 상수(`locked`)로는 못 닫는다. 두 드롭을 한 틱에 몰아 그것을 실제로 잰다.
     const initial = ['status', 'priority', 'labels']
     const stub = stubDetailViewApi({ GENERAL: initial }, { hold: true })
     renderPanel(board({ detailViewFields: fields({ GENERAL: initial }) }))
 
-    await drag({ group: 'GENERAL', key: 'labels' }, { group: 'GENERAL', key: 'status' })
-    await waitFor(() => {
-      expect(stub.requests).toHaveLength(1)
-    })
+    await dragSameTick(
+      [{ group: 'GENERAL', key: 'labels' }, { group: 'GENERAL', key: 'status' }],
+      [{ group: 'GENERAL', key: 'priority' }, { group: 'GENERAL', key: 'labels' }],
+    )
 
-    // 첫 저장이 아직 서버에 가 있다 — 핸들이 잠겨 있어야 한다.
+    await waitFor(() => {
+      expect(stub.requests.length).toBeGreaterThan(0)
+    })
+    // 두 번째가 새어 나갔으면 여기서 2건이다.
+    expect(stub.requests).toHaveLength(1)
+
+    // 재렌더가 끝나면 핸들도 함께 잠긴다 — ref 가 1차, `draggable` 이 2차 방어선이다.
     await waitFor(() => {
       expect(screen.getByRole('button', { name: L.reorderHandle(G.GENERAL, '상태') })).toBeDisabled()
     })
 
-    // 그럼에도 드롭이 들어오면(키보드 센서·경합) 무시해야 한다.
+    // 재렌더 **뒤에** 들어온 드롭도 여전히 무시한다(키보드 센서·경합).
     await drag({ group: 'GENERAL', key: 'priority' }, { group: 'GENERAL', key: 'labels' })
     expect(stub.requests).toHaveLength(1)
 
@@ -531,6 +572,24 @@ describe('상세 보기 탭 — 연속 드롭 lost update 차단 (E8)', () => {
     await waitFor(() => {
       expect(stub.stored['GENERAL']).toEqual(['labels', 'status', 'priority'])
     })
+  })
+
+  it('T-DV-14b: 저장이 끝나면 잠금이 풀려 다음 드롭이 다시 먹는다 (비-공허 짝)', async () => {
+    // ★위 판정만 두면 「드래그를 영영 막는」 구현도 통과한다. 잠금이 **풀리는지**를 함께 잰다.
+    const initial = ['status', 'priority', 'labels']
+    const stub = stubDetailViewApi({ GENERAL: initial })
+    renderPanel(board({ detailViewFields: fields({ GENERAL: initial }) }))
+
+    await drag({ group: 'GENERAL', key: 'labels' }, { group: 'GENERAL', key: 'status' })
+    await waitFor(() => {
+      expect(stub.stored['GENERAL']).toEqual(['labels', 'status', 'priority'])
+    })
+
+    await drag({ group: 'GENERAL', key: 'priority' }, { group: 'GENERAL', key: 'labels' })
+    await waitFor(() => {
+      expect(stub.requests).toHaveLength(2)
+    })
+    expect(stub.stored['GENERAL']).toEqual(['priority', 'labels', 'status'])
   })
 })
 
