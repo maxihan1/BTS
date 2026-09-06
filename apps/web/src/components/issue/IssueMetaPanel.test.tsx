@@ -1,4 +1,38 @@
 // IssueMetaPanel 유형 행 + 셀렉터 + 상태전환 + 우선순위/영향도/환경/라벨 + 담당자 + 즐겨찾기 단위 테스트 — FR-IS-04 D6 Task-5, FR-IS-03 D6 Task-3, FR-IS-09 Task-6, FR-UX-02 D6 Task-6
+//
+// ## 부채 177 Task 21 — 보드 상세 보기 구성 읽기 (파일 하단 describe). 판정축이 무엇과 무엇을 가르나
+//
+// | 축 | 무엇을 재나 | 느슨한 구현 ↔ 올바른 구현 |
+// |---|---|---|
+// | ① 모달 | 모달로 연 상세가 구성을 읽는다 (T21-1) | 고정 목록 ↔ 보드 구성 |
+// | ② **사이드패널** | 사이드패널로 연 상세가 **같은** 구성을 읽는다 (T21-2) | 모달에만 반영(R7c 위반) ↔ 두 표현 공통 |
+// | ③ 그룹 | 4종에 **서로 다른** 구성이 각자 앉는다 (T21-1·T21-2) | 한 덩어리 목록 ↔ `GENERAL/DATE/PEOPLE/LINKS` (J47) |
+// | ④ **순서** | 구성 **순서 그대로** 그린다 (T21-1·T21-2) | `sorted()`·집합 ↔ 저장된 순서 (J48) |
+// | ⑤ 빈 그룹 | 구성이 없는 그룹은 **빈 칸을 그리지 않는다** (T21-1·T21-2 의 `LINKS`) | 빈 목록/빈 제목 ↔ 아예 없음 |
+// | ⑥ 미설정 대조군 | 구성이 **하나도 없는** 보드는 구획 자체가 없다 (T21-3) | 기본값을 채움 ↔ 없으면 없는 대로(현행 유지) |
+// | ⑦ 모르는 키 | 카탈로그 밖 키도 **원문 그대로** 그려진다 (T21-4) | 숨김 ↔ 다른 경로로 저장된 키 보존 |
+// | ⑧ 상한 없음 | 한 그룹에 4개 이상도 전부 그린다 (T21-4) | 카드의 0..2(J17) 복사 ↔ 상세는 상한 없음(J48) |
+// | ⑨ 열람 제한 | `restrictedFields` 의 필드는 구성에 있어도 안 그린다 (T21-5) | 구성만 보고 값 노출(FR-PM-07 우회) ↔ 제한 우선 |
+// | ⑩ 에러 | 구성 조회 실패가 화면에 남고 재시도가 있다 (T21-6) | 조용한 빈 화면 ↔ 안내 + 재시도 |
+// | ⑪ 보드 없음 | 보드가 없는 프로젝트는 **아무것도** 그리지 않는다 (T21-7) | 「실패」로 읽어 오류 표시 ↔ 정상 부재 |
+//
+// ★**① 과 ② 가 이 task 의 판정축이다.** ① 만 두면 「모달에만 반영되고 사이드패널은 그대로인」
+// 구현이 통과한다 — 그것이 스펙 **R7c** 가 막으려는 「같은 이슈가 열기 방식에 따라 다르게 보인다」다.
+// 실제로 두 축이 갈리는지는 뮤테이션으로 확인했다: `IssueMetaPanel` 이
+// `presentation === 'modal'` 일 때만 구획을 그리게 바꾸면 **② 만** red 가 된다(① 은 초록).
+//
+// ★**④ 는 기대값을 원래 순서와도 사전순과도 다르게 잡았다**(Task 13·19 와 같은 수법).
+// `GENERAL: [priority, environment, status]` 는 카탈로그 순서(status→priority→environment)와도
+// 사전순(environment→priority→status)과도 다르므로, `sorted()` 를 끼운 구현과 선착순을 유지하는
+// 구현이 **동시에** 죽는다.
+//
+// ★**⑤ 와 ⑥ 은 짝이다.** ⑤ 만 두면 「아무것도 안 그리는」 구현이 통과하고, ⑥ 이 없으면
+// 「무엇이든 기본값을 채우는」 구현이 통과한다. ⑩ 과 ⑪ 도 같은 짝이다 — ⑩ 만 두면
+// 「구성이 없어도 오류를 띄우는」 구현이, ⑪ 만 두면 「실패를 조용히 삼키는」 구현이 산다.
+//
+// ★**MSW 는 스텁을 새로 짓지 않고 `mocks/board-handlers.ts` 의 실제 핸들러를 그대로 쓴다** —
+// 보드를 시드하고 `replaceDetailViewFields`(실제 PATCH 창구)로 구성을 심는다. 스텁을 손으로
+// 지으면 응답 모양이 갈려 「유닛은 초록인데 e2e 를 쓰자마자 red」가 된다.
 import type { ReactElement } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
@@ -14,6 +48,16 @@ import { issueDetailStrings } from '@/i18n/ko'
 import { useAuthStore } from '@/auth/authStore'
 import { aliceUser } from '@/mocks/auth-fixtures'
 import { nonMemberProjectPermissions } from '@/mocks/project-permission-fixtures'
+import { IssueDetailModal } from '@/components/issue/IssueDetailModal'
+import { IssueDetailSidePanel } from '@/components/issue/IssueDetailSidePanel'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
+import type { IssueDetailPresentation } from '@/components/issue/issueDetailModalStore'
+import type { DetailViewFieldGroup } from '@/api/board-settings'
+import { replaceDetailViewFields } from '@/api/board-settings'
+import { boardLabels } from '@/i18n/board-labels'
+import { DEFAULT_BOARD, resetBoardStore, seedBoard } from '@/mocks/board-fixtures'
+import { ATLAS_DEFAULT_BOARD_ID } from '@/mocks/backlog-fixtures'
+import { handlers as appHandlers } from '@/mocks/handlers'
 
 // useIssuePermissions를 mock — 기존 테스트는 권한 관련 동작을 검증하지 않으므로 UPDATE/SOFT_DELETE=true로 고정
 vi.mock('@/hooks/use-issue-permissions', () => ({
@@ -54,6 +98,33 @@ import { useLabels } from '@/hooks/use-labels'
 // useDebounce를 mock — debounce 없이 즉시 반환해 테스트 단순화
 vi.mock('@/hooks/use-debounce', () => ({
   useDebounce: (value: string) => value,
+}))
+
+// ── T21 대조군 하네스 — 모달/사이드패널 껍데기를 실제 `IssueDetailPage` 와 함께 마운트한다 ──
+//
+// ★세 mock 은 **껍데기를 띄우기 위한 최소한**이다. 안쪽 상세는 대역으로 갈지 않는다 —
+//   `IssueDetailPage` 를 mock 으로 바꾸면 「껍데기는 맞는데 메타패널이 무엇을 그렸는지」가
+//   유닛에서 영영 안 보이고, 그것이 이 task 가 재려는 바로 그 자리다.
+
+// 라우터 — 두 껍데기가 쓰는 훅 둘만 갈아 끼운다 (`IssueDetailPresentation.test` 와 같은 배치).
+// 이 파일의 기존 테스트는 라우터를 쓰지 않으므로 나머지는 원본 그대로 통과시킨다.
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tanstack/react-router')>()
+  return {
+    ...actual,
+    useNavigate: () => () => undefined,
+    useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
+      select({ location: { pathname: '/issues' } }),
+  }
+})
+
+// jsdom 에는 matchMedia 가 없어 `useMediaQuery` 가 항상 false 다 —
+// 그러면 사이드패널이 스스로 물러나(좁은 화면 폴백) **대조군의 절반이 아예 안 뜬다**.
+vi.mock('@/hooks/use-media-query', () => ({ useMediaQuery: () => true }))
+
+// RichTextEditor 대역 — jsdom 에서 ProseMirror 가 재현되지 않는다 (`routes/issues.$key.test` 와 동일).
+vi.mock('@/components/editor/RichTextEditor', async () => ({
+  RichTextEditor: (await import('@/test/rich-text-editor-mock')).RichTextEditorMock,
 }))
 
 // IssueSecurityLevelSelect 내부 useQuery가 호출하는 security-levels API 핸들러 등록
@@ -1641,5 +1712,222 @@ describe('IssueMetaPanel — 클론 버튼 CREATE 게이트', () => {
 
     const clone = await screen.findByTestId('issue-clone')
     expect(clone).not.toBeDisabled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T21. 보드 상세 보기 구성 — 모달 + 사이드패널 양쪽 (부채 177 Task 21 · 스펙 R7·R7c · J15·J46~J48)
+//
+// 판정축 표는 이 파일 **상단 주석**에 있다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 상세 보기 문구 정본 — 설정 화면과 **같은 카탈로그**를 쓴다. 갈리면 두 화면의 이름이 어긋난다. */
+const DV_L = boardLabels.settings.detailView
+
+/**
+ * 판정용 구성 — **순서 축이 살아 있도록** 원래 순서와도 사전순과도 다르게 잡았다(Task 13·19 와 같은 수법).
+ *
+ * `GENERAL` 은 카탈로그 순서(status→priority→environment)와도 사전순(environment→priority→status)
+ * 과도 다르다. `LINKS` 는 **빈 그룹 대조군**이다 — 빈 칸을 그리는 구현이 여기서 죽는다.
+ */
+const T21_CONFIG: Record<DetailViewFieldGroup, string[]> = {
+  GENERAL: ['priority', 'environment', 'status'],
+  DATE: ['dueDate', 'createdAt'],
+  PEOPLE: ['reporter', 'assignee'],
+  LINKS: [],
+}
+
+/** 위 구성이 화면에 그려져야 하는 이름 — 순서까지 포함한다. */
+const T21_EXPECTED: Record<'GENERAL' | 'DATE' | 'PEOPLE', string[]> = {
+  GENERAL: ['우선순위', '환경', '상태'],
+  DATE: ['마감일', '생성일'],
+  PEOPLE: ['보고자', '담당자'],
+}
+
+/** 보드 목록 GET 이 다녀간 횟수 — 「아무것도 안 그린다」를 재기 전의 정착 신호. */
+let t21BoardListFetches = 0
+/** 상세 보기 구성 GET 이 다녀간 횟수. */
+let t21DetailViewFetches = 0
+
+/**
+ * 구성을 **실제 PATCH 창구**로 심는다.
+ *
+ * 스텁을 손으로 짓지 않는 이유 — `mocks/board-handlers.ts` 의 핸들러가 그룹 4종을 항상 채우는
+ * 정규화(R7c)까지 백엔드와 같게 흉내 낸다. 손으로 지은 스텁은 그 계약과 조용히 갈린다.
+ */
+async function configureBoard(groups: Partial<Record<DetailViewFieldGroup, string[]>>): Promise<void> {
+  for (const [group, fields] of Object.entries(groups)) {
+    await replaceDetailViewFields(ATLAS_DEFAULT_BOARD_ID, group as DetailViewFieldGroup, fields)
+  }
+}
+
+/**
+ * 두 껍데기를 **함께** 마운트하고 스토어의 `presentation` 이 어느 쪽이 뜰지 정하게 한다.
+ *
+ * 한쪽만 마운트하면 「모달에만 반영」을 재는 대조군이 성립하지 않는다 —
+ * 두 표현이 같은 하네스·같은 데이터를 쓰고 **껍데기만** 다른 것이 이 판정의 전제다.
+ */
+function renderIssueShells(presentation: IssueDetailPresentation) {
+  setupFullPermissions()
+  useIssueDetailModalStore.setState({ openKey: 'ATLAS-1', presentation })
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <IssueDetailModal />
+      <IssueDetailSidePanel />
+    </QueryClientProvider>,
+  )
+}
+
+/** 그룹 하나의 목록. **없으면 null** — 「빈 칸을 그리지 않는다」를 재는 자리다. */
+function groupList(group: DetailViewFieldGroup): HTMLElement | null {
+  return screen.queryByRole('list', { name: DV_L.listLabel(DV_L.groupLabels[group]) })
+}
+
+/** 그 그룹에 실제로 그려진 필드 이름을 **화면 순서 그대로** 뽑는다. */
+function renderedFieldNames(group: DetailViewFieldGroup): string[] {
+  const list = groupList(group)
+  if (list === null) return []
+  return within(list)
+    .getAllByRole('listitem')
+    .map((row) => within(row).getByTestId('detail-view-field-name').textContent ?? '')
+}
+
+/** 구성 3그룹이 순서까지 그대로 그려졌는지 — 두 표현이 **같은 단언**을 공유한다. */
+async function expectConfiguredFields(): Promise<void> {
+  await waitFor(() => {
+    expect(renderedFieldNames('GENERAL')).toEqual(T21_EXPECTED.GENERAL)
+  })
+  expect(renderedFieldNames('DATE')).toEqual(T21_EXPECTED.DATE)
+  expect(renderedFieldNames('PEOPLE')).toEqual(T21_EXPECTED.PEOPLE)
+  // 빈 그룹은 제목도 목록도 그리지 않는다.
+  expect(groupList('LINKS')).toBeNull()
+}
+
+/** 구성 조회가 다녀가고 그 응답이 화면에 반영될 때까지 기다린다 — **부재**를 재기 전의 정착점. */
+async function settleDetailView(): Promise<void> {
+  await waitFor(() => {
+    expect(t21BoardListFetches).toBeGreaterThan(0)
+  })
+  await waitFor(() => {
+    expect(screen.getByRole('complementary')).toBeInTheDocument()
+  })
+}
+
+describe('IssueMetaPanel — 보드 상세 보기 구성 (부채 177 T21 · R7c)', () => {
+  beforeEach(() => {
+    t21BoardListFetches = 0
+    t21DetailViewFetches = 0
+    resetBoardStore()
+    seedBoard(DEFAULT_BOARD)
+    // ★이 스위트의 MSW 는 기본 핸들러가 refresh 하나뿐이다(`test/handlers.ts`) — 앱 핸들러
+    //   전량을 여기서 켠다. 보드 설정 응답을 손으로 짓지 않으려면 `mocks/board-handlers.ts`
+    //   가 실제로 돌아야 하고, 모달/사이드패널은 상세 본문 전체를 그리므로 그 뒷단도 필요하다.
+    // ★순서가 곧 우선순위다(`use` 는 앞에 끼운다). 파일 상단 beforeEach 가 세운 두 스텁을
+    //   먼저 두어 앱 핸들러가 그것을 덮지 않게 한다 — favorites 는 인증 없는 유닛 환경에서
+    //   401 을 내고, 그러면 refresh 왕복이 끼어들어 authStore 가 다음 테스트로 샌다.
+    server.use(
+      http.get('/api/v1/favorites', () => HttpResponse.json({ data: { items: [] } })),
+      http.get('/api/v1/projects/:projectKey/issue-security-scheme/levels', () =>
+        HttpResponse.json({ levels: [] }),
+      ),
+      // 세는 것만 하고 응답은 뒤 핸들러에 넘긴다(resolver 가 undefined 면 다음 핸들러로 간다).
+      http.get('/api/v1/boards', () => {
+        t21BoardListFetches += 1
+      }),
+      http.get('/api/v1/boards/:id/detail-view-fields', () => {
+        t21DetailViewFetches += 1
+      }),
+      ...appHandlers,
+    )
+  })
+
+  afterEach(() => {
+    // 설정 store 는 boardStore 에 종속한다 — 보드를 지우면 구성도 함께 사라진다(핸들러의 CASCADE 규칙).
+    resetBoardStore()
+    useIssueDetailModalStore.setState({ openKey: null, presentation: 'modal' })
+  })
+
+  it('T21-1: 모달로 연 상세가 보드 구성을 그룹·순서 그대로 그린다', async () => {
+    await configureBoard(T21_CONFIG)
+    renderIssueShells('modal')
+
+    expect(await screen.findByRole('dialog', { name: '이슈 상세 ATLAS-1' })).toBeInTheDocument()
+    await expectConfiguredFields()
+  })
+
+  it('T21-2: 사이드패널로 연 상세도 **같은** 구성을 그룹·순서 그대로 그린다 (R7c)', async () => {
+    await configureBoard(T21_CONFIG)
+    renderIssueShells('sidePanel')
+
+    expect(
+      await screen.findByRole('region', { name: issueDetailStrings.sidePanelLabel }),
+    ).toBeInTheDocument()
+    await expectConfiguredFields()
+  })
+
+  it('T21-3: 구성이 하나도 없는 보드는 구획 자체를 그리지 않는다 (미설정 대조군)', async () => {
+    renderPanel()
+
+    await settleDetailView()
+    await waitFor(() => {
+      expect(t21DetailViewFetches).toBeGreaterThan(0)
+    })
+    expect(groupList('GENERAL')).toBeNull()
+    expect(groupList('DATE')).toBeNull()
+    expect(groupList('PEOPLE')).toBeNull()
+    expect(groupList('LINKS')).toBeNull()
+  })
+
+  it('T21-4: 모르는 키도 원문 그대로 그리고, 한 그룹의 개수 상한은 없다', async () => {
+    // ★카드 레이아웃의 0..2(J17)를 복사해 오면 뒤 3개가 잘려 죽는다.
+    // ★`cf_severity` 는 카탈로그 밖 키다 — 숨기면 그 그룹을 한 번 건드리는 순간 소실된다.
+    await configureBoard({
+      GENERAL: ['cf_severity', 'status', 'priority', 'impact', 'resolution', 'labels'],
+    })
+    renderPanel()
+
+    await waitFor(() => {
+      expect(renderedFieldNames('GENERAL')).toEqual([
+        'cf_severity',
+        '상태',
+        '우선순위',
+        '영향도',
+        '해결',
+        '라벨',
+      ])
+    })
+  })
+
+  it('T21-5: 열람 제한 필드는 구성에 있어도 그리지 않는다 (FR-PM-07)', async () => {
+    await configureBoard({ GENERAL: ['status', 'environment', 'priority'] })
+    renderPanel({ ...issueFixture, restrictedFields: ['environment'] })
+
+    await waitFor(() => {
+      expect(renderedFieldNames('GENERAL')).toEqual(['상태', '우선순위'])
+    })
+  })
+
+  it('T21-6: 구성 조회가 실패하면 안내와 재시도가 화면에 남는다', async () => {
+    server.use(
+      http.get('/api/v1/boards/:id/detail-view-fields', () =>
+        HttpResponse.json({ errorCode: 'AGILE_INTERNAL', message: 'boom' }, { status: 500 }),
+      ),
+    )
+    renderPanel()
+
+    expect(await screen.findByText(boardLabels.settings.loadError)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: boardLabels.settings.retry })).toBeInTheDocument()
+  })
+
+  it('T21-7: 보드가 없는 프로젝트는 아무것도 그리지 않는다 (실패가 아니다)', async () => {
+    // 보드를 지운다 — 목록이 빈 배열이라 읽을 구성 자체가 없다. 오류로 읽으면 안 된다.
+    resetBoardStore()
+    renderPanel()
+
+    await settleDetailView()
+    expect(groupList('GENERAL')).toBeNull()
+    expect(screen.queryByText(boardLabels.settings.loadError)).toBeNull()
+    expect(t21DetailViewFetches).toBe(0)
   })
 })
