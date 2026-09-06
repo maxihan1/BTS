@@ -1,9 +1,14 @@
-// 보드 설정 탭 API 클라이언트 — 카드 레이아웃 PATCH(Task 16) · 작업일 PUT(Task 18) · 상세 보기 PATCH(Task 19)
+// 보드 설정 탭 API 클라이언트 — 카드 레이아웃 PATCH(Task 16) · 시간 추적 PATCH(Task 17) · 작업일 PUT(Task 18) · 상세 보기 PATCH(Task 19)
 
 import { z } from 'zod'
 import { apiFetch, ApiError } from './client'
-import { boardDetailViewFieldsSchema, boardWorkingDaysSchema, cardLayoutSchema } from './boards'
-import type { BoardDetailViewFields, BoardWorkingDays, CardLayout } from './boards'
+import {
+  boardDetailViewFieldsSchema,
+  boardWorkingDaysSchema,
+  cardLayoutSchema,
+  timeTrackingSchema,
+} from './boards'
+import type { BoardDetailViewFields, BoardWorkingDays, CardLayout, TimeTracking } from './boards'
 
 /**
  * `{ data: T }` 봉투 언랩용 헬퍼.
@@ -196,4 +201,44 @@ export async function replaceDetailViewFields(
   }
   const data: unknown = await res.json()
   return dataResponseSchema(detailViewFieldsResponseSchema).parse(data).data.groups
+}
+
+/**
+ * PATCH 응답 봉투 — 백엔드 `DataResponse<EstimationSettingsResponse>`.
+ *
+ * 값 열거는 `boards.ts` 의 [timeTrackingSchema] 하나뿐이다. 여기 한 벌을 더 두면 두 정의가
+ * 서로를 검사하지 않은 채 갈린다(이 저장소의 지배적 결함 양식).
+ */
+const estimationResponseSchema = z.object({
+  data: z.object({ timeTracking: timeTrackingSchema }),
+})
+
+/**
+ * 시간 추적 설정을 갱신한다 (J36 · J37).
+ *
+ * PATCH `/api/v1/boards/{boardId}/estimation` → 200 + `{ data: { timeTracking } }`
+ * (백엔드 `BoardEstimationController.updateEstimation`).
+ *
+ * @param boardId 대상 보드 UUID.
+ * @param timeTracking 저장할 값.
+ * @returns 저장된 값. 요청 echo 가 아니라 **서버가 확정한 값**이다.
+ * @throws ApiError 비-2xx (400 허용값 밖 · 401 · 403 권한 미충족 · 404 보드 미존재 ·
+ *   **409 칸반 보드**(E5 — 404 가 아니다. 보드는 있고 조작이 막힌 것이다)).
+ *   ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가 통일 예정) 호출자는 **상태 코드로만** 갈라야 한다.
+ * @throws ZodError 응답 스키마 불일치.
+ */
+export async function updateTimeTracking(
+  boardId: string,
+  timeTracking: TimeTracking,
+): Promise<TimeTracking> {
+  const res = await apiFetch(`/api/v1/boards/${boardId}/estimation`, {
+    method: 'PATCH',
+    body: { timeTracking },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  return estimationResponseSchema.parse(data).data.timeTracking
 }

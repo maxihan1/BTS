@@ -1,11 +1,10 @@
 // 보드 설정 — 추정 탭 본문 (시간 추적 · 칸반 잠금 · 부채 177 Task 17 · J36·J37)
 import type { JSX } from 'react'
 import { useId, useState } from 'react'
-import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { BoardDetail, TimeTracking } from '@/api/boards'
-import { timeTrackingSchema } from '@/api/boards'
-import { apiFetch, ApiError } from '@/api/client'
+import { ApiError } from '@/api/client'
+import { updateTimeTracking } from '@/api/board-settings'
 import { boardKeys } from '@/hooks/use-boards'
 import { boardLabels } from '@/i18n/board-labels'
 import { Button } from '@/components/ui/button'
@@ -25,52 +24,6 @@ const TIME_TRACKING_OPTIONS: readonly { value: TimeTracking; label: string }[] =
   { value: 'NONE', label: labels.optionNone },
   { value: 'REMAINING_AND_SPENT', label: labels.optionRemainingAndSpent },
 ]
-
-/**
- * PATCH 응답 봉투 — 백엔드 `DataResponse<EstimationSettingsResponse>`.
- *
- * 값 열거는 `boards.ts` 의 [timeTrackingSchema] 하나뿐이다. 여기 한 벌을 더 두면 두 정의가
- * 서로를 검사하지 않은 채 갈린다(이 저장소의 지배적 결함 양식).
- */
-const estimationResponseSchema = z.object({
-  data: z.object({ timeTracking: timeTrackingSchema }),
-})
-
-/**
- * 시간 추적 설정을 갱신한다 (J36 · J37).
- *
- * PATCH `/api/v1/boards/{boardId}/estimation` → 200 + `{ data: { timeTracking } }`
- * (백엔드 `BoardEstimationController.updateEstimation`).
- *
- * ### 왜 `api/board-settings.ts` 가 아니라 이 파일인가
- * Task 17 의 허용 파일이 이 패널·`SettingsTabs`·`board-labels`·동반 테스트 넷으로 한정돼 있다
- * (계획 `### Task 17` files). `board-settings.ts` 는 T16 소유라 **읽기만** 한다 — 넷이 같은 파일을
- * 고치는 `SettingsTabs.tsx` 문제를 api 모듈에서 되풀이하지 않기 위한 경계다.
- * 통합이 필요해지면 그것은 별건이다(보고 대상으로 남긴다).
- *
- * @param boardId 대상 보드 UUID.
- * @param timeTracking 저장할 값.
- * @returns 저장된 값. 요청 echo 가 아니라 **서버가 확정한 값**이다.
- * @throws ApiError 비-2xx (400 허용값 밖 · 401 · 403 권한 미충족 · 404 보드 미존재 ·
- *   **409 칸반 보드**(E5 — 404 가 아니다. 보드는 있고 조작이 막힌 것이다)).
- *   ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가 통일 예정) 호출자는 **상태 코드로만** 갈라야 한다.
- * @throws ZodError 응답 스키마 불일치.
- */
-async function updateTimeTracking(
-  boardId: string,
-  timeTracking: TimeTracking,
-): Promise<TimeTracking> {
-  const res = await apiFetch(`/api/v1/boards/${boardId}/estimation`, {
-    method: 'PATCH',
-    body: { timeTracking },
-  })
-  if (!res.ok) {
-    const errorBody: unknown = await res.json().catch(() => ({}))
-    throw new ApiError(res.status, errorBody)
-  }
-  const data: unknown = await res.json()
-  return estimationResponseSchema.parse(data).data.timeTracking
-}
 
 /** 한 번의 저장 시도. 실패 되돌림과 재시도가 같은 값을 쓴다. */
 interface EstimationSave {
