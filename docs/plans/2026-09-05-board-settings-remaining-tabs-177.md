@@ -659,7 +659,7 @@ R6 이 화면까지 못 간다. T31 이 백엔드에서 그 구분을 지켰다.
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/board/BoardCard.tsx`, `apps/web/src/components/backlog/BacklogRow.tsx`, `apps/web/src/components/board/BoardCard.test.tsx`]
+- files: [`apps/web/src/components/board/BoardCard.tsx`, `apps/web/src/components/backlog/BacklogCard.tsx`, `apps/web/src/components/board/BoardCard.test.tsx`]
 - depends-on: [16, 26, 31]
 
 ★**26 을 더했다** — 커스텀 필드가 `BoardCardResponse` 에 실려야 화면이 그릴 것이 생긴다.
@@ -1057,9 +1057,52 @@ Task 12 가 닫는다. 깨진 목록을 보고에 남겨 Task 12 가 받게 하�
 ★`BoardControllerIntegrationTest` 도 함께 — 기존 조회 응답에 필드가 늘어도 안 깨져야 한다.
 ★`(cd apps/web && pnpm vitest run src/mocks)` — MSW 핸들러 테스트가 있으면 함께.
 
+### Task 32. 카드 레이아웃 배선 — 스키마 + 부모가 구성을 넘긴다
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/api/boards.ts`, `apps/web/src/routes/projects.$projectKey.board.tsx`, `apps/web/src/components/board/KanbanBoard.tsx`, `apps/web/src/components/board/BoardColumn.tsx`, `apps/web/src/routes/projects.$projectKey.backlog.tsx`, `apps/web/src/components/backlog/BacklogBoard.tsx`, `apps/web/src/components/backlog/BacklogColumn.tsx`, `apps/web/src/components/backlog/SprintColumn.tsx`, `apps/web/src/components/board/BoardCardWiring.test.tsx`]
+- depends-on: [20]
+- jira: [J17, J18, J19]
+
+★**계획에 없던 task 다(2026-09-06 신설). Task 20 구현자가 찾았다. 머지 차단 결함이다.**
+★★**「배선 부재」가 이 PR 에서 세 번째다** — T30·T12(번다운) · T31(읽기 경로) 에 이어서다.
+
+**무엇이 문제인가.** Task 20 이 카드에 「구성을 읽어 그리는 능력」을 줬지만 **앱에서는 아무것도
+바뀌지 않는다.** 실측 두 가지다.
+
+**① `boardCardSchema` 에 `customFields` 가 없다** (`api/boards.ts:67~`). zod `z.object` 는 기본이
+**strip** 이라, 백엔드(T26 이 `BoardCardResponse` 에 실었다)가 보내도 **파싱에서 버려진다.**
+T16 이 넓힌 것은 `boardDetailSchema` 의 설정 4키뿐이다. **`cf_` 경로 전체가 도달 불가다.**
+
+**② `cardLayout` 을 카드에 넘겨 주는 부모가 하나도 없다.** `grep -rln cardLayout` 결과가
+설정 패널과 카드 자신뿐이다. 앱에서 `cardLayout === undefined` 라 추가 필드 층이 **생기지 않는다.**
+배선 체인은 둘이다.
+- 보드 — `projects.$projectKey.board.tsx`(`useBoard` 보유) → `KanbanBoard` → `BoardColumn` → `BoardCard`
+- 백로그 — `projects.$projectKey.backlog.tsx`(`search.board` 로 boardId 보유) → `BacklogBoard` →
+  `BacklogColumn`·`SprintColumn` → `BacklogCard`
+
+**RED**. 보드 화면과 백로그 화면을 렌더해도 카드에 추가 필드 층이 없다. 그리고 **커스텀 필드 값이
+스키마에서 사라진다.**
+
+**GREEN**. `boardCardSchema` 에 `customFields` 를 더하고, 두 체인이 `cardLayout` 을 카드까지 넘긴다.
+★**보드는 `BOARD` 스코프, 백로그는 `BACKLOG` 스코프**를 넘긴다(T20 이 카드에서 이미 가른다 —
+**여기서 또 가르지 마라.** 두 곳이 스코프를 판정하면 그것이 두 번째 진실이다).
+
+**REFACTOR**. prop 이 네 겹을 지난다는 사실과 그 이유를 적는다. context 로 바꾸는 것은
+이 PR 범위 밖이다 — 기존 보드/백로그가 전부 prop drilling 이라 여기만 바꾸면 관례가 갈린다.
+
+**공허 방지**. ★**「스키마에 필드가 있다」만 재면 안 된다** — 실제 응답을 파싱해 **값이 살아남는지**
+재라. strip 은 조용히 버리므로 타입만 보면 안 보인다.
+★**보드/백로그 두 체인을 각각** 재라. 한쪽만 배선한 구현이 반대쪽에서 죽어야 한다.
+★뮤테이션 목록을 테스트 파일 상단 주석에 표로 남긴다.
+
+**검증**. `(cd apps/web && node_modules/.bin/vitest run src/components/board src/components/backlog src/routes src/api)`
+★**Task 20 직후 기준선은 207 파일 3614 tests** 다.
+
 ## Plan 메타
 
-- **task 수**: 31 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 32 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
