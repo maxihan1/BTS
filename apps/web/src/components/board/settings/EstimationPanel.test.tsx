@@ -46,6 +46,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import type { BoardDetail, TimeTracking } from '@/api/boards'
 import { boardKeys } from '@/hooks/use-boards'
+import { boardLabels } from '@/i18n/board-labels'
 import { EstimationPanel } from './EstimationPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,9 +55,16 @@ import { EstimationPanel } from './EstimationPanel'
 
 const BOARD_ID = 'a1b2c3d4-e5f6-4890-abcd-ef1234567890'
 
-/** 옵션 라벨 — 화면 문구가 곧 접근성 이름이다. */
-const NONE_LABEL = '없음'
-const SPENT_LABEL = '잔여 추정 + 소요 시간'
+/**
+ * 옵션 라벨 — 화면 문구가 곧 접근성 이름이다.
+ *
+ * ★리터럴을 복제하지 않고 `board-labels.ts` 를 읽는다(Task 17 REFACTOR). 복제하면 문구를
+ * 고친 날 테스트만 조용히 낡는다. 이 축이 재는 것은 **문구 자체가 아니라 「그 문구가 화면에
+ * 있는가」** 이므로 정본을 참조하는 편이 정확하다.
+ */
+const { estimation } = boardLabels.settings
+const NONE_LABEL = estimation.optionNone
+const SPENT_LABEL = estimation.optionRemainingAndSpent
 
 function board(overrides: Partial<BoardDetail> = {}): BoardDetail {
   return {
@@ -168,7 +176,7 @@ describe('추정 탭 — 스크럼/칸반 대조군 (J37)', () => {
   it('T-ES-3: 칸반 보드는 잠긴 사유를 화면에 보인다 — 조용히 비활성하지 않는다', () => {
     renderPanel(board({ boardType: 'KANBAN' }))
 
-    expect(screen.getByText(/스크럼 보드에서만/)).toBeInTheDocument()
+    expect(screen.getByText(estimation.kanbanLocked)).toBeInTheDocument()
   })
 
   it('T-ES-4: 칸반이어도 저장돼 있던 값이 선택된 채 보인다 (E6)', () => {
@@ -239,7 +247,7 @@ describe('추정 탭 — 저장 (Task 9 계약)', () => {
     expect(option(NONE_LABEL)).toBeChecked()
 
     // 재시도는 화면에 남는 액션이어야 한다 — 다시 누르면 같은 값을 다시 보낸다.
-    await userEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+    await userEvent.click(screen.getByRole('button', { name: estimation.saveRetry }))
     await waitFor(() => {
       expect(stub.requests).toEqual([
         { timeTracking: 'REMAINING_AND_SPENT' },
@@ -257,7 +265,7 @@ describe('추정 탭 — 저장 (Task 9 계약)', () => {
     await choose(SPENT_LABEL, stub)
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('스크럼')
+      expect(screen.getByRole('alert')).toHaveTextContent(estimation.kanbanLocked)
     })
   })
 
@@ -268,9 +276,9 @@ describe('추정 탭 — 저장 (Task 9 계약)', () => {
     await choose(SPENT_LABEL, stub)
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('권한')
+      expect(screen.getByRole('alert')).toHaveTextContent(estimation.saveForbidden)
     })
-    expect(screen.getByRole('alert')).not.toHaveTextContent('스크럼')
+    expect(screen.getByRole('alert')).not.toHaveTextContent(estimation.kanbanLocked)
   })
 
   it('T-ES-12: CREATE 권한이 없으면 고를 수 없다 — 목록은 보인다 (S7)', () => {
@@ -304,7 +312,7 @@ describe('추정 탭 — 저장 (Task 9 계약)', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeInTheDocument()
     })
-    expect(screen.queryByRole('button', { name: '다시 시도' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: estimation.saveRetry })).not.toBeInTheDocument()
   })
 })
 

@@ -7,26 +7,18 @@ import type { BoardDetail, TimeTracking } from '@/api/boards'
 import { timeTrackingSchema } from '@/api/boards'
 import { apiFetch, ApiError } from '@/api/client'
 import { boardKeys } from '@/hooks/use-boards'
+import { boardLabels } from '@/i18n/board-labels'
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 /**
- * 화면 문구.
+ * 화면 문구 — 정본은 `i18n/board-labels.ts` 다.
  *
- * ★Task 17 REFACTOR 가 `i18n/board-labels.ts` 로 옮긴다 — 이 task 는 그 파일이 허용 범위 안이다
- * (`CardLayoutPanel` 이 문구를 자기 파일에 둔 것은 그 task 의 허용 범위 밖이었기 때문이다).
+ * ★**화면에 문자열을 박지 않는다.** `CardLayoutPanel` 이 문구를 자기 파일에 둔 것은 그 task 의
+ * 허용 파일에 `board-labels.ts` 가 없었기 때문이고(`BacklogEpicPanel` 선례), 예외였다.
+ * 이 task 는 그 파일이 허용 범위 안이라 관례대로 i18n 자리에 둔다.
  */
-const labels = {
-  heading: '시간 추적',
-  description: '번다운이 진행을 계산하는 방식입니다.',
-  groupLabel: '시간 추적 방식',
-  optionNone: '없음',
-  optionRemainingAndSpent: '잔여 추정 + 소요 시간',
-  kanbanLocked: '시간 추적은 스크럼 보드에서만 바꿀 수 있습니다. 저장된 값은 지워지지 않습니다.',
-  saveFailed: '시간 추적을 저장하지 못했습니다.',
-  saveForbidden: '시간 추적을 바꿀 권한이 없습니다.',
-  saveRetry: '다시 시도',
-}
+const labels = boardLabels.settings.estimation
 
 /** 고를 수 있는 값 — 백엔드 `TimeTracking` 미러 (J36 · V509 CHECK 가 두 값으로 닫는다). */
 const TIME_TRACKING_OPTIONS: readonly { value: TimeTracking; label: string }[] = [
@@ -188,9 +180,9 @@ export function EstimationPanel({ board, canConfigure }: EstimationPanelProps): 
     <section aria-labelledby={`${domId}-heading`} className="max-w-2xl space-y-4">
       <header className="space-y-1">
         <h2 id={`${domId}-heading`} className="text-sm font-semibold">
-          {labels.heading}
+          {labels.estimationHeading}
         </h2>
-        <p className="text-muted-foreground text-sm">{labels.description}</p>
+        <p className="text-muted-foreground text-sm">{labels.estimationDescription}</p>
       </header>
 
       {/* 사유 없이 비활성만 하면 사용자는 「고장」으로 읽는다(J37 을 화면에서 말한다). */}

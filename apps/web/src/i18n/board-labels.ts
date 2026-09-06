@@ -515,6 +515,62 @@ export const boardLabels = {
     /** WIP 제한 표시 — 무제한일 때 */
     wipUnlimited: 'WIP 제한 없음',
 
+    /**
+     * 「추정」 탭 문구 (부채 177 Task 17 · **J36**·**J37**).
+     *
+     * ★**화면에 문자열을 박지 않는다.** `CardLayoutPanel` 이 문구를 자기 파일에 둔 것은 그
+     * task 의 허용 파일에 이 파일이 없었기 때문이고(`BacklogEpicPanel` 선례), 예외였다.
+     * 잠금 사유처럼 **사용자에게 규칙을 설명하는 문장**은 특히 i18n 자리에 있어야 한다 —
+     * 영어로 갈 때 길이가 크게 갈리는 문장이다.
+     */
+    estimation: {
+      /** 섹션 제목 */
+      estimationHeading: '시간 추적',
+
+      /**
+       * 섹션 설명.
+       *
+       * ★옵션 라벨(`잔여 추정 + 소요 시간`)을 **그대로 되풀이하지 않는다.** Playwright
+       * `getByText` 는 기본이 부분 일치라, 설명문이 라벨을 품으면 라디오와 설명이 함께 잡혀
+       * strict mode 로 즉사한다 — 탭 라벨끼리 substring 을 금지한 것과 같은 계약이다.
+       */
+      estimationDescription: '번다운이 진행을 계산하는 방식입니다.',
+
+      /** 라디오 그룹의 접근성 이름 */
+      groupLabel: '시간 추적 방식',
+
+      /** 시간을 추적하지 않는다 (J36) */
+      optionNone: '없음',
+
+      /**
+       * 원래 추정치에서 소요 시간을 뺀 값으로 진행을 잰다 (J36 —
+       * *"tracks progress by subtracting the value from the **Time spent** field from the
+       * original estimate"*).
+       */
+      optionRemainingAndSpent: '잔여 추정 + 소요 시간',
+
+      /**
+       * 칸반에서 잠기는 사유 (J37 — *"This setting can only be changed for company-managed
+       * scrum teams."*).
+       *
+       * ★**두 문장인 것이 요점이다.** 앞 문장이 J37 이고, 뒤 문장이 스펙 **E6** 다 —
+       * 보드 종류를 바꿔도 `time_tracking` 은 지워지지 않고 되돌리면 살아난다. 뒤 문장이 없으면
+       * 사용자는 잠긴 화면을 보고 「값이 날아갔다」고 읽는다.
+       *
+       * 서버가 뒤늦게 낸 **409** 에도 같은 문구를 쓴다 — 사용자가 할 다음 행동이 같기 때문이다.
+       */
+      kanbanLocked: '시간 추적은 스크럼 보드에서만 바꿀 수 있습니다. 저장된 값은 지워지지 않습니다.',
+
+      /** 저장 실패 — 상태 코드를 모르거나 그 밖의 실패 */
+      saveFailed: '시간 추적을 저장하지 못했습니다.',
+
+      /** 저장 실패 — 403 */
+      saveForbidden: '시간 추적을 바꿀 권한이 없습니다.',
+
+      /** 저장 재시도 버튼. 409 에는 그리지 않는다 — 재시도로 풀리지 않는 실패다 */
+      saveRetry: '다시 시도',
+    },
+
   },
 } as const
 
