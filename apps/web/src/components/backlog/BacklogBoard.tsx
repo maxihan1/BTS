@@ -388,6 +388,15 @@ export function BacklogBoard({
   // ★캐시 키가 보드 화면의 것과 같은 `['board', boardId, …]` 라 두 화면을 오갈 때
   //   `staleTime`(30초) 안에서는 재조회가 생략된다.
   // ★조기 반환(`isLoading`)보다 **위**에 있어야 렌더마다 훅 개수가 같다.
+  //
+  // ## 여기서부터 prop 이 네 겹을 지난다
+  //   `BacklogBoard`(여기) → `BacklogStack` → `SprintColumn`·`BacklogColumn` → `BacklogCard`
+  //     → `CardExtraFields`(`BACKLOG` 스코프만 읽어 2층을 그린다)
+  // 겹이 깊다고 여기만 context 로 바꾸지 않는다 — 같은 깊이를 지나는 축이 이미 넷이고
+  // (`assigneeNames`·`issueTypesByKey`·`boardId`·권한), 하나만 규칙이 달라지면 다음 사람이
+  // 매번 「이 축은 어느 쪽인가」를 확인해야 한다. 사유 전문은 `board/KanbanBoard.tsx` 의
+  // 「카드 레이아웃 배선」 절에 있다(보드 체인이 같은 결정을 공유한다).
+  // ★중간 겹은 값을 **해석하지 않는다.** 스코프 판정은 카드 한 곳에서만 한다(Task 20).
   const { data: boardDetail } = useBoard(boardId)
   const cardLayout = boardDetail?.cardLayout
 
