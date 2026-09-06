@@ -824,7 +824,7 @@ PR #400 은 그 죽은 `nav` 블록을 **지웠다** — 소비처 없는 선언
 
 # 기능 동작
 
-## ⬜ notification — dedup 키 golden 핀이 **인앱에만** 있고 슬랙 쪽은 무방비다 (신규 · 미착수 · T2)
+## ⬜ notification — dedup 키 golden 핀이 **인앱에만** 있고 슬랙 쪽은 무방비다 (신규 · 미착수 · T1)
 
 **쉬운 말.** 알림이 중복인지 판정하는 열쇠를 만드는 코드가 두 벌 있다. 한쪽에는 「열쇠 모양이 바뀌면 알람이 울리는 장치」를 달았는데, 다른 한쪽에는 안 달았다. 그래서 슬랙 쪽 열쇠 모양은 아무도 모르게 바뀔 수 있다.
 
@@ -837,7 +837,7 @@ PR #400 은 그 죽은 `nav` 블록을 **지웠다** — 소비처 없는 선언
 
 ㉮ 만 하면 **오늘 아는 두 벌**이 맞을 뿐 「구현 목록」과 「핀 목록」을 대조하는 장치가 없다. 세 번째 계산기가 생기는 순간 이 항목이 그대로 재현되고 그때도 전 테스트가 초록이다 — 이 저장소가 이름 붙인 지배 결함 양식 `two-lists-never-check-each-other` 이고, 처방 정본은 **차집합 판별식 + 비-공허 짝 + CI** 다.
 
-**티어 근거.** ㉯ 가 `scripts/workflow/` 판별식을 신설하므로 표면은 `GUARD_CI` — `scripts/workflow/surfaces.ts` 기준 **T2** 다. ㉮ 만 하면 `TEST` 단독이라 T1 이고, 그 경우 이 항목은 처방이 축소된 것이므로 티어도 함께 내려야 한다.
+**티어 근거(실측).** **T1** 이다. ㉮ 의 `SlackChannelBroadcasterTest` 도, ㉯ 를 이 저장소 관례대로 `scripts/workflow/<이름>.test.ts` 단독으로 짜는 것도 둘 다 `TEST` 표면이다 — `SURFACE_PRECEDENCE` 가 `TEST` 를 `GUARD_CI` 보다 **앞**에 두기 때문이고(`scripts/workflow/surfaces.ts`, 이유는 「보안 모듈의 테스트 1파일이 보안 표면으로 세어지면 규칙 ④ 가 깨진다」), `tier-floor.test.ts` 가 `scripts/workflow/*.test.ts` 입력에 `T1` 을 이미 단언한다. 실측으로도 `detect-tier.ts` 에 `scripts/workflow/<이름>.test.ts` 를 넣으면 `TIER: T1 · SURFACES: TEST` 다. **㉯ 를 비-test 파일(`scripts/workflow/*.ts` · `*.mjs`)로 분리하면 그때 `GUARD_CI` 가 걸려 T2 가 된다** — 착수자가 구현 형태를 고르는 순간 티어가 갈리므로, 형태를 정한 뒤 `detect-tier.ts` 로 다시 재어라.
 
 **실측(2026-09-05 · PR #461).** 현재 `BC-7` 은 「두 무댓글 이벤트의 dedupKey 가 **서로** 같다」만 단언한다. 이것은 결정성만 재고 **옛 키와의 동일성은 재지 않는다** — 공식이 통째로 바뀌어도 두 호출은 여전히 서로 같으므로 초록이다. 키가 재계산되는 자리는 `NotificationWorker.dispatch` → `broadcastToSlackChannel` → `SlackChannelBroadcaster` 이고, 중복 억제는 `SlackChannelBroadcastWorker` 의 `perChannelKey`(`dedupKey` + `:` + `channelId`)가 영속 테이블 `slack_channel_broadcast_log`(`V705`)를 조회하는 방식이다. **하류 `q_slack_channel_broadcasts` 큐는 payload 에 키를 문자열로 박아 보내므로 그 큐의 재전달은 이 결함과 무관하다** — 재계산이 일어나는 자리는 상류다.
 
