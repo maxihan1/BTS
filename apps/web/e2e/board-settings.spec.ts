@@ -1,6 +1,10 @@
-// 부채 177 E2E — 보드 설정 Columns 탭 한 바퀴 (진입 → 매핑 → WIP → 추가 → 삭제 → 게이팅)
+// 부채 177 E2E — 보드 설정 (Columns 한 바퀴 + 탭바 5탭 + 카드 레이아웃 뷰별 저장)
 //
-// 시나리오 개요 (spec `2026-09-04-board-settings-screen.md` S1~S8).
+// ★머리말이 단언보다 많이 주장하지 않게 둔다 — 이 PR 이 이미 한 번 정정한 자리다
+//   (리뷰 CONCERNS C7·C8). 아래 목록에 있는 것은 **전부 이 파일이 실제로 재는 것**이다.
+//
+// 시나리오 개요 (S1~S8 은 spec `2026-09-04-board-settings-screen.md`,
+// S9~S10 은 spec `2026-09-05-board-settings-remaining-tabs-177.md`).
 //   S1. 진입      — 보드 화면 `⋯` → 「보드 설정」 → Columns 탭이 열린다
 //   S2. 매핑      — 미매핑 상태를 컬럼으로 (키보드로 한다)
 //   S4. WIP 편집  — 최대 카드 수를 넣고 지운다
@@ -9,6 +13,24 @@
 //   S8. 미지목    — `?board=` 없이 들어오면 보드를 지목하라고 안내한다
 //   S9. 탭바      — 5탭이 다 있고 **전부 전환되며** 비활성 골격이 0개다 (J22)
 //  S10. 카드 레이아웃 — 스크럼 보드에서 보드 뷰와 백로그 뷰가 **서로 다른** 구성을 갖는다 (J17·J18)
+//
+// ## S9·S10 이 지는 판정 — 뮤테이션으로 실측했다 (부채 177 Task 22)
+//
+// 「깨면 red 가 나는 당연한 방향」이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**으로 골랐다.
+// 재현 방법을 함께 적는다 — 표만 있고 재현이 없으면 다음 사람이 다시 못 잰다.
+//
+// | 뮤테이션 (재현) | 죽는 테스트 | 가르는 것 |
+// |---|---|---|
+// | ① `SettingsTabs.tsx` `<Tabs defaultValue={…}>` → `value={TAB_VALUES.columns}` — 5탭을 다 그리되 **전환만 안 된다** | S9 (`aria-selected` false) · S10 | 「탭이 **보인다**」 ↔ 「탭이 **바뀐다**」. 개수 단언만으로는 통과한다 |
+// | ② `SettingsTabs.tsx` 의 `<DetailViewPanel …/>` → `<p>준비 중</p>` | **S9 단독** | 「탭이 있다」 ↔ 「그 탭에 **내용**이 있다」 (비활성 골격 0개 · `board-labels.ts:309` 계약) |
+// | ③ `CardLayoutPanel.tsx` 의 `layout[view]` → `layout['BOARD']` — 뷰 구분 없이 한 벌 | **S10 단독** (백로그 뷰의 에픽이 `not.toBeChecked` → checked) | **화면**이 뷰 스코프를 갈라 읽는가 (J18) |
+// | ④ `board-handlers.ts` `patchCardLayoutHandler` 의 쓰기 앞에 `settings.cardLayout = {}` — 저장이 다른 뷰를 지운다 | **S10** (보드 뷰의 에픽이 `toBeChecked` → unchecked) · `board-handlers.test.ts` **T-MSW-CL-2 · T-MSW-CL-3** | 「저장됐다」 ↔ 「**다른 뷰를 안 지우고** 저장됐다」 |
+//
+// ★**③과 ④는 다른 층이다** — ③은 화면의 읽기, ④는 저장의 보존이다. S10 이 둘 다 잡되
+//   **서로 다른 단언**에서 죽는 것이 그 증거다. 둘을 가르려면 두 뷰에 **서로 다른 값**을 넣고
+//   **재마운트 후** 재야 한다 — 같은 값을 넣거나 로컬 state 위에서 재면 셋 다 통과한다.
+// ★**①이 S10 까지 죽이는 것은 판별력이 아니라 의존이다** — S10 은 탭 전환 위에 서 있다.
+//   J22 의 판정 주체는 S9 이고, ②가 그것을 S9 단독으로 확인해 준다.
 //
 // **여기서 재지 않는 것 — S3(컬럼 → 미매핑 되돌리기).** 종전 이 머리말은 S3 를 잰다고 적었지만
 // 실제 단언은 S2 방향 하나뿐이었다(리뷰 CONCERNS C7). 되돌리기를 키보드로 흉내 내려면 미매핑
@@ -126,6 +148,19 @@ function activeTabPanel(page: Page): Locator {
   return page.getByRole('tabpanel')
 }
 
+/** 카드 레이아웃 후보 체크박스 — 활성 탭 본문 안으로 좁힌다(다른 탭의 같은 이름과 갈린다). */
+function cardLayoutCheckbox(page: Page, fieldLabel: string): Locator {
+  return activeTabPanel(page).getByRole('checkbox', { name: fieldLabel, exact: true })
+}
+
+/** 편집할 뷰를 고른다 (J18). 라디오다 — 설정 탭바와 role 이 겹치지 않게 한 선택이다. */
+async function selectCardLayoutView(page: Page, viewLabel: string): Promise<void> {
+  await activeTabPanel(page)
+    .getByRole('radiogroup', { name: cardLayoutMirror.viewGroupLabel })
+    .getByRole('radio', { name: viewLabel, exact: true })
+    .click()
+}
+
 /**
  * 카드 레이아웃 후보 하나를 토글하고 **저장이 정착할 때까지** 기다린다.
  *
@@ -141,14 +176,12 @@ async function toggleCardLayoutField(page: Page, fieldLabel: string): Promise<vo
     (res) =>
       res.request().method() === 'GET' && BOARD_DETAIL_PATH_RE.test(new URL(res.url()).pathname),
   )
-  await activeTabPanel(page)
-    .getByRole('checkbox', { name: fieldLabel, exact: true })
-    .click()
+  await cardLayoutCheckbox(page, fieldLabel).click()
   await patched
   await refetched
 }
 
-test.describe('보드 설정 — Columns 탭 (부채 177)', () => {
+test.describe('보드 설정 (부채 177)', () => {
   test('S1~S6 한 바퀴 — 진입 → 매핑 → WIP → 추가 → 삭제', async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(BOARD_URL)
@@ -366,23 +399,20 @@ test.describe('보드 설정 — Columns 탭 (부채 177)', () => {
     })
     await cardLayoutTab.click()
 
-    const panel = activeTabPanel(page)
-    const viewToggle = panel.getByRole('radiogroup', { name: cardLayoutMirror.viewGroupLabel })
+    const viewToggle = activeTabPanel(page).getByRole('radiogroup', {
+      name: cardLayoutMirror.viewGroupLabel,
+    })
     // 뷰 토글은 스크럼에만 있다(R3). 이것이 없으면 J18 을 잴 자리 자체가 없다.
     await expect(viewToggle).toBeVisible()
 
     // ── 보드 뷰에 에픽 하나 ────────────────────────────────────────────────
-    await viewToggle.getByRole('radio', { name: cardLayoutMirror.viewBoard, exact: true }).click()
+    await selectCardLayoutView(page, cardLayoutMirror.viewBoard)
     await toggleCardLayoutField(page, cardLayoutMirror.fieldEpic)
 
     // ── 백로그 뷰에 **다른** 둘 ────────────────────────────────────────────
-    await viewToggle
-      .getByRole('radio', { name: cardLayoutMirror.viewBacklog, exact: true })
-      .click()
-    // 뷰를 바꾼 순간 앞 뷰의 선택이 따라오지 않는다 — 여기서 이미 「한 벌 공유」가 죽는다.
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldEpic, exact: true }),
-    ).not.toBeChecked()
+    await selectCardLayoutView(page, cardLayoutMirror.viewBacklog)
+    // 뷰를 바꾼 순간 앞 뷰의 선택이 따라오지 않는다 — 뮤테이션 ③이 여기서 죽는다.
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldEpic)).not.toBeChecked()
     await toggleCardLayoutField(page, cardLayoutMirror.fieldPriority)
     await toggleCardLayoutField(page, cardLayoutMirror.fieldLabels)
 
@@ -397,39 +427,21 @@ test.describe('보드 설정 — Columns 탭 (부채 177)', () => {
     await cardLayoutTab.click()
     await expect(viewToggle).toBeVisible()
 
-    // 기본 뷰는 보드다 — 저장한 그 하나만 켜져 있다.
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldEpic, exact: true }),
-    ).toBeChecked()
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldPriority, exact: true }),
-    ).not.toBeChecked()
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldLabels, exact: true }),
-    ).not.toBeChecked()
+    // 기본 뷰는 보드다 — 저장한 그 하나만 켜져 있다. 뮤테이션 ④가 여기서 죽는다.
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldEpic)).toBeChecked()
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldPriority)).not.toBeChecked()
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldLabels)).not.toBeChecked()
 
     // 백로그 뷰는 **자기 둘만** 갖는다 — 보드 뷰의 에픽이 새어 들어오지 않는다.
-    await viewToggle
-      .getByRole('radio', { name: cardLayoutMirror.viewBacklog, exact: true })
-      .click()
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldPriority, exact: true }),
-    ).toBeChecked()
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldLabels, exact: true }),
-    ).toBeChecked()
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldEpic, exact: true }),
-    ).not.toBeChecked()
+    await selectCardLayoutView(page, cardLayoutMirror.viewBacklog)
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldPriority)).toBeChecked()
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldLabels)).toBeChecked()
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldEpic)).not.toBeChecked()
 
     // ── J17 상한 3 — 셋째를 채우면 **안 고른** 후보가 잠기고 **고른** 것은 안 잠긴다.
     //    후자가 없으면 「저장 중이라 전부 잠긴 상태」와 구별되지 않는다.
     await toggleCardLayoutField(page, cardLayoutMirror.fieldAssignee)
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldEpic, exact: true }),
-    ).toBeDisabled()
-    await expect(
-      panel.getByRole('checkbox', { name: cardLayoutMirror.fieldPriority, exact: true }),
-    ).toBeEnabled()
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldEpic)).toBeDisabled()
+    await expect(cardLayoutCheckbox(page, cardLayoutMirror.fieldPriority)).toBeEnabled()
   })
 })
