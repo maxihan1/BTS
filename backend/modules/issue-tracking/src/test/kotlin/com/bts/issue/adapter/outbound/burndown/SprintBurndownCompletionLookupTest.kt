@@ -72,6 +72,30 @@ private val LAST_DONE_AT: Instant = Instant.parse("2026-07-04T09:00:00Z")
  * 세 축을 **한 픽스처**에 함께 세운다 — 「완료를 전부 센다」와 「현재 상태만 본다」와
  * 「첫 전환을 쓴다」가 서로 다른 이슈에서 갈리므로, 느슨한 구현은 어느 하나에서 반드시 걸린다.
  *
+ * ## 뮤테이션 검증 이력 — 재현 가능한 증거 (2026-09-06 실측)
+ *
+ * 잰 명령(3회 모두 동일).
+ * ```
+ * ./gradlew :modules:issue-tracking:test --rerun --no-build-cache --tests '*SprintBurndown*'
+ * ```
+ * 모집단은 **11건**이다(이 파일 4 + [SprintBurndownLookupAdapterTest] 3 +
+ * [SprintBurndownLookupAdapterIntegrationTest] 4).
+ *
+ * | # | [SprintBurndownLookupAdapter] 에 건 뮤테이션 | red | 여전히 통과시키는 것 |
+ * |---|---|---|---|
+ * | M7 | 「지금 DONE」 게이트 제거(`doneRows = rows` — 전환 이력만 본다) | 1 — `완료했다가 되돌린 …` | 나머지 10건 |
+ * | M8 | 마지막 대신 **첫** DONE 전환(`lastOrNull` → `firstOrNull`) | 1 — `지금 DONE 인 이슈만 …` | 나머지 10건 |
+ * | M9 | `visibleIssueCount` 를 **요청 키 수**로(`issueKeys.size`) | 3 — 이 파일 삭제 제외 + 통합 2건 | 나머지 8건 |
+ *
+ * ★**M9 는 이 task 안에서 판정이 한 번 늘었다.** 처음 쟀을 때 red 는 **1건**(이 파일의
+ * `soft-deleted 이슈는 …`)뿐이었다 — 삭제는 잡히는데 **가시성**은 아무도 안 재고 있었다는 뜻이다.
+ * 그래서 [SprintBurndownLookupAdapterIntegrationTest] 의 restricted/허가 viewer 대조군에
+ * `visibleIssueCount` 단언(1 ↔ 2)을 더했고, 다시 재니 red 가 3건이 됐다.
+ * **먼저 재고 나서 표를 적었기 때문에 이 빈틈이 보였다.**
+ *
+ * ★**M7·M8 이 좁게 특정된다.** 둘 다 「완료 판정」의 서로 다른 반쪽을 끊는데, 각각 정확히 그
+ * 반쪽을 재는 테스트 하나씩만 죽는다 — 형제 판정을 우연히 함께 깨지 않는다는 뜻이다.
+ *
  * ## 설정 공유
  * [IssueTestcontainersBase] JVM singleton PostgreSQL 컨테이너를 재사용한다
  * (형제 [SprintBurndownLookupAdapterTest] 와 같은 관용구).

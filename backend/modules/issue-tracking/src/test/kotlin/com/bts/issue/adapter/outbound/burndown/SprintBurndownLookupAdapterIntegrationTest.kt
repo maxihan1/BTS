@@ -221,6 +221,8 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
             )
 
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo(((8 + 4) * hourInSeconds).toLong())
+        // ★개수 축도 소프트 삭제를 제외한다(부채 177 task-35) — 키 3개를 보냈고 2개만 센다.
+        assertThat(source.visibleIssueCount).isEqualTo(2L)
         // 6/1 에 2건 + 6/2 에 1건 = 3항목. 사전집계 시절에는 날짜 2개였다.
         assertThat(source.worklogEntries).hasSize(3)
         val byDate = sumByUtcDate(source.worklogEntries)
@@ -278,6 +280,9 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
 
         // 기밀 이슈 estimate(4h) 제외 → 공개 이슈 8h 만.
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo((8 * hourInSeconds).toLong())
+        // ★개수 축도 같은 그레인이다(부채 177 task-35) — 기밀 이슈를 세면 viewer 가 개수 차로
+        //   「숨겨진 게 몇 개인가」를 역산한다. 아래 허가 viewer 테스트의 2 와 짝이다.
+        assertThat(source.visibleIssueCount).isEqualTo(1L)
         // 기밀 이슈 worklog(5h) 제외 → 공개 이슈 worklog 3h 만.
         assertThat(source.worklogEntries).hasSize(1)
         val byDate = sumByUtcDate(source.worklogEntries)
@@ -318,6 +323,8 @@ class SprintBurndownLookupAdapterIntegrationTest : IssueTestcontainersBase() {
             )
 
         assertThat(source.totalOriginalEstimateSeconds).isEqualTo(((8 + 4) * hourInSeconds).toLong())
+        // ★위 restricted viewer 의 1 과 짝 — 개수가 가시성에 따라 실제로 갈린다(공허 방지).
+        assertThat(source.visibleIssueCount).isEqualTo(2L)
         // 두 이슈의 worklog 가 같은 UTC 날짜지만 각각 1항목이다 — associateBy 로 받으면 한쪽이 조용히 사라진다.
         assertThat(source.worklogEntries).hasSize(2)
         val byDate = sumByUtcDate(source.worklogEntries)
