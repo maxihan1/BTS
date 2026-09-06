@@ -5,12 +5,15 @@ package com.bts.agileplanning.web
 import com.bts.agileplanning.application.BoardStateNotMappedException
 import com.bts.agileplanning.application.ColumnStateAmbiguousException
 import com.bts.agileplanning.application.DuplicateStateKeysException
+import com.bts.agileplanning.application.EstimationBoardNotFoundException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
 import com.bts.agileplanning.application.QuickFilterEmptyQueryException
 import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
 import com.bts.agileplanning.application.StateAlreadyMappedException
+import com.bts.agileplanning.application.WorkingDaysBoardNotFoundException
+import com.bts.agileplanning.application.WorkingDaysInvalidException
 import com.bts.agileplanning.domain.BoardNameInvalidException
 import com.bts.agileplanning.domain.BoardTypeInvalidException
 import org.slf4j.LoggerFactory
@@ -47,10 +50,18 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
  *
- * [assignableTypes] 를 [BoardController]·[BoardQuickFilterController] 로 한정하여 SprintController 등
- * 다른 컨트롤러의 예외를 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
+ * [assignableTypes] 를 보드 계열 컨트롤러 여섯으로 한정하여 SprintController 등 다른 컨트롤러의 예외를
+ * 잡지 않는다(memory: domain-exception-http-handler-basepackage-scope 교훈).
  * [BoardQuickFilterController](FR-UX-01) 가 재사용하는 401/403/404 가 catch-all 로 500 변질되지 않으려면
  * 이 목록에 포함되어야 한다(리뷰 BLOCKER-B/C — 별도 전역 advice 신설 대신 assignableTypes 를 확장한다).
+ *
+ * ### 보드 설정 탭 컨트롤러 넷도 이 목록에 있다 (부채 177 Task 29)
+ * [BoardCardLayoutController] · [BoardEstimationController] · [BoardWorkingDaysController] ·
+ * [BoardDetailViewController] 는 **같은 설정 화면의 네 탭**이다. 이 목록에 없던 동안 넷이 서로 다르게
+ * 우회했다 — 둘은 [ResponseStatusException] 계열만 던져 상태 코드만 맞췄고(본문이 빈 채로 나갔다),
+ * 하나는 자기 파일 안에 별도 advice 를 뒀다. 그 결과 한 화면의 네 탭이 **서로 다른 오류 본문**을 냈고
+ * 프론트가 탭마다 다르게 파싱해야 했다. 넷을 여기로 모아 봉투를 하나로 만든다
+ * (`BoardSettingsTabErrorEnvelopeTest` 가 네 탭의 404 본문이 서로 같은지를 잰다).
  *
  * catch-all [Exception] 핸들러를 두되, [ResponseStatusException] 은 별도 핸들러로 상태를 전파하여
  * catch-all 이 401/404/409/422 등을 500 으로 변질시키지 못하게 한다
@@ -65,7 +76,9 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  *   맨 [IllegalArgumentException] 이 아니라 이 한 타입만 잡는다 — 넓히면 두 컨트롤러 호출 사슬의
  *   내부 `require`/`check` 버그와 [NumberFormatException] 까지 400 으로 나가 5xx 경보에서 사라진다.
  * - [BoardAccessDeniedException] → 403 + AGILE_ACCESS_DENIED
- * - [BoardNotFoundException] → 404 + AGILE_BOARD_NOT_FOUND
+ * - [BoardNotFoundException] · [WorkingDaysBoardNotFoundException] · [EstimationBoardNotFoundException]
+ *   → 404 + AGILE_BOARD_NOT_FOUND
+ * - [WorkingDaysInvalidException] → 400 + AGILE_VALIDATION_FAILED (사유를 detail 에 싣는다)
  * - [QuickFilterNameConflictException] → 409 + AGILE_QUICK_FILTER_NAME_CONFLICT (OCC 충돌 문구와 구분, 리뷰 C4)
  * - [QuickFilterLimitExceededException] → 409 + AGILE_QUICK_FILTER_LIMIT_EXCEEDED (코드리뷰 CONCERN-1/2 — 상한 초과를
  *   OCC 충돌 문구와 구분)
@@ -81,7 +94,16 @@ class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니�
  * RestControllerAdvice 의 책임(예외→HTTP 변환)은 분리 불가한 단일 관심사라 클래스 단위로 억제한다.
  */
 @Suppress("TooManyFunctions")
-@RestControllerAdvice(assignableTypes = [BoardController::class, BoardQuickFilterController::class])
+@RestControllerAdvice(
+    assignableTypes = [
+        BoardController::class,
+        BoardQuickFilterController::class,
+        BoardCardLayoutController::class,
+        BoardEstimationController::class,
+        BoardWorkingDaysController::class,
+        BoardDetailViewController::class,
+    ],
+)
 class BoardExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -144,6 +166,28 @@ class BoardExceptionHandler {
             title = "Validation Failed",
             errorCode = AGILE_VALIDATION_FAILED,
             detail = "요청 경로 또는 파라미터 형식이 올바르지 않습니다.",
+        )
+    }
+
+    /**
+     * 작업일 설정 값 위반 — 400 (스펙 E1 · J38·J40).
+     *
+     * 근무일 0개 · 미지원 요일 키 · 비-IANA 타임존이 여기로 온다.
+     * 다른 400 과 달리 [WorkingDaysInvalidException.reason] 을 detail 에 그대로 싣는다 —
+     * 그 문자열은 사용자에게 무엇을 고쳐야 하는지 알리는 문구이고 내부 식별자를 담지 않는다
+     * (정본은 [com.bts.agileplanning.application.WorkingDaysSettingsService] 의 검증 함수들).
+     *
+     * @param ex 사유를 담은 검증 예외.
+     */
+    @ExceptionHandler(WorkingDaysInvalidException::class)
+    fun handleWorkingDaysInvalid(ex: WorkingDaysInvalidException): ProblemDetail {
+        log.info("AGILE_400 working_days_invalid reason='{}'", ex.reason)
+        return problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "agile-validation-failed",
+            title = "Validation Failed",
+            errorCode = AGILE_VALIDATION_FAILED,
+            detail = ex.reason,
         )
     }
 
@@ -322,13 +366,22 @@ class BoardExceptionHandler {
     // ── 404 BOARD_NOT_FOUND ───────────────────────────────────────────────────
 
     /**
-     * [BoardNotFoundException] — 보드 미존재 또는 soft-deleted — 404.
+     * 보드 미존재 또는 soft-deleted — 404.
+     *
+     * 세 타입을 한 봉투로 합류시킨다. [BoardNotFoundException] 은 컨트롤러 게이트가,
+     * [WorkingDaysBoardNotFoundException] 과 [EstimationBoardNotFoundException] 은 서비스가
+     * **게이트와 저장 사이의 경합**에서 던진다 — 사용자에게는 같은 사실("보드가 없다")이라
+     * 코드를 나누면 프론트가 같은 화면을 두 갈래로 다뤄야 한다.
      *
      * @param ex 보드 미존재 예외(내부 식별자 미포함).
      */
-    @ExceptionHandler(BoardNotFoundException::class)
+    @ExceptionHandler(
+        BoardNotFoundException::class,
+        WorkingDaysBoardNotFoundException::class,
+        EstimationBoardNotFoundException::class,
+    )
     fun handleBoardNotFound(
-        @Suppress("UnusedParameter") ex: BoardNotFoundException,
+        @Suppress("UnusedParameter") ex: RuntimeException,
     ): ProblemDetail {
         log.info("AGILE_404 board_not_found")
         return problem(

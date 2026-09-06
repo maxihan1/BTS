@@ -36,25 +36,22 @@ import java.util.UUID
  * [SprintBurndownController] · [SprintVelocityController]) — 경로 규칙과 게이트 순서를 그대로 따랐다.
  *
  * ### 권한 게이트 — 편차 X8
- * 보드 **단위** 권한 모델이 없어 프로젝트 권한으로 갈음한다. 계획이 지정한 게이트는
- * `hasPermission(actor, SOFT_DELETE, IssueScope.Project(projectKey))` 다 — 보드 설정을 바꾸는 일을
- * 「보드를 지울 수 있는 사람」과 같은 자리에 둔다. 멤버십 role 을 직접 조회하지 않고 권한코드 +
- * resolver 창구만 쓴다(FR-PM-07).
+ * 보드 **단위** 권한 모델이 없어 프로젝트 권한으로 갈음한다. 게이트는
+ * `hasPermission(actor, CREATE, IssueScope.Project(projectKey))` 로 설정 4탭이 **모두 같다**
+ * (부채 177 Task 29 가 통일했다). 화면이 `permissions.CREATE` 하나로 편집 UI 를 열기 때문에
+ * (`apps/web/src/routes/projects.$projectKey.board.settings.tsx:103`), 이 탭만 다른 권한코드를
+ * 요구하면 CREATE 만 가진 사용자가 편집 UI 를 보고 403 을 맞는다. 멤버십 role 을 직접 조회하지 않고
+ * 권한코드 + resolver 창구만 쓴다(FR-PM-07).
  *
  * ★순서는 **actor 추출(401) → 보드 조회(404) → 권한 판정(403)** 이다. 뒤집으면 403 이 「그 보드는
  * 있다」를 누설한다. 로컬 개발자는 항상 권한을 가져 그 뒤집힘이 눈에 안 보인다 —
  * [BoardController.loadBoardWithSoftDelete] 와 같은 순서를 이 컨트롤러 안에 응집한다.
  *
- * ### 예외 매핑 — ★[BoardExceptionHandler] 가 아직 이 컨트롤러를 맡지 않는다
- * `@RestControllerAdvice(assignableTypes = [BoardController, BoardQuickFilterController])` 라
- * 이 컨트롤러의 예외는 그 advice 를 타지 않는다. 그 파일은 부채 177 의 탭 컨트롤러 넷(T8·T9·T10·T13)이
- * 공유하는 자원이라 이 task 가 고치지 않았다.
- *
- * 그래서 이 컨트롤러와 [CardLayoutSettingsService] 는 **[ResponseStatusException] 계열만** 던진다 —
- * advice 없이도 Spring 의 `ResponseStatusExceptionResolver` 가 상태 코드를 그대로 낸다(401/403/404/400).
- * `BoardNotFoundException`·`BoardAccessDeniedException` 을 쓰면 매핑이 없어 **500 으로 변질된다.**
- * 넷이 합류할 때 `assignableTypes` 에 네 컨트롤러를 더하면 그 즉시 `handleResponseStatus` 가
- * RFC 7807 봉투(`AGILE_*` errorCode)를 씌운다 — 이 파일은 그때 한 줄도 바뀌지 않는다.
+ * ### 예외 매핑
+ * [BoardExceptionHandler] 의 `assignableTypes` 가 이 컨트롤러를 포함한다(부채 177 Task 29).
+ * 그래서 404/403 은 [BoardNotFoundException]·[BoardAccessDeniedException] 으로 던지고,
+ * 401 과 [CardLayoutSettingsService] 의 400 은 [ResponseStatusException] 계열로 던진다 —
+ * 둘 다 그 advice 가 RFC 7807 봉투(`AGILE_*` errorCode)로 바꾼다.
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다. 트랜잭션은 [CardLayoutSettingsService] 가 개시한다.
@@ -81,7 +78,9 @@ class BoardCardLayoutController(
      * @param boardId path variable 대상 보드 UUID.
      * @param request 뷰별 필드 키 목록.
      * @return 200 OK + 저장 후 전체 구성.
-     * @throws ResponseStatusException 401 — 미인증. 404 — 보드 미존재/soft-deleted. 403 — 권한 미충족.
+     * @throws ResponseStatusException 401 — 미인증.
+     * @throws BoardNotFoundException 404 — 보드 미존재/soft-deleted.
+     * @throws BoardAccessDeniedException 403 — 권한 미충족.
      * @throws com.bts.agileplanning.application.CardLayoutInvalidException 400 — 뷰당 4개 이상 ·
      *   미지원 필드 키 · 미지원 뷰 · 칸반 보드에 백로그 뷰.
      */
@@ -100,25 +99,24 @@ class BoardCardLayoutController(
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
-     * actor 추출(401) → 보드 조회(404) → SOFT_DELETE 권한 판정(403)을 한 순서로 수행한다.
+     * actor 추출(401) → 보드 조회(404) → CREATE 권한 판정(403)을 한 순서로 수행한다.
      *
      * @param boardId 접근할 보드 UUID.
-     * @throws ResponseStatusException 401 — 미인증. 404 — 보드 미존재 또는 soft-deleted.
-     *   403 — SOFT_DELETE 권한 미충족.
+     * @throws ResponseStatusException 401 — 미인증.
+     * @throws BoardNotFoundException 404 — 보드 미존재 또는 soft-deleted.
+     * @throws BoardAccessDeniedException 403 — CREATE 권한 미충족.
      */
     private fun requireCardLayoutWriteAccess(boardId: UUID) {
         val actor = currentActorId()
-        val board =
-            boardRepository.findById(boardId)
-                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "보드를 찾을 수 없습니다.")
+        val board = boardRepository.findById(boardId) ?: throw BoardNotFoundException()
         val allowed =
             permissionResolver.hasPermission(
                 actor,
-                IssuePermission.SOFT_DELETE,
+                IssuePermission.CREATE,
                 IssueScope.Project(board.projectKey),
             )
         if (!allowed) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "권한이 없습니다.")
+            throw BoardAccessDeniedException()
         }
     }
 

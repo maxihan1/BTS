@@ -68,7 +68,7 @@ import java.util.UUID
  * ## ★ 이 파일의 8축은 RED 를 본 적이 없다 — 그 사후 보정이 아래 표다
  *
  * task-10 의 RED 커밋(`78393f495`)이 **껍데기가 아니었다.** 컨트롤러 297줄에
- * `requireSettingsAccess` 게이트와 `BoardWorkingDaysExceptionHandler` 전문이 이미 들어 있었고,
+ * `requireSettingsAccess` 게이트와 전용 예외 핸들러(Task 29 가 걷어냈다) 전문이 이미 들어 있었고,
  * 그래서 13축 중 **red 는 5건뿐**이었다 — 401 · 404 · 403 · 권한코드 · 날짜형식 · 정상저장 ·
  * NULL 2건, 합 **8축이 태어날 때부터 초록**이었다(wave 6 통합 검증 DRIFT 판정 D1).
  *
@@ -92,6 +92,7 @@ import java.util.UUID
  * | G3 | 게이트의 `if (!hasPermission) throw` → 판정 무시 | WD-9c(403) | allow=true 인 요청 전부 |
  * | G4 | 권한코드 `CREATE` → `SOFT_DELETE` | WD-9c | 상태는 여전히 403 ★c |
  * | G5 | advice 에서 `HttpMessageNotReadableException` 제거 | **0건 — 공허 적발** | 13축 전부 ★d |
+ * | G7 | `BoardExceptionHandler` 의 `assignableTypes` 에서 이 컨트롤러 제거(Task 29) | WD-8 | 상태만 재는 12축 |
  * | G5b | G5 + WD-8 에 `$.errorCode` 단언을 더한 뒤 | WD-8 | — (처방 확인) |
  * | G6 | `WorkingDaysResponse.from` 이 `standardDays = null` 고정 | WD-3 | 저장 `verify` ★e |
  *
@@ -102,8 +103,8 @@ import java.util.UUID
  * - **★d ★★이 표의 존재 이유다.** WD-8 이 상태코드 400 만 재고 있어, 이 컨트롤러의 advice 를
  *   통째로 빼도 13건이 전부 초록이었다 — 그 축은 **아무것도 지키지 않고 있었다.** Spring 의
  *   `DefaultHandlerExceptionResolver` 가 `HttpMessageNotReadableException` 을 400 으로 바꿔 주기
- *   때문이다. 처방으로 `$.errorCode` 봉투 단언을 더했다(G5b 에서 red 확인). 이 엔드포인트는
- *   형제 탭 셋과 달리 `AGILE_*` 봉투를 내는 유일한 자리라 그 성질 자체가 판정 대상이다.
+ *   때문이다. 처방으로 `$.errorCode` 봉투 단언을 더했다(G5b 에서 red 확인). 봉투 자체가 판정
+ *   대상이라는 이 성질은 Task 29 가 네 탭을 한 advice 아래로 모은 뒤에도 그대로다(G7).
  * - **★e** 저장 계층 `verify` 는 green 이다. 응답 echo 축이 없으면 「저장은 맞는데 화면에는
  *   미설정으로 보이는」 구현이 안 잡힌다.
  */
@@ -153,8 +154,10 @@ class BoardWorkingDaysApiTest {
             gate: PermissionStub,
         ): BoardWorkingDaysController = BoardWorkingDaysController(service, boardRepository, gate)
 
+        // 이 컨트롤러는 공용 [BoardExceptionHandler] 의 assignableTypes 안에 있다(Task 29).
+        // 전용 advice 는 사라졌으므로 여기서도 공용 advice 를 올려 production 배선과 같게 둔다.
         @Bean
-        open fun boardWorkingDaysExceptionHandler() = BoardWorkingDaysExceptionHandler()
+        open fun boardExceptionHandler(): BoardExceptionHandler = BoardExceptionHandler()
     }
 
     /**

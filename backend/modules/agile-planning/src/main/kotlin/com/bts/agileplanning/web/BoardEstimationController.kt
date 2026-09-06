@@ -66,13 +66,13 @@ data class EstimationSettingsResponse(
  * `PATCH /boards/{id}/columns/{columnId}` · 퀵필터 CRUD)가 전부 CREATE 를 쓰고,
  * 화면 자체도 `permissions.CREATE` 로 편집 가능 여부를 정한다
  * (`apps/web/src/routes/projects.$projectKey.board.settings.tsx:103`). 새 권한 축을 만들지 않는다.
+ * 설정 4탭이 모두 이 권한코드를 쓴다(부채 177 Task 29 가 나머지 셋을 여기에 맞췄다).
  *
  * ## 예외 → HTTP
- * ★[BoardExceptionHandler] 의 `assignableTypes` 에 **이 컨트롤러는 없다.** 그 파일은 Task 8·10·13 과
- * 공유하는 자원이라 이 task 가 건드리지 않았다. 그래서 이 경로의 예외는 전부
- * [ResponseStatusException] 계열이다 — 전용 advice 없이도 **상태 코드가 그대로 전파**된다
- * (형제 `SprintExceptions.kt` 가 같은 규약을 KDoc 에 적어 뒀다). 대가는 RFC 7807 바디의
- * `errorCode` 가 붙지 않는다는 것이고, 그것을 붙이려면 공유 핸들러에 항목을 더해야 한다.
+ * [BoardExceptionHandler] 의 `assignableTypes` 가 이 컨트롤러를 포함한다(부채 177 Task 29).
+ * 403 은 [BoardAccessDeniedException] 으로, 404 는 [EstimationBoardNotFoundException] 으로 던지고
+ * 그 advice 가 둘 다 형제 탭과 **같은 RFC 7807 봉투**로 바꾼다. 401 과 서비스의 400/409 는
+ * [ResponseStatusException] 계열이고 같은 advice 의 `handleResponseStatus` 가 받는다.
  *
  * ## 트랜잭션
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다. [EstimationSettingsService] 가 개시한다.
@@ -98,7 +98,7 @@ class BoardEstimationController(
      * @return 200 OK + [EstimationSettingsResponse].
      * @throws ResponseStatusException 401 — 미인증.
      * @throws EstimationBoardNotFoundException 404 — 보드 미존재 또는 소프트 삭제.
-     * @throws ResponseStatusException 403 — CREATE 권한 미충족.
+     * @throws BoardAccessDeniedException 403 — CREATE 권한 미충족.
      * @throws com.bts.agileplanning.application.TimeTrackingBoardNotScrumException 409 — 칸반 보드(E5).
      * @throws com.bts.agileplanning.application.TimeTrackingInvalidException 400 — 허용값 밖.
      */
@@ -131,7 +131,7 @@ class BoardEstimationController(
         val actor = currentActorId()
         val board = boardRepository.findById(boardId) ?: throw EstimationBoardNotFoundException()
         if (!permissionResolver.hasPermission(actor, IssuePermission.CREATE, IssueScope.Project(board.projectKey))) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "접근 권한이 없습니다.")
+            throw BoardAccessDeniedException()
         }
         return actor
     }

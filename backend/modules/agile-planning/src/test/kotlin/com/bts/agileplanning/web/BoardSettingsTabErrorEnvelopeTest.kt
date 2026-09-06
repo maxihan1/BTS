@@ -51,7 +51,7 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  * [BoardExceptionHandler] 의 `assignableTypes` 가 탭 컨트롤러 넷을 덮지 않아 넷이 **서로 다르게
  * 우회**했다. [BoardCardLayoutController] · [BoardDetailViewController] 는
  * `ResponseStatusException` 계열만 던져 상태 코드만 맞췄고(본문은 빈 채로 나간다),
- * [BoardWorkingDaysController] 는 자기 파일 안에 별도 advice 를 뒀으며,
+ * [BoardWorkingDaysController] 는 자기 파일 안에 별도 advice 를 뒀으며(Task 29 가 걷어냈다),
  * [BoardEstimationController] 도 `ResponseStatusException` 계열이다. **같은 설정 화면의 네 탭이
  * 서로 다른 오류 본문을 낸다** — 프론트가 탭마다 다르게 파싱해야 하고 한 탭만 고치면 나머지가
  * 조용히 어긋난다.
@@ -147,10 +147,6 @@ class BoardSettingsTabErrorEnvelopeTest {
 
         @Bean
         open fun boardExceptionHandler(): BoardExceptionHandler = BoardExceptionHandler()
-
-        @Bean
-        open fun boardWorkingDaysExceptionHandler(): BoardWorkingDaysExceptionHandler =
-            BoardWorkingDaysExceptionHandler()
     }
 
     /**
@@ -273,9 +269,14 @@ class BoardSettingsTabErrorEnvelopeTest {
      * 요청 경로다. 나머지 필드(`type` · `title` · `status` · `detail` · `errorCode`)만 동일성 비교 대상이다.
      * 본문이 비어 있으면(핸들러가 안 붙어 Spring 이 `sendError` 로 끝낸 경우) 그 사실 자체를 값으로
      * 만들어 실패 메시지에 드러낸다.
+     *
+     * ★`contentAsString` 이 아니라 **바이트를 UTF-8 로 직접 읽는다.** `application/problem+json` 에는
+     * charset 파라미터가 없어 `MockHttpServletResponse` 의 문자 인코딩이 ISO-8859-1 로 남고, 그러면
+     * `detail` 의 한글이 깨져 「본문이 다르다」가 아니라 「인코딩이 다르다」를 재게 된다.
+     * 실제 컨테이너는 JSON 을 UTF-8 로 내보내므로 이 깨짐은 슬라이스 하네스의 성질이다.
      */
     private fun envelopeOf(result: MvcResult): Map<String, Any?> {
-        val raw = result.response.contentAsString
+        val raw = String(result.response.contentAsByteArray, Charsets.UTF_8)
         if (raw.isBlank()) return mapOf("본문없음" to "status=${result.response.status}")
         val parsed: Map<String, Any?> = mapper.readValue(raw, Map::class.java).mapKeys { it.key.toString() }
         return parsed.filterKeys { it != "timestamp" && it != "instance" }

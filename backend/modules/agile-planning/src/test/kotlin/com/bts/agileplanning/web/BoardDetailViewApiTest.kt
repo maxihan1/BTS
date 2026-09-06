@@ -120,11 +120,15 @@ private val LINKS_FIELDS = listOf("issueLinks")
  * J49 는 *board admin* 을 요구하지만 BTS 에는 보드 단위 권한 모델이 없다. 프로젝트 권한으로 갈음하며
  * 쓰기는 설정 4탭 공통 게이트([IssuePermission.CREATE])를 탄다(Task 29 가 넷을 통일했다).
  *
- * ## 예외 핸들러 — [BoardExceptionHandler] 는 이 컨트롤러를 덮지 않는다
- * 그 advice 의 `assignableTypes` 는 [BoardController]·[BoardQuickFilterController] 뿐이고 그 파일은
- * T8·T9·T10 과 공유하는 자원이라 이 task 가 건드리지 않는다. 그래서 이 컨트롤러의 오류 경로는
- * 전부 [org.springframework.web.server.ResponseStatusException] 으로 내고, 테스트 컨텍스트에도
- * 그 advice 를 **일부러 등록해** 「덮이지 않아도 상태 코드가 맞다」를 확인한다.
+ * ## 예외 핸들러 — [BoardExceptionHandler] 가 이 컨트롤러를 덮는다 (Task 29)
+ * 그 advice 의 `assignableTypes` 에 [BoardDetailViewController] 가 들어 있어 404/403 은 도메인 예외
+ * ([BoardNotFoundException]·[BoardAccessDeniedException])로, 401/400 은
+ * [org.springframework.web.server.ResponseStatusException] 계열로 던진다. 테스트 컨텍스트도 그 advice 를
+ * 등록해 production 과 같은 배선으로 잰다.
+ *
+ * ★**이 파일은 상태 코드만 잰다.** 네 탭의 **본문 봉투가 서로 같은지**는
+ * [BoardSettingsTabErrorEnvelopeTest] 가 따로 진다 — 여기서 겹쳐 재면 어느 쪽이 봉투를 지키는지
+ * 구분할 수 없다.
  */
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [BoardDetailViewApiTest.TestMvcConfig::class])
@@ -213,8 +217,8 @@ class BoardDetailViewApiTest {
             gate: PermissionStub,
         ): BoardDetailViewController = BoardDetailViewController(service, repository, gate)
 
-        // 이 advice 는 assignableTypes 에 BoardDetailViewController 가 없어 적용되지 않는다.
-        // 그래도 등록해 두는 이유는 「덮이지 않는 상태에서도 401/403/404/400 이 맞는가」를 재기 위해서다.
+        // 이 advice 의 assignableTypes 가 BoardDetailViewController 를 포함한다(Task 29) —
+        // 401/403/404/400 이 여기를 거쳐 형제 탭과 같은 RFC 7807 봉투로 나간다.
         @Bean
         open fun boardExceptionHandler(): BoardExceptionHandler = BoardExceptionHandler()
     }
