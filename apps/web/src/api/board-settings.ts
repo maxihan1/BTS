@@ -2,6 +2,8 @@
 
 import { z } from 'zod'
 import { apiFetch, ApiError } from './client'
+import { cardLayoutSchema } from './boards'
+import type { CardLayout } from './boards'
 
 /**
  * `{ data: T }` 봉투 언랩용 헬퍼.
@@ -24,24 +26,13 @@ export const CARD_LAYOUT_VIEW_SCOPES = ['BOARD', 'BACKLOG'] as const
 export type CardLayoutViewScope = (typeof CARD_LAYOUT_VIEW_SCOPES)[number]
 
 /**
- * 뷰별 카드 레이아웃 구성 — 백엔드 `CardLayoutResponse.cardLayout` 미러.
+ * PATCH 응답 바디 — 백엔드 `CardLayoutResponse`.
  *
- * ★**구성이 없는 뷰는 키가 아예 없다**(백엔드 KDoc — 「빈 구성은 현행 카드를 그린다는 뜻」).
- * 그래서 두 뷰가 모두 `optional` 이다. 없는 뷰를 빈 배열로 채워 받으면 「구성 없음」과
- * 「빈 구성」이 화면에서 구분되지 않는다.
- *
- * 값은 필드 키 목록이고 **순서가 곧 카드에서의 자리**(`position`)다. 표준 필드는
- * `EPIC`·`PRIORITY` 처럼 카탈로그 이름이고 커스텀 필드는 `cf_` 접두사가 붙는다.
+ * ★**구성 스키마는 `boards.ts` 에 하나뿐이다.** PATCH 응답(`CardLayoutResponse.cardLayout`)과
+ * 보드 조회 응답(`BoardDetailResponse.cardLayout`)이 **같은 모양**이라, 여기 한 벌을 더 두면
+ * 두 정의가 서로를 검사하지 않은 채 갈린다 — 이 저장소의 지배적 결함 양식이다.
+ * 소비자는 `CardLayout` 타입도 `@/api/boards` 에서 가져온다.
  */
-export const cardLayoutSchema = z.object({
-  BOARD: z.array(z.string()).optional(),
-  BACKLOG: z.array(z.string()).optional(),
-})
-
-/** 뷰별 카드 레이아웃 구성 타입. */
-export type CardLayout = z.infer<typeof cardLayoutSchema>
-
-/** PATCH 응답 바디 — 백엔드 `CardLayoutResponse`. */
 const cardLayoutResponseSchema = z.object({ cardLayout: cardLayoutSchema })
 
 /**

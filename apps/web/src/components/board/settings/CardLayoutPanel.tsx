@@ -1,11 +1,12 @@
 // 보드 설정 — 카드 레이아웃 탭 본문 (뷰별 최대 3개 · 부채 177 Task 16 · J17·J18)
 import type { JSX } from 'react'
 import { useId, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import type { BoardDetail } from '@/api/boards'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { BoardDetail, CardLayout } from '@/api/boards'
 import { ApiError } from '@/api/client'
 import { CARD_LAYOUT_VIEW_SCOPES, replaceCardLayout } from '@/api/board-settings'
-import type { CardLayout, CardLayoutViewScope } from '@/api/board-settings'
+import type { CardLayoutViewScope } from '@/api/board-settings'
+import { boardKeys } from '@/hooks/use-boards'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -232,12 +233,18 @@ export interface CardLayoutPanelProps {
  * 연속 토글을 허용하면 두 요청이 같은 낡은 목록에서 파생돼 앞 변경이 조용히 사라진다 —
  * `#452` 가 드래그에 건 잠금(스펙 E8)과 **같은 처방**이다. 응답이 오면 저절로 풀린다.
  *
- * ### ★저장된 구성을 읽어 오는 경로가 아직 없다 (계획 결함 · 보고 대상)
- * 이 화면은 빈 구성에서 시작해 **PATCH 응답**으로만 상태를 채운다. 스펙 N1 은 「보드 조회
- * 응답에 설정을 실어 추가 왕복을 만들지 않는다」고 적었지만, `BoardDetailResponse` 에
- * `cardLayout` 을 싣는 task 가 계획에 없다(T8 은 PATCH 뿐이고 T26 은 카드의 커스텀 필드 값이다).
- * 그래서 지금은 **새로고침하면 이미 저장된 구성이 체크되지 않는다.** 화면이 스스로 GET 을
- * 만들지 않는 이유는 N1 이 금지했기 때문이다 — 백엔드가 보드 응답에 실어야 닫힌다.
+ * ### ★★저장돼 있던 구성을 **초기값으로 읽는다** (부채 177 Task 31 · N1)
+ * 보드 조회 응답이 `cardLayout` 을 실어 온다(Task 31) — 별도 GET 을 만들지 않는 것이 N1 이다.
+ *
+ * **이 읽기는 표시 문제가 아니라 데이터 보존 문제다.** `replaceCardLayout` 은 **뷰 통째 교체**라,
+ * 빈 구성에서 시작하면 마운트 후 **첫 토글이 서버에 저장돼 있던 그 뷰를 그 한 필드로 덮는다** —
+ * 사용자는 필드 하나를 켰을 뿐인데 나머지 둘이 사라진다. `TabsContent` 가 `forceMount` 가
+ * 아니라 탭을 옮겼다 돌아오기만 해도 다시 마운트되므로, 그 자리는 한 번 지나가고 끝이 아니다.
+ * 판정은 `CardLayoutPanel.test.tsx` 의 **T-CL-15**(요청 바디에 기존 구성이 남는가)가 진다.
+ *
+ * 그래서 저장이 정착하면 **보드 조회를 무효화**한다 — 다음 마운트가 서버 값에서 다시 시작하게
+ * 하는 유일한 근거다. 캐시를 `setQueryData` 로 덮지 않는다(응답에 없는 파생 필드가 null 로
+ * 덮여 화면이 플리커한 사고가 있다 — PR #46).
  */
 export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): JSX.Element {
   const domId = useId()
@@ -246,11 +253,15 @@ export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): 
   // 보드 종류가 바뀌어도 없는 뷰를 편집하지 않는다 — 판정을 [editableViews] 한 곳에 모은다.
   const view: CardLayoutViewScope = views.includes(requestedView) ? requestedView : views[0]
 
-  const [layout, setLayout] = useState<CardLayout>({})
+  // ★보드 조회가 실어 온 구성에서 시작한다. `{}` 로 시작하면 첫 토글이 그 뷰를 통째로 덮는다
+  //   (위 KDoc — 데이터 소실). `board.boardId` 로 `key` 를 받아 재마운트되므로 보드가 바뀌면
+  //   이 초기값도 다시 잡힌다(`SettingsTabs` 의 `key={board.boardId}`).
+  const [layout, setLayout] = useState<CardLayout>(board.cardLayout ?? {})
   const [failure, setFailure] = useState<{ save: CardLayoutSave; status: number | null } | null>(
     null,
   )
   const customFieldsQuery = useCustomFields(board.projectKey)
+  const queryClient = useQueryClient()
 
   const mutation = useMutation<CardLayout, unknown, CardLayoutSave>({
     mutationFn: (save) => replaceCardLayout(board.boardId, save.view, save.fields),
@@ -266,6 +277,13 @@ export function CardLayoutPanel({ board, canConfigure }: CardLayoutPanelProps): 
       // ★오류 **본문**을 읽지 않는다. 탭마다 봉투가 달라(부채 177 Task 29 가 통일 예정)
       //   본문 구조에 기대면 통일되는 날 조용히 어긋난다. 상태 코드로만 가른다.
       setFailure({ save, status: error instanceof ApiError ? error.status : null })
+    },
+    onSettled: async () => {
+      // ★실패해도 재조회한다. 실패의 흔한 원인이 동시 편집이고, 그때야말로 화면이 아니라
+      //   서버가 정본이다 — 컬럼 조작 훅 4개가 같은 이유로 `onSettled` 다(`use-column-crud`).
+      //   이 무효화가 없으면 탭을 옮겼다 돌아왔을 때 **저장 전 캐시**가 초기값이 되어,
+      //   그 다음 토글이 방금 저장한 것을 도로 덮는다.
+      await queryClient.invalidateQueries({ queryKey: boardKeys.detail(board.boardId) })
     },
   })
 

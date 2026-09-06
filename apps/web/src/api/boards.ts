@@ -191,6 +191,82 @@ export const activeSprintSchema = z.object({
   endDate: z.string().nullable(),
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 보드 설정 4탭 — 백엔드 `BoardDetailResponse` 의 설정 필드 미러 (부채 177 Task 31 · N1)
+//
+// 보드 조회 응답이 설정을 함께 싣는다(NFR N1 — 탭마다 왕복을 만들지 않는다). 정본은
+// `BoardResponses.kt` 의 `BoardDetailResponse`·`BoardWorkingDaysResponse` 이고, 실제 JSON 은
+// `BoardSettingsReadApiTest` 가 고정한다 — 이 스키마는 그 두 곳을 보고 도출했다(추측 금지).
+//
+// ★**네 키를 한 번에 넣는다.** 탭마다 자기 것만 더하면 같은 파일을 넷이 차례로 고치게 되고,
+//   그것이 `SettingsTabs.tsx` 에서 이미 본 「넷에게 같은 파일」 문제의 재발이다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 카드 레이아웃 — 뷰별 추가 필드 키 목록 (R3 · J17·J18).
+ *
+ * ★**구성이 없는 뷰는 키가 아예 없다**(백엔드 `CardLayoutResponse` KDoc · `BoardSettingsReadApiTest` ②).
+ * 빈 배열로 채워 받으면 「구성 없음」과 「0개 구성」이 화면에서 구분되지 않는다.
+ *
+ * 값은 순서가 곧 카드에서의 자리다. 표준 필드는 `EPIC`·`PRIORITY` 처럼 카탈로그 이름이고
+ * 커스텀 필드는 `cf_` 접두사가 붙는다(`custom_field_definitions.key` 에는 접두사가 없다).
+ */
+export const cardLayoutSchema = z.object({
+  BOARD: z.array(z.string()).optional(),
+  BACKLOG: z.array(z.string()).optional(),
+})
+
+/**
+ * 시간 추적 방식 (R4 · J36).
+ * 백엔드 `time_tracking` 은 `NOT NULL DEFAULT 'NONE'` 이고 V509 의 CHECK 가 두 값으로 닫는다.
+ */
+export const timeTrackingSchema = z.enum(['NONE', 'REMAINING_AND_SPENT'])
+
+/**
+ * 근무일 설정 (R5·R6 · J38~J40).
+ *
+ * ★★**`standardDays` 의 `null` 은 「미설정」이고 빈 배열과 뜻이 다르다.** 미설정은
+ * 「달력일 전부 = 현행 동작 유지」이고, 빈 배열은 「근무일 0개」다. 여기서 둘을 뭉개면
+ * 스펙 **R6** 이 화면까지 못 간다 — 설정을 한 번도 만지지 않은 보드의 번다운이 배포 순간 바뀐다.
+ * 백엔드가 `working_days` 를 `NOT NULL DEFAULT` 로 두지 않은 이유가 그것이다.
+ *
+ * ★nullable 이지만 **키는 항상 온다**(`BoardSettingsReadApiTest` ② 가 `has("standardDays")` 로 고정).
+ */
+export const boardWorkingDaysSchema = z.object({
+  /** 표준 근무일(`MON`..`SUN`, 주 순서). **null = 미설정**(≠ 빈 배열). */
+  standardDays: z.array(z.string()).nullable(),
+  /** 비근무일(ISO-8601 date · 오름차순 · 중복 없음). 없으면 빈 배열. */
+  nonWorkingDates: z.array(z.string()),
+  /** IANA 타임존. null = 미설정(UTC). */
+  timezone: z.string().nullable(),
+})
+
+/**
+ * 상세 보기 필드 — 그룹 4종 (R7 · J47).
+ *
+ * ★**구성이 없는 그룹도 빈 배열로 항상 실린다**(백엔드 `readNormalized` · `BoardSettingsReadApiTest` ②).
+ * 그래서 네 키가 전부 필수다 — 하나라도 빠지면 그것이 서버 계약 위반이고, 여기서 낙관적으로
+ * 기본값을 채우면 그 위반이 화면까지 조용히 통과한다.
+ */
+export const boardDetailViewFieldsSchema = z.object({
+  GENERAL: z.array(z.string()),
+  DATE: z.array(z.string()),
+  PEOPLE: z.array(z.string()),
+  LINKS: z.array(z.string()),
+})
+
+/** 뷰별 카드 레이아웃 구성 타입 */
+export type CardLayout = z.infer<typeof cardLayoutSchema>
+
+/** 시간 추적 방식 타입 */
+export type TimeTracking = z.infer<typeof timeTrackingSchema>
+
+/** 근무일 설정 타입 */
+export type BoardWorkingDays = z.infer<typeof boardWorkingDaysSchema>
+
+/** 상세 보기 필드 구성 타입 */
+export type BoardDetailViewFields = z.infer<typeof boardDetailViewFieldsSchema>
+
 /**
  * 보드 상세 스키마.
  * 백엔드 `BoardDetailResponse` DTO 대응.
@@ -246,6 +322,23 @@ export const boardDetailSchema = z.object({
   boardType: boardTypeSchema,
   /** 활성 스프린트. 칸반 보드는 항상 null (FR-BD-04). */
   activeSprint: activeSprintSchema.nullable(),
+
+  // ── 설정 4탭 (부채 177 Task 31 · N1) ──────────────────────────────────────
+  //
+  // ★넷 다 `.optional()` 이다. 서버는 **항상** 보내지만(위 스키마 주석 참조) 여기서 필수로
+  //   두면 이 필드를 모르는 응답 하나에 보드 화면 전체가 파싱 단계에서 죽고, `.default()` 로
+  //   두면 출력 타입에서 필수가 되어 `BoardDetail` 로 선언된 인라인 픽스처 134곳이 한꺼번에
+  //   타입 에러가 된다 — `canDelete` 가 같은 두 이유로 `.optional()` 인 자리다.
+  //   소비자는 `?? {}` / `?? 'NONE'` 로 fail-safe 하게 읽는다.
+
+  /** 카드 레이아웃(뷰별 추가 필드). 구성이 없는 뷰는 키가 없다 (R3 · J18). */
+  cardLayout: cardLayoutSchema.optional(),
+  /** 시간 추적 방식. 미지정 취급은 `NONE` 이다 (R4 · J36). */
+  timeTracking: timeTrackingSchema.optional(),
+  /** 근무일 설정. `standardDays: null` 은 **미설정**이다(≠ 빈 배열 · R6). */
+  workingDays: boardWorkingDaysSchema.optional(),
+  /** 상세 보기 필드(그룹 4종). 구성이 없는 그룹도 빈 배열로 온다 (R7 · J47). */
+  detailViewFields: boardDetailViewFieldsSchema.optional(),
 })
 
 /**

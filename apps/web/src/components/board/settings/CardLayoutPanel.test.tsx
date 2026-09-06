@@ -16,6 +16,16 @@
 // | ⑩ 오류 판정축 | 본문이 비어도 403 문구 (T-CL-10) | 봉투 본문 파싱 ↔ 상태 코드 판정 |
 // | ⑪ 권한 잠금 | `canConfigure=false` 면 후보 비활성 (T-CL-11) | 항상 편집 가능 ↔ CREATE 로만 열림 (S7) |
 // | ⑫ 후보 3상태 | 커스텀 로딩·에러·빈 (T-CL-12·13·14) | 빈 `<div/>` 침묵 ↔ 세 상태 전부 |
+// | ⑬ 덮어쓰기 | 저장돼 있던 구성 위에 **한 필드만** 토글 (T-CL-15) | `{}` 에서 시작해 그 뷰를 통째로 덮음(**데이터 소실**) ↔ 초기값을 읽고 더함 |
+// | ⑭ 초기 렌더 | 보드가 실어 온 구성이 체크된 채 뜬다 (T-CL-16) | 응답을 무시하고 빈 화면 ↔ `board.cardLayout` 을 읽음 |
+// | ⑮ 미설정 대조군 | 구성이 **없는** 보드는 빈 상태 (T-CL-17) | 항상 기본값을 채움 ↔ 없으면 없는 대로 |
+// | ⑯ 재마운트 | 탭 복귀(언마운트→재마운트) 후에도 유지 (T-CL-18·19) | 로컬 state 에만 의존 ↔ 보드 조회를 무효화하고 초기값에서 다시 읽음 |
+//
+// ★**⑬ 이 이 파일의 가장 비싼 판정이다.** `replaceCardLayout` 은 **뷰 통째 교체**라, 초기값을
+// 읽지 않는 구현은 「필드 하나를 켰을 뿐인데 나머지 둘이 사라지는」 **데이터 소실**을 낸다.
+// ⑭ 만 두면 「그리기는 하는데 요청은 로컬 state 로 만드는」 구현이 통과한다 — ⑬ 은 **요청 바디**를
+// 재고 ⑭ 는 **화면**을 잰다. 둘은 다른 축이다.
+// ★**⑮ 는 ⑭ 의 짝이다.** 없으면 「무엇이든 기본 3개를 채우는」 구현이 ⑭ 를 통과한다.
 //
 // ★**②③ 과 ④⑤ 는 짝으로만 산다.** 「칸반은 토글이 없다」만 두면 **아무에게도 토글을 안 그리는**
 // 구현이 통과하고, 「4번째가 비활성」만 두면 **2개에서 이미 막는** 구현이 통과한다. 짝을 지운
@@ -24,13 +34,14 @@
 // ★**MSW 스텁은 Task 8 의 실제 응답 형태를 따른다** — `{ data: { cardLayout: { BOARD: [...] } } }`.
 // 뷰 단위 교체(요청에 없는 뷰는 그대로)까지 흉내 내므로, 목이 실제 서버와 갈려 「유닛만 초록」이
 // 되는 자리를 줄인다. 형태가 어긋나면 `cardLayoutSchema.parse` 가 이 파일에서 먼저 죽는다.
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { server } from '@/test/server'
 import type { BoardDetail } from '@/api/boards'
+import { boardKeys } from '@/hooks/use-boards'
 import { CardLayoutPanel } from './CardLayoutPanel'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,15 +124,33 @@ function stubCustomFields(fields: { key: string; name: string }[], status?: numb
   )
 }
 
-function renderPanel(detail: BoardDetail = board(), canConfigure = true): void {
+/** 렌더 결과 — 재마운트 축과 무효화 축이 각각 `unmount`·`queryClient` 를 본다. */
+interface RenderedPanel {
+  queryClient: QueryClient
+  unmount: () => void
+  rerender: (detail: BoardDetail) => void
+}
+
+function renderPanel(detail: BoardDetail = board(), canConfigure = true): RenderedPanel {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <CardLayoutPanel board={detail} canConfigure={canConfigure} />
     </QueryClientProvider>,
   )
+  return {
+    queryClient,
+    unmount: view.unmount,
+    rerender: (next) => {
+      view.rerender(
+        <QueryClientProvider client={queryClient}>
+          <CardLayoutPanel board={next} canConfigure={canConfigure} />
+        </QueryClientProvider>,
+      )
+    },
+  }
 }
 
 /**
@@ -352,5 +381,77 @@ describe('카드 레이아웃 탭 — 권한과 상태 3종 (S7)', () => {
     expect(
       await screen.findByText('이 프로젝트에는 커스텀 필드가 없습니다.'),
     ).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑬⑭⑮⑯ 저장돼 있던 구성을 초기값으로 읽는다 (부채 177 Task 31 · N1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('카드 레이아웃 탭 — 저장된 구성을 초기값으로 읽는다 (N1)', () => {
+  it('T-CL-15: 저장돼 있던 구성 위에 한 필드만 켜면 기존 구성이 요청에 남는다 — 덮어쓰기 방지', async () => {
+    // ★이 파일에서 가장 비싼 판정이다. `PATCH` 는 **뷰 통째 교체**라, 초기값을 안 읽는 구현은
+    //   「라벨 하나를 켰을 뿐인데 에픽·우선순위가 사라지는」 **데이터 소실**을 낸다.
+    //   화면(⑭)이 아니라 **요청 바디**를 재는 것이 요점이다.
+    const stub = stubCardLayoutApi({ BOARD: ['EPIC', 'PRIORITY'] })
+    renderPanel(board({ cardLayout: { BOARD: ['EPIC', 'PRIORITY'] } }))
+
+    await toggleField('라벨', stub)
+
+    expect(stub.requests).toEqual([{ cardLayout: { BOARD: ['EPIC', 'PRIORITY', 'LABELS'] } }])
+  })
+
+  it('T-CL-16: 보드가 실어 온 구성이 뷰마다 체크된 채 뜬다', async () => {
+    // 두 뷰에 **다른** 값을 넣는다 — 같은 값이면 한 뷰만 읽는 구현도 통과한다.
+    renderPanel(
+      board({ cardLayout: { BOARD: ['EPIC'], BACKLOG: ['LABELS'] } }),
+    )
+
+    expect(await screen.findByRole('checkbox', { name: '에픽' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '라벨' })).not.toBeChecked()
+
+    await userEvent.click(viewRadio('백로그'))
+    expect(screen.getByRole('checkbox', { name: '라벨' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '에픽' })).not.toBeChecked()
+  })
+
+  it('T-CL-17: 구성이 없는 보드는 빈 상태로 뜬다 — T-CL-16 의 짝', async () => {
+    // 「무엇이든 기본값을 채우는」 구현이 여기서 죽는다. 빈 구성은 「현행 카드를 그린다」는 뜻이다.
+    const stub = stubCardLayoutApi()
+    renderPanel(board())
+
+    // 커스텀 후보까지 다 붙은 뒤에 센다 — 조회 전에 세면 「아직 안 온 것」을 「안 켜진 것」으로 읽는다.
+    expect(await screen.findByRole('checkbox', { name: '스토리 포인트' })).not.toBeChecked()
+    for (const name of ['에픽', '우선순위', '담당자', '라벨', '추정치', '이슈 종류']) {
+      expect(screen.getByRole('checkbox', { name })).not.toBeChecked()
+    }
+
+    await toggleField('에픽', stub)
+    expect(stub.requests).toEqual([{ cardLayout: { BOARD: ['EPIC'] } }])
+  })
+
+  it('T-CL-18: 저장에 성공하면 보드 조회를 무효화한다 — 다음 마운트가 서버 값을 읽는다', async () => {
+    // ★로컬 state 는 탭을 옮기는 순간 사라진다(`TabsContent` 는 `forceMount` 가 아니다).
+    //   무효화하지 않으면 다시 들어왔을 때 **저장 전 캐시**가 초기값이 되어, 그 다음 토글이
+    //   방금 저장한 것을 도로 덮는다. 재마운트가 안전한 유일한 근거가 이 무효화다.
+    const stub = stubCardLayoutApi()
+    const { queryClient } = renderPanel()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+
+    await toggleField('에픽', stub)
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: boardKeys.detail(BOARD_ID) })
+  })
+
+  it('T-CL-19: 언마운트 후 다시 마운트해도 보드가 실어 온 구성이 다시 체크된다', async () => {
+    // 탭 전환의 실제 모습이다 — Radix 는 비활성 탭 본문을 언마운트하므로 로컬 state 는 사라진다.
+    const detail = board({ cardLayout: { BOARD: ['EPIC'] } })
+    const first = renderPanel(detail)
+    expect(await screen.findByRole('checkbox', { name: '에픽' })).toBeChecked()
+
+    first.unmount()
+    renderPanel(detail)
+
+    expect(await screen.findByRole('checkbox', { name: '에픽' })).toBeChecked()
   })
 })
