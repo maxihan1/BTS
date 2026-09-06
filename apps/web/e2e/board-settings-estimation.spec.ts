@@ -10,8 +10,9 @@
 // | ④ `WorkingDaysPanel` 초기값을 `stored?.standardDays ?? null` → `null` 고정 (**배선 절단**) | S3 | 서버 값에서 시작 ↔ 매번 빈 화면에서 시작 |
 // | ⑤ `toSettingsPayload` 가 `workingDays` 를 응답에서 뺀다 (**배선 절단**) | S3·S4 | 위와 같은 축을 **응답 쪽에서** 끊은 것 |
 // | ⑥ 타임존 저장에서 `standardDays`/`nonWorkingDates` 를 요청에서 뺀다 | S4 | 「타임존만 바꿨는데 근무일이 날아간다」 ↔ PUT 3축 동시 전송 |
-// | ⑦ `WorkingDaysPanel` 의 `days === null` 분기를 지우고 항상 체크박스를 그린다 (**항상 좁힌다**) | S1·S4 대조군 | 미설정을 「근무일 0개」로 뭉갬 ↔ 두 상태를 가름 (R6) |
-// | ⑧ 저장을 보드 단위가 아니라 프로젝트 단위로 흘린다 | S4 대조군 | 옆 보드까지 바뀜 ↔ 보드 단위 (편차 X7) |
+// | ⑦ `WorkingDaysPanel` 의 `days === null` 분기를 지우고 항상 체크박스를 그린다 (**항상 좁힌다**) | S1·S4 대조군·**S8** | 미설정을 「근무일 0개」로 뭉갬 ↔ 두 상태를 가름 (R6) |
+// | ⑧ 저장을 보드 단위가 아니라 프로젝트 단위로 흘린다 | S4 대조군·**S8** | 옆 보드까지 바뀜 ↔ 보드 단위 (편차 X7) |
+// | ⑪ 미설정 보드까지 주말·비근무일을 뺀다 (**무조건 좁힌다**) | **S8** | 「현행 유지」를 지키는가 ↔ 기존 차트를 배포 순간 바꿈 (R6) |
 // | ⑨ 서비스가 근무일을 `BurndownCalculator` 에 넘기지 않는다 (**배선 절단**) | — **이 spec 은 못 잡는다** (아래 ★) | — |
 // | ⑩ 타임존을 무시하고 UTC 로 고정한다 | — **이 spec 은 못 잡는다** (아래 ★) | — |
 //
@@ -55,6 +56,7 @@
 //   S5. (test.fail) 근무일 저장 → 번다운 x축에서 비근무일이 빠진다.
 //   S6. (test.fail) 타임존만 바꾸면 번다운 x축이 달라진다.
 //   S7. 경로 계약        — S5·S6 이 밟는 SPA 경로와 recharts x축 셀렉터가 살아 있는지 **초록으로** 잰다.
+//   S8. ★대조군         — 미설정 보드의 번다운 x축은 **달력일 전부**다. S5 의 짝이다.
 import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
@@ -279,6 +281,17 @@ async function burndownAxisTicks(page: Page): Promise<string[]> {
   return (await ticks.allTextContents()).map((text) => text.trim())
 }
 
+/**
+ * 「작업일을 한 번도 설정하지 않은 보드」임을 단언한다 (스펙 R6).
+ *
+ * ★두 줄이 **짝으로만 산다.** 안내 문구만 보면 「요일 7개가 다 꺼진 화면」과 구분되지 않고,
+ * 체크박스 부재만 보면 조회 실패와 구분되지 않는다. 미설정과 「근무일 0개」는 뜻이 정반대다.
+ */
+async function expectWorkingDaysUnset(page: Page): Promise<void> {
+  await expect(page.getByText(workingDaysLabels.unsetNotice)).toBeVisible()
+  await expect(page.getByRole('list', { name: workingDaysLabels.daysGroupLabel })).toHaveCount(0)
+}
+
 /** 「미설정 → 근무일 고르기(월~금) → 비근무일 등록 → 저장」 한 묶음 */
 async function configureWorkingDaysWithHoliday(page: Page): Promise<void> {
   await settingsTab(page, tabs.workingDays).click()
@@ -317,8 +330,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
 
     // Then. 작업일 탭은 미설정 — 「요일 7개가 다 꺼진 화면」이 아니다(미설정 ≠ 근무일 0개).
     await settingsTab(page, tabs.workingDays).click()
-    await expect(page.getByText(workingDaysLabels.unsetNotice)).toBeVisible()
-    await expect(page.getByRole('list', { name: workingDaysLabels.daysGroupLabel })).toHaveCount(0)
+    await expectWorkingDaysUnset(page)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -368,7 +380,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
 
     // ── S3. 작업일 저장 — 근무일에서 금요일을 빼고 비근무일 하루를 넣는다 ──────────
     await settingsTab(page, tabs.workingDays).click()
-    await expect(page.getByText(workingDaysLabels.unsetNotice)).toBeVisible()
+    await expectWorkingDaysUnset(page)
     await page.getByRole('button', { name: workingDaysLabels.configureDays, exact: true }).click()
 
     const friday = dayCheckbox(page, workingDaysLabels.dayLabels.FRI)
@@ -424,8 +436,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
 
     await openBoardSettings(page)
     await settingsTab(page, tabs.workingDays).click()
-    await expect(page.getByText(workingDaysLabels.unsetNotice)).toBeVisible()
-    await expect(page.getByRole('list', { name: workingDaysLabels.daysGroupLabel })).toHaveCount(0)
+    await expectWorkingDaysUnset(page)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -512,5 +523,36 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
 
     // Then. 같은 근무일·같은 스프린트인데 타임존만 다르면 x축이 달라야 한다.
     expect(newYorkTicks).not.toEqual(seoulTicks)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // S8 — ★대조군. 미설정 보드의 번다운은 **현행 그대로**다 (스펙 R6 · 뮤테이션 ⑦·⑧)
+  //
+  // Given  작업일을 **한 번도 설정하지 않은** 보드다(설정 화면에서 그 사실을 먼저 확인한다)
+  // When   그 프로젝트의 스프린트 번다운을 연다
+  // Then   x축이 달력일 5일 **전부**다 — 아무것도 빠지지 않는다
+  //
+  // ★★**S5 와 짝으로만 산다.** S5 만 두면 「무조건 좁히는 구현」이 통과한다 — 설정을 만지지도
+  //   않은 보드의 차트까지 조용히 바뀌는 것이 R6 가 금지한 바로 그것이다(기존 스프린트의
+  //   차트가 배포 순간 달라진다). 반대로 이 건만 두면 「아무것도 안 좁히는 구현」이 통과한다.
+  //   지금은 S5 가 red 고 이 건이 green 이다 — 배선이 들어오면 **둘 다 green** 이어야 한다.
+  //
+  // ★기대값을 5건 전량으로 굳힌다. `toContain` 이 아니라 `toEqual` 인 것이 요점이다 —
+  //   부분 일치는 「일부만 남기는」 구현을 놓친다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('S8 대조군 — 작업일 미설정 보드의 번다운 x축은 달력일 전부다', async ({ page }) => {
+    await loginAsAlice(page)
+    await page.goto(BOARD_URL)
+    await openBoardSettings(page)
+
+    // Given. 이 보드는 작업일을 한 번도 설정하지 않았다 — 대조군의 전제를 화면에서 확인한다.
+    await settingsTab(page, tabs.workingDays).click()
+    await expectWorkingDaysUnset(page)
+
+    // When. 아무것도 저장하지 않고 번다운으로 간다.
+    await goToBurndownViaSpa(page)
+
+    // Then. 달력일 5일이 전부 그대로다.
+    expect(await burndownAxisTicks(page)).toEqual(BURNDOWN_DATES.map(toTick))
   })
 })
