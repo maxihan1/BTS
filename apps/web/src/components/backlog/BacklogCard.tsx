@@ -10,7 +10,10 @@ import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
+import { CardExtraFields } from '@/components/board/BoardCard'
+import type { CardCustomFieldValues } from '@/components/board/BoardCard'
 import type { BacklogIssue } from '@/api/backlog'
+import type { CardLayout } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 드래그 컨텍스트 타입
@@ -61,8 +64,14 @@ export interface BacklogCardDropData {
 
 /** BacklogCard 컴포넌트 Props */
 export interface BacklogCardProps {
-  /** 카드에 표시할 이슈 데이터 */
-  issue: BacklogIssue
+  /**
+   * 카드에 표시할 이슈 데이터.
+   *
+   * `CardCustomFieldValues` 를 교차한 이유는 보드 카드와 같다 — 커스텀 필드 값이 실려 오면
+   * 카드 2층이 그것을 그리고, 아직 없으면 그 칸만 생략된다(E4). 백로그 조회 응답
+   * (`BacklogIssueResponse`)은 아직 이 키를 싣지 않는다.
+   */
+  issue: BacklogIssue & CardCustomFieldValues
   /** 카드가 위치한 컨텍스트 (백로그 또는 스프린트) */
   context: BacklogCardContext
   /**
@@ -91,6 +100,13 @@ export interface BacklogCardProps {
    * 부모가 맵에서 못 찾으면 `issue.typeKey` 원문을 그대로 넘긴다 (FR6 fallback).
    */
   typeName: string
+  /**
+   * 이 보드의 **뷰별** 카드 레이아웃 구성 (`BoardDetail.cardLayout` · R3 · J18).
+   *
+   * 백로그 카드는 이 중 **`BACKLOG` 스코프만** 읽는다 — 보드 카드와 **다른 구성**을 가질 수
+   * 있는 것이 J18 이다. 미지정이거나 그 뷰의 키가 없으면 추가 필드 층의 DOM 이 생기지 않는다.
+   */
+  cardLayout?: CardLayout
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,6 +172,7 @@ function BacklogCardInner({
   assigneeName,
   typeIconName,
   typeName,
+  cardLayout,
 }: BacklogCardProps) {
   const openIssueDetail = useOpenIssueDetail()
   const resolvedSprintId = sprintId ?? null
@@ -230,6 +247,21 @@ function BacklogCardInner({
       >
         {issue.summary}
       </Link>
+
+      {/* J19 2층 — 구성이 고른 추가 필드. 요약 바로 아래이고 상세(3층)보다 위다 */}
+      <CardExtraFields
+        layout={cardLayout}
+        view="BACKLOG"
+        source={{
+          epicKey: issue.epicKey,
+          priority: issue.priority,
+          labels: issue.labels,
+          originalEstimateSeconds: issue.originalEstimateSeconds,
+          assigneeName: assigneeName ?? null,
+          typeName,
+          customFields: issue.customFields,
+        }}
+      />
 
       {/* 라벨 칩 행 — 라벨이 없으면 DOM 자체가 없다 (`CardLabelChips` FR9) */}
       <CardLabelChips labels={issue.labels} />
