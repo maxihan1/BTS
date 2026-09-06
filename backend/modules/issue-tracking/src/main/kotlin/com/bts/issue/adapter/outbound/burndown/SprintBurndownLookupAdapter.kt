@@ -55,10 +55,12 @@ import java.util.UUID
  * 3. [SprintBurndownQueryRepository.findIssueStatusRows] — 이슈 상태 스칼라 1쿼리(개수 축).
  * 4. [StatusHistoryRepository.fetchStatusChanges] — 완료 이슈들의 status 전환 이력 1쿼리(개수 축).
  * 5. [IssueTypeRepository.findAll] — 타입 id → key 역매핑 1쿼리(개수 축).
- * ★**「5문」이 전부가 아니다**(재리뷰 C4 정정). 워크플로우 상태 조회는 **이슈 타입별 1회**이고
+ * ★**위 5문이 전부가 아니다**(재리뷰 C4·⑧ 정정). 빠진 것이 둘 더 있다 —
+ * `securityDirectory.accessibleLevels` 와 `issueRepository.filterVisibleIssueKeys`(둘 다 선재).
+ * 그리고 워크플로우 상태 조회는 **이슈 타입별 1회**이고
  * [IsolatedWorkflowStateLookup] 은 `REQUIRES_NEW` 라 그 호출마다 **별도 물리 트랜잭션**이 뜬다
  * (`SprintVelocityLookupAdapter` 가 세운 rollback-only 오염 차단 설계 — 그 격리가 목적이다).
- * 실제 비용은 `5 + N_types` 문 + `N_types` 물리 트랜잭션이다.
+ * 실제 비용은 **`7 + N_types` 문 + `N_types` 물리 트랜잭션**이다.
  *
  * **N+1 이 아닌 이유는 그것이 이슈 수가 아니라 타입 수에 비례하기 때문**이고, 타입은 프로젝트당
  * 한 자리 수다. 다만 시간 축(`REMAINING_AND_SPENT`) 보드도 개수 축 원천 3~5 를 **무조건** 태운다 —
@@ -196,8 +198,7 @@ class SprintBurndownLookupAdapter(
         changes: List<StatusChangeRow>,
         typeIdToKey: Map<Long, IssueTypeKey>,
         stateCache: Map<IssueTypeKey, Map<String, String>>,
-    ): Instant? =
-        changes.lastOrNull { categoryOf(row, it.toValue, typeIdToKey, stateCache) == StatusCategory.DONE }?.changedAt
+    ): Instant? = changes.lastOrNull { categoryOf(row, it.toValue, typeIdToKey, stateCache) == StatusCategory.DONE }?.changedAt
 
     /** [stateKey] 가 이 이슈 타입의 워크플로우에서 어느 카테고리인가. 모르면 TODO 로 폴백한다. */
     private fun categoryOf(

@@ -17,6 +17,7 @@ import com.bts.shared.burndown.WorklogContribution
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -28,6 +29,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+
+// 타임존 해석 실패를 조용히 넘기지 않기 위한 로거 — resolveBoardZone 이 쓴다.
+private val LOG = LoggerFactory.getLogger("com.bts.agileplanning.application.SprintBurndownService")
 
 /**
  * 스프린트 번다운(Burndown) / 번업(Burnup) 시계열을 조회하는 애플리케이션 서비스.
@@ -86,6 +90,7 @@ import java.util.UUID
  *   (AuthController time-bomb 회귀 학습). 별도 Clock 빈이 없는 컨텍스트에서도 부팅되도록
  *   default 값을 둔다(WorklogService 등 기존 Clock default 관례 — 전용 @Bean 미배선).
  */
+
 @Service
 class SprintBurndownService(
     private val sprintRepository: SprintRepository,
@@ -307,7 +312,18 @@ class SprintBurndownService(
      *
      * @param timezone `boards.board_timezone` 값. null 이면 미설정.
      */
-    private fun resolveBoardZone(timezone: String?): ZoneId = timezone?.let(ZoneId::of) ?: ZoneOffset.UTC
+    private fun resolveBoardZone(timezone: String?): ZoneId {
+        if (timezone == null) return ZoneOffset.UTC
+        return runCatching { ZoneId.of(timezone) }.getOrElse {
+            // ★V510 이 CHECK 를 걸었지만 **그 구멍이 닫히지 않는다**(재리뷰 ④).
+            //   CHECK 가 보는 것은 PostgreSQL 의 tz 이름 집합이고 그것은 Java `ZoneId` 집합보다
+            //   **넓다** — POSIX 표기(`ABC5`)는 DB 를 통과하고 `ZoneId.of` 에서 죽는다.
+            //   폴백이 없으면 그런 행 하나에 **그 보드의 번다운 API 가 영구 500** 이다.
+            //   V510 이 그 사실을 문단으로 남겼고 이 자리가 그 문단이 요구한 폴백이다.
+            LOG.warn("보드 타임존을 해석하지 못해 UTC 로 폴백한다 — timezone={}", timezone)
+            ZoneOffset.UTC
+        }
+    }
 
     /**
      * 보드 설정을 [BurndownCalculator] 의 근무일 축 인자로 옮긴다.

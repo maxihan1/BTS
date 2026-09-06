@@ -14,6 +14,7 @@ import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
 import com.bts.agileplanning.application.StateAlreadyMappedException
+import com.bts.agileplanning.application.TimeTrackingBoardNotScrumException
 import com.bts.agileplanning.application.TimeTrackingInvalidException
 import com.bts.agileplanning.application.WorkingDaysBoardNotFoundException
 import com.bts.agileplanning.application.WorkingDaysInvalidException
@@ -51,6 +52,7 @@ class BoardAccessDeniedException : RuntimeException("권한이 없습니다.")
 class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니다.")
 
 private const val VALIDATION_FALLBACK_DETAIL = "요청 값이 올바르지 않습니다."
+private const val CONFLICT_FALLBACK_DETAIL = "다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요."
 
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
@@ -605,7 +607,12 @@ class BoardExceptionHandler {
                 HttpStatus.NOT_FOUND ->
                     AGILE_BOARD_NOT_FOUND to "보드를 찾을 수 없습니다."
                 HttpStatus.CONFLICT ->
-                    AGILE_CONFLICT to "다른 변경과 충돌이 발생했습니다. 다시 시도해 주세요."
+                    // ★탭 예외는 자기 사유를 싣는다(재리뷰 ②). 종전 고정 문구는
+                    //   「다시 시도해 주세요」인데 `TimeTrackingBoardNotScrumException` 이 뜻하는
+                    //   「칸반 보드에서는 바꿀 수 없다」는 **재시도로 영원히 성공하지 않는다** —
+                    //   그 예외 KDoc 이 「이 보드에서 영영 불가능하다」고 적는다.
+                    //   400 에서 C7 이 고친 것과 같은 결함이 409 에 남아 있었다.
+                    AGILE_CONFLICT to conflictReason(ex)
                 HttpStatus.UNPROCESSABLE_ENTITY ->
                     AGILE_UNPROCESSABLE to "요청을 처리할 수 없습니다. 워크플로우 또는 해결 방안 설정을 확인해 주세요."
                 HttpStatus.BAD_REQUEST ->
@@ -649,6 +656,18 @@ class BoardExceptionHandler {
             is TimeTrackingInvalidException,
             -> ex.reason ?: VALIDATION_FALLBACK_DETAIL
             else -> VALIDATION_FALLBACK_DETAIL
+        }
+
+    /**
+     * 409 의 `detail` — **설정 탭의 예외만** 자기 `reason` 을 쓴다([settingsTabReason] 과 같은 규율).
+     *
+     * `TimeTrackingBoardNotScrumException` 의 「칸반 보드에서만 바꿀 수 없다」는 재시도로 풀리지
+     * 않는 조건이라, 고정 문구 「다시 시도해 주세요」가 사용자를 잘못 인도한다.
+     */
+    private fun conflictReason(ex: ResponseStatusException): String =
+        when (ex) {
+            is TimeTrackingBoardNotScrumException -> ex.reason ?: CONFLICT_FALLBACK_DETAIL
+            else -> CONFLICT_FALLBACK_DETAIL
         }
 
     /**

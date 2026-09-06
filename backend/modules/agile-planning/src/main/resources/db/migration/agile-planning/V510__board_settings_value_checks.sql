@@ -23,6 +23,17 @@
 --   유일하므로** `conname` 만 보면 다른 테이블의 동명 제약에 속아 CHECK 를 조용히 건너뛴다 —
 --   V509 가 같은 자리에 그 이유를 적어 두었고 이 파일은 그것을 따른다.
 
+-- ★★ 되돌리기 — **무조건** 완전 원복된다. 제약만 떼므로 데이터 손실이 없다.
+--
+--   ALTER TABLE boards
+--       DROP CONSTRAINT IF EXISTS boards_working_days_allowed,
+--       DROP CONSTRAINT IF EXISTS boards_board_timezone_allowed;
+--
+-- ★이 블록이 필요한 이유. ② 의 timezone CHECK 는 위반 값에서 **false 를 반환하지 않고
+--   예외를 던진다**(SQLSTATE 22023). 예상 못 한 행이 있으면 `ALTER TABLE` 자체가 죽어
+--   배포가 중단되고, 그때 되돌릴 문장이 어디에도 없으면 손으로 지어내야 한다.
+--   형제 V505·V506·V508·V509 가 전부 이 블록을 갖고 있고 V510 만 빠져 있었다(재리뷰 ③).
+
 -- ① 표준 근무일 — 원소가 3글자 요일 7종 중 하나여야 하고 NULL 원소를 허용하지 않는다.
 --    칸 자체의 NULL(= 미설정)은 그대로 허용한다 — 「미설정」과 「근무일 0개」의 구분은
 --    이 PR 이 전 층에서 지켜 온 계약이고 CHECK 가 그것을 깨면 안 된다.
