@@ -1,7 +1,15 @@
 // 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전환 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX, RefObject } from 'react'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { z } from 'zod'
 import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/issues'
+import { apiGet } from '@/api/client'
+import { boardDetailViewFieldsSchema } from '@/api/boards'
+import type { BoardDetailViewFields } from '@/api/boards'
+import { DETAIL_VIEW_FIELD_GROUPS } from '@/api/board-settings'
+import { boardKeys, useBoards } from '@/hooks/use-boards'
+import { boardLabels } from '@/i18n/board-labels'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
@@ -157,6 +165,227 @@ export function isFieldDisabled(fieldKey: string, canEdit: boolean, noneditableF
   return !canEdit || noneditableFields.includes(fieldKey)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 보드 상세 보기 구성 (부채 177 Task 21 · 스펙 R7·R7c · J46~J48)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 상세 보기 문구 정본 — 설정 화면(`DetailViewPanel`)과 **같은 카탈로그**를 쓴다. */
+const detailViewLabels = boardLabels.settings.detailView
+
+/**
+ * 값이 없는 필드의 표기.
+ *
+ * 이 패널의 기존 규약과 같은 글자다 — 생성/수정 날짜가 null 이면 `useDateFormat` 이 이미
+ * 이 문자로 그린다. 다른 글자를 쓰면 같은 화면 안에서 「값 없음」이 두 모양이 된다.
+ */
+const EMPTY_FIELD_VALUE = '—'
+
+/** 구성 캐시 유지 시간(ms) — `useBoards` 와 같은 30초. 이슈를 열 때마다 재조회하면 왕복이 는다. */
+const DETAIL_VIEW_STALE_TIME_MS = 30_000
+
+/** GET `/api/v1/boards/{id}/detail-view-fields` 응답 봉투 — 백엔드 `DetailViewFieldsResponse`. */
+const detailViewFieldsEnvelopeSchema = z.object({
+  data: z.object({ groups: boardDetailViewFieldsSchema }),
+})
+
+/**
+ * 보드의 상세 보기 구성을 조회한다 (T19 가 「이 GET 은 T21 의 소비 창구」로 못 박은 자리).
+ *
+ * ★**응답은 그룹 4종을 항상 채운다**(구성이 없는 그룹은 빈 배열 · R7c). 그 계약에 기대므로
+ * 여기서 「키 부재」를 따로 다루지 않는다 — 모달과 사이드패널이 각자 부재를 다르게 처리하면
+ * 한쪽만 고쳐진 상태가 생긴다는 것이 T13 이 이 계약을 세운 이유다.
+ *
+ * ★**`api/board-settings.ts` 가 아니라 여기 있는 이유** — 이 task 의 허용 파일이 셋뿐이라
+ * `api/` 를 쓰기로 열 수 없었다(같은 wave 의 다른 task 가 그 파일을 잡고 있다). 응답 스키마는
+ * `boards.ts` 의 정본(`boardDetailViewFieldsSchema`)을 그대로 쓰므로 정의가 갈리지는 않는다.
+ * 이 함수 자체는 다음 기회에 `api/board-settings.ts` 로 옮기는 것이 맞다.
+ *
+ * @param boardId 대상 보드 UUID.
+ * @returns 그룹 4종 → 필드 키 목록. 순서가 곧 화면 순서다(J48).
+ * @throws ApiError 비-2xx (401 · 403 BROWSE 미충족 · 404 보드 미존재)
+ * @throws ZodError 응답 스키마 불일치
+ */
+async function fetchDetailViewFields(boardId: string): Promise<BoardDetailViewFields> {
+  const envelope = await apiGet(
+    `/api/v1/boards/${boardId}/detail-view-fields`,
+    detailViewFieldsEnvelopeSchema,
+  )
+  return envelope.data.groups
+}
+
+/**
+ * 필드 값 도출에 필요한 것들 — 이 패널이 이미 들고 있는 것만 담는다.
+ *
+ * 새 조회를 여기서 만들지 않는다. 값 창구가 없는 필드(감시자·연결된 이슈·보안 등급)는
+ * [EMPTY_FIELD_VALUE] 로 그리고 그 사실을 [DETAIL_VIEW_FIELD_SPECS] 에 적어 둔다 —
+ * 없는 값을 지어내는 것보다 없다고 말하는 편이 정직하다.
+ */
+interface DetailViewValueContext {
+  /** 그리는 이슈. */
+  issue: IssueResponse
+  /** 현재 담당자(별도 조회 결과). null 이면 미지정. */
+  currentAssignee: UserSummary | null
+  /** 이 이슈의 컴포넌트 UUID 목록. */
+  componentIds: string[]
+  /** 프로젝트 컴포넌트 전체 — 이름 해석용. */
+  components: Component[]
+  /** 프로젝트 버전 전체 — 이름 해석용. */
+  versions: Version[]
+  /** 이 이슈의 영향 버전 UUID 목록. */
+  affectsVersionIds: string[]
+  /** 이 이슈의 수정 버전 UUID 목록. */
+  fixVersionIds: string[]
+  /** 날짜(연-월-일) 포맷터. null 이면 이미 `—` 를 돌려준다. */
+  formatDate: (iso: string | null) => string
+  /** 날짜+시각 포맷터. */
+  formatDateTime: (iso: string | null) => string
+}
+
+/**
+ * 구성 키 하나에 대응하는 렌더러 (J47 의 카탈로그 주석 — *"키 하나가 렌더러 하나에 대응한다"*).
+ *
+ * @property restrictedAs 열람 제한 판정(FR-PM-07)에 쓰는 **`IssueResponse` 필드 이름**.
+ *   구성 키(`assignee`)와 응답 필드 이름(`assigneeId`)이 다르므로 여기서 잇는다 —
+ *   이어 두지 않으면 제한된 필드의 값이 이 구획으로 **새어 나간다**. 제한 대상이 아니면 null.
+ * @property resolve 값 도출. 값이 없으면 null 을 돌려주고 화면이 [EMPTY_FIELD_VALUE] 를 그린다.
+ */
+interface DetailViewFieldSpec {
+  restrictedAs: string | null
+  resolve: (context: DetailViewValueContext) => string | null
+}
+
+/** 구성에 담길 수 있는 표준 필드 키 — **카탈로그가 곧 허용값이다**(`DetailViewPanel` 과 같은 규칙). */
+type DetailViewFieldKey = keyof typeof detailViewLabels.fieldLabels
+
+/** 값이 비면 null — 「빈 문자열」과 「없음」을 화면이 가르지 못하게 뭉개지 않는다. */
+function joinOrNull(values: readonly string[]): string | null {
+  return values.length > 0 ? values.join(', ') : null
+}
+
+/** UUID 목록을 이름 목록으로 바꾼다. 카탈로그에 없는 id 는 버린다(삭제된 컴포넌트/버전). */
+function namesOf(ids: readonly string[], catalog: readonly { id: string; name: string }[]): string[] {
+  return ids
+    .map((id) => catalog.find((entry) => entry.id === id)?.name)
+    .filter((name): name is string => name !== undefined)
+}
+
+/**
+ * 구성 키 → 렌더러 표.
+ *
+ * ★**`Record<DetailViewFieldKey, …>` 로 묶는 것이 이 표의 방어선이다.** 카탈로그
+ * (`i18n/board-labels.ts` 의 `fieldLabels`)에 키가 늘면 여기가 컴파일 에러가 되어
+ * 「설정 화면에서는 고를 수 있는데 상세는 못 그리는」 상태가 조용히 생기지 않는다 —
+ * 두 목록이 서로를 검사하지 않는 자리를 타입으로 닫았다.
+ *
+ * ★**값 창구가 없는 셋**(`securityLevel`·`watchers`·`issueLinks`)은 null 을 돌려준다.
+ * 이름만 있고 값이 없는 셈인데, 그 셋을 그리려면 이 패널에 조회를 새로 달아야 하고
+ * (보안 등급 이름 · 감시자 목록 · 링크 목록) 그것은 이 task 의 파일 범위를 넘는다.
+ * 숨기지 않는 이유는 「구성에 넣었는데 상세에 없다」가 더 나쁜 거짓말이기 때문이다.
+ */
+const DETAIL_VIEW_FIELD_SPECS: Record<DetailViewFieldKey, DetailViewFieldSpec> = {
+  status: { restrictedAs: null, resolve: (c) => c.issue.currentStateKey },
+  issueType: { restrictedAs: null, resolve: (c) => c.issue.typeName },
+  priority: { restrictedAs: null, resolve: (c) => c.issue.priorityName },
+  impact: { restrictedAs: 'impact', resolve: (c) => c.issue.impactName },
+  resolution: { restrictedAs: null, resolve: (c) => c.issue.resolution?.name ?? null },
+  labels: { restrictedAs: 'labels', resolve: (c) => joinOrNull(c.issue.labels) },
+  components: {
+    restrictedAs: 'componentIds',
+    resolve: (c) => joinOrNull(namesOf(c.componentIds, c.components)),
+  },
+  environment: { restrictedAs: 'environment', resolve: (c) => c.issue.environment },
+  securityLevel: { restrictedAs: 'securityLevelId', resolve: () => null },
+  fixVersions: {
+    restrictedAs: 'fixVersionIds',
+    resolve: (c) => joinOrNull(namesOf(c.fixVersionIds, c.versions)),
+  },
+  affectsVersions: {
+    restrictedAs: 'affectsVersionIds',
+    resolve: (c) => joinOrNull(namesOf(c.affectsVersionIds, c.versions)),
+  },
+  createdAt: { restrictedAs: null, resolve: (c) => c.formatDateTime(c.issue.createdAt) },
+  updatedAt: { restrictedAs: null, resolve: (c) => c.formatDateTime(c.issue.updatedAt) },
+  startDate: { restrictedAs: null, resolve: (c) => c.formatDate(c.issue.startDate ?? null) },
+  dueDate: { restrictedAs: null, resolve: (c) => c.formatDate(c.issue.dueDate ?? null) },
+  assignee: {
+    restrictedAs: 'assigneeId',
+    resolve: (c) =>
+      c.currentAssignee === null
+        ? null
+        : (c.currentAssignee.displayName ?? c.currentAssignee.username),
+  },
+  reporter: { restrictedAs: null, resolve: (c) => c.issue.reporterId },
+  watchers: { restrictedAs: null, resolve: () => null },
+  issueLinks: { restrictedAs: null, resolve: () => null },
+  parent: { restrictedAs: null, resolve: (c) => c.issue.parent?.key ?? null },
+  epic: { restrictedAs: null, resolve: (c) => c.issue.epic?.key ?? null },
+}
+
+/**
+ * 필드 키의 표시 이름.
+ *
+ * ★**모르는 키는 숨기지 않고 원문 그대로 그린다** — 설정 화면(`DetailViewPanel.fieldLabel`)과
+ * **같은 규칙**이다. 다른 경로로 저장된 키를 상세가 못 그리면 사용자는 자기가 설정한 것이
+ * 반영되지 않았다고 읽는다.
+ *
+ * @param key 저장된 필드 키.
+ * @returns 사람이 읽는 이름. 카탈로그에 없으면 키 원문.
+ */
+function detailViewFieldLabel(key: string): string {
+  const known: Record<string, string> = detailViewLabels.fieldLabels
+  return known[key] ?? key
+}
+
+/**
+ * 필드 키의 렌더러. 카탈로그 밖 키는 렌더러가 없다(이름만 그리고 값은 비운다).
+ *
+ * @param key 저장된 필드 키.
+ */
+function detailViewFieldSpec(key: string): DetailViewFieldSpec | undefined {
+  const table: Record<string, DetailViewFieldSpec | undefined> = DETAIL_VIEW_FIELD_SPECS
+  return table[key]
+}
+
+/** 화면에 그릴 한 줄. */
+interface DetailViewRow {
+  /** 저장된 필드 키 — `key` prop 과 `data-field-key` 에 그대로 쓴다. */
+  fieldKey: string
+  /** 표시 이름. */
+  label: string
+  /** 표시 값. 값이 없으면 [EMPTY_FIELD_VALUE]. */
+  value: string
+}
+
+/**
+ * 한 그룹의 구성을 화면 줄로 바꾼다.
+ *
+ * ★**정렬하지 않는다.** 배열 순서가 곧 J48 의 드래그 결과이고, 그것이 상세에서의 자리다.
+ * ★**열람 제한 필드는 뺀다**(FR-PM-07). 구성은 「무엇을 보여줄지」이지 「권한을 무시할지」가 아니다.
+ * ★**개수 상한이 없다**(J48). 카드 레이아웃의 0..2(J17)는 카드의 제약이라 복사해 오지 않는다.
+ *
+ * @param fieldKeys 그 그룹의 필드 키 목록(저장 순서).
+ * @param context 값 도출에 쓰는 것들.
+ * @returns 그릴 줄 목록. 비면 그 그룹은 아무것도 그리지 않는다.
+ */
+function toDetailViewRows(
+  fieldKeys: readonly string[],
+  context: DetailViewValueContext,
+): DetailViewRow[] {
+  const rows: DetailViewRow[] = []
+  for (const fieldKey of fieldKeys) {
+    const spec = detailViewFieldSpec(fieldKey)
+    // 카탈로그 밖 키는 제한 판정도 키 원문으로 한다 — 커스텀 필드 키가 그대로 제한 목록에 실린다.
+    const restrictedAs = spec === undefined ? fieldKey : spec.restrictedAs
+    if (restrictedAs !== null && isFieldHidden(restrictedAs, context.issue.restrictedFields)) continue
+    rows.push({
+      fieldKey,
+      label: detailViewFieldLabel(fieldKey),
+      value: spec?.resolve(context) ?? EMPTY_FIELD_VALUE,
+    })
+  }
+  return rows
+}
+
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
@@ -216,7 +445,45 @@ export function IssueMetaPanel({
   const isCloneExplicitlyDenied = useIssueCreatePermissionGate(issue.projectKey)
 
   // 로그인 사용자의 date_format 환경설정을 반영한 날짜 포맷터 (FR-PF-01 Task 8)
-  const { formatDateTime } = useDateFormat()
+  const { formatDate, formatDateTime } = useDateFormat()
+
+  // ── 보드 상세 보기 구성 (부채 177 Task 21 · R7·R7c · J46~J48) ──────────────
+  // 이슈는 보드가 아니라 **프로젝트**에 속하는데 구성은 보드 단위다 — 어느 보드로 그릴지는
+  // 아래 `useBoards` 주석에 근거를 적었다.
+  const boardsQuery = useBoards(issue.projectKey)
+  const detailViewBoardId = boardsQuery.data?.[0]?.boardId
+  const detailViewQuery = useQuery({
+    queryKey: [...boardKeys.detail(detailViewBoardId), 'detail-view-fields'],
+    queryFn: (): Promise<BoardDetailViewFields> => {
+      if (detailViewBoardId === undefined) {
+        throw new Error('boardId is required')
+      }
+      return fetchDetailViewFields(detailViewBoardId)
+    },
+    enabled: detailViewBoardId !== undefined,
+    staleTime: DETAIL_VIEW_STALE_TIME_MS,
+  })
+
+  const detailViewContext: DetailViewValueContext = {
+    issue,
+    currentAssignee,
+    componentIds,
+    components,
+    versions,
+    affectsVersionIds,
+    fixVersionIds,
+    formatDate,
+    formatDateTime,
+  }
+  const detailViewFields = detailViewQuery.data
+  const detailViewGroups = DETAIL_VIEW_FIELD_GROUPS.map((group) => ({
+    group,
+    rows:
+      detailViewFields === undefined
+        ? []
+        : toDetailViewRows(detailViewFields[group], detailViewContext),
+  })).filter((entry) => entry.rows.length > 0)
+  const isDetailViewError = boardsQuery.isError || detailViewQuery.isError
 
   // 권한 조회 — fail-closed: 로딩 중·에러·미확정이면 false(비활성)
   const { data: permissionsData, isLoading: isPermissionsLoading, isError: isPermissionsError } =
@@ -243,6 +510,63 @@ export function IssueMetaPanel({
 
   return (
     <aside className="flex flex-col gap-3">
+      {/* 보드 상세 보기 구성 조회 실패 — 화면에 남는다. 토스트 단독이면 사용자가 못 보고 지나간다. */}
+      {isDetailViewError && (
+        <div
+          className="border border-border rounded-xl px-3.5 py-3"
+          role="alert"
+          data-testid="detail-view-error"
+        >
+          <p className="text-sm mb-2">{boardLabels.settings.loadError}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full min-h-[44px]"
+            onClick={() => {
+              void boardsQuery.refetch()
+              void detailViewQuery.refetch()
+            }}
+          >
+            {boardLabels.settings.retry}
+          </Button>
+        </div>
+      )}
+
+      {/* 보드가 정한 상세 보기 필드 (J47 그룹 4종 · J48 순서).
+          ★구성이 없는 그룹은 **아무것도 그리지 않는다** — 빈 칸이 있으면 사용자가 조회 실패로 읽는다.
+          ★구성이 통째로 비면 이 카드 자체가 없다(현행 유지). */}
+      {detailViewGroups.length > 0 && (
+        <div className="border border-border rounded-xl overflow-hidden" data-testid="detail-view-fields">
+          {detailViewGroups.map(({ group, rows }) => (
+            <div key={group} className="px-3.5 py-3 border-b border-border last:border-b-0">
+              <p className="text-xs text-muted-foreground mb-1.5">
+                {detailViewLabels.groupLabels[group]}
+              </p>
+              <ul
+                className="flex flex-col gap-1.5"
+                aria-label={detailViewLabels.listLabel(detailViewLabels.groupLabels[group])}
+              >
+                {rows.map((row) => (
+                  <li
+                    key={row.fieldKey}
+                    data-field-key={row.fieldKey}
+                    className="flex items-baseline justify-between gap-2"
+                  >
+                    <span
+                      className="text-xs text-muted-foreground shrink-0"
+                      data-testid="detail-view-field-name"
+                    >
+                      {row.label}
+                    </span>
+                    <span className="text-sm font-medium truncate">{row.value}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* 메타 패널 카드 */}
       <div className="border border-border rounded-xl overflow-hidden">
         {/* 상태 — 읽기전용 배지 + 전환 셀렉터 (FR-IS-01) */}

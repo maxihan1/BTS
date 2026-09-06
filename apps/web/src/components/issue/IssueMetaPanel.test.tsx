@@ -55,8 +55,7 @@ import type { IssueDetailPresentation } from '@/components/issue/issueDetailModa
 import type { DetailViewFieldGroup } from '@/api/board-settings'
 import { replaceDetailViewFields } from '@/api/board-settings'
 import { boardLabels } from '@/i18n/board-labels'
-import { DEFAULT_BOARD, resetBoardStore, seedBoard } from '@/mocks/board-fixtures'
-import { ATLAS_DEFAULT_BOARD_ID } from '@/mocks/backlog-fixtures'
+import { DEFAULT_BOARD, generateUUID, resetBoardStore, seedBoard } from '@/mocks/board-fixtures'
 import { handlers as appHandlers } from '@/mocks/handlers'
 
 // useIssuePermissions를 mock — 기존 테스트는 권한 관련 동작을 검증하지 않으므로 UPDATE/SOFT_DELETE=true로 고정
@@ -1744,6 +1743,15 @@ const T21_EXPECTED: Record<'GENERAL' | 'DATE' | 'PEOPLE', string[]> = {
   PEOPLE: ['보고자', '담당자'],
 }
 
+/**
+ * 이 테스트가 시드한 보드 id — **테스트마다 새로 뽑는다.**
+ *
+ * ★목의 설정 store 는 `boardStore` 에 종속하지만(CASCADE), 고아를 터는 시점이 「설정을 꺼낼 때」라
+ * **같은 id 를 다시 시드하면 앞 테스트의 구성이 되살아난다**(실측 — T21-3 이 T21-2 의 구성을 봤다).
+ * id 를 갈면 그 되살아남 자체가 불가능해진다.
+ */
+let t21BoardId = ''
+
 /** 보드 목록 GET 이 다녀간 횟수 — 「아무것도 안 그린다」를 재기 전의 정착 신호. */
 let t21BoardListFetches = 0
 /** 상세 보기 구성 GET 이 다녀간 횟수. */
@@ -1757,7 +1765,7 @@ let t21DetailViewFetches = 0
  */
 async function configureBoard(groups: Partial<Record<DetailViewFieldGroup, string[]>>): Promise<void> {
   for (const [group, fields] of Object.entries(groups)) {
-    await replaceDetailViewFields(ATLAS_DEFAULT_BOARD_ID, group as DetailViewFieldGroup, fields)
+    await replaceDetailViewFields(t21BoardId, group as DetailViewFieldGroup, fields)
   }
 }
 
@@ -1819,7 +1827,8 @@ describe('IssueMetaPanel — 보드 상세 보기 구성 (부채 177 T21 · R7c)
     t21BoardListFetches = 0
     t21DetailViewFetches = 0
     resetBoardStore()
-    seedBoard(DEFAULT_BOARD)
+    t21BoardId = generateUUID()
+    seedBoard({ ...DEFAULT_BOARD, boardId: t21BoardId })
     // ★이 스위트의 MSW 는 기본 핸들러가 refresh 하나뿐이다(`test/handlers.ts`) — 앱 핸들러
     //   전량을 여기서 켠다. 보드 설정 응답을 손으로 짓지 않으려면 `mocks/board-handlers.ts`
     //   가 실제로 돌아야 하고, 모달/사이드패널은 상세 본문 전체를 그리므로 그 뒷단도 필요하다.
