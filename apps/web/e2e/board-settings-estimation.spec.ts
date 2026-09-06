@@ -2,8 +2,23 @@
 //
 // ## 이 spec 이 지는 판정 — 각 축이 무엇과 무엇을 가르나 (뮤테이션 **실측** 2026-09-06)
 //
-// 「죽는 테스트」는 예상이 아니라 **실제로 돌려서 받은 결과**다. 재현하려면 그 열의 변경을
-// 그대로 넣고 `playwright test e2e/board-settings-estimation.spec.ts` 를 돌리면 된다.
+// 「죽는 테스트」는 예상이 아니라 **실제로 돌려서 받은 결과**다.
+//
+// ★**어느 명령으로 잰 결과인가 — 두 열은 스코프가 다르다.**
+//   **스코프를 안 밝힌 「죽는 테스트」가 이 표를 한 번 썩혔다**(부채 177 Task 34 가 정정).
+//   - **단위 열** — 2026-09-06 실측.
+//     `(cd apps/web && node_modules/.bin/vitest related --watch=false \`
+//     `   src/components/board/settings/EstimationPanel.tsx src/components/board/settings/WorkingDaysPanel.tsx \`
+//     `   src/mocks/board-handlers.ts src/mocks/burndown-handlers.ts)`
+//     → **21파일 460건** · 무변경 baseline 종료 코드 0.
+//     `related` 는 나열한 파일을 **모듈 그래프로 import 하는 테스트 전부**를 고른다 —
+//     그래프 밖 테스트는 이 파일들을 읽지 않으니 죽을 수 없다. 그래서 「0건」은 사실상
+//     「단위 전체에서 0건」이다. 그 21파일에는 `src/routes/__tests__/sprint-burndown.test.tsx` 도 있다.
+//     ★종료 코드는 **파일로 리다이렉트하고 따로** 잡아라. `| tail` 을 붙이면 `$?` 가 tail 의 것이 된다.
+//   - **E2E 열** — `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-estimation.spec.ts)`.
+//     ★**Task 34 에서는 재확인하지 못했다** — 개발 서버 포트가 다른 작업의 직렬 락 아래였다.
+//     Task 23·33 당시 실측을 그대로 둔 값이고, 새로 세운 ⑬·⑭ 의 E2E 열은 **확인 못 함**이다.
+//   - **⑥·⑦(백엔드 축)은 어느 쪽으로도 안 쟀다** — Kotlin 스위트는 이 task 의 스코프 밖이다.
 //
 // | 뮤테이션 | 단위에서 함께 죽는 것 (실측) | E2E (★미재확인) | 가르는 것 |
 // |---|---|---|---|
@@ -71,6 +86,9 @@
 //   ★**⑧ 을 넣고 `vitest run src/mocks src/routes/__tests__/sprint-burndown.test.tsx
 //     src/router.test.tsx src/components/burndown src/api/burndown.test.ts` 를 돌리면 1029건이
 //     전부 통과한다**(2026-09-06 실측). 목의 파생을 재는 프론트 판정자는 이 spec 하나뿐이다.
+//   ★**이 주장을 Task 34 가 다른 스코프로 재확인했다**(2026-09-06). 위 「단위 열」 스코프
+//     (`vitest related` · 21파일 460건)에서 ⑧뿐 아니라 ⑨·⑩·⑪·⑫ 도 **전부 0건**이다.
+//     두 스코프가 겹치지 않는데 결론이 같다 — 목의 파생에는 프론트 단위 판정자가 **없다**.
 //
 // 교훈 반영.
 //   - e2e-msw-serviceworker-block: `serviceWorkers:'block'` 금지 — playwright.config.ts 기본값 사용.

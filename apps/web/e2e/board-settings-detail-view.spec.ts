@@ -12,7 +12,25 @@
 //   그 때문이다 — 한 test 에 합치면 두 방향(모달만 배선 / 사이드패널만 배선)이 같은 test 를
 //   죽여 반쪽 봉합을 가르지 못한다.
 //
-// ## 뮤테이션 표 — 각 축이 무엇과 무엇을 가르나 (실측 2026-09-06 · 매번 전량 실행 후 원복)
+// ## 뮤테이션 표 — 각 축이 무엇과 무엇을 가르나
+//
+// ★**어느 명령으로 잰 결과인가 — 두 열은 스코프가 다르다.**
+//   **스코프를 안 밝힌 「단독」이 이 표를 한 번 썩혔다**(부채 177 Task 34 가 정정).
+//   - **단위 열** — 2026-09-06 실측.
+//     `(cd apps/web && node_modules/.bin/vitest related --watch=false \`
+//     `   src/components/board/settings/SettingsTabs.tsx src/components/board/settings/CardLayoutPanel.tsx \`
+//     `   src/mocks/board-handlers.ts src/components/issue/IssueMetaPanel.tsx)`
+//     → **32파일 790건** · 무변경 baseline 종료 코드 0.
+//     `related` 는 나열한 파일을 **모듈 그래프로 import 하는 테스트 전부**를 고른다 —
+//     그래프 밖 테스트는 이 파일들을 읽지 않으니 죽을 수 없다. 그래서 이 스코프의 「0건」은
+//     사실상 「단위 전체에서 0건」이다. (이 표가 실제로 만지는 것은 `IssueMetaPanel.tsx` 뿐이다.
+//     나머지 셋이 목록에 낀 것은 무해하다 — 고르는 테스트가 넓어질 뿐이고, 그만큼 판정이 강해진다.
+//     `board-settings.spec.ts` 의 표와 **같은 한 명령**으로 재려고 목록을 맞췄다.)
+//     ★종료 코드는 **파일로 리다이렉트하고 따로** 잡아라. `| tail` 을 붙이면 `$?` 가 tail 의 것이 된다.
+//   - **E2E 열** — `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-detail-view.spec.ts)`.
+//     ★**Task 34 에서는 재확인하지 못했다** — 개발 서버 포트가 다른 작업의 직렬 락 아래였다.
+//     Task 24 당시 실측을 그대로 둔 값이다. **이번에 다시 잰 값이 아니다.**
+//   ★뮤테이션은 매번 **전량 실행 후 원복**하고 원복 뒤 바이트 동일성을 확인했다.
 //
 // | 뮤테이션 | 단위에서 함께 죽는 것 (실측) | E2E (★미재확인) | 가르는 것 |
 // |---|---|---|---|

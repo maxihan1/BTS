@@ -19,6 +19,22 @@
 // 「깨면 red 가 나는 당연한 방향」이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**으로 골랐다.
 // 재현 방법을 함께 적는다 — 표만 있고 재현이 없으면 다음 사람이 다시 못 잰다.
 //
+// ★**어느 명령으로 잰 결과인가 — 두 열은 스코프가 다르다.**
+//   **스코프를 안 밝힌 「단독」이 이 표를 한 번 썩혔다**(부채 177 Task 34 가 정정).
+//   - **단위 열** — 2026-09-06 실측.
+//     `(cd apps/web && node_modules/.bin/vitest related --watch=false \`
+//     `   src/components/board/settings/SettingsTabs.tsx src/components/board/settings/CardLayoutPanel.tsx \`
+//     `   src/mocks/board-handlers.ts src/components/issue/IssueMetaPanel.tsx)`
+//     → **32파일 790건** · 무변경 baseline 종료 코드 0.
+//     `related` 는 나열한 파일을 **모듈 그래프로 import 하는 테스트 전부**를 고른다 —
+//     그래프 밖 테스트는 이 파일들을 읽지 않으니 죽을 수 없다. 그래서 이 스코프의 「0건」은
+//     사실상 「단위 전체에서 0건」이다. (표가 안 만지는 `IssueMetaPanel.tsx` 가 목록에 낀 것은
+//     무해하다 — 고르는 테스트가 넓어질 뿐이고, 그만큼 「단독」이 강해진다.)
+//     ★종료 코드는 **파일로 리다이렉트하고 따로** 잡아라. `| tail` 을 붙이면 `$?` 가 tail 의 것이 된다.
+//   - **E2E 열** — `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings.spec.ts)`.
+//     ★**Task 34 에서는 재확인하지 못했다** — 개발 서버 포트가 다른 작업의 직렬 락 아래였다.
+//     Task 22 당시 실측을 그대로 둔 값이다. **이번에 다시 잰 값이 아니다.**
+//
 // | 뮤테이션 (재현) | 단위에서 함께 죽는 것 (실측) | E2E (★미재확인) | 가르는 것 |
 // |---|---|---|---|
 // | ① `SettingsTabs.tsx` `<Tabs defaultValue={…}>` → `value={TAB_VALUES.columns}` — 5탭을 다 그리되 **전환만 안 된다** | `projects.$projectKey.board.settings.test.tsx` **T-BS-11** (1건) | S9 (`aria-selected` false) · S10 | 「탭이 **보인다**」 ↔ 「탭이 **바뀐다**」. 개수 단언만으로는 통과한다 |
