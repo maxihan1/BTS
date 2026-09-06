@@ -1144,8 +1144,18 @@ T16 이 넓힌 것은 `boardDetailSchema` 의 설정 4키뿐이다. **`cf_` 경�
 **무엇이 문제인가.** `burndown-handlers.ts` 가 **정적 store** 다. `board-handlers.ts` 의
 `boardSettingsStore`(근무일·비근무일·타임존)에서 **아무것도 파생하지 않는다.** `BurndownChart.tsx` 도
 응답 `points` 를 그대로 그릴 뿐 클라이언트에서 축소하지 않는다 — 좁히는 주체는 백엔드
-`BurndownCalculator` 하나뿐이다. 따라서 프론트 E2E 에서는 **근무일을 저장해도, 타임존을
-서울↔뉴욕으로 바꿔도 x축이 바이트 단위로 같다.**
+`BurndownCalculator` 하나뿐이다. 따라서 프론트 E2E 에서는 **근무일을 저장해도 x축이 안 좁아진다.**
+
+★★**정정(2026-09-06, Task 33 구현자가 백엔드를 읽고 반증).** 이 절의 초판과 Task 23 GREEN 은
+「타임존만 바꾸면 **x축이 달라진다**」를 요구했는데 **그것은 제품 사실이 아니다.**
+- `BurndownCalculator.buildAxis(start, end, calendar)` 는 `LocalDate` 와 근무일만 본다 — **타임존 인자가 없다**(`:113-116`).
+- 타임존이 바꾸는 것은 `SprintBurndownService.aggregateByBoardDate` 의 worklog **날짜 칸**뿐이다.
+  스펙 R10·완료 기준 11 도 「같은 worklog 가 타임존 설정 전후로 **다른 날짜 칸**에 붙는다」이지 축이 아니다.
+- `SprintBurndownService` KDoc 이 「오늘(clock)은 여전히 UTC 다」라고 명시한다 — 축을 움직일 다른 경로가 없다.
+
+**즉 타임존을 바꿔도 축이 같은 것이 올바른 동작이다.** 목이 축을 타임존으로 좁히게 만들면
+**목이 백엔드에 대해 거짓말**을 하게 되고 다음 사람이 목을 진실로 오해한다.
+타임존 축의 판정은 **축이 아니라 값**(잔여 라인)에서 재야 한다.
 
 T23 이 그 자리를 `test.fail()` 로 박았다(S5·S6). `test.skip` 이 아니라 `test.fail` 을 고른 것은
 옳다 — 배선되는 날 「예상외 통과」로 빨간불이 되어 마커를 걷어내게 만든다.
@@ -1159,8 +1169,10 @@ T23 이 그 자리를 `test.fail()` 로 박았다(S5·S6). `test.skip` 이 아�
 
 **RED**. S5·S6 의 `test.fail()` 마커를 걷어내면 red 다(x축이 안 바뀐다).
 
-**GREEN**. `GET /api/v1/sprints/:id/burndown` 핸들러가 `boardSettingsStore` 의
+**GREEN**. `GET /api/v1/sprints/:id/burndown` 핸들러가 보드 설정의
 `standardDays` · `nonWorkingDates` · `timezone` 을 읽어 `points` 를 파생한다.
+★`boardSettingsStore` 는 **export 되지 않는다** — 공개 창구인 `GET /api/v1/boards/{id}` 를 경유한다.
+★타임존 축은 **축 동일 + 잔여 라인 상이** 짝으로 잰다(위 정정 참조). 축이 좁아지길 요구하지 마라.
 ★**`standardDays === null`(미설정)이면 현행 그대로** 달력일 전부를 낸다 — 빈 배열(`[]`)과 갈라야 한다.
 
 **REFACTOR**. 목의 파생 규칙이 백엔드 `BurndownCalculator` 와 **어디까지 같고 어디부터 다른지**를
