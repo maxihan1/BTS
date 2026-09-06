@@ -5,33 +5,34 @@
 // 「죽는 테스트」는 예상이 아니라 **실제로 돌려서 받은 결과**다. 재현하려면 그 열의 변경을
 // 그대로 넣고 `playwright test e2e/board-settings-estimation.spec.ts` 를 돌리면 된다.
 //
-// | 뮤테이션 | 죽는 테스트 (실측) | 가르는 것 |
-// |---|---|---|
-// | ① `EstimationPanel.locked` 에서 `!isScrum` 을 뺀다 | **S1 1건만** | 「칸반에서도 열린다」 ↔ 스크럼 전용 (J37) |
-// | ② `EstimationPanel.locked` 를 `true` 로 고정 (항상 잠김) | **S2~S4 1건만** | 「항상 잠긴 구현」 ↔ 스크럼에서 열린다 — ①의 **대조군** |
-// | ③ `board-handlers.toSettingsPayload` 가 `workingDays` 를 항상 미설정으로 낸다 (**배선 절단**) | **S2~S4 1건만** | 저장이 서버에 닿았나 ↔ 화면 state 만 바뀌었나 |
-// | ④ `WorkingDaysPanel` 저장 요청에서 `timezone` 을 뺀다 | **S2~S4 1건만** | 「타임존만 바꿨는데 저장이 안 된다」 ↔ 3축 동시 전송 |
-// | ⑤ `WorkingDaysPanel` 초기값을 미설정 대신 월~금으로 채운다 (**항상 좁힌다**) | **6건 전부** | 미설정을 「근무일 0개/월~금」으로 뭉갬 ↔ 두 상태를 가름 (R6) |
-// | ⑥ **백엔드** 서비스가 근무일을 `BurndownCalculator` 에 넘기지 않는다 (**배선 절단**) | — **여전히 못 잡는다** (아래 ★★) | — |
-// | ⑦ **백엔드** 번다운이 타임존을 무시하고 UTC 로 고정한다 | — **여전히 못 잡는다** (아래 ★★) | — |
-// | ⑧ **목**이 보드 작업일을 안 읽는다 — `withBoardWorkingDays` 가 시드를 그대로 낸다 (**배선 절단**) | **S5·S6 2건** | 목이 공유 store 에서 파생하나 ↔ 정적 store (Task 33 RED 상태 그 자체) |
-// | ⑨ **목**이 `nonWorkingDates` 를 무시한다 (`new Set<string>()`) | **S5 1건만** | 특정 날짜 제외가 x축에서 빠지나 (J39) |
-// | ⑩ **목**이 타임존을 무시하고 UTC 로 고정한다 (`boardLocalDate(…, null)`) | **S6 1건만** | worklog 일 귀속이 보드 타임존을 따르나 (J40 · R10) |
-// | ⑪ **목**이 미설정(`null`)을 월~금으로 채운다 (**항상 좁힌다**) | — **못 잡는다** (아래 ★★2) | — |
-// | ⑫ **목**이 `[]`(근무일 0개)를 `null` 처럼 다룬다 | — **못 잡는다** (아래 ★★2) | — |
+// | 뮤테이션 | 단위에서 함께 죽는 것 (실측) | E2E (★미재확인) | 가르는 것 |
+// |---|---|---|---|
+// | ① `EstimationPanel.locked` 에서 `!isScrum` 을 뺀다 | `EstimationPanel.test.tsx` **T-ES-2** (1건) | **S1 1건만** | 「칸반에서도 열린다」 ↔ 스크럼 전용 (J37) |
+// | ② `EstimationPanel.locked` 를 `true` 로 고정 (항상 잠김) | `EstimationPanel.test.tsx` **T-ES-1 · T-ES-8 · T-ES-9 · T-ES-10 · T-ES-11 · T-ES-13 · T-ES-14** (7건) | **S2~S4 1건만** | 「항상 잠긴 구현」 ↔ 스크럼에서 열린다 — ①의 **대조군** |
+// | ③ `board-handlers.toSettingsPayload` 가 `workingDays` 를 항상 미설정으로 낸다 (**배선 절단**) | **0건** — 460 전부 초록 | **S2~S4 1건만** | 저장이 서버에 닿았나 ↔ 화면 state 만 바뀌었나 |
+// | ④ `WorkingDaysPanel` 저장 요청에서 `timezone` 을 뺀다 (`timezone: stored?.timezone ?? null`) | `WorkingDaysPanel.test.tsx` **T-WD-12** (1건) | **S2~S4 1건만** | 「타임존만 바꿨는데 저장이 안 된다」 ↔ 3축 동시 전송 |
+// | ⑤ `WorkingDaysPanel` 초기값을 미설정 대신 월~금으로 채운다 (**항상 좁힌다**) | `WorkingDaysPanel.test.tsx` **T-WD-2 · T-WD-4 · T-WD-18 · T-WD-20** (4건) | **6건 전부** | 미설정을 「근무일 0개/월~금」으로 뭉갬 ↔ 두 상태를 가름 (R6) |
+// | ⑥ **백엔드** 서비스가 근무일을 `BurndownCalculator` 에 넘기지 않는다 (**배선 절단**) | — (백엔드 축 · 프론트 vitest 스코프 밖이라 **안 쟀다**) | — **여전히 못 잡는다** (아래 ★★) | — |
+// | ⑦ **백엔드** 번다운이 타임존을 무시하고 UTC 로 고정한다 | — (같음 · **안 쟀다**) | — **여전히 못 잡는다** (아래 ★★) | — |
+// | ⑧ **목**이 보드 작업일을 안 읽는다 — `withBoardWorkingDays` 가 시드를 그대로 낸다 (**배선 절단**) | **0건** — 460 전부 초록 | **S5·S6 2건** | 목이 공유 store 에서 파생하나 ↔ 정적 store (Task 33 RED 상태 그 자체) |
+// | ⑨ **목**이 `nonWorkingDates` 를 무시한다 (`new Set<string>()`) | **0건** | **S5 1건만** | 특정 날짜 제외가 x축에서 빠지나 (J39) |
+// | ⑩ **목**이 타임존을 무시하고 UTC 로 고정한다 (`boardLocalDate(…, null)`) | **0건** | **S6 1건만** | worklog 일 귀속이 보드 타임존을 따르나 (J40 · R10) |
+// | ⑪ **목**이 미설정(`null`)을 월~금으로 채운다 (**항상 좁힌다**) | **0건** | — **못 잡는다** (아래 ★★2) | — |
+// | ⑫ **목**이 `[]`(근무일 0개)를 `null` 처럼 다룬다 | **0건** | — **못 잡는다** (아래 ★★2) | — |
+// | ⑬ `WorkingDaysPanel` 저장 버튼이 **타임존만** 보낸다 — `submit({ standardDays: null, nonWorkingDates: [], timezone })` | `WorkingDaysPanel.test.tsx` **T-WD-7 · T-WD-8 · T-WD-9 · T-WD-10 · T-WD-11 · T-WD-20** (6건) | **확인 못 함** (S4 의 「타임존만 바꿔도 다른 두 축이 산다」 자리) | PUT 은 **3축 교체**라 한 축만 보내면 나머지가 지워진다 ↔ 3축 동시 전송 (④의 **반대 방향**) |
+// | ⑭ `board-handlers.settingsFor` 가 보드가 아니라 **프로젝트**를 키로 쓴다 — 저장이 옆 보드로 샌다 | `board-handlers.test.ts` **T-MSW-CL-2 · T-MSW-CL-3** · `IssueMetaPanel.test.tsx` **T21-1 · T21-2 · T21-4 · T21-5** (6건) | **확인 못 함** (S4 대조군 「옆 칸반 보드는 여전히 미설정」 자리) | 보드 단위 저장 ↔ **프로젝트 단위로 샌다** (편차 X7) |
 //
-// ★★**2026-09-06 — 위 표를 단위 스위트에 대고 재현했다** (부채 177 Task 34 RED).
-//   잰 명령 — `(cd apps/web && node_modules/.bin/vitest related --watch=false`
-//   `  src/components/board/settings/EstimationPanel.tsx src/components/board/settings/WorkingDaysPanel.tsx`
-//   `  src/mocks/board-handlers.ts src/mocks/burndown-handlers.ts)` → 21파일 460건 · baseline 종료 코드 0.
-//   표는 **E2E 열 하나뿐**이라 「단위가 이미 지고 있는 축」과 「이 spec 만 지는 축」이 구분되지 않는다.
-//   실측하면 갈린다 — ①②④⑤ 는 단위가 먼저 죽고(각 1·7·1·4건), ③⑧⑨⑩⑪⑫ 는 단위가 **0건**이다.
-//   ★그리고 본문이 **표에 없는 축 둘**을 이미 지고 있다(표가 코드보다 **적게** 주장한다).
-//   - S4 의 「PUT 3축 교체가 다른 축을 지우면 (⑥) 여기서 죽는다」 — 현 ⑥ 은 **백엔드** 행이다.
-//   - S4 대조군의 「⑧(프로젝트 단위로 샌다)」 — 재번호 때 표에서 사라진 옛 행이다(편차 X7).
-//   ★인라인 참조 6군데가 옛 번호를 가리킨다(시나리오 개요 S1 · S1 머리 · S2~S4 머리 ·
-//     S3 재마운트 Then · S4 타임존 Then · S4 대조군). `19dcdc0e7` 가 표를 재번호하며
-//     머리말 두 줄만 고친 자국이다 — GREEN 에서 **append-only** 로 닫는다(줄 번호는 또 썩는다).
+// ★**번호는 append-only 다.** ⑬·⑭ 는 뒤에 붙였다 — 중간에 끼우거나 재번호하면 본문 인라인
+//   참조가 조용히 썩는다. 이 파일이 실제로 겪었다(`19dcdc0e7` 가 ①~⑪ → ①~⑦ 로 재번호하며
+//   머리말 두 줄만 고쳐 본문 참조 6군데가 옛 번호를 가리켰다 · 부채 177 Task 34 가 정정).
+// ★**⑬·⑭ 는 「표가 코드보다 *적게* 주장하던」 자리를 되살린 것이다.** 본문 S4 와 S4 대조군이
+//   이미 그 두 축을 단언으로 지고 있는데 표에는 행이 없었다(⑭ 는 재번호 때 사라진 옛 ⑧).
+//   ★두 행의 E2E 열은 **확인 못 함**이다 — Task 34 는 Playwright 를 못 돌렸다(아래 스코프 참고).
+//   단위 열만 실측이고, 「S4 에서 죽는다」는 **단언 위치로 읽은 구조적 추정**이지 실측이 아니다.
+// ★**③·⑧·⑨·⑩·⑪·⑫ 의 「0건」이 이 spec 의 존재 이유다.** MSW 목의 파생과 GET 봉투는
+//   프론트 단위가 한 건도 안 잡는다 — 그 스코프에 `src/routes/__tests__/sprint-burndown.test.tsx`
+//   가 들어 있는데도 그렇다. 반대로 ①②④⑤⑬⑭ 는 단위가 **먼저** 죽는다. 「이 spec 만 잡는다」는
+//   함의를 표 전체에 붙이면 안 된다.
 //
 // ★**⑤ 만 좁게 특정되지 않는다** — 6건 전부가 죽는다. 「미설정」이라는 상태 자체를 지우는
 //   변경이라 작업일을 만지는 모든 시나리오의 출발점(`근무일 고르기` 버튼)이 사라지기 때문이다.
@@ -86,7 +87,7 @@
 //
 // 시나리오 개요.
 //   S1. 칸반 잠금 (J37)      — 칸반 보드의 추정 탭이 잠기고 **사유가 글자로 보인다**.
-//                              같은 보드의 작업일 탭은 「미설정」이다(⑦ 대조군의 앞짝).
+//                              같은 보드의 작업일 탭은 「미설정」이다(⑤ 대조군의 앞짝).
 //   S2. 스크럼 대조군 (J37)  — 스크럼 보드에서는 열리고, 고른 값이 **탭을 떠났다 돌아와도** 남는다.
 //   S3. 작업일 저장 (J38·J39) — 근무일·비근무일을 저장하면 **서버에서 다시 읽힌 값**이 화면에 선다.
 //   S4. ★타임존만 바꾼다 (J40) — 근무일·비근무일은 손대지 않고 서울→뉴욕. 타임존이 바뀌고
@@ -394,7 +395,7 @@ async function configureWorkingDaysWithHoliday(page: Page): Promise<void> {
 
 test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () => {
   // ───────────────────────────────────────────────────────────────────────────
-  // S1 — 칸반 잠금 + 미설정 (뮤테이션 ①·⑦ 의 앞짝)
+  // S1 — 칸반 잠금 + 미설정 (뮤테이션 ①·⑤ 의 앞짝)
   //
   // Given  alice 로 로그인해 **칸반** 보드(ATLAS 보드)의 설정 화면에 있다
   // When   「추정」 탭을 연다
@@ -420,7 +421,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S2~S4 — 스크럼 보드 한 바퀴 (뮤테이션 ②·③·④·⑤·⑥·⑦·⑧)
+  // S2~S4 — 스크럼 보드 한 바퀴 (뮤테이션 ②·③·④·⑤·⑬·⑭)
   //
   // 한 test 로 잇는 이유. MSW store 는 전체 로드마다 픽스처로 되돌아가므로, test 를 쪼개면
   // 앞 단계가 만든 보드와 저장이 전부 사라진다(`board-manage.spec.ts` 가 세운 관례).
@@ -480,7 +481,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
 
     await submitWorkingDays(page)
 
-    // Then. 재마운트 후에도 서버 값이 선다 — ④·⑤(배선 절단)가 여기서 죽는다.
+    // Then. 재마운트 후에도 서버 값이 선다 — ③(배선 절단)이 여기서 죽는다.
     await remountTab(page, tabs.workingDays, async () => {
       await expect(dayCheckbox(page, workingDaysLabels.dayLabels.FRI)).not.toBeChecked()
       await expect(dayCheckbox(page, workingDaysLabels.dayLabels.MON)).toBeChecked()
@@ -500,8 +501,10 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
     await submitWorkingDays(page)
 
     // Then. 타임존이 바뀌었고 **다른 두 축은 살아 있다** — PUT 3축 교체가 다른 축을 지우면
-    //       (⑥) 여기서 죽는다. 이 짝이 없으면 「타임존만 바꿨는데 근무일이 날아가는」 침묵
+    //       (⑬) 여기서 죽는다. 이 짝이 없으면 「타임존만 바꿨는데 근무일이 날아가는」 침묵
     //       실패를 아무도 못 본다.
+    //       ★단, 이 축은 단위 `T-WD-7`(요일만 바꿔도 나머지 두 축이 함께 실린다)도 진다 —
+    //         여기가 유일한 판정자가 아니다(⑬ 실측).
     await remountTab(page, tabs.workingDays, async () => {
       await expect(
         page.getByRole('combobox', { name: workingDaysLabels.timezoneLabel, exact: true }),
@@ -512,7 +515,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
     })
 
     // ── S4 대조군. 옆 보드(칸반 ATLAS 보드)는 **여전히 미설정**이다 ───────────────
-    // ⑦(항상 좁힌다) 과 ⑧(프로젝트 단위로 샌다) 이 여기서 죽는다. 이것이 없으면
+    // ⑤(항상 좁힌다) 와 ⑭(프로젝트 단위로 샌다) 가 여기서 죽는다. 이것이 없으면
     // 「모든 보드를 월~금으로 만드는」 구현도 위 단언을 전부 통과한다.
     await clickProjectViewTab(page, '보드')
     await expect(boardHeader(page)).toBeVisible()

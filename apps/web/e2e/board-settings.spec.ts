@@ -19,26 +19,20 @@
 // 「깨면 red 가 나는 당연한 방향」이 아니라 **느슨한 구현과 올바른 구현이 갈리는 입력**으로 골랐다.
 // 재현 방법을 함께 적는다 — 표만 있고 재현이 없으면 다음 사람이 다시 못 잰다.
 //
-// | 뮤테이션 (재현) | 죽는 테스트 | 가르는 것 |
-// |---|---|---|
-// | ① `SettingsTabs.tsx` `<Tabs defaultValue={…}>` → `value={TAB_VALUES.columns}` — 5탭을 다 그리되 **전환만 안 된다** | S9 (`aria-selected` false) · S10 | 「탭이 **보인다**」 ↔ 「탭이 **바뀐다**」. 개수 단언만으로는 통과한다 |
-// | ② `SettingsTabs.tsx` 의 `<DetailViewPanel …/>` → `<p>준비 중</p>` | **S9 단독** | 「탭이 있다」 ↔ 「그 탭에 **내용**이 있다」 (비활성 골격 0개 · `board-labels.ts:309` 계약) |
-// | ③ `CardLayoutPanel.tsx` 의 `layout[view]` → `layout['BOARD']` — 뷰 구분 없이 한 벌 | **S10 단독** (백로그 뷰의 에픽이 `not.toBeChecked` → checked) | **화면**이 뷰 스코프를 갈라 읽는가 (J18) |
-// | ④ `board-handlers.ts` `patchCardLayoutHandler` 의 쓰기 앞에 `settings.cardLayout = {}` — 저장이 다른 뷰를 지운다 | **S10** (보드 뷰의 에픽이 `toBeChecked` → unchecked) · `board-handlers.test.ts` **T-MSW-CL-2 · T-MSW-CL-3** | 「저장됐다」 ↔ 「**다른 뷰를 안 지우고** 저장됐다」 |
+// | 뮤테이션 (재현) | 단위에서 함께 죽는 것 (실측) | E2E (★미재확인) | 가르는 것 |
+// |---|---|---|---|
+// | ① `SettingsTabs.tsx` `<Tabs defaultValue={…}>` → `value={TAB_VALUES.columns}` — 5탭을 다 그리되 **전환만 안 된다** | `projects.$projectKey.board.settings.test.tsx` **T-BS-11** (1건) | S9 (`aria-selected` false) · S10 | 「탭이 **보인다**」 ↔ 「탭이 **바뀐다**」. 개수 단언만으로는 통과한다 |
+// | ② `SettingsTabs.tsx` 의 `<DetailViewPanel …/>` → `<p>준비 중</p>` | **0건** — 790 전부 초록 | **S9 단독** | 「탭이 있다」 ↔ 「그 탭에 **내용**이 있다」 (비활성 골격 0개 · `board-labels.ts:309` 계약) |
+// | ③ `CardLayoutPanel.tsx` 의 `layout[view]` → `layout['BOARD']` — 뷰 구분 없이 한 벌 | `CardLayoutPanel.test.tsx` **T-CL-1 · T-CL-8 · T-CL-16** (3건) | S10 (백로그 뷰의 에픽이 `not.toBeChecked` → checked) | **화면**이 뷰 스코프를 갈라 읽는가 (J18) |
+// | ④ `board-handlers.ts` `patchCardLayoutHandler` 의 쓰기 앞에 `settings.cardLayout = {}` — 저장이 다른 뷰를 지운다 | `board-handlers.test.ts` **T-MSW-CL-2 · T-MSW-CL-3** (2건) | S10 (보드 뷰의 에픽이 `toBeChecked` → unchecked) | 「저장됐다」 ↔ 「**다른 뷰를 안 지우고** 저장됐다」 |
 //
-// ★★**2026-09-06 — 위 표의 「죽는 테스트」 열을 재현했더니 어긋났다** (부채 177 Task 34 RED).
-//   잰 명령 — `(cd apps/web && node_modules/.bin/vitest related --watch=false`
-//   `  src/components/board/settings/SettingsTabs.tsx src/components/board/settings/CardLayoutPanel.tsx`
-//   `  src/mocks/board-handlers.ts src/components/issue/IssueMetaPanel.tsx)`
-//   → 32파일 790건. 무변경 baseline 은 종료 코드 0.
-//   - **①** 표는 E2E 만 적었는데 단위 **T-BS-11** 이 함께 죽는다(1 failed / 789 passed · 종료 코드 1).
-//   - **②** 단위는 한 건도 안 죽는다(790 전부 초록 · 종료 코드 0). 표와 어긋나지 않는다.
-//   - **③** 「**S10 단독**」이라 적혀 있지만 단위 **T-CL-1 · T-CL-8 · T-CL-16** 이 함께 죽는다
-//     (3 failed / 787 passed · 종료 코드 1). **「단독」이 거짓이다.**
-//   - **④** 표 그대로다(**T-MSW-CL-2 · T-MSW-CL-3** · 2 failed · 종료 코드 1).
-//     ★이 행만 맞은 이유는 **이 행만 단위 스위트에 대고 실제로 쟀기 때문**이다.
-//   ★**원인은 스코프 미명시다.** ③의 「단독」은 E2E 시나리오 안에서만 참이었는데, 어느 스코프에서
-//     잰 것인지 안 적어 「단위까지 통틀어 단독」으로 읽혔다.
+// ★**단위가 못 잡는 행은 ②뿐이다.** ①③④ 는 단위가 **먼저** 죽는다 — 이 spec 의 고유 가치는
+//   「그 뮤테이션을 유일하게 잡는다」가 아니라 **설정 화면에서 실제로 그렇게 보이는가**다.
+//   종전 이 표는 ③을 「S10 **단독**」이라 적었는데, 그것은 **E2E 안에서만** 참이었다
+//   (부채 177 Task 34 가 실측으로 정정 · 2026-09-06). ④가 처음부터 맞았던 이유는
+//   **그 행만 단위 스위트에 대고 실제로 쟀기 때문**이다 — 나머지 셋은 재지 않고 적었다.
+// ★**②의 「0건」은 테스트 기준이다.** 그 뮤테이션은 `DetailViewPanel` import 를 미사용으로
+//   남겨 `tsc`·`eslint` 가 잡는다. 「아무도 못 잡는다」는 뜻이 아니다.
 //
 // ★**③과 ④는 다른 층이다** — ③은 화면의 읽기, ④는 저장의 보존이다. S10 이 둘 다 잡되
 //   **서로 다른 단언**에서 죽는 것이 그 증거다. 둘을 가르려면 두 뷰에 **서로 다른 값**을 넣고

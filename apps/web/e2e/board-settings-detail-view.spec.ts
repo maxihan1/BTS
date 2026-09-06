@@ -14,24 +14,35 @@
 //
 // ## 뮤테이션 표 — 각 축이 무엇과 무엇을 가르나 (실측 2026-09-06 · 매번 전량 실행 후 원복)
 //
-// | 뮤테이션 | 죽는 테스트 | 가르는 것 |
-// |---|---|---|
-// | ① **모달만 배선** — `useIssueDetailViewFields` 가 `presentation === 'modal'` 일 때만 구성을 낸다 | **D2 · D3** (D1 은 산다) | 한쪽 표현에만 반영 ↔ 두 표현이 같은 구성 (R7c) |
-// | ② **사이드패널만 배선** — 위의 반대 | **D1 · D3** (D2 는 산다) | 반쪽 봉합 ↔ 두 표현이 같은 구성 |
-// | ③ **순서 무시·집합만** — `toDetailViewRows` 가 라벨순으로 `sort` | **D1 · D2 · D3** | `containsAll` 수준의 단언 ↔ 순서까지 잰다 (J48) |
+// | 뮤테이션 | 단위에서 함께 죽는 것 (실측) | E2E (★미재확인) | 가르는 것 |
+// |---|---|---|---|
+// | ① **모달만 배선** — ★한 줄 되돌리기가 아니다(아래 ★구조). `IssueMetaPanel.tsx` 에 `useIssueDetailModalStore((s) => s.presentation)` 를 **새로 들여** `groups` 를 `presentation !== 'modal'` 이면 `[]` 로 만든다(+2줄) | `IssueMetaPanel.test.tsx` **T21-2** (1건) | **D2 · D3** (D1 은 산다) | 한쪽 표현에만 반영 ↔ 두 표현이 같은 구성 (R7c) |
+// | ② **사이드패널만 배선** — 위의 `!== 'sidePanel'` | `IssueMetaPanel.test.tsx` **T21-1 · T21-4 · T21-5** (3건) | **D1 · D3** (D2 는 산다) | 반쪽 봉합 ↔ 두 표현이 같은 구성 |
+// | ③ **순서 무시·집합만** — `toDetailViewRows` 가 `detailViewFieldLabel` 기준으로 `sort` | `IssueMetaPanel.test.tsx` **T21-1 · T21-2 · T21-4** (3건) | **D1 · D2 · D3** | `containsAll` 수준의 단언 ↔ 순서까지 잰다 (J48) |
 //
-// ★★**2026-09-06 — 위 표를 재현하려 했더니 ①② 는 재현 자체가 불가능했다** (부채 177 Task 34 RED).
-//   - **①②** 「`useIssueDetailViewFields` 가 `presentation === 'modal'` 일 때만 구성을 낸다」는
-//     **그 형태로 존재할 수 없다.** 그 훅은 `presentation` 을 받지 않는다 —
-//     `IssueMetaPanel.tsx:453` 의 시그니처는 `context` 하나뿐이고, 호출부(`:610`)는
-//     「모달·사이드패널·전체화면이 **공유하는 단 하나의 읽기**」라고 못박혀 있다.
-//     한 줄 되돌리기가 아니라 **파라미터를 새로 배선해야 하는 구조 변경**이다.
-//   - **③** 재현했다. `toDetailViewRows` 를 라벨순 `sort` 로 바꾸면 단위
-//     **T21-1 · T21-2 · T21-4** 가 함께 죽는다(3 failed / 787 passed · 종료 코드 1).
-//     표는 E2E(D1·D2·D3)만 적어 「이 축의 판정자는 이 spec 」으로 읽힌다 — 아니다.
-//   잰 명령 — `(cd apps/web && node_modules/.bin/vitest related --watch=false`
-//   `  src/components/board/settings/SettingsTabs.tsx src/components/board/settings/CardLayoutPanel.tsx`
-//   `  src/mocks/board-handlers.ts src/components/issue/IssueMetaPanel.tsx)` → 32파일 790건.
+// ★**구조 — 「한쪽 표현만 배선」은 지금 코드에서 우발적으로 생기지 않는다.**
+//   종전 이 표는 ①②를 「`useIssueDetailViewFields` 가 `presentation === 'modal'` 일 때만 구성을
+//   낸다」로 적었는데 **그 형태는 존재할 수 없다.** 그 훅의 시그니처는 `context` 하나뿐이고
+//   (`IssueMetaPanel.tsx:453`), 모달·사이드패널·전체화면이 전부 같은
+//   `IssueDetailPage variant="pane"` 한 벌을 그리며(`IssueDetailModal.tsx:69` ·
+//   `IssueDetailSidePanel.tsx:82`) 그 안의 메타패널이 하나라 **분기 자체가 없다**
+//   (`IssueMetaPanel.tsx:610` 「모달·사이드패널·전체화면이 공유하는 단 하나의 읽기」).
+//   그래서 위 ①②는 **스토어에서 `presentation` 을 새로 읽어 오는 2줄 배선을 더해** 걸었다.
+//   진짜 위험은 「읽기를 껍데기로 끌어올리는」 리팩터링이고 ①②는 그 최소 모형이다
+//   (부채 177 Task 34 가 실측으로 재설계 · 2026-09-06).
+//
+// ★**이 spec 은 R7c 축의 유일한 판정자가 아니다 — 종전 표는 그 함의를 공개하지 않았다.**
+//   `IssueMetaPanel.test.tsx:7-22`(Task 21)의 표가 ①모달 ②사이드패널 패리티 ③그룹 ④순서를
+//   이미 단위로 지고 있고, `:20-22` 에는 **여기 ①과 같은 뮤테이션**이 적혀 있다(「② 만 red」).
+//   그 주장을 이번에 직접 재현해 확인했다 — T21-2 **단독**이 맞다. 위 「단위」 열이 그 중복이다.
+// ★**그래도 이 spec 이 혼자 지는 축이 셋 있다.** (1) **설정 화면 편집 경로** — 단위는
+//   `replaceDetailViewFields` 로 구성을 직접 심지만 여기는 사람이 화면에서 만든다.
+//   (2) **키보드 드래그** — `KeyboardSensor` 가 빠지면 여기가 red 다(단위는 센서를 모른다).
+//   (3) **SPA 영속** — `goto` 1회로 설정에서 상세까지 이동해도 저장한 구성이 살아 있는가.
+//   ★**이 셋은 위 세 뮤테이션 어디로도 안 죽는다** — 표가 이 spec 의 가치를 다 담지 못한다는 뜻이다.
+//   그 축을 겨냥한 뮤테이션은 아직 없다(있다고 적지 않는다).
+// ★**①②의 단위 결과는 대칭이 아니다**(1건 ↔ 3건). T21 시나리오 대부분이 모달로 열기 때문이고,
+//   E2E 의 D1↔D2 대칭과는 다르다 — 「죽는 **개수**」로 두 방향을 가르지 마라.
 //
 // ★**①②는 두 방향을 다 걸어야 한다.** 한 방향만 걸면 반쪽 봉합을 가르지 못한다 — 죽는 집합이
 //   서로 달라야(②는 D1·D3, ①은 D2·D3) 실패 목록만 보고 「어느 쪽을 안 배선했는지」가 읽힌다.
