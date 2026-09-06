@@ -49,6 +49,7 @@ class SlackChannelBroadcasterTest {
         projectKey: String? = "ATLAS",
         issueKey: String? = "ATLAS-1",
         eventType: NotificationEventType = NotificationEventType.ISSUE_CREATED,
+        commentId: UUID? = null,
     ): NotificationSourceEvent =
         NotificationSourceEvent(
             eventType = eventType,
@@ -57,7 +58,18 @@ class SlackChannelBroadcasterTest {
             reporterId = null,
             actorId = actorId,
             occurredAt = fixedNow,
+            commentId = commentId,
         )
+
+    /** 이벤트 1건을 브로드캐스트하고 발행 JSON 의 dedupKey 를 돌려준다. */
+    private fun dedupKeyOf(event: NotificationSourceEvent): String {
+        val payload = slot<String>()
+        every { dsl.execute(any<String>(), SlackChannelBroadcaster.QUEUE_NAME, capture(payload)) } returns 1
+
+        broadcaster.broadcastIfApplicable(event)
+
+        return objectMapper.readTree(payload.captured).get("dedupKey").asText()
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // BROADCAST
@@ -130,5 +142,27 @@ class SlackChannelBroadcasterTest {
         val dedup2 = objectMapper.readTree(slot2.captured).get("dedupKey").asText()
 
         assertThat(dedup1).isEqualTo(dedup2)
+    }
+
+    @Test
+    fun `BC-6 occurredAt 이 같아도 commentId 가 다르면 dedupKey 가 다르다`() {
+        // 슬랙 쪽 키는 recipient 를 안 쓰는 이벤트 레벨 키라 원소가 더 적다 — 같은 이슈에 같은
+        // 순간 댓글 2건이면 인앱보다 **먼저** 충돌한다. `SlackDeliveryWorker` 가
+        // `deliveryLogRepository.exists(dedupKey)` 로 두 번째를 `slack_delivery_skip_duplicate`
+        // 로 버리므로, 유실이 에러 없이 「중복 차단이 동작했다」는 얼굴로 나타난다.
+        val commentIdA = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccc01")
+        val commentIdB = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccc02")
+
+        val keyA = dedupKeyOf(buildEvent(eventType = NotificationEventType.ISSUE_COMMENTED, commentId = commentIdA))
+        val keyB = dedupKeyOf(buildEvent(eventType = NotificationEventType.ISSUE_COMMENTED, commentId = commentIdB))
+
+        assertThat(keyA).isNotEqualTo(keyB)
+    }
+
+    @Test
+    fun `BC-7 commentId 가 없는 이벤트끼리는 여전히 같은 dedupKey 다`() {
+        // 「무엇이든 유일하게 만든다」는 구현(예: UUID 를 섞는다)을 배제한다 — 재전달 멱등이
+        // 깨지면 같은 슬랙 메시지가 두 번 나간다.
+        assertThat(dedupKeyOf(buildEvent())).isEqualTo(dedupKeyOf(buildEvent()))
     }
 }

@@ -32,11 +32,13 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   ★상환은 #453 쪽 몫이다 — 함수를 쪼개는 것이 정처방이고, 그 리팩터를 이 PR 이 하면
   //     보드 설정 화면의 리뷰 범위를 남의 컴포넌트로 넓히게 된다.
   "src/components/issue/AttachmentPreviewModal.tsx::Function 'AttachmentPreviewModal'": 237,
-  // ★부채 177 이 상세 보기 구성 읽기를 배선하며 317 → 333 으로 늘렸다(머지 블로커였다).
-  //   baseline 을 333 으로 올리는 대신 하단 액션 두 개(클론·삭제)를 같은 파일의
-  //   `IssueMetaActions` 로 순수 추출해 **298** 로 내렸다 — 늘린 것보다 더 갚았다.
+  // ★두 PR 이 같은 함수를 서로 다른 근거로 줄여 머지에서 만났다. 어느 쪽 값도 아니고 **실측**이다.
+  //   - 부채 177 이 상세 보기 구성 읽기를 배선하며 317 → 333 (머지 블로커였다).
+  //     baseline 을 올리는 대신 하단 액션 두 개(클론·삭제)를 `IssueMetaActions` 로 순수 추출 → 298.
+  //   - #462 가 보고자 행을 `IssueReporterRow` 로 빼며 → 314.
+  //   두 추출이 함께 적용된 머지 결과가 **295** 다. 양쪽 값을 그대로 고르면 둘 다 틀린다.
   //   여전히 200 위라 줄을 지우지 않는다. 200 밑으로 내리는 것은 #453 몫이라는 위 문단 그대로다.
-  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 298,
+  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 295,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
   "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,
@@ -46,7 +48,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   // J1 표시 방식 토글이 조건 렌더 1줄을 더했다(1011 → 1012). 함께 들어온 40줄 중 39줄은
   // `IssueDetailPresentationMenu` 로 떼어내 갚았고, 남은 한 줄은 「이 기능이 존재한다」는
   // 최소 렌더라 0줄로 만들려면 기능을 지우는 수밖에 없다.
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1012,
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 1003,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
   //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다

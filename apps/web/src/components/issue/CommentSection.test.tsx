@@ -78,14 +78,17 @@ const ghostComment: CommentResponse = {
 // 하네스
 // ─────────────────────────────────────────────────────────────────────────────
 
-function renderSection(canUpdate = true): void {
+function renderSection(canUpdate = true, focusCommentId?: string): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
-  render(<CommentSection issueKey={ISSUE_KEY} canUpdate={canUpdate} />, { wrapper })
+  render(
+    <CommentSection issueKey={ISSUE_KEY} canUpdate={canUpdate} focusCommentId={focusCommentId} />,
+    { wrapper },
+  )
 }
 
 beforeEach(() => {
@@ -677,5 +680,90 @@ describe('CommentSection — (f) 길이 카운터·상한 잠금', () => {
         screen.getByRole('button', { name: commentStrings.commentEditSaveButton }),
       ).toBeDisabled()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (g) 댓글 딥링크 — 인박스 알림이 지목한 댓글
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CommentSection — (g) 댓글 딥링크', () => {
+  it('focusCommentId 가 지목한 댓글만 강조 대상이 된다', async () => {
+    renderSection(true, CM_ID_2)
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`comment-row-${CM_ID_2}`)).toHaveAttribute(
+        'data-focus-target',
+        'true',
+      )
+    })
+    // 나머지 행까지 강조되면 「어느 댓글 때문에 왔는지」가 다시 사라진다.
+    expect(screen.getByTestId(`comment-row-${CM_ID_1}`)).not.toHaveAttribute('data-focus-target')
+  })
+
+  it('focusCommentId 가 없으면 어떤 행도 강조하지 않는다', async () => {
+    renderSection()
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`comment-row-${CM_ID_1}`)).toBeInTheDocument()
+    })
+    expect(screen.getByTestId(`comment-row-${CM_ID_1}`)).not.toHaveAttribute('data-focus-target')
+    expect(screen.getByTestId(`comment-row-${CM_ID_2}`)).not.toHaveAttribute('data-focus-target')
+  })
+
+  it('이미 삭제된 댓글을 가리켜도 목록은 평소대로 렌더된다', async () => {
+    // 알림은 남았는데 댓글이 지워진 경우 — 딥링크가 빗나갈 뿐 화면이 깨져선 안 된다.
+    renderSection(true, GHOST_UUID)
+
+    await waitFor(() => {
+      expect(screen.getByText('먼저 쓴 댓글')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId(`comment-row-${CM_ID_1}`)).not.toHaveAttribute('data-focus-target')
+    expect(screen.getByTestId(`comment-row-${CM_ID_2}`)).not.toHaveAttribute('data-focus-target')
+  })
+
+  it('대상 댓글이 목록에 들어오면 화면 가운데로 스크롤한다', async () => {
+    // jsdom 에는 scrollIntoView 가 없다 — 없는 채로 두면 옵셔널 호출이 조용히 통과해
+    // 「스크롤한다」를 아무도 검증하지 않는다. 심어 두고 호출을 실제로 본다.
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: scrollIntoView,
+      configurable: true,
+      writable: true,
+    })
+
+    renderSection(true, CM_ID_2)
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center' })
+    })
+  })
+
+  it('강조된 댓글로 포커스를 옮겨 스크린리더가 그 행을 읽게 한다', async () => {
+    // 스크롤은 눈에만 보인다 — 포커스를 옮기지 않으면 스크린리더 사용자는
+    // "왜 이 화면에 왔는지" 를 끝까지 듣지 못한다. 강조의 유일한 비시각 통로다.
+    renderSection(true, CM_ID_2)
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId(`comment-row-${CM_ID_2}`))
+    })
+    // 모든 행에 tabIndex 를 붙이면 위 단언이 통과해 버린다 — 대상만 프로그램 포커스 대상이다.
+    expect(screen.getByTestId(`comment-row-${CM_ID_1}`)).not.toHaveAttribute('tabindex')
+  })
+
+  it('강조된 행에만 스크린리더용 안내 문구가 붙는다', async () => {
+    // 포커스가 읽어 주는 것은 댓글 내용뿐이라 "이게 알림이 지목한 그 댓글" 이라는
+    // 사실은 링·배경색(시각)에만 남는다. sr-only 문구가 그 의미를 텍스트로 옮긴다.
+    renderSection(true, CM_ID_2)
+
+    const target = await screen.findByTestId(`comment-row-${CM_ID_2}`)
+    expect(
+      within(target).getByText(commentStrings.commentFocusTargetScreenReader),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId(`comment-row-${CM_ID_1}`)).queryByText(
+        commentStrings.commentFocusTargetScreenReader,
+      ),
+    ).toBeNull()
   })
 })

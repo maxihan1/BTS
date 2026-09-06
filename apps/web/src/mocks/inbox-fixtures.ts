@@ -14,6 +14,14 @@ export const INBOX_FIXTURE_BOB_ID = '00000000-0000-4000-8000-000000000002'
 /** 발신자 bob (actorUserId가 있는 시나리오용) */
 export const INBOX_FIXTURE_BOB_ACTOR_ID = '00000000-0000-4000-8000-000000000002'
 
+/**
+ * 댓글 딥링크가 달린 알림이 가리키는 댓글 UUID.
+ *
+ * 「댓글 알림에는 commentId 가 있고 그 외에는 null 이다」를 실제로 구분해 두어야
+ * 딥링크 유무 분기를 테스트가 볼 수 있다 — 전부 채우거나 전부 비우면 판별이 사라진다.
+ */
+export const INBOX_FIXTURE_COMMENT_ID = 'c0000000-0000-4000-8000-000000000001'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 단건 픽스처 — 개별 시나리오 검증용
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +34,8 @@ export const inboxFixtureUnread: InboxItem = {
   title: '이슈 담당자로 지정됨',
   body: 'ATLAS-1 이슈의 담당자로 지정되었습니다.',
   actorUserId: INBOX_FIXTURE_BOB_ACTOR_ID,
+  // 담당자 지정은 댓글에서 나지 않는다 — 딥링크 대상이 없다.
+  commentId: null,
   readAt: null,
   archivedAt: null,
   createdAt: '2026-06-25T10:00:00Z',
@@ -39,6 +49,8 @@ export const inboxFixtureRead: InboxItem = {
   title: '코멘트가 추가됨',
   body: null,
   actorUserId: INBOX_FIXTURE_BOB_ACTOR_ID,
+  // ★댓글 알림 — 딥링크가 달리는 유일한 픽스처다.
+  commentId: INBOX_FIXTURE_COMMENT_ID,
   readAt: '2026-06-24T09:00:00Z',
   archivedAt: null,
   createdAt: '2026-06-24T08:00:00Z',
@@ -52,6 +64,7 @@ export const inboxFixtureArchived: InboxItem = {
   title: '시스템 공지',
   body: '서비스 점검 예정입니다.',
   actorUserId: null,
+  commentId: null,
   readAt: '2026-06-23T10:00:00Z',
   archivedAt: '2026-06-23T11:00:00Z',
   createdAt: '2026-06-23T09:00:00Z',
@@ -65,6 +78,7 @@ export const inboxFixtureUnreadSystem: InboxItem = {
   title: 'ATLAS-3 상태가 변경됨',
   body: null,
   actorUserId: null,
+  commentId: null,
   readAt: null,
   archivedAt: null,
   createdAt: '2026-06-25T09:00:00Z',
@@ -78,6 +92,7 @@ export const inboxFixtureUnreadArchived: InboxItem = {
   title: 'ATLAS-4 코멘트에서 멘션됨',
   body: '멘션 내용입니다.',
   actorUserId: INBOX_FIXTURE_BOB_ACTOR_ID,
+  commentId: null,
   readAt: null,
   archivedAt: '2026-06-25T08:00:00Z',
   createdAt: '2026-06-25T07:00:00Z',
@@ -104,6 +119,7 @@ export const inboxFixturePageItems: InboxItem[] = Array.from({ length: 25 }, (_,
     title: `페이지네이션 테스트 알림 ${index}`,
     body: null,
     actorUserId: index % 2 === 0 ? INBOX_FIXTURE_BOB_ACTOR_ID : null,
+    commentId: null,
     readAt: null,
     archivedAt: null,
     createdAt: `2026-${month}-${day}T10:00:00Z`,

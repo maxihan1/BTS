@@ -300,6 +300,7 @@ export const AREA_CATEGORIES = Object.freeze({
   'identity-access': CATEGORIES.feature,
   'project-workflow': CATEGORIES.feature,
   'agile-planning': CATEGORIES.feature,
+  'notification': CATEGORIES.feature,
   '도구': CATEGORIES.guard,
   '워크플로우': CATEGORIES.guard,
   '인프라': CATEGORIES.infra,

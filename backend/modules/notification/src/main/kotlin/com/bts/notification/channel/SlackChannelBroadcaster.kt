@@ -82,9 +82,19 @@ class SlackChannelBroadcaster(
     /**
      * 이벤트레벨 결정적 dedup 키를 계산한다.
      *
-     * 구성 원소: projectKey + eventType.wireValue + issueKey("" 로 null 처리) + occurredAt ISO 문자열.
+     * 구성 원소: projectKey + eventType.wireValue + issueKey("" 로 null 처리) + occurredAt ISO 문자열
+     *            (+ commentId — 있을 때만).
      * 같은 입력이면 항상 같은 64자 소문자 hex SHA-256 문자열을 반환한다
      * ([com.bts.notification.domain.Notification.computeDedupKey] 동형 패턴).
+     *
+     * ## commentId 는 있을 때만 원소가 된다
+     * 이 키는 recipient 를 안 쓰는 **이벤트 레벨** 키라 인앱 키보다 원소가 적다 — 같은 이슈에
+     * 같은 `occurredAt` 으로 댓글 2건이 달리면 인앱보다 **먼저** 충돌한다. 그때
+     * [com.bts.slack.worker.SlackDeliveryWorker] 가 `slack_delivery_skip_duplicate` 로 두 번째를
+     * 버리므로 유실이 「중복 차단이 동작했다」는 얼굴로 나타난다.
+     *
+     * ★`listOfNotNull` 이라 commentId 가 null 이면 원소 자체가 없다 — 댓글과 무관한 이벤트의
+     * 키는 오늘과 바이트 단위로 같다. 폭발 반경을 댓글 이벤트로만 가둔다.
      *
      * @param projectKey 프로젝트 키
      * @param event 원본 이벤트
@@ -94,7 +104,14 @@ class SlackChannelBroadcaster(
         projectKey: String,
         event: NotificationSourceEvent,
     ): String {
-        val parts = listOf(projectKey, event.eventType.wireValue, event.issueKey ?: "", event.occurredAt.toString())
+        val parts =
+            listOfNotNull(
+                projectKey,
+                event.eventType.wireValue,
+                event.issueKey ?: "",
+                event.occurredAt.toString(),
+                event.commentId?.toString(),
+            )
         return sha256Hex(parts.joinToString(DEDUP_SEPARATOR))
     }
 

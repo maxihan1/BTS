@@ -825,6 +825,8 @@ const updateIssueHandler = http.patch('/api/v1/issues/:key', async ({ params, re
         body: null,
         // actorUserId는 Zod uuid() 검증 필수 — resolveActorUserIdFromRequest 반환값 사용
         actorUserId: actorUserId,
+        // 이슈 본문에서 난 멘션이라 가리킬 댓글이 없다 (딥링크는 이슈까지만)
+        commentId: null,
         readAt: null,
         archivedAt: null,
         createdAt: new Date().toISOString(),

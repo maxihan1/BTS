@@ -29,13 +29,22 @@ import { useIssueDetailModalStore } from './issueDetailModalStore'
  *
  * 그 외의 평범한 좌클릭만 모달로 가로챈다.
  *
- * @returns `(issueKey, event) => void` — `<Link onClick>` 에 그대로 물린다
+ * ## 댓글 딥링크
+ *
+ * 세 번째 인자로 댓글 UUID 를 주면 모달이 그 댓글로 데려간다(인박스 알림). 새 탭 경로는
+ * 이 핸들러를 타지 않으므로, 링크 쪽에서 `?comment=` 를 함께 실어야 양쪽이 같게 동작한다.
+ *
+ * @returns `(issueKey, event, commentId?) => void` — `<Link onClick>` 에 그대로 물린다
  */
-export function useOpenIssueDetail(): (issueKey: string, event: MouseEvent) => void {
+export function useOpenIssueDetail(): (
+  issueKey: string,
+  event: MouseEvent,
+  commentId?: string | null,
+) => void {
   const open = useIssueDetailModalStore((s) => s.open)
 
   return useCallback(
-    (issueKey: string, event: MouseEvent) => {
+    (issueKey: string, event: MouseEvent, commentId?: string | null) => {
       if (
         event.defaultPrevented ||
         event.metaKey ||
@@ -47,7 +56,7 @@ export function useOpenIssueDetail(): (issueKey: string, event: MouseEvent) => v
         return
       }
       event.preventDefault()
-      open(issueKey)
+      open(issueKey, commentId)
     },
     [open],
   )

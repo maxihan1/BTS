@@ -204,6 +204,82 @@ class NotificationWorkerTest : DescribeSpec({
         }
     }
 
+    // ── 댓글 딥링크: commentId → Notification.payload ─────────────────────────
+
+    describe("댓글 딥링크 payload") {
+        val msgId = 11L
+        val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+        val recipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+        val commentId: UUID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
+        fun stubPipeline() {
+            every { policyEvaluator.evaluate(any(), any()) } returns matches
+            every { recipientResolver.resolve(any<NotificationSourceEvent>(), any()) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
+            every { repository.insertIfAbsent(any()) } returns true
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+        }
+
+        it("이벤트의 commentId 를 NotificationSourceEvent 로 파싱한다") {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow, commentId = commentId)
+            stubPipeline()
+            val sourceSlot = slot<NotificationSourceEvent>()
+            every { recipientResolver.resolve(capture(sourceSlot), any()) } returns listOf(recipient)
+
+            worker.pollAndProcess()
+
+            assertThat(sourceSlot.captured.commentId).isEqualTo(commentId)
+        }
+
+        it("commentId 를 payload JSON 에 실어 Inbox 딥링크의 근거를 남긴다") {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow, commentId = commentId)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            // payload 는 V402 주석이 명시한 「Inbox 딥링크」 자리다. 여기가 null 이면
+            // 인박스에서 댓글로 가는 경로가 통째로 없어진다.
+            val payload = notificationSlot.captured.payload
+            assertThat(payload).isNotNull()
+            assertThat(ObjectMapper().readTree(payload).path("commentId").asText())
+                .isEqualTo(commentId.toString())
+        }
+
+        it("commentId 가 **명시적 null** 로 실려 와도 payload 를 만들지 않는다") {
+            // ★프로듀서의 ObjectMapper 는 Boot 기본값이고 IssueDomainEvent 에 @JsonInclude 가 없다.
+            //   즉 `IssueMentioned.commentId = null`(본문 멘션)은 키 누락이 아니라
+            //   `"commentId": null` 로 실려 온다 — **아래 「키가 없다」 케이스와 다른 경로다.**
+            //   실측(2026-09-05) 상 Jackson 은 NullNode·MissingNode 둘 다 `asText(null)` 에서
+            //   실제 null 을 돌려주지만, 그건 우리가 고정한 계약이 아니라 라이브러리 구현이다.
+            //   두 경로를 각각 고정해 둔다 — 한쪽만 두면 파싱을 바꿀 때 나머지가 조용히 깨진다.
+            stubMentionMessageWithNullCommentId(dsl, actorId, mentionedId, msgId, fixedNow)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            assertThat(notificationSlot.captured.payload).isNull()
+        }
+
+        it("commentId 가 없는 이벤트는 payload 를 만들지 않는다") {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow)
+            stubPipeline()
+            val notificationSlot = slot<Notification>()
+            every { repository.insertIfAbsent(capture(notificationSlot)) } returns true
+
+            worker.pollAndProcess()
+
+            // 빈 껍데기 `{}` 를 넣으면 「딥링크가 있다」와 「없다」를 구분할 수 없다.
+            assertThat(notificationSlot.captured.payload).isNull()
+        }
+    }
+
     // ── POLL-4: 성공 후 delete ─────────────────────────────────────────────────
 
     describe("POLL-4 성공 처리 후 pgmq.delete 호출") {
@@ -517,6 +593,55 @@ class NotificationWorkerTest : DescribeSpec({
             }
         }
     }
+
+    // ── DEDUP-1: 같은 순간의 서로 다른 댓글 ───────────────────────────────────
+
+    describe("DEDUP-1 같은 occurredAt 의 서로 다른 댓글은 서로 다른 알림이다") {
+        val matches = listOf(PolicyMatch(RecipientRole.MENTIONED, Channel.IN_APP))
+        val recipient = ResolvedRecipient(userId = mentionedId, channel = Channel.IN_APP)
+        val commentIdA: UUID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccc01")
+        val commentIdB: UUID = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccc02")
+
+        /** 멘션 이벤트 1건을 끝까지 흘려보내고 워커가 만든 알림의 dedupKey 를 돌려준다. */
+        fun dedupKeyOf(
+            msgId: Long,
+            commentId: UUID?,
+        ): String {
+            stubMentionMessage(dsl, actorId, mentionedId, msgId, fixedNow, commentId = commentId)
+            every { policyEvaluator.evaluate(NotificationEventType.ISSUE_MENTIONED, "ATLAS") } returns matches
+            every { recipientResolver.resolve(any<NotificationSourceEvent>(), matches) } returns listOf(recipient)
+            every { userSubscriptionRepository.fetchDisabled(any(), any(), any()) } returns emptySet()
+            every { channelSender.supports(Channel.IN_APP) } returns true
+            justRun { channelSender.send(any()) }
+            justRun { repository.markSent(any()) }
+            every { dsl.execute(any<String>(), NotificationWorker.QUEUE_NAME, msgId) } returns 1
+
+            val captured = slot<Notification>()
+            every { repository.insertIfAbsent(capture(captured)) } returns true
+
+            worker.pollAndProcess()
+            return captured.captured.dedupKey
+        }
+
+        it("commentId 만 다른 두 이벤트의 dedupKey 가 다르다") {
+            // ★도메인 테스트만으로는 이것을 못 잡는다. `computeDedupKey` 가 commentId 파라미터를
+            // 받아도 워커가 안 넘기면 그 파라미터는 죽은 코드고, 유실은 그대로 남는다.
+            // 워커가 실제로 넘기는지를 여기서만 본다.
+            val keyA = dedupKeyOf(msgId = 101L, commentId = commentIdA)
+            val keyB = dedupKeyOf(msgId = 102L, commentId = commentIdB)
+
+            assertThat(keyA).isNotEqualTo(keyB)
+        }
+
+        it("commentId 가 없는 이벤트끼리는 여전히 같은 키다 — 재전달 멱등은 그대로다") {
+            // 「전부 다르게 만들면 통과」하는 가짜 그린을 막는다. 무엇이든 유일하게 만드는
+            // 구현(예: UUID 를 섞는다)은 이 단언에서 죽는다.
+            val key1 = dedupKeyOf(msgId = 103L, commentId = null)
+            val key2 = dedupKeyOf(msgId = 104L, commentId = null)
+
+            assertThat(key1).isEqualTo(key2)
+        }
+    }
 })
 
 // ── test helpers ───────────────────────────────────────────────────────────────
@@ -534,6 +659,38 @@ private fun stubMentionMessage(
     msgId: Long,
     occurredAt: Instant,
     readCt: Int = 1,
+    commentId: UUID? = null,
+) {
+    // commentId 는 `IssueMentioned.commentId` 가 null 이면 아예 빠진다(sourceField != "comment").
+    // 그 부재를 그대로 재현한다 — 항상 넣으면 「없을 때」 경로를 영영 안 본다.
+    val commentIdLine = commentId?.let { """  "commentId": "$it",""" + "\n" } ?: ""
+    val json =
+        """
+        {
+          "type": "issue.mentioned",
+          "issueKey": "ATLAS-1",
+          "projectKey": "ATLAS",
+          "actorId": { "value": "$actorId" },
+        $commentIdLine  "mentionedUserIds": ["$mentionedId"],
+          "occurredAt": "$occurredAt"
+        }
+        """.trimIndent()
+
+    stubReadResult(dsl, msgId, json, readCt)
+}
+
+/**
+ * `commentId` 가 **명시적 JSON null** 인 멘션 이벤트 메시지를 스텁한다.
+ *
+ * 키 누락(`stubMentionMessage` 기본값)과 **다른 경로**다. 프로듀서가 null 을 생략하지 않으므로
+ * 실제 본문 멘션 이벤트는 이 형태로 온다.
+ */
+private fun stubMentionMessageWithNullCommentId(
+    dsl: DSLContext,
+    actorId: UUID,
+    mentionedId: UUID,
+    msgId: Long,
+    occurredAt: Instant,
 ) {
     val json =
         """
@@ -542,12 +699,13 @@ private fun stubMentionMessage(
           "issueKey": "ATLAS-1",
           "projectKey": "ATLAS",
           "actorId": { "value": "$actorId" },
+          "commentId": null,
           "mentionedUserIds": ["$mentionedId"],
           "occurredAt": "$occurredAt"
         }
         """.trimIndent()
 
-    stubReadResult(dsl, msgId, json, readCt)
+    stubReadResult(dsl, msgId, json, readCt = 1)
 }
 
 /**

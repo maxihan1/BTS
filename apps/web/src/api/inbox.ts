@@ -72,6 +72,20 @@ export const inboxItemSchema = z.object({
   body: z.string().nullable(),
   /** 발신자 사용자 UUID (시스템 발송이면 null) */
   actorUserId: z.string().uuid().nullable(),
+  /**
+   * 딥링크 대상 댓글 UUID — 댓글에서 비롯된 알림(멘션·댓글 작성)에만 있다.
+   *
+   * 이 값이 있으면 알림을 눌렀을 때 이슈만 여는 게 아니라 **그 댓글까지** 데려간다.
+   * 백엔드는 `notifications.payload` JSONB 에서 꺼내 채운다.
+   *
+   * ★ 키 자체가 없어도 파싱을 통과시키고 null 로 채운다(`.default(null)`).
+   * 단일 호스트라 SPA 와 백엔드가 함께 뜨지만 롤백·캐시된 번들이면 「새 SPA + 옛 백엔드」가
+   * 성립하고, 그때 이 필드의 부재는 항목 하나가 아니라 **페이지 전체**의 파싱을 죽인다
+   * (`content` 배열 원소 하나가 실패하면 `inboxPageSchema.parse` 가 통째로 throw 한다).
+   * 딥링크 하나를 잃는 것과 인박스가 통째로 비는 것은 같은 무게의 실패가 아니다.
+   * 잘못된 값(UUID 아님)은 여전히 거부한다 — 부재는 견디고 오염은 막는다.
+   */
+  commentId: z.string().uuid().nullable().default(null),
   /** 읽음 처리 시각 (미읽음이면 null, ISO-8601) */
   readAt: z.string().datetime().nullable(),
   /** 보관 처리 시각 (미보관이면 null, ISO-8601) */

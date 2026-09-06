@@ -24,6 +24,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import { inboxLabels } from '../src/i18n/inbox-labels'
+import { issueDetailStrings } from '../src/i18n/ko'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — i18n 정본 참조
@@ -394,6 +395,53 @@ test.describe('FR-UX-03 개인 알림 보관함 (InboxPage)', () => {
       page.getByRole('dialog', { name: `이슈 상세 ${FIXTURE_UNREAD_ISSUE_KEY}` }),
     ).toBeVisible()
     expect(page.url()).not.toContain(`/issues/${FIXTURE_UNREAD_ISSUE_KEY}`)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // E2E-10 댓글 딥링크 — 댓글 알림은 이슈가 아니라 그 댓글로 데려간다
+  //
+  // Given   ATLAS-2 알림(ISSUE_COMMENTED)에 commentId 가 실려 있다 (inbox-fixtures)
+  // When    그 링크를 좌클릭 → 상세 모달
+  // Then    활동 영역이 **댓글 탭**으로 열린다 (기본값은 이력 탭이다 — issue-comment.spec 이 고정)
+  //
+  // ★기본 탭이 이력이라는 점이 이 판정을 비-공허하게 만든다. 기본이 댓글이었다면 딥링크를
+  //   통째로 지워도 초록이었을 것이다.
+  // ───────────────────────────────────────────────────────────────────────────
+  test('E2E-10 댓글 딥링크 — 댓글 알림을 누르면 댓글 탭이 열린다', async ({ page }) => {
+    await navigateToInbox(page)
+
+    // Given. 댓글 알림(ATLAS-2)의 링크에는 ?comment= 가 실려 있다 — 새 탭 경로의 근거다.
+    const commentNotificationLink = page.getByRole('link', { name: FIXTURE_READ_ISSUE_KEY })
+    await expect(commentNotificationLink).toHaveAttribute('href', /\?comment=/)
+
+    // When. 좌클릭 → 모달
+    await commentNotificationLink.click()
+
+    const dialog = page.getByRole('dialog', { name: `이슈 상세 ${FIXTURE_READ_ISSUE_KEY}` })
+    await expect(dialog).toBeVisible()
+
+    // Then. 댓글 탭이 처음부터 활성이다.
+    await expect(
+      dialog.getByRole('tab', { name: issueDetailStrings.activityCommentTabLabel }),
+    ).toHaveAttribute('aria-selected', 'true')
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // E2E-11 딥링크 없는 알림 — 기존 동작(이력 탭)을 그대로 둔다
+  // ───────────────────────────────────────────────────────────────────────────
+  test('E2E-11 댓글 없는 알림은 기존대로 이력 탭에서 열린다 (회귀 고정)', async ({ page }) => {
+    await navigateToInbox(page)
+
+    const plainLink = page.getByRole('link', { name: FIXTURE_UNREAD_ISSUE_KEY })
+    await expect(plainLink).toHaveAttribute('href', `/issues/${FIXTURE_UNREAD_ISSUE_KEY}`)
+
+    await plainLink.click()
+
+    const dialog = page.getByRole('dialog', { name: `이슈 상세 ${FIXTURE_UNREAD_ISSUE_KEY}` })
+    await expect(dialog).toBeVisible()
+    await expect(
+      dialog.getByRole('tab', { name: issueDetailStrings.activityHistoryTabLabel }),
+    ).toHaveAttribute('aria-selected', 'true')
   })
 
   // ───────────────────────────────────────────────────────────────────────────

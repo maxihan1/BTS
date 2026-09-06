@@ -29,6 +29,8 @@ const itemFixture = {
   title: '이슈에서 언급되었습니다',
   body: '이슈 본문 요약',
   actorUserId: 'f0e9d8c7-b6a5-4321-8edc-ba9876543210',
+  // 댓글에서 난 멘션이라 딥링크 대상이 있다 (백엔드는 payload.commentId 로 내려준다)
+  commentId: 'b7c8d9e0-1234-4567-89ab-cdef01234567',
   readAt: null,
   archivedAt: null,
   createdAt: '2024-06-25T09:00:00Z',
@@ -76,17 +78,20 @@ describe('inboxItemSchema — InboxItemResponse 1:1 파싱', () => {
     expect(result.data.title).toBe(itemFixture.title)
     expect(result.data.body).toBe(itemFixture.body)
     expect(result.data.actorUserId).toBe(itemFixture.actorUserId)
+    expect(result.data.commentId).toBe(itemFixture.commentId)
     expect(result.data.readAt).toBeNull()
     expect(result.data.archivedAt).toBeNull()
     expect(result.data.createdAt).toBe('2024-06-25T09:00:00Z')
   })
 
-  it('T-IB-1b: nullable 필드(issueKey/body/actorUserId/readAt/archivedAt)가 null이어도 파싱된다', () => {
+  it('T-IB-1b: nullable 필드(issueKey/body/actorUserId/commentId/readAt/archivedAt)가 null이어도 파싱된다', () => {
     const minimal = {
       ...itemFixture,
       issueKey: null,
       body: null,
       actorUserId: null,
+      // 댓글에서 나지 않은 알림(담당자 지정 등)은 딥링크 대상이 없다
+      commentId: null,
       readAt: null,
       archivedAt: null,
     }
@@ -96,6 +101,27 @@ describe('inboxItemSchema — InboxItemResponse 1:1 파싱', () => {
     expect(result.data.issueKey).toBeNull()
     expect(result.data.body).toBeNull()
     expect(result.data.actorUserId).toBeNull()
+    expect(result.data.commentId).toBeNull()
+  })
+
+  it('T-IB-1e: commentId 키가 통째로 없는 응답도 파싱되고 null 로 채워진다', () => {
+    // 단일 호스트라 SPA 와 백엔드가 함께 뜨지만, 롤백·캐시된 번들이면 「새 SPA + 옛 백엔드」가
+    // 성립한다. 그때 한 필드의 부재는 항목 하나가 아니라 **페이지 전체**의 파싱을 죽여
+    // 인박스가 통째로 비어 버린다. 딥링크 하나 없는 것보다 훨씬 나쁜 실패다.
+    const legacyItem = Object.fromEntries(
+      Object.entries(itemFixture).filter(([k]) => k !== 'commentId'),
+    )
+    const result = inboxPageSchema.safeParse({ ...pageFixture, content: [legacyItem] })
+
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.content[0]?.commentId).toBeNull()
+  })
+
+  it('T-IB-1d: commentId 가 UUID 가 아니면 파싱을 거부한다', () => {
+    // 딥링크는 그대로 URL 로 나간다 — 임의 문자열을 통과시키면 깨진 링크를 그리게 된다.
+    const result = inboxItemSchema.safeParse({ ...itemFixture, commentId: 'not-a-uuid' })
+    expect(result.success).toBe(false)
   })
 
   it('T-IB-1c: readAt/archivedAt가 ISO 문자열이어도 파싱된다', () => {

@@ -32,6 +32,7 @@ import { useIssueDetailModalStore } from './issueDetailModalStore'
  */
 export function IssueDetailModal(): JSX.Element | null {
   const openKey = useIssueDetailModalStore((s) => s.openKey)
+  const openCommentId = useIssueDetailModalStore((s) => s.openCommentId)
   const presentation = useIssueDetailModalStore((s) => s.presentation)
   const close = useIssueDetailModalStore((s) => s.close)
   const open = useIssueDetailModalStore((s) => s.open)
@@ -69,6 +70,8 @@ export function IssueDetailModal(): JSX.Element | null {
           <IssueDetailPage
             issueKey={openKey}
             variant="pane"
+            // 인박스 알림에서 왔으면 그 댓글까지 데려간다 (딥링크).
+            focusCommentId={openCommentId ?? undefined}
             onClose={close}
             // 옛 키로 열었을 때 새 키로 갈아탄다 — 모달을 닫고 다시 열 필요가 없다.
             onIssueRedirect={(newKey) => { open(newKey) }}

@@ -206,6 +206,7 @@ function renderPanel(
         onAssigneeSearch={vi.fn()}
         onAssigneeChange={vi.fn()}
         currentAssignee={null}
+        reporter={null}
       />
     </QueryClientProvider>,
   )

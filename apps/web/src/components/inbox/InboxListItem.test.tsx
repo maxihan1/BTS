@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { inboxLabels } from '@/i18n/inbox-labels'
 import type { InboxItem } from '@/api/inbox'
 import { InboxListItem } from './InboxListItem'
+import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TanStack Router Link 모킹 — 라우터 컨텍스트 없이 단위 테스트 가능
@@ -13,13 +14,17 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
     params,
+    search,
     children,
     className,
+    onClick,
   }: {
     to: string
     params?: Record<string, string>
+    search?: Record<string, string>
     children: React.ReactNode
     className?: string
+    onClick?: (event: React.MouseEvent) => void
   }) => {
     // TanStack Router 동작 모사 — to의 `$key` 토큰을 params 값으로 치환해 실제 href 생성
     let href = to
@@ -28,8 +33,11 @@ vi.mock('@tanstack/react-router', () => ({
         href = href.replace(`$${token}`, value)
       }
     }
+    // ★search 도 href 에 반영한다. 반영하지 않으면 「새 탭으로도 딥링크가 간다」는 단언이
+    //   모크의 침묵 때문에 영영 통과한다 (메모리 `mock-swallowed-prop-is-invisible-to-unit-tests`).
+    const query = new URLSearchParams(search ?? {}).toString()
     return (
-      <a href={href} className={className}>
+      <a href={query === '' ? href : `${href}?${query}`} className={className} onClick={onClick}>
         {children}
       </a>
     )
@@ -52,6 +60,7 @@ const baseItem: InboxItem = {
   title: 'ATLAS-42에서 멘션되었습니다',
   body: '이슈 본문 일부입니다.',
   actorUserId: ACTOR_ID,
+  commentId: null,
   readAt: null,
   archivedAt: null,
   createdAt: '2026-06-25T10:00:00Z',
@@ -256,5 +265,57 @@ describe('InboxListItem — S5 issueKey 링크', () => {
   it('S5b: issueKey가 null이면 이슈 링크가 없다', () => {
     renderItem({ item: { ...baseItem, issueKey: null } })
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. 댓글 딥링크 — 알림을 누르면 그 댓글까지 간다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('InboxListItem — S6 댓글 딥링크', () => {
+  const COMMENT_ID = '33333333-3333-4333-8333-333333333333'
+
+  beforeEach(() => {
+    useIssueDetailModalStore.setState({ openKey: null, openCommentId: null })
+  })
+
+  it('S6a: commentId 가 있으면 href 에 ?comment= 가 실린다 (새 탭·링크 복사 경로)', () => {
+    renderItem({ item: { ...baseItem, commentId: COMMENT_ID } })
+
+    expect(screen.getByRole('link', { name: 'ATLAS-42' })).toHaveAttribute(
+      'href',
+      `/issues/ATLAS-42?comment=${COMMENT_ID}`,
+    )
+  })
+
+  it('S6b: commentId 가 null 이면 쿼리를 붙이지 않는다', () => {
+    renderItem({ item: { ...baseItem, commentId: null } })
+
+    expect(screen.getByRole('link', { name: 'ATLAS-42' })).toHaveAttribute(
+      'href',
+      '/issues/ATLAS-42',
+    )
+  })
+
+  it('S6c: 좌클릭은 모달로 열되 댓글까지 함께 넘긴다', async () => {
+    renderItem({ item: { ...baseItem, commentId: COMMENT_ID } })
+
+    await userEvent.click(screen.getByRole('link', { name: 'ATLAS-42' }))
+
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-42')
+    expect(useIssueDetailModalStore.getState().openCommentId).toBe(COMMENT_ID)
+  })
+
+  it('S6d: 댓글 없는 알림을 뒤이어 열면 앞선 딥링크가 따라오지 않는다', async () => {
+    const { unmount } = renderItem({ item: { ...baseItem, commentId: COMMENT_ID } })
+    await userEvent.click(screen.getByRole('link', { name: 'ATLAS-42' }))
+    unmount()
+
+    renderItem({ item: { ...baseItem, issueKey: 'ATLAS-99', commentId: null } })
+    await userEvent.click(screen.getByRole('link', { name: 'ATLAS-99' }))
+
+    // 이전 값이 남으면 엉뚱한 이슈의 댓글로 스크롤하려 든다.
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-99')
+    expect(useIssueDetailModalStore.getState().openCommentId).toBeNull()
   })
 })

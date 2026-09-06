@@ -33,6 +33,7 @@ import { IssueEnvironmentEdit } from '@/components/issue/meta/IssueEnvironmentEd
 import { IssueLabelsEdit } from '@/components/issue/meta/IssueLabelsEdit'
 import { IssueCustomFieldsEdit } from '@/components/issue/meta/IssueCustomFieldsEdit'
 import { IssueAssigneeSelect } from '@/components/issue/meta/IssueAssigneeSelect'
+import { IssueReporterRow } from '@/components/issue/meta/IssueReporterRow'
 import { IssueStateTransition } from '@/components/issue/meta/IssueStateTransition'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +92,14 @@ export interface IssueMetaPanelProps {
    * null이면 "미지정" 표시.
    */
   currentAssignee: UserSummary | null
+  /**
+   * 보고자 UserSummary — `currentAssignee` 와 같은 `useUsersByIds` 경로로 route 가 해석해 넘긴다.
+   *
+   * ★옵셔널로 두지 않는다. 기본값 null 을 주면 route 가 안 넘겨도 컴파일이 통과하고,
+   * 화면은 오늘과 똑같이 원시 UUID 를 그린다 — 고치려던 버그가 조용히 그대로 남는다.
+   * null 은 「해석에 실패했다」(탈퇴·비활성 사용자, 조회 미완)만을 뜻한다.
+   */
+  reporter: UserSummary | null
   /** 현재 이슈에 할당된 컴포넌트 UUID 목록 — route에서 전달. 미전달 시 빈 배열. */
   componentIds?: string[]
   /** 프로젝트 컴포넌트 전체 목록 — fetchComponents(projectKey) 결과. 미전달 시 빈 배열. */
@@ -637,6 +646,7 @@ export function IssueMetaPanel({
   onAssigneeSearch,
   onAssigneeChange,
   currentAssignee,
+  reporter,
   componentIds = [],
   components = [],
   onComponentsChange = () => { /* no-op */ },
@@ -877,11 +887,7 @@ export function IssueMetaPanel({
           />
         )}
 
-        {/* 보고자 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.reporterLabel}</p>
-          <p className="text-sm font-medium truncate">{issue.reporterId}</p>
-        </div>
+        <IssueReporterRow reporter={reporter} fallbackId={issue.reporterId} />
 
         {/* 프로젝트 */}
         <div className="px-3.5 py-3 border-b border-border">
