@@ -324,6 +324,33 @@ function useBacklogFilterWiring(
  * - C1: assign/unassign 성공 후 rerank 실패 → 경고 토스트. 이동은 완료됐으므로 에러 토스트 금지.
  * - truncated=true이면 경고 배너를 표시한다.
  * - 조회 실패 시 안내와 재시도 버튼을 그린다 (FR-UX-13 F5 G2).
+ *
+ * ### 카드 레이아웃 배선
+ * 카드 레이아웃 구성 (부채 177 Task 32 · J18) — 카드 2층(J19)이 그릴 필드 목록이다.
+ *
+ * ★**보드 단건 조회에서 온다.** 백로그 조회 응답(`BacklogView`)에는 설정이 없고, 보드 목록
+ *   (`BoardSummary`)에도 없다 — 설정은 보드 **단건** 응답이 함께 싣는다(Task 31 · N1).
+ * ★조회를 이 컴포넌트가 갖는 이유는 `useIssueTypes` 와 같다 — 카드가 그리는 데
+ *   필요한 **표시용 메타**를 칸마다가 아니라 여기서 1회만 읽어 두 칸에 공유한다.
+ * ★`boardId` 가 `undefined` 면 훅이 조회를 걸지 않는다(`useBoard` 의 `enabled`). 그때 기본
+ *   보드를 고르는 것은 **서버**이고 프론트는 고르지 않으므로(이 파일의 `boardId` KDoc),
+ *   구성 없이 그린다 — 카드 2층이 안 생길 뿐 나머지는 그대로다.
+ * ★캐시 키가 보드 화면의 것과 같은 `['board', boardId, …]` 라 두 화면을 오갈 때
+ *   `staleTime`(30초) 안에서는 재조회가 생략된다.
+ * ★★**백로그에서는 커스텀 필드(`cf_*`)가 아직 뜰 수 없다 — 알려진 한계다.**
+ *   백로그 조회 응답(`BacklogIssueResponse`)에 `customFields` 키가 아예 없다(백엔드가
+ *   `BoardCardResponse` 만 넓혔다 · 부채 177 Task 26). 그래서 구성에 커스텀 필드를 골라도
+ *   그 칸은 **그 카드에서 생략된다**(E4 와 같은 그림). 표준 필드 6종은 정상 동작한다.
+ *   여기서 값을 지어내 채우지 마라 — 서버 계약이 넓어져야 닫히는 **후속 별건**이다.
+ *
+ * #### 여기서부터 prop 이 네 겹을 지난다
+ *   `BacklogBoard`(여기) → `BacklogStack` → `SprintColumn`·`BacklogColumn` → `BacklogCard`
+ *     → `CardExtraFields`(`BACKLOG` 스코프만 읽어 2층을 그린다)
+ * 겹이 깊다고 여기만 context 로 바꾸지 않는다 — 같은 깊이를 지나는 축이 이미 넷이고
+ * (`assigneeNames`·`issueTypesByKey`·`boardId`·권한), 하나만 규칙이 달라지면 다음 사람이
+ * 매번 「이 축은 어느 쪽인가」를 확인해야 한다. 사유 전문은 `board/KanbanBoard.tsx` 의
+ * 「카드 레이아웃 배선」 절에 있다(보드 체인이 같은 결정을 공유한다).
+ * ★중간 겹은 값을 **해석하지 않는다.** 스코프 판정은 카드 한 곳에서만 한다(Task 20).
  */
 export function BacklogBoard({
   projectKey,
@@ -376,32 +403,8 @@ export function BacklogBoard({
     [issueTypes],
   )
 
-  // 카드 레이아웃 구성 (부채 177 Task 32 · J18) — 카드 2층(J19)이 그릴 필드 목록이다.
-  //
-  // ★**보드 단건 조회에서 온다.** 백로그 조회 응답(`BacklogView`)에는 설정이 없고, 보드 목록
-  //   (`BoardSummary`)에도 없다 — 설정은 보드 **단건** 응답이 함께 싣는다(Task 31 · N1).
-  // ★조회를 이 컴포넌트가 갖는 이유는 바로 위 `useIssueTypes` 와 같다 — 카드가 그리는 데
-  //   필요한 **표시용 메타**를 칸마다가 아니라 여기서 1회만 읽어 두 칸에 공유한다.
-  // ★`boardId` 가 `undefined` 면 훅이 조회를 걸지 않는다(`useBoard` 의 `enabled`). 그때 기본
-  //   보드를 고르는 것은 **서버**이고 프론트는 고르지 않으므로(이 파일의 `boardId` KDoc),
-  //   구성 없이 그린다 — 카드 2층이 안 생길 뿐 나머지는 그대로다.
-  // ★캐시 키가 보드 화면의 것과 같은 `['board', boardId, …]` 라 두 화면을 오갈 때
-  //   `staleTime`(30초) 안에서는 재조회가 생략된다.
-  // ★★**백로그에서는 커스텀 필드(`cf_*`)가 아직 뜰 수 없다 — 알려진 한계다.**
-  //   백로그 조회 응답(`BacklogIssueResponse`)에 `customFields` 키가 아예 없다(백엔드가
-  //   `BoardCardResponse` 만 넓혔다 · 부채 177 Task 26). 그래서 구성에 커스텀 필드를 골라도
-  //   그 칸은 **그 카드에서 생략된다**(E4 와 같은 그림). 표준 필드 6종은 정상 동작한다.
-  //   여기서 값을 지어내 채우지 마라 — 서버 계약이 넓어져야 닫히는 **후속 별건**이다.
+  // 카드 레이아웃 구성 — 사유 전문은 이 함수 KDoc 「카드 레이아웃 배선」 절 (부채 177 Task 32 · J18).
   // ★조기 반환(`isLoading`)보다 **위**에 있어야 렌더마다 훅 개수가 같다.
-  //
-  // ## 여기서부터 prop 이 네 겹을 지난다
-  //   `BacklogBoard`(여기) → `BacklogStack` → `SprintColumn`·`BacklogColumn` → `BacklogCard`
-  //     → `CardExtraFields`(`BACKLOG` 스코프만 읽어 2층을 그린다)
-  // 겹이 깊다고 여기만 context 로 바꾸지 않는다 — 같은 깊이를 지나는 축이 이미 넷이고
-  // (`assigneeNames`·`issueTypesByKey`·`boardId`·권한), 하나만 규칙이 달라지면 다음 사람이
-  // 매번 「이 축은 어느 쪽인가」를 확인해야 한다. 사유 전문은 `board/KanbanBoard.tsx` 의
-  // 「카드 레이아웃 배선」 절에 있다(보드 체인이 같은 결정을 공유한다).
-  // ★중간 겹은 값을 **해석하지 않는다.** 스코프 판정은 카드 한 곳에서만 한다(Task 20).
   const { data: boardDetail } = useBoard(boardId)
   const cardLayout = boardDetail?.cardLayout
 
@@ -532,25 +535,15 @@ export function BacklogBoard({
         />
       </DndContext>
 
-      {/* 이슈 생성 모달 — 화면당 1개. 어느 칸이 눌렀는지는 `createTarget` 이 쥔다 (FR-15).
-          프로젝트는 명시로 넘긴다 — 전역 활성 프로젝트를 경유하면 목록 대조 가드가
-          아직 통과하지 못한 순간 다른 프로젝트가 채워진 채로 열린다 (스펙 §8 D-A). */}
-      <CreateIssueDialog
-        open={createIssue.isOpen}
-        // 닫힘은 **가시성만** 끈다 — 대상은 훅이 `onCreated` 에서 읽은 뒤에 비운다.
-        onOpenChange={(open) => { if (!open) createIssue.close() }}
-        initialProjectKey={projectKey}
-        onCreated={createIssue.onCreated}
-      />
-
-      <SprintDialogHost
-        target={sprintDialog}
+      <BacklogDialogs
         projectKey={projectKey}
         boardId={boardId}
+        createIssue={createIssue}
+        sprintDialog={sprintDialog}
         sprints={sprints}
         truncated={truncated}
         canReorderIssue={canReorderIssue}
-        onOpenChange={handleSprintDialogOpenChange}
+        onSprintDialogOpenChange={handleSprintDialogOpenChange}
       />
     </div>
   )
@@ -883,5 +876,71 @@ function SprintDialogHost({
       // CREATE 만 가진 사용자는 이관이 전건 403 이므로 그 UI 를 게이팅한다 (FR-12).
       canReorderIssue={canReorderIssue}
     />
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BacklogDialogs — 화면당 1개인 모달 두 개 (이슈 생성 · 스프린트 시작/완료)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** {@link BacklogDialogs} Props */
+interface BacklogDialogsProps {
+  /** mutation·invalidate 대상 프로젝트 키. 전역 활성 프로젝트를 경유하지 않는다 */
+  readonly projectKey: string
+  /** 화면이 보고 있는 보드 UUID (FR-BD-04). 두 스프린트 다이얼로그가 백로그 캐시를 이 키로 읽는다 */
+  readonly boardId: string | undefined
+  /** 이슈 생성 흐름 — 열림 여부와 대상은 훅이 쥔다 (FR-15) */
+  readonly createIssue: BacklogCreateIssue
+  /** 열려 있는 스프린트 다이얼로그. `null` 이면 아무것도 마운트하지 않는다 */
+  readonly sprintDialog: SprintDialogTarget | null
+  /** 현재 뷰의 스프린트 전량 — 대상 조회와 이관 후보 목록에 함께 쓴다 */
+  readonly sprints: readonly SprintWithIssues[]
+  /** 백로그 응답의 `truncated`. 완료 제출 차단 조건이다 (FR-13 · E15) */
+  readonly truncated: boolean
+  /** 이슈 재정렬·할당·해제 권한(UPDATE) (FR-12) */
+  readonly canReorderIssue: boolean
+  /** 스프린트 다이얼로그 닫힘 요청 */
+  readonly onSprintDialogOpenChange: (open: boolean) => void
+}
+
+/**
+ * 백로그 화면의 모달 두 개를 한 자리에 모은다.
+ *
+ * props 는 **판정 결과만** 받고 스스로 판정하지 않는다 — 어느 칸이 열었는지도, 어느 스프린트가
+ * 대상인지도 부모가 이미 정해서 넘긴다. 여기서 다시 고르면 두 번째 진실이 된다.
+ */
+function BacklogDialogs({
+  projectKey,
+  boardId,
+  createIssue,
+  sprintDialog,
+  sprints,
+  truncated,
+  canReorderIssue,
+  onSprintDialogOpenChange,
+}: BacklogDialogsProps): JSX.Element {
+  return (
+    <>
+      {/* 이슈 생성 모달 — 화면당 1개. 어느 칸이 눌렀는지는 `createTarget` 이 쥔다 (FR-15).
+          프로젝트는 명시로 넘긴다 — 전역 활성 프로젝트를 경유하면 목록 대조 가드가
+          아직 통과하지 못한 순간 다른 프로젝트가 채워진 채로 열린다 (스펙 §8 D-A). */}
+      <CreateIssueDialog
+        open={createIssue.isOpen}
+        // 닫힘은 **가시성만** 끈다 — 대상은 훅이 `onCreated` 에서 읽은 뒤에 비운다.
+        onOpenChange={(open) => { if (!open) createIssue.close() }}
+        initialProjectKey={projectKey}
+        onCreated={createIssue.onCreated}
+      />
+
+      <SprintDialogHost
+        target={sprintDialog}
+        projectKey={projectKey}
+        boardId={boardId}
+        sprints={sprints}
+        truncated={truncated}
+        canReorderIssue={canReorderIssue}
+        onOpenChange={onSprintDialogOpenChange}
+      />
+    </>
   )
 }
