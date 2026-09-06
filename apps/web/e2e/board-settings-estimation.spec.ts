@@ -21,7 +21,14 @@
 //   에서 **아무것도 파생하지 않는다.** 즉 화면에서 근무일을 아무리 바꿔도 차트는 바뀔 수가 없다.
 //   `BurndownChart` 도 클라이언트 축소를 하지 않는다(응답 `points` 를 그대로 그린다) —
 //   좁히는 주체는 백엔드 `BurndownCalculator` 하나뿐이다.
-//   ★**이 RED 커밋은 그 예상을 실측한다** — S5·S6 을 마커 없이 두고 실제 실패 원문을 받는다.
+//   ★**실측했다**(2026-09-06 · RED 커밋 `c13a4f2cc`). 근무일 월~금 + 비근무일 `2026-06-03` 을
+//   저장한 뒤에도, 타임존을 `Asia/Seoul` → `America/New_York` 로 바꾼 뒤에도 x축은
+//   `["06/01","06/02","06/03","06/04","06/05"]` 로 **바이트 단위로 같았다.**
+//   그래서 S5·S6 은 `test.fail()` 로 **깨진 채 박아 둔다.** 목이 파생하도록 배선되는 날
+//   이 두 건이 「예상외 통과」로 빨간불이 되어 마커를 걷어내게 만든다 — `test.skip` 은 그 날이
+//   와도 침묵하므로 쓰지 않는다.
+//   ★그 대신 **S7 을 초록으로 세운다.** `test.fail` 안에서는 셀렉터가 썩어도 조용히 통과하므로,
+//   S5·S6 이 밟는 SPA 경로와 recharts x축 셀렉터는 초록 한 건이 따로 지킨다.
 //   ⑨·⑩ 의 실제 판정자는 백엔드다 — `BurndownWorkingDaysTest`(Task 11) ·
 //   `BurndownTimezoneTest` · `SprintBurndownIntegrationTest`(Task 12).
 //
@@ -45,8 +52,8 @@
 //   S3. 작업일 저장 (J38·J39) — 근무일·비근무일을 저장하면 **서버에서 다시 읽힌 값**이 화면에 선다.
 //   S4. ★타임존만 바꾼다 (J40) — 근무일·비근무일은 손대지 않고 서울→뉴욕. 타임존이 바뀌고
 //                              **다른 두 축은 살아남으며**, 옆 보드(칸반)는 여전히 미설정이다.
-//   S5. 근무일 저장 → 번다운 x축에서 비근무일이 빠진다.
-//   S6. 타임존만 바꾸면 번다운 x축이 달라진다.
+//   S5. (test.fail) 근무일 저장 → 번다운 x축에서 비근무일이 빠진다.
+//   S6. (test.fail) 타임존만 바꾸면 번다운 x축이 달라진다.
 //   S7. 경로 계약        — S5·S6 이 밟는 SPA 경로와 recharts x축 셀렉터가 살아 있는지 **초록으로** 잰다.
 import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
@@ -195,8 +202,10 @@ function saveWorkingDays(page: Page): Locator {
 /**
  * 지역 → 타임존 순으로 고른다 (J40 — *"select a Region, then Timezone from the dropdowns"*).
  *
- * 🛑 트리거와 팝오버 검색 입력이 **둘 다 role=combobox** 다(`지역` ↔ `지역 검색`).
- *    부분 일치면 두 개가 잡혀 즉사하므로 `exact: true` 가 필수다.
+ * 🛑 트리거와 팝오버 검색 입력이 **둘 다 role=combobox** 다. 트리거만 `aria-label` 을 갖고
+ *    cmdk 검색 입력은 **placeholder 뿐**이라(2026-09-06 실측 — `role=combobox aria-label=null
+ *    placeholder=지역 검색`) `getByRole(name)` 으로는 검색 입력이 잡히지 않는다.
+ *    트리거는 `exact: true` 로, 검색 입력은 `getByPlaceholder` 로 가른다.
  *
  * @param page Playwright 페이지
  * @param region 지역 — `Asia` 처럼 IANA 앞머리
@@ -205,13 +214,16 @@ function saveWorkingDays(page: Page): Locator {
 async function pickTimezone(page: Page, region: string, zoneLabel: string): Promise<void> {
   const regionTrigger = page.getByRole('combobox', { name: workingDaysLabels.regionLabel, exact: true })
   await regionTrigger.click()
+  await expect(page.getByPlaceholder(workingDaysLabels.regionSearch)).toBeVisible()
   await page.getByRole('option', { name: region, exact: true }).click()
   await expect(regionTrigger).toContainText(region)
 
   const zoneTrigger = page.getByRole('combobox', { name: workingDaysLabels.timezoneLabel, exact: true })
   await zoneTrigger.click()
   // 지역 하나에 타임존이 수십~수백 개다 — 검색으로 좁힌 뒤 고른다.
-  await page.getByRole('combobox', { name: workingDaysLabels.timezoneSearch, exact: true }).fill(zoneLabel)
+  const zoneSearch = page.getByPlaceholder(workingDaysLabels.timezoneSearch)
+  await expect(zoneSearch).toBeVisible()
+  await zoneSearch.fill(zoneLabel)
   await page.getByRole('option', { name: zoneLabel, exact: true }).click()
   await expect(zoneTrigger).toContainText(zoneLabel)
 }
@@ -248,9 +260,21 @@ async function goToBurndownViaSpa(page: Page): Promise<void> {
  * ★recharts 내부 클래스에 기대는 **이 저장소의 유일한 자리**다. 형제 spec
  * (`sprint-burndown.spec.ts`)은 컨테이너 가시성까지만 재는데, 「x축이 **좁아진다**」는
  * 축 자체를 읽지 않고는 잴 수 없다. 셀렉터가 썩으면 S7 이 초록에서 죽는다.
+ *
+ * 🛑 `.recharts-xAxis` 의 **자손이 아니다.** recharts 3.8.1 은 tick 글자를 축과 전혀 다른
+ *    z-index 레이어(`g.recharts-zIndex-layer_2000`)의 `.recharts-xAxis-tick-labels` 아래에
+ *    그린다 — 2026-09-06 실측 조상 사슬은
+ *    `text.recharts-cartesian-axis-tick-value < g.recharts-cartesian-axis-tick-label
+ *     < g.recharts-xAxis-tick-labels < g.recharts-zIndex-layer_2000 < svg.recharts-surface` 다.
+ *    `.recharts-xAxis`·`.recharts-xAxis-ticks` 아래로 찾으면 **0건**이다(둘 다 실측 red).
+ *    y축은 `.recharts-yAxis-tick-labels` 라 이 접두가 두 축을 가른다(안 가르면 `0m`·`2h 30m`
+ *    같은 시간 tick 이 섞인다). 한 페이지에 recharts surface 가 여럿이므로 차트
+ *    컨테이너(`role="img"`)로 먼저 좁힌다.
  */
 async function burndownAxisTicks(page: Page): Promise<string[]> {
-  const ticks = page.locator('.recharts-xAxis .recharts-cartesian-axis-tick-value')
+  const ticks = page
+    .getByRole('img', { name: burndownLabels.chart.ariaLabel })
+    .locator('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')
   await expect(ticks.first()).toBeVisible()
   return (await ticks.allTextContents()).map((text) => text.trim())
 }
@@ -433,9 +457,12 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
   // When   같은 프로젝트의 스프린트 번다운을 연다
   // Then   x축에서 2026-06-03(=`06/03`)이 빠져 있다 (J41)
   //
-  // ★MSW 번다운 핸들러가 보드 작업일 설정에서 파생하지 않아 red 일 것으로 본다 — 실측한다.
+  // ★MSW 번다운 핸들러가 보드 작업일 설정에서 파생하지 않아 **구조적으로 red 다**(파일 머리말 ★★).
+  //   실측 원문 — `Received array: ["06/01", "06/02", "06/03", "06/04", "06/05"]`.
   // ───────────────────────────────────────────────────────────────────────────
   test('S5 근무일을 저장하면 번다운 x축에서 비근무일이 빠진다', async ({ page }) => {
+    test.fail(true, 'MSW burndown-handlers 가 보드 작업일 설정에서 파생하지 않는다 (파일 머리말 ★★)')
+
     await loginAsAlice(page)
     await page.goto(BOARD_URL)
     await openBoardSettings(page)
@@ -454,8 +481,11 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
   // Then   번다운 x축이 달라진다 (J40 · 리뷰가 critical gap 으로 지목한 침묵 실패)
   //
   // ★설정은 저장되는데 차트가 안 바뀌면 아무도 모른다 — 이 단언이 그 침묵을 깬다.
+  //   실측 원문 — 서울과 뉴욕의 x축이 둘 다 `["06/01","06/02","06/03","06/04","06/05"]` 였다.
   // ───────────────────────────────────────────────────────────────────────────
   test('S6 타임존만 서울→뉴욕으로 바꾸면 번다운 x축이 달라진다', async ({ page }) => {
+    test.fail(true, 'MSW burndown-handlers 가 보드 타임존에서 파생하지 않는다 (파일 머리말 ★★)')
+
     await loginAsAlice(page)
     await page.goto(BOARD_URL)
     await openBoardSettings(page)
