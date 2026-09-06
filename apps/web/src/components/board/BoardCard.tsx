@@ -65,10 +65,12 @@ const CUSTOM_FIELD_PREFIX = 'cf_'
  * ({@link isStandardExtraField})은 `hasOwnProperty` 로 **같은 객체**를 본다. 두 벌로 적으면
  * 한쪽만 늘어난 날 「고를 수는 있는데 카드엔 안 뜨는」 필드가 조용히 생긴다.
  *
- * ★**아직 닫히지 않은 축이 하나 있다.** 후보를 나열하는 `settings/CardLayoutPanel.STANDARD_FIELDS`
- * 와 이 카탈로그는 **서로를 검사하지 않는다** — 패널에만 필드를 더하면 사용자가 고를 수는 있지만
- * 카드에는 아무것도 안 뜬다(값이 없어 생략된 것과 화면상 구분되지 않는다). 두 목록을 한 정본으로
- * 모으는 것은 이 task 의 허용 파일 밖이라 후속으로 남긴다.
+ * ★★**이 카탈로그를 늘리거나 줄이면 나머지 두 곳도 같은 커밋에서 고쳐야 한다.** 축이 셋이다 —
+ * 후보를 나열하는 `settings/CardLayoutPanel.STANDARD_FIELDS`, 저장을 허용하는 백엔드
+ * `CardLayoutSettingsService.CardLayoutFieldKey`, 그리고 실제로 그리는 이 객체.
+ * 한쪽만 늘면 「고를 수는 있는데 카드엔 안 뜨는」 필드가 생기고, 그것은 값이 없어 생략된 것과
+ * 화면에서 구분되지 않는다. 셋의 **양방향 차집합을 0 으로 강제**하는 판별식이 있다 —
+ * `scripts/workflow/card-field-catalog-parity.test.ts` (`.husky/pre-push` 가 조건 없이 돌린다).
  *
  * 문구를 `i18n/card-labels.ts` 가 아니라 이 파일이 소유하는 이유는 부채 177 Task 20 의
  * 허용 파일이 셋뿐이기 때문이다 — `CardLayoutPanel` 이 같은 이유로 쓴 관용구다.

@@ -21,6 +21,12 @@ const MAX_FIELDS_PER_VIEW = 3
  *
  * ★**요약(`summary`)은 없다.** J19 의 1층이라 항상 최상단이고 토글 대상이 아니다(R2) —
  * 여기 넣으면 사용자가 요약을 끌 수 있게 되고, 서버는 그 키를 400 으로 거절한다.
+ *
+ * ★★**이 목록을 늘리거나 줄이면 나머지 두 곳도 같은 커밋에서 고쳐야 한다.** 축이 셋이다 —
+ * 저장을 허용하는 백엔드 `CardLayoutFieldKey`, 후보를 그리는 이 목록, 실제로 카드에 그리는
+ * `board/BoardCard.EXTRA_STANDARD_FIELDS`. 여기만 늘리면 사용자가 고를 수는 있는데 카드에는
+ * 아무것도 안 뜬다(값이 없어 생략된 것과 화면상 구분되지 않는다). 셋의 **양방향 차집합을 0 으로
+ * 강제**하는 판별식이 있다 — `scripts/workflow/card-field-catalog-parity.test.ts`.
  */
 const STANDARD_FIELDS = [
   { key: 'EPIC', label: '에픽' },
