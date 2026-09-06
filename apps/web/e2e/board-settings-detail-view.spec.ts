@@ -12,6 +12,21 @@
 //   그 때문이다 — 한 test 에 합치면 두 방향(모달만 배선 / 사이드패널만 배선)이 같은 test 를
 //   죽여 반쪽 봉합을 가르지 못한다.
 //
+// ## 뮤테이션 표 — 각 축이 무엇과 무엇을 가르나 (실측 2026-09-06 · 매번 전량 실행 후 원복)
+//
+// | 뮤테이션 | 죽는 테스트 | 가르는 것 |
+// |---|---|---|
+// | ① **모달만 배선** — `useIssueDetailViewFields` 가 `presentation === 'modal'` 일 때만 구성을 낸다 | **D2 · D3** (D1 은 산다) | 한쪽 표현에만 반영 ↔ 두 표현이 같은 구성 (R7c) |
+// | ② **사이드패널만 배선** — 위의 반대 | **D1 · D3** (D2 는 산다) | 반쪽 봉합 ↔ 두 표현이 같은 구성 |
+// | ③ **순서 무시·집합만** — `toDetailViewRows` 가 라벨순으로 `sort` | **D1 · D2 · D3** | `containsAll` 수준의 단언 ↔ 순서까지 잰다 (J48) |
+//
+// ★**①②는 두 방향을 다 걸어야 한다.** 한 방향만 걸면 반쪽 봉합을 가르지 못한다 — 죽는 집합이
+//   서로 달라야(②는 D1·D3, ①은 D2·D3) 실패 목록만 보고 「어느 쪽을 안 배선했는지」가 읽힌다.
+//   그래서 D1 과 D2 를 한 test 로 합치지 않는다.
+// ★**③이 셋을 다 죽이는 것은 단언이 넓어서가 아니다** — 시드 순서 자체를 정렬 결과와 다르게
+//   골랐기 때문이다(아래 [SEEDED] 주석). D3 은 그중 **드래그가 만든 순서**를 재는 유일한 축이라
+//   ①②③ 어디로도 대체되지 않는다.
+//
 // 설계 결정.
 //   - **드래그를 키보드로 한다** (`board-settings.spec.ts` 가 세운 관례). Space 로 집고 화살표로
 //     옮기고 Space 로 놓는다 — 포인터 흉내보다 안정적이고, 동시에 `KeyboardSensor` 가 빠지면
@@ -197,16 +212,35 @@ async function backToBoard(page: Page): Promise<void> {
   await expect(targetCard(page)).toBeVisible()
 }
 
-/** 보드 카드를 눌러 상세를 **모달**로 연다(표시 방식 기본값 · J1). */
-async function openModal(page: Page): Promise<Locator> {
-  await targetCard(page).locator('a[href^="/issues/"]').first().click()
-  const modal = page.getByRole('dialog', { name: `이슈 상세 ${TARGET_KEY}`, exact: true })
-  await expect(modal).toBeVisible()
-  return modal
-}
+/** 상세를 여는 두 길. 값은 `issueDetailModalStore` 의 표시 방식과 같다(J1). */
+type Presentation = 'modal' | 'sidePanel'
 
-/** 열려 있는 모달의 `⋯` → 「사이드바로 열기」 → 같은 이슈가 **사이드패널**로 바뀐다. */
-async function switchToSidePanel(page: Page, modal: Locator): Promise<Locator> {
+/**
+ * 상세를 그 표현으로 열고 **그 껍데기**를 돌려준다 — 이 spec 이 상세를 여는 **유일한 자리**다.
+ *
+ * ### 왜 한 곳이어야 하나
+ * 진입은 언제나 모달이다 — 표시 방식 기본값이 모달이고(J1), 사이드패널로 가는 **유일한 조작**이
+ * 그 모달의 `⋯` 다(`#455`). 여는 절차가 두 벌로 갈리면 한쪽만 손보게 되고, 그것이 곧 이 spec 이
+ * 막으려는 결함(한쪽만 반영되는 회귀)과 **같은 모양**이다. 셀렉터가 바뀌는 날 고칠 자리도 여기다.
+ *
+ * @param presentation 열 표현.
+ * @param opened 이미 열려 있는 모달. 주면 카드 클릭을 건너뛰고 그 자리에서 갈아탄다 —
+ *   한 번 연 상세를 두 표현으로 잇달아 보는 D3 이 쓴다(모달이 떠 있으면 카드를 누를 수 없다).
+ * @returns 그 표현의 껍데기 Locator. 안쪽 단언은 이 스코프 밑에서만 한다.
+ */
+async function openDetail(
+  page: Page,
+  presentation: Presentation,
+  opened?: Locator,
+): Promise<Locator> {
+  let modal = opened
+  if (modal === undefined) {
+    await targetCard(page).locator('a[href^="/issues/"]').first().click()
+    modal = page.getByRole('dialog', { name: `이슈 상세 ${TARGET_KEY}`, exact: true })
+    await expect(modal).toBeVisible()
+  }
+  if (presentation === 'modal') return modal
+
   await modal
     .getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel, exact: true })
     .click()
@@ -253,9 +287,8 @@ test.describe('보드 설정 — 상세 보기 (부채 177 · J46~J48)', () => {
     await seedDetailView(page, SEEDED)
 
     await backToBoard(page)
-    const modal = await openModal(page)
 
-    await expectDetailFields(modal, SEEDED)
+    await expectDetailFields(await openDetail(page, 'modal'), SEEDED)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -270,10 +303,8 @@ test.describe('보드 설정 — 상세 보기 (부채 177 · J46~J48)', () => {
     await seedDetailView(page, SEEDED)
 
     await backToBoard(page)
-    const modal = await openModal(page)
-    const panel = await switchToSidePanel(page, modal)
 
-    await expectDetailFields(panel, SEEDED)
+    await expectDetailFields(await openDetail(page, 'sidePanel'), SEEDED)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -325,10 +356,10 @@ test.describe('보드 설정 — 상세 보기 (부채 177 · J46~J48)', () => {
     await expect(reorderHandle(page, 'GENERAL', '우선순위')).toBeEnabled()
 
     await backToBoard(page)
-    const modal = await openModal(page)
+    const modal = await openDetail(page, 'modal')
     await expectDetailFields(modal, after)
 
-    const panel = await switchToSidePanel(page, modal)
-    await expectDetailFields(panel, after)
+    // 같은 상세를 그 자리에서 갈아탄다 — 다시 열지 않는 것이 「같은 이슈」임을 못 박는다.
+    await expectDetailFields(await openDetail(page, 'sidePanel', modal), after)
   })
 })
