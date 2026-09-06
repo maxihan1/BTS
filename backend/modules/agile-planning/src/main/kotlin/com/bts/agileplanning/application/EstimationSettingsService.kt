@@ -55,8 +55,14 @@ class TimeTrackingInvalidException :
  * 시간 추적 방식 (R4 · J36).
  *
  * `Remaining estimate and time spent` 는 *"tracks progress by subtracting the value from the
- * **Time spent** field from the original estimate"* 다(J36). [NONE] 이 기본값이며
- * `boards.time_tracking` 의 `DEFAULT 'NONE'`(V509) 과 같은 값이다 — 배포 시점 백필이 무변경이다.
+ * **Time spent** field from the original estimate"* 다(J36). [NONE] 이 기본값이고
+ * `boards.time_tracking` 의 `DEFAULT 'NONE'`(V509) 과 같은 값이다.
+ *
+ * ★**「백필이 무변경이다」는 이제 사실이 아니다**(부채 177 task-35). V509 를 쓸 때는 이 칸을 읽는
+ * 코드가 없어서 어떤 값을 넣어도 관측되는 변화가 없었다. task-35 가 번다운 세로축을 이 값으로
+ * 게이팅하면서 [NONE] 은 **개수 축**을 뜻하게 됐고, 기본값이 곧 기존 보드 전량의 값이므로 배포
+ * 시점에 그 차트들이 시간 → 개수로 바뀐다. 그 결정과 근거의 정본은
+ * [SprintBurndownService.resolveUnit] KDoc 이다.
  *
  * ★**자리 주의.** 값 자체는 도메인 개념이라 [BoardType] 옆(`domain/`)이 제자리다. 이 task 의
  * 허용 파일이 서비스·컨트롤러·테스트 셋뿐이라 여기 둔다 — 도메인으로 옮기는 것은 별도 정리 대상이다.
@@ -83,6 +89,22 @@ enum class TimeTracking {
         fun from(raw: String): TimeTracking =
             entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
                 ?: throw TimeTrackingInvalidException()
+
+        /**
+         * **저장된 값**을 읽을 때 쓰는 관대한 파서 (부채 177 task-35).
+         *
+         * [from] 과 갈리는 지점은 「읽기는 400 을 낼 자리가 아니다」이다. 번다운 조회가 설정값 하나
+         * 때문에 통째로 죽으면 사용자는 차트를 못 보고, 그 값은 이미 V509 의
+         * `boards_time_tracking_allowed` CHECK 가 두 값으로 닫아 두었다 — 여기 폴백은 도달하지 않는
+         * 마지막 그물이다.
+         *
+         * @param raw `boards.time_tracking` 값. **null 은 「보드 행을 못 읽었다」**는 뜻이고
+         *   (`BoardSettingsRepository.findTimeTracking` 의 계약), 그때도 DB 기본값과 같은 [NONE] 이다 —
+         *   여기서 다른 값을 고르면 저장된 적 없는 세 번째 동작이 생긴다.
+         * @return 읽어낸 값. 알 수 없는 값이면 DB 기본값과 같은 [NONE].
+         */
+        fun fromStored(raw: String?): TimeTracking =
+            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: NONE
     }
 }
 

@@ -66,6 +66,9 @@ private const val WORKLOG_SECONDS = 21_600L
  * | ① 일 귀속 | worklog 가 **보드 타임존** 날짜 칸에 들어간다 | 포트는 UTC [Instant] 원본만 나른다(Task 30) — 칸 배치는 이쪽 책임이다 |
  * | ② 근무일 배선 | 보드 설정의 근무일이 **응답 point 수**를 바꾼다 | 계산기의 근무일 축이 프로덕션 호출자 0 이었다 |
  *
+ * ★이 파일은 `time_tracking` 을 `REMAINING_AND_SPENT` 로 고정해 **시간 축만** 잰다(task-35).
+ * 세로축 게이팅의 판정은 [BurndownIssueCountAxisTest] 가 진다.
+ *
  * ★②가 이 파일의 숨은 핵심이다. Task 11 이 계산기에 근무일 축을 넣었지만 그 인자를 넘기는
  * 프로덕션 코드가 없어 **설정은 저장되는데 차트가 안 바뀌는** 상태였다(스펙 G2 가 피하려던 형태).
  * 계산기 단위테스트([com.bts.agileplanning.domain.burndown.BurndownWorkingDaysTest])는 계산기를
@@ -308,10 +311,19 @@ class BurndownTimezoneTest {
         val burndownPort =
             mockk<SprintBurndownLookupPort>().also {
                 every { it.fetchBurndownSource(any(), any(), any()) } returns
-                    BurndownSource(totalOriginalEstimateSeconds = SCOPE_SECONDS, worklogEntries = entries)
+                    BurndownSource(
+                        totalOriginalEstimateSeconds = SCOPE_SECONDS,
+                        worklogEntries = entries,
+                        // 이 파일은 시간 축만 잰다 — 개수 축 입력은 판정에 쓰이지 않는다.
+                        visibleIssueCount = 1L,
+                        issueCompletions = emptyList(),
+                    )
             }
         val settingsRepository =
             mockk<BoardSettingsRepository>().also {
+                // ★시간 축으로 고정한다. 기본값 'NONE' 은 이제 **개수 축**이라(task-35), 이 값을 빼면
+                //   이 파일의 판정이 전부 초가 아니라 개수를 재게 된다.
+                every { it.findTimeTracking(boardId) } returns "REMAINING_AND_SPENT"
                 every { it.findWorkingDays(boardId) } returns
                     BoardWorkingDays(
                         standardDays = standardDays,

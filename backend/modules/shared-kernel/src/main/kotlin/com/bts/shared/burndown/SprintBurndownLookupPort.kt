@@ -26,10 +26,25 @@ import java.util.UUID
  * agile-planning ──(port)──▶ shared-kernel ◀──(impl)──  issue-tracking
  * ```
  *
+ * ### 세로축이 둘이다 — 시간과 개수 (부채 177 task-35)
+ *
+ * 보드 「추정」 탭의 `time_tracking` 이 번다운 세로축의 단위를 정한다(J36).
+ * `REMAINING_AND_SPENT` 면 시간(초)이고 `NONE` 이면 **이슈 개수**다.
+ * 그래서 이 포트는 두 축의 원천을 **함께** 나른다.
+ *
+ * | 축 | 스코프 | 하루치 진행 |
+ * |---|---|---|
+ * | 시간 | [BurndownSource.totalOriginalEstimateSeconds] | [BurndownSource.worklogEntries] |
+ * | 개수 | [BurndownSource.visibleIssueCount] | [BurndownSource.issueCompletions] |
+ *
+ * ★**어느 축을 쓸지는 이 포트가 정하지 않는다.** 보드 설정은 agile-planning 의 지식이고,
+ * 그것을 인자로 받으면 issue-tracking 이 남의 BC 설정을 알아야 한다(timezone 을 넘기지 않은 것과
+ * 같은 판단 — 아래 「timezone 책임 경계」). 소비측이 둘 중 하나를 고른다.
+ *
  * ### fail-safe default 구현
  *
  * issue-tracking adapter 가 등록되지 않은 환경(테스트 stub, 단계적 배포)에서도
- * 스코프 0 · worklog 없음을 반환해 번다운 계산이 예외 없이 안전하게 진행된다.
+ * 스코프 0 · worklog 없음 · 이슈 0개 · 완료 없음을 반환해 번다운 계산이 예외 없이 안전하게 진행된다.
  * 데이터 조회 실패는 보안 판단이 아니므로 fail-safe 방향이 적절하다
  * (권한 resolver 의 fail-closed 와 다른 방향 — IssuePermissionResolver 참조).
  *
@@ -74,13 +89,20 @@ interface SprintBurndownLookupPort {
      *   (jOOQ 빈 `IN` 절 함정 방지) — 이 경우도 스코프 0 · worklog 없음으로 귀결된다.
      * @param projectKey 이슈들이 속한 프로젝트 키. 보안 술어의 프로젝트 스코프 판정에 사용된다.
      * @param viewerUserId 번다운을 조회하는 viewer UUID. 이슈별 가시성 필터 기준.
-     * @return [BurndownSource]. adapter 부재 또는 조회 불가 시 스코프 0 · worklog 없음(fail-safe).
+     * @return [BurndownSource]. adapter 부재 또는 조회 불가 시 두 축 모두 빈 값이다(fail-safe) —
+     *   스코프 0 · worklog 없음 · 이슈 0개 · 완료 없음.
      */
     fun fetchBurndownSource(
         issueKeys: Set<String>,
         projectKey: String,
         viewerUserId: UUID,
-    ): BurndownSource = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
+    ): BurndownSource =
+        BurndownSource(
+            totalOriginalEstimateSeconds = 0,
+            worklogEntries = emptyList(),
+            visibleIssueCount = 0,
+            issueCompletions = emptyList(),
+        )
 }
 
 /**
@@ -90,12 +112,50 @@ interface SprintBurndownLookupPort {
  * 총 스코프(추정 시간 합계)와 worklog 기여 목록을 담는다.
  *
  * @property totalOriginalEstimateSeconds 이슈들의 `original_estimate_seconds` 합계(초).
- *   NULL 추정치는 0 으로 간주해 합산한다.
+ *   NULL 추정치는 0 으로 간주해 합산한다. **시간 축의 스코프**다.
  * @property worklogEntries worklog 1건당 1항목인 기여 목록. 구현체는 사전 집계하지 않는다.
+ *   **시간 축의 하루치 진행**이다.
+ * @property visibleIssueCount viewer 가 볼 수 있는 미삭제 이슈의 개수. **개수 축의 스코프**다.
+ *   ★스프린트의 실제 이슈 수가 아니라 **가시 이슈 수**다 — 이름이 그 사실을 말하게 둔다.
+ *   기밀 이슈까지 세면 프로젝트 BROWSE 만 가진 viewer 가 「몇 개가 숨겨져 있는가」를 개수 차로
+ *   역산할 수 있고, 그것이 [fetchBurndownSource] 가 estimate/worklog 에서 막는 것과 같은 누출이다.
+ * @property issueCompletions 완료된 이슈 1건당 1항목인 완료 시각 목록. **개수 축의 하루치 진행**이다.
+ *   구현체는 날짜별로 사전 집계하지 않는다(worklog 와 같은 이유 — [WorklogContribution] KDoc).
  */
 data class BurndownSource(
     val totalOriginalEstimateSeconds: Long,
     val worklogEntries: List<WorklogContribution>,
+    val visibleIssueCount: Long,
+    val issueCompletions: List<IssueCompletion>,
+)
+
+/**
+ * 완료된 이슈 1건의 번다운 기여 VO — 개수 축(부채 177 task-35).
+ *
+ * [BurndownSource.issueCompletions] 의 원소. **한 이슈당 최대 한 항목**이다.
+ *
+ * ### 무엇을 완료로 보는가
+ *
+ * 「**지금** DONE 카테고리인 이슈」이고, [completedAt] 은 **마지막** DONE 전환 시각이다.
+ * - 지금을 보는 이유. 완료 후 되돌린 이슈를 세면 차트의 마지막 점이 보드의 실제 잔여와 어긋난다 —
+ *   사람들이 번다운에서 읽는 값이 그 마지막 점이다.
+ * - 마지막 전환인 이유. 되돌렸다 다시 완료한 이슈의 완료 시각은 첫 완료가 아니다.
+ * - 전환 이력이 없는 DONE 이슈는 **완료 시각을 알 수 없어** 이 목록에 없다(스코프에는 남는다).
+ *   `CycleTimeService` 가 같은 규율(전환 기반 신뢰)을 이미 쓴다. 그 이슈는 잔여가 줄지 않는 것으로
+ *   그려지며 이것은 문서화된 한계다.
+ *
+ * ### 날짜가 아니라 시각이다
+ *
+ * [WorklogContribution.startedAt] 과 같은 이유다 — `23:30Z` 는 UTC 로는 오늘이지만 `Asia/Seoul` 에서는
+ * 내일이고, BC 경계 앞에서 날짜로 뭉개면 소비측이 되돌릴 수 없다(비단사). 어느 로컬 날짜 칸에 놓을지는
+ * 보드 timezone 을 아는 소비측(agile-planning)이 정한다.
+ *
+ * @property issueKey 완료된 이슈 키. 같은 이슈가 두 번 나오지 않는다.
+ * @property completedAt 마지막 DONE 전환 시각. UTC 기준 [Instant] 원본.
+ */
+data class IssueCompletion(
+    val issueKey: String,
+    val completedAt: Instant,
 )
 
 /**

@@ -6,6 +6,7 @@ import com.bts.agileplanning.AgilePlanningTestBootApplication
 import com.bts.agileplanning.AgilePlanningTestcontainersConfig
 import com.bts.shared.board.BoardIssueLookupPort
 import com.bts.shared.burndown.BurndownSource
+import com.bts.shared.burndown.IssueCompletion
 import com.bts.shared.burndown.SprintBurndownLookupPort
 import com.bts.shared.burndown.WorklogContribution
 import com.bts.shared.permission.IssuePermission
@@ -28,6 +29,7 @@ import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
@@ -72,6 +74,9 @@ import java.util.UUID
  * - 200 해피패스: 3일 스프린트(scope=57,600초=16h)에 이슈 3개 할당, 2일차(2020-01-02)에 worklog 6h 기록.
  *   1일차 remaining=16h(변화 없음), 2일차 remaining=10h(감소), ideal 은 1일차=scope→종료일=0 선형,
  *   scope 라인은 전 구간 평탄.
+ * - S1b 개수 축 대조군: 같은 원천 데이터라도 「추정」 탭이 `NONE`(V509 기본값)이면 세로축이
+ *   **이슈 개수**다(부채 177 task-35). S1 은 PATCH 로 `REMAINING_AND_SPENT` 를 저장한 뒤 시간 축을
+ *   재고, 이 쌍이 「저장된 설정이 실제 차트에 닿는가」를 실 DB·실 HTTP 로 판정한다.
  * - 401 미인증 / 403 BROWSE 권한 없음 / 404 미존재 스프린트 / 422 start·end 미설정.
  */
 @SpringBootTest(
@@ -131,13 +136,24 @@ class SprintBurndownIntegrationTest {
      * 이 모듈의 테스트 클래스패스에 없다(BC 격리) — 어댑터 자체 검증은 Task 3 의 별도 통합테스트가 담당한다.
      */
     class BurndownPortStub : SprintBurndownLookupPort {
-        var source: BurndownSource = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
+        var source: BurndownSource = emptySource()
 
         override fun fetchBurndownSource(
             issueKeys: Set<String>,
             projectKey: String,
             viewerUserId: UUID,
         ): BurndownSource = source
+
+        companion object {
+            /** 두 축 모두 빈 값 — 포트의 fail-safe 기본과 같은 모양이다. */
+            fun emptySource(): BurndownSource =
+                BurndownSource(
+                    totalOriginalEstimateSeconds = 0,
+                    worklogEntries = emptyList(),
+                    visibleIssueCount = 0,
+                    issueCompletions = emptyList(),
+                )
+        }
     }
 
     @Autowired
@@ -175,7 +191,7 @@ class SprintBurndownIntegrationTest {
         // stub 초기화
         permissionStub.allowAll = true
         issueLookupStub.visibleKeys.clear()
-        burndownPortStub.source = BurndownSource(totalOriginalEstimateSeconds = 0, worklogEntries = emptyList())
+        burndownPortStub.source = BurndownPortStub.emptySource()
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -211,6 +227,31 @@ class SprintBurndownIntegrationTest {
             .get("data").get("sprintId").asText()
     }
 
+    /**
+     * 스프린트가 속한 보드 UUID 를 조회 응답에서 읽는다.
+     *
+     * 스프린트 생성 응답이 `boardId` 를 싣는다(FR-BD-04) — DB 를 직접 뒤지지 않고 HTTP 로만 오간다.
+     */
+    private fun boardIdOf(sprintId: String): String {
+        val result =
+            mockMvc.perform(get("/api/v1/sprints/$sprintId"))
+                .andExpect(status().isOk)
+                .andReturn()
+        return mapper.readTree(result.response.contentAsString).get("data").get("boardId").asText()
+    }
+
+    /** 「추정」 탭의 시간 추적을 실제 PATCH 엔드포인트로 저장한다 — 화면이 하는 것과 같은 경로다. */
+    private fun saveTimeTracking(
+        boardId: String,
+        timeTracking: String,
+    ) {
+        mockMvc.perform(
+            patch("/api/v1/boards/$boardId/estimation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("timeTracking" to timeTracking))),
+        ).andExpect(status().isOk)
+    }
+
     /** [issueKey] 를 가시 처리한 뒤 [sprintId] 에 할당한다. */
     private fun assignIssue(
         sprintId: String,
@@ -236,6 +277,10 @@ class SprintBurndownIntegrationTest {
         // 이슈 3개 할당 (추정 8h/4h/4h = 16h 는 burndownPortStub 의 통제된 스코프로 대체)
         listOf("$projectKey-1", "$projectKey-2", "$projectKey-3").forEach { assignIssue(sprintId, it) }
 
+        // ★시간 축은 「추정」 탭에 REMAINING_AND_SPENT 를 저장해야 나온다(task-35).
+        //   `boards.time_tracking` 의 DB 기본값 'NONE' 은 **개수 축**이다 — 아래 S1b 가 그 짝이다.
+        saveTimeTracking(boardIdOf(sprintId), "REMAINING_AND_SPENT")
+
         // scope=57,600초(16h). 2020-01-02 에 21,600초(6h) worklog 기록.
         burndownPortStub.source =
             BurndownSource(
@@ -248,10 +293,19 @@ class SprintBurndownIntegrationTest {
                             startedAt = Instant.parse("2020-01-02T09:00:00Z"),
                         ),
                     ),
+                visibleIssueCount = 3,
+                issueCompletions =
+                    listOf(
+                        IssueCompletion(
+                            issueKey = "$projectKey-1",
+                            completedAt = Instant.parse("2020-01-02T09:00:00Z"),
+                        ),
+                    ),
             )
 
         mockMvc.perform(get("/api/v1/sprints/$sprintId/burndown"))
             .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.unit").value("SECONDS"))
             .andExpect(jsonPath("$.data.sprintId").value(sprintId))
             .andExpect(jsonPath("$.data.projectKey").value(projectKey))
             .andExpect(jsonPath("$.data.startDate").value("2020-01-01"))
@@ -276,6 +330,61 @@ class SprintBurndownIntegrationTest {
             .andExpect(jsonPath("$.data.points[2].idealSeconds").value(0))
             .andExpect(jsonPath("$.data.points[2].completedSeconds").value(21_600))
             .andExpect(jsonPath("$.data.points[2].scopeSeconds").value(57_600))
+    }
+
+    // ── S1b. 개수 축 — 추정 탭을 그대로 둔 보드(기본값 NONE) ──────────────────
+
+    /**
+     * **S1 의 대조군** — 같은 원천 데이터인데 「추정」 탭을 만지지 않은 보드는 **개수 축**으로 그려진다
+     * (부채 177 task-35 · 스펙 S2).
+     *
+     * ★이 쌍이 실 DB·실 HTTP 로 재는 것은 「저장된 설정이 차트에 닿는가」다. S1 은 PATCH 로 저장한
+     * `REMAINING_AND_SPENT` 를, 여기는 V509 의 기본값 `NONE` 을 탄다 — 두 요청의 차이는 그 한 줄뿐이다.
+     */
+    @Test
+    fun `S1b 추정 탭이 NONE 이면 같은 데이터를 개수 축으로 그린다`() {
+        val projectKey = uniqueProjectKey()
+        val start = LocalDate.of(2020, 1, 1)
+        val end = LocalDate.of(2020, 1, 3)
+        val sprintId = createSprintAndGetId(projectKey, start, end)
+        listOf("$projectKey-1", "$projectKey-2", "$projectKey-3").forEach { assignIssue(sprintId, it) }
+
+        // 설정을 저장하지 않는다 — DB 기본값 'NONE' 그대로다.
+        burndownPortStub.source =
+            BurndownSource(
+                totalOriginalEstimateSeconds = 57_600,
+                worklogEntries =
+                    listOf(
+                        WorklogContribution(
+                            startedOnUtcDate = LocalDate.of(2020, 1, 2),
+                            timeSpentSeconds = 21_600,
+                            startedAt = Instant.parse("2020-01-02T09:00:00Z"),
+                        ),
+                    ),
+                visibleIssueCount = 3,
+                issueCompletions =
+                    listOf(
+                        IssueCompletion(
+                            issueKey = "$projectKey-1",
+                            completedAt = Instant.parse("2020-01-02T09:00:00Z"),
+                        ),
+                    ),
+            )
+
+        mockMvc.perform(get("/api/v1/sprints/$sprintId/burndown"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.unit").value("ISSUE_COUNT"))
+            .andExpect(jsonPath("$.data.totalScopeSeconds").value(3))
+            .andExpect(jsonPath("$.data.points.length()").value(3))
+            // 1일차 — 완료 이전이라 3개 그대로.
+            .andExpect(jsonPath("$.data.points[0].remainingSeconds").value(3))
+            .andExpect(jsonPath("$.data.points[0].scopeSeconds").value(3))
+            // 2일차 — 이슈 하나 완료로 2개.
+            .andExpect(jsonPath("$.data.points[1].remainingSeconds").value(2))
+            .andExpect(jsonPath("$.data.points[1].completedSeconds").value(1))
+            // 3일차 — 추가 완료 없음. ideal 은 0 으로 종결.
+            .andExpect(jsonPath("$.data.points[2].remainingSeconds").value(2))
+            .andExpect(jsonPath("$.data.points[2].idealSeconds").value(0))
     }
 
     // ── 401. 미인증 ──────────────────────────────────────────────────────────

@@ -13,8 +13,10 @@ import com.bts.issue.statushistory.repository.StatusHistoryRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.burndown.BurndownSource
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowStateView
 import io.mockk.every
 import io.mockk.mockk
@@ -28,6 +30,9 @@ import java.time.Instant
 import java.util.UUID
 
 private const val TEST_PROJECT_KEY = "TPRJ"
+
+/** V003 seed 의 표준 이슈 타입 키 — 이 파일의 이슈는 전부 이 타입이다. */
+private const val TASK_TYPE_KEY = "task"
 
 private const val STATE_OPEN = "open"
 private const val STATE_IN_PROGRESS = "in_progress"
@@ -85,7 +90,9 @@ class SprintBurndownCompletionLookupTest : IssueTestcontainersBase() {
     fun setupAdapter() {
         val stateLookup =
             mockk<IsolatedWorkflowStateLookup>().also {
-                every { it.listStates(any(), any()) } returns
+                // ★`any()` 를 쓰지 않는다 — ProjectKey/IssueTypeKey 는 검증하는 value class 라
+                //   MockK 의 임의 서명값이 생성자 require 에 걸린다(CycleTimeServiceTest 와 같은 관용구).
+                every { it.listStates(ProjectKey.of(TEST_PROJECT_KEY), IssueTypeKey(TASK_TYPE_KEY)) } returns
                     listOf(
                         WorkflowStateView(key = STATE_OPEN, name = "할 일", category = "TODO"),
                         WorkflowStateView(key = STATE_IN_PROGRESS, name = "진행 중", category = "IN_PROGRESS"),

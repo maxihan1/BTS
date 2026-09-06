@@ -67,6 +67,9 @@ class SprintBurndownServiceTest {
      */
     private fun unsetBoardSettings(): BoardSettingsRepository =
         mockk<BoardSettingsRepository>().also {
+            // ★세로축은 **시간**으로 고정한다(task-35). DB 기본값 'NONE' 은 개수 축이라, 이 값을 빼면
+            //   해피패스의 초 단위 단언이 개수를 재게 된다. 게이팅 판정은 [BurndownIssueCountAxisTest] 가 진다.
+            every { it.findTimeTracking(any()) } returns "REMAINING_AND_SPENT"
             every { it.findWorkingDays(any()) } returns
                 BoardWorkingDays(standardDays = null, timezone = null, nonWorkingDates = emptyList())
         }
@@ -146,6 +149,9 @@ class SprintBurndownServiceTest {
                                     startedAt = Instant.parse("2026-07-01T09:00:00Z"),
                                 ),
                             ),
+                        // 이 파일은 시간 축만 잰다 — 개수 축 입력은 판정에 쓰이지 않는다.
+                        visibleIssueCount = 2L,
+                        issueCompletions = emptyList(),
                     )
             }
 

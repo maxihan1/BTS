@@ -3,15 +3,22 @@
 package com.bts.issue.adapter.outbound.burndown
 
 import com.bts.issue.adapter.outbound.burndown.repository.SprintBurndownQueryRepository
+import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.issue.statushistory.repository.StatusHistoryRepository
+import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.burndown.WorklogContribution
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssueSecurityAccess
 import com.bts.shared.permission.IssueSecurityDirectory
+import com.bts.shared.workflow.ProjectKey
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -112,6 +119,14 @@ class SprintBurndownLookupAdapterTest : IssueTestcontainersBase() {
                 SprintBurndownQueryRepository(dsl),
                 UnrestrictedSecurityDirectory,
                 repository,
+                IssueTypeRepository(dsl),
+                StatusHistoryRepository(dsl),
+                mockk<IsolatedWorkflowStateLookup>().also {
+                    // 이 파일은 개수 축(완료 판정)을 재지 않는다 — 상태 카탈로그가 비면 완료가 0건이다.
+                    // ★`any()` 를 쓰지 않는다. ProjectKey/IssueTypeKey 는 검증하는 value class 라
+                    //   MockK 의 임의 서명값이 생성자 require 에 걸린다(CycleTimeServiceTest 와 같은 관용구).
+                    every { it.listStates(ProjectKey.of("TPRJ"), IssueTypeKey("task")) } returns emptyList()
+                },
             )
         if (taskTypeId == null) {
             taskTypeId = loadTaskTypeId()
