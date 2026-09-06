@@ -1131,9 +1131,47 @@ T16 이 넓힌 것은 `boardDetailSchema` 의 설정 4키뿐이다. **`cf_` 경�
 **검증**. `(cd apps/web && node_modules/.bin/vitest run src/components/board src/components/backlog src/routes src/api)`
 ★**Task 20 직후 기준선은 207 파일 3614 tests** 다.
 
+### Task 33. 번다운 목이 보드 작업일에서 파생한다 — T23 의 `test.fail` 두 건을 걷어낸다
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/src/mocks/burndown-handlers.ts`, `apps/web/e2e/board-settings-estimation.spec.ts`]
+- depends-on: [23]
+- jira: [J38, J39]
+
+★**계획에 없던 task 다(2026-09-06 신설). Task 23 이 구현 불가 판정과 함께 올렸다.**
+
+**무엇이 문제인가.** `burndown-handlers.ts` 가 **정적 store** 다. `board-handlers.ts` 의
+`boardSettingsStore`(근무일·비근무일·타임존)에서 **아무것도 파생하지 않는다.** `BurndownChart.tsx` 도
+응답 `points` 를 그대로 그릴 뿐 클라이언트에서 축소하지 않는다 — 좁히는 주체는 백엔드
+`BurndownCalculator` 하나뿐이다. 따라서 프론트 E2E 에서는 **근무일을 저장해도, 타임존을
+서울↔뉴욕으로 바꿔도 x축이 바이트 단위로 같다.**
+
+T23 이 그 자리를 `test.fail()` 로 박았다(S5·S6). `test.skip` 이 아니라 `test.fail` 을 고른 것은
+옳다 — 배선되는 날 「예상외 통과」로 빨간불이 되어 마커를 걷어내게 만든다.
+
+**왜 지금 닫는가.** 계획 Task 23 의 GREEN 이 명시로 요구한 축이고,
+**리뷰가 critical gap 으로 지목한 침묵 실패**다(설정은 저장되는데 차트가 안 바뀌면 아무도 모른다).
+`test.fail` 로 남기면 그 gap 이 열린 채 머지된다.
+
+★**`page.route()` 우회는 이 저장소에 없다.** MSW Service Worker 가 먼저 응답해 가로채기가
+무효임이 `apps/web/e2e/backlog.spec.ts:125` 에 실측으로 박혀 있다. **공유 store 를 경유해야 한다.**
+
+**RED**. S5·S6 의 `test.fail()` 마커를 걷어내면 red 다(x축이 안 바뀐다).
+
+**GREEN**. `GET /api/v1/sprints/:id/burndown` 핸들러가 `boardSettingsStore` 의
+`standardDays` · `nonWorkingDates` · `timezone` 을 읽어 `points` 를 파생한다.
+★**`standardDays === null`(미설정)이면 현행 그대로** 달력일 전부를 낸다 — 빈 배열(`[]`)과 갈라야 한다.
+
+**REFACTOR**. 목의 파생 규칙이 백엔드 `BurndownCalculator` 와 **어디까지 같고 어디부터 다른지**를
+주석에 적는다. 목은 근사이지 재구현이 아니다 — 그 경계를 적지 않으면 다음 사람이 목을 진실로 오해한다.
+
+**검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-estimation.spec.ts)`
+★**`test.fail` 이 0건**이어야 한다.
+
 ## Plan 메타
 
-- **task 수**: 32 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
+- **task 수**: 33 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
   - **A 마이그레이션 1~4** 와 **B 포트 5~6** 은 **완전 독립이라 동시 시작**한다(리뷰 지적)
   - C 백엔드 7~14 (14 는 5·6 이후) · D 프론트 15~21 · E E2E 22~24 (탭별로 쪼개 꼬리를 줄였다)
 - **구현 규율**: 백엔드는 정식 TDD red-first. 프론트는 ui 시각 검증 트랙(RED = 동반 테스트).
