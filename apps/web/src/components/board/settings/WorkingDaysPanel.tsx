@@ -36,6 +36,16 @@ function weekIndex(day: string): number {
 }
 
 /**
+ * 「근무일 고르기」를 눌렀을 때 미리 켜 두는 요일 — 월~금 (J38).
+ *
+ * ★**이 값이 저장되는 것은 사용자가 「저장」을 누른 뒤뿐이다.** 마운트만으로 채우면 설정을
+ * 만지지 않은 보드가 조용히 월~금으로 저장될 길이 열리고, 그것이 백엔드가 `working_days` 를
+ * `NOT NULL DEFAULT` 로 두지 않은 이유 그 자체다(스펙 R6). 사용자가 **명시로 시작한** 편집의
+ * 출발점일 뿐이다.
+ */
+const DEFAULT_WORKING_DAYS: readonly string[] = ['MON', 'TUE', 'WED', 'THU', 'FRI']
+
+/**
  * 고를 수 있는 IANA 타임존 전량 — **브라우저 tzdb 가 원천이다.**
  *
  * 목록을 손으로 추리지 않는 이유는 그 목록이 곧 「우리가 지원한다고 주장하는 지역」이 되기
@@ -112,6 +122,12 @@ interface WorkingDaysFailure {
  * 저장이 정착하면 **보드 조회를 무효화**한다 — 다음 마운트가 서버 값에서 다시 시작하게 하는
  * 유일한 근거다. 캐시를 `setQueryData` 로 덮지 않는다(응답에 없는 파생 필드가 null 로 덮여
  * 화면이 플리커한 사고가 있다 — PR #46).
+ *
+ * ### ★「미설정」을 화면에서 읽히게 한다 (스펙 R6)
+ * 미설정 보드는 요일 체크박스를 **그리지 않고** 「아직 설정하지 않았다 · 달력일 전부를 센다」고
+ * 말한다. 7개가 다 꺼진 화면은 「근무일 0개」와 구분되지 않는데 그 둘은 뜻이 정반대다.
+ * 편집을 시작하는 버튼([labels.configureDays])과 되돌리는 버튼([labels.resetToUnset])이
+ * 두 상태를 오가는 유일한 문이고, 뒤엣것은 **근무일 0개라는 막다른 골목의 출구**이기도 하다.
  *
  * ### ★비근무일은 스프린트 기간으로 거르지 않는다 (스펙 E8)
  * 보드는 스프린트 기간을 모르고, 화면이 걸러 버리면 스프린트가 바뀔 때마다 설정이 소실된다.
@@ -246,34 +262,76 @@ export function WorkingDaysPanel({ board, canConfigure }: WorkingDaysPanelProps)
         </div>
       )}
 
-      <ul aria-label={labels.daysGroupLabel} className="ring-foreground/10 rounded-lg p-4 ring-1">
-        {WEEK_ORDER.map((key) => {
-          const controlId = `${domId}-${key}`
-          return (
-            <li key={key} className="flex items-center gap-2">
-              <Checkbox
-                id={controlId}
-                checked={days?.includes(key) === true}
-                disabled={locked}
-                onCheckedChange={(next) => {
-                  toggleDay(key, next === true)
-                }}
-              />
-              {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
-                  데스크톱은 목록 밀도를 위해 낮춘다 — 형제 패널과 같은 결. */}
-              <label
-                htmlFor={controlId}
-                className="text-foreground flex min-h-11 flex-1 cursor-pointer items-center text-sm md:min-h-8"
-              >
-                {labels.dayLabels[key]}
-              </label>
-            </li>
-          )
-        })}
-      </ul>
+      <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
+        {days === null ? (
+          // ★★**미설정을 「요일 7개가 다 꺼진 화면」으로 그리지 않는다**(스펙 R6).
+          //   그 모습은 「근무일 0개」와 구분되지 않는데 두 상태의 뜻은 정반대다 —
+          //   미설정은 달력일 **전부**이고 0개는 근무일이 **하나도 없음**이다. 설정을 한 번도
+          //   만지지 않은 보드가 「0개」로 보이면 사용자는 자기가 아무것도 안 했는데 무언가
+          //   잘못됐다고 읽는다. 판정은 T-WD-18 · T-WD-19 가 **짝으로** 진다.
+          <div className="space-y-3">
+            <p className="text-muted-foreground text-sm">{labels.unsetNotice}</p>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={locked}
+              onClick={() => {
+                setDays([...DEFAULT_WORKING_DAYS])
+                setJustSaved(false)
+              }}
+            >
+              {labels.configureDays}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <ul aria-label={labels.daysGroupLabel}>
+              {WEEK_ORDER.map((key) => {
+                const controlId = `${domId}-${key}`
+                return (
+                  <li key={key} className="flex items-center gap-2">
+                    <Checkbox
+                      id={controlId}
+                      checked={days.includes(key)}
+                      disabled={locked}
+                      onCheckedChange={(next) => {
+                        toggleDay(key, next === true)
+                      }}
+                    />
+                    {/* 행 전체를 라벨로 만들어 터치 타깃을 44px 로 넓힌다(체크박스 자체는 16px).
+                        데스크톱은 목록 밀도를 위해 낮춘다 — 형제 패널과 같은 결. */}
+                    <label
+                      htmlFor={controlId}
+                      className="text-foreground flex min-h-11 flex-1 cursor-pointer items-center text-sm md:min-h-8"
+                    >
+                      {labels.dayLabels[key]}
+                    </label>
+                  </li>
+                )
+              })}
+            </ul>
 
-      {/* 저장이 막힌 이유와 다음 행동을 함께 말한다 — 사유 없이 비활성만 하면 「고장」으로 읽힌다. */}
-      {zeroDays && <p className="text-muted-foreground text-xs">{labels.zeroDaysHint}</p>}
+            {/* ★**막다른 골목의 출구다.** 근무일 0개는 저장이 막히므로, 「근무일을 쓰지 않겠다」는
+                뜻은 값을 비우는 것이 아니라 미설정으로 되돌리는 것이다 — 백엔드가 400 응답에
+                적어 보내는 안내와 같은 문장이다(`WorkingDaysSettingsService`). */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={locked}
+              onClick={() => {
+                setDays(null)
+                setJustSaved(false)
+              }}
+            >
+              {labels.resetToUnset}
+            </Button>
+          </>
+        )}
+
+        {/* 저장이 막힌 이유와 다음 행동을 함께 말한다 — 사유 없이 비활성만 하면 「고장」으로 읽힌다. */}
+        {zeroDays && <p className="text-muted-foreground text-xs">{labels.zeroDaysHint}</p>}
+      </div>
 
       <div className="ring-foreground/10 space-y-3 rounded-lg p-4 ring-1">
         <h3 className="text-sm font-semibold">{labels.nonWorkingHeading}</h3>

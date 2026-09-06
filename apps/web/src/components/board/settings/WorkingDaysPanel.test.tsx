@@ -473,3 +473,59 @@ describe('작업일 탭 — 실패 처리 (상태 코드로만 가른다)', () =
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⑱⑲⑳㉑ 「미설정 = 현행 유지」를 화면에서 읽는다 (스펙 R6 · Task 18 REFACTOR)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('작업일 탭 — 미설정을 화면에서 읽는다 (R6)', () => {
+  it('T-WD-18: 미설정 보드는 안내를 보이고 요일 7개를 그리지 않는다 — T-WD-19 의 짝', () => {
+    // ★7개가 다 꺼진 화면은 「근무일 0개」와 구분되지 않는데, 두 상태의 뜻은 정반대다.
+    //   설정을 한 번도 만지지 않은 보드가 「0개」로 보이면 사용자는 자기가 아무것도 안 했는데
+    //   무언가 잘못됐다고 읽는다.
+    renderPanel(board())
+
+    expect(screen.getByText(L.unsetNotice)).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+
+  it('T-WD-19: 설정된 보드는 안내 없이 요일을 그린다 — 항상 안내만 그리는 구현을 잡는다', () => {
+    renderPanel(configuredBoard({ standardDays: ['MON'] }))
+
+    expect(screen.queryByText(L.unsetNotice)).not.toBeInTheDocument()
+    expect(dayBox(MON)).toBeChecked()
+  })
+
+  it('T-WD-20: 미설정에서 근무일 고르기를 시작할 수 있다 — 안내가 막다른 골목이 아니다', async () => {
+    const stub = stubWorkingDaysApi()
+    renderPanel(board())
+
+    await userEvent.click(screen.getByRole('button', { name: L.configureDays }))
+
+    // 월~금이 켜진 채로 시작한다. ★이 값은 **누른 뒤**에만 생긴다 — 마운트만으로 채우면
+    //   설정을 만지지 않은 보드가 조용히 월~금으로 저장될 길이 열린다(R6).
+    expect(dayBox(MON)).toBeChecked()
+    expect(dayBox(L.dayLabels.SAT)).not.toBeChecked()
+
+    await save(stub)
+    expect(lastRequest(stub).standardDays).toEqual(['MON', 'TUE', 'WED', 'THU', 'FRI'])
+  })
+
+  it('T-WD-21: 근무일 0개에서 미설정으로 되돌려 저장할 수 있다 — 막다른 골목의 출구', async () => {
+    // ★백엔드가 400 에 적어 보내는 안내가 정확히 이것이다 — 「값을 비우지 말고 미설정으로 두세요」.
+    //   출구가 없으면 그 안내를 따를 방법이 화면에 없다.
+    const stub = stubWorkingDaysApi()
+    renderPanel(configuredBoard({ standardDays: ['MON'] }))
+
+    await userEvent.click(dayBox(MON))
+    expect(saveButton()).toBeDisabled()
+    expect(screen.getByText(L.zeroDaysHint)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: L.resetToUnset }))
+
+    expect(screen.getByText(L.unsetNotice)).toBeInTheDocument()
+    expect(saveButton()).toBeEnabled()
+    await save(stub)
+    expect(lastRequest(stub).standardDays).toBeNull()
+  })
+})
