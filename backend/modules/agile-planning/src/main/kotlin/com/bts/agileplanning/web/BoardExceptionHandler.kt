@@ -3,7 +3,9 @@
 package com.bts.agileplanning.web
 
 import com.bts.agileplanning.application.BoardStateNotMappedException
+import com.bts.agileplanning.application.CardLayoutInvalidException
 import com.bts.agileplanning.application.ColumnStateAmbiguousException
+import com.bts.agileplanning.application.DetailViewFieldGroupInvalidException
 import com.bts.agileplanning.application.DuplicateStateKeysException
 import com.bts.agileplanning.application.EstimationBoardNotFoundException
 import com.bts.agileplanning.application.MoveTargetAmbiguousException
@@ -12,6 +14,7 @@ import com.bts.agileplanning.application.QuickFilterLimitExceededException
 import com.bts.agileplanning.application.QuickFilterNameConflictException
 import com.bts.agileplanning.application.QuickFilterNotFoundException
 import com.bts.agileplanning.application.StateAlreadyMappedException
+import com.bts.agileplanning.application.TimeTrackingInvalidException
 import com.bts.agileplanning.application.WorkingDaysBoardNotFoundException
 import com.bts.agileplanning.application.WorkingDaysInvalidException
 import com.bts.agileplanning.domain.BoardNameInvalidException
@@ -46,6 +49,8 @@ class BoardAccessDeniedException : RuntimeException("권한이 없습니다.")
  * 보안 — message 에 boardId 등 내부 식별자를 담지 않는다.
  */
 class BoardNotFoundException : RuntimeException("보드를 찾을 수 없습니다.")
+
+private const val VALIDATION_FALLBACK_DETAIL = "요청 값이 올바르지 않습니다."
 
 /**
  * agile-planning BC 의 도메인/권한 예외를 RFC 7807 ProblemDetail 형식으로 변환하는 핸들러.
@@ -604,13 +609,18 @@ class BoardExceptionHandler {
                 HttpStatus.UNPROCESSABLE_ENTITY ->
                     AGILE_UNPROCESSABLE to "요청을 처리할 수 없습니다. 워크플로우 또는 해결 방안 설정을 확인해 주세요."
                 HttpStatus.BAD_REQUEST ->
-                    // ★`ex.reason` 을 그대로 싣는다(리뷰 C7). 서비스들이 사전 검증의 존재 이유를
-                    //   「사용자에게 400 의 **이유**를 주려고」라고 KDoc 에 적어 두는데, 여기서 버리면
-                    //   그 문장이 거짓이 되고 「최대 3개입니다」·「칸반에는 백로그 뷰가 없습니다」가
-                    //   **로그에만** 남는다. 형제 WorkingDaysInvalidException 은 전용 핸들러로
-                    //   이미 reason 을 싣고 있었다 — Task 29 가 통일한 것은 봉투 **모양**이고
-                    //   정보량은 탭마다 달랐다. reason 이 없으면 종전 문구로 되돌아간다.
-                    AGILE_VALIDATION_FAILED to (ex.reason ?: "요청 값이 올바르지 않습니다.")
+                    // ★`ex.reason` 을 싣되 **설정 4탭의 예외 타입에서만** 싣는다(리뷰 C7 · 재리뷰 C1).
+                    //   서비스들이 사전 검증의 존재 이유를 「사용자에게 400 의 **이유**를 주려고」라고
+                    //   KDoc 에 적어 두는데, 버리면 그 문장이 거짓이 되고 「최대 3개입니다」·
+                    //   「칸반에는 백로그 뷰가 없습니다」가 로그에만 남는다.
+                    //
+                    // ★★**타입으로 좁히는 이유.** 이 advice 는 컨트롤러 6개를 덮고, 그중
+                    //   `BoardController` 경로의 `BoardFilterQueryParser` 는 `reason` 에
+                    //   **요청 값을 그대로 되비춘다**(`... 유효한 UUID 형식이 아닙니다: $value`).
+                    //   상태 코드만 보고 전부 통과시키면 사용자 입력이 길이 제한 없이 응답 본문에
+                    //   실린다 — 재리뷰가 이 델타가 새로 연 표면으로 지목했다. C7 이 실제로 지명한
+                    //   것은 **설정 탭의 고정 문구**(허용값·상한)이고 그것들은 요청 값을 담지 않는다.
+                    AGILE_VALIDATION_FAILED to settingsTabReason(ex)
                 else ->
                     AGILE_INTERNAL_ERROR to "요청을 처리할 수 없습니다."
             }
@@ -622,6 +632,24 @@ class BoardExceptionHandler {
             detail = detail,
         )
     }
+
+    /**
+     * 400 의 `detail` 에 실을 문구를 고른다 — **설정 4탭의 예외만** 자기 `reason` 을 쓴다.
+     *
+     * 나머지(필터 파싱 등)는 종전 고정 문구로 되돌아간다. 그 경로들은 `reason` 에 요청 값을
+     * 되비추므로 통째로 열면 사용자 입력이 응답 본문에 실린다(재리뷰 C1).
+     *
+     * ★새 설정 탭을 더하면 이 목록에도 더해야 한다 — 두 목록이 서로를 검사하지 않는 자리다.
+     *   `BoardSettingsTabErrorEnvelopeTest` 의 400 detail 축이 빠진 탭을 잡는다.
+     */
+    private fun settingsTabReason(ex: ResponseStatusException): String =
+        when (ex) {
+            is CardLayoutInvalidException,
+            is DetailViewFieldGroupInvalidException,
+            is TimeTrackingInvalidException,
+            -> ex.reason ?: VALIDATION_FALLBACK_DETAIL
+            else -> VALIDATION_FALLBACK_DETAIL
+        }
 
     /**
      * 저장 계층의 무결성 제약 위반을 **409** 로 거둔다 — 500 이 아니다(리뷰 C2).

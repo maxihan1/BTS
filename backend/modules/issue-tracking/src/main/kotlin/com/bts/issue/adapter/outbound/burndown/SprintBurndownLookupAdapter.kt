@@ -55,7 +55,15 @@ import java.util.UUID
  * 3. [SprintBurndownQueryRepository.findIssueStatusRows] — 이슈 상태 스칼라 1쿼리(개수 축).
  * 4. [StatusHistoryRepository.fetchStatusChanges] — 완료 이슈들의 status 전환 이력 1쿼리(개수 축).
  * 5. [IssueTypeRepository.findAll] — 타입 id → key 역매핑 1쿼리(개수 축).
- * 이슈 수·완료 수에 비례해 문이 늘지 않는다. 워크플로우 상태 조회는 **타입별 1회**로 캐싱된다.
+ * ★**「5문」이 전부가 아니다**(재리뷰 C4 정정). 워크플로우 상태 조회는 **이슈 타입별 1회**이고
+ * [IsolatedWorkflowStateLookup] 은 `REQUIRES_NEW` 라 그 호출마다 **별도 물리 트랜잭션**이 뜬다
+ * (`SprintVelocityLookupAdapter` 가 세운 rollback-only 오염 차단 설계 — 그 격리가 목적이다).
+ * 실제 비용은 `5 + N_types` 문 + `N_types` 물리 트랜잭션이다.
+ *
+ * **N+1 이 아닌 이유는 그것이 이슈 수가 아니라 타입 수에 비례하기 때문**이고, 타입은 프로젝트당
+ * 한 자리 수다. 다만 시간 축(`REMAINING_AND_SPENT`) 보드도 개수 축 원천 3~5 를 **무조건** 태운다 —
+ * 축 선택을 포트 인자로 받으면 issue-tracking 이 남의 BC 설정을 알게 되어 배제했다(그 판단은
+ * 아래 「축을 모르는 채 둘 다 낸다」 절에 있다). 줄이려면 그 경계를 다시 정해야 한다.
  * 삭제 술어는 그대로다 — 소프트 삭제 이슈/worklog 는 어느 축에도 들어가지 않는다.
  *
  * ### 시각을 버리지 않는다 — 일 귀속은 소비측 책임 (부채 177 Task 30)

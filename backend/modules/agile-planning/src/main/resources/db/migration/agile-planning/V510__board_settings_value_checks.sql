@@ -16,7 +16,12 @@
 --   (부채 177 과 같은 PR 로 나간다). 그래서 프로덕션에 위반 행이 존재할 수 없어 `NOT VALID` +
 --   별도 백필을 쓰지 않는다. V509 가 릴리스된 뒤였다면 그 경로를 택했어야 한다.
 --
--- ★재실행 안전. V505 의 `boards_board_type_allowed` 와 같은 관용구로 `pg_constraint` 를 먼저 본다.
+-- ★재실행 안전. `pg_constraint` 를 먼저 본다 — 조상은 V508:54-62 이고 V509:88-99 가 그것을
+--   `conrelid` 로 보강했다(V505 는 `ADD COLUMN ... CHECK` 인라인이라 이 관용구가 아니다).
+--
+-- ★★`conrelid = 'boards'::regclass` 를 함께 본다. **제약 이름은 스키마가 아니라 테이블 단위로
+--   유일하므로** `conname` 만 보면 다른 테이블의 동명 제약에 속아 CHECK 를 조용히 건너뛴다 —
+--   V509 가 같은 자리에 그 이유를 적어 두었고 이 파일은 그것을 따른다.
 
 -- ① 표준 근무일 — 원소가 3글자 요일 7종 중 하나여야 하고 NULL 원소를 허용하지 않는다.
 --    칸 자체의 NULL(= 미설정)은 그대로 허용한다 — 「미설정」과 「근무일 0개」의 구분은
@@ -25,7 +30,12 @@
 --    CHECK 가 통과해 버리므로 `array_position(working_days, NULL) IS NULL` 로 따로 막는다.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'boards_working_days_allowed') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'boards_working_days_allowed'
+          AND conrelid = 'boards'::regclass
+    ) THEN
         ALTER TABLE boards
             ADD CONSTRAINT boards_working_days_allowed CHECK (
                 working_days IS NULL
@@ -48,7 +58,12 @@ END $$;
 --    그 차집합을 단언으로 고정하고 있고, 그 테스트가 red 가 되면 이 문단을 다시 써야 한다.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'boards_board_timezone_allowed') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'boards_board_timezone_allowed'
+          AND conrelid = 'boards'::regclass
+    ) THEN
         ALTER TABLE boards
             ADD CONSTRAINT boards_board_timezone_allowed CHECK (
                 board_timezone IS NULL
