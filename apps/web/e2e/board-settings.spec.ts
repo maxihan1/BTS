@@ -26,6 +26,20 @@
 // | ③ `CardLayoutPanel.tsx` 의 `layout[view]` → `layout['BOARD']` — 뷰 구분 없이 한 벌 | **S10 단독** (백로그 뷰의 에픽이 `not.toBeChecked` → checked) | **화면**이 뷰 스코프를 갈라 읽는가 (J18) |
 // | ④ `board-handlers.ts` `patchCardLayoutHandler` 의 쓰기 앞에 `settings.cardLayout = {}` — 저장이 다른 뷰를 지운다 | **S10** (보드 뷰의 에픽이 `toBeChecked` → unchecked) · `board-handlers.test.ts` **T-MSW-CL-2 · T-MSW-CL-3** | 「저장됐다」 ↔ 「**다른 뷰를 안 지우고** 저장됐다」 |
 //
+// ★★**2026-09-06 — 위 표의 「죽는 테스트」 열을 재현했더니 어긋났다** (부채 177 Task 34 RED).
+//   잰 명령 — `(cd apps/web && node_modules/.bin/vitest related --watch=false`
+//   `  src/components/board/settings/SettingsTabs.tsx src/components/board/settings/CardLayoutPanel.tsx`
+//   `  src/mocks/board-handlers.ts src/components/issue/IssueMetaPanel.tsx)`
+//   → 32파일 790건. 무변경 baseline 은 종료 코드 0.
+//   - **①** 표는 E2E 만 적었는데 단위 **T-BS-11** 이 함께 죽는다(1 failed / 789 passed · 종료 코드 1).
+//   - **②** 단위는 한 건도 안 죽는다(790 전부 초록 · 종료 코드 0). 표와 어긋나지 않는다.
+//   - **③** 「**S10 단독**」이라 적혀 있지만 단위 **T-CL-1 · T-CL-8 · T-CL-16** 이 함께 죽는다
+//     (3 failed / 787 passed · 종료 코드 1). **「단독」이 거짓이다.**
+//   - **④** 표 그대로다(**T-MSW-CL-2 · T-MSW-CL-3** · 2 failed · 종료 코드 1).
+//     ★이 행만 맞은 이유는 **이 행만 단위 스위트에 대고 실제로 쟀기 때문**이다.
+//   ★**원인은 스코프 미명시다.** ③의 「단독」은 E2E 시나리오 안에서만 참이었는데, 어느 스코프에서
+//     잰 것인지 안 적어 「단위까지 통틀어 단독」으로 읽혔다.
+//
 // ★**③과 ④는 다른 층이다** — ③은 화면의 읽기, ④는 저장의 보존이다. S10 이 둘 다 잡되
 //   **서로 다른 단언**에서 죽는 것이 그 증거다. 둘을 가르려면 두 뷰에 **서로 다른 값**을 넣고
 //   **재마운트 후** 재야 한다 — 같은 값을 넣거나 로컬 state 위에서 재면 셋 다 통과한다.

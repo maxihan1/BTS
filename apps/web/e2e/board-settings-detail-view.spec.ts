@@ -20,6 +20,19 @@
 // | ② **사이드패널만 배선** — 위의 반대 | **D1 · D3** (D2 는 산다) | 반쪽 봉합 ↔ 두 표현이 같은 구성 |
 // | ③ **순서 무시·집합만** — `toDetailViewRows` 가 라벨순으로 `sort` | **D1 · D2 · D3** | `containsAll` 수준의 단언 ↔ 순서까지 잰다 (J48) |
 //
+// ★★**2026-09-06 — 위 표를 재현하려 했더니 ①② 는 재현 자체가 불가능했다** (부채 177 Task 34 RED).
+//   - **①②** 「`useIssueDetailViewFields` 가 `presentation === 'modal'` 일 때만 구성을 낸다」는
+//     **그 형태로 존재할 수 없다.** 그 훅은 `presentation` 을 받지 않는다 —
+//     `IssueMetaPanel.tsx:453` 의 시그니처는 `context` 하나뿐이고, 호출부(`:610`)는
+//     「모달·사이드패널·전체화면이 **공유하는 단 하나의 읽기**」라고 못박혀 있다.
+//     한 줄 되돌리기가 아니라 **파라미터를 새로 배선해야 하는 구조 변경**이다.
+//   - **③** 재현했다. `toDetailViewRows` 를 라벨순 `sort` 로 바꾸면 단위
+//     **T21-1 · T21-2 · T21-4** 가 함께 죽는다(3 failed / 787 passed · 종료 코드 1).
+//     표는 E2E(D1·D2·D3)만 적어 「이 축의 판정자는 이 spec 」으로 읽힌다 — 아니다.
+//   잰 명령 — `(cd apps/web && node_modules/.bin/vitest related --watch=false`
+//   `  src/components/board/settings/SettingsTabs.tsx src/components/board/settings/CardLayoutPanel.tsx`
+//   `  src/mocks/board-handlers.ts src/components/issue/IssueMetaPanel.tsx)` → 32파일 790건.
+//
 // ★**①②는 두 방향을 다 걸어야 한다.** 한 방향만 걸면 반쪽 봉합을 가르지 못한다 — 죽는 집합이
 //   서로 달라야(②는 D1·D3, ①은 D2·D3) 실패 목록만 보고 「어느 쪽을 안 배선했는지」가 읽힌다.
 //   그래서 D1 과 D2 를 한 test 로 합치지 않는다.
