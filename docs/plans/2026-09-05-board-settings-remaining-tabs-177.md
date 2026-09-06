@@ -1231,6 +1231,27 @@ T23 이 그 자리를 `test.fail()` 로 박았다(S5·S6). `test.skip` 이 아�
 **검증**. `(cd apps/web && node_modules/.bin/vitest run <표가 지목한 경로들>)` · 종료 코드로 판정.
 ★**표에 적힌 모든 행을 재현하라.** 재현 못 한 행은 「확인 못 함」으로 표에 적는다 — 지어내지 않는다.
 
+### ★이력 결함 하나를 기록으로 닫는다 — `fc098186f` 는 메시지와 내용이 다르다
+
+**무엇이 일어났나(2026-09-06).** Task 13 구현자가 `git commit --amend` 를 썼고, 병렬 wave 에서
+`HEAD` 가 **Task 10 의 RED 커밋**이었다. 그래서 `fc098186f` 는 **메시지가
+`test: … task-13 red` 인데 내용은 T10 의 세 파일**이다(`WorkingDaysSettingsService.kt` ·
+`BoardWorkingDaysController.kt` · `BoardWorkingDaysApiTest.kt`, 731 insertions).
+
+**원본은 보존돼 있다.** T10 의 진짜 RED 커밋 `78393f495` 를 태그 **`task-10-red-orphan`** 으로
+잡아 뒀다. tree·parent·author 로 바이트 동일 재생성이 가능함도 확인했다.
+
+**★그런데 고치지 않는다.** reword 는 `git rebase` 로 **그 뒤 101 커밋을 전부 rewrite** 하고
+**force-push** 해야 한다. PR #457 이 **OPEN** 이라 rewrite 하면 리뷰 맥락이 깨지고,
+force-push 승인은 이 캠페인에서 이미 소진됐다. **이력의 정확성보다 이력의 안정성이 크다** —
+다른 세션이 이 브랜치를 보고 있고, 원본은 태그로 이미 추적 가능하다.
+
+**코드리뷰어에게.** 3커밋 계약을 hash 순서로 대조할 때 T10 과 T13 두 곳이 이 커밋 때문에
+어긋나 보인다. **계약 위반이 아니라 amend 사고의 흔적**이고, 위 태그가 원본이다.
+
+★**이 사고가 「`--amend` 절대 금지」 규율의 근거다.** 병렬 wave 에서 `HEAD` 는 언제든 남의 것이다.
+메모리 `parallel-wave-amend-eats-peer-commit` 에 같은 내용이 있다.
+
 ## Plan 메타
 
 - **task 수**: 34 · **실질 단계**: 4 (초판의 「wave 5」는 직렬 5단계라는 오해를 줬다)
