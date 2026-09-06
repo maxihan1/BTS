@@ -189,6 +189,8 @@ class BoardSettingsTabErrorEnvelopeTest {
         var allowAll: Boolean = true
         var lastPermission: IssuePermission? = null
         var lastScope: IssueScope? = null
+        var lastActorId: UUID? = null
+        var callCount: Int = 0
 
         override fun hasPermission(
             actorId: UUID,
@@ -197,6 +199,8 @@ class BoardSettingsTabErrorEnvelopeTest {
         ): Boolean {
             lastPermission = permission
             lastScope = scope
+            lastActorId = actorId
+            callCount += 1
             return allowAll
         }
     }
@@ -225,6 +229,7 @@ class BoardSettingsTabErrorEnvelopeTest {
         permissionStub.lastPermission = null
         permissionStub.lastScope = null
         permissionStub.lastActorId = null
+        permissionStub.callCount = 0
         SecurityContextHolder.getContext().authentication =
             UsernamePasswordAuthenticationToken(
                 actorId.toString(),

@@ -132,6 +132,8 @@ class BoardEstimationApiTest {
         var allowAll: Boolean = true
         var lastPermission: IssuePermission? = null
         var lastScope: IssueScope? = null
+        var lastActorId: UUID? = null
+        var callCount: Int = 0
 
         override fun hasPermission(
             actorId: UUID,
@@ -140,6 +142,8 @@ class BoardEstimationApiTest {
         ): Boolean {
             lastPermission = permission
             lastScope = scope
+            lastActorId = actorId
+            callCount += 1
             return allowAll
         }
     }
@@ -175,6 +179,8 @@ class BoardEstimationApiTest {
         // 앞 테스트가 남긴 값으로 ⑩ 이 초록이 되지 않게 매번 비운다.
         permissionStub.lastPermission = null
         permissionStub.lastScope = null
+        permissionStub.lastActorId = null
+        permissionStub.callCount = 0
     }
 
     // ── ① 대조군 (J36) ────────────────────────────────────────────────────────

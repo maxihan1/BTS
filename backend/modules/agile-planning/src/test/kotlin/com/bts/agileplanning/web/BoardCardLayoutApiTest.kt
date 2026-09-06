@@ -140,6 +140,8 @@ class BoardCardLayoutApiTest {
         var allowAll: Boolean = true
         var lastPermission: IssuePermission? = null
         var lastScope: IssueScope? = null
+        var lastActorId: UUID? = null
+        var callCount: Int = 0
 
         override fun hasPermission(
             actorId: UUID,
@@ -148,6 +150,8 @@ class BoardCardLayoutApiTest {
         ): Boolean {
             lastPermission = permission
             lastScope = scope
+            lastActorId = actorId
+            callCount += 1
             return allowAll
         }
     }
@@ -184,6 +188,8 @@ class BoardCardLayoutApiTest {
         permissionStub.allowAll = true
         permissionStub.lastPermission = null
         permissionStub.lastScope = null
+        permissionStub.lastActorId = null
+        permissionStub.callCount = 0
     }
 
     // ── ①② 뷰 축 + 순서 (R3 · J18 · J17) ──────────────────────────────────────

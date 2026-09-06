@@ -178,6 +178,8 @@ class BoardDetailViewApiTest {
         var allowAll: Boolean = true
         var lastPermission: IssuePermission? = null
         var lastScope: IssueScope? = null
+        var lastActorId: UUID? = null
+        var callCount: Int = 0
 
         override fun hasPermission(
             actorId: UUID,
@@ -186,6 +188,8 @@ class BoardDetailViewApiTest {
         ): Boolean {
             lastPermission = permission
             lastScope = scope
+            lastActorId = actorId
+            callCount += 1
             return allowAll
         }
     }
@@ -254,6 +258,7 @@ class BoardDetailViewApiTest {
         // 앞 테스트가 남긴 값으로 권한코드 축이 초록이 되지 않게 매번 비운다.
         permissionStub.lastPermission = null
         permissionStub.lastScope = null
+        permissionStub.lastActorId = null
         permissionStub.callCount = 0
 
         every { boardRepository.findById(any()) } returns sampleBoard()
