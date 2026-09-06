@@ -1,22 +1,29 @@
 // 보드 설정 — 추정 · 작업일 탭 E2E (부채 177 Task 23 · J36·J37·J38·J39·J40)
 //
-// ## 이 spec 이 지는 판정 — 각 축이 무엇과 무엇을 가르나
+// ## 이 spec 이 지는 판정 — 각 축이 무엇과 무엇을 가르나 (뮤테이션 **실측** 2026-09-06)
 //
-// | 뮤테이션 | 죽는 테스트 | 가르는 것 |
+// 「죽는 테스트」는 예상이 아니라 **실제로 돌려서 받은 결과**다. 재현하려면 그 열의 변경을
+// 그대로 넣고 `playwright test e2e/board-settings-estimation.spec.ts` 를 돌리면 된다.
+//
+// | 뮤테이션 | 죽는 테스트 (실측) | 가르는 것 |
 // |---|---|---|
-// | ① `EstimationPanel.locked` 에서 `!isScrum` 을 뺀다 | S1 | 「칸반에서도 열린다」 ↔ 스크럼 전용 (J37) |
-// | ② `locked = true` 로 고정한다 (항상 잠김) | S2 | 「항상 잠긴 구현」 ↔ 스크럼에서 열린다 — ①의 **대조군** |
-// | ③ `toSettingsPayload` 가 `timeTracking` 을 응답에서 뺀다 (**배선 절단**) | S2 | 저장이 서버에 닿았나 ↔ 화면 상태만 바뀌었나 |
-// | ④ `WorkingDaysPanel` 초기값을 `stored?.standardDays ?? null` → `null` 고정 (**배선 절단**) | S3 | 서버 값에서 시작 ↔ 매번 빈 화면에서 시작 |
-// | ⑤ `toSettingsPayload` 가 `workingDays` 를 응답에서 뺀다 (**배선 절단**) | S3·S4 | 위와 같은 축을 **응답 쪽에서** 끊은 것 |
-// | ⑥ 타임존 저장에서 `standardDays`/`nonWorkingDates` 를 요청에서 뺀다 | S4 | 「타임존만 바꿨는데 근무일이 날아간다」 ↔ PUT 3축 동시 전송 |
-// | ⑦ `WorkingDaysPanel` 의 `days === null` 분기를 지우고 항상 체크박스를 그린다 (**항상 좁힌다**) | S1·S4 대조군·**S8** | 미설정을 「근무일 0개」로 뭉갬 ↔ 두 상태를 가름 (R6) |
-// | ⑧ 저장을 보드 단위가 아니라 프로젝트 단위로 흘린다 | S4 대조군·**S8** | 옆 보드까지 바뀜 ↔ 보드 단위 (편차 X7) |
-// | ⑪ 미설정 보드까지 주말·비근무일을 뺀다 (**무조건 좁힌다**) | **S8** | 「현행 유지」를 지키는가 ↔ 기존 차트를 배포 순간 바꿈 (R6) |
-// | ⑨ 서비스가 근무일을 `BurndownCalculator` 에 넘기지 않는다 (**배선 절단**) | — **이 spec 은 못 잡는다** (아래 ★) | — |
-// | ⑩ 타임존을 무시하고 UTC 로 고정한다 | — **이 spec 은 못 잡는다** (아래 ★) | — |
+// | ① `EstimationPanel.locked` 에서 `!isScrum` 을 뺀다 | **S1 1건만** | 「칸반에서도 열린다」 ↔ 스크럼 전용 (J37) |
+// | ② `EstimationPanel.locked` 를 `true` 로 고정 (항상 잠김) | **S2~S4 1건만** | 「항상 잠긴 구현」 ↔ 스크럼에서 열린다 — ①의 **대조군** |
+// | ③ `board-handlers.toSettingsPayload` 가 `workingDays` 를 항상 미설정으로 낸다 (**배선 절단**) | **S2~S4 1건만** | 저장이 서버에 닿았나 ↔ 화면 state 만 바뀌었나 |
+// | ④ `WorkingDaysPanel` 저장 요청에서 `timezone` 을 뺀다 | **S2~S4 1건만** | 「타임존만 바꿨는데 저장이 안 된다」 ↔ 3축 동시 전송 |
+// | ⑤ `WorkingDaysPanel` 초기값을 미설정 대신 월~금으로 채운다 (**항상 좁힌다**) | **6건 전부** | 미설정을 「근무일 0개/월~금」으로 뭉갬 ↔ 두 상태를 가름 (R6) |
+// | ⑥ 서비스가 근무일을 `BurndownCalculator` 에 넘기지 않는다 (**배선 절단**) | — **이 spec 은 못 잡는다** (아래 ★★) | — |
+// | ⑦ 번다운이 타임존을 무시하고 UTC 로 고정한다 | — **이 spec 은 못 잡는다** (아래 ★★) | — |
 //
-// ★★**⑨·⑩ 은 이 spec 이 잡지 못한다 — 그 사실 자체가 이 파일의 산출물이다.**
+// ★**⑤ 만 좁게 특정되지 않는다** — 6건 전부가 죽는다. 「미설정」이라는 상태 자체를 지우는
+//   변경이라 작업일을 만지는 모든 시나리오의 출발점(`근무일 고르기` 버튼)이 사라지기 때문이다.
+//   좁히려고 단언을 빼지 않았다 — 넓은 것이 사실이고, 그 사실이 곧 「미설정은 이 화면의
+//   뼈대」라는 뜻이다.
+// ★**①②는 짝으로만 산다.** 잠금만 재면 「항상 잠긴 구현」이 통과한다.
+// ★**S5 와 S8 도 짝으로만 산다.** S5 만 두면 「무조건 좁히는 구현」이, S8 만 두면
+//   「아무것도 안 좁히는 구현」이 통과한다.
+//
+// ★★**⑥·⑦ 은 이 spec 이 잡지 못한다 — 그 사실 자체가 이 파일의 산출물이다.**
 //   프론트 E2E 는 MSW 목 위에서 돈다. 번다운 응답의 정본은 `src/mocks/burndown-handlers.ts` 의
 //   **정적 store** 이고, 그 store 는 보드 작업일 설정(`board-handlers.ts` 의 `boardSettingsStore`)
 //   에서 **아무것도 파생하지 않는다.** 즉 화면에서 근무일을 아무리 바꿔도 차트는 바뀔 수가 없다.
@@ -30,7 +37,7 @@
 //   와도 침묵하므로 쓰지 않는다.
 //   ★그 대신 **S7 을 초록으로 세운다.** `test.fail` 안에서는 셀렉터가 썩어도 조용히 통과하므로,
 //   S5·S6 이 밟는 SPA 경로와 recharts x축 셀렉터는 초록 한 건이 따로 지킨다.
-//   ⑨·⑩ 의 실제 판정자는 백엔드다 — `BurndownWorkingDaysTest`(Task 11) ·
+//   ⑥·⑦ 의 실제 판정자는 백엔드다 — `BurndownWorkingDaysTest`(Task 11) ·
 //   `BurndownTimezoneTest` · `SprintBurndownIntegrationTest`(Task 12).
 //
 // 교훈 반영.
@@ -277,7 +284,16 @@ async function burndownAxisTicks(page: Page): Promise<string[]> {
   const ticks = page
     .getByRole('img', { name: burndownLabels.chart.ariaLabel })
     .locator('.recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value')
-  await expect(ticks.first()).toBeVisible()
+
+  // 🛑 **첫 tick 가시성만으로 읽으면 안 된다.** recharts 는 축을 점진적으로 그려서, 그
+  //    중간에 읽으면 배열이 잘린 채 돌아온다 — 2026-09-06 실측으로 S5 가 「06/03 이 없다」로
+  //    **가짜 통과**했다(뮤테이션 M-C 실행 중 포착). 잘린 배열은 부재 단언을 공짜로 만족시킨다.
+  //    양 끝이 제자리에 설 때까지 기다려야 그 사이가 다 그려졌다고 말할 수 있다.
+  // ★양 끝을 기대값으로 쓸 수 있는 근거 — 스프린트 시작·종료일(06/01·06/05)이 **둘 다 평일**이라
+  //   근무일로 좁혀도 남고, `interval="preserveStartEnd"` 가 양 끝 tick 을 항상 그린다.
+  await expect(ticks.first()).toHaveText(toTick(BURNDOWN_DATES[0]))
+  await expect(ticks.last()).toHaveText(toTick(BURNDOWN_DATES[BURNDOWN_DATES.length - 1]))
+
   return (await ticks.allTextContents()).map((text) => text.trim())
 }
 
@@ -526,7 +542,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
   })
 
   // ───────────────────────────────────────────────────────────────────────────
-  // S8 — ★대조군. 미설정 보드의 번다운은 **현행 그대로**다 (스펙 R6 · 뮤테이션 ⑦·⑧)
+  // S8 — ★대조군. 미설정 보드의 번다운은 **현행 그대로**다 (스펙 R6 · 뮤테이션 ⑤)
   //
   // Given  작업일을 **한 번도 설정하지 않은** 보드다(설정 화면에서 그 사실을 먼저 확인한다)
   // When   그 프로젝트의 스프린트 번다운을 연다
