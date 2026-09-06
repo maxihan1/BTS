@@ -171,8 +171,9 @@ export function WorkingDaysPanel({ board, canConfigure }: WorkingDaysPanelProps)
       // ★편집 중이던 값을 **되돌리지 않는다.** 형제 탭은 즉시 저장이라 낙관 반영을 되돌리지만,
       //   이 탭은 버튼 저장이라 화면의 값이 아직 「사용자가 만들던 초안」이다. 되돌리면 사용자가
       //   방금 한 편집을 잃는다 — 고쳐서 다시 누를 수 있어야 한다.
-      // ★오류 **본문**을 읽지 않는다. 탭마다 봉투가 달라(부채 177 Task 29 가 통일 예정)
-      //   본문 구조에 기대면 통일되는 날 조용히 어긋난다. 상태 코드로만 가른다.
+      // ★오류 **본문**을 읽지 않는다. 백엔드 봉투(RFC 7807 + `errorCode`)와 MSW 목 봉투
+      //   (`{ errorCode, message }`)가 서로 달라, 본문에 기대면 목 위에서만 초록이 된다.
+      //   상태 코드로만 가른다 — 사유 전문은 `api/board-settings.ts` 상단 「오류 본문」 절.
       setFailure({ input, status: error instanceof ApiError ? error.status : null })
       setJustSaved(false)
     },

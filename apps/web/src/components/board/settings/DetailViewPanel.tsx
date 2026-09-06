@@ -372,8 +372,9 @@ export function DetailViewPanel({ board, canConfigure }: DetailViewPanelProps): 
     onError: (error, save) => {
       // 낙관 반영을 되돌린다. 그대로 두면 사용자는 저장된 줄 안다.
       setFields((prev) => ({ ...prev, [save.group]: [...save.previous] }))
-      // ★오류 **본문**을 읽지 않는다. 탭마다 봉투가 달라(부채 177 Task 29 가 통일 예정)
-      //   본문 구조에 기대면 통일되는 날 조용히 어긋난다. 상태 코드로만 가른다.
+      // ★오류 **본문**을 읽지 않는다. 백엔드 봉투(RFC 7807 + `errorCode`)와 MSW 목 봉투
+      //   (`{ errorCode, message }`)가 서로 달라, 본문에 기대면 목 위에서만 초록이 된다.
+      //   상태 코드로만 가른다 — 사유 전문은 `api/board-settings.ts` 상단 「오류 본문」 절.
       setFailure({ save, status: error instanceof ApiError ? error.status : null })
     },
     onSettled: async () => {

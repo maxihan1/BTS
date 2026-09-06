@@ -132,7 +132,7 @@ const WEEK_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
  * 그것이 이 저장소가 이름 붙인 「유닛은 초록인데 e2e 를 쓰자마자 red」의 자리다.
  *
  * @param status 지정하면 그 상태 코드로 실패시킨다. **본문은 비운다** — 본문 구조에 기대는
- *   구현을 여기서 잡는다(탭마다 봉투가 다르다 · 부채 177 Task 29 가 통일 예정).
+ *   구현을 여기서 잡는다(구현은 상태 코드로만 갈라야 한다 · `api/board-settings.ts` 「오류 본문」).
  */
 function stubWorkingDaysApi(status?: number): WorkingDaysStub {
   const stub: WorkingDaysStub = {

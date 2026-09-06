@@ -1361,8 +1361,10 @@ const reorderColumnsHandler = http.put(
 //   - `WorkingDaysSettingsService` — 요일 7키 · 0개는 400(E1) · IANA 타임존 · 주 순서 정렬 + 날짜 중복 제거
 //   - `DetailViewSettingsService`  — 그룹 4종 · **응답은 항상 4종을 채운다**(R7c)
 //
-// 오류 본문은 탭마다 다르다(백엔드도 그렇다 — 부채 177 Task 29 가 통일 예정). 소비자는
-// **상태 코드로만** 갈라야 하므로 목은 `{ errorCode, message }` 한 모양으로 통일해 둔다.
+// 오류 본문은 이 목과 백엔드가 **서로 다르다.** 백엔드는 네 탭에 RFC 7807 ProblemDetail +
+// `errorCode`(`AGILE_` 접두사) 한 봉투를 낸다(`BoardExceptionHandler` 의 `assignableTypes` 에
+// 네 컨트롤러가 전부 있다). 이 목은 `{ errorCode, message }` 를 낸다 — 필드 구성도 코드값도
+// 그것과 다르다. 그래서 소비자는 **상태 코드로만** 갈라야 한다(두 벌이 같은 것은 상태 코드뿐이다).
 
 /** 카드에 얹을 수 있는 표준 필드 키 — 백엔드 `CardLayoutFieldKey` 미러. */
 const CARD_LAYOUT_FIELD_KEYS = ['EPIC', 'PRIORITY', 'ASSIGNEE', 'LABELS', 'ESTIMATE', 'ISSUE_TYPE']
@@ -1476,7 +1478,14 @@ function toSettingsPayload(boardId: string): BoardSettingsPayload {
   }
 }
 
-/** 설정 탭 공통 오류 응답 — 소비자는 상태 코드로만 갈라야 한다(본문 모양은 탭마다 다르다). */
+/**
+ * 설정 탭 공통 오류 응답 — 네 탭이 `{ errorCode, message }` **한 모양**을 낸다.
+ *
+ * ★이 모양은 백엔드와 다르다(위 「오류 본문」 참고). 여기 쓰는 코드값(`AGILE_CARD_LAYOUT_INVALID` ·
+ * `AGILE_TIME_TRACKING_INVALID` · `AGILE_WORKING_DAYS_INVALID` · `AGILE_TIME_TRACKING_NOT_SCRUM`)도
+ * 백엔드 `BoardExceptionHandler` 의 `AGILE_*` 상수에 없는 것들이다. 그래서 이 본문에 기대는 소비자는
+ * 이 목 위에서만 초록이 된다 — 소비자는 **상태 코드로만** 갈라야 한다.
+ */
 function settingsError(status: number, errorCode: string, message: string) {
   return HttpResponse.json({ errorCode, message }, { status })
 }

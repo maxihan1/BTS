@@ -96,7 +96,7 @@ interface EstimationStub {
  *
  * @param initial 이미 저장돼 있는 값.
  * @param status 지정하면 그 상태 코드로 실패시킨다. **본문은 비운다** — 본문 구조에 기대는
- *   구현을 여기서 잡는다(탭마다 봉투가 다르다 · 부채 177 Task 29 가 통일 예정).
+ *   구현을 여기서 잡는다(구현은 상태 코드로만 갈라야 한다 · `api/board-settings.ts` 「오류 본문」).
  */
 function stubEstimationApi(initial: TimeTracking = 'NONE', status?: number): EstimationStub {
   const stub: EstimationStub = { requests: [], stored: initial }
@@ -258,7 +258,7 @@ describe('추정 탭 — 저장 (Task 9 계약)', () => {
 
   it('T-ES-10: 409 는 본문이 비어도 잠금 사유를 낸다 — 상태 코드로 가른다', async () => {
     // 칸반 판정을 서버가 뒤늦게 낸 경우다(다른 사람이 보드 종류를 바꿨다).
-    // 탭마다 오류 봉투가 다르므로(Task 29 가 통일 예정) 본문 구조에 기대는 구현이 여기서 죽는다.
+    // 구현은 상태 코드로만 갈라야 하므로, 본문 구조에 기대는 구현이 여기서 죽는다.
     const stub = stubEstimationApi('NONE', 409)
     renderPanel()
 

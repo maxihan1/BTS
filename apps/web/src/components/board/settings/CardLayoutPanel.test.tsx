@@ -81,7 +81,7 @@ interface CardLayoutStub {
  *
  * @param initial 이미 저장돼 있는 구성. 「응답에만 있는 뷰」를 만들 때 쓴다.
  * @param status 지정하면 그 상태 코드로 실패시킨다. **본문은 비운다** — 본문 구조에 기대는
- *   구현을 여기서 잡는다(탭마다 봉투가 다르다 · Task 29 가 통일 예정).
+ *   구현을 여기서 잡는다(구현은 상태 코드로만 갈라야 한다 · `api/board-settings.ts` 「오류 본문」).
  */
 function stubCardLayoutApi(
   initial: Record<string, string[]> = {},
@@ -328,7 +328,7 @@ describe('카드 레이아웃 탭 — 저장 응답 (N1)', () => {
   })
 
   it('T-CL-10: 403 은 본문이 비어도 권한 문구를 낸다 — 상태 코드로 가른다', async () => {
-    // 탭마다 오류 봉투가 다르다(Task 29 가 통일 예정). 본문 구조에 기대는 구현이 여기서 죽는다.
+    // 구현은 상태 코드로만 갈라야 한다. 본문 구조에 기대는 구현이 여기서 죽는다.
     stubCardLayoutApi({}, 403)
     renderPanel()
 

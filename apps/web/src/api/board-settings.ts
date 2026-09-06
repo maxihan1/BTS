@@ -11,6 +11,24 @@ import {
 import type { BoardDetailViewFields, BoardWorkingDays, CardLayout, TimeTracking } from './boards'
 
 /**
+ * ### 오류 본문 — 호출자는 **상태 코드로만** 갈라야 한다
+ *
+ * 이 모듈의 네 함수는 실패를 `ApiError(status, body)` 로 던진다. `body` 는 담아만 두고
+ * **구조를 읽지 않는다.** 읽으면 안 되는 이유는 봉투가 두 벌이기 때문이다.
+ *
+ * - **백엔드** — 네 탭이 `BoardExceptionHandler` 한 advice 를 지난다(`assignableTypes` 에
+ *   `BoardCardLayoutController` · `BoardEstimationController` · `BoardWorkingDaysController` ·
+ *   `BoardDetailViewController` 가 전부 있다). 본문은 RFC 7807 ProblemDetail(`type` · `title` ·
+ *   `status` · `detail`)에 `errorCode`(`AGILE_` 접두사) 와 `timestamp` 를 얹은 모양이다.
+ *   네 탭의 **404** 본문이 서로 같은지는 백엔드 `BoardSettingsTabErrorEnvelopeTest` 가 잰다.
+ * - **MSW 목** — `mocks/board-handlers.ts` 의 `settingsError` 는 `{ errorCode, message }` 를 낸다.
+ *   필드 구성도 다르고 코드값도 다르다(`AGILE_CARD_LAYOUT_INVALID` 등은 백엔드 상수에 없다).
+ *
+ * 그래서 본문 구조에 기대는 구현은 **목 위에서만 초록**이 되고 실제 API 에서 갈린다.
+ * 상태 코드는 두 벌이 같으므로 그것으로만 가른다.
+ */
+
+/**
  * `{ data: T }` 봉투 언랩용 헬퍼.
  *
  * `boards.ts` 의 같은 헬퍼가 export 되지 않아 `board-columns.ts` 와 마찬가지로 여기 한 벌 둔다 —
@@ -58,8 +76,8 @@ const cardLayoutResponseSchema = z.object({ cardLayout: cardLayoutSchema })
  *   「추가 필드 없음」이고 유효한 저장이다. **4개 이상이면 서버가 400** 이다(J17).
  * @returns 저장 후 **전체** 구성(두 뷰 모두).
  * @throws ApiError 비-2xx (400 상한 초과·미지원 필드 키·칸반의 백로그 · 401 · 403 권한 미충족 ·
- *   404 보드 미존재). ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가 통일 예정)
- *   호출자는 **상태 코드로만** 갈라야 한다.
+ *   404 보드 미존재). ★호출자는 **상태 코드로만** 갈라야 한다 — 사유는 이 파일 상단
+ *   「오류 본문」 절.
  * @throws ZodError 응답 스키마 불일치
  */
 export async function replaceCardLayout(
@@ -114,8 +132,8 @@ export interface WorkingDaysInput {
  * @param input 저장할 세 값. `standardDays: null` 은 미설정이고 유효한 저장이다.
  * @returns 정규화 후 실제로 저장된 값.
  * @throws ApiError 비-2xx (400 근무일 0개(E1)·미지원 요일 키·비-IANA 타임존 · 401 ·
- *   403 권한 미충족 · 404 보드 미존재). ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가
- *   통일 예정) 호출자는 **상태 코드로만** 갈라야 한다.
+ *   403 권한 미충족 · 404 보드 미존재). ★호출자는 **상태 코드로만** 갈라야 한다 —
+ *   사유는 이 파일 상단 「오류 본문」 절.
  * @throws ZodError 응답 스키마 불일치
  */
 export async function saveWorkingDays(
@@ -182,8 +200,7 @@ const detailViewFieldsResponseSchema = z.object({ groups: boardDetailViewFieldsS
  *   집합으로 만들지 않는다(J48 의 드래그 결과가 이 순서다). 빈 배열은 그 그룹을 비운다.
  * @returns 저장 후 **전체** 구성(그룹 4종).
  * @throws ApiError 비-2xx (400 미지원 그룹 · 401 · 403 권한 미충족 · 404 보드 미존재).
- *   ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가 통일 예정) 호출자는 **상태 코드로만**
- *   갈라야 한다.
+ *   ★호출자는 **상태 코드로만** 갈라야 한다 — 사유는 이 파일 상단 「오류 본문」 절.
  * @throws ZodError 응답 스키마 불일치
  */
 export async function replaceDetailViewFields(
@@ -224,7 +241,7 @@ const estimationResponseSchema = z.object({
  * @returns 저장된 값. 요청 echo 가 아니라 **서버가 확정한 값**이다.
  * @throws ApiError 비-2xx (400 허용값 밖 · 401 · 403 권한 미충족 · 404 보드 미존재 ·
  *   **409 칸반 보드**(E5 — 404 가 아니다. 보드는 있고 조작이 막힌 것이다)).
- *   ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가 통일 예정) 호출자는 **상태 코드로만** 갈라야 한다.
+ *   ★호출자는 **상태 코드로만** 갈라야 한다 — 사유는 이 파일 상단 「오류 본문」 절.
  * @throws ZodError 응답 스키마 불일치.
  */
 export async function updateTimeTracking(
