@@ -114,6 +114,26 @@ export const boardCardSchema = z.object({
    * FR-UX-14 B2 #346.
    */
   originalEstimateSeconds: z.number().int().nullable(),
+  /**
+   * 이슈 커스텀 필드 값 맵 (부채 177 Task 26 · J17). 키는 `custom_field_definitions.key` 원문이라
+   * **`cf_` 접두사가 없다** — 접두사는 카드 레이아웃 **구성**의 표식이고, 카드가 그릴 때
+   * 떼어 이 맵을 찾는다(`BoardCard.tsx` `CUSTOM_FIELD_PREFIX`).
+   *
+   * ★★**이 줄이 없으면 값이 조용히 사라진다.** zod `z.object` 는 기본이 **strip** 이라
+   * 백엔드 `BoardCardResponse.customFields` 가 실려 와도 파싱에서 버려지고, 화면은
+   * 「그 이슈에 값이 없음」과 구분되지 않는 모습으로 필드를 생략한다(E4 와 같은 그림).
+   * 타입만 봐서는 안 보이므로 판정은 **응답을 파싱해 값이 남는지**로 한다
+   * (`components/board/BoardCardWiring.test.tsx` T-W-1).
+   *
+   * ★값은 **이미 마스킹돼 있다.** 열람 권한(FR-PM-07) 판정은 issue-tracking 의
+   * `BoardIssueLookupAdapter` 가 끝냈다(백엔드 KDoc · Task 25). 화면이 다시 거르지 않는다.
+   *
+   * `.optional()` 인 이유는 `canDelete`·설정 4키와 같다. 백엔드는 빈 맵이라도 **항상** 보내지만,
+   * 필수로 두면 이 키를 모르는 응답 하나에 보드 화면 전체가 파싱에서 죽고, `.default({})` 로
+   * 두면 출력 타입에서 필수가 되어 `BoardCard` 로 선언된 인라인 픽스처가 전부 타입 에러가 된다.
+   * 소비자(`CardExtraFields`)는 `undefined` 를 「값 없음」으로 읽어 그 칸만 생략한다.
+   */
+  customFields: z.record(z.string(), z.unknown()).optional(),
 })
 
 /**

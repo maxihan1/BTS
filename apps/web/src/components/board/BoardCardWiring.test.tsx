@@ -134,7 +134,10 @@ function boardDetailJson(
         wipLimit: null,
         wipExceeded: false,
         states: [{ key: 'open', name: '열림', category: 'TODO' }],
-        cards: [CARD_WITH_VALUES, CARD_WITHOUT_VALUES],
+        // ★**복제해서 넣는다.** 상수를 그대로 실으면 응답을 손보는 테스트(T-W-2 의 `delete`)가
+        //   **다른 테스트의 픽스처까지** 바꾼다 — 실제로 그 순서 의존 때문에 커스텀 필드 축
+        //   두 개가 거짓 실패했다. 픽스처는 테스트마다 자기 것이어야 한다.
+        cards: [structuredClone(CARD_WITH_VALUES), structuredClone(CARD_WITHOUT_VALUES)],
       },
     ],
     cardLayout,

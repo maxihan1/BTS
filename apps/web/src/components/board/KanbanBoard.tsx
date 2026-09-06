@@ -638,6 +638,10 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
               swimlaneField={board.swimlaneField}
               isFilterActive={isFilterActive}
               issueTypesByKey={issueTypesByKey}
+              // 카드 레이아웃 구성 — 컬럼을 지나 카드까지 내려간다 (부채 177 Task 32 · J17).
+              // ★새 조회가 아니라 **이미 손에 있는 `board`** 에서 꺼낸다. 보드 조회 응답이
+              //   설정을 함께 싣기 때문이다(Task 31 · N1) — 탭마다 왕복을 만들지 않는다.
+              cardLayout={board.cardLayout}
             />
           ))}
         </div>
@@ -651,6 +655,9 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
               assignee={assigneeNames.get(activeCard.issueKey) ?? UNASSIGNED}
               typeIconName={issueTypesByKey.get(activeCard.typeKey)?.iconName ?? null}
               typeName={issueTypesByKey.get(activeCard.typeKey)?.name ?? activeCard.typeKey}
+              // 드래그 고스트도 **같은 구성**을 받는다 — 빠뜨리면 집어 올리는 순간 카드가
+              // 한 층 줄어 들며 크기가 튄다 (`issueTypesByKey` 를 여기에도 넘기는 것과 같은 이유).
+              cardLayout={board.cardLayout}
             />
           ) : null}
         </DragOverlay>

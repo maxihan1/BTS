@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import { useBacklog, useCreateSprint } from '@/hooks/use-backlog'
+import { useBoard } from '@/hooks/use-boards'
 import { useUsersByIdsChunked } from '@/hooks/use-users'
 import { useBacklogEpics } from '@/hooks/use-backlog-epics'
 import { useIssueTypes } from '@/hooks/use-issue-types'
@@ -32,6 +33,7 @@ import { backlogKeyboardSensorOptions } from '@/lib/backlog-keyboard-coordinates
 import { NO_EPIC, emptyBacklogFilter, filterBacklogView, isEmptyFilter } from '@/lib/backlog-filter'
 import type { BacklogFilter } from '@/lib/backlog-filter'
 import type { BacklogIssue, BacklogView, SprintMeta, SprintWithIssues } from '@/api/backlog'
+import type { CardLayout } from '@/api/boards'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 라벨 상수 (FR-UX-13 F16)
@@ -374,6 +376,21 @@ export function BacklogBoard({
     [issueTypes],
   )
 
+  // 카드 레이아웃 구성 (부채 177 Task 32 · J18) — 카드 2층(J19)이 그릴 필드 목록이다.
+  //
+  // ★**보드 단건 조회에서 온다.** 백로그 조회 응답(`BacklogView`)에는 설정이 없고, 보드 목록
+  //   (`BoardSummary`)에도 없다 — 설정은 보드 **단건** 응답이 함께 싣는다(Task 31 · N1).
+  // ★조회를 이 컴포넌트가 갖는 이유는 바로 위 `useIssueTypes` 와 같다 — 카드가 그리는 데
+  //   필요한 **표시용 메타**를 칸마다가 아니라 여기서 1회만 읽어 두 칸에 공유한다.
+  // ★`boardId` 가 `undefined` 면 훅이 조회를 걸지 않는다(`useBoard` 의 `enabled`). 그때 기본
+  //   보드를 고르는 것은 **서버**이고 프론트는 고르지 않으므로(이 파일의 `boardId` KDoc),
+  //   구성 없이 그린다 — 카드 2층이 안 생길 뿐 나머지는 그대로다.
+  // ★캐시 키가 보드 화면의 것과 같은 `['board', boardId, …]` 라 두 화면을 오갈 때
+  //   `staleTime`(30초) 안에서는 재조회가 생략된다.
+  // ★조기 반환(`isLoading`)보다 **위**에 있어야 렌더마다 훅 개수가 같다.
+  const { data: boardDetail } = useBoard(boardId)
+  const cardLayout = boardDetail?.cardLayout
+
   // 필터 (F16). ★상태 소유자는 **URL** 이다 (F16-9) — 이 컴포넌트는 받은 값을 그릴 뿐이고,
   // 훅은 EC9 정합과 필터바 재마운트 토큰만 얹는다.
   const { epicKeys, epicNames } = useBacklogEpics(backlogView)
@@ -483,6 +500,7 @@ export function BacklogBoard({
         <BacklogStack
           projectKey={projectKey}
           boardId={boardId}
+          cardLayout={cardLayout}
           display={display}
           assigneeNames={assigneeNames}
           issueTypesByKey={issueTypesByKey}
@@ -648,6 +666,11 @@ interface BacklogStackProps {
    * 스코프 캐시를 완전 일치 키로 읽으므로 중간에서 끊으면 재시도가 409 를 되풀이한다.
    */
   readonly boardId: string | undefined
+  /**
+   * 뷰별 카드 레이아웃 구성 — 두 칸(`SprintColumn`·`BacklogColumn`)에 **그대로** 흘려보낸다.
+   * 한쪽 칸에만 넘기면 「백로그 칸에는 뜨는데 스프린트 칸에는 안 뜨는」 반쪽 배선이 된다.
+   */
+  readonly cardLayout: CardLayout | undefined
   /** 표시용 파생 한 벌 (필터 적용 후) */
   readonly display: BacklogDisplay
   /** 이슈 키 → 담당자 표시 이름 */
@@ -689,6 +712,7 @@ interface BacklogStackProps {
 function BacklogStack({
   projectKey,
   boardId,
+  cardLayout,
   display,
   assigneeNames,
   issueTypesByKey,
@@ -728,6 +752,7 @@ function BacklogStack({
           issues={issues}
           assigneeNames={assigneeNames}
           issueTypesByKey={issueTypesByKey}
+          cardLayout={cardLayout}
           isOver={overDroppableId === `sprint-${meta.sprintId}`}
           // 버튼은 곧장 mutation 을 쏘지 않고 다이얼로그를 연다 (F15 FR-3 · FR-5).
           // 버튼 **이름**(`스프린트 시작`·`스프린트 완료`)은 그대로다 (FR-10 즉사 계약).
@@ -749,6 +774,7 @@ function BacklogStack({
         issues={display.backlogIssues}
         assigneeNames={assigneeNames}
         issueTypesByKey={issueTypesByKey}
+        cardLayout={cardLayout}
         isOver={overDroppableId === 'backlog'}
         canCreateIssue={canCreateIssue}
         onCreateIssue={createIssue.openForBacklog}
