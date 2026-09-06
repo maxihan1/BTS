@@ -546,6 +546,65 @@ function DetailViewFieldsSection({ state }: { state: IssueDetailViewFieldsState 
   )
 }
 
+/** IssueMetaPanel 하단 액션 두 개 — 클론·삭제. props 는 판정 결과만 받고 스스로 판정하지 않는다. */
+function IssueMetaActions({
+  onCloneClick,
+  isCloneExplicitlyDenied,
+  onDeleteClick,
+  canDelete,
+}: {
+  onCloneClick: () => void
+  isCloneExplicitlyDenied: boolean
+  onDeleteClick: () => void
+  canDelete: boolean
+}): JSX.Element {
+  return (
+    <>
+      {/* 클론 버튼 — 삭제 버튼 바로 위 배치.
+
+          클론은 **대상 프로젝트의 CREATE 권한**을 요구한다(`IssueApplicationService.cloneIssue`).
+          예전 주석은 「프론트 권한 API 가 CREATE 를 안 줘서 게이트가 불가능하다」였는데
+          그 근거는 **거짓이 됐다** — `project-permissions.ts` 가 `CREATE` 를 내준다.
+
+          ★판정식은 `CREATE === false`(**명시 거부만**)다. `!isLoading && === true`(미지=거부)를
+          쓰면 권한 조회가 아직 안 끝났거나 실패한 구간에서 **CREATE 를 실제로 가진 사용자를
+          영구 차단**한다 — `use-project-permissions.ts` 에 retry 도 에러 폴백도 없다.
+          정본 논거는 `components/issue/create/use-issue-create-permission-gate.ts` KDoc.
+
+          미지에서는 버튼을 열어 두고 서버 403 + `useCloneIssue.onError` 토스트가 최종 판정한다
+          (기존 fail-safe 유지). 여기서 막는 것은 「서버가 확실히 거절할 액션」뿐이다. */}
+      <Button
+        variant="secondary"
+        className="w-full min-h-[44px]"
+        onClick={onCloneClick}
+        disabled={isCloneExplicitlyDenied}
+        aria-label={
+          isCloneExplicitlyDenied
+            ? issueDetailStrings.cloneButtonNoPermission
+            : issueDetailStrings.cloneButton
+        }
+        title={isCloneExplicitlyDenied ? issueDetailStrings.cloneButtonNoPermission : undefined}
+        data-testid="issue-clone"
+      >
+        {issueDetailStrings.cloneButton}
+      </Button>
+
+      {/* 삭제 버튼 — WCAG AA 44px 터치 타깃, 권한 없으면 disabled + 사유 표시 */}
+      <Button
+        variant="destructive"
+        className="w-full min-h-[44px]"
+        onClick={onDeleteClick}
+        disabled={!canDelete}
+        aria-label={canDelete ? issueDetailStrings.deleteButton : issueDetailStrings.deleteButtonNoPermission}
+        title={canDelete ? undefined : issueDetailStrings.deleteButtonNoPermission}
+        data-testid="issue-delete"
+      >
+        {issueDetailStrings.deleteButton}
+      </Button>
+    </>
+  )
+}
+
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
@@ -849,47 +908,12 @@ export function IssueMetaPanel({
         </div>
       </div>
 
-      {/* 클론 버튼 — 삭제 버튼 바로 위 배치.
-
-          클론은 **대상 프로젝트의 CREATE 권한**을 요구한다(`IssueApplicationService.cloneIssue`).
-          예전 주석은 「프론트 권한 API 가 CREATE 를 안 줘서 게이트가 불가능하다」였는데
-          그 근거는 **거짓이 됐다** — `project-permissions.ts` 가 `CREATE` 를 내준다.
-
-          ★판정식은 `CREATE === false`(**명시 거부만**)다. `!isLoading && === true`(미지=거부)를
-          쓰면 권한 조회가 아직 안 끝났거나 실패한 구간에서 **CREATE 를 실제로 가진 사용자를
-          영구 차단**한다 — `use-project-permissions.ts` 에 retry 도 에러 폴백도 없다.
-          정본 논거는 `components/issue/create/use-issue-create-permission-gate.ts` KDoc.
-
-          미지에서는 버튼을 열어 두고 서버 403 + `useCloneIssue.onError` 토스트가 최종 판정한다
-          (기존 fail-safe 유지). 여기서 막는 것은 「서버가 확실히 거절할 액션」뿐이다. */}
-      <Button
-        variant="secondary"
-        className="w-full min-h-[44px]"
-        onClick={onCloneClick}
-        disabled={isCloneExplicitlyDenied}
-        aria-label={
-          isCloneExplicitlyDenied
-            ? issueDetailStrings.cloneButtonNoPermission
-            : issueDetailStrings.cloneButton
-        }
-        title={isCloneExplicitlyDenied ? issueDetailStrings.cloneButtonNoPermission : undefined}
-        data-testid="issue-clone"
-      >
-        {issueDetailStrings.cloneButton}
-      </Button>
-
-      {/* 삭제 버튼 — WCAG AA 44px 터치 타깃, 권한 없으면 disabled + 사유 표시 */}
-      <Button
-        variant="destructive"
-        className="w-full min-h-[44px]"
-        onClick={onDeleteClick}
-        disabled={!canDelete}
-        aria-label={canDelete ? issueDetailStrings.deleteButton : issueDetailStrings.deleteButtonNoPermission}
-        title={canDelete ? undefined : issueDetailStrings.deleteButtonNoPermission}
-        data-testid="issue-delete"
-      >
-        {issueDetailStrings.deleteButton}
-      </Button>
+      <IssueMetaActions
+        onCloneClick={onCloneClick}
+        isCloneExplicitlyDenied={isCloneExplicitlyDenied}
+        onDeleteClick={onDeleteClick}
+        canDelete={canDelete}
+      />
     </aside>
   )
 }

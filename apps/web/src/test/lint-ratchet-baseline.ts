@@ -32,7 +32,11 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   ★상환은 #453 쪽 몫이다 — 함수를 쪼개는 것이 정처방이고, 그 리팩터를 이 PR 이 하면
   //     보드 설정 화면의 리뷰 범위를 남의 컴포넌트로 넓히게 된다.
   "src/components/issue/AttachmentPreviewModal.tsx::Function 'AttachmentPreviewModal'": 237,
-  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 317,
+  // ★부채 177 이 상세 보기 구성 읽기를 배선하며 317 → 333 으로 늘렸다(머지 블로커였다).
+  //   baseline 을 333 으로 올리는 대신 하단 액션 두 개(클론·삭제)를 같은 파일의
+  //   `IssueMetaActions` 로 순수 추출해 **298** 로 내렸다 — 늘린 것보다 더 갚았다.
+  //   여전히 200 위라 줄을 지우지 않는다. 200 밑으로 내리는 것은 #453 몫이라는 위 문단 그대로다.
+  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 298,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
   "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
   "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,
