@@ -15,14 +15,19 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
+import java.sql.Connection
+import java.sql.DriverManager
 import java.sql.SQLException
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * CHECK 제약 위반 SQLSTATE.
@@ -39,6 +44,24 @@ private const val CHECK_VIOLATION = "23514"
  * (Task 27 이 같은 자리에서 쓴 방법). 아무 예외로나 재면 오타·테이블 부재(42P01)도 통과한다.
  */
 private const val UNIQUE_VIOLATION = "23505"
+
+/** NOT NULL 위반 SQLSTATE. 배열 원소의 null 이 여기로 온다(⑬). */
+private const val NOT_NULL_VIOLATION = "23502"
+
+/** 문자열 길이 초과 SQLSTATE — `string_data_right_truncation`. `VARCHAR(128)` 을 넘길 때다(⑬). */
+private const val STRING_TOO_LONG = "22001"
+
+/** ⑭ 의 워커 회수 상한(초). 여기 걸리면 경합이 아니라 배선이 잘못된 것이다. */
+private const val WORKER_TIMEOUT_SECONDS = 10L
+
+/** ⑭ 가 「막힌 락」을 기다리는 상한(초). */
+private const val BLOCK_WAIT_SECONDS = 5L
+
+/** ⑭ 의 `pg_locks` 폴링 간격(ms). */
+private const val POLL_INTERVAL_MILLIS = 20L
+
+/** 초 → ms. */
+private const val MILLIS_PER_SECOND = 1000L
 
 /**
  * [BoardSettingsRepository] 통합 테스트 — 보드 설정 4탭이 실제로 **DB 에** 앉는지.
@@ -64,6 +87,8 @@ private const val UNIQUE_VIOLATION = "23505"
  * | ⑩ 그룹 축 | 상세 필드가 그룹 4종 각자의 순서를 갖고 서로를 밀어내지 않는다 | R7 · J47 · J48 |
  * | ⑪ soft-delete | `deleted_at` 술어 4곳이 soft-deleted 보드를 없는 보드로 만든다 | 404 신호 |
  * | ⑫ updated_at | 설정 쓰기 2경로가 `updated_at` 을 올린다 | 형제 경로와 같은 규약 |
+ * | **⑬ 값 위생** | `field_key` 의 원소 null·129자를 **DB 가 거부한다** | 리뷰 C3 — 400 을 서비스가 내야 하는 근거 |
+ * | **⑭ 동시 저장** | OCC 없는 `DELETE`→`INSERT` 가 실제로 **23505** 를 낸다 | 리뷰 C2 — 409 매핑의 근거 |
  *
  * ★ ⑧ 이 이 파일에서 가장 중요한 축이다. 「쓰고 읽으면 같다」만 재면 NULL 과 `{}` 를 한 값으로
  * 뭉갠 구현도 통과한다. 그러면 **미설정 보드의 번다운이 배포 순간 바뀐다**(스펙 R6 · V509 ① 의 ★★).
@@ -96,6 +121,16 @@ private const val UNIQUE_VIOLATION = "23505"
  * ★M3 은 **처음에 red 가 안 됐다** — 그 사실이 [readWithSeqScan] 을 낳았다. 그리고 D1·D2·D3 은
  * 독립 검증자가 찾은 생존 뮤턴트다(M1~M8 이 「이미 초록인 방향」을 비껴간 자리). 목록을 여기 남기는
  * 이유가 그것이다 — 커밋 본문에만 적으면 다음 사람이 무엇이 이미 검증됐는지 알 방법이 없다.
+ *
+ * ## ★⑬⑭ 는 **다른 파일의 스텁이 허구가 되지 않게** 하는 축이다 (리뷰 C2·C3)
+ * - ⑬ — 상세 보기 PATCH 가 원소 null 을 그대로 넘기면 여기서 `NOT NULL` 이 죽고, 그 예외가
+ *   `BoardExceptionHandler` 의 catch-all 로 떨어져 **500** 이 된다. 400 을 서비스가 내야 하는
+ *   근거가 이 축이다(형제 [com.bts.agileplanning.application.CardLayoutSettingsService] 는
+ *   같은 위험을 KDoc 에 적고 이미 막고 있다).
+ * - ⑭ — [com.bts.agileplanning.web.BoardSettingsTabErrorEnvelopeTest] 의 ⑨ 는
+ *   [DataIntegrityViolationException] 을 **스텁으로** 던져 409 를 잰다. 그 스텁이 현실과 같은
+ *   타입인지는 여기서만 확인된다 — ⑭ 가 실 DB 경합에서 도착하는 **예외 타입과 SQLSTATE 를 함께**
+ *   단언하므로 두 축이 한 점에서 맞물린다.
  *
  * ## 설정 공유
  * [AgilePlanningTestcontainersConfig] 의 singleton PostgreSQL 컨테이너를 재사용한다.
@@ -444,6 +479,76 @@ class BoardSettingsRepositoryTest {
         assertThat(settingsRepository.findDetailViewFields(other.id)["GENERAL"]).containsExactly("summary")
     }
 
+    // ── ⑬ 값 위생 — 저장 계층은 사용자 입력을 걸러 주지 않는다 (리뷰 C3) ────────
+
+    @Test
+    fun `필드 키 원소가 null 이면 NOT NULL 위반으로 죽는다`() {
+        // Jackson 은 `["summary", null]` 의 원소 null 을 막지 못한다. 서비스가 400 으로 거두지 않으면
+        // 그 null 이 여기까지 와서 죽고, catch-all 이 500 으로 내보낸다.
+        val board = insertBoard()
+
+        @Suppress("UNCHECKED_CAST")
+        val withNull = listOf("summary", null) as List<String>
+
+        assertThat(sqlStateOf { settingsRepository.replaceDetailViewFields(board.id, "GENERAL", withNull) })
+            .isEqualTo(NOT_NULL_VIOLATION)
+    }
+
+    @Test
+    fun `필드 키가 128자를 넘으면 길이 초과로 죽는다`() {
+        // field_key 는 VARCHAR(128) 이다(V509 ④). 129자는 SQLSTATE 22001 이다.
+        val board = insertBoard()
+
+        assertThat(sqlStateOf { settingsRepository.replaceDetailViewFields(board.id, "GENERAL", listOf("k".repeat(129))) })
+            .isEqualTo(STRING_TOO_LONG)
+        // 대조군 — 128자는 들어간다. 경계에서 전부 죽는 스키마였다면 위 단언이 공허하다.
+        settingsRepository.replaceDetailViewFields(board.id, "GENERAL", listOf("k".repeat(128)))
+        assertThat(settingsRepository.findDetailViewFields(board.id)["GENERAL"]).hasSize(1)
+    }
+
+    // ── ⑭ 동시 저장 — OCC 가 없다 (리뷰 C2) ────────────────────────────────────
+
+    @Test
+    fun `같은 그룹을 동시에 저장하면 뒤엣것이 PK 중복으로 죽는다`() {
+        // ★재현 방법. 다른 세션(holder)이 같은 자리(position 0)를 **커밋하지 않은 채** 쥐고 있으면,
+        //   우리 쪽 DELETE 는 그 행을 **보지 못해** 지우지 못하고(READ COMMITTED) 이어지는 INSERT 가
+        //   그 자리에서 막힌다. holder 가 커밋하는 순간 막혀 있던 INSERT 가 23505 로 깨어난다 —
+        //   이것이 두 관리자가 같은 탭을 동시에 저장했을 때 벌어지는 일 그대로다.
+        val board = insertBoard()
+        val executor = Executors.newSingleThreadExecutor()
+
+        val outcome =
+            DriverManager.getConnection(jdbcUrl(), jdbcUser(), jdbcPassword()).use { holder ->
+                holder.autoCommit = false
+                insertDetailViewRowOn(holder, board.id, "GENERAL", 0, "holder")
+
+                val future =
+                    executor.submit<Result<Unit>> {
+                        runCatching {
+                            TransactionTemplate(transactionManager).execute {
+                                settingsRepository.replaceDetailViewFields(board.id, "GENERAL", listOf("mine"))
+                            }
+                            Unit
+                        }
+                    }
+
+                // ★sleep 으로 「아마 막혔겠지」를 추정하지 않는다. 막힌 락이 실제로 보일 때까지 기다린다 —
+                //   너무 일찍 커밋하면 뒤엣것의 DELETE 가 그 행을 **보고 지워** 경합이 성립하지 않는다.
+                assertThat(awaitBlockedLock())
+                    .describedAs("두 번째 저장이 첫 번째의 미커밋 행에 막혀야 이 축이 성립한다")
+                    .isTrue()
+                holder.commit()
+
+                future.get(WORKER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            }
+        executor.shutdown()
+
+        val thrown = outcome.exceptionOrNull()
+        // ★타입까지 단언한다 — 이 타입이 곧 BoardSettingsTabErrorEnvelopeTest ⑨ 의 스텁이다.
+        assertThat(thrown).isInstanceOf(DataIntegrityViolationException::class.java)
+        assertThat(sqlStateOfThrowable(thrown)).isEqualTo(UNIQUE_VIOLATION)
+    }
+
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
 
     /**
@@ -515,13 +620,62 @@ class BoardSettingsRepositoryTest {
     }
 
     /** [block] 이 던진 SQLSTATE. 죽지 **않으면** null 이라 「통과해 버렸다」가 그대로 드러난다. */
-    private fun sqlStateOf(block: () -> Unit): String? {
-        val thrown = runCatching(block).exceptionOrNull() ?: return null
-        return generateSequence(thrown) { it.cause }
+    private fun sqlStateOf(block: () -> Unit): String? = sqlStateOfThrowable(runCatching(block).exceptionOrNull())
+
+    /** 예외 사슬에서 SQLSTATE 를 꺼낸다. ⑭ 는 예외를 **다른 스레드에서** 받으므로 블록이 아니라 값으로 받는다. */
+    private fun sqlStateOfThrowable(thrown: Throwable?): String? =
+        generateSequence(thrown) { it.cause }
             .filterIsInstance<SQLException>()
             .firstOrNull()
             ?.sqlState
+
+    /** ⑭ 전용 — holder 세션이 같은 자리를 미커밋으로 쥐게 한다. 리포지터리를 거치지 않는 것이 요점이다. */
+    private fun insertDetailViewRowOn(
+        connection: Connection,
+        boardId: UUID,
+        fieldGroup: String,
+        position: Int,
+        fieldKey: String,
+    ) {
+        connection.prepareStatement(
+            "INSERT INTO board_detail_view_fields (board_id, field_group, position, field_key) VALUES (?, ?, ?, ?)",
+        ).use { ps ->
+            ps.setObject(1, boardId)
+            ps.setString(2, fieldGroup)
+            ps.setInt(3, position)
+            ps.setString(4, fieldKey)
+            ps.executeUpdate()
+        }
     }
+
+    /**
+     * 다른 세션이 락에 막힐 때까지 기다린다 — 최대 [BLOCK_WAIT_SECONDS] 초.
+     *
+     * `pg_locks` 의 `granted = false` 는 「누군가 기다리고 있다」는 뜻이다. 이것을 보고 커밋해야
+     * 경합이 재현된다. 못 보고 시간이 다하면 false 를 돌려주고 단언이 그 사실을 그대로 드러낸다.
+     */
+    @Suppress("NestedBlockDepth")
+    private fun awaitBlockedLock(): Boolean {
+        val deadline = System.currentTimeMillis() + BLOCK_WAIT_SECONDS * MILLIS_PER_SECOND
+        while (System.currentTimeMillis() < deadline) {
+            DriverManager.getConnection(jdbcUrl(), jdbcUser(), jdbcPassword()).use { c ->
+                c.prepareStatement("SELECT count(*) FROM pg_locks WHERE NOT granted").use { ps ->
+                    ps.executeQuery().use { rs ->
+                        rs.next()
+                        if (rs.getLong(1) > 0) return true
+                    }
+                }
+            }
+            Thread.sleep(POLL_INTERVAL_MILLIS)
+        }
+        return false
+    }
+
+    private fun jdbcUrl(): String = AgilePlanningTestcontainersConfig.postgres.jdbcUrl
+
+    private fun jdbcUser(): String = AgilePlanningTestcontainersConfig.postgres.username
+
+    private fun jdbcPassword(): String = AgilePlanningTestcontainersConfig.postgres.password
 
     private fun insertBoard(): Board =
         boardRepository.insert(

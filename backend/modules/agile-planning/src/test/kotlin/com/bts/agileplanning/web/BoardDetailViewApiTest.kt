@@ -87,6 +87,8 @@ private val LINKS_FIELDS = listOf("issueLinks")
  * | I 미인증 | 401 이고 **보드 조회조차 안 한다** | 존재 probe 를 열어 주는 구현 |
  * | J 검사 순서 | 보드 없음 + 권한 거부 = **404** | 권한을 먼저 봐서 403 을 내는 구현 |
  * | **K 판정 횟수** | 그룹 4종 PATCH 의 권한 판정이 **정확히 1회** | 그룹마다 게이트를 부르는 N+1 구현 |
+ * | **L 원소 위생** | 배열 원소의 null·공백·128자 초과가 **400** | DB 로 넘겨 500 을 내는 구현 |
+ * | L' 무결 대조군 | 카탈로그에 **없는** 키는 그대로 200 저장 | 카탈로그로 좁혀 모르는 키를 막는 구현 |
  *
  * ★**대조군을 함께 둔다.** F 의 400 만 재면 「전부 400」인 구현이 통과한다 — B 가 유효한 4종이
  * **200 으로 저장된다**를 같은 파일에서 재는 것이 그 대조군이다.
@@ -473,6 +475,73 @@ class BoardDetailViewApiTest {
             .isEqualTo(1)
     }
 
+    // ── L. ★필드 키 원소 위생 (리뷰 C3) ──────────────────────────────────────
+
+    @Test
+    fun `배열 원소의 null 은 400 이고 저장 계층에 닿지 않는다`() {
+        // Jackson 은 List<String> 의 원소 null 을 막지 못한다 — 타입은 String 인데 런타임에 null 이 앉는다.
+        // 여기서 거두지 않으면 field_key NOT NULL 위반이 500 으로 나간다(형제 CardLayoutSettingsService
+        // 의 requireSupportedFieldKey KDoc 이 같은 위험을 이미 적어 두고 막는다).
+        val result = patchRaw("""{"groups":{"GENERAL":["summary",null]}}""")
+
+        assertThat(result.response.status).isEqualTo(400)
+        verify(exactly = 0) { settingsRepository.replaceDetailViewFields(any(), any(), any()) }
+    }
+
+    @Test
+    fun `공백뿐인 필드 키는 400 이다`() {
+        // 저장은 되는데 화면에는 그릴 것이 없는 「도달할 UI 가 없는 설정」이 남는다.
+        val result = patchRaw("""{"groups":{"GENERAL":["summary","   "]}}""")
+
+        assertThat(result.response.status).isEqualTo(400)
+        verify(exactly = 0) { settingsRepository.replaceDetailViewFields(any(), any(), any()) }
+    }
+
+    @Test
+    fun `128자를 넘는 필드 키는 400 이다`() {
+        // field_key 는 VARCHAR(128) 이다(V509 ④). 넘겨 보내면 SQLSTATE 22001 로 죽어 500 이 된다.
+        val result = patchRaw("""{"groups":{"GENERAL":["${"k".repeat(129)}"]}}""")
+
+        assertThat(result.response.status).isEqualTo(400)
+        verify(exactly = 0) { settingsRepository.replaceDetailViewFields(any(), any(), any()) }
+    }
+
+    @Test
+    fun `정확히 128자인 필드 키는 저장된다`() {
+        // ★위 세 부정 단언의 **대조군**이다. 경계에서 전부 400 을 내는 구현(>= 128)도
+        // 부정 단언만으로는 통과한다.
+        val boundary = "k".repeat(128)
+
+        val result = patchRaw("""{"groups":{"GENERAL":["$boundary"]}}""")
+
+        assertThat(result.response.status).isEqualTo(200)
+        assertThat(groupsOf(performGet())["GENERAL"]).containsExactly(boundary)
+    }
+
+    @Test
+    fun `카탈로그에 없는 키도 그대로 저장된다 — 모르는 키를 살리는 것이 계약이다`() {
+        // ★원소 위생을 카탈로그 검증으로 넓히면 이 단언이 red 가 된다. 모르는 키를 살려 두는 것은
+        // 의도된 계약이다 — DetailViewPanel.tsx:66 「모르는 키는 숨기지 않고 원문 그대로 그린다」.
+        //
+        // ★키를 ASCII 로 둔다. [groupsOf] 가 `contentAsString` 을 쓰는데 `MockHttpServletResponse` 의
+        // 문자 인코딩이 ISO-8859-1 이라 한글 키가 깨져 「계약이 깨졌다」가 아니라 「인코딩이 다르다」를
+        // 재게 된다(red 단계 실측 — `ìì§-ëª¨ë¥´ë-í¤`). 한글 키를 실제 바이트까지 태우는 판정은
+        // 실 DB 통합 테스트([com.bts.agileplanning.integration.BoardDetailViewWriteIntegrationTest])가 진다.
+        val result = patchRaw("""{"groups":{"GENERAL":["cf_story_points","legacy_unknown_key"]}}""")
+
+        assertThat(result.response.status).isEqualTo(200)
+        assertThat(groupsOf(performGet())["GENERAL"]).containsExactly("cf_story_points", "legacy_unknown_key")
+    }
+
+    @Test
+    fun `groups 가 비어 있으면 400 이다`() {
+        // 200 무동작은 「저장됐다」로 읽힌다. 형제 카드 레이아웃은 @field:NotEmpty 로 같은 자리를 막는다.
+        val result = patchRaw("""{"groups":{}}""")
+
+        assertThat(result.response.status).isEqualTo(400)
+        verify(exactly = 0) { settingsRepository.replaceDetailViewFields(any(), any(), any()) }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
     private fun allFourGroups(): Map<String, List<String>> =
@@ -490,6 +559,19 @@ class BoardDetailViewApiTest {
             patch(PATH, boardId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(mapOf("groups" to groups))),
+        ).andReturn()
+
+    /**
+     * 본문을 **문자열 그대로** 보낸다 — 축 L 전용이다.
+     *
+     * [patchGroups] 는 `Map<String, List<String>>` 를 직렬화하므로 배열 원소의 null 을 만들 수 없다.
+     * 실제 클라이언트가 보낼 수 있는 바이트를 그대로 재려면 JSON 을 손으로 써야 한다.
+     */
+    private fun patchRaw(body: String): MvcResult =
+        mockMvc.perform(
+            patch(PATH, boardId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
         ).andReturn()
 
     /** 응답 봉투(`data.groups`)를 순서가 보존되는 맵으로 꺼낸다. */

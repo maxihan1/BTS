@@ -15,6 +15,7 @@ import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
@@ -46,6 +48,20 @@ private const val NOT_FOUND_TYPE = "https://bts.example.com/problems/agile-board
 
 /** 네 탭 공통 404 에러 코드. 프론트가 파싱하는 필드다. */
 private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
+
+/** 400 봉투의 에러 코드. 네 탭이 공유한다. */
+private const val VALIDATION_CODE = "AGILE_VALIDATION_FAILED"
+
+/**
+ * [BoardExceptionHandler.handleResponseStatus] 가 400 에 씌우던 **일반 문구**.
+ *
+ * ★축 ⑦ 은 「무엇과 같은가」뿐 아니라 **「이것과 다른가」**를 함께 잰다. 사유를 그대로 싣는
+ * 구현과 일반 문구로 뭉개는 구현을 가르는 것이 이 상수의 역할이다.
+ */
+private const val GENERIC_400_DETAIL = "요청 값이 올바르지 않습니다."
+
+/** 무결성 위반(23505 등)이 받아야 하는 에러 코드. 형제 [BoardQuickFilterService] 의 409 와 같은 봉투다. */
+private const val CONFLICT_CODE = "AGILE_CONFLICT"
 
 /**
  * 보드 설정 4탭의 **교차 축**을 재는 테스트 (부채 177 Task 29 · Task 29b).
@@ -76,6 +92,9 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  * | ①~④ 탭별 봉투 | 각 탭의 404 본문이 `agile-board-not-found` 봉투다 | 상태만 맞고 본문이 빈 응답 ↔ RFC 7807 봉투 |
  * | ⑤ 교차 동일성 | 네 탭의 본문이 `timestamp`·`instance` 를 빼면 **서로 같다** | 탭마다 다른 봉투 ↔ 한 봉투 |
  * | **⑥ 게이트 actor** | 네 탭이 **인증된 그 주체**를 권한 게이트에 넘긴다 | 아무 UUID 나 넘기는 구현 ↔ actor 를 넘기는 구현 |
+ * | **⑦ 400 사유** | 네 탭의 400 본문이 **각 탭의 사유**를 detail 에 싣는다 | 일반 문구로 뭉개는 구현 ↔ 사유를 싣는 구현 |
+ * | ⑧ 표 정합 | ⑦ 의 탭 목록이 ⑤⑥ 의 탭 목록과 **같다** | 표가 둘로 갈려 새 탭이 한쪽에만 드는 것 |
+ * | **⑨ 무결성 위반** | 저장 계층의 무결성 위반이 **409** 봉투다 | catch-all 이 500 으로 변질시키는 구현 ↔ 409 |
  *
  * ★**⑥ 은 Task 29b 가 되살린 축이다.** Task 29 가 네 탭의 권한 스텁을 `Triple` 리스트에서
  * 마지막 값 캡처로 통일하면서 actorId 캡처가 사라졌고, 그 결과 네 컨트롤러의 `hasPermission`
@@ -121,6 +140,31 @@ private const val NOT_FOUND_CODE = "AGILE_BOARD_NOT_FOUND"
  * - **★d** [BoardWorkingDaysApiTest] 「권한이 없으면 403 이고 아무것도 저장되지 않는다」.
  * - **★e** [BoardDetailViewApiTest] 「PATCH 는 CREATE 를 프로젝트 스코프로 판정하고 …」.
  *   ★d·★e 둘 다 상태는 **여전히 403** 이라 권한코드 캡처 단언만이 가른다.
+ *
+ * ## ★⑦ 이 닫는 자리 (리뷰 C7)
+ * [com.bts.agileplanning.application.CardLayoutSettingsService] 와
+ * [com.bts.agileplanning.application.DetailViewSettingsService] 는 사전 검증의 존재 이유를
+ * **「사용자에게 400 의 이유를 주려고」**라고 각자 KDoc 에 적는다. 그런데 두 예외 모두
+ * [org.springframework.web.server.ResponseStatusException] 상속이라
+ * [BoardExceptionHandler.handleResponseStatus] 를 지났고, 그 핸들러가 `ex.reason` 을 버리고
+ * 「요청 값이 올바르지 않습니다.」를 냈다 — 「카드에 추가할 수 있는 필드는 뷰당 최대 3개입니다」가
+ * **로그에만 남았다.** 형제 `WorkingDaysInvalidException` 만 전용 핸들러로 사유를 싣고 있었다.
+ * Task 29 가 통일한 것은 **봉투 모양**이고 정보량은 탭마다 갈려 있었다는 뜻이다.
+ *
+ * ★이 결함이 살아남은 이유가 판정의 부재다 — 이 파일은 **404 본문만** 쟀고 400 detail 을 재는
+ * 판정은 저장소 어디에도 없었다.
+ *
+ * ## ★⑨ 가 재는 것과 재지 **못하는** 것 (리뷰 C2)
+ * [com.bts.agileplanning.repository.BoardSettingsRepository] 의 쓰기 3경로(카드 레이아웃 · 비근무일 ·
+ * 상세 보기)는 OCC 없는 `DELETE` → `INSERT` 다. READ COMMITTED 에서 두 관리자가 같은 키를 동시에
+ * 저장하면 뒤엣것의 `DELETE` 가 자기 스냅샷 밖인 앞엣것의 신규 행을 못 지우고 이어지는 `INSERT` 가
+ * PK 중복(23505)으로 죽는다.
+ *
+ * ★**⑨ 는 그 경합 자체를 재지 못한다.** 스텁이 [DataIntegrityViolationException] 을 던질 뿐이다 —
+ * 여기서 재는 것은 「그 예외가 도착했을 때 HTTP 가 409 인가」 한 가지다. 경합이 **실제로 그 예외를
+ * 낳는지**는 실 DB 에서 두 트랜잭션을 겹쳐 재는
+ * [com.bts.agileplanning.repository.BoardSettingsRepositoryTest] 의 동시 저장 축이 진다.
+ * 두 축은 **예외 타입 한 점에서만 만난다** — 그쪽이 타입까지 단언하므로 스텁이 허구가 되지 않는다.
  *
  * ## 이 파일이 재지 **않는** 것
  * - 401/403/400 **봉투** — 봉투 축이 닫는 것은 404 한 자리다. 나머지 상태의 본문은 탭별 API
@@ -239,6 +283,9 @@ class BoardSettingsTabErrorEnvelopeTest {
     lateinit var boardRepository: BoardRepository
 
     @Autowired
+    lateinit var settingsRepository: BoardSettingsRepository
+
+    @Autowired
     lateinit var permissionStub: PermissionStub
 
     lateinit var mockMvc: MockMvc
@@ -250,6 +297,9 @@ class BoardSettingsTabErrorEnvelopeTest {
     @BeforeEach
     fun setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
+        // 컨텍스트가 캐시돼 mock 이 테스트 간 공유된다 — 앞 테스트가 심은 stub 이 남으면
+        // 뒤 테스트가 그 값으로 초록이 된다(⑨ 가 심는 throws 가 특히 그렇다).
+        clearMocks(settingsRepository, boardRepository)
         // 보드가 없으므로 네 탭 모두 게이트에서 404 로 끝난다 — 권한 판정에는 이르지 않는다.
         every { boardRepository.findById(any()) } returns null
         permissionStub.allowAll = true
@@ -320,6 +370,62 @@ class BoardSettingsTabErrorEnvelopeTest {
         }
     }
 
+    // ── ⑦ 400 사유 (리뷰 C7) ─────────────────────────────────────────────────
+
+    @Test
+    fun `네 탭의 400 본문은 각 탭의 사유를 detail 에 싣는다`() {
+        // 400 은 게이트를 지나 서비스까지 가야 나온다 — 보드가 있어야 하고 권한도 있어야 한다.
+        every { boardRepository.findById(any()) } returns sampleBoard()
+
+        invalidRequests().forEach { (tab, case) ->
+            val result = case.request()
+
+            assertThat(result.response.status).describedAs("%s 상태 코드", tab).isEqualTo(400)
+
+            val body = envelopeOf(result)
+            assertThat(body["errorCode"]).describedAs("%s errorCode", tab).isEqualTo(VALIDATION_CODE)
+            assertThat(body["detail"])
+                .describedAs("%s — 사전 검증의 사유가 사용자에게 닿아야 한다", tab)
+                .isEqualTo(case.reason)
+            assertThat(body["detail"])
+                .describedAs("%s — 일반 문구로 뭉개면 사용자는 무엇을 고칠지 모른다", tab)
+                .isNotEqualTo(GENERIC_400_DETAIL)
+        }
+    }
+
+    // ── ⑧ 표 정합 ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `400 사유 표와 탭 표는 같은 탭 목록을 센다`() {
+        // ★두 표가 서로를 검사하지 않으면 다섯 번째 탭이 한쪽에만 들어가도 아무도 못 잡는다.
+        // ⑤⑥ 은 tabRequests 를, ⑦ 은 invalidRequests 를 돈다 — 이 단언이 그 둘을 묶는다.
+        assertThat(invalidRequests().keys)
+            .describedAs("⑦ 의 탭 목록은 ⑤⑥ 의 탭 목록과 같아야 한다")
+            .containsExactlyInAnyOrderElementsOf(tabRequests().keys)
+    }
+
+    // ── ⑨ 무결성 위반 → 409 (리뷰 C2) ────────────────────────────────────────
+
+    @Test
+    fun `저장 계층의 무결성 위반은 409 봉투다 — 500 이 아니다`() {
+        every { boardRepository.findById(any()) } returns sampleBoard()
+        // 근무일 탭은 요일 저장이 먼저 성공해야 비근무일 교체까지 간다.
+        every { settingsRepository.updateWorkingDays(any(), any(), any()) } returns true
+        every { settingsRepository.replaceCardLayout(any(), any(), any()) } throws integrityViolation()
+        every { settingsRepository.replaceNonWorkingDates(any(), any()) } throws integrityViolation()
+        every { settingsRepository.replaceDetailViewFields(any(), any(), any()) } throws integrityViolation()
+
+        // 추정 탭은 DELETE→INSERT 가 아니라 UPDATE 한 문장이라 이 경합이 성립하지 않는다.
+        tabRequests().filterKeys { it != "estimation" }.forEach { (tab, request) ->
+            val result = request()
+
+            assertThat(result.response.status).describedAs("%s 상태 코드", tab).isEqualTo(409)
+            assertThat(envelopeOf(result)["errorCode"])
+                .describedAs("%s errorCode — catch-all 로 떨어지면 AGILE_INTERNAL_ERROR 가 된다", tab)
+                .isEqualTo(CONFLICT_CODE)
+        }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
     /**
@@ -335,6 +441,59 @@ class BoardSettingsTabErrorEnvelopeTest {
             "working-days" to ::putWorkingDays,
             "detail-view-fields" to ::patchDetailView,
         )
+
+    /**
+     * ⑦ 전용 — **400 을 내는** 요청과 그때 사용자가 받아야 할 사유의 표.
+     *
+     * ⑤⑥ 의 [tabRequests] 와 따로인 이유는 「400 을 내는 입력」이 탭마다 다르기 때문이다.
+     * 표가 둘이면 갈리므로 ⑧ 이 두 표의 키 집합을 묶는다.
+     *
+     * 사유 문자열의 정본은 각 서비스다 — 여기 문자열을 고치면 red 가 되고, 그때 봐야 할 곳은
+     * 그 서비스의 검증 함수다.
+     */
+    private fun invalidRequests(): Map<String, InvalidCase> =
+        linkedMapOf(
+            "card-layout" to
+                InvalidCase("카드에 추가할 수 있는 필드는 뷰당 최대 3개입니다.") {
+                    patchJson("card-layout", """{"cardLayout":{"BOARD":["EPIC","PRIORITY","ASSIGNEE","LABELS"]}}""")
+                },
+            "estimation" to
+                InvalidCase("시간 추적 값이 올바르지 않습니다.") {
+                    patchJson("estimation", """{"timeTracking":"BOGUS"}""")
+                },
+            "working-days" to
+                InvalidCase("지원하지 않는 요일 키입니다: XXX") {
+                    putJson("working-days", """{"standardDays":["XXX"],"nonWorkingDates":[]}""")
+                },
+            "detail-view-fields" to
+                InvalidCase("상세 보기 필드 그룹은 GENERAL, DATE, PEOPLE, LINKS 중 하나여야 합니다.") {
+                    patchJson("detail-view-fields", """{"groups":{"BOGUS":["summary"]}}""")
+                },
+        )
+
+    /** ⑨ 가 심는 예외. 실 DB 에서 이 타입이 도착한다는 것은 [com.bts.agileplanning.repository.BoardSettingsRepositoryTest] 가 잰다. */
+    private fun integrityViolation(): DataIntegrityViolationException =
+        DataIntegrityViolationException("duplicate key value violates unique constraint")
+
+    private fun patchJson(
+        segment: String,
+        body: String,
+    ): MvcResult =
+        mockMvc.perform(
+            patch("/api/v1/boards/{boardId}/$segment", missingBoardId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        ).andReturn()
+
+    private fun putJson(
+        segment: String,
+        body: String,
+    ): MvcResult =
+        mockMvc.perform(
+            put("/api/v1/boards/{boardId}/$segment", missingBoardId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        ).andReturn()
 
     /**
      * ⑥ 전용 보드. 네 컨트롤러가 게이트에서 읽는 것은 `projectKey` 뿐이라 나머지 필드는 최소값이다.
@@ -418,4 +577,14 @@ class BoardSettingsTabErrorEnvelopeTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"groups":{"GENERAL":["summary"]}}"""),
         ).andReturn()
+    /**
+     * ⑦ 의 한 줄 — 400 을 내는 요청과 그때 나가야 할 사유.
+     *
+     * @property reason 사용자가 받아야 할 detail. 정본은 각 서비스의 검증 함수다.
+     * @property request 그 400 을 만드는 요청.
+     */
+    private class InvalidCase(
+        val reason: String,
+        val request: () -> MvcResult,
+    )
 }
