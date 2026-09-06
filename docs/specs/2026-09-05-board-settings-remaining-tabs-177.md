@@ -86,6 +86,7 @@ Then 이슈 상세가 그 구성으로 그려진다.
 | **X11** | **카드 색(J21)은 범위 밖.** J21 은 색 기준 4종(work type · priority · assignee · JQL)을 말한다. | 리뷰 BLOCKER **B3** 로 신설. ① 지라에서 카드 색은 Card layout 탭이 **아니라 별도 설정**이고 부채 177 의 7탭 목록에 없다 ② **JQL 기준은 `search-export-import` BC 소관**이라 건드리면 BC 를 하나 더 늘린다(X9 가 이미 4개) ③ `TODOS.md:1518` 이 「JQL 기준은 search BC 소관이라 배제 대상인지」를 착수 시 풀 질문으로 남겼고 **이 편차가 그 답이다**. 후속 등재. |
 | **X10** | **갭 E 의 근거가 DC 문서다.** J46~J49 는 `confluence.atlassian.com`(Data Center)이고 Cloud 문서는 이 탭을 work type 레이아웃(`Settings > Screens`)으로 옮겼다. | 계약 §1 표가 DC 를 「Cloud 가 아님을 행에 표기해야 인정」으로 허용한다. **보드 단위 Issue Detail View 는 Cloud 에 대응 화면이 없다** — 그럼에도 보드 설정으로 내는 것이 Maxi 확정이므로, 근거가 DC 뿐이라는 사실을 여기 명시한다(계약 §1-4 「주장하지 않는 것까지 적는다」). |
 | **X6** | **`Days in column`(J20)은 이 PR 범위 밖.** | 컬럼 진입 시각을 아무도 기록하지 않는다 — `board_columns`·카드 어디에도 대응 칸이 없어 **별도 이력 테이블**이 필요하다. 4탭에 그것까지 얹으면 마이그레이션이 두 종류가 된다. 후속 등재 대상. |
+| **X12** | **§API 초판의 「단일 `PATCH /projects/{projectKey}/boards/{boardId}` + 통합 바디」를 폐기하고 탭별 엔드포인트 4개로 간다.** 경로에 `projectKey` 가 없고, 작업일만 `PUT` 이며, 상세 보기만 `GET` 을 갖는다. | **2026-09-06 정정**(초판은 `swimlaneField` 경로를 본떠 통합 바디를 적었다). 근거는 계획 §「T8·T9·T10·T13 은 탭별 컨트롤러를 각자 만든다 — `BoardController.kt` 를 키우지 않는다」다 — ① 넷이 같은 파일을 병렬 편집하면 나중에 쓴 쪽이 앞선 것을 덮고 **덮인 엔드포인트의 테스트를 아무도 안 돌린다**(경로 한정 커밋으로 못 막는다) ② `BoardController.kt` 는 **이미 651줄에 엔드포인트 11개**라 4탭을 더하면 800줄이다(부채 157 · 스펙 C-1). 이 BC 에 선례가 셋 있다(`BoardQuickFilterController` · `SprintBurndownController` · `SprintVelocityController`). |
 | **X7** | **작업일 설정을 보드 단위로 둔다.** 지라도 보드 설정이지만 BTS 는 스프린트가 보드에 속하므로 의미가 같은지 확인이 필요했다 — `V506` 이 `sprints.board_id` 를 넣어 **같다**. | 프로젝트 단위로 두면 한 프로젝트의 스크럼/칸반 보드가 서로 다른 달력을 못 갖는다. |
 
 ## 기능 요구사항 (FR)
@@ -126,35 +127,54 @@ Then 이슈 상세가 그 구성으로 그려진다.
 
 ## API 인터페이스 (REST)
 
-기존 `PATCH /api/v1/projects/{projectKey}/boards/{boardId}` 를 넓힌다 —
-`swimlaneField` 가 이미 이 경로로 바뀌므로 설정 축을 늘리는 것이 같은 모양이다.
+★**초판은 단일 `PATCH /api/v1/projects/{projectKey}/boards/{boardId}` 에 통합 바디를 실었다.
+구현은 탭별 엔드포인트 4개로 갈라졌다** — 갈린 이유와 그것이 옳은 이유는 편차 **X12**.
+아래는 **2026-09-06 컨트롤러 실측**이다(`backend/…/web/Board*Controller.kt`).
+
+| 탭 | 메서드 · 경로 | 컨트롤러 | 쓰기 권한 |
+|---|---|---|---|
+| 카드 레이아웃(갭 B) | `PATCH /api/v1/boards/{boardId}/card-layout` | `BoardCardLayoutController` | `CREATE` |
+| 추정(갭 C) | `PATCH /api/v1/boards/{boardId}/estimation` | `BoardEstimationController` | `CREATE` |
+| 작업일(갭 D) | **`PUT`** `/api/v1/boards/{boardId}/working-days` | `BoardWorkingDaysController` | `CREATE` |
+| 상세 보기(갭 E) | `GET` · `PATCH` `/api/v1/boards/{boardId}/detail-view-fields` | `BoardDetailViewController` | 읽기 `BROWSE` · 쓰기 `CREATE` |
+
+★**경로에 `projectKey` 가 없다.** 넷 다 `boardId` 하나로 잡고 프로젝트는 보드에서 되찾는다 —
+초판이 `swimlaneField` 경로를 본떠 넣었던 `projects/{projectKey}` 접두는 구현에 없다.
+
+★**작업일만 `PUT` 이다.** 나머지 셋은 부분 갱신이지만 작업일은 세 칸(`standardDays` ·
+`nonWorkingDates` · `timezone`)을 **한 덩어리로 교체**한다. 「비었다」와 「안 보냈다」를
+가르지 않겠다는 뜻이라 멱등한 `PUT` 이 맞다.
+
+★**상세 보기만 `GET` 이 있다.** 나머지 셋의 현재 값은 `GET /api/v1/boards/{boardId}` 응답이
+함께 실어 온다(N1). 상세 보기는 **설정 화면이 아닌 이슈 상세**가 소비자라 보드 전체를
+끌어오지 않고 읽을 창구가 따로 필요했다(Task 13·21).
 
 ```
-PATCH /api/v1/projects/{projectKey}/boards/{boardId}
-{
-  "cardLayout": {                                          // 갭 B · 뷰마다 따로(J18)
-    "BOARD":   ["EPIC", "PRIORITY", "cf_story_points"],
-    "BACKLOG": ["ESTIMATE"]
-  },
-  "timeTracking": "REMAINING_AND_SPENT",                   // 갭 C · 스크럼만
-  "workingDays": {                                         // 갭 D
-    "standardDays": ["MON","TUE","WED","THU","FRI"],
-    "nonWorkingDates": ["2026-10-03"],
-    "timezone": "Asia/Seoul"
-  },
-  "detailViewFields": {                                    // 갭 E · 그룹 4종(J47)
-    "GENERAL": ["summary", "status", "cf_severity"],
-    "DATE":    ["dueDate"],
-    "PEOPLE":  ["assignee", "reporter"],
-    "LINKS":   ["issueLinks"]
-  }
-}
+PATCH /api/v1/boards/{boardId}/card-layout          // 갭 B · 뷰마다 따로(J18)
+{ "cardLayout": { "BOARD": ["EPIC","PRIORITY","cf_story_points"], "BACKLOG": ["ESTIMATE"] } }
+
+PATCH /api/v1/boards/{boardId}/estimation           // 갭 C · 스크럼만
+{ "timeTracking": "REMAINING_AND_SPENT" }
+
+PUT   /api/v1/boards/{boardId}/working-days         // 갭 D · 세 칸 통째 교체
+{ "standardDays": ["MON","TUE","WED","THU","FRI"],
+  "nonWorkingDates": ["2026-10-03"],
+  "timezone": "Asia/Seoul" }
+
+GET   /api/v1/boards/{boardId}/detail-view-fields   // 갭 E · 그룹 4종(J47)
+PATCH /api/v1/boards/{boardId}/detail-view-fields   // 요청에 담긴 그룹만 교체
+{ "groups": { "GENERAL": ["status","cf_severity"], "PEOPLE": ["assignee","reporter"] } }
 ```
 
+- 응답 봉투는 넷 다 `{ "data": { … } }` 다. 상세 보기 응답은 **그룹 4종을 항상 채운다**
+  (구성이 없는 그룹은 빈 배열 · R7c) — 부재를 두 화면이 다르게 다루지 않게 하기 위함이다.
 - 400 — 한 뷰의 `cardLayout` 이 4개 이상(J17) · 미지원 필드 키 · `timezone` 이 IANA 가 아님 ·
   칸반 보드에 `BACKLOG` 스코프를 보냈다(칸반은 보드 뷰 하나뿐)
 - 409 — `timeTracking` 을 칸반 보드에 보냈다(J37)
-- 응답은 `GET /boards/{id}` 와 같은 모양으로 설정을 되돌려준다(N1)
+- 404 — 보드가 없다. **403 보다 먼저 판정하지 않는다**(R9 · 순서를 뒤집으면 403/404 의 의미가 갈린다)
+- 오류 본문은 넷 다 **같은 RFC 7807 봉투**(`AGILE_*`)다 — Task 29 가 네 컨트롤러를
+  `BoardExceptionHandler` 의 `assignableTypes` 아래로 모아 통일했다.
+- 나머지 셋의 현재 값은 `GET /boards/{id}` 가 같은 모양으로 되돌려준다(N1)
 
 ## 데이터 모델 변경
 
@@ -273,11 +293,18 @@ CREATE TABLE board_detail_view_fields (
 ### ❓ 발견 — G1. 권한을 한 줄도 안 적었다 (보강함)
 
 J8 이 「space administrator 또는 board administrator」를 요구하는데 스펙에 권한 문장이 없었다.
-실측 — 보드 설정 계열은 `BoardApplicationService` 가 아니라 **`BoardController` 가** 막는다
-(`:171` · `:207` · `:626`) — `permissionResolver.hasPermission(actor, IssuePermission.SOFT_DELETE,
-IssueScope.Project(projectKey))`. `updateBoard` 서비스 메서드는 `actorId` 를 **받지도 않는다.**
+스펙 초판 시점 실측 — 보드 설정 계열은 `BoardApplicationService` 가 아니라 **`BoardController` 가**
+막는다(`:171` · `:207` · `:626`) — `permissionResolver.hasPermission(actor, …, IssueScope.Project(projectKey))`.
+`updateBoard` 서비스 메서드는 `actorId` 를 **받지도 않는다.**
 
-- **R8** 4탭의 모든 쓰기는 위 게이트를 **그대로** 탄다. 새 권한을 만들지 않는다.
+★★**권한코드 정정 (2026-09-06 · Task 29).** 초판은 이 자리에 `IssuePermission.SOFT_DELETE` 라고
+적었고 **그것이 초판의 자기모순이었다** — 4탭은 전부 「설정을 만들고 바꾸는」 쓰기인데 삭제 권한을
+요구할 이유가 없다. 구현은 **`IssuePermission.CREATE` 로 통일**됐다(계획 Task 29 · 근거는 Task 8
+REFACTOR 절의 정정 문단). 계획은 이미 고쳤는데 **스펙 본문만 남아 있어** 여기서 함께 정정한다.
+읽기(`GET …/detail-view-fields`)는 `IssuePermission.BROWSE` 다 — 보드를 볼 수 있으면 그 보드의
+구성도 볼 수 있어야 한다.
+
+- **R8** 4탭의 모든 쓰기는 위 게이트를 **그대로** 탄다(권한코드는 `CREATE`). 새 권한을 만들지 않는다.
 - **R9** 존재 확인 ↔ 권한 확인 **순서를 기존 경로와 같게** 유지한다. 뒤집으면 403 과 404 의 의미가
   갈리고 로컬은 항상 허용이라 눈에 안 띈다([[permission-assert-before-existence-makes-403-lie]]).
 - **편차 X8** — BTS 에 J8 의 「board administrator」에 **대응하는 보드 단위 권한이 없다.**
