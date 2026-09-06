@@ -735,6 +735,192 @@ export const boardLabels = {
       saveRetry: '다시 시도',
     },
 
+    /**
+     * 「상세 보기」 탭 문구 (부채 177 Task 19 · **J46**·**J47**·**J48**).
+     *
+     * 이 구성의 소비자는 **이슈 상세 화면**이다 — 모달과 사이드패널 두 표현이 같은 구성을
+     * 읽어야 한다(스펙 R7c). 그래서 [description] 이 「어디에 반영되는지」를 화면에서 말한다.
+     * 한쪽만 반영되는 회귀는 문구가 없으면 사용자가 설정 화면에서 알아챌 방법이 없다.
+     *
+     * ★**그룹 라벨과 필드 라벨이 서로 substring 이 되면 안 된다.** Playwright `getByText` 는
+     * 기본이 부분 일치라, 「링크」 그룹 안에 「이슈 링크」 필드를 두면 그룹 제목과 필드 이름이
+     * 함께 잡혀 strict mode 로 즉사한다 — 그래서 그 필드는 [fieldLabels.issueLinks] 처럼
+     * 「연결된 이슈」다(탭 라벨끼리 substring 을 금지한 것과 같은 계약).
+     *
+     * ★**탭 라벨 5종(`컬럼`·`카드 레이아웃`·`추정`·`작업일`·`상세 보기`)을 문구에 넣지 않는다.**
+     * 같은 이유이고, 이 탭은 탭 라벨이 `상세 보기` 라 특히 가깝다.
+     */
+    detailView: {
+      /** 섹션 제목 (J46 — *"Issue Detail View"*) */
+      heading: '이슈를 열었을 때 보이는 필드',
+
+      /**
+       * 섹션 설명.
+       *
+       * 소비처를 말한다(R7c) — 「모달과 사이드패널 양쪽」이 이 구성을 읽는다. 그 사실을 화면에
+       * 두지 않으면 사용자는 어느 화면이 바뀌는지 모른 채 설정하게 된다.
+       */
+      description: '이슈를 모달로 열든 사이드패널로 열든 여기서 정한 필드가 같은 순서로 보입니다.',
+
+      /**
+       * 필드 그룹 4종의 이름 (J47 — *"General fields, Date fields, People, and Links"*).
+       *
+       * 키는 백엔드 `DETAIL_VIEW_FIELD_GROUPS` 와 같고, 선언 순서가 곧 화면 4구획의 위→아래 순서다.
+       */
+      groupLabels: {
+        /** GENERAL — *"General fields"* */
+        GENERAL: '일반 필드',
+        /** DATE — *"Date fields"* */
+        DATE: '날짜 필드',
+        /** PEOPLE — *"People"* */
+        PEOPLE: '사람',
+        /** LINKS — *"Links"* */
+        LINKS: '링크',
+      },
+
+      /**
+       * 필드 키 → 사람이 읽는 이름.
+       *
+       * ★**이 목록이 곧 후보 카탈로그의 허용 키다.** `DetailViewPanel` 의 그룹별 후보 배열이
+       * `keyof typeof fieldLabels` 로 타입 지어져 있어, 여기 없는 키를 후보에 넣으면 `tsc` 가
+       * 막는다 — 「두 목록이 서로를 검사하지 않는」 자리를 타입으로 닫은 것이다.
+       *
+       * 키는 `IssueResponse`(`api/issues.ts`)의 필드 이름을 따른다. 이 구성을 읽어 실제로
+       * 그리는 것은 Task 21 이고, 그때 키 하나가 렌더러 하나에 대응한다.
+       */
+      fieldLabels: {
+        /** currentStateKey — 워크플로우 상태 */
+        status: '상태',
+        /** typeKey */
+        issueType: '이슈 종류',
+        /** priority */
+        priority: '우선순위',
+        /** impact */
+        impact: '영향도',
+        /** resolution */
+        resolution: '해결',
+        /** labels */
+        labels: '라벨',
+        /** componentIds */
+        components: '컴포넌트',
+        /** environment */
+        environment: '환경',
+        /** securityLevelId */
+        securityLevel: '보안 등급',
+        /** fixVersionIds */
+        fixVersions: '수정 버전',
+        /** affectsVersionIds */
+        affectsVersions: '영향 버전',
+        /** createdAt */
+        createdAt: '생성일',
+        /** updatedAt */
+        updatedAt: '수정일',
+        /** startDate */
+        startDate: '시작일',
+        /** dueDate */
+        dueDate: '마감일',
+        /** assigneeId */
+        assignee: '담당자',
+        /** reporterId */
+        reporter: '보고자',
+        /** watchers */
+        watchers: '감시자',
+        /** ★그룹 이름 「링크」를 품지 않는다 — 위 substring 계약 */
+        issueLinks: '연결된 이슈',
+        /** parent */
+        parent: '상위 이슈',
+        /** epic */
+        epic: '에픽',
+      },
+
+      /**
+       * 한 그룹의 필드 목록(ul)의 접근성 이름.
+       *
+       * 그룹 이름을 넣는 이유는 목록이 화면에 넷이기 때문이다 — 이름이 같으면 셀렉터가
+       * strict mode 로 즉사한다.
+       *
+       * @param group 그룹 이름([groupLabels] 의 값).
+       */
+      listLabel: (group: string): string => `${group} 목록`,
+
+      /**
+       * 그 그룹에 필드가 하나도 없을 때 (빈 상태).
+       *
+       * ★회색 빈칸으로 두지 않는다 — 사용자가 조회 실패로 읽는다(형제 `workingDays.noDates`
+       * 와 같은 온도). 그룹 이름을 넣어 넷이 동시에 비어도 문구가 겹치지 않게 한다.
+       *
+       * @param group 그룹 이름.
+       */
+      emptyGroup: (group: string): string => `${group}에 표시할 필드가 없습니다. 아래에서 골라 추가하세요.`,
+
+      /**
+       * 후보 드롭다운의 접근성 이름이자 값 없을 때의 표시 문구 (J48 — *"select the field from
+       * one of the dropdown menus"*).
+       *
+       * @param group 그룹 이름.
+       */
+      candidateLabel: (group: string): string => `${group}에 추가할 필드`,
+
+      /**
+       * 추가 버튼 (J48 — *"and then select **Add**"*).
+       *
+       * 그냥 「추가」가 아닌 이유는 이 화면에 추가 버튼이 넷이기 때문이다 —
+       * `getByRole('button', { name })` 이 기본 부분 일치라 짧은 이름은 넷을 다 잡는다.
+       *
+       * @param group 그룹 이름.
+       */
+      addField: (group: string): string => `${group}에 추가`,
+
+      /**
+       * 삭제 버튼의 접근성 이름 (J48 — *"select **Delete**"*).
+       *
+       * @param group 그룹 이름.
+       * @param field 필드 이름.
+       */
+      removeField: (group: string, field: string): string => `${group}에서 ${field} 삭제`,
+
+      /**
+       * 순서 드래그 핸들의 접근성 이름 (J48 — *"drag and drop the field up or down"*).
+       *
+       * @param group 그룹 이름.
+       * @param field 필드 이름.
+       */
+      reorderHandle: (group: string, field: string): string => `${group}의 ${field} 순서 바꾸기`,
+
+      /**
+       * 그 그룹의 후보를 다 쓴 상태.
+       *
+       * 비활성 드롭다운만 남기면 사용자가 고장으로 읽는다 — 사유를 문장으로 준다.
+       *
+       * @param group 그룹 이름.
+       */
+      allAdded: (group: string): string => `${group}에 고를 수 있는 필드를 모두 추가했습니다.`,
+
+      /** 후보 검색 입력 placeholder. 팝오버는 한 번에 하나만 열리므로 그룹별로 나누지 않는다 */
+      candidateSearch: '필드 검색',
+
+      /** 후보 검색 결과가 없을 때 */
+      candidateEmpty: '일치하는 필드가 없습니다.',
+
+      /** 저장 실패 — 상태 코드를 모르거나 그 밖의 실패 */
+      saveFailed: '상세 화면 구성을 저장하지 못했습니다.',
+
+      /** 저장 실패 — 403 */
+      saveForbidden: '상세 화면 구성을 바꿀 권한이 없습니다.',
+
+      /**
+       * 저장 실패 — 400.
+       *
+       * 화면은 그룹 4종만 보내므로 정상 경로에서는 나오지 않는다. 그럼에도 문구를 두는 이유는
+       * 서버가 그룹 집합을 좁히는 날 화면이 **raw 코드**를 내보이지 않게 하기 위해서다.
+       * 재시도로 풀리지 않으므로 재시도 버튼을 주지 않는다(형제 `workingDays.saveInvalid` 와 같은 결).
+       */
+      saveInvalid: '이 보드가 지원하지 않는 필드 묶음입니다. 화면을 새로고침한 뒤 다시 시도하세요.',
+
+      /** 저장 재시도 버튼. 400 에는 그리지 않는다 */
+      saveRetry: '다시 시도',
+    },
+
   },
 } as const
 
