@@ -1,9 +1,9 @@
-// 보드 설정 탭 API 클라이언트 — 카드 레이아웃 뷰별 PATCH (부채 177 Task 16 · J17·J18)
+// 보드 설정 탭 API 클라이언트 — 카드 레이아웃 PATCH(Task 16) · 작업일 PUT(Task 18)
 
 import { z } from 'zod'
 import { apiFetch, ApiError } from './client'
-import { cardLayoutSchema } from './boards'
-import type { CardLayout } from './boards'
+import { boardWorkingDaysSchema, cardLayoutSchema } from './boards'
+import type { BoardWorkingDays, CardLayout } from './boards'
 
 /**
  * `{ data: T }` 봉투 언랩용 헬퍼.
@@ -72,4 +72,63 @@ export async function replaceCardLayout(
   }
   const data: unknown = await res.json()
   return dataResponseSchema(cardLayoutResponseSchema).parse(data).data.cardLayout
+}
+
+/**
+ * 작업일 저장 요청 바디 — 백엔드 `WorkingDaysRequest` 미러 (J38·J39·J40).
+ *
+ * ★★**`standardDays` 의 `null` 과 `[]` 는 다른 값이다**(스펙 R6 · E1).
+ * `null` 은 **미설정**이라 200 이고 그 보드의 번다운은 달력일 전부를 그대로 센다.
+ * `[]` 는 **근무일 0개**라 400 이다(ideal 선의 0 나눗셈). 그래서 이 타입은 `readonly string[] | null`
+ * 이지 `readonly string[]` 이 아니다 — 타입에서 뭉개면 화면이 두 상태를 가를 근거를 잃는다.
+ *
+ * @property standardDays 표준 근무일 요일 키(`MON`..`SUN`). **null = 미설정**(≠ 빈 배열).
+ * @property nonWorkingDates 비근무일(ISO `yyyy-MM-dd`). 중복은 서버가 제거한다.
+ * @property timezone IANA 타임존. null = 미설정(UTC).
+ */
+export interface WorkingDaysInput {
+  standardDays: readonly string[] | null
+  nonWorkingDates: readonly string[]
+  timezone: string | null
+}
+
+/**
+ * 작업일 설정 세 값을 통째로 저장한다 (J38·J39·J40).
+ *
+ * PUT `/api/v1/boards/{boardId}/working-days` → 200 + `{ data: { standardDays, nonWorkingDates, timezone } }`
+ * (백엔드 `BoardWorkingDaysController.save`).
+ *
+ * ★**PATCH 가 아니라 PUT 이다.** 이 탭의 저장은 부분 갱신이 아니라 **교체**라서, 요청에 담지
+ * 않은 비근무일은 지워진다. 호출자는 **바꾸지 않은 축까지 함께 실어야** 한다 — 요일만 보내면
+ * 저장돼 있던 비근무일과 타임존이 그 순간 사라진다.
+ *
+ * ★응답은 요청 echo 가 아니라 **정규화된 저장값**이다(중복 날짜 제거 · 요일 주 순서 정렬).
+ * 호출자는 자기가 보낸 값이 아니라 이 반환값을 화면 상태로 삼아야 사용자가 실제로 저장된 것을 본다.
+ *
+ * @param boardId 대상 보드 UUID.
+ * @param input 저장할 세 값. `standardDays: null` 은 미설정이고 유효한 저장이다.
+ * @returns 정규화 후 실제로 저장된 값.
+ * @throws ApiError 비-2xx (400 근무일 0개(E1)·미지원 요일 키·비-IANA 타임존 · 401 ·
+ *   403 권한 미충족 · 404 보드 미존재). ★본문 구조는 탭마다 다르므로(부채 177 Task 29 가
+ *   통일 예정) 호출자는 **상태 코드로만** 갈라야 한다.
+ * @throws ZodError 응답 스키마 불일치
+ */
+export async function saveWorkingDays(
+  boardId: string,
+  input: WorkingDaysInput,
+): Promise<BoardWorkingDays> {
+  const res = await apiFetch(`/api/v1/boards/${boardId}/working-days`, {
+    method: 'PUT',
+    body: {
+      standardDays: input.standardDays === null ? null : [...input.standardDays],
+      nonWorkingDates: [...input.nonWorkingDates],
+      timezone: input.timezone,
+    },
+  })
+  if (!res.ok) {
+    const errorBody: unknown = await res.json().catch(() => ({}))
+    throw new ApiError(res.status, errorBody)
+  }
+  const data: unknown = await res.json()
+  return dataResponseSchema(boardWorkingDaysSchema).parse(data).data
 }
