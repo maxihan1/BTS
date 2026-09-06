@@ -8923,3 +8923,34 @@ KDoc 의 뮤테이션 X2 가 그 실측이다).
 `todos-resolved-section-purity.test.ts` 의 「모든 섹션 헤딩이 상태 마커를 갖는다」에 걸린다.
 그 판별식은 이 항목을 더하기 **전부터 이미 red** 였다(선행 8건). 두 판별식이 서로 반대를 요구하는
 상태이고, 그 정리는 이 task 의 범위 밖이다.
+
+## MSW 목의 오류 봉투가 실제 백엔드와 다르다 — 코드값 4종은 백엔드에 아예 없다 (부채 177 에서 발견)
+
+**어디.** `apps/web/src/mocks/board-handlers.ts` 의 `settingsError()` ↔
+`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt` 의 `problem()`
+
+**무엇.** 두 봉투의 모양이 다르다.
+
+| | 필드 |
+|---|---|
+| 백엔드 | RFC 7807 `type` · `title` · `status` · `detail` + `errorCode`(`AGILE_*`) + `timestamp` |
+| MSW 목 | `{ errorCode, message }` |
+
+그리고 **목이 쓰는 코드값 4종이 백엔드에 하나도 없다.** 실측(2026-09-06) —
+`AGILE_CARD_LAYOUT_INVALID` · `AGILE_TIME_TRACKING_INVALID` · `AGILE_WORKING_DAYS_INVALID` ·
+`AGILE_TIME_TRACKING_NOT_SCRUM` 을 `backend/` 전체에서 찾으면 **각각 0 파일**이다.
+
+**왜 지금 사고가 아닌가.** 소비자가 본문을 안 읽는다 — `rg "\.body" apps/web/src/components/board/settings` 가
+**0건**이고 `error.status` 만 쓴다. **본문을 읽기 시작하는 순간** 목에서 통과한 파싱이 실제 API 에서 깨진다.
+
+**이 저장소의 지배 결함 양식이다.** 두 목록(목의 코드값 · 백엔드 `AGILE_*` 상수)이 서로를 검사하지 않는다
+(memory: two-lists-never-check-each-other). 처방도 그 양식 그대로다 — **차집합 판별식**.
+목이 내는 `errorCode` 문자열 집합이 백엔드 상수 집합의 부분집합인지 재고, 비-공허 짝
+(「목 코드가 하나라도 있다」)을 함께 둔다. 목을 백엔드 봉투에 맞추는 것은 **동작 변경**이라
+판별식과 분리해서 판단해야 한다.
+
+**왜 지금 안 했나.** Task 29 의 범위는 「탭 컨트롤러 넷을 한 봉투로 모은다」(백엔드)였고,
+목을 실제 봉투에 맞추는 것은 프론트 동작 변경이라 그 PR 범위 밖이다. 정정 작업 중 실측으로 드러났다.
+
+**등재 서식 주의.** 위 8건 + 봉투 열거 항목과 **같은 모양**(상태 마커 없음)으로 적었다.
+사유는 바로 위 항목의 「등재 서식 주의」와 같다.

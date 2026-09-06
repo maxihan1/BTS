@@ -947,7 +947,7 @@ Task 1 이 V509 로 `time_tracking` · `working_days` · `board_timezone` 3칸�
 
 **메타**.
 - agent: `backend-engineer`
-- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardSettingsTabErrorEnvelopeTest.kt`, `TODOS.md`, `apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/api/board-settings.ts`]
+- files: [`backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardExceptionHandler.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardCardLayoutController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardEstimationController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardWorkingDaysController.kt`, `backend/modules/agile-planning/src/main/kotlin/com/bts/agileplanning/web/BoardDetailViewController.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardCardLayoutApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardWorkingDaysApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardDetailViewApiTest.kt`, `backend/modules/agile-planning/src/test/kotlin/com/bts/agileplanning/web/BoardSettingsTabErrorEnvelopeTest.kt`, `TODOS.md`, `apps/web/src/components/board/settings/EstimationPanel.tsx`, `apps/web/src/api/board-settings.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.tsx`, `apps/web/src/components/board/settings/WorkingDaysPanel.tsx`, `apps/web/src/components/board/settings/DetailViewPanel.tsx`, `apps/web/src/mocks/board-handlers.ts`, `apps/web/src/components/board/settings/CardLayoutPanel.test.tsx`, `apps/web/src/components/board/settings/EstimationPanel.test.tsx`, `apps/web/src/components/board/settings/WorkingDaysPanel.test.tsx`, `apps/web/src/components/board/settings/DetailViewPanel.test.tsx`]
 - depends-on: [8, 9, 10, 13]
 - jira: []
 
@@ -979,6 +979,12 @@ T16 은 `api/board-settings.ts` 에, T18·T19 도 거기 넣는다(files 확장�
 **T8/T9 형태로 모으는 것이 낫다** — 스텁 필드 이름·리셋 위치·단언 형태까지 이미 일치하고,
 다섯 번째 탭이 생겨도 복제할 본이 하나로 남는다. ★T9 는 이미 `CREATE` 라 손댈 것이 없고,
 **T29 가 실수로 다른 코드를 넣으면 T9 의 ⑩ 축이 red 로 잡는다.**
+
+★**stale 주석 16건 정정도 이 task 가 진다(2026-09-06 추가).** 봉투를 통일하면
+「탭마다 오류 봉투가 다르다 · Task 29 가 통일 예정」이라 적힌 주석 **15줄이 그 순간 거짓**이 된다
+(프로덕션 9 · 테스트 6, 10개 파일). 16번째는 `board-handlers.ts` 의 `settingsError` KDoc
+「본문 모양은 탭마다 다르다」인데 **T29 이전에도 자기 함수와 모순**이었다 —
+바로 아래 함수가 네 탭에 한 모양을 낸다. files 를 그 10개 파일로 넓힌다.
 
 ★**권한코드 통일도 이 task 가 진다(2026-09-06 추가).** 실측 —
 `BoardEstimationController` 만 `CREATE` 이고 `BoardCardLayoutController` · `BoardWorkingDaysController` ·
