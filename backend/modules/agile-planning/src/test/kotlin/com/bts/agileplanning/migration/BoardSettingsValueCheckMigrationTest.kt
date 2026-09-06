@@ -300,7 +300,8 @@ class BoardSettingsValueCheckMigrationTest {
         }
 
     /** 판정용 임시 보드. 축마다 새로 심어 앞 축이 남긴 값에 얹히지 않게 한다. */
-    private fun freshBoard(): UUID = conn().use { c -> seedBoard(c, "T${UUID.randomUUID().toString().take(6)}", null, null) }
+    private fun freshBoard(): UUID =
+        conn().use { c -> seedBoard(c, "T${UUID.randomUUID().toString().take(6)}", null, null) }
 
     // ── ① 기존 데이터 보존 ──────────────────────────────────────────────────────
 

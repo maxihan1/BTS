@@ -499,7 +499,8 @@ class BoardSettingsRepositoryTest {
         // field_key 는 VARCHAR(128) 이다(V509 ④). 129자는 SQLSTATE 22001 이다.
         val board = insertBoard()
 
-        assertThat(sqlStateOf { settingsRepository.replaceDetailViewFields(board.id, "GENERAL", listOf("k".repeat(129))) })
+        val tooLong = listOf("k".repeat(129))
+        assertThat(sqlStateOf { settingsRepository.replaceDetailViewFields(board.id, "GENERAL", tooLong) })
             .isEqualTo(STRING_TOO_LONG)
         // 대조군 — 128자는 들어간다. 경계에서 전부 죽는 스키마였다면 위 단언이 공허하다.
         settingsRepository.replaceDetailViewFields(board.id, "GENERAL", listOf("k".repeat(128)))

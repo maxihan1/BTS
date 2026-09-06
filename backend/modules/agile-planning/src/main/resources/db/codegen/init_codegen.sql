@@ -28,7 +28,19 @@ CREATE TABLE boards (
     CONSTRAINT boards_board_type_allowed CHECK (board_type IN ('SCRUM', 'KANBAN')),
     -- V509: 형제 둘과 같은 <테이블>_<칸>_allowed 관용구. 이것만 빠지면 같은 테이블의 같은 종류
     -- 칸 셋이 서로 다른 규율을 받는다(마이그레이션은 DO 블록으로 같은 제약을 건다).
-    CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT'))
+    CONSTRAINT boards_time_tracking_allowed CHECK (time_tracking IN ('NONE', 'REMAINING_AND_SPENT')),
+    -- V510: 근무일 원소 집합 · 타임존 유효성 (부채 177 리뷰 C4)
+    CONSTRAINT boards_working_days_allowed CHECK (
+        working_days IS NULL
+        OR (
+            array_position(working_days, NULL) IS NULL
+            AND working_days <@ ARRAY['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']::varchar[]
+        )
+    ),
+    CONSTRAINT boards_board_timezone_allowed CHECK (
+        board_timezone IS NULL
+        OR timezone(board_timezone, TIMESTAMPTZ '2000-01-01 00:00:00+00') IS NOT NULL
+    )
 );
 
 CREATE INDEX idx_boards_project_key ON boards (project_key) WHERE deleted_at IS NULL;

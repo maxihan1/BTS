@@ -8,6 +8,8 @@ import com.bts.agileplanning.web.dto.DataResponse
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
+import jakarta.validation.Valid
+import jakarta.validation.constraints.NotEmpty
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -31,6 +33,7 @@ import java.util.UUID
  *   목록의 순서가 곧 그룹 안 표시 순서다(J48 의 드래그 결과). 빈 목록은 그 그룹을 비운다.
  */
 data class DetailViewFieldsPatchRequest(
+    @field:NotEmpty(message = "groups 는 최소 한 그룹을 담아야 합니다.")
     val groups: Map<String, List<String>>,
 )
 
@@ -131,7 +134,7 @@ class BoardDetailViewController(
     @PatchMapping
     fun patchFields(
         @PathVariable boardId: UUID,
-        @RequestBody request: DetailViewFieldsPatchRequest,
+        @Valid @RequestBody request: DetailViewFieldsPatchRequest,
     ): ResponseEntity<DataResponse<DetailViewFieldsResponse>> {
         log.info("BoardDetailViewController.patchFields boardId={} groups={}", boardId, request.groups.keys)
 

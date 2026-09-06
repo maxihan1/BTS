@@ -577,10 +577,16 @@ class BoardExceptionHandler {
      * `@RestControllerAdvice` 는 Spring 의 ResponseStatusExceptionResolver 보다 먼저 실행되므로,
      * [Exception] 보다 구체적인 이 핸들러를 등록해 Spring 이 우선 선택하도록 한다.
      *
-     * 보안 — detail 에 `ex.reason` 등 내부 정보를 노출하지 않고 상태 코드 기반 일반 메시지를 사용한다(원본 사유는 로그에만 기록).
+     * 보안 — 401·403·404·409 등은 상태 코드 기반 **일반 메시지**를 쓴다(원본 사유는 로그에만).
+     *
+     * ★**400 만 예외다**(리뷰 C7 · 2026-09-06). 서비스들이 사전 검증의 존재 이유를 「사용자에게
+     * 400 의 **이유**를 주려고」라고 KDoc 에 적어 두는데 그것을 버리면 그 문장이 거짓이 된다.
+     * 400 의 `reason` 은 서버가 만든 고정 문구(허용값·상한)이고 요청 값을 되비추지 않는다 —
+     * 그 규율은 각 예외 클래스가 진다(`QuickFilterEmptyQueryException` 이 세운 선례).
      *
      * @param ex 컨트롤러/서비스 계층에서 던진 상태 코드 보유 예외.
      */
+
     @ExceptionHandler(ResponseStatusException::class)
     fun handleResponseStatus(ex: ResponseStatusException): ProblemDetail {
         val status = HttpStatus.valueOf(ex.statusCode.value())
@@ -598,7 +604,13 @@ class BoardExceptionHandler {
                 HttpStatus.UNPROCESSABLE_ENTITY ->
                     AGILE_UNPROCESSABLE to "요청을 처리할 수 없습니다. 워크플로우 또는 해결 방안 설정을 확인해 주세요."
                 HttpStatus.BAD_REQUEST ->
-                    AGILE_VALIDATION_FAILED to "요청 값이 올바르지 않습니다."
+                    // ★`ex.reason` 을 그대로 싣는다(리뷰 C7). 서비스들이 사전 검증의 존재 이유를
+                    //   「사용자에게 400 의 **이유**를 주려고」라고 KDoc 에 적어 두는데, 여기서 버리면
+                    //   그 문장이 거짓이 되고 「최대 3개입니다」·「칸반에는 백로그 뷰가 없습니다」가
+                    //   **로그에만** 남는다. 형제 WorkingDaysInvalidException 은 전용 핸들러로
+                    //   이미 reason 을 싣고 있었다 — Task 29 가 통일한 것은 봉투 **모양**이고
+                    //   정보량은 탭마다 달랐다. reason 이 없으면 종전 문구로 되돌아간다.
+                    AGILE_VALIDATION_FAILED to (ex.reason ?: "요청 값이 올바르지 않습니다.")
                 else ->
                     AGILE_INTERNAL_ERROR to "요청을 처리할 수 없습니다."
             }
@@ -608,6 +620,40 @@ class BoardExceptionHandler {
             title = status.reasonPhrase,
             errorCode = errorCode,
             detail = detail,
+        )
+    }
+
+    /**
+     * 저장 계층의 무결성 제약 위반을 **409** 로 거둔다 — 500 이 아니다(리뷰 C2).
+     *
+     * **왜 생기나.** 설정 4탭 중 셋(`replaceCardLayout` · `replaceNonWorkingDates` ·
+     * `replaceDetailViewFields`)이 OCC 없이 `DELETE` → `INSERT` 다. READ COMMITTED 에서 두 관리자가
+     * 같은 보드를 동시에 저장하면 뒤 트랜잭션의 `DELETE` 가 자기 스냅샷 밖인 앞 트랜잭션의 신규 행을
+     * 못 지우고, 이어지는 `INSERT` 가 PK 중복(23505)으로 죽는다. 리포지터리 KDoc 이 예고한
+     * CHECK 위반도 같은 경로다. 핸들러가 없으면 둘 다 catch-all 로 떨어져 `AGILE_INTERNAL_ERROR` 가 된다.
+     *
+     * ★**추정 탭은 이 경로가 아니다.** `UPDATE` 한 문장이라 이 경합이 성립하지 않는다.
+     *
+     * ★**프론트의 드래그 잠금은 한 브라우저 안의 lost update 만 닫는다.** 두 관리자 경합은
+     * 그것과 다른 층이고, 여기가 그 층의 유일한 방어선이다.
+     *
+     * 두 갈래를 다 잡는다 — Spring `PersistenceExceptionTranslator` 가 개입하면
+     * [DataIntegrityViolationException], 미개입이면 jOOQ 가 직접 던진다.
+     * 형제 `BoardQuickFilterService.tryPersist` 가 세운 관용구를 advice 한 곳으로 모은 것이다
+     * (세 서비스에 복제하면 그 자체가 「서로를 검사하지 않는 세 목록」이 된다).
+     */
+    @ExceptionHandler(
+        org.springframework.dao.DataIntegrityViolationException::class,
+        org.jooq.exception.IntegrityConstraintViolationException::class,
+    )
+    fun handleIntegrityViolation(ex: Exception): ProblemDetail {
+        log.warn("보드 설정 저장 무결성 위반 — {}", ex.javaClass.simpleName)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "agile-settings-conflict",
+            title = "Conflict",
+            errorCode = AGILE_CONFLICT,
+            detail = "다른 관리자가 방금 이 보드의 설정을 저장했습니다. 새로고침 후 다시 시도해 주세요.",
         )
     }
 

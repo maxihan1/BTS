@@ -34,9 +34,11 @@ class EstimationBoardNotFoundException :
  * `time_tracking` 을 여기서 `NONE` 으로 되돌리면 스크럼으로 되돌렸을 때 값이 사라진다.
  * 칸반에서 무시하는 것은 **읽는 쪽**의 몫이다([BoardSettingsRepository.findTimeTracking] KDoc).
  *
- * ★전용 [com.bts.agileplanning.web.BoardExceptionHandler] 핸들러가 있어야 errorCode 가 붙는다.
- * 지금은 없다 — 그 파일이 Task 8·10·13 과 공유하는 자원이라 이 task 가 건드리지 않았다.
- * [ResponseStatusException] 을 상속하므로 **상태 코드 409 는 그대로 전파**되고, 바디만 비어 있다.
+ * ★**바디는 더 이상 비어 있지 않다**(2026-09-06 정정 · 리뷰 P6). 종전 주석은
+ * 「전용 핸들러가 없어 errorCode 가 안 붙고 바디만 비어 있다」고 적었는데, Task 29 가
+ * `BoardExceptionHandler` 의 `assignableTypes` 에 이 컨트롤러를 넣은 뒤로
+ * `handleResponseStatus` 가 받아 **`AGILE_CONFLICT` 봉투**로 409 를 낸다.
+ * [ResponseStatusException] 상속은 그대로이고, 상태 코드와 함께 봉투도 실린다.
  */
 class TimeTrackingBoardNotScrumException :
     ResponseStatusException(HttpStatus.CONFLICT, "시간 추적은 스크럼 보드에서만 바꿀 수 있습니다.")
@@ -103,8 +105,9 @@ enum class TimeTracking {
          *   여기서 다른 값을 고르면 저장된 적 없는 세 번째 동작이 생긴다.
          * @return 읽어낸 값. 알 수 없는 값이면 DB 기본값과 같은 [NONE].
          */
-        fun fromStored(raw: String?): TimeTracking =
-            entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: NONE
+        fun fromStored(raw: String?): TimeTracking {
+            return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: NONE
+        }
     }
 }
 
