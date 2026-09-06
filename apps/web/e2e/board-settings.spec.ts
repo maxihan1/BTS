@@ -34,6 +34,8 @@ import { test, expect } from '@playwright/test'
 import type { Locator, Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
 import {
+  boardActionsTrigger,
+  boardHeader,
   boardSwitcherTrigger,
   goToBoardNameStep,
   selectBoardType,
@@ -46,11 +48,6 @@ const PROJECT_KEY = 'ATLAS'
 
 const BOARD_URL = `/projects/${PROJECT_KEY}/board?board=${BOARD_ID}`
 const SETTINGS_URL = `/projects/${PROJECT_KEY}/board/settings?board=${BOARD_ID}`
-
-/** 보드 관리 `⋯` 트리거 — 접근성 이름이 「보드 관리, …」 */
-function boardActionsTrigger(page: Page) {
-  return page.getByRole('button', { name: /보드 관리/ })
-}
 
 /** S10 이 화면에서 만드는 스크럼 보드 이름 — 시드 이름(`ATLAS 보드`)과 겹치지 않게 둔다 */
 const SCRUM_BOARD_NAME = '설정용 스크럼 보드'
@@ -353,6 +350,9 @@ test.describe('보드 설정 — Columns 탭 (부채 177)', () => {
     await expect(boardSwitcherTrigger(page)).toContainText(SCRUM_BOARD_NAME)
 
     // ── 헤더 ⋯ → 「보드 설정」 (SPA 이동)
+    // 🛑 `board-helpers.ts` 가 요구하는 선단언 — testid 가 어긋나면 하위 조회가 조용히 count 0 이
+    //    되고, 이 spec 의 `not.toBeChecked()` 류 부재 단언들이 **그대로 통과**한다.
+    await expect(boardHeader(page)).toBeVisible()
     await boardActionsTrigger(page).click()
     await page.getByRole('menuitem', { name: boardLabels.actions.settingsItem }).click()
     await expect(
