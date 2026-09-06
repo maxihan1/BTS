@@ -58,6 +58,12 @@ import { boardKeys } from '@/hooks/use-boards'
 import { boardLabels } from '@/i18n/board-labels'
 import { WorkingDaysPanel } from './WorkingDaysPanel'
 
+// jsdom 은 scrollIntoView 를 구현하지 않는다 — 타임존 드롭다운이 쓰는 cmdk 가 활성 항목이
+// 바뀔 때마다 부른다 (`ui/command.test.tsx:16` 처방을 그대로 따른다).
+if (typeof window.HTMLElement.prototype.scrollIntoView !== 'function') {
+  window.HTMLElement.prototype.scrollIntoView = (): void => {}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
