@@ -755,6 +755,20 @@ S1 이 `strict mode violation: … resolved to 2 elements` 로 죽는다 — 전
 
 **REFACTOR**. 근무일 미설정 보드가 **현행 그대로**인 대조군을 같은 spec 에 둔다.
 
+★★**착수 실측 정정 (2026-09-06 · T23 구현자).** 「번다운 x축 축소」와 「타임존만 바꿔도 차트가
+달라진다」 두 축은 **프론트 E2E 로 잴 수 없다.** 프론트 E2E 는 MSW 목 위에서 돌고,
+`apps/web/src/mocks/burndown-handlers.ts` 는 정적 store 라 보드 작업일 설정
+(`board-handlers.ts` 의 `boardSettingsStore`)에서 **아무것도 파생하지 않는다.**
+`BurndownChart` 도 클라이언트 축소를 하지 않으므로(응답 `points` 를 그대로 그린다) 좁히는
+주체는 백엔드 `BurndownCalculator` 하나뿐이다. 실측 — 근무일 월~금 + 비근무일 `2026-06-03`
+저장 후에도, 타임존 `Asia/Seoul`→`America/New_York` 변경 후에도 x축은
+`["06/01","06/02","06/03","06/04","06/05"]` 로 **바이트 단위로 같았다.**
+그 두 건은 `test.fail()` 로 깨진 채 박아 뒀다 — 목이 파생하도록 배선되는 날 「예상외 통과」로
+빨간불이 되어 마커를 걷어내게 만든다. **그 축의 판정자는 Task 11·12 의 백엔드 테스트다.**
+★`page.route()` 로 응답을 덮는 우회로도 없다 — MSW Service Worker 가 먼저 응답해 무효임이
+`backlog.spec.ts:125` 에 실측으로 남아 있다. **목 배선(`burndown-handlers.ts`)은 T23 files
+밖이라 손대지 않았다 — 필요하면 후속 task 로 세워야 한다.**
+
 **검증**. `(cd apps/web && node_modules/.bin/playwright test e2e/board-settings-estimation.spec.ts)`
 
 ### Task 24. E2E — 상세 보기 (모달 + 사이드패널 양쪽)
