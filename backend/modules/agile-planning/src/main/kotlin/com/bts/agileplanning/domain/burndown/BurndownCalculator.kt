@@ -87,7 +87,7 @@ object BurndownCalculator {
                 cumulative += dailyContribution(day, start, preStartSum, worklogByBoardDate)
             }
             if (day in axis) {
-                // 축 위 몇 번째인가가 곧 ideal 의 x 좌표다. 아직 담기 전이라 points.size 가 그 index 다.
+                // 축 위 몇 번째인가가 곧 ideal 의 x 좌표다. 아직 안 담았으므로 points.size 가 그 index 다.
                 val ideal = computeIdealSeconds(scopeSeconds, points.size.toLong(), totalDays)
                 points +=
                     if (future) {
