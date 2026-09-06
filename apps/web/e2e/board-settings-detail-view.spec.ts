@@ -91,6 +91,11 @@ function settingsList(page: Page, group: DetailGroup): Locator {
   return page.getByRole('list', { name: L.listLabel(G[group]), exact: true })
 }
 
+/** 일반 필드 목록의 한 줄. 드롭 대상 표시(`bg-accent`)를 여기서 읽는다. */
+function generalRow(page: Page, field: string): Locator {
+  return settingsList(page, 'GENERAL').locator('li').filter({ hasText: field })
+}
+
 /** 한 줄의 순서 드래그 핸들. 저장 중에는 잠긴다(E8) — 그 잠김이 곧 「저장 중」 신호다. */
 function reorderHandle(page: Page, group: DetailGroup, field: string): Locator {
   return page.getByRole('button', { name: L.reorderHandle(G[group], field), exact: true })
@@ -289,14 +294,31 @@ test.describe('보드 설정 — 상세 보기 (부채 177 · J46~J48)', () => {
     await page.goto(SETTINGS_URL)
     await seedDetailView(page, before)
 
-    // ★키보드 드래그 — Space 로 집고 ArrowDown 으로 옮기고 Space 로 놓는다.
-    //   한 줄 높이(36px)보다 dnd-kit 의 한 걸음(25px)이 짧지만, 겹침 면적으로 대상을 고르므로
-    //   한 걸음이면 다음 줄이 이긴다(자기 줄 11px 대 다음 줄 25px). 실측으로 확인한 값이다.
+    // ── 키보드 드래그 — Space 로 집고 ArrowDown 으로 옮기고 Space 로 놓는다 ─────────
     const handle = reorderHandle(page, 'GENERAL', '우선순위')
     await handle.click()
     await expect(handle).toBeFocused()
+
     await page.keyboard.press('Space')
+    // ★★**집힌 것을 확인하고서야 화살표를 누른다.** dnd-kit 의 `KeyboardSensor` 는 활성화
+    //   **직후 `setTimeout` 으로** document 의 keydown 리스너를 붙인다
+    //   (`@dnd-kit/core@6.3.1` core.cjs:1163). 그 전에 날아온 화살표는 아무 데도 닿지 않고
+    //   사라지고, 이어지는 Space 는 **제자리에** 놓아 요청이 0건이 된다 — 화면도 콘솔도
+    //   조용해서 「드래그가 왜 안 먹지」만 남는다(이 spec 의 RED 가 정확히 그 상태였다.
+    //   PATCH 0건 · 목록은 시드 순서 그대로). `aria-pressed` 는 dnd-kit 이 role=button
+    //   드래그에 거는 표준 신호라(core.cjs:3433) 이 대기가 곧 접근성 계약이기도 하다.
+    //   ★형제 `board-settings.spec.ts` S2 가 이 함정을 안 밟은 것은 화살표를 25번 누르기
+    //     때문이다 — 앞의 한둘이 사라져도 나머지가 옮긴다. 한 번만 누르는 여기엔 여유가 없다.
+    await expect(handle).toHaveAttribute('aria-pressed', 'true')
+
+    // 한 줄은 36px 이고 dnd-kit 의 한 걸음은 25px 이지만, 대상은 **겹침 면적**으로 고르므로
+    // 한 걸음이면 다음 줄이 이긴다 — 실측 기하로 자기 줄 9px 대 다음 줄 23px 이다.
     await page.keyboard.press('ArrowDown')
+    // ★놓기 전에 **어디에 놓이는지가 화면에 보인다**(드롭 대상 표시 · T19 가 형제 드래그
+    //   표면 3곳과 같은 조합으로 맞춘 자리). 이 대기가 곧 「React 가 새 `over` 를 반영했다」의
+    //   확인이라, 반영 전에 놓아 제자리 드롭이 되는 두 번째 경주를 함께 닫는다.
+    await expect(generalRow(page, '환경')).toHaveClass(/bg-accent/)
+
     await page.keyboard.press('Space')
 
     await expectSettingsOrder(page, 'GENERAL', reordered)
