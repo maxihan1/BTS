@@ -6,6 +6,8 @@ import com.bts.agileplanning.application.CardLayoutSettingsService
 import com.bts.agileplanning.application.DetailViewSettingsService
 import com.bts.agileplanning.application.EstimationSettingsService
 import com.bts.agileplanning.application.WorkingDaysSettingsService
+import com.bts.agileplanning.domain.Board
+import com.bts.agileplanning.domain.BoardColumn
 import com.bts.agileplanning.repository.BoardRepository
 import com.bts.agileplanning.repository.BoardSettingsRepository
 import com.bts.shared.permission.IssuePermission
@@ -36,6 +38,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import java.time.Instant
 import java.util.UUID
 
 /** 없는 보드에 대해 네 탭이 내야 하는 RFC 7807 `type` — [BoardExceptionHandler.handleBoardNotFound] 가 만든다. */
@@ -221,6 +224,7 @@ class BoardSettingsTabErrorEnvelopeTest {
         permissionStub.allowAll = true
         permissionStub.lastPermission = null
         permissionStub.lastScope = null
+        permissionStub.lastActorId = null
         SecurityContextHolder.getContext().authentication =
             UsernamePasswordAuthenticationToken(
                 actorId.toString(),
@@ -255,20 +259,66 @@ class BoardSettingsTabErrorEnvelopeTest {
 
     @Test
     fun `네 탭의 없는 보드 응답은 timestamp 와 instance 를 빼면 본문이 서로 같다`() {
-        val envelopes =
-            linkedMapOf(
-                "card-layout" to envelopeOf(patchCardLayout()),
-                "estimation" to envelopeOf(patchEstimation()),
-                "working-days" to envelopeOf(putWorkingDays()),
-                "detail-view-fields" to envelopeOf(patchDetailView()),
-            )
+        val envelopes = tabRequests().mapValues { (_, request) -> envelopeOf(request()) }
 
         assertThat(envelopes.values.toSet())
             .describedAs("같은 설정 화면의 네 탭은 같은 오류에 같은 본문을 내야 한다 — 탭별 실제 본문: %s", envelopes)
             .hasSize(1)
     }
 
+    // ── ⑥ 게이트 actor ───────────────────────────────────────────────────────
+
+    @Test
+    fun `네 탭 모두 인증된 주체를 그대로 권한 게이트에 넘긴다`() {
+        // 이 파일의 다른 테스트와 달리 **보드가 있다** — 없으면 404 로 끝나 게이트에 닿지 못한다.
+        every { boardRepository.findById(any()) } returns sampleBoard()
+        // 거부로 고정한다. 게이트까지만 가고 서비스는 돌지 않아 이 축이 탭별 저장 경로에 얽히지 않는다.
+        permissionStub.allowAll = false
+
+        tabRequests().forEach { (tab, request) ->
+            // 앞 탭이 남긴 값으로 초록이 되지 않게 매 탭마다 비운다 — 게이트를 아예 안 부른 탭은 null 로 걸린다.
+            permissionStub.lastActorId = null
+
+            val result = request()
+
+            assertThat(result.response.status).describedAs("%s 상태 코드", tab).isEqualTo(403)
+            assertThat(permissionStub.lastActorId)
+                .describedAs("%s — 게이트가 받은 주체는 인증된 주체와 같아야 한다", tab)
+                .isEqualTo(actorId)
+        }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    /**
+     * 네 탭의 요청을 담은 **하나의 표**. 교차 축(⑤ 봉투 동일성 · ⑥ 게이트 actor)은 이 표만 돈다.
+     *
+     * ★다섯 번째 탭은 여기 한 줄이면 두 축이 함께 는다. 축마다 탭 목록을 따로 적으면
+     * 「두 목록이 서로를 검사하지 않는」 양식이 되어, 새 탭이 한쪽 목록에만 들어가도 아무도 못 잡는다.
+     */
+    private fun tabRequests(): Map<String, () -> MvcResult> =
+        linkedMapOf(
+            "card-layout" to ::patchCardLayout,
+            "estimation" to ::patchEstimation,
+            "working-days" to ::putWorkingDays,
+            "detail-view-fields" to ::patchDetailView,
+        )
+
+    /**
+     * ⑥ 전용 보드. 네 컨트롤러가 게이트에서 읽는 것은 `projectKey` 뿐이라 나머지 필드는 최소값이다.
+     *
+     * `findById(any())` 로 돌려주므로 경로의 [missingBoardId] 와 `id` 가 달라도 상관없다 —
+     * ⑥ 은 「어떤 보드인가」가 아니라 「누구로 물었는가」를 잰다.
+     */
+    private fun sampleBoard(): Board =
+        Board(
+            id = UUID.fromString("44444444-4444-4444-4444-444444444444"),
+            projectKey = "BTS",
+            name = "BTS 개발 보드",
+            columns = listOf(BoardColumn(UUID.randomUUID(), listOf("open"), "열림", "TODO", 0)),
+            createdAt = Instant.parse("2026-06-20T00:00:00Z"),
+            updatedAt = Instant.parse("2026-06-20T00:00:00Z"),
+        )
 
     /**
      * 404 응답 본문이 [BoardExceptionHandler] 의 보드 미존재 봉투인지 잰다.

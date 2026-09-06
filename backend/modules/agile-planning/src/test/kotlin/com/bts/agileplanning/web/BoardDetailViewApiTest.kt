@@ -254,6 +254,7 @@ class BoardDetailViewApiTest {
         // 앞 테스트가 남긴 값으로 권한코드 축이 초록이 되지 않게 매번 비운다.
         permissionStub.lastPermission = null
         permissionStub.lastScope = null
+        permissionStub.callCount = 0
 
         every { boardRepository.findById(any()) } returns sampleBoard()
         every { settingsRepository.findDetailViewFields(any()) } answers { store.read(firstArg()) }
@@ -429,6 +430,22 @@ class BoardDetailViewApiTest {
 
         assertThat(patchGroups(mapOf("GENERAL" to GENERAL_FIELDS)).response.status).isEqualTo(404)
         assertThat(performGet().response.status).isEqualTo(404)
+    }
+
+    // ── K. ★판정 횟수 ────────────────────────────────────────────────────────
+
+    @Test
+    fun `그룹 4종을 한 요청에 담아도 권한 판정은 정확히 한 번이다`() {
+        // ★N+1 게이트를 가른다. 네 탭 중 **한 요청에 그룹 4종을 받는 것은 이 엔드포인트뿐**이라
+        // 「그룹마다 판정」이 자연스러운 퇴화 경로다. 그렇게 되면 요청 하나가 권한 조회 4건이 되는데,
+        // 상태 코드로는 전혀 보이지 않는다 — allow 면 그대로 200 이고 deny 면 첫 그룹에서 403 이라
+        // 판정 횟수도 1로 돌아온다. 그래서 이 축은 **allow 경로**에서만 잰다.
+        val result = patchGroups(allFourGroups())
+
+        assertThat(result.response.status).isEqualTo(200)
+        assertThat(permissionStub.callCount)
+            .describedAs("그룹 4종 PATCH 의 권한 판정 횟수")
+            .isEqualTo(1)
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
