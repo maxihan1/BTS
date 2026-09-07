@@ -103,21 +103,20 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     requireAtLeastOne: [],
   },
 
-  // ── CHART 카테고리 (enabled=false) — type 알파벳 순 ────────────────────────
+  // ── CHART 카테고리 — type 알파벳 순. created_vs_resolved 만 아직 false 다 ────
   {
     type: 'bar_chart',
     category: 'CHART',
     label: 'Bar Chart',
-    enabled: false,
+    enabled: true,
     configFields: [
+      { key: 'projectKey', type: 'STRING', required: true, maxLength: 100 },
       {
         key: 'field',
         type: 'ENUM',
         required: true,
         enumValues: ['status', 'assignee', 'priority', 'issueType'],
       },
-      { key: 'filterId', type: 'UUID', required: false },
-      { key: 'aql', type: 'STRING', required: false, maxLength: 2000 },
     ],
     requireAtLeastOne: [],
   },
@@ -136,16 +135,15 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     type: 'pie_chart',
     category: 'CHART',
     label: 'Pie Chart',
-    enabled: false,
+    enabled: true,
     configFields: [
+      { key: 'projectKey', type: 'STRING', required: true, maxLength: 100 },
       {
         key: 'field',
         type: 'ENUM',
         required: true,
         enumValues: ['status', 'assignee', 'priority', 'issueType'],
       },
-      { key: 'filterId', type: 'UUID', required: false },
-      { key: 'aql', type: 'STRING', required: false, maxLength: 2000 },
     ],
     requireAtLeastOne: [],
   },
@@ -153,17 +151,17 @@ export const GADGET_CATALOG_FIXTURE: GadgetCatalogEntry[] = [
     type: 'sprint_burndown',
     category: 'CHART',
     label: 'Sprint Burndown',
-    enabled: false,
-    configFields: [{ key: 'sprintId', type: 'UUID', required: false }],
+    enabled: true,
+    configFields: [{ key: 'boardId', type: 'UUID', required: true }],
     requireAtLeastOne: [],
   },
 
-  // ── ACTIVITY 카테고리 (enabled=false) — type 알파벳 순 ──────────────────────
+  // ── ACTIVITY 카테고리 — type 알파벳 순. comments_recent 만 아직 false 다 ─────
   {
     type: 'activity_stream',
     category: 'ACTIVITY',
     label: 'Activity Stream',
-    enabled: false,
+    enabled: true,
     configFields: [
       { key: 'projectKey', type: 'STRING', required: false, maxLength: 100 },
       { key: 'maxItems', type: 'INT', required: false, min: 1, max: 50 },

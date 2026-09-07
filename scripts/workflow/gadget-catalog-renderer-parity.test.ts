@@ -6,6 +6,7 @@
 //
 //   ① `GadgetType.enabled`        — 카탈로그 노출 + 쓰기 수용. 무엇을 **켤 수 있나**
 //   ② `GadgetRenderer` 의 `case`  — 실제 렌더. 무엇을 **그릴 수 있나**
+//   ③ `gadget-catalog-fixtures`   — MSW 목. e2e·개발 서버가 **실제로 보는** 카탈로그
 //
 // 둘은 서로를 검사하지 않는다. `enabled=true` 인데 `case` 가 없으면 사용자는
 // **「지원되지 않는 가젯입니다」**를 본다 — 카탈로그에서 고를 수 있었는데 놓으면 안 뜬다.
@@ -119,6 +120,8 @@ const KOTLIN_SOURCE =
   'backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/GadgetType.kt';
 /** 꼭짓점 ② — 그릴 수 있는 것의 정본. */
 const RENDERER_SOURCE = 'apps/web/src/components/dashboard/gadgets/GadgetRenderer.tsx';
+/** 꼭짓점 ③ — 개발·e2e 가 **실제로 보는** 카탈로그(MSW 목). */
+const FIXTURE_SOURCE = 'apps/web/src/mocks/gadget-catalog-fixtures.ts';
 
 /** 역참조 표식 — 렌더러가 이 이름을 들고 있어야 한다. */
 const SELF_NAME = 'gadget-catalog-renderer-parity.test.ts';
@@ -220,6 +223,48 @@ export function parseRenderedTypes(source: string): Set<string> {
   return found;
 }
 
+/**
+ * MSW 픽스처의 `enabled=true` 타입을 읽는다.
+ *
+ * ★들여쓰기 4칸 조건이 방벽이다. `configFields` 안에도 `type: 'STRING'` 같은 줄이 있는데
+ * 그것은 더 깊이 들여써 있다 — 조건이 없으면 필드 타입이 가젯 타입으로 섞인다.
+ *
+ * @param source 픽스처 원문.
+ * @returns `{ all, enabled }` — 전체 타입과 켜진 타입.
+ */
+export function parseFixtureTypes(source: string): { all: string[]; enabled: string[] } {
+  const lines = source.split('\n');
+  const all: string[] = [];
+  const enabled: string[] = [];
+
+  lines.forEach((line, index) => {
+    const m = /^ {4}type: '([a-z0-9_]+)',$/.exec(line);
+    if (m === null) return;
+    const key = m[1] as string;
+    all.push(key);
+
+    // ★창을 줄 수로 자르지 않는다. 경계는 **다음 항목의 `type:` 줄**이다.
+    //   고정 20줄 창으로 뒀다가 뮤테이션이 안 잡히는 것을 실측했다 — `enabled: false, // 주석`
+    //   처럼 줄 끝이 달라져 자기 항목의 enabled 가 미매치되면 `find` 가 창 안의 **다음 항목**
+    //   enabled 를 읽어 조용히 통과한다. 그 상태로는 픽스처가 갈려도 이 판별식이 초록이다.
+    const nextTypeAt = lines.findIndex((l, i) => i > index && /^ {4}type: '[a-z0-9_]+',$/.test(l));
+    const item = lines.slice(index, nextTypeAt === -1 ? lines.length : nextTypeAt);
+
+    const e = item.find((l) => /^ {4}enabled: /.test(l));
+    if (e === undefined) {
+      throw new Error(`${key}: 같은 항목 안에서 enabled 를 못 찾았다 — 픽스처 형태가 바뀌었다`);
+    }
+    // 값은 엄격히 읽는다. 줄 끝에 주석이 붙어도 값 자체는 true|false 여야 한다.
+    const em = /^ {4}enabled: (true|false)\b/.exec(e);
+    if (em === null) {
+      throw new Error(`${key}: enabled 값을 못 읽었다 — ${e.trim()}`);
+    }
+    if (em[1] === 'true') enabled.push(key);
+  });
+
+  return { all, enabled };
+}
+
 describe('가젯 카탈로그 ↔ 렌더러 정합', () => {
   test('파서가 enum 상수 12종을 정확히 읽는다 (공허 통과 방지)', () => {
     const constants = parseGadgetConstants(read(KOTLIN_SOURCE));
@@ -258,6 +303,29 @@ describe('가젯 카탈로그 ↔ 렌더러 정합', () => {
       '카탈로그와 렌더러가 갈렸다.\n' +
         `  켤 수 있는데 못 그림 → 사용자가 「지원되지 않는 가젯입니다」를 본다: ${enabledOnly.join(', ') || '없음'}\n` +
         `  그릴 수 있는데 못 켬 → 도달 불가 코드다: ${renderedOnly.join(', ') || '없음'}`,
+    );
+  });
+
+  test('★MSW 픽스처의 enabled 집합이 백엔드와 같다 (세 번째 꼭짓점)', () => {
+    // ★이 꼭짓점을 빠뜨렸다가 실제로 갈린 상태를 발견했다 — 백엔드는 10/2 인데 픽스처는
+    //   6/6 이었다. 그 상태에서 e2e 는 신규 가젯을 「준비 중」으로 보고, 개발 서버도 마찬가지다.
+    //   즉 **테스트가 초록인데 화면은 다르다**. 판별식이 두 꼭짓점만 보면 이것을 못 잡는다.
+    const constants = parseGadgetConstants(read(KOTLIN_SOURCE));
+    const fixture = parseFixtureTypes(read(FIXTURE_SOURCE));
+
+    // 비-공허 짝.
+    assert.ok(fixture.all.length > 0, '픽스처에서 타입을 한 건도 못 읽었다');
+
+    assert.deepEqual(
+      fixture.all.sort(),
+      constants.map((c) => c.key).sort(),
+      '픽스처의 가젯 타입 목록이 백엔드와 다르다',
+    );
+
+    assert.deepEqual(
+      fixture.enabled.sort(),
+      constants.filter((c) => c.enabled).map((c) => c.key).sort(),
+      '픽스처의 enabled 집합이 백엔드와 다르다 — e2e·개발 서버가 실제와 다른 카탈로그를 본다',
     );
   });
 
