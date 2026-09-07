@@ -77,6 +77,53 @@ const SPAN_RULE = '.mention';
 const STRUCTURAL_TAGS: ReadonlySet<string> = new Set(['br']);
 
 /**
+ * **회귀가 실제로 났던 자리의 속성 계약.**
+ *
+ * ★이 단언이 왜 따로 필요한가 — 위 커버리지는 「태그가 셀렉터에 등장하는가」만 본다.
+ * 2026-09-07 뮤테이션에서 실측했다: `.rich-text ol { list-style-type: decimal }` 를 통째로
+ * 지웠는데 **판별식이 초록이었다.** `ol` 이 위쪽 그룹 셀렉터(`.rich-text ul, .rich-text ol`)에
+ * 아직 있어 「커버됨」으로 읽힌 것이다. 그런데 사라진 그 한 줄이 바로 Maxi 가 신고한
+ * 「말머리 숫자서식 동작 안함」의 **직접 처방**이다.
+ *
+ * 판정이 실질을 안 지키는 이 양식은 저장소가 이미 이름 붙였다 —
+ * `[[invariant-satisfied-by-helptext-not-logic]]`. 그래서 **결함이 난 자리마다 속성을 못박는다.**
+ *
+ * 기준은 하나다. **이 저장소에서 실제로 깨졌던 것만 넣는다.** 「있으면 좋은 속성」을 모으기
+ * 시작하면 CSS 를 두 번 쓰는 목록이 된다.
+ */
+const CRITICAL_DECLARATIONS: ReadonlyArray<{
+  readonly what: string;
+  readonly pattern: RegExp;
+  readonly why: string;
+}> = [
+  {
+    what: 'ol 번호 마커',
+    pattern: /\.rich-text ol\s*\{[^}]*list-style-type:\s*decimal/,
+    why: 'preflight 의 `list-style: none` 을 되돌리는 줄. 이것이 없어서 번호가 안 보였다(Maxi 지적 2번).',
+  },
+  {
+    what: 'ul 불릿 마커',
+    pattern: /\.rich-text ul\s*\{[^}]*list-style-type:\s*disc/,
+    why: 'ol 과 같은 이유. preflight 가 함께 지운다.',
+  },
+  {
+    what: 'pre 가로 스크롤',
+    pattern: /\.rich-text pre\s*\{[^}]*overflow-x:\s*auto/,
+    why: '긴 코드가 본문 레이아웃을 밀어내는 것을 막는다(리뷰 D-4).',
+  },
+  {
+    what: 'table 가로 스크롤',
+    pattern: /\.rich-text table\s*\{[^}]*overflow-x:\s*auto/,
+    why: '넓은 표가 본문 레이아웃을 밀어내는 것을 막는다(리뷰 D-4).',
+  },
+  {
+    what: 'h1 크기',
+    pattern: /\.rich-text h1\s*\{[^}]*font-size:/,
+    why: 'preflight 가 h1~h6 을 `font-size: inherit` 로 리셋한다. 크기를 안 주면 제목이 본문과 같아 보인다.',
+  },
+];
+
+/**
  * 비-공허 하한.
  *
  * 실측 시점 allowlist 는 30태그, CSS 도 같은 30태그다. 하한을 25 로 두어 파서가 눈이 멀거나
@@ -201,6 +248,32 @@ describe('리치 텍스트 CSS 커버리지', () => {
       findUncoveredTags(allowed, styled, hasSpanRule),
       [],
       'CSS 가 스타일을 주지 않는 허용 태그가 있다 — 저장은 되는데 화면에 안 보이는 서식이 생긴다.',
+    );
+  });
+
+  test('회귀가 났던 자리의 속성이 살아 있다 (속성 계약)', () => {
+    const block = extractBlock(css);
+    assert.ok(block !== null, 'CSS 블록 마커 부재');
+    const dead = CRITICAL_DECLARATIONS.filter((d) => !d.pattern.test(block)).map(
+      (d) => `${d.what} — ${d.why}`,
+    );
+    assert.deepEqual(
+      dead,
+      [],
+      '결함이 실제로 났던 자리의 속성이 사라졌다 — 태그 커버리지만으로는 이것을 못 잡는다(2026-09-07 뮤테이션 실측).',
+    );
+  });
+
+  test('속성 계약이 삭제를 실제로 잡는다 (뮤테이션 짝)', () => {
+    // 커버리지 단언과 달리 이쪽은 선언 **내용**을 본다. 픽스처로 직접 흔들어 확인한다.
+    const good = '.rich-text ol {\n  list-style-type: decimal;\n}';
+    const bad = '.rich-text ul,\n.rich-text ol {\n  margin: 0;\n}';
+    const olRule = CRITICAL_DECLARATIONS.find((d) => d.what === 'ol 번호 마커');
+    assert.ok(olRule !== undefined, 'ol 속성 계약이 사라졌다.');
+    assert.ok(olRule.pattern.test(good), '정상 선언을 못 읽었다.');
+    assert.ok(
+      !olRule.pattern.test(bad),
+      '그룹 셀렉터에 태그만 남고 list-style 이 없는 CSS 를 통과시켰다 — 이것이 2026-09-07 에 실제로 샜던 구멍이다.',
     );
   });
 
