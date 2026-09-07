@@ -27,8 +27,14 @@ export interface GadgetRendererProps {
  *
  * 분기 규칙.
  * - gadgetType 없음 → null (legacy 타일 — 호출측이 처리)
- * - 지원 타입(6종) → 해당 가젯 컴포넌트
+ * - 지원 타입 → 해당 가젯 컴포넌트
  * - 미지원/unknown 타입 → "지원되지 않는 가젯" 안전 표시 (EC6 — 페이지 무손상)
+ *
+ * ★아래 `case` 목록은 백엔드 `GadgetType.enabled` 와 **정확히 같아야 한다.**
+ * 한쪽만 늘면 사용자가 카탈로그에서 고를 수 있는 가젯이 「지원되지 않는 가젯입니다」로 뜨거나,
+ * 반대로 도달 불가 코드가 조용히 남는다. 이 축은
+ * `scripts/workflow/gadget-catalog-renderer-parity.test.ts` 가 양방향 차집합으로 지킨다 —
+ * `case` 를 지우거나 `enabled` 를 켜기만 하면 그 판별식이 red 를 낸다.
  */
 export function GadgetRenderer({ tile }: GadgetRendererProps): JSX.Element | null {
   const { gadgetType, config } = tile
