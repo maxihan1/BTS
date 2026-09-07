@@ -42,6 +42,7 @@ import { projectHandlers } from './project-handlers'
 import { projectLeadHandlers } from './project-lead-handlers'
 import { projectMemberHandlers } from './project-member-handlers'
 import { projectPermissionHandlers } from './project-permission-handlers'
+import { projectSummaryHandlers } from './project-summary-handlers'
 import { resolutionHandlers } from './resolution-handlers'
 import { schemeHandlers } from './scheme-handlers'
 import { sessionHandlers } from './session-handlers'
@@ -130,6 +131,7 @@ export const handlers = [
   ...projectLeadHandlers,
   ...projectMemberHandlers,
   ...projectPermissionHandlers,
+  ...projectSummaryHandlers,
   ...resolutionHandlers,
   ...oidcHandlers,
   ...routeHandlers,
