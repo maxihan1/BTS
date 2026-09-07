@@ -38,7 +38,8 @@ class GadgetTypeTest : DescribeSpec({
             GadgetType.COMMENTS_RECENT.category shouldBe GadgetCategory.ACTIVITY
         }
 
-        it("MVP 6종 enabled=true, 나머지 6종 enabled=false") {
+        it("10종 enabled=true, 남은 2종은 백엔드 API 가 없어 false") {
+            // MVP 6종
             GadgetType.ASSIGNED_TO_ME.enabled shouldBe true
             GadgetType.RECENTLY_CREATED.enabled shouldBe true
             GadgetType.FILTER_RESULT.enabled shouldBe true
@@ -46,12 +47,24 @@ class GadgetTypeTest : DescribeSpec({
             GadgetType.TEXT_WIDGET.enabled shouldBe true
             GadgetType.LINK_LIST.enabled shouldBe true
 
-            GadgetType.PIE_CHART.enabled shouldBe false
-            GadgetType.BAR_CHART.enabled shouldBe false
+            // 이 PR 이 켠 4종 — 전부 기존 BC API 를 프론트가 직접 부른다(ADR D2). 백엔드 신규 0.
+            GadgetType.PIE_CHART.enabled shouldBe true
+            GadgetType.BAR_CHART.enabled shouldBe true
+            GadgetType.SPRINT_BURNDOWN.enabled shouldBe true
+            GadgetType.ACTIVITY_STREAM.enabled shouldBe true
+
+            // ★남은 2종은 여전히 false 다. issue-tracking BC 에 엔드포인트를 신설해야 하고
+            //   그것은 「한 PR = 한 BC」로 다음 PR 범위다. 여기서 켜면 사용자가 고를 수는 있는데
+            //   데이터가 없는 가젯이 된다.
             GadgetType.CREATED_VS_RESOLVED.enabled shouldBe false
-            GadgetType.SPRINT_BURNDOWN.enabled shouldBe false
-            GadgetType.ACTIVITY_STREAM.enabled shouldBe false
             GadgetType.COMMENTS_RECENT.enabled shouldBe false
+        }
+
+        it("★enabled=true 개수가 정확히 10 이다 (개수와 점단언이 서로를 검사한다)") {
+            // 위 점단언만 있으면 새 타입이 추가되며 켜져도 이 파일이 모른다.
+            // 개수만 있으면 어느 것이 켜졌는지 모른다. 둘을 함께 둔다.
+            GadgetType.entries.count { it.enabled } shouldBe 10
+            GadgetType.entries.size shouldBe 12
         }
     }
 
@@ -371,8 +384,11 @@ class GadgetTypeTest : DescribeSpec({
             GadgetType.catalog().size shouldBe 12
         }
 
-        it("enabled=true 엔트리가 정확히 6개다") {
-            GadgetType.catalog().count { it.enabled } shouldBe 6
+        it("enabled=true 엔트리가 정확히 10개다") {
+            // ★enum 쪽 카운트(위 「정확히 10」)와 catalog() 쪽 카운트는 **다른 축**이다.
+            //   catalog() 가 enabled 를 잘못 매핑하면 enum 은 맞는데 응답만 틀릴 수 있다.
+            //   그래서 둘 다 둔다 — 하나를 지우면 그 갈림이 안 보인다.
+            GadgetType.catalog().count { it.enabled } shouldBe 10
         }
 
         it("text_widget 엔트리에 markdown configField(required=true)가 포함된다 — 단일 출처 불변식") {

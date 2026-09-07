@@ -68,7 +68,7 @@ class AnonymousLayoutSanitizerTest {
     fun `pie_chart 데이터 가젯은 config 제거 후 requiresAuth true 플레이스홀더로 치환된다`() {
         val layout =
             """
-            [{"i":"d","x":0,"y":4,"w":4,"h":3,"gadgetType":"pie_chart","config":{"field":"status"}}]
+            [{"i":"d","x":0,"y":4,"w":4,"h":3,"gadgetType":"pie_chart","config":{"projectKey":"BTS","field":"status"}}]
             """.trimIndent()
 
         val result = AnonymousLayoutSanitizer.sanitize(layout)
@@ -76,6 +76,45 @@ class AnonymousLayoutSanitizerTest {
 
         assertThat(item.has("config")).isFalse()
         assertThat(item.get("requiresAuth").asBoolean()).isTrue()
+    }
+
+    /**
+     * SAN-4b. ★이 PR 이 켠 4종 **전수**가 차단된다.
+     *
+     * `enabled` 를 켜는 순간 그 타입이 공개 대시보드에 실릴 수 있다. 켜고 나중에 막으면
+     * 그 사이가 구멍이므로 같은 커밋에서 잰다.
+     *
+     * 정화기는 **카테고리 기반 fail-closed**(STATIC 만 통과)라 코드 변경이 필요 없다 —
+     * 이 테스트는 그 사실을 못 박을 뿐이다. 카테고리 판정이 타입 화이트리스트로 바뀌는 순간
+     * 여기가 red 가 된다.
+     *
+     * config 에 스코프 값(projectKey·boardId)을 실어 **누출까지 함께** 잰다.
+     */
+    @Test
+    fun `이 PR 이 켠 4종 전수가 config 제거 후 requiresAuth true 로 치환된다`() {
+        val cases =
+            listOf(
+                "pie_chart" to """{"projectKey":"SECRET","field":"status"}""",
+                "bar_chart" to """{"projectKey":"SECRET","field":"priority"}""",
+                "sprint_burndown" to """{"boardId":"11111111-2222-3333-4444-555555555555"}""",
+                "activity_stream" to """{"projectKey":"SECRET","maxItems":10}""",
+            )
+
+        cases.forEach { (type, config) ->
+            val layout = """[{"i":"g","x":0,"y":0,"w":4,"h":3,"gadgetType":"$type","config":$config}]"""
+
+            val result = AnonymousLayoutSanitizer.sanitize(layout)
+            val item = mapper.readTree(result).single()
+
+            assertThat(item.has("config")).describedAs("%s 의 config 가 남았다", type).isFalse()
+            assertThat(item.get("requiresAuth").asBoolean())
+                .describedAs("%s 에 requiresAuth 가 안 붙었다", type)
+                .isTrue()
+            assertThat(item.get("gadgetType").asText()).isEqualTo(type)
+            // 스코프 값이 익명 뷰어에게 새지 않는다.
+            assertThat(result).describedAs("%s 에서 스코프 값이 누출됐다", type).doesNotContain("SECRET")
+            assertThat(result).doesNotContain("11111111-2222")
+        }
     }
 
     /** SAN-5. gadgetType 미지정(legacy 타일)도 위치필드만 + requiresAuth=true 로 방출된다(config 없어도 fail-closed). */

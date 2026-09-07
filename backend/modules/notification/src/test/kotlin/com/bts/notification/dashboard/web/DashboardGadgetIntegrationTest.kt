@@ -44,9 +44,9 @@ import java.util.UUID
  * - G1. POST gadget layout → 201 → GET 재조회 → JSONB gadgetType·config 보존 (round-trip).
  * - G1b. PATCH gadget 추가 → 200 + version+1 → GET 재조회 → 변경 영속.
  * - G2a. 알 수 없는 gadgetType → 400 NOTIF_DASHBOARD_INVALID.
- * - G2b. enabled=false 타입(pie_chart) → 400 NOTIF_DASHBOARD_INVALID.
+ * - G2b. enabled=false 타입(comments_recent) → 400 NOTIF_DASHBOARD_INVALID.
  * - G2c. text_widget config markdown 누락 → 400 NOTIF_DASHBOARD_INVALID.
- * - G3. GET /gadget-catalog → 200 + gadgets 12종 + enabled=true 6개.
+ * - G3. GET /gadget-catalog → 200 + gadgets 12종 + enabled=true 10개.
  * - G4. EC12 라우팅 — gadget-catalog literal segment 우선 매칭, UUID 파싱 400 비유출.
  * - G5. legacy 타일(gadgetType 없음) → 201 (회귀가드).
  */
@@ -191,12 +191,16 @@ class DashboardGadgetIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
     }
 
-    // ── G2b. enabled=false 타입(pie_chart) → 400 NOTIF_DASHBOARD_INVALID ────────
+    // ── G2b. enabled=false 타입(comments_recent) → 400 NOTIF_DASHBOARD_INVALID ──
+    //
+    // ★대상을 pie_chart 에서 comments_recent 로 **교체**했다. 이 PR 이 pie_chart 를 켰으므로
+    //   그대로 두면 단언의 의미가 뒤집힌다. 삭제하지 않는 이유는 EC10(꺼진 타입 저장 거부)이
+    //   여전히 살아 있어야 하기 때문이다 — 지우면 그 회귀 가드를 통째로 잃는다.
 
     @Test
-    fun `G2b enabled=false 타입인 pie_chart로 POST하면 400 NOTIF_DASHBOARD_INVALID를 반환한다`() {
+    fun `G2b enabled=false 타입인 comments_recent로 POST하면 400 NOTIF_DASHBOARD_INVALID를 반환한다`() {
         val layout =
-            """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"pie_chart","config":{"field":"status"}}]"""
+            """[{"i":"g1","x":0,"y":0,"w":4,"h":3,"gadgetType":"comments_recent","config":{"projectKey":"BTS"}}]"""
         val body =
             mapOf("name" to "Disabled Gadget Dashboard", "visibility" to "PRIVATE", "layout" to layout)
 
@@ -226,17 +230,19 @@ class DashboardGadgetIntegrationTest {
             .andExpect(jsonPath("$.errorCode").value("NOTIF_DASHBOARD_INVALID"))
     }
 
-    // ── G3. 카탈로그 12종 + enabled=true 6개 ────────────────────────────────────
+    // ── G3. 카탈로그 12종 + enabled=true 10개 ───────────────────────────────────
+    //
+    // ★총수 12 는 그대로다. 이 PR 은 타입을 추가하지 않고 플래그만 켠다.
 
     @Test
-    fun `G3 gadget-catalog 조회 시 12종 전체가 반환되고 enabled=true는 6개다`() {
+    fun `G3 gadget-catalog 조회 시 12종 전체가 반환되고 enabled=true는 10개다`() {
         mockMvc.perform(
             get("/api/v1/dashboards/gadget-catalog")
                 .accept(MediaType.APPLICATION_JSON),
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.gadgets.length()").value(12))
-            .andExpect(jsonPath("$.data.gadgets[?(@.enabled==true)]", hasSize<Any>(6)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.enabled==true)]", hasSize<Any>(10)))
     }
 
     // ── G3b. assigned_to_me 카탈로그에 projectKey 노출 ──────────────────────────
