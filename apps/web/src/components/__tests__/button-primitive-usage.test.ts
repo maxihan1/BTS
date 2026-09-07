@@ -29,6 +29,9 @@ const BATCH1_FILES = [
   'components/issue/EpicChildrenSection.tsx',
   'components/issue/IssueChangelog.tsx',
   'components/issue/IssueDescription.tsx',
+  // 2026-09-07 — `routes/issues.$key.tsx` 에서 제목 편집 진입면이 이리로 추출됐다(J25~J27).
+  // 스캔 목록에 안 넣으면 그 발생이 **아예 안 보여** 이 가드가 조용히 놓친다.
+  'components/issue/IssueDetailHeader.tsx',
   'components/issue/IssueLinksPanel.tsx',
   'components/issue/meta/IssueLabelsEdit.tsx',
   'components/ooo/OooModal.tsx',
@@ -147,7 +150,10 @@ const EXPECTED_OUT = [
   // FR-UX-11 F8 T1 — 제목 인라인 편집 진입면. `w-full text-left` 보유로 판정식상 OUT이며
   // DashboardTile(타일 제목 인라인 편집)과 동형이라 같은 P6로 분류한다.
   // 배치1 구획에 두는 이유. 이 파일은 BATCH1_FILES 원소다(공용 Button을 이미 소비하는 파일).
-  'routes/issues.$key.tsx::P6',
+  // ★2026-09-07 `routes/issues.$key.tsx` 에서 여기로 **이동**했다(J25~J27 독립 스크롤로
+  //   제목이 스크롤 밖 고정 헤더가 되며 `IssueDetailHeader` 로 추출). 예외가 는 것이 아니다 —
+  //   같은 발생 하나가 자리를 옮겼고, 옛 경로를 남기면 유령 키가 되어 「초과」로 red 가 난다.
+  'components/issue/IssueDetailHeader.tsx::P6',
   // ── 배치 2 (T7) 9발생 ──
   // 판정식 `role= OR text-left OR justify-start` 으로 기계 도출했고, 같은 규칙을 완료된 배치1에
   // 역적용해 IN=0/OUT=11 로 T6의 수동 분류를 100% 재현하는 것으로 규칙의 정확성을 확인했다.
