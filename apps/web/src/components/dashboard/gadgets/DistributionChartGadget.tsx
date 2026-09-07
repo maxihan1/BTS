@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   Cell,
+  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -106,7 +107,17 @@ export function DistributionChartGadget({
         {variant === 'pie' ? (
           <PieChart>
             <Tooltip />
-            <Pie data={[...rows]} dataKey="count" nameKey="label" outerRadius="80%">
+            {/* ★파이에는 범례가 **필수**다. 막대와 달리 축 라벨이 없어서, 없으면 조각의 뜻을
+                알 수 있는 것이 색뿐이다 — 이 저장소가 기존 차트 3종(Burndown·Velocity·CFD)에
+                이미 「색-단독 구분 금지(WCAG) → Legend/Tooltip 텍스트 병행」으로 못박아 둔
+                규율에 그대로 걸린다. A9 눈확인에서 실제로 못 읽는 것을 확인하고 붙였다.
+                타일이 좁으므로 글자를 본문보다 작게 두고 아래에 눕힌다. */}
+            <Legend
+              verticalAlign="bottom"
+              height={28}
+              wrapperStyle={{ fontSize: 11, color: AXIS_COLOR }}
+            />
+            <Pie data={[...rows]} dataKey="count" nameKey="label" outerRadius="70%">
               {rows.map((row, index) => (
                 <Cell key={row.id} fill={SLICE_COLORS[index % SLICE_COLORS.length]} />
               ))}
