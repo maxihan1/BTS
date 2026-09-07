@@ -117,7 +117,7 @@ class IssueApplicationServiceTemplateApplyTest : DescribeSpec({
     /** repo.insert 가 전달받은 Issue 를 그대로 반환하도록 stub. */
     fun stubInsert() {
         val slot = slot<com.bts.issue.domain.Issue>()
-        every { repo.insert(capture(slot)) } answers { slot.captured }
+        every { repo.insert(capture(slot), any()) } answers { slot.captured }
     }
 
     describe("(a) description null + 활성 템플릿 존재 → 템플릿 content 주입") {
@@ -236,6 +236,8 @@ class IssueApplicationServiceTemplateApplyTest : DescribeSpec({
                 permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(sourceKey.value))
             } returns true
             every { repo.findByKey(sourceKey) } returns sourceIssue
+            // 본문은 두 컬럼이다(V039) — 복제 경로가 원본 HTML 을 따로 읽는다.
+            every { repo.findDescriptionHtml(sourceKey) } returns null
             every { repo.incrementKeySequence(projectKey) } returns 2L
         }
 
