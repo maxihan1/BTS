@@ -234,40 +234,108 @@ class GadgetTypeTest : DescribeSpec({
     }
 
     // ── pie_chart / bar_chart ──────────────────────────────────────────────────
+    //
+    // ★스코프는 projectKey 다(X-JD-1). Jira 실물은 space **또는** filter 를 받지만
+    //   이 PR 은 프로젝트 스코프만 구현하고 필터 스코프를 이연했다. 그래서 filterId·aql 은
+    //   필드 집합에서 **제거**됐고, 값을 줘도 EC5 로 무시된다 — 아래가 그것을 증명한다.
 
     describe("GadgetType.PIE_CHART.validateConfig") {
-        it("field=status 는 통과한다") {
-            GadgetType.PIE_CHART.validateConfig(json("""{"field":"status"}"""))
+        it("projectKey + field=status 는 통과한다") {
+            GadgetType.PIE_CHART.validateConfig(json("""{"projectKey":"BTS","field":"status"}"""))
+        }
+
+        it("★projectKey 누락은 위반한다 (X-JD-1 — 스코프가 프로젝트다)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.PIE_CHART.validateConfig(json("""{"field":"status"}"""))
+            }
         }
 
         it("field=labels 는 위반한다 (EC9 enum 밖)") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.PIE_CHART.validateConfig(json("""{"field":"labels"}"""))
+                GadgetType.PIE_CHART.validateConfig(json("""{"projectKey":"BTS","field":"labels"}"""))
             }
         }
 
         it("field 누락은 위반한다") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.PIE_CHART.validateConfig(json("{}"))
+                GadgetType.PIE_CHART.validateConfig(json("""{"projectKey":"BTS"}"""))
             }
+        }
+
+        it("★filterId 를 줘도 통과한다 — 필드가 제거돼 EC5 로 무시된다") {
+            // 값이 UUID 형식이 아닌데도 통과해야 한다. 필드가 남아 있으면 여기서 throw 한다.
+            GadgetType.PIE_CHART.validateConfig(
+                json("""{"projectKey":"BTS","field":"status","filterId":"not-a-uuid"}"""),
+            )
+        }
+
+        it("★aql 을 줘도 통과한다 — 필드가 제거돼 EC5 로 무시된다") {
+            GadgetType.PIE_CHART.validateConfig(
+                json("""{"projectKey":"BTS","field":"status","aql":"project = BTS"}"""),
+            )
         }
     }
 
     describe("GadgetType.BAR_CHART.validateConfig") {
-        it("field=status 는 통과한다") {
-            GadgetType.BAR_CHART.validateConfig(json("""{"field":"status"}"""))
+        it("projectKey + field=status 는 통과한다") {
+            GadgetType.BAR_CHART.validateConfig(json("""{"projectKey":"BTS","field":"status"}"""))
+        }
+
+        it("★projectKey 누락은 위반한다 (X-JD-1)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.BAR_CHART.validateConfig(json("""{"field":"status"}"""))
+            }
         }
 
         it("field=labels 는 위반한다 (EC9 enum 밖)") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.BAR_CHART.validateConfig(json("""{"field":"labels"}"""))
+                GadgetType.BAR_CHART.validateConfig(json("""{"projectKey":"BTS","field":"labels"}"""))
             }
         }
 
         it("field 누락은 위반한다") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.BAR_CHART.validateConfig(json("{}"))
+                GadgetType.BAR_CHART.validateConfig(json("""{"projectKey":"BTS"}"""))
             }
+        }
+
+        it("★bar_chart 는 pie_chart 와 필드 집합이 같다 — 한 곳만 고치는 실수를 막는다") {
+            // 둘은 같은 데이터를 다른 마크로 그린다. 필드가 갈리면 한쪽 가젯만 저장이 거부되고
+            // 그 이유가 화면에 드러나지 않는다.
+            GadgetType.BAR_CHART.configFields.map { it.key }.toSet() shouldBe
+                GadgetType.PIE_CHART.configFields.map { it.key }.toSet()
+        }
+    }
+
+    // ── sprint_burndown ────────────────────────────────────────────────────────
+    //
+    // ★M-3 — 가젯은 boardId 를 받고 활성 스프린트를 프론트가 자동으로 찾는다
+    //   (BoardDetail.activeSprint). sprintId 를 직접 받으면 스프린트가 넘어갈 때마다
+    //   사용자가 가젯을 고쳐야 하고, 끝난 스프린트의 번다운이 그대로 박힌다.
+
+    describe("GadgetType.SPRINT_BURNDOWN.validateConfig") {
+        it("boardId(UUID) 는 통과한다") {
+            GadgetType.SPRINT_BURNDOWN.validateConfig(
+                json("""{"boardId":"11111111-2222-3333-4444-555555555555"}"""),
+            )
+        }
+
+        it("★boardId 누락은 위반한다 — 보드가 없으면 활성 스프린트를 찾을 수 없다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.SPRINT_BURNDOWN.validateConfig(json("{}"))
+            }
+        }
+
+        it("boardId 가 UUID 형식이 아니면 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.SPRINT_BURNDOWN.validateConfig(json("""{"boardId":"not-a-uuid"}"""))
+            }
+        }
+
+        it("★sprintId 를 줘도 통과한다 — 필드가 제거돼 EC5 로 무시된다") {
+            GadgetType.SPRINT_BURNDOWN.validateConfig(
+                json("""{"boardId":"11111111-2222-3333-4444-555555555555","sprintId":"not-a-uuid"}"""),
+            )
         }
     }
 
