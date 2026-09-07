@@ -8,10 +8,22 @@ import { http, HttpResponse } from 'msw'
 import type { ProjectActivity, ProjectSummary } from '@/api/project-summary'
 
 /**
+ * 값이 하나도 없는 프로젝트 키 — 빈 상태 눈확인 전용.
+ *
+ * ★「모르는 키는 전부 빈 요약」으로 두지 않는다. 그렇게 두면 **어떤 키를 줘도 200** 이라
+ * 엣지 E4(없는 `projectKey` → 오류를 빈 상태로 흡수)가 e2e·개발 서버에서 **도달 불가**가 된다.
+ * 실제 `ProjectSummaryController` 는 미인증 401 · BROWSE 권한 없음 403 을 내므로, mock 이
+ * 더 관대하면 개발 중엔 통과하고 운영에서만 터진다 — 이 파일의 activity 핸들러가 `limit`
+ * 계약을 지키며 스스로 적어 둔 기준이고, summary 만 그것을 어기고 있었다(리뷰 지적).
+ *
+ * 빈 상태는 이 **명시적인 키**로만 낸다.
+ */
+const EMPTY_PROJECT_KEY = 'EMPTY'
+
+/**
  * ATLAS 프로젝트 요약 픽스처.
  *
- * ATLAS 만 값이 있고 그 외 키는 **0건 요약**을 준다 — 빈 상태를 눈으로 볼 수 있어야 하고(F-4),
- * 어떤 프로젝트를 골라도 404 로 죽지 않아야 한다.
+ * 값이 있는 것은 ATLAS 뿐이고, 빈 상태는 [EMPTY_PROJECT_KEY], 그 밖의 키는 404 다.
  */
 const ATLAS_SUMMARY: ProjectSummary = {
   projectKey: 'ATLAS',
@@ -124,8 +136,13 @@ const ATLAS_ACTIVITY: ProjectActivity = {
  */
 const getProjectSummaryHandler = http.get('/api/v1/projects/:projectKey/summary', ({ params }) => {
   const projectKey = String(params['projectKey'])
-  const data = projectKey === 'ATLAS' ? ATLAS_SUMMARY : emptySummary(projectKey)
-  return HttpResponse.json({ data })
+
+  if (projectKey === 'ATLAS') return HttpResponse.json({ data: ATLAS_SUMMARY })
+  if (projectKey === EMPTY_PROJECT_KEY) {
+    return HttpResponse.json({ data: emptySummary(projectKey) })
+  }
+  // 모르는 키는 404 다 — 관대하게 200 을 주면 E4 를 아무도 못 재게 된다.
+  return HttpResponse.json({ message: `프로젝트를 찾을 수 없습니다: ${projectKey}` }, { status: 404 })
 })
 
 /**
@@ -144,8 +161,12 @@ const getProjectActivityHandler = http.get(
     }
 
     const projectKey = String(params['projectKey'])
-    const entries = projectKey === 'ATLAS' ? ATLAS_ACTIVITY.entries.slice(0, limit) : []
-    return HttpResponse.json({ data: { entries } })
+    if (projectKey === 'ATLAS') {
+      return HttpResponse.json({ data: { entries: ATLAS_ACTIVITY.entries.slice(0, limit) } })
+    }
+    if (projectKey === EMPTY_PROJECT_KEY) return HttpResponse.json({ data: { entries: [] } })
+    // summary 와 같은 기준 — 모르는 키는 404.
+    return HttpResponse.json({ message: `프로젝트를 찾을 수 없습니다: ${projectKey}` }, { status: 404 })
   },
 )
 

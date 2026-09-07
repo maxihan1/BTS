@@ -179,15 +179,6 @@ export const dashboardLabels = {
 export type DashboardLabels = typeof dashboardLabels
 
 /**
- * gadgetType → 한국어 라벨 매핑 (12종).
- *
- * 백엔드 GadgetType enum의 snake_case 직렬화 키를 한국어 표시명으로 매핑한다.
- * DashboardTile 헤더에서 raw gadgetType 대신 이 라벨을 표시한다.
- * 미지 타입은 호출측에서 gadgetType 자체를 fallback으로 사용한다.
- *
- * ⚠️ 백엔드 GadgetType.kt 신규 타입 추가 시 이 매핑도 동기화할 것.
- */
-/**
  * 보기/편집 모드와 타일 메뉴 문구 (Jira 패리티 JD-1 · JD-3).
  *
  * ★대시보드는 BTS 에서 **모드를 갖는 유일한 화면**이다. 보드·백로그는 드래그가 주 조작이라
@@ -247,6 +238,24 @@ export const gadgetStateLabels = {
   loading: '불러오는 중',
 } as const
 
+/**
+ * gadgetType → 한국어 라벨 매핑 (12종).
+ *
+ * 백엔드 GadgetType enum의 snake_case 직렬화 키를 한국어 표시명으로 매핑한다.
+ * DashboardTile 헤더에서 raw gadgetType 대신 이 라벨을 표시한다.
+ * 미지 타입은 호출측에서 gadgetType 자체를 fallback으로 사용한다.
+ *
+ * ⚠️ 백엔드 GadgetType.kt 신규 타입 추가 시 이 매핑도 동기화할 것.
+ *
+ * ★이 경고가 유일한 방벽이다. 이 매핑은 A2 차집합 판별식
+ * (`scripts/workflow/gadget-catalog-renderer-parity.test.ts`)이 **보지 않는** 목록이라
+ * (판별식의 세 꼭짓점은 백엔드 `enabled` · 렌더러 `case` · MSW 픽스처다),
+ * 여기가 빠져도 기계가 red 를 내지 않는다 — 타일 헤더에 raw 키가 뜰 뿐이다.
+ *
+ * ★이 doc 블록을 선언에서 떼어 놓지 말 것. 실제로 신규 상수 3종이 이 블록과 선언 사이에
+ * 끼어들어 경고가 엉뚱한 상수 위에 떠 있었다(리뷰 지적) — 다음 사람이 이것을 `gadgetLabels`
+ * 의 경고로 읽지 못한다.
+ */
 export const gadgetLabels: Readonly<Record<string, string>> = {
   assigned_to_me: '내게 할당된 이슈',
   recently_created: '최근 생성',
