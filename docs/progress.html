@@ -183,7 +183,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-09-06 갱신</div>
+      <div class="updated">2026-09-07 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -1668,11 +1668,11 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       원본은 저장소의 <code>TODOS.md</code> 한 파일이다.
     </p>
     <div class="bc-detail-stats">
-      <span class="big-pct" style="color:#9ca3af;">144</span>
-      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 102건 · 전체 246건</span>
+      <span class="big-pct" style="color:#9ca3af;">145</span>
+      <span class="big-label" style="display:inline;"> 건 남음 · 보류 0건 · 해소 102건 · 전체 247건</span>
     </div>
-    <h2>⬜ 아직 안 한 것 — 144건</h2>
-    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">29건</span></h3>
+    <h2>⬜ 아직 안 한 것 — 145건</h2>
+    <h3 class="todo-cat">화면에서 보이는 것 <span class="todo-cat-count">30건</span></h3>
         <p class="todo-cat-desc">사용자가 눈으로 마주치는 부분. 고치면 바로 티가 난다.</p>
         <div class="todo-list"><div class="todo-entry">
       <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 보드 상세 보기 구성이 첫 보드 것만 반영된다 (부채 177 에서 발견)</span></div>
@@ -1965,6 +1965,16 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <details class="todo-item">
         <summary aria-label="기술 상세 — apps/web — 어떤 서버 문구를 화면에 실을지가 판정으로 잠겨 있지 않다 (신규 · 미착수 · T1)">기술 상세 (안 봐도 됨)</summary>
         <div class="todo-body"><p><b>무엇.</b> <code>hooks/workflow-admin-error.ts</code> 의 <code>APPEND_SERVER_MESSAGE</code> 4원소가 「서버 message 를 토스트에 덧붙여도 되는 코드」다. 보안 재리뷰가 그 집합에 코드 4개를 더 넣고 돌린 결과 <b>2,601건 전부 green</b> 이었다 — 경계를 고정하는 것이 부정 사례 1건(<code>WORKFLOW_NOT_FOUND</code>)뿐이다. 같은 파일의 <code>WORKFLOW_VALIDATION_FAILED</code> 는 오늘 도달 불가지만, 살아나는 순간 <code>Validator &#39;X&#39; failed on field &#39;f&#39;</code> 라는 영문 내부 문자열이 관리자 화면에 그대로 뜬다.</p><p><b>처방.</b> 집합을 명시 원소로 단언하고, 나머지 전 코드에 대해 <code>it.each</code> 로 「안 붙는다」를 돌린다. <code>WORKFLOW_VALIDATION_FAILED</code> 는 집합에서 뺀다.</p></div>
+      </details>
+    </div><div class="todo-entry">
+      <div class="todo-head"><span class="todo-icon">⬜</span><span class="todo-title">apps/web — 프로젝트 캘린더·대시보드 탭이 프로젝트로 좁혀지지 않는다 (편차 X-J5-13 · 신규 · T2)</span></div>
+      <div class="todo-plain">
+        <p class="todo-easy"><b>쉬운 말.</b> 프로젝트 안에서 「캘린더」와 「대시보드」 탭을 누르면 화면은 열리지만, 내용은 그 프로젝트 것이 아니라 <b>내 전체 일정·전체 대시보드</b>다. 주소창에는 프로젝트 이름이 들어 있어서 좁혀진 것처럼 보인다.</p>
+        <p class="todo-risk"><b>방치하면.</b> 사용자가 「이 프로젝트의 이번 달 일정」을 본다고 믿고 다른 프로젝트 일정까지 함께 읽는다. 오늘 실제 피해는 잘못된 일정 판단 하나뿐이고 데이터가 새지는 않는다 — 두 화면 모두 원래 <b>본인에게 보이는 것만</b> 보여 준다.</p>
+      </div>
+      <details class="todo-item">
+        <summary aria-label="기술 상세 — apps/web — 프로젝트 캘린더·대시보드 탭이 프로젝트로 좁혀지지 않는다 (편차 X-J5-13 · 신규 · T2)">기술 상세 (안 봐도 됨)</summary>
+        <div class="todo-body"><p><b>무엇.</b> Jira 패리티 J5-12(2026-09-07)가 편차 X9 를 폐기하면서 9탭 전부에 프로젝트 스코프 라우트를 줬다(<code>/projects/$projectKey/calendar</code> · <code>/dashboards</code>). 탭바가 유지되는 <b>탐색 패리티</b>는 얻었지만 내용 필터는 없다. 백킹 계약에 프로젝트 축이 아예 없기 때문이다.</p><ul class="md-list"><li>캘린더 — <code>GET /api/v1/users/me/calendar?from=&amp;to=</code> 는 identity-access BC 의 <b>개인</b> 캘린더다(FR-CA-01). 프로젝트 파라미터가 없다.</li><li>대시보드 — 대시보드 레코드에 프로젝트 연관 필드 자체가 없다(FR-DB-01).</li></ul><p>이슈 탭은 <code>projectKey</code> 필터가 이미 있어 <b>실제로 좁힌다</b> — 셋 중 이 둘만 남은 것이다.</p><p>🛑 <b>클라이언트에서 이슈 키 접두(<code>ATLAS-</code>)로 거르지 않는다.</b> 캘린더 응답에 <code>truncated</code> 가 있어 <b>잘린 뒤 거르면 조용히 빈 화면</b>이 된다. 「좁힌 척」이 「안 좁힘」보다 나쁘다.</p><p><b>처방.</b> 백엔드 계약을 먼저 넓힌다 — 캘린더에 <code>projectKey</code> 질의 파라미터(identity-access BC), 대시보드에 프로젝트 연관(notification BC). <b>BC 가 둘이라 한 PR = 한 BC 규칙상 최소 2 PR 이다.</b> 프론트는 그 뒤 <code>useParams().projectKey</code> 를 실어 보내면 된다.</p><p><b>근거.</b> <code>docs/plans/2026-09-07-jira-parity-project-header-and-scoped-tabs.md</code> §의도적 편차 · <code>apps/web/src/router.ts</code> 의 <code>projectCalendarRoute</code> KDoc.</p></div>
       </details>
     </div></div><h3 class="todo-cat">기능 동작 <span class="todo-cat-count">36건</span></h3>
         <p class="todo-cat-desc">이슈·가져오기 같은 기능이 정해진 규칙대로 도는가의 문제.</p>
