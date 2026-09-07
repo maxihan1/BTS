@@ -3,7 +3,7 @@
 // 시나리오 개요.
 //   S1. 목록 조회       — /dashboards 진입 → alice 소유 대시보드 카드 확인
 //   S2. 대시보드 생성   — "대시보드 만들기" → 폼 입력 → 생성 → 상세 이동 확인
-//   S3. 가젯 추가+저장  — 상세에서 "가젯 추가" → 모달 → 타일 생성 → "저장" → 성공 토스트 (C4)
+//   S3. 가젯 추가+저장  — 상세에서 "편집" → "가젯 추가" → 모달 → 타일 생성 → "저장" → 성공 토스트 (C4)
 //   S3b. 드래그/리사이즈 — RGL drag-handle 마우스 시퀀스 (jsdom/headless containerWidth=0 제약으로 SKIP, onLayoutChange는 DashboardGrid.test.tsx 단위 커버)
 //   S6. 대시보드 삭제   — 삭제 버튼 → 확인 → 목록 이동 → 삭제 항목 사라짐
 //   S7. 비소유자 읽기전용 — bob 소유 ORG 대시보드 → 가젯 추가/저장 버튼 부재 (C4)
@@ -181,6 +181,10 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
 
     // When. 헤더 "가젯 추가" 버튼 클릭
     const header = page.locator('.flex.items.justify-between.px-6.py-4.border-b, .flex.items-center.justify-between.px-6.py-4.border-b').first()
+    // ★편집 모드로 먼저 들어간다 (Jira 패리티 JD-1 · #470).
+    //   「가젯 추가」·타일 `⋯`·드래그가 전부 **편집 모드 안에만** 있다. 보기 모드에서
+    //   바로 찾으면 없고, 30초를 기다리다 타임아웃한다 — 실제로 그렇게 red 를 봤다.
+    await header.getByRole('button', { name: '편집', exact: true }).click()
     await header.getByRole('button', { name: '가젯 추가', exact: true }).click()
 
     // When. GadgetCatalogModal Step 1 — "Text Widget" 선택
@@ -294,6 +298,11 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
     // Given. 페이지 완전 로드 확인 (대시보드 이름 표시)
     await expect(page.getByRole('heading', { name: 'Bob의 팀 대시보드' })).toBeVisible()
 
+    // Then. ★권한이 없으면 편집 **모드로 들어갈 수단**부터 없다 (A7′ ①분기 · #470).
+    //   이 단언이 없으면 아래 세 줄이 「권한이 없어서」가 아니라 「보기 모드라서」 통과할
+    //   수 있다 — 권한과 모드는 다른 축이고, 축이 하나로 뭉치면 회귀를 못 잡는다.
+    await expect(page.getByRole('button', { name: '편집', exact: true })).not.toBeVisible()
+
     // Then. 편집 전용 버튼 없음 — "가젯 추가" (C4: 가젯으로 일원화)
     await expect(page.getByRole('button', { name: '가젯 추가', exact: true })).not.toBeVisible()
 
@@ -329,6 +338,10 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
 
     // Given. 가젯 추가 → Text Widget 선택 → 추가 (로컬 tiles dirty, C4 가젯 일원화)
     const header = page.locator('.flex.items-center.justify-between.px-6.py-4.border-b').first()
+    // ★편집 모드로 먼저 들어간다 (Jira 패리티 JD-1 · #470).
+    //   「가젯 추가」·타일 `⋯`·드래그가 전부 **편집 모드 안에만** 있다. 보기 모드에서
+    //   바로 찾으면 없고, 30초를 기다리다 타임아웃한다 — 실제로 그렇게 red 를 봤다.
+    await header.getByRole('button', { name: '편집', exact: true }).click()
     await header.getByRole('button', { name: '가젯 추가', exact: true }).click()
     await page.getByRole('button', { name: 'Text Widget', exact: true }).click()
     await page.getByLabel('Markdown').fill('S8 테스트 콘텐츠')
@@ -369,11 +382,15 @@ test.describe('FR-DB-01 대시보드 (목록/생성/상세/권한/OCC/접근성/
     // Given. 빈 그리드 확인 (C4: emptyGrid 문구 업데이트)
     await expect(page.getByText('가젯 추가 버튼을 눌러 대시보드를 채워보세요')).toBeVisible()
 
+    const header = page.locator('.flex.items-center.justify-between.px-6.py-4.border-b').first()
+
+    // ★편집 모드로 먼저 들어간다 (Jira 패리티 JD-1 · #470).
+    //   「가젯 추가」·타일 `⋯`·드래그가 전부 **편집 모드 안에만** 있다. 보기 모드에서
+    //   바로 찾으면 없고, 30초를 기다리다 타임아웃한다 — 실제로 그렇게 red 를 봤다.
+    await header.getByRole('button', { name: '편집', exact: true }).click()
+
     // When. "가젯 추가" 버튼 포커스 → Enter (키보드로 모달 열기)
-    const addGadgetBtn = page
-      .locator('.flex.items-center.justify-between.px-6.py-4.border-b')
-      .first()
-      .getByRole('button', { name: '가젯 추가', exact: true })
+    const addGadgetBtn = header.getByRole('button', { name: '가젯 추가', exact: true })
     await addGadgetBtn.focus()
     await page.keyboard.press('Enter')
 
