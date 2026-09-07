@@ -526,22 +526,35 @@ const createBoardHandler = http.post('/api/v1/boards', async ({ request }) => {
 /**
  * POST /api/v1/boards/{boardId}/cards/{issueKey}/move — 카드 이동.
  *
- * 요청 body: { toColumnId: string, expectedVersion: number, resolutionId?: string }
+ * 요청 body: { toStateKey | toColumnId, expectedVersion: number, resolutionId?: string }
+ *
+ * ★대상 지정은 **둘 중 정확히 하나**다(R7). 정본은 `BoardApplicationService.resolveMoveTarget` —
+ *   `toStateKey` 를 주면 그 상태를 담은 컬럼을 되찾고(R6 · X1 로 후보는 0 또는 1개),
+ *   `toColumnId` 는 하위 호환 경로다. 둘 다이거나 둘 다 없으면 400.
+ *
+ *   ★★이 목이 `toColumnId` **만** 읽던 시절이 있었다. 그런데 `api/boards.ts` 의 `moveCard` 는
+ *   `toStateKey` 만 싣는다(`boards.test.ts` 가 `not.toHaveProperty('toColumnId')` 로 못박는다).
+ *   그래서 모든 이동 요청이 「컬럼을 찾을 수 없습니다: 」로 404 를 맞았고, 낙관적 업데이트가
+ *   롤백되며 카드가 제자리로 돌아갔다 — 화면상 「드래그가 먹지 않는다」로 보인다.
+ *   board-kanban S3 가 결정적으로, S2 가 간헐적으로(롤백 전에 단언이 통과) 죽었다(2026-09-07 실측).
+ *   목이 클라이언트 요청 모양을 안 보면 그 어긋남은 **E2E 에서만** 드러난다.
  *
  * 409 충돌 토글 — E2E 시나리오용:
  *   localStorage 플래그 LS_KEY_BOARD_CONFLICT='true'이면 409(AGILE_CONFLICT) 반환.
  *   특정 issueKey 패턴 없이 전역으로 적용.
  *
  * stateful 동작:
- *   - store에서 카드를 현재 컬럼에서 제거하고 toColumnId 컬럼에 추가
+ *   - store에서 카드를 현재 컬럼에서 제거하고 대상 컬럼에 추가
  *   - 카드 version을 +1 증가
  *   - 이후 GET 상세에 즉시 반영 (가짜그린 회피 — msw-mutation-stateful-refetch)
  *
  * 성공 → 200 { data: MoveCardResult }
  * 충돌 토글 시 → 409 ProblemDetail { errorCode: 'AGILE_CONFLICT' }
+ * 대상 0개·2개 지정 → 400 ProblemDetail { errorCode: 'AGILE_VALIDATION_FAILED' }
  * 보드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_NOT_FOUND' }
  * 카드 미존재 → 404 ProblemDetail { errorCode: 'AGILE_CARD_NOT_FOUND' }
  * 컬럼 미존재 → 404 ProblemDetail { errorCode: 'AGILE_COLUMN_NOT_FOUND' }
+ * 상태 미매핑 → 404 ProblemDetail { errorCode: 'AGILE_BOARD_STATE_NOT_MAPPED' }
  */
 const moveCardHandler = http.post(
   '/api/v1/boards/:id/cards/:issueKey/move',
@@ -571,22 +584,38 @@ const moveCardHandler = http.post(
     }
 
     // 요청 body 파싱
-    let toColumnId = ''
+    let toColumnId: string | undefined
+    let toStateKey: string | undefined
     let expectedVersion = -1
     let resolutionId: string | undefined
 
     try {
       const body = (await request.json()) as {
         toColumnId?: string
+        toStateKey?: string
         expectedVersion?: number
         resolutionId?: string
       }
-      toColumnId = body.toColumnId ?? ''
+      toColumnId = body.toColumnId
+      toStateKey = body.toStateKey
       expectedVersion = body.expectedVersion ?? -1
       resolutionId = body.resolutionId
     } catch {
       return HttpResponse.json(
         { errorCode: 'INVALID_REQUEST', message: '요청 body를 파싱할 수 없습니다' },
+        { status: 400 },
+      )
+    }
+
+    // R7 — 대상은 둘 중 정확히 하나. `(a == null) === (b == null)` 이면 0개이거나 2개다.
+    if ((toColumnId === undefined) === (toStateKey === undefined)) {
+      return HttpResponse.json(
+        {
+          errorCode: 'AGILE_VALIDATION_FAILED',
+          message: `toColumnId 와 toStateKey 중 정확히 하나를 보내야 합니다. 지금은 ${
+            toColumnId === undefined ? '둘 다 없습니다.' : '둘 다 있습니다.'
+          }`,
+        },
         { status: 400 },
       )
     }
@@ -611,16 +640,28 @@ const moveCardHandler = http.post(
       )
     }
 
-    // 대상 컬럼 존재 확인
-    const targetColumn = board.columns.find((c) => c.columnId === toColumnId)
+    // 대상 컬럼 해소 — 상태로 지목(R6)이 우선, 컬럼 지목은 하위 호환(R7)
+    const targetColumn =
+      toStateKey !== undefined
+        ? board.columns.find((c) => c.states.some((s) => s.key === toStateKey))
+        : board.columns.find((c) => c.columnId === toColumnId)
+
     if (targetColumn === undefined) {
-      return HttpResponse.json(
-        {
-          errorCode: 'AGILE_COLUMN_NOT_FOUND',
-          message: `컬럼을 찾을 수 없습니다: ${toColumnId}`,
-        },
-        { status: 404 },
-      )
+      return toStateKey !== undefined
+        ? HttpResponse.json(
+            {
+              errorCode: 'AGILE_BOARD_STATE_NOT_MAPPED',
+              message: `이 보드의 어느 컬럼에도 매핑되지 않은 상태입니다: ${toStateKey}`,
+            },
+            { status: 404 },
+          )
+        : HttpResponse.json(
+            {
+              errorCode: 'AGILE_COLUMN_NOT_FOUND',
+              message: `컬럼을 찾을 수 없습니다: ${toColumnId}`,
+            },
+            { status: 404 },
+          )
     }
 
     // 소스 컬럼에서 카드 제거 + version 증가
@@ -657,10 +698,11 @@ const moveCardHandler = http.post(
     return HttpResponse.json({
       data: {
         issueKey,
-        // 서버는 요청이 지목한 상태로 전환한다(R6). mock 은 컬럼의 첫 상태로 근사한다(E5).
-        currentStateKey: targetColumn.states[0]?.key ?? '',
+        // 서버는 요청이 지목한 상태로 전환한다(R6). 컬럼으로 지목한 하위 호환 경로에서만
+        // 컬럼의 첫 상태로 근사한다(E5 — 실서버는 상태가 2개 이상이면 400 이다).
+        currentStateKey: toStateKey ?? targetColumn.states[0]?.key ?? '',
         version: newVersion,
-        columnId: toColumnId,
+        columnId: targetColumn.columnId,
       },
     })
   },
