@@ -739,8 +739,10 @@ X-JD-2 에서 「`bar_chart` 는 Jira 카탈로그에 없다 — ADS 준용」�
 | 항목 | 명령 | 결과 |
 |---|---|---|
 | 판별식 전량 | `node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` | **EXIT=0** · 621/621 |
+| 프론트 전량 | `vitest run` | **EXIT=0** · 11,320/11,320 · 679 파일 |
 | 백엔드 | `:modules:notification:test --no-build-cache --rerun-tasks` | **EXIT=0** · `9 executed` · XML 63건 신선 |
 | E2E | `playwright test dashboard-gadgets` **3회 연속** | **EXIT=0 ×3** · 8 passed · 1 skipped |
+| E2E(대시보드 2종) | `playwright test dashboard.spec dashboard-gadgets.spec` | **EXIT=0** · 18 passed · 2 skipped |
 | 문서 인덱스 | `build-doc-index.mjs --check` | **EXIT=0** · 고아 0 · drift 0 |
 | 정본 정합 | `verify-master-plan.sh` | **EXIT=0** · FR 145/145 불변 |
 
@@ -777,3 +779,27 @@ Legend/Tooltip 텍스트 병행」을 못박아 뒀는데 새 파이만 그 밖�
 - **worktree 간 5173 포트 경합** — 실행 중 두 번, 다른 worktree(`fix-e2e-label-strict-mode` ·
   `admin-scheme-index-nav`)의 vite 가 5173 을 잡았다. F-6 규율대로 `lsof -a -p <pid> -d cwd` 로
   주인을 증명하고, 남의 서버를 죽이지 않고 비기를 기다렸다. 눈확인은 5199 로 옮겨 돌렸다.
+
+### ★전량 실행이 잡은 것 3건 — 좁힌 실행에서는 안 보였다
+
+범위 계산기(`select-test-scope.ts`)가 「프론트 전량」을 지시했는데 그 전에 좁혀 돌린 결과만
+보고 넘어갈 뻔했다. 전량을 돌리자 셋이 나왔고, **그중 하나는 이 PR 이 만든 회귀**다.
+
+1. **`dashboard.spec.ts` 3건이 30초 타임아웃** — S3(가젯 추가+저장) · S8(OCC 409) ·
+   접근성(키보드로 가젯 추가). 전부 「가젯 추가」를 쓰는데 T9 가 그 버튼을 편집 모드 안으로
+   옮겼고 **그 스펙만 안 고쳤다**. T10 이 `dashboard-gadgets.spec.ts` 만 손봤기 때문이다.
+   → 편집 모드 진입을 배선하고, S7 에 「편집」 버튼 부재 단언을 더했다. 없으면 나머지 단언이
+   「권한이 없어서」가 아니라 「보기 모드라서」 통과할 수 있다 — 권한과 모드는 다른 축이다.
+
+2. **`gadget-catalog.test.ts` 가 카탈로그의 네 번째 목록이었다** — 「enabled 6종·disabled 6종」을
+   개수로 적어 뒀다. 백엔드 `GadgetType` · 렌더러 `case` · MSW 픽스처에 이은 네 번째다.
+   파서 테스트가 재야 하는 것은 구성이 아니라 **플래그 보존**이므로 기대값을 픽스처에서
+   유도하고 비-공허 짝을 붙였다. 구성 계약은 A2 판별식이 진다.
+
+3. **R4 줄수 래칫 red** — 보기/편집 모드가 `DashboardDetailPage` 를 동결 332 → 391 로 키웠다.
+   베이스라인을 올리는 대신 상단 헤더를 `DashboardDetailHeader` 로 순수 추출해 **261** 로
+   내렸다(DOM 무변경 — 바깥 div 의 class 문자열이 e2e `headerOf()` 의 스코프다).
+   `lint-ratchet-baseline.ts` 머리말의 「늘렸으면 쪼개라」와 `IssueMetaPanel` 선례 그대로다.
+
+교훈. **「좁혀 돌려도 된다」는 계산기가 그렇게 말할 때만이다.** 이번 계산기는 프론트 전량을
+지시했고, 그 지시를 건너뛴 구간에서 회귀가 살아 있었다.
