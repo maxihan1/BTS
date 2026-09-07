@@ -619,7 +619,11 @@
   font-family: var(--font-mono);
   font-size: 0.875em;
   background-color: var(--accent);
-  padding: 0.125em 0.3em;
+  /* ★테두리가 필요한 이유 — 다크의 `--accent` 는 알파 8%(#A1BDD914)라 배경과 거의
+     구별되지 않는다(2026-09-07 다크 스크린샷 눈확인). 배경만으로는 「코드다」가 안 읽힌다.
+     Jira 도 인라인 코드에 배경 + 약한 테두리를 함께 준다. */
+  border: 1px solid var(--border);
+  padding: 0.0625em 0.3em;
   border-radius: var(--radius-sm);
 }
 .rich-text pre {
@@ -633,9 +637,10 @@
   /* 긴 코드가 레이아웃을 밀어내지 않게 자기 안에서 스크롤한다 (리뷰 D-4). */
   overflow-x: auto;
 }
-/* 블록 안 코드는 인라인 배경·패딩을 걷는다 — 이중 배경이 되면 지저분하다. */
+/* 블록 안 코드는 인라인 배경·테두리·패딩을 걷는다 — 이중 배경·이중 테두리는 지저분하다. */
 .rich-text pre code {
   background: none;
+  border: 0;
   padding: 0;
   font-size: inherit;
 }
