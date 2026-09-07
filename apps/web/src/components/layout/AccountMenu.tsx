@@ -1,6 +1,6 @@
 // 계정 아바타 드롭다운 — Header.tsx 계정 메뉴 로직 재현(FR-UX-06 PR11 Task 6, TopBar 서브컴포넌트)
 import { useState } from 'react'
-import { useNavigate, Link } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router'
 import type { WhoamiResponse } from '@/api/schemas'
 import { useAuthUser, useAuthStore } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
@@ -38,7 +38,6 @@ function resolveAccountLabel(user: WhoamiResponse | null): string {
 export function AccountMenu() {
   const user = useAuthUser()
   const avatarVersion = useAuthStore((s) => s.avatarVersion)
-  const navigate = useNavigate()
   const logoutMutation = useLogoutMutation()
   const [statusOpen, setStatusOpen] = useState(false)
   const [oooOpen, setOooOpen] = useState(false)
@@ -55,12 +54,11 @@ export function AccountMenu() {
     : ''
 
   const handleLogout = () => {
-    logoutMutation.mutate(undefined, {
-      // 성공·실패 무관하게 /login으로 이동 — 사용자 로그아웃 의도 우선
-      onSettled: () => {
-        void navigate({ to: '/login' })
-      },
-    })
+    // 🛑 `mutate` 에 `onSettled` 를 다시 붙이지 마라. 이 컴포넌트는 `clearSession()` 직후
+    //    언마운트되고, TanStack Query 는 그 시점에 `mutate` 콜백을 **버린다** — 그래서
+    //    이동이 한 번도 일어나지 않던 것이 원래 결함이다. 세션 정리와 이동은 둘 다
+    //    `useLogoutMutation` 이 소유한다(그 KDoc 참조).
+    logoutMutation.mutate()
   }
 
   const accountLabel = resolveAccountLabel(user)

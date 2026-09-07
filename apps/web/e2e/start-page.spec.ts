@@ -13,18 +13,13 @@
 //     설정한다. AUTH_USERS는 페이지 하드 로드마다(모듈 재평가) 초기화되므로 테스트 간 leak이 없다
 //     (preferences.spec.ts 선례와 동일).
 //
-//   ★ 발견한 회귀(구현 코드 미수정 — Maxi/구현 담당자 보고 대상, qa 범위 밖).
-//     Header.tsx의 handleLogout은 `logoutMutation.mutate(undefined, { onSettled: () => navigate({to:'/login'}) })`
-//     형태로 로그아웃 후 /login 이동을 기대하지만, 실제로는 세션 클리어(sessionStorage 'bts.auth' 제거)만
-//     일어나고 navigate가 발생하지 않는다(history.pushState/replaceState 호출 자체가 없음 — 직접
-//     계측해 확인). 이 저장소의 기존 E2E 스펙 어디에도 "로그아웃" 메뉴 아이템을 실제로 클릭하는
-//     시나리오가 없어(모두 sessionStorage 직접 클리어 + page.goto 하드 네비게이션으로 우회 —
-//     trusted-devices.spec.ts S6 선례) 지금까지 드러나지 않은 것으로 보인다. 이 스펙은 그 버튼을
-//     최초로 실클릭하지만, 로그아웃 후 재로그인 시 MSW 모듈 상태를 보존해야 하는 이 시나리오의
-//     특성상 하드 리로드 기반 우회(page.goto)를 쓸 수 없어(§store reset), 세션 클리어 후 남은
-//     "라우터가 /login으로 실제 이동하지 않는" 간극만 popstate 재발행으로 메워 로그인 폼에
-//     도달한다(soft navigation, 하드 리로드 아님 — 아래 logout() 참고). 이 워크어라운드는 테스트
-//     전용이며 실제 로그아웃 버튼 결함 자체를 고치지 않는다(src 수정 금지, qa 영역 아님).
+//   ★ 위 회귀는 **해소됐다** (2026-09-07). 이 자리에 「로그아웃이 /login 으로 이동하지 않는다」는
+//     실측 보고가 있었고, 그것을 메우는 popstate 우회를 이 스펙과 active-project.spec.ts 가
+//     들고 있었다. 두 스펙이 그 우회를 든 채 초록이라 **결함이 1개월 넘게 가려져 있었다** —
+//     Maxi 가 「로그아웃해도 로그인 모달이 안 뜬다」로 보고하고서야 드러났다.
+//     원인은 `clearSession()` 이 AccountMenu 를 언마운트해 `mutate` 콜백이 버려지는 것이었고,
+//     이동 소유권을 `useLogoutMutation` 으로 옮겨 고쳤다(그 KDoc 참조).
+//     우회는 아래 logout() 에서 제거했다. **되살리지 말 것.**
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { loginStrings, loginPageStrings } from '../src/i18n/ko'
@@ -74,10 +69,11 @@ async function logout(page: Page): Promise<void> {
   await page.getByRole('menuitem', { name: '로그아웃', exact: true }).click()
   await page.waitForFunction(() => sessionStorage.getItem('bts.auth') === null)
 
-  await page.evaluate(() => {
-    history.pushState({}, '', '/login')
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  })
+  // 🛑 여기 `popstate` 수동 재발행이 있었다. 로그아웃이 `/login` 으로 **이동하지 않던**
+  //    결함을 메우는 우회였고, 두 스펙이 그 우회를 든 채 초록이라 결함이 가려져 있었다
+  //    (2026-09-07 Maxi 보고로 드러남 → `useLogoutMutation` 이 이동을 소유하도록 고침).
+  //    되살리지 말 것 — 되살리는 순간 같은 은폐가 재생산된다.
+  //    이동 자체의 판별식은 `e2e/logout-login-modal.spec.ts` 다.
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
 }
 
