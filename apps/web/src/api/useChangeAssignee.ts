@@ -4,9 +4,9 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { changeAssignee } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
-import { issueQueryKey } from './useUpdateIssueSummary'
 import { issueDetailStrings } from '@/i18n/ko'
 import { issueWatchersKey } from '@/api/issue-watchers'
+import { invalidateIssueViews } from './issue-view-invalidation'
 
 /** useChangeAssignee mutate 입력 타입 */
 export interface ChangeAssigneeInput {
@@ -53,7 +53,7 @@ export function useChangeAssignee() {
 
     onSettled: (_data, _error, { key }: ChangeAssigneeInput) => {
       // 성공/실패 무관하게 서버 상태와 동기화 — setQueryData 금지 (descriptionHtml 플리커 방지)
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(key) })
+      void invalidateIssueViews(queryClient, key)
       // FR-WT-01 FR-7: 백엔드가 담당자 변경 시 해당 인물을 자동 watcher로 등록하므로
       // watcher 목록도 함께 갱신해야 한다.
       void queryClient.invalidateQueries({ queryKey: issueWatchersKey(key) })

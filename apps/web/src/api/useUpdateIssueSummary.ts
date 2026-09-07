@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import { updateIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
 import { issueDetailStrings } from '@/i18n/ko'
+import { invalidateIssueViews } from './issue-view-invalidation'
 
 /** 이슈 쿼리키 팩토리 — ['issue', key] 형태로 일관성 있게 생성 */
 export const issueQueryKey = (key: string): [string, string] => ['issue', key]
@@ -77,7 +78,7 @@ export function useUpdateIssueSummary() {
 
     onSettled: (_data, _error, { key }: UpdateIssueSummaryInput) => {
       // 성공/실패 무관하게 서버 상태와 동기화
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(key) })
+      void invalidateIssueViews(queryClient, key)
     },
   })
 }

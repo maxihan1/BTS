@@ -10,8 +10,8 @@ import {
 } from '@/api/issues'
 import type { AmbiguousTransitionCandidate, TransitionIssueInput } from '@/api/issues'
 import { ApiError } from '@/api/client'
-import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { issueDetailStrings } from '@/i18n/ko'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 /** 이슈 전환 관련 queryKey 팩토리 */
 export const issueTransitionKeys = {
@@ -48,8 +48,7 @@ export function useTransitionIssue(key: string) {
     mutationFn: (input: TransitionIssueInput) => transitionIssue(key, input),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['issue', key] }),
-        queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(key) }),
+        invalidateIssueViews(queryClient, key),
       ])
     },
   })
@@ -138,8 +137,7 @@ async function invalidateIssueTransitionCaches(
   key: string,
 ): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: issueQueryKey(key) }),
-    queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(key) }),
+    invalidateIssueViews(queryClient, key),
   ])
 }
 

@@ -9,9 +9,9 @@ import type { WorklogResponse, WorklogListResponse } from '@/api/worklogs'
 import { parseHm, formatSeconds } from '@/lib/duration'
 import { useUsersByIds } from '@/hooks/use-users'
 import { useDateFormat } from '@/hooks/use-date-format'
-import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { worklogStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 쿼리키 팩토리
@@ -111,7 +111,7 @@ function WorklogAddForm({
       toast.success(worklogStrings.worklogAddSuccess)
       // cross-invalidate: worklog 쿼리 + issue 단건 쿼리 둘 다 (FR9)
       void queryClient.invalidateQueries({ queryKey: worklogQueryKey(issueKey) })
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
       setSpentHm({ hours: 0, minutes: 0 })
       setComment('')
       setAdjustRemaining(false)
@@ -432,7 +432,7 @@ function WorklogRow({
     onSuccess: () => {
       toast.success(worklogStrings.worklogEditSuccess)
       void queryClient.invalidateQueries({ queryKey: worklogQueryKey(issueKey) })
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
       setIsEditing(false)
     },
     onError: () => { toast.error(worklogStrings.worklogEditError) },
@@ -444,7 +444,7 @@ function WorklogRow({
     onSuccess: () => {
       toast.success(worklogStrings.worklogDeleteSuccess)
       void queryClient.invalidateQueries({ queryKey: worklogQueryKey(issueKey) })
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
       setIsConfirmingDelete(false)
     },
     onError: () => {

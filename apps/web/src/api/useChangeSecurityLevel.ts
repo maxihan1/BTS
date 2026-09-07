@@ -4,8 +4,8 @@ import { toast } from 'sonner'
 import { ApiError } from '@/api/client'
 import { updateIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
-import { issueQueryKey } from './useUpdateIssueSummary'
 import { issueDetailStrings } from '@/i18n/ko'
+import { invalidateIssueViews } from './issue-view-invalidation'
 
 /** useChangeSecurityLevel mutate 입력 타입 */
 export interface ChangeSecurityLevelInput {
@@ -58,7 +58,7 @@ export function useChangeSecurityLevel() {
 
     onSettled: (_data, _error, { key }: ChangeSecurityLevelInput) => {
       // 성공/실패 무관하게 서버 상태와 동기화 — setQueryData 금지 (descriptionHtml 플리커 방지)
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(key) })
+      void invalidateIssueViews(queryClient, key)
     },
   })
 }

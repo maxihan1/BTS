@@ -7,6 +7,7 @@ import { connectEpicChild, disconnectEpicChild } from '@/api/epic-children'
 import type { EpicChildSummary } from '@/api/epic-children'
 import type { BoardDetail, BoardCard, BoardCardFilterParams } from '@/api/boards'
 import { boardKeys } from './use-boards'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 순수 helper — 불변 캐시 조작
@@ -347,8 +348,12 @@ export function useChangeCardField(boardId: string, filter?: BoardCardFilterPara
       )
     },
 
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey })
+    onSettled: (_data, _err, vars) => {
+      // 🛑 이 보드 캐시만 무효화하면 **이슈 목록·백로그·이슈 상세**가 옛 값을 든 채 남는다.
+      //    같은 이슈를 다른 화면에서 보고 있으면 새로고침해야 바뀐다(Maxi 보고 2026-09-07).
+      //    정본 = `invalidateIssueViews`(그 KDoc 의 갭 표 참조). 이 보드 키는 접두 `['board']`
+      //    에 포함되므로 별도로 부르지 않는다.
+      void invalidateIssueViews(queryClient, vars.issueKey)
     },
   })
 }

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { deleteIssue } from './issues'
 import { ApiError } from './client'
+import { invalidateIssueViews } from './issue-view-invalidation'
 
 /** 이슈 목록 TanStack Query 캐시 키 — invalidateQueries 공유용 상수 */
 export const issuesListQueryKey = ['issues'] as const
@@ -28,7 +29,9 @@ export function useDeleteIssue({ onSuccess }: UseDeleteIssueOptions) {
   return useMutation({
     mutationFn: (key: string) => deleteIssue(key),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: issuesListQueryKey })
+      // 🛑 목록만 무효화하면 **지워진 이슈가 보드·백로그에 남는다.**
+      //    이슈 키는 넘기지 않는다 — 지워진 단건을 다시 부르면 404 다.
+      void invalidateIssueViews(queryClient)
       onSuccess?.()
     },
     onError: (error: unknown) => {

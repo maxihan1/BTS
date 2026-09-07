@@ -5,10 +5,9 @@ import { toast } from 'sonner'
 import { changeAssignee, updateIssue, transitionIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
 import { ApiError } from '@/api/client'
-import { issueQueryKey } from '@/api/useUpdateIssueSummary'
-import { issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { extractErrorCode } from '@/lib/extract-error-code'
 import { issueDetailStrings } from '@/i18n/ko'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 /** 409 응답 중 "허용되지 않는 전환" 를 가리키는 백엔드 에러코드 */
 const TRANSITION_NOT_ALLOWED = 'TRANSITION_NOT_ALLOWED'
@@ -289,9 +288,9 @@ export function useIssueListCellField(listQueryKey: QueryKey) {
       //
       // 처방은 저장소 선례를 그대로 따른다 — `useTransitionIssue`(use-issue-transitions.ts)
       // 가 이미 두 캐시를 함께 무효화한다.
-      void queryClient.invalidateQueries({ queryKey: listQueryKey })
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(vars.issueKey) })
-      void queryClient.invalidateQueries({ queryKey: issueTransitionKeys.list(vars.issueKey) })
+      // 🛑 이 목록 페이지만 무효화하면 **보드·백로그·다른 페이지**가 옛 값을 든 채 남는다.
+      //    정본 = `invalidateIssueViews`(그 KDoc 의 갭 표 참조).
+      void invalidateIssueViews(queryClient, vars.issueKey)
     },
   })
 }
