@@ -60,7 +60,12 @@ export async function createIssueViaUI(
     .getByRole('dialog', { name: '새 이슈 만들기' })
     .getByLabel(issueCreateStrings.projectKeyLabel)
     .selectOption('ATLAS')
-  await page.getByLabel(issueCreateStrings.summaryLabel).fill(summary)
+  // ★`{ exact: true }` 는 장식이 아니다. `getByLabel` 은 기본이 **부분 일치**라 「제목」이
+  //   리치 에디터 툴바의 제목 수준 드롭다운(`<select aria-label="제목 수준">`)에도 걸린다.
+  //   #468 이 생성 다이얼로그에 그 에디터를 넣은 뒤로 이 헬퍼 한 줄이 strict 위반을 내
+  //   **19개 테스트가 한꺼번에 죽었다**(2026-09-07 실측). 지우면 그대로 되살아난다.
+  //   같은 함정의 선례는 `scrum-board.spec.ts` 가 이미 `exact` 로 막아 두고 있었다.
+  await page.getByLabel(issueCreateStrings.summaryLabel, { exact: true }).fill(summary)
   await page.getByRole('button', { name: issueCreateStrings.submitButton }).click()
   // 상세 페이지로 redirect 대기 — mock fixture 의 key 사용 (변경 시 자동 동기화).
   await page.waitForURL(new RegExp(`/issues/${createdIssueFixture.key}$`))

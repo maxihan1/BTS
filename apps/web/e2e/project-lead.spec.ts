@@ -307,7 +307,7 @@ test.describe('FR-CM-04 프로젝트 리드 지정/해제 + 폴백 자동배정 
     await projectKeyInput.selectOption(PROJECT_KEY)
 
     // 이슈 제목 입력
-    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel)
+    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel, { exact: true })
     await expect(summaryInput).toBeVisible()
     await summaryInput.fill('FR-CM-04 S5 폴백 자동배정 E2E 테스트')
 

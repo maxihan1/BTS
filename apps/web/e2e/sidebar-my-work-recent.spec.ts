@@ -56,6 +56,11 @@ test.describe('FR-UX-08 PR-B — 사이드바 "내 작업"·"최근 항목"', ()
     await loginAsAlice(page)
 
     const mainNav = page.getByRole('navigation', { name: navLabels.mainNav, exact: true })
+    // ★링크가 **나타난 뒤에** 읽는다. 「내 작업」은 `user?.userId` 가 있을 때만 렌더되므로
+    //   whoami 가 도착하기 전에 `allInnerTexts()` 를 부르면 그 항목이 아예 없는 목록을 받고
+    //   `findIndex` 가 -1 을 낸다 — 「순서가 틀렸다」가 아니라 **아직 없다**가 실패 원인이었다.
+    //   `allInnerTexts()` 는 자동 대기가 없는 즉시 읽기라 이 한 줄이 유일한 동기화 지점이다.
+    await expect(mainNav.getByRole('link', { name: navLabels.myWork, exact: true })).toBeVisible()
     const linkTexts = await mainNav.getByRole('link').allInnerTexts()
     const myWorkIndex = linkTexts.findIndex((t) => t.trim() === navLabels.myWork)
     const issuesIndex = linkTexts.findIndex((t) => t.trim() === navLabels.issues)

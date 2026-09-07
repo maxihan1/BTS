@@ -250,7 +250,7 @@ test.describe('FR-UX-04 명령 팔레트 (Cmd+K)', () => {
     expect(url.searchParams.get('summary')).toBe(title)
 
     // Then. 제목 필드 프리필 확인
-    await expect(page.getByLabel(issueCreateStrings.summaryLabel)).toHaveValue(title)
+    await expect(page.getByLabel(issueCreateStrings.summaryLabel, { exact: true })).toHaveValue(title)
 
     // Then. 팔레트 닫힘(FR6)
     await expect(dialog).not.toBeVisible()

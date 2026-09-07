@@ -174,6 +174,25 @@ export function RichTextEditor({
 
   editorRef.current = editor
 
+  /**
+   * `contentRef` 를 **실제 편집 가능한 요소**(ProseMirror DOM)로 돌린다.
+   *
+   * ★종전에는 `<EditorContent ref={contentRef}>` 였는데, TipTap 은 그 ref 를 **바깥 래퍼
+   * `div`** 에 붙인다. 그 div 는 `tabindex` 도 `contenteditable` 도 없어 **포커스를 받지
+   * 못한다** — `commentInputRef.current?.focus()` 가 아무 일도 하지 않았고, 단축키 `m`
+   * (댓글로 이동)이 조용히 죽어 있었다(2026-09-07 E2E 3건이 그 증인).
+   *
+   * `editor.view.dom` 이 `role="textbox"` · `aria-label` 을 실제로 지닌 그 요소다 —
+   * 위 `editorProps.attributes` 가 붙이는 자리와 같다.
+   */
+  useEffect(() => {
+    if (contentRef === undefined) return
+    contentRef.current = editor === null ? null : (editor.view.dom as HTMLDivElement)
+    return () => {
+      contentRef.current = null
+    }
+  }, [editor, contentRef])
+
   // 편집 대상이 바뀌면(다른 이슈로 갈아탐 · 저장 후 refetch) 내용을 다시 채운다.
   // `setContent` 는 onUpdate 를 발화시키므로 `emitUpdate: false` 로 되먹임 고리를 끊는다.
   useEffect(() => {
@@ -204,7 +223,7 @@ export function RichTextEditor({
         // 이슈가 없으면 이미지 경로 자체가 없다 — 버튼도 그리지 않는다.
         onInsertImage={imageIssueKey === undefined ? undefined : () => fileInputRef.current?.click()}
       />
-      <EditorContent editor={editor} ref={contentRef} />
+      <EditorContent editor={editor} />
       {/* 툴바 이미지 버튼의 실제 입구. 시각적으로 숨기되 접근성 트리에서도 뺀다 —
           툴바 버튼이 이미 이름을 갖고 있어 이중으로 읽히면 혼란스럽다. */}
       {imageIssueKey !== undefined && (

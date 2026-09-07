@@ -380,8 +380,11 @@ test.describe('FR-UX-10 F11 이슈 상세 액션 단축키', () => {
     // When. 단축키와 같은 글자들을 그대로 타이핑
     await page.keyboard.type('a.m')
 
-    // ★settle barrier — 마지막 글자까지 왕복이 끝난 것을 확인한다
-    await expect(input).toHaveValue('a.m')
+    // ★settle barrier — 마지막 글자까지 왕복이 끝난 것을 확인한다.
+    //   `toHaveValue` 를 쓰지 마라 — 댓글 입력은 `<textarea>` 가 아니라 **리치 에디터
+    //   (contenteditable)** 다(#453 WYSIWYG 전환). value 속성이 없어 「Not an input element」
+    //   로 죽는다. 내용은 텍스트로 잰다.
+    await expect(input).toHaveText('a.m')
 
     // Then. `.` 이 팔레트를 열지 않았다
     await expect(commandPalette(page)).toHaveCount(0)

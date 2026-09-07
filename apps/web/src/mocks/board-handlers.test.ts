@@ -7,7 +7,13 @@ import { boardHandlers, QUICK_FILTER_PERM_SEED } from './board-handlers'
 // 응답에서 필드가 통째로 빠져도 런타임 테스트가 하나도 깨지지 않는다(Task 1 실측).
 // audit-log-handlers.test.ts(fetchAuditLogs) · workflow-admin-handlers.test.ts(fetchWorkflows)가
 // 같은 관례로 API 함수를 직접 호출한다.
-import { createBoard, boardCreatedSchema, fetchBoard, fetchBoards } from '@/api/boards'
+import {
+  createBoard,
+  boardCreatedSchema,
+  fetchBoard,
+  fetchBoards,
+  moveCard as moveCardViaClient,
+} from '@/api/boards'
 // 부채 177 Task 22 — 카드 레이아웃 PATCH 도 **API 함수로** 부른다. 핸들러 JSON 을 직접 읽으면
 // `cardLayoutResponseSchema` 를 타지 않아 응답에서 뷰가 통째로 빠져도 아무 테스트도 안 깨진다.
 import { replaceCardLayout } from '@/api/board-settings'
@@ -473,6 +479,77 @@ describe('POST /api/v1/boards/:id/cards/:issueKey/move', () => {
     expect(res.status).toBe(409)
     const body = (await res.json()) as ProblemDetail
     expect(body.errorCode).toBe('AGILE_CONFLICT')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// move 계약 — 클라이언트가 **실제로 보내는 body** 를 목이 받는가
+//
+// ★이 describe 가 없던 동안 이 파일의 move 테스트는 전부 초록이면서 거짓이었다.
+//   위 테스트들은 이 파일 안 로컬 헬퍼(`moveCard`)가 손으로 만든 `{ toColumnId }` 를 보낸다.
+//   그런데 화면이 부르는 `@/api/boards` 의 `moveCard` 는 `toStateKey` 만 싣는다
+//   (`boards.test.ts` 가 `not.toHaveProperty('toColumnId')` 로 못박은 R7 계약).
+//   두 목록이 서로를 안 봤고, 목은 `toColumnId` 만 읽어 모든 이동이 404 였다 —
+//   화면상으로는 「드래그가 먹지 않는다」로 나타났고 E2E(board-kanban S2·S3)에서만 드러났다.
+//
+//   그러므로 여기서는 **로컬 헬퍼를 쓰지 않는다.** 진짜 클라이언트 함수를 통과시키는 것이
+//   이 판별식의 전부다. 헬퍼로 바꿔 적으면 판별력이 그 자리에서 사라진다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('move 계약 — api/boards.ts moveCard ↔ MSW 핸들러', () => {
+  it('실제 클라이언트로 이동하면 목 store 에 반영된다 (toStateKey 경로)', async () => {
+    seedBoard(DEFAULT_BOARD)
+
+    const todoColumn = DEFAULT_BOARD.columns[0]
+    const doneColumn = DEFAULT_BOARD.columns[2]
+    const card = todoColumn?.cards[0]
+    const doneStateKey = doneColumn?.states[0]?.key
+
+    if (
+      todoColumn === undefined ||
+      doneColumn === undefined ||
+      card === undefined ||
+      doneStateKey === undefined
+    ) {
+      throw new Error('fixture 데이터 불완전')
+    }
+
+    const result = await moveCardViaClient(DEFAULT_BOARD.boardId, card.issueKey, {
+      toStateKey: doneStateKey,
+      expectedVersion: card.version,
+    })
+
+    // 응답 echo — 서버는 요청이 지목한 상태와 그 상태를 담은 컬럼을 되돌려준다(R6)
+    expect(result.currentStateKey).toBe(doneStateKey)
+    expect(result.columnId).toBe(doneColumn.columnId)
+
+    // stateful — 이후 GET 상세에도 반영된다
+    const detailRes = await getBoard(DEFAULT_BOARD.boardId)
+    const detail = (await detailRes.json()) as DataResponse<BoardDetail>
+    const doneKeys =
+      detail.data.columns.find((c) => c.columnId === doneColumn.columnId)?.cards.map((c) => c.issueKey) ?? []
+    const todoKeys =
+      detail.data.columns.find((c) => c.columnId === todoColumn.columnId)?.cards.map((c) => c.issueKey) ?? []
+    expect(doneKeys).toContain(card.issueKey)
+    expect(todoKeys).not.toContain(card.issueKey)
+  })
+
+  it('대상을 둘 다 보내면 400 AGILE_VALIDATION_FAILED (R7 — 정확히 하나)', async () => {
+    seedBoard(DEFAULT_BOARD)
+
+    const res = await fetch(`/api/v1/boards/${DEFAULT_BOARD.boardId}/cards/ATLAS-1/move`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        toColumnId: DEFAULT_BOARD.columns[1]?.columnId,
+        toStateKey: 'in_progress',
+        expectedVersion: 0,
+      }),
+    })
+
+    expect(res.status).toBe(400)
+    const body = (await res.json()) as ProblemDetail
+    expect(body.errorCode).toBe('AGILE_VALIDATION_FAILED')
   })
 })
 

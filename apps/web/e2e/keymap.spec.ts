@@ -146,7 +146,7 @@ test.describe('FR-PF-03 단축키 커스터마이즈 (/settings/keymap)', () => 
 
     // Then. /issues/new로 이동
     await page.waitForURL((url) => url.pathname === '/issues/new')
-    await expect(page.getByLabel(issueCreateStrings.summaryLabel)).toBeVisible()
+    await expect(page.getByLabel(issueCreateStrings.summaryLabel, { exact: true })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────
