@@ -10,7 +10,7 @@ vi.mock('@/api/workflows')
 
 import { fetchWorkflows } from '@/api/workflows'
 import type { WorkflowView } from '@/api/workflows'
-import { useWorkflows, extractStatusOptions } from './use-workflows'
+import { useWorkflows, extractStatusOptions, extractStatusMeta } from './use-workflows'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 테스트 픽스처
@@ -169,5 +169,32 @@ describe('useWorkflows', () => {
     const { result } = renderHook(() => useWorkflows(), { wrapper })
 
     await waitFor(() => expect(result.current.isError).toBe(true))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// extractStatusMeta — 순수 함수 단위 테스트
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('extractStatusMeta', () => {
+  it('상태 키 → 이름·카테고리 맵을 만든다', () => {
+    const result = extractStatusMeta([workflowA])
+
+    expect(result.get('todo')).toEqual({ name: '할 일', category: 'TODO' })
+    expect(result.get('in_progress')).toEqual({ name: '진행중', category: 'IN_PROGRESS' })
+    expect(result.get('done')).toEqual({ name: '완료', category: 'DONE' })
+  })
+
+  it('키가 겹치면 첫 등장을 채택한다 — extractStatusOptions 와 같은 규칙', () => {
+    // ★두 함수가 같은 키에 다른 이름을 주면 필터 드롭다운과 목록 배지가 다른 말을 한다
+    const meta = extractStatusMeta([workflowA, workflowB])
+    const options = extractStatusOptions([workflowA, workflowB])
+
+    expect(meta.get('in_progress')?.name).toBe('진행중')
+    expect(meta.get('in_progress')?.name).toBe(options.find((s) => s.key === 'in_progress')?.name)
+  })
+
+  it('워크플로우가 없으면 빈 맵이다 — 조회 실패 시 배지가 원시 키로 폴백한다', () => {
+    expect(extractStatusMeta([]).size).toBe(0)
   })
 })

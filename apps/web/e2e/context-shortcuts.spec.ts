@@ -265,11 +265,13 @@ test.describe('FR-UX-10 F10 컨텍스트 단축키', () => {
     const afterToggle = selectedFromUrl(page)
     expect(afterToggle).not.toBeNull()
 
+    // ★열 **위치**(`td:nth(1)`)로 잡지 않는다. 컬럼이 하나 늘거나 순서가 바뀌면 조용히
+    //   엉뚱한 셀을 읽는다 — 유형 컬럼이 앞에 붙으면서 실제로 그렇게 깨졌다(2026-09-07).
+    //   키 셀 링크(`aria-label` + `/issues/` href)는 위치와 무관한 계약이다.
     const firstRowKey = await page
       .locator('table tbody tr')
       .first()
-      .locator('td')
-      .nth(1)
+      .locator('a[aria-label][href^="/issues/"]')
       .innerText()
     expect(afterToggle).toBe(firstRowKey.trim())
 

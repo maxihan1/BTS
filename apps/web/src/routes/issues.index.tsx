@@ -8,7 +8,10 @@ import type { IssuePage, IssueFilterParams, IssueSortField } from '@/api/issues'
 import { Button } from '@/components/ui/button'
 import { useIssueSelection } from '@/hooks/use-issue-selection'
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
+import { useColumnWidths } from '@/hooks/use-column-widths'
 import { useUsersByIds } from '@/hooks/use-users'
+import { useIssueTypes } from '@/hooks/use-issue-types'
+import { useWorkflows, extractStatusMeta } from '@/hooks/use-workflows'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { nextCursorKey } from '@/components/keyboard-shortcuts/context-shortcuts'
@@ -21,7 +24,7 @@ import { IssueFilterBar } from '@/components/issues/IssueFilterBar'
 import { IssueTable } from '@/components/issues/IssueTable'
 import type { IssueTableSortState } from '@/components/issues/IssueTable'
 import { ColumnSelector } from '@/components/issues/ColumnSelector'
-import { ISSUE_COLUMNS } from '@/components/issues/issue-columns'
+import { ISSUE_COLUMNS, ISSUE_COLUMN_DEFAULT_WIDTHS } from '@/components/issues/issue-columns'
 import type { IssueCellEditContext } from '@/components/issues/issue-columns'
 import { normalizeIssueFilter, isEmptyIssueFilter, searchToIssueFilter, issueFilterToSearch } from '@/lib/issue-filter'
 import type { IssueFilterSearch } from '@/lib/issue-filter'
@@ -98,6 +101,9 @@ function IssueListPageTitle(): JSX.Element | null {
 
 /** useColumnVisibility localStorage 키 — 기기별 컬럼 표시 상태 persist (S4) */
 const ISSUE_TABLE_COLUMNS_STORAGE_KEY = 'issue-table-columns'
+
+/** useColumnWidths localStorage 키 — 기기별 컬럼 폭 persist. 표시 상태와 별도 키다 */
+const ISSUE_TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'issue-table-column-widths'
 
 /** 컬럼 선택기에 노출할 전체 컬럼 키 목록 (issue-columns.ts ISSUE_COLUMNS 기준) */
 const ISSUE_COLUMN_KEYS = ISSUE_COLUMNS.map((column) => column.key)
@@ -333,6 +339,26 @@ function IssueListContent({
     return map
   }, [assignees])
 
+  // ── 이슈 유형·상태 해석 — 목록 전체가 각각 한 번씩만 조회한다 ──────────────
+  // 둘 다 시스템 고정값에 가까워 캐시가 길다(이슈 유형 1시간·워크플로우 30초). 행마다
+  // 조회하는 N+1 이 아니라 **목록당 1회**다.
+  // 조회 실패·로딩 중이면 빈 배열 → 빈 맵 → 유형은 typeKey 원문 + Circle, 상태는 원시 키 +
+  // 중립색으로 폴백한다. 값을 숨기지 않는다.
+  const { data: issueTypes = [] } = useIssueTypes()
+  const issueTypesByKey = useMemo(
+    () => new Map(issueTypes.map((type) => [type.key, type])),
+    [issueTypes],
+  )
+
+  const { data: workflows = [] } = useWorkflows()
+  const statusMetaByKey = useMemo(() => extractStatusMeta(workflows), [workflows])
+
+  // ── 컬럼 폭 — 드래그 리사이즈 결과를 localStorage persist ───────────────────
+  const { widths, setWidth, reset: resetWidths } = useColumnWidths(
+    ISSUE_TABLE_COLUMN_WIDTHS_STORAGE_KEY,
+    ISSUE_COLUMN_DEFAULT_WIDTHS,
+  )
+
   // ── 컬럼 표시 상태 — localStorage persist(F4) ──────────────────────────────
   const { visible, isVisible, toggle } = useColumnVisibility(
     ISSUE_TABLE_COLUMNS_STORAGE_KEY,
@@ -352,7 +378,12 @@ function IssueListContent({
     >
       {/* GAP-2 — 컬럼 선택 툴바(테이블 상단 우측) */}
       <div className="flex justify-end pb-2">
-        <ColumnSelector allColumns={ISSUE_COLUMNS} isVisible={isVisible} onToggle={toggle} />
+        <ColumnSelector
+          allColumns={ISSUE_COLUMNS}
+          isVisible={isVisible}
+          onToggle={toggle}
+          onResetWidths={resetWidths}
+        />
       </div>
 
       <IssueTable
@@ -363,6 +394,10 @@ function IssueListContent({
         selection={{ isSelected, onToggle, onSelectAllPage, isAllPageSelected }}
         onNavigate={onNavigate}
         assigneeNameMap={assigneeNameMap}
+        issueTypesByKey={issueTypesByKey}
+        statusMetaByKey={statusMetaByKey}
+        widths={widths}
+        onResizeColumn={setWidth}
         selectedKey={selectedKey}
         edit={edit}
       />

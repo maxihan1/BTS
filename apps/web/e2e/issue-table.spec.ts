@@ -278,6 +278,11 @@ test.describe('FR-UX-06 Phase 5 PR18 이슈 목록 테이블(정렬·컬럼 선�
     await expect(page.getByTestId('issue-summary-ATLAS-3')).not.toBeVisible()
     await expect.poll(() => orderedIssueKeys(page)).toEqual(['ATLAS-1', 'ATLAS-5'])
 
+    // 드롭다운 닫기 — 이 테스트의 Given 은 "필터 적용 상태"이지 "팝오버 열린 상태"가 아니다.
+    // 열어 둔 채로는 팝오버가 표 헤더를 덮어 클릭이 가로채인다(:246 과 같은 처방).
+    // 유형 컬럼이 앞에 붙으며 "키" 헤더가 오른쪽으로 밀려 실제로 덮였다.
+    await page.keyboard.press('Escape')
+
     // When. "키" 헤더 클릭 → asc (필터 유지 상태에서 정렬 시작)
     await getKeySortHeaderButton(page).click()
     await expect(page).toHaveURL(/[?&]sort=key%2Casc/)

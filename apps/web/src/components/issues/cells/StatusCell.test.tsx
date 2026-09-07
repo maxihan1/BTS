@@ -122,6 +122,35 @@ describe('StatusCellDisplay', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('TODO')
   })
+
+  it('상태 이름이 해석되면 키 대신 이름을 보인다 — 화면에 원시 키를 내지 않는다', () => {
+    render(<StatusCellDisplay currentStateKey="in_progress" statusName="진행 중" />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('진행 중')
+    expect(screen.getByRole('status')).not.toHaveTextContent('in_progress')
+  })
+
+  it('이름 해석에 실패하면 원시 키로 폴백한다 — 값을 숨기지 않는다', () => {
+    render(<StatusCellDisplay currentStateKey="in_progress" />)
+
+    expect(screen.getByRole('status')).toHaveTextContent('in_progress')
+  })
+
+  it.each([
+    ['TODO', 'neutral'],
+    ['IN_PROGRESS', 'blue'],
+    ['DONE', 'green'],
+  ] as const)('카테고리 %s → 배지 색 %s (Jira: 회색·파랑·초록)', (category, variant) => {
+    render(<StatusCellDisplay currentStateKey="s" statusName="상태" category={category} />)
+
+    expect(screen.getByRole('status')).toHaveAttribute('data-variant', variant)
+  })
+
+  it('카테고리를 모르면 중립색이다 — 모르는 것에 색을 지어내지 않는다', () => {
+    render(<StatusCellDisplay currentStateKey="s" />)
+
+    expect(screen.getByRole('status')).toHaveAttribute('data-variant', 'neutral')
+  })
 })
 
 describe('StatusCellEditor', () => {

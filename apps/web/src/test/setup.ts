@@ -56,6 +56,20 @@ if (typeof Range !== 'undefined' && typeof Range.prototype.getClientRects !== 'f
   Range.prototype.getBoundingClientRect = (): DOMRect => new DOMRect(0, 0, 0, 0)
 }
 
+// jsdom 은 Pointer Capture API(`setPointerCapture`/`releasePointerCapture`/`hasPointerCapture`)를
+// 구현하지 않는다. 이슈 목록 컬럼 폭 손잡이(`IssueTable.tsx` ColumnResizeHandle)가 드래그 중
+// 포인터를 붙잡는 데 쓰므로, 없으면 **테스트 밖 uncaught exception** 이 난다 —
+// 개별 단언은 전부 초록인데 vitest 가 「Errors 2 errors · false positive 가능」을 붙이는,
+// 위 Range 폴리필과 똑같이 귀속이 어려운 형태다(실측 2026-09-07).
+// 캡처는 브라우저에서 **포인터가 손잡이 밖으로 나가도 이벤트를 계속 받게 하는** 장치라
+// 레이아웃이 없는 jsdom 에서는 재현 대상이 아니다 — no-op 으로 채운다.
+// **드래그 자체를 이 폴리필로 검증하지 말 것.** 그것은 e2e(`issue-column-resize.spec.ts`) 몫이다.
+if (typeof Element !== 'undefined' && typeof Element.prototype.setPointerCapture !== 'function') {
+  Element.prototype.setPointerCapture = (): void => { /* no-op */ }
+  Element.prototype.releasePointerCapture = (): void => { /* no-op */ }
+  Element.prototype.hasPointerCapture = (): boolean => false
+}
+
 /**
  * ★`process.on('unhandledRejection', …)` 를 여기에 **추가하지 말 것.**
  *

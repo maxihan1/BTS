@@ -6,9 +6,12 @@ import { ISSUE_SORT_FIELDS } from '@/api/issues'
 import type { IssueResponse, IssueSortField } from '@/api/issues'
 // 열람 숨김 판정 정본 — 상세 화면(`IssueMetaPanel.tsx:306`)과 같은 술어를 재사용한다
 import { isFieldHidden } from '@/components/issue/IssueMetaPanel'
+import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { AssigneeCell, AssigneeCellDisplay } from './cells/AssigneeCell'
 import { PriorityCell, PriorityCellDisplay } from './cells/PriorityCell'
 import { StatusCell, StatusCellDisplay } from './cells/StatusCell'
+import { issueTypeColorClass } from './issue-visuals'
+import type { StateCategory } from './issue-visuals'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -22,7 +25,14 @@ import { StatusCell, StatusCellDisplay } from './cells/StatusCell'
  * `use-column-visibility.test.ts`의 예시 컬럼 키 목록(key·summary·status·assignee·
  * priority·updatedAt, select 미포함)과도 일치한다.
  */
-export type IssueColumnKey = 'key' | 'summary' | 'status' | 'assignee' | 'priority' | 'updatedAt'
+export type IssueColumnKey =
+  | 'type'
+  | 'key'
+  | 'summary'
+  | 'status'
+  | 'assignee'
+  | 'priority'
+  | 'updatedAt'
 
 /**
  * 셀 인라인 편집에 필요한 컨텍스트 (FR-UX-11 F9).
@@ -53,6 +63,14 @@ export interface IssueCellEditContext {
 export interface IssueColumnRenderContext {
   /** assigneeId → 표시 이름 해석 결과. 미배정이거나 매핑 실패 시 undefined */
   assigneeName: string | undefined
+  /** 해석된 이슈 유형 아이콘 식별자. 미해석이면 null({@link IssueTypeIcon}이 Circle 폴백) */
+  typeIconName: string | null
+  /** 해석된 이슈 유형 표시 이름. 미해석이면 `issue.typeKey` 원문(FR6 — 뭉개지 않는다) */
+  typeName: string
+  /** 워크플로우에서 해석한 상태 표시 이름. 미해석이면 undefined → 원시 키로 폴백 */
+  statusName: string | undefined
+  /** 워크플로우에서 해석한 상태 카테고리. 미해석이면 undefined → 중립색 */
+  statusCategory: StateCategory | undefined
   /** updatedAt 등 ISO 날짜 문자열을 사용자 dateFormat 프리셋으로 포맷하는 함수 */
   formatDate: (iso: string | null) => string
   /** 행 네비게이션 콜백 — 키 링크 클릭 시 preventDefault 후 호출 */
@@ -82,9 +100,30 @@ export interface IssueColumnDef {
   required: boolean
   /** 셀 렌더 함수 */
   render: (issue: IssueResponse, ctx: IssueColumnRenderContext) => ReactNode
-  /** `<th>`/`<td>` 공통 className(GAP-4 폭·시각 위계) */
+  /**
+   * 기본 폭(px) — 사용자가 드래그로 바꾸기 전의 값.
+   *
+   * 폭은 className 이 아니라 {@link IssueTable} 의 `<colgroup>` 이 잡는다. Tailwind 클래스로
+   * 두면 사용자 조정값(px)과 정본이 둘로 갈린다.
+   */
+  defaultWidth: number
+  /**
+   * 데이터 셀(`<td>`) className — 넘치는 내용 줄임표 처리 등 시각 위계.
+   *
+   * ★헤더(`<th>`)에는 걸지 않는다. `overflow:hidden` 이 헤더 경계에 걸친 폭 조절 손잡이를
+   * 잘라 드래그가 통째로 안 먹는다({@link IssueTable} 주석 참고).
+   */
   className: string
 }
+
+/**
+ * 모든 셀에 거는 넘침 처리 — Jira 리스트 뷰처럼 폭을 넘치면 줄임표로 자른다.
+ *
+ * `ui/table.tsx` 의 `TableCell` 이 이미 `whitespace-nowrap` 이라 여기서는 넘침·줄임표만
+ * 더한다. 실제로 잘리려면 셀 폭이 확정돼야 하므로 {@link IssueTable} 의 `table-fixed` +
+ * `<colgroup>` 과 **짝**이다 — 셋 중 하나만 빠져도 텍스트가 열을 밀어낸다.
+ */
+const TRUNCATE_CELL_CLASS = 'overflow-hidden text-ellipsis'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통 스타일 상수 — 셀 렌더 함수 간 className 중복 제거
@@ -99,6 +138,21 @@ const DEFAULT_TEXT_CLASS = 'text-(--text-default)'
 // ─────────────────────────────────────────────────────────────────────────────
 // 셀 렌더 함수
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 이슈 유형 셀 렌더 — 아이콘만(Jira 리스트 뷰의 Type 열과 같다).
+ *
+ * 아이콘 컴포넌트는 보드·백로그 카드가 이미 쓰는 {@link IssueTypeIcon} 을 그대로 재사용한다
+ * (계약 §4 — 새로 만들지 않는다). 색은 `currentColor` 를 타고 내려가므로 감싸는 span 의
+ * `text-type-*` 하나로 칠해진다 — `IssueTypeIcon` 을 건드리지 않는 이유다.
+ */
+function renderTypeCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+  return createElement(
+    'span',
+    { className: `inline-flex ${issueTypeColorClass(issue.typeKey)}` },
+    createElement(IssueTypeIcon, { iconName: ctx.typeIconName, typeName: ctx.typeName }),
+  )
+}
 
 /**
  * 키 셀 렌더 — 행 링크(★e2e 계약 보존).
@@ -147,9 +201,18 @@ function renderSummaryCell(issue: IssueResponse): ReactNode {
  */
 function renderStatusCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
   if (!isEditEnabled(ctx.edit)) {
-    return createElement(StatusCellDisplay, { currentStateKey: issue.currentStateKey })
+    return createElement(StatusCellDisplay, {
+      currentStateKey: issue.currentStateKey,
+      statusName: ctx.statusName,
+      category: ctx.statusCategory,
+    })
   }
-  return createElement(StatusCell, { issue, listQueryKey: ctx.edit.listQueryKey })
+  return createElement(StatusCell, {
+    issue,
+    listQueryKey: ctx.edit.listQueryKey,
+    statusName: ctx.statusName,
+    category: ctx.statusCategory,
+  })
 }
 
 /**
@@ -207,22 +270,58 @@ function renderUpdatedAtCell(issue: IssueResponse, ctx: IssueColumnRenderContext
  * 이 컬럼 목록에 노출하지 않는다.
  */
 export const ISSUE_COLUMNS: readonly IssueColumnDef[] = [
-  { key: 'key', header: '키', sortable: true, required: true, className: 'w-24', render: renderKeyCell },
+  // ★`required: true` — 「목록에 이슈 유형이 안 나온다」의 재발 방지다. 컬럼 표시 목록은
+  //   localStorage 에 영속되는데(`use-column-visibility`), 이미 저장된 배열에는 `type` 이
+  //   없다. 선택 가능(required:false)으로 두면 **기존 사용자에게는 영영 안 보인다.**
+  //   Jira 리스트 뷰도 Type·Key·Summary 를 앞머리 식별 3열로 고정 노출한다.
+  {
+    key: 'type',
+    header: '유형',
+    sortable: false,
+    required: true,
+    defaultWidth: 52,
+    className: TRUNCATE_CELL_CLASS,
+    render: renderTypeCell,
+  },
+  {
+    key: 'key',
+    header: '키',
+    sortable: true,
+    required: true,
+    defaultWidth: 92,
+    className: TRUNCATE_CELL_CLASS,
+    render: renderKeyCell,
+  },
   {
     key: 'summary',
     header: '요약',
     sortable: true,
     required: true,
-    className: 'w-full',
+    // ★종전 `w-full`(=100%) 은 auto 레이아웃에서 이 열을 **가장 긴 요약의 실제 텍스트
+    //   폭**까지 늘려, 요약과 상태 배지 사이에 화면 절반짜리 공백을 만들고 뒤 열
+    //   (담당자·우선순위·수정일)을 가로 스크롤 밖으로 밀어냈다(Maxi 지적 2026-09-07).
+    //   이제 폭은 {@link IssueTable} 의 `<colgroup>` 이 px 로 못박고 사용자가 드래그로
+    //   바꾼다. `table-fixed` 와 **짝**이다 — 하나만 있으면 다시 내용 폭으로 늘어난다.
+    defaultWidth: 280,
+    className: TRUNCATE_CELL_CLASS,
     render: renderSummaryCell,
   },
-  { key: 'status', header: '상태', sortable: false, required: false, className: 'w-28', render: renderStatusCell },
+  {
+    key: 'status',
+    header: '상태',
+    sortable: false,
+    required: false,
+    defaultWidth: 128,
+    className: TRUNCATE_CELL_CLASS,
+    render: renderStatusCell,
+  },
   {
     key: 'assignee',
     header: '담당자',
     sortable: false,
     required: false,
-    className: 'w-36',
+    defaultWidth: 128,
+    className: TRUNCATE_CELL_CLASS,
     render: renderAssigneeCell,
   },
   {
@@ -230,7 +329,9 @@ export const ISSUE_COLUMNS: readonly IssueColumnDef[] = [
     header: '우선순위',
     sortable: true,
     required: false,
-    className: 'w-24',
+    // 아이콘이 붙어 종전 92px 로는 「가장 낮음」이 잘린다
+    defaultWidth: 112,
+    className: TRUNCATE_CELL_CLASS,
     render: renderPriorityCell,
   },
   {
@@ -238,10 +339,21 @@ export const ISSUE_COLUMNS: readonly IssueColumnDef[] = [
     header: '수정일',
     sortable: true,
     required: false,
-    className: 'w-32',
+    defaultWidth: 112,
+    className: TRUNCATE_CELL_CLASS,
     render: renderUpdatedAtCell,
   },
 ] as const
+
+/**
+ * 컬럼 기본 폭 맵 — `useColumnWidths` 의 `defaults` 인자로 그대로 넘긴다.
+ *
+ * 정본은 {@link ISSUE_COLUMNS} 의 `defaultWidth` 하나다. 호출부가 따로 상수를 만들면
+ * 컬럼을 추가할 때 한쪽만 늘어나 새 컬럼이 폭 0 으로 렌더된다.
+ */
+export const ISSUE_COLUMN_DEFAULT_WIDTHS: Readonly<Record<string, number>> = Object.fromEntries(
+  ISSUE_COLUMNS.map((column) => [column.key, column.defaultWidth]),
+)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 정렬 헬퍼
