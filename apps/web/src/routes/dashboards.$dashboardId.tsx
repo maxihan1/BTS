@@ -3,16 +3,15 @@ import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Check, Pencil, Plus, Settings, Trash2, Share2 } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
 import { useDashboard, useUpdateDashboard, useDeleteDashboard } from '@/hooks/use-dashboards'
 import { canEditDashboard } from '@/lib/dashboard-permission'
 import { parseLayout, serializeLayout } from '@/lib/dashboard-layout'
 import type { DashboardTile } from '@/lib/dashboard-layout'
-import { dashboardLabels, dashboardModeLabels } from '@/i18n/dashboard-labels'
+import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
+import { DashboardDetailHeader } from '@/components/dashboard/DashboardDetailHeader'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
-import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
 import { ShareDashboardModal } from '@/components/dashboard/ShareDashboardModal'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -342,156 +341,26 @@ export function DashboardDetailPage({
 
   return (
     <div className="flex flex-col h-full">
-      {/* 상단 헤더 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-xl font-semibold truncate">{dashboard.name}</h1>
-          <FavoriteButton targetType="DASHBOARD" targetId={dashboardId} />
-          {dirty && editable && (
-            <span
-              className="text-xs text-warning-text font-medium shrink-0"
-              role="status"
-              aria-live="polite"
-            >
-              {dashboardLabels.detail.unsavedChanges}
-            </span>
-          )}
-        </div>
-
-        {/* 소유자 전용 액션 버튼 그룹 */}
-        {editable && (
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 삭제 인라인 확인 UI — VersionRow/ComponentRow 동형 패턴 */}
-            {showDeleteConfirm ? (
-              <>
-                <span className="text-sm text-muted-foreground">{dashboardLabels.detail.deleteConfirm}</span>
-                {/* PR22 — 원본이 bg-destructive 솔리드라 variant="destructive"(연한 배경)와 다르다.
-                    className 으로 솔리드를 유지해 삭제 확인의 강조 의도를 보존한다. */}
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="default"
-                  className="min-h-[44px] gap-1 rounded-md bg-destructive px-3 text-destructive-foreground hover:bg-destructive/90"
-                  aria-label={dashboardLabels.detail.confirmDeleteAriaLabel}
-                  disabled={isDeleting}
-                  onClick={handleDeleteConfirm}
-                >
-                  {dashboardLabels.detail.confirmButton}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-1 rounded-md px-3"
-                  aria-label={dashboardLabels.detail.cancelDeleteAriaLabel}
-                  disabled={isDeleting}
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
-                  {dashboardLabels.detail.cancelButton}
-                </Button>
-              </>
-            ) : (
-              <>
-                {/*
-                 * 보기 ↔ 편집 모드 토글 (Jira 패리티 JD-1).
-                 *
-                 * ★권한이 없으면 이 버튼 자체가 없다 — 이 블록 전체가 `editable` 분기 안이라
-                 *   모드로 진입할 수단이 아예 생기지 않는다. 권한과 모드는 다른 축이고,
-                 *   권한이 없는 사람에게 「편집」 버튼을 보여주고 눌렀을 때 막는 것은
-                 *   goodwill 을 깎는 설계다.
-                 */}
-                <Button
-                  type="button"
-                  variant={isEditing ? 'default' : 'outline'}
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label={
-                    isEditing ? dashboardModeLabels.exitEdit : dashboardModeLabels.enterEdit
-                  }
-                  aria-pressed={isEditing}
-                  onClick={() => {
-                    setIsEditing((prev) => !prev)
-                  }}
-                >
-                  {isEditing ? (
-                    <Check className="h-4 w-4" aria-hidden="true" />
-                  ) : (
-                    <Pencil className="h-4 w-4" aria-hidden="true" />
-                  )}
-                  {isEditing ? dashboardModeLabels.exitEdit : dashboardModeLabels.enterEdit}
-                </Button>
-
-                {/* 가젯 추가 버튼 — 편집 모드에서만 (C4: 위젯 추가 일원화) */}
-                {isEditing && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="default"
-                    className="min-h-[44px] gap-2 rounded-md px-3"
-                    aria-label="가젯 추가"
-                    onClick={() => setCatalogOpen(true)}
-                  >
-                    <Plus className="h-4 w-4" aria-hidden="true" />
-                    가젯 추가
-                  </Button>
-                )}
-
-                {/* 공유 버튼 — 소유자 전용 (FR-8), 공유 모달을 조건부 마운트 */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label={dashboardLabels.share.modalTitle}
-                  onClick={() => setShareOpen(true)}
-                >
-                  <Share2 className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.share.modalTitle}
-                </Button>
-
-                {/* 설정 버튼 */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label={dashboardLabels.detail.settings}
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  <Settings className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.detail.settings}
-                </Button>
-
-                {/* 삭제 버튼 */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md border-destructive/50 px-3 text-destructive hover:bg-destructive/10"
-                  aria-label={dashboardLabels.detail.delete}
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.detail.delete}
-                </Button>
-
-                {/* 저장 버튼 */}
-                <Button
-                  type="button"
-                  variant="default"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-4 hover:bg-primary/90 disabled:cursor-not-allowed"
-                  aria-label={isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-                  disabled={isSaving || !dirty}
-                  onClick={handleSave}
-                >
-                  {isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      <DashboardDetailHeader
+        dashboardId={dashboardId}
+        name={dashboard.name}
+        dirty={dirty}
+        editable={editable}
+        isEditing={isEditing}
+        showDeleteConfirm={showDeleteConfirm}
+        isDeleting={isDeleting}
+        isSaving={isSaving}
+        onToggleEditing={() => {
+          setIsEditing((prev) => !prev)
+        }}
+        onOpenCatalog={() => setCatalogOpen(true)}
+        onOpenShare={() => setShareOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onRequestDelete={() => setShowDeleteConfirm(true)}
+        onCancelDelete={() => setShowDeleteConfirm(false)}
+        onConfirmDelete={handleDeleteConfirm}
+        onSave={handleSave}
+      />
 
       {/* 그리드 영역 */}
       <div className="flex-1 overflow-auto p-4">
