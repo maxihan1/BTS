@@ -141,7 +141,10 @@ describe('IssueCreateForm — 이슈 유형과 본문 (FR-4/FR-5)', () => {
     expect(typeSelect.value).toBe(taskOption?.value)
   })
 
-  it('본문에 입력한 값이 제출 본문 description 으로 실린다', async () => {
+  // ★본문이 plain textarea 에서 **리치 에디터**로 바뀌었다(J23). 그래서 실리는 키도
+  //   `description`(마크다운)이 아니라 `descriptionHtml`(정화 HTML)이다.
+  //   두 키를 함께 보내면 서버가 400 을 내므로 어느 하나만 실려야 한다.
+  it('본문에 입력한 값이 제출 본문 descriptionHtml 로 실린다', async () => {
     const user = userEvent.setup()
     let captured: Record<string, unknown> = {}
     server.use(
@@ -157,7 +160,11 @@ describe('IssueCreateForm — 이슈 유형과 본문 (FR-4/FR-5)', () => {
     await user.type(screen.getByLabelText(issueCreateStrings.descriptionLabel), '본문입니다')
     await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
 
-    await waitFor(() => expect(captured['description']).toBe('본문입니다'))
+    await waitFor(() => {
+      expect(String(captured['descriptionHtml'] ?? '')).toContain('본문입니다')
+    })
+    // 레거시 마크다운 키는 실리지 않는다 — 서버 `isBodyExclusive` 가 동시 전달을 막는다.
+    expect('description' in captured).toBe(false)
   })
 
   it('본문 칸에 템플릿 안내가 보인다 (FR-TM-01)', async () => {

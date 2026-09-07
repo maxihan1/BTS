@@ -444,8 +444,15 @@ describe('IssueDescription — 길이 카운터·상한 잠금', () => {
     const props = baseProps()
     // ★인접한 같은 mark 는 TipTap 이 마운트하며 **하나로 병합한다** — `<strong>가</strong>` 를
     //   2,000번 반복해도 직렬화 결과는 `<strong>가가…</strong>` 한 덩어리라 HTML 이 짧아진다
-    //   (첫 시도에서 이것 때문에 카운터가 안 떴다). 문단은 병합되지 않으므로 그것으로 부풀린다.
-    const noisyHtml = '<p>가</p>'.repeat(4200)
+    //   (첫 시도에서 이것 때문에 카운터가 안 떴다). 문단은 병합되지 않으므로 그것으로 부풀리되,
+    //   **서로 다른 mark 를 섞어** 문단당 HTML 을 늘린다 — 같은 mark 가 아니라 병합되지 않는다.
+    //
+    // ★★문단 수를 6배 줄인 이유(2026-09-07). 종전 픽스처는 `<p>가</p>` 를 4,200번 반복해
+    //   문단당 HTML 이 8자뿐이었다. 노드가 많아 마운트·**언마운트**가 무거웠고, 툴바가
+    //   Tooltip 으로 바뀌자 RTL `cleanup` 훅이 15초를 넘겨 죽었다(실측). 노드 수를 줄이면서
+    //   같은 목적(평문 ≪ HTML)을 달성하는 편이 낫다 — 게다가 이 테스트의 이름이 말하는
+    //   「서식이 많으면」에 종전 픽스처는 **서식이 하나도 없었다.** 이제 실제로 서식이 많다.
+    const noisyHtml = '<p><strong>가</strong><em>나</em><code>다</code></p>'.repeat(700)
     const plainLength = noisyHtml.replace(/<[^>]*>/g, '').length
     expect(plainLength).toBeLessThan(DESCRIPTION_MAX_LENGTH)
     expect(noisyHtml.length).toBeGreaterThan(DESCRIPTION_MAX_LENGTH)

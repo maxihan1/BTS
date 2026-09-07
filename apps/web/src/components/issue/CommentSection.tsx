@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
 import { TextLengthCounter } from '@/components/editor/TextLengthCounter'
+import { RICH_TEXT_CLASS } from '@/components/editor/rich-text-class'
 import { COMMENT_BODY_MAX_LENGTH } from '@/lib/issue-text-constraints'
 import { htmlToPlainText, escapeHtml } from '@/lib/html-text'
 import { AttachmentHtml } from './AttachmentHtml'
@@ -449,7 +450,7 @@ function CommentRow({
             html={comment.bodyHtml}
             issueKey={issueKey}
             testId={`comment-body-${comment.id}`}
-            className="prose prose-sm min-w-0 max-w-none text-sm text-foreground"
+            className={`${RICH_TEXT_CLASS} min-w-0 text-sm text-foreground`}
           />
 
           {(canEdit || canDelete) && (

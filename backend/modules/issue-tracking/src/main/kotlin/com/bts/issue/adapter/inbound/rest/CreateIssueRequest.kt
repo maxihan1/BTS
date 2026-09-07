@@ -53,6 +53,12 @@ data class CreateIssueRequest(
     // 생성된 본문이 나중에 수정 시점에 400 을 맞아 편집 불가가 되는 비대칭이 있었다.
     @field:Size(max = IssueTextConstraints.DESCRIPTION_MAX, message = "description은 32767자 이하여야 합니다.")
     val description: String? = null,
+    // 리치 에디터 생성 경로 (V039). 수정 경로 [UpdateIssueRequest.descriptionHtml] 와 같은 상한·같은
+    // 배타 규칙을 쓴다 — 갈리면 「생성은 통과, 수정은 400」 비대칭이 되살아난다.
+    // 착수 시점에 이 필드는 **없었다**. 그래서 생성 화면은 리치 에디터를 쓸 길이 없어 plain
+    // textarea 로 남아 있었고, Maxi 지적 1번 「이슈 생성할때는 에디터 서식이 안나옴」이 그것이다.
+    @field:Size(max = IssueTextConstraints.DESCRIPTION_MAX, message = "descriptionHtml은 32767자 이하여야 합니다.")
+    val descriptionHtml: String? = null,
     // ★기본값이 있는 non-null Kotlin 프로퍼티는 springdoc 이 required 로 판정한다(실측).
     //   아래 assigneeId 와 같은 함정이며 봉인 방법도 같다. 실측 required 는
     //   [componentIds, projectKey, summary] 였다 — 기본값이 emptyList 인데도 필수로 문서화됐다.
@@ -108,4 +114,22 @@ data class CreateIssueRequest(
                 label.isEmpty() ||
                     (label.isNotBlank() && label.length <= IssueLabelConstraints.MAX_LENGTH)
             } != false
+
+    /**
+     * 본문을 **한 표현으로만** 보낸다 — [description](마크다운) 또는 [descriptionHtml](HTML).
+     *
+     * 리치 에디터 전환 중이라 두 입구가 공존한다. 둘 다 오면 어느 쪽이 이기는지가 호출자마다
+     * 달라지고, 그 판정이 서비스 안쪽에 숨으면 「보낸 대로 저장되지 않는다」는 재현 어려운
+     * 버그가 된다. 여기서 400 으로 끊어 호출자가 하나를 고르게 만든다.
+     *
+     * ★[UpdateIssueRequest.isBodyExclusive] 와 **문자 단위로 같은 술어**다.
+     * 두 술어를 갈라놓지 말 것 — 갈리는 순간 「생성은 통과, 수정은 400」 비대칭이 되살아난다.
+     * `IssueBodyExclusiveAlignmentTest` 가 두 경로의 판정이 같은지 대조한다.
+     *
+     * `@get:` 타깃과 `@get:JsonIgnore` 가 필수인 이유는 [isLabelsValid] 와 같다.
+     */
+    @get:AssertTrue(message = "description 과 descriptionHtml 은 동시에 보낼 수 없습니다.")
+    @get:JsonIgnore
+    val isBodyExclusive: Boolean
+        get() = description == null || descriptionHtml == null
 }

@@ -3,7 +3,9 @@ import type { JSX } from 'react'
 import type { Control } from 'react-hook-form'
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { TextLengthCounter } from '@/components/editor/TextLengthCounter'
+import { DESCRIPTION_MAX_LENGTH } from '@/lib/issue-text-constraints'
 import { IssueTypeSelect } from '@/components/issue/meta/IssueTypeSelect'
 import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
 import type { IssueCreateFormValues } from '@/components/issue/create/issue-create-schema'
@@ -117,21 +119,32 @@ export function IssueCreateBasicFields({
         )}
       />
 
-      {/* 본문 입력 — 비우면 서버가 프로젝트 템플릿으로 채운다 (FR-5, FR-TM-01) */}
+      {/* 본문 입력 — 상세 화면과 **같은 리치 에디터**다 (J23).
+          Jira Cloud 도 생성 다이얼로그의 Description 이 "code blocks, table edits, and pasted
+          images" 를 받는다. 비우면 서버가 프로젝트 템플릿으로 채운다 (FR-5, FR-TM-01). */}
       <FormField
         control={control}
-        name="description"
+        name="descriptionHtml"
         render={({ field }) => (
           <FormItem>
             <FormLabel>{issueCreateStrings.descriptionLabel}</FormLabel>
             <FormControl>
-              <Textarea
-                rows={4}
+              <RichTextEditor
+                initialHtml={field.value}
+                onChange={field.onChange}
                 placeholder={issueCreateStrings.descriptionPlaceholder}
-                aria-label={issueCreateStrings.descriptionLabel}
-                {...field}
+                ariaLabel={issueCreateStrings.descriptionLabel}
+                // ★이슈가 아직 없어 첨부를 매달 곳이 없다. `imageIssueKey` 미전달이면
+                //   RichTextEditor 가 이미지 경로를 통째로 비활성한다 — 툴바 버튼도 안 그린다.
+                //
+                // 다이얼로그는 상세 화면보다 좁다. 기본 높이(8rem)를 그대로 쓰면 본문이
+                // 종전 `rows={4}` textarea 보다 커져 아래 필드를 밀어낸다(리뷰 D-1).
+                minHeightClass="min-h-[6rem]"
               />
             </FormControl>
+            {/* 상한 32,767자는 **HTML 기준**이다 — 서식이 많으면 보이는 글자가 8,000자여도
+                넘길 수 있다. 상세 편집과 같은 카운터를 붙여 저장 전에 알린다. */}
+            <TextLengthCounter length={field.value.length} max={DESCRIPTION_MAX_LENGTH} />
             <p className="text-xs text-muted-foreground">
               {issueCreateStrings.descriptionTemplateHint}
             </p>

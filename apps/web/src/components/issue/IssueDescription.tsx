@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { issueDetailStrings } from '@/i18n/ko'
 import { RichTextEditor } from '@/components/editor/RichTextEditor'
+import { RICH_TEXT_CLASS } from '@/components/editor/rich-text-class'
 import { TextLengthCounter } from '@/components/editor/TextLengthCounter'
 import { DESCRIPTION_MAX_LENGTH } from '@/lib/issue-text-constraints'
 import { AttachmentHtml } from './AttachmentHtml'
@@ -183,7 +184,7 @@ function ReadMode({ descriptionHtml, issueKey, onEditClick, canEdit }: ReadModeP
             html={descriptionHtml}
             issueKey={issueKey}
             testId="description-body"
-            className={`prose prose-sm max-w-none text-sm text-foreground${clickableCls}`}
+            className={`${RICH_TEXT_CLASS} text-sm text-foreground${clickableCls}`}
           />
         </div>
       ) : (
