@@ -31,6 +31,7 @@ vi.mock('recharts', () => ({
   XAxis: () => <div data-testid="recharts-xaxis" />,
   YAxis: () => <div data-testid="recharts-yaxis" />,
   Tooltip: () => <div data-testid="recharts-tooltip" />,
+  Legend: () => <div data-testid="recharts-legend" />,
 }))
 
 vi.mock('@/hooks/use-project-summary', () => ({
@@ -140,6 +141,24 @@ describe('DistributionChartGadget', () => {
     for (const cell of cells) {
       expect(cell.getAttribute('data-fill')).toMatch(/^var\(--chart-[1-5]\)$/)
     }
+  })
+
+  it('★파이에 범례가 있다 — 색-단독 구분 금지(WCAG)', () => {
+    // 파이는 막대와 달리 **축 라벨이 없다**. 범례가 없으면 조각의 뜻을 알 방법이
+    // 색뿐이고, 그것이 이 저장소가 기존 차트 3종(Burndown·Velocity·CFD)에 이미
+    // 「색-단독 구분 금지 → Legend/Tooltip 텍스트 병행」으로 못박아 둔 규율에 걸린다.
+    // 눈확인(A9)에서 실제로 「어느 색이 어느 상태인지 못 읽는다」로 적발됐다.
+    mockSummary({})
+    render(<DistributionChartGadget variant="pie" config={{ projectKey: 'BTS', field: 'status' }} />)
+    expect(screen.getByTestId('recharts-legend')).toBeInTheDocument()
+  })
+
+  it('막대에는 범례를 중복해 붙이지 않는다 — X축 라벨이 이미 이름을 낸다', () => {
+    // 같은 이름을 축과 범례가 두 번 내면 좁은 타일에서 자리만 먹는다.
+    mockSummary({})
+    render(<DistributionChartGadget variant="bar" config={{ projectKey: 'BTS', field: 'status' }} />)
+    expect(screen.getByTestId('recharts-xaxis')).toBeInTheDocument()
+    expect(screen.queryByTestId('recharts-legend')).not.toBeInTheDocument()
   })
 
   it('이슈가 0건이면 빈 파이를 그리지 않고 빈 상태를 낸다 (E3)', () => {
