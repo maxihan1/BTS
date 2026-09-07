@@ -2963,7 +2963,7 @@ describe('IssueDetailPage — 본문/메타 독립 스크롤 (Jira 패리티)', 
     expect(meta.contains(body)).toBe(false)
   })
 
-  it('J26-1: 두 스크롤 영역이 각각 세로 스크롤과 min-h-0 을 선언한다', async () => {
+  it('J26-1: 두 스크롤 영역이 lg 에서만 세로 스크롤과 min-h-0 을 선언한다', async () => {
     setupIssueFoundHandler()
     renderPage('ATLAS-1')
 
@@ -2971,10 +2971,15 @@ describe('IssueDetailPage — 본문/메타 독립 스크롤 (Jira 패리티)', 
 
     for (const region of [body, meta]) {
       // `overflow-y-auto` 가 없으면 넘치는 내용이 조상으로 새어 페이지가 통째로 스크롤된다.
-      expect(region.className).toContain('overflow-y-auto')
+      expect(region.className).toContain('lg:overflow-y-auto')
       // `min-h-0` 이 없으면 flex/grid 자식의 최소 높이가 콘텐츠 높이라 컨테이너가 늘어나고,
       // `overflow-y-auto` 는 선언돼 있어도 **한 번도 발동하지 않는다**.
-      expect(region.className).toContain('min-h-0')
+      expect(region.className).toContain('lg:min-h-0')
+      // ★`lg:` 접두 **없는** 형태가 있으면 안 된다. 그것이 있으면 좁은 폭에서도 각자 스크롤해
+      //   두 열이 각각 반쪽짜리 구멍이 된다(리뷰 실측 — 900×700 에서 메타 2459px/229px 창).
+      //   `toContain('overflow-y-auto')` 는 `lg:overflow-y-auto` 에도 걸리므로 판정이 못 된다.
+      expect(region.className).not.toMatch(/(^|\s)overflow-y-auto(\s|$)/)
+      expect(region.className).not.toMatch(/(^|\s)min-h-0(\s|$)/)
     }
   })
 

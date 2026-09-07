@@ -105,7 +105,14 @@ export function IssueDetailHeader({
 
   return (
     // `shrink-0` 이 없으면 flex 가 이 영역부터 눌러 제목이 잘린다 — 줄어들 곳은 스크롤 영역이다.
-    <header data-testid="issue-detail-header" className="shrink-0 border-b border-border pb-4">
+    //
+    // 🛑 `<header>` 를 쓰지 마라 — **모달에서 banner 랜드마크를 가로챈다.** HTML-AAM 상
+    //    `<header>` 는 `article/aside/main/nav/section` 자손일 때만 banner 를 잃는데, Radix 는
+    //    DialogContent 를 body 직속으로 포털하고 `role="dialog"` 인 div 는 그 목록에 없다.
+    //    실측 — 모달을 연 상태에서 `role=banner` 조회가 `TopBar` 가 아니라 이 요소를 잡았다.
+    //    `ShellLayout` KDoc 이 「banner = TopBar 의 <header>」로 랜드마크 소유를 못박고 있다.
+    //    시각·판정에 필요한 것은 testid 와 `border-b` 뿐이라 `<header>` 로 얻는 것이 없다.
+    <div data-testid="issue-detail-header" className="shrink-0 border-b border-border pb-4">
       {/* breadcrumb 행 — 좌측 경로 / 우측 액션 버튼 */}
       <div className="flex items-center justify-between mb-4">
         <nav aria-label="이동 경로" className="text-sm text-muted-foreground">
@@ -201,6 +208,6 @@ export function IssueDetailHeader({
           </Button>
         </>
       )}
-    </header>
+    </div>
   )
 }

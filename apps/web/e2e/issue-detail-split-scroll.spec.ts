@@ -29,9 +29,25 @@ async function overflowsVertically(locator: Locator): Promise<boolean> {
   return locator.evaluate((el) => el.scrollHeight > el.clientHeight + 1)
 }
 
-/** 사용자가 이 상자를 굴릴 수 있는가 — 브라우저가 실제로 계산한 `overflow-y` 값. */
-async function scrollableDeclarationOf(locator: Locator): Promise<string> {
-  return locator.evaluate((el) => getComputedStyle(el).overflowY)
+/**
+ * 이 상자를 굴릴 수 **없는가** — 선언이 아니라 실제 스크롤 범위로 잰다.
+ *
+ * ★종전 판정(`getComputedStyle().overflowY === 'hidden'`)은 **공허했다.** 소스가 적은 클래스를
+ * computed style 로 되읽는 동어반복이라 `overflow-hidden` 이 남아 있기만 하면 무조건 초록이고,
+ * 정작 자기가 선언한 불변식(「껍데기는 굴릴 수 있는 상자가 아니다」)을 재지 못했다 —
+ * `overflow: hidden` 은 스크롤 컨테이너를 **만들기 때문**이다. 사용자가 굴리지 못할 뿐
+ * 스크립트와 브라우저는 굴린다(실측 — `dialog.scrollTop = 900` 이 그대로 먹혔다).
+ *
+ * 그래서 스크롤을 **시도해 보고** 움직였는지 본다. 재고 나서 원래 값으로 되돌린다.
+ */
+async function isUnscrollable(locator: Locator): Promise<boolean> {
+  return locator.evaluate((el) => {
+    const before = el.scrollTop
+    el.scrollTop = 900
+    const moved = el.scrollTop
+    el.scrollTop = before
+    return moved === 0
+  })
 }
 
 /** 문서(창) 자체의 스크롤 오프셋. 0 이어야 바깥으로 새지 않은 것이다. */
@@ -123,6 +139,50 @@ test.describe('이슈 상세 — 본문/메타 독립 스크롤 + 고정 헤더 
 })
 
 /**
+ * 좁은 폭에서는 독립 스크롤을 **하지 않아야** 한다 — 위 describe 의 반대 방향 판정.
+ *
+ * ★2단 격자가 `lg:` 분기라 그 미만에서는 1열 2행이 된다. 그때도 두 행이 각자 스크롤하면
+ * 각각 **반쪽짜리 구멍**이 된다(리뷰 실측 — 900×700 에서 메타 2459px 를 229px 창으로 봤다).
+ * 좁은 폭은 미지원이 아니다. `routes/issues.index.tsx` 가 `(min-width: 1024px)` 미만을 명시적
+ * 지원 모드로 선언하고, 그 모드의 행 클릭이 정확히 이 전체화면으로 온다.
+ *
+ * 이 describe 가 없으면 「lg 게이팅」은 아무도 안 지키는 주석일 뿐이다.
+ */
+test.describe('이슈 상세 — 좁은 폭에서는 한 덩어리로 흐른다 (lg 게이팅)', () => {
+  const NARROW_VIEWPORT = { width: 900, height: 700 } as const
+
+  test('S6 lg 미만에서는 본문·메타가 독립 스크롤러가 아니다', async ({ page }) => {
+    await page.setViewportSize(NARROW_VIEWPORT)
+    await loginAsAlice(page)
+    await page.goto('/issues/ATLAS-1')
+    await expect(page.getByTestId('issue-detail-header')).toBeVisible()
+
+    const body = page.getByTestId('issue-detail-body-scroll')
+    const meta = page.getByTestId('issue-detail-meta-scroll')
+
+    // 두 영역 모두 굴릴 수 없다 — 스크롤 컨테이너가 아니라 그냥 흐르는 블록이다.
+    expect(await isUnscrollable(body)).toBe(true)
+    expect(await isUnscrollable(meta)).toBe(true)
+
+    // 대신 바깥이 흐른다. `<main overflow-y-auto>` 가 그 자리다 — 조상 중 실제로 굴러가는
+    // 상자가 있어야 내용에 닿을 수 있다. 없으면 좁은 폭에서 화면이 잘린 채 갇힌다.
+    const outerScrolled = await body.evaluate((el) => {
+      let node = el.parentElement
+      while (node !== null) {
+        node.scrollTop = 300
+        if (node.scrollTop > 0) {
+          node.scrollTop = 0
+          return true
+        }
+        node = node.parentElement
+      }
+      return false
+    })
+    expect(outerScrolled).toBe(true)
+  })
+})
+
+/**
  * 표시 방식 3종이 **같은 규칙**을 지키는지 본다 (J1 — 전체화면 · 모달 · 사이드패널).
  *
  * ★위 describe 는 전체화면만 잰다. 모달·사이드패널은 껍데기가 자기 높이 경계를 스스로 주므로
@@ -153,11 +213,10 @@ test.describe('이슈 상세 — 모달·사이드패널도 같은 분리를 지
 
     // Given. 안쪽이 넘친다 — 넘치지 않으면 아무것도 재지 못한다.
     expect(await overflowsVertically(body)).toBe(true)
-    // Then. 껍데기는 사용자가 굴릴 수 있는 상자가 아니다.
-    //   ★`scrollHeight > clientHeight` 로 재지 않는다 — `overflow: hidden` 상자의
-    //     `scrollHeight` 는 **잘려서 안 보이는 자손까지** 세므로 이 판정에서는 거짓 신호다.
-    //     사용자가 굴릴 수 있는가는 `overflow-y` 가 정한다.
-    expect(await scrollableDeclarationOf(modal)).toBe('hidden')
+    // Then. 껍데기는 굴릴 수 있는 상자가 **아니다.**
+    //   ★이것이 이 spec 의 핵심 판정이다. 굴러가면 `scrollIntoView` 한 번에 헤더가 화면 밖으로
+    //     밀리고, `overflow: hidden` 이면 사용자가 휠로 **되돌릴 수도 없다**(리뷰 실측).
+    expect(await isUnscrollable(modal)).toBe(true)
 
     await body.evaluate((el) => { el.scrollTop = 200 })
     expect(await scrollTopOf(body)).toBeGreaterThan(0)
@@ -189,7 +248,7 @@ test.describe('이슈 상세 — 모달·사이드패널도 같은 분리를 지
     await expect(body).toBeVisible()
 
     expect(await overflowsVertically(body)).toBe(true)
-    expect(await scrollableDeclarationOf(panel)).toBe('hidden')
+    expect(await isUnscrollable(panel)).toBe(true)
 
     await body.evaluate((el) => { el.scrollTop = 200 })
     expect(await scrollTopOf(body)).toBeGreaterThan(0)
