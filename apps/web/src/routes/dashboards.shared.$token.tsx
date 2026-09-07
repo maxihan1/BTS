@@ -145,10 +145,12 @@ function SharedDashboardContent({ dashboard, embed }: SharedDashboardContentProp
       <DashboardGrid
         tiles={tiles}
         canEdit={false}
+        isEditing={false}
         publicMode
         onLayoutChange={noop}
         onDeleteTile={noop}
         onEditTitle={noop}
+        onDuplicate={noop}
       />
     </div>
   )

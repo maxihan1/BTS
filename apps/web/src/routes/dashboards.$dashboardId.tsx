@@ -3,13 +3,13 @@ import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Plus, Settings, Trash2, Share2 } from 'lucide-react'
+import { Check, Pencil, Plus, Settings, Trash2, Share2 } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
 import { useDashboard, useUpdateDashboard, useDeleteDashboard } from '@/hooks/use-dashboards'
 import { canEditDashboard } from '@/lib/dashboard-permission'
 import { parseLayout, serializeLayout } from '@/lib/dashboard-layout'
 import type { DashboardTile } from '@/lib/dashboard-layout'
-import { dashboardLabels } from '@/i18n/dashboard-labels'
+import { dashboardLabels, dashboardModeLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
@@ -176,6 +176,14 @@ export function DashboardDetailPage({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  /**
+   * 편집 모드 — 권한(`editable`)과 다른 축이다 (Jira 패리티 JD-1).
+   *
+   * 기본은 **보기**다. 대시보드는 BTS 에서 모드를 갖는 유일한 화면인데, 보드·백로그는
+   * 드래그가 주 조작인 반면 대시보드는 보는 것이 주 조작이고 배치 자체가 콘텐츠라
+   * 보는 동안 실수로 끌어 배치가 망가지면 안 되기 때문이다.
+   */
+  const [isEditing, setIsEditing] = useState(false)
 
   /** dashboard.layout이 변경될 때마다 로컬 tiles를 초기화 (key prop 재마운트 불필요 — layout 변경 감지) */
   useEffect(() => {
@@ -206,11 +214,13 @@ export function DashboardDetailPage({
    */
   function handleAddGadgetTile(partial: { gadgetType: string; config: Record<string, unknown> }): void {
     setTiles((prev) => {
-      const maxBottom = prev.reduce((acc, tile) => Math.max(acc, tile.y + tile.h), 0)
       const newTile: DashboardTile = {
         i: crypto.randomUUID(),
+        // ★좌측 컬럼 **최상단**이다 (JD-2). Jira 는 새 가젯을 "at the top of the leftmost
+        //   column" 에 놓는데 종전 BTS 는 y=maxBottom(맨 아래)이라 반대였다 — 가젯을 추가하고
+        //   스크롤해 내려가야 보였다. react-grid-layout 이 겹치는 타일을 아래로 밀어낸다.
         x: 0,
-        y: maxBottom,
+        y: 0,
         w: 4,
         h: 3,
         title: '',
@@ -221,6 +231,22 @@ export function DashboardDetailPage({
       return [...prev, newTile]
     })
     setCatalogOpen(false)
+  }
+
+  /**
+   * 타일을 복제한다 — 설정을 그대로 복사해 바로 아래에 놓는다 (JD-3).
+   *
+   * ★`i` 는 새로 발번한다. 같은 id 로 두면 react-grid-layout 이 두 타일을 같은 것으로 보고
+   * 하나만 그리며, 드래그가 서로를 따라다닌다.
+   */
+  function handleDuplicateTile(id: string): void {
+    setTiles((prev) => {
+      const source = prev.find((t) => t.i === id)
+      if (source === undefined) return prev
+      const copy: DashboardTile = { ...source, i: crypto.randomUUID(), y: source.y + source.h }
+      setDirty(true)
+      return [...prev, copy]
+    })
   }
 
   /** 타일 삭제 */
@@ -366,18 +392,49 @@ export function DashboardDetailPage({
               </>
             ) : (
               <>
-                {/* 가젯 추가 버튼 — 카탈로그 모달 열기 (C4: 위젯 추가 일원화) */}
+                {/*
+                 * 보기 ↔ 편집 모드 토글 (Jira 패리티 JD-1).
+                 *
+                 * ★권한이 없으면 이 버튼 자체가 없다 — 이 블록 전체가 `editable` 분기 안이라
+                 *   모드로 진입할 수단이 아예 생기지 않는다. 권한과 모드는 다른 축이고,
+                 *   권한이 없는 사람에게 「편집」 버튼을 보여주고 눌렀을 때 막는 것은
+                 *   goodwill 을 깎는 설계다.
+                 */}
                 <Button
                   type="button"
-                  variant="outline"
+                  variant={isEditing ? 'default' : 'outline'}
                   size="default"
                   className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label="가젯 추가"
-                  onClick={() => setCatalogOpen(true)}
+                  aria-label={
+                    isEditing ? dashboardModeLabels.exitEdit : dashboardModeLabels.enterEdit
+                  }
+                  aria-pressed={isEditing}
+                  onClick={() => {
+                    setIsEditing((prev) => !prev)
+                  }}
                 >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  가젯 추가
+                  {isEditing ? (
+                    <Check className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isEditing ? dashboardModeLabels.exitEdit : dashboardModeLabels.enterEdit}
                 </Button>
+
+                {/* 가젯 추가 버튼 — 편집 모드에서만 (C4: 위젯 추가 일원화) */}
+                {isEditing && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="default"
+                    className="min-h-[44px] gap-2 rounded-md px-3"
+                    aria-label="가젯 추가"
+                    onClick={() => setCatalogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    가젯 추가
+                  </Button>
+                )}
 
                 {/* 공유 버튼 — 소유자 전용 (FR-8), 공유 모달을 조건부 마운트 */}
                 <Button
@@ -441,10 +498,12 @@ export function DashboardDetailPage({
         <DashboardGrid
           tiles={tiles}
           canEdit={editable}
+          isEditing={isEditing}
           onLayoutChange={handleLayoutChange}
           onDeleteTile={handleDeleteTile}
           onEditTitle={handleEditTitle}
-          onAddTile={editable ? () => setCatalogOpen(true) : undefined}
+          onDuplicate={handleDuplicateTile}
+          onAddTile={editable && isEditing ? () => setCatalogOpen(true) : undefined}
         />
       </div>
 

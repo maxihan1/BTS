@@ -1,7 +1,14 @@
 // 대시보드 그리드 단일 타일 컴포넌트 — 인라인 편집·삭제·접근성·가젯 통합 (FR-DB-01 Task 8 / FR-DB-02 Task 7)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
-import { LayoutDashboard, Trash2 } from 'lucide-react'
+import { Copy, LayoutDashboard, MoreHorizontal, Trash2 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { dashboardModeLabels } from '@/i18n/dashboard-labels'
 import { Button } from '@/components/ui/button'
 import { dashboardLabels, gadgetLabels } from '@/i18n/dashboard-labels'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
@@ -16,6 +23,15 @@ import { PublicGadgetRenderer } from '@/components/dashboard/gadgets/PublicGadge
 export interface DashboardTileProps {
   /** 타일 데이터 (id, title, 위치·크기) */
   tile: DashboardTileData
+  /**
+   * 편집 **모드** — 권한과 다른 축이다 (Jira 패리티 JD-1).
+   *
+   * `canEdit` 은 「고칠 수 있는 사람인가」이고 이것은 「지금 고치는 중인가」다.
+   * 권한이 있어도 기본은 보기 모드라, 보는 동안 실수로 타일을 끌어 배치가 망가지지 않는다.
+   */
+  isEditing: boolean
+  /** 타일 복제 요청 — 설정을 그대로 복사한다 (JD-3) */
+  onDuplicate: (id: string) => void
   /** 편집 권한 — true면 인라인 편집·삭제 활성 */
   canEdit: boolean
   /** 타일 삭제 요청 콜백 */
@@ -48,12 +64,16 @@ export interface DashboardTileProps {
 export function DashboardTile({
   tile,
   canEdit,
+  isEditing,
+  onDuplicate,
   onDelete,
   onEditTitle,
   publicMode = false,
 }: DashboardTileProps): JSX.Element {
   /** publicMode면 canEdit 값과 무관하게 강제 읽기전용 (FR-DB-03 D6/D7 Task-8) */
-  const effectiveCanEdit = canEdit && !publicMode
+  // ★세 조건의 곱이다. 권한이 있고(canEdit) · 익명 뷰가 아니고(!publicMode) ·
+  //   지금 편집 모드여야(isEditing) 편집 UI 가 산다. 하나라도 빠지면 보기 중에 배치가 바뀐다.
+  const effectiveCanEdit = canEdit && !publicMode && isEditing
 
   const [editing, setEditing] = useState(false)
   // C3: title?: string — undefined 방어를 위해 초기값에 ?? '' 적용
@@ -163,18 +183,46 @@ export function DashboardTile({
           )}
         </div>
 
-        {/* 삭제 버튼 — 편집 가능(effectiveCanEdit)일 때만 표시 */}
+        {/*
+         * 타일 `⋯` 메뉴 — 편집 모드에서만 뜬다 (JD-3).
+         * Jira 는 타일마다 More actions 드롭다운을 두고 Duplicate 을 담는다.
+         * ⚠️ 트리거 이름이 타일마다 같으므로 e2e 는 컨테이너로 스코프를 좁혀야 한다
+         *    (BoardActionsMenu 가 세운 선례와 같은 함정).
+         */}
         {effectiveCanEdit && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="ml-2 min-h-[44px] min-w-[44px] rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            aria-label={deleteAriaLabel}
-            onClick={() => onDelete(tile.i)}
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="ml-2 min-h-[44px] min-w-[44px] rounded text-muted-foreground"
+                aria-label={dashboardModeLabels.tileMenuAriaLabel}
+              >
+                <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onSelect={() => {
+                  onDuplicate(tile.i)
+                }}
+              >
+                <Copy className="h-4 w-4" aria-hidden="true" />
+                {dashboardModeLabels.duplicate}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                aria-label={deleteAriaLabel}
+                onSelect={() => {
+                  onDelete(tile.i)
+                }}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {dashboardModeLabels.delete}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
