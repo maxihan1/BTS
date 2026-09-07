@@ -77,6 +77,40 @@ function descriptorOffsets(source: string): number[] {
 }
 
 /**
+ * `ConfigFieldDescriptor(` 하나의 **인자 목록만** 잘라 낸다 — 괄호 균형으로.
+ *
+ * ★「다음 출현까지」를 창으로 쓰지 않는다. 그 방식은 마지막 인자와 다음 디스크립터 사이에 낀
+ *   **다른 코드까지 삼킨다**. 실측 — `LINK_LIST.itemSchema` 의 `url` 항목 창이 다음
+ *   디스크립터까지 뻗으면서 그 사이 enum 상수의 `key = "pie_chart"` 를 먼저 잡아
+ *   `url` 을 `pie_chart` 로 오독했다.
+ *   괄호 균형은 `setOf("a", "b")` 같은 **중첩 괄호**도 올바르게 넘어간다.
+ *   문자열 리터럴 안의 괄호는 균형 계산에서 뺀다 — 안 그러면 `"("` 하나로 파서가 어긋난다.
+ *
+ * @param source 원문.
+ * @param openParenIndex `ConfigFieldDescriptor` 의 여는 괄호 위치.
+ * @returns 여는 괄호 다음부터 짝이 맞는 닫는 괄호 직전까지의 인자 목록.
+ */
+function argumentList(source: string, openParenIndex: number): string {
+  let depth = 0;
+  let inString = false;
+  for (let i = openParenIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    if (inString) {
+      if (ch === '\\') i += 1;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '(') depth += 1;
+    else if (ch === ')') {
+      depth -= 1;
+      if (depth === 0) return source.slice(openParenIndex + 1, i);
+    }
+  }
+  throw new Error(`괄호가 안 닫혔다 — offset ${openParenIndex} 부근에서 소스를 못 읽었다`);
+}
+
+/**
  * `GadgetType.kt` 의 `ConfigFieldDescriptor(...)` 를 전부 읽는다.
  *
  * 두 표기를 모두 받는다 — positional(`ConfigFieldDescriptor("projectKey", FieldType.STRING, …)`)
@@ -100,13 +134,21 @@ export function parseConfigFields(source: string): ConfigField[] {
   const found: ConfigField[] = [];
   const offsets = descriptorOffsets(source);
 
-  offsets.forEach((offset, index) => {
-    const end = offsets[index + 1] ?? source.length;
-    const body = source.slice(offset, end);
+  offsets.forEach((offset) => {
+    // `ConfigFieldDescriptor` 의 여는 괄호 = 이름 길이만큼 뒤.
+    const body = argumentList(source, offset + 'ConfigFieldDescriptor'.length);
 
-    const keyMatch = /(?:key\s*=\s*)?"([A-Za-z0-9_]+)"/.exec(body);
+    // ★key 를 **순서에 의존하지 않게** 잡는다. `(?:key\s*=\s*)?"…"` 하나로 두면 optional 이라
+    //   인자 목록의 **아무 문자열 리터럴이나** key 로 읽는다. 실측 — named 인자를
+    //   `type → required → enumValues → key = "boardId"` 순으로 재배열하면 첫 리터럴이
+    //   `enumValues` 의 `"status"` 라 파서가 `status:ENUM` 을 방출하고, 개수는 그대로라
+    //   등식도 통과한다. **판별식은 초록인데 `boardId` 가 차집합에서 사라진다.**
+    //   positional 을 **먼저** 본다 — 인자 목록의 맨 앞 리터럴은 정의상 key 다.
+    //   그 다음 named 는 `key =` 를 명시적으로 요구한다.
+    const keyMatch =
+      /^\s*"([A-Za-z0-9_]+)"/.exec(body) ?? /key\s*=\s*"([A-Za-z0-9_]+)"/.exec(body);
     const typeMatch = /FieldType\.([A-Z]+)/.exec(body);
-    // `data class ConfigFieldDescriptor(` 선언 자체는 문자열 리터럴이 없어 여기서 걸러진다.
+    // `data class ConfigFieldDescriptor(` 선언 자체는 두 정규식에 다 안 걸려 여기서 빠진다.
     if (keyMatch === null || typeMatch === null) return;
 
     found.push({ key: keyMatch[1] as string, type: typeMatch[1] as string });

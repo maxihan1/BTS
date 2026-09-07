@@ -145,7 +145,12 @@ describe('DashboardTile — legacy 타일 무회귀', () => {
    */
   it('T7-T5: legacy 타일 canEdit=false이면 삭제 버튼이 없다', async () => {
     await renderTile({ tile: LEGACY_TILE, canEdit: false })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**
@@ -307,7 +312,12 @@ describe('DashboardTile — 가젯 타일 통합', () => {
    */
   it('T7-G5: 가젯 타일 canEdit=false이면 삭제 버튼이 없다', async () => {
     await renderTile({ tile: GADGET_TILE, canEdit: false })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**
@@ -357,7 +367,12 @@ describe('DashboardTile — publicMode 익명 읽기전용', () => {
    */
   it('P-3: publicMode=true이면 canEdit=true여도 삭제 버튼이 없다', async () => {
     await renderTile({ tile: GADGET_TILE, canEdit: true, publicMode: true })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**

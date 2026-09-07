@@ -299,7 +299,12 @@ describe('DashboardGrid', () => {
    */
   it('G-15: publicMode=true이면 canEdit=true여도 타일 삭제 버튼이 없다', async () => {
     await renderGrid({ tiles: [TILE_A], canEdit: true, publicMode: true })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**
