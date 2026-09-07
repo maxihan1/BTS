@@ -250,4 +250,98 @@ class IssueApplicationServiceTemplateApplyTest : DescribeSpec({
             }
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 리치 에디터 생성 경로 (V039 · J23) — 본문이 두 컬럼이 된 뒤의 템플릿 상호작용
+    //
+    // ★(f)(g) 가 **가장 위험한 회귀**를 지킨다. TipTap 은 빈 문서를 빈 문자열이 아니라
+    //   `<p></p>` 로 직렬화한다. 종전 판정(`isNotBlank()`)을 그대로 두면 「빈 본문」이 영영
+    //   도착하지 않아 FR-TM-01 템플릿이 **조용히 죽는다** — 이슈는 만들어지고 본문만 비어
+    //   있을 뿐이라 아무 오류도 안 난다.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    describe("(f) descriptionHtml 내용 있음 → HTML 컬럼에 정화되어 저장, 템플릿 무시") {
+        val htmlSlot = slot<String>()
+
+        beforeEach {
+            stubCommonInfra()
+            val issueSlot = slot<Issue>()
+            every { repo.insert(capture(issueSlot), capture(htmlSlot)) } answers { issueSlot.captured }
+            every {
+                templateRepo.findActiveContentByProjectAndType(projectId, typeId.value)
+            } returns templateContent
+        }
+
+        it("HTML 이 두 번째 인자로 흘러가고 마크다운 컬럼은 비며 템플릿은 안 탄다") {
+            val request =
+                CreateIssueRequest(
+                    projectKey = projectKey,
+                    summary = "새 이슈",
+                    reporterId = actor,
+                    descriptionHtml = "<p>리치 <strong>본문</strong></p>",
+                )
+            val result = sut.createIssue(actor, request)
+
+            // 에디터 경로는 마크다운 컬럼을 비운다 — 남기면 옛 내용을 담은 채 굳는다.
+            result.description shouldBe null
+            htmlSlot.captured shouldBe "<p>리치 <strong>본문</strong></p>"
+            verify(exactly = 0) {
+                templateRepo.findActiveContentByProjectAndType(any(), any())
+            }
+        }
+    }
+
+    describe("(g) descriptionHtml 이 빈 문서 → 템플릿이 살아 있다 (FR-TM-01 회귀 차단)") {
+        beforeEach {
+            stubCommonInfra()
+            stubInsert()
+            every {
+                templateRepo.findActiveContentByProjectAndType(projectId, typeId.value)
+            } returns templateContent
+        }
+
+        // TipTap 이 실제로 보내는 빈 문서 형태들. 하나라도 「내용 있음」으로 읽히면 템플릿이 죽는다.
+        listOf("<p></p>", "<p><br></p>", "<p>&nbsp;</p>", "").forEach { emptyHtml ->
+            it("빈 문서 ${'"'}$emptyHtml${'"'} 는 템플릿 content 로 대체된다") {
+                val request =
+                    CreateIssueRequest(
+                        projectKey = projectKey,
+                        summary = "새 이슈",
+                        reporterId = actor,
+                        descriptionHtml = emptyHtml,
+                    )
+                val result = sut.createIssue(actor, request)
+                result.description shouldBe templateContent
+            }
+        }
+    }
+
+    describe("(h) 이미지만 든 본문은 빈 문서가 아니다 — 템플릿이 덮지 않는다") {
+        val htmlSlot = slot<String>()
+
+        beforeEach {
+            stubCommonInfra()
+            val issueSlot = slot<Issue>()
+            every { repo.insert(capture(issueSlot), capture(htmlSlot)) } answers { issueSlot.captured }
+            every {
+                templateRepo.findActiveContentByProjectAndType(projectId, typeId.value)
+            } returns templateContent
+        }
+
+        it("텍스트가 0자여도 이미지가 있으면 본문으로 저장된다") {
+            // ★이 예외가 없으면 「이미지만 넣고 저장했더니 프로젝트 템플릿이 덮어썼다」가 된다.
+            val imageOnly = "<p><img src=\"attachment:11111111-1111-1111-1111-111111111111\" alt=\"\" /></p>"
+            val request =
+                CreateIssueRequest(
+                    projectKey = projectKey,
+                    summary = "새 이슈",
+                    reporterId = actor,
+                    descriptionHtml = imageOnly,
+                )
+            val result = sut.createIssue(actor, request)
+
+            result.description shouldBe null
+            htmlSlot.captured.contains("<img") shouldBe true
+        }
+    }
 })
