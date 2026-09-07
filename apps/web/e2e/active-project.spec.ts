@@ -91,20 +91,24 @@ async function submitAliceLoginForm(page: Page): Promise<void> {
 }
 
 /**
- * Header 계정 드롭다운에서 로그아웃해 로그인 폼까지 소프트 네비게이션으로 도달한다.
- * `start-page.spec.ts` 의 `logout` 과 동일한 우회(로그아웃 버튼의 기존 회귀로 `/login` 으로
- * 자동 이동하지 않아 popstate 를 직접 재발행한다, 하드 리로드 아님 — AUTH_USERS/활성 프로젝트
- * 스토어 모듈 상태를 보존해야 S8 재로그인이 의미가 있다).
+ * 계정 드롭다운에서 로그아웃해 로그인 폼까지 **소프트 네비게이션으로** 도달한다.
+ *
+ * 하드 리로드(`page.goto`)를 쓰지 않는 이유는 그대로다 — AUTH_USERS·활성 프로젝트 스토어의
+ * 모듈 상태를 보존해야 S8 재로그인이 의미가 있다.
+ *
+ * 종전에 있던 popstate 수동 재발행은 제거했다(2026-09-07). 그것은 로그아웃이 `/login` 으로
+ * 이동하지 않던 결함의 우회였고, 이제 `useLogoutMutation` 이 이동을 소유한다.
  */
 async function logout(page: Page): Promise<void> {
   await page.getByRole('button', { name: /계정 메뉴$/ }).click()
   await page.getByRole('menuitem', { name: '로그아웃', exact: true }).click()
   await page.waitForFunction(() => sessionStorage.getItem('bts.auth') === null)
 
-  await page.evaluate(() => {
-    history.pushState({}, '', '/login')
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  })
+  // 🛑 여기 `popstate` 수동 재발행이 있었다. 로그아웃이 `/login` 으로 **이동하지 않던**
+  //    결함을 메우는 우회였고, 두 스펙이 그 우회를 든 채 초록이라 결함이 가려져 있었다
+  //    (2026-09-07 Maxi 보고로 드러남 → `useLogoutMutation` 이 이동을 소유하도록 고침).
+  //    되살리지 말 것 — 되살리는 순간 같은 은폐가 재생산된다.
+  //    이동 자체의 판별식은 `e2e/logout-login-modal.spec.ts` 다.
   await expect(page.getByRole('heading', { name: loginPageStrings.heading })).toBeVisible()
 }
 
