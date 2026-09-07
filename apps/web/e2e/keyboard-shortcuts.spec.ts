@@ -97,7 +97,7 @@ test.describe('FR-UX-05 전역 키보드 단축키', () => {
 
     // Then. /issues/new로 이동 + 제목 입력창 렌더 확인
     await page.waitForURL((url) => url.pathname === '/issues/new')
-    await expect(page.getByLabel(issueCreateStrings.summaryLabel)).toBeVisible()
+    await expect(page.getByLabel(issueCreateStrings.summaryLabel, { exact: true })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────

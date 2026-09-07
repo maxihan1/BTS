@@ -45,10 +45,13 @@ async function loginAsSystemAdmin(page: import('@playwright/test').Page): Promis
 async function loginWithMustChangePwd(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login')
   await expect(page.getByRole('heading', { name: 'BTS 로그인' })).toBeVisible()
-  // 1단계: identifier-first 이메일 입력 → "계속"
-  await page.getByLabel('이메일').fill('alice@example.com')
-  await page.getByRole('button', { name: '계속', exact: true }).click()
-  // 2단계: Local 선택 + 자격증명
+  // ★2026-09-07 — 「이메일 선입력(identifier-first) 1단계」를 지웠다. 그 단계는 **폐기된 화면**이라
+  //   `getByLabel('이메일')` 이 영원히 나타나지 않고 `fill` 이 30초 타임아웃으로 죽었다.
+  //   폐기 사실은 `fixtures/auth-fixtures.ts` 의 `loginAsAlice` KDoc 이 이미 적어 두고 있었는데
+  //   이 헬퍼만 따라오지 않았다 — 로그인 절차가 두 벌로 갈려 있던 것이 원인이다.
+  //   ★이 헬퍼를 지우고 `loginAsAlice` 를 쓸 수는 없다. 그쪽은 `/dashboard` 도착을 기다리는데
+  //     여기서는 `mustChangePassword:true` 라 `/settings/password` 로 가기 때문이다.
+  //     같은 화면을 다루므로, 화면이 또 바뀌면 **두 곳을 함께** 고쳐야 한다.
   const providerSelect = page.getByRole('combobox', { name: '로그인 방식' })
   await expect(providerSelect).toBeVisible()
   await expect(providerSelect).not.toBeDisabled()

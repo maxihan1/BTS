@@ -164,7 +164,10 @@ test.describe('FR-CO-02 이슈 댓글 수정·삭제', () => {
     await row.getByRole('button', { name: commentStrings.commentEditButton, exact: true }).click()
 
     const editBox = row.getByLabel(commentStrings.commentEditBodyLabel)
-    await expect(editBox).toHaveValue('고치기 전 본문')
+    // ★`toHaveValue` 를 쓰지 마라 — 댓글 편집은 `<textarea>` 가 아니라 **리치 에디터
+    //   (contenteditable)** 다(#453 WYSIWYG 전환). value 속성이 없어 「Not an input element」
+    //   로 죽는다. 내용은 텍스트로 잰다. `fill` 은 contenteditable 도 지원하므로 그대로 둔다.
+    await expect(editBox).toHaveText('고치기 전 본문')
     await editBox.fill('고친 뒤 본문')
     await row
       .getByRole('button', { name: commentStrings.commentEditSaveButton, exact: true })

@@ -160,7 +160,7 @@ test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW �
     await projectKeyInput.selectOption('ATLAS')
 
     // 이슈 제목 입력
-    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel)
+    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel, { exact: true })
     await expect(summaryInput).toBeVisible()
     await summaryInput.fill('자동배정 E2E 테스트 — FR-CM-03 S1')
 
@@ -345,7 +345,7 @@ test.describe('FR-CM-03 이슈 컴포넌트 기본 담당자 자동배정 (MSW �
     await expect(projectKeyInput).toBeVisible()
     await projectKeyInput.selectOption('ATLAS')
 
-    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel)
+    const summaryInput = page.getByLabel(issueCreateStrings.summaryLabel, { exact: true })
     await expect(summaryInput).toBeVisible()
     await summaryInput.fill('C2-tiebreak E2E 테스트 — FR-CM-03 S4')
 

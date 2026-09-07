@@ -2,6 +2,18 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '@playwright/test'
 import { navigateAndWaitForDiagram, getStateNodeCount } from './fixtures/workflow-helpers'
+import { loginAsAlice } from './fixtures/auth-fixtures'
+
+/**
+ * ★로그인이 **없었다.** 이 spec 이 쓰일 때는 비인증 접근이 화면까지 닿았지만, 그 뒤 인증
+ * 가드가 들어오면서 `/workflows/*` 가 로그인 화면으로 떨어진다 — h1 도 `role="alert"` 도
+ * 없으니 5개 테스트가 「요소 없음」으로 한꺼번에 죽었다(2026-09-07 실측).
+ * 실패 문구가 「다이어그램이 안 그려진다」처럼 보여 원인을 워크플로우 쪽에서 찾게 되는데,
+ * 실제로는 **그 화면에 도달하지 못한 것**이다.
+ */
+test.beforeEach(async ({ page }) => {
+  await loginAsAlice(page)
+})
 
 /**
  * 마이그레이션 V207 ⑨ 백필이 심는 INITIAL 전환의 이름 — MSW 픽스처와 같은 문자열.

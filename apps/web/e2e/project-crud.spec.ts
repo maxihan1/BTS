@@ -128,7 +128,10 @@ test.describe('S2 프로젝트 생성 성공 (FR-PJ PR-5 Task 8)', () => {
     await page.goto('/projects')
 
     // When. '새 프로젝트' 링크 클릭 → /projects/new 이동
-    await page.getByRole('link', { name: '새 프로젝트', exact: true }).click()
+    // ★`main` 으로 좁힌다. 사이드바에도 같은 곳으로 가는 아이콘 링크가 있어(`aria-label="새 프로젝트"`)
+    //   페이지 전역에서 찾으면 접근 이름이 같은 요소 둘이 걸려 strict 위반이다. `exact: true` 로는
+    //   못 막는다 — 두 이름이 **완전히 같기** 때문이다. 좁혀야 할 것은 문자열이 아니라 **범위**다.
+    await page.getByRole('main').getByRole('link', { name: '새 프로젝트', exact: true }).click()
     await page.waitForURL('**/projects/new')
     await expect(page.getByRole('heading', { name: '새 프로젝트', exact: true })).toBeVisible()
 

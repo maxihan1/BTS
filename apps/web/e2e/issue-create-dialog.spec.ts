@@ -62,7 +62,7 @@ test.describe('S2a 딥링크 경로 — 1회 제출 후 상세 이동 (FR-11/FR-
 
     const dialog = page.getByRole('dialog', { name: DIALOG_NAME })
     await dialog.getByLabel('프로젝트').selectOption('ATLAS')
-    await dialog.getByLabel('제목').fill('S2a 모달로 만든 이슈')
+    await dialog.getByLabel('제목', { exact: true }).fill('S2a 모달로 만든 이슈')
     await dialog.getByLabel('설명').fill('본문입니다')
     await dialog.getByLabel('우선순위 선택').selectOption('1')
     await dialog.getByPlaceholder('라벨 추가').fill('backend')
@@ -97,7 +97,7 @@ test.describe('S2b 상단바 경로 — 제자리 유지 + 토스트 (FR-16)', (
 
     const dialog = page.getByRole('dialog', { name: DIALOG_NAME })
     await dialog.getByLabel('프로젝트').selectOption('ATLAS')
-    await dialog.getByLabel('제목').fill('S2b 제자리에서 만든 이슈')
+    await dialog.getByLabel('제목', { exact: true }).fill('S2b 제자리에서 만든 이슈')
     await page.getByRole('button', { name: SUBMIT_BUTTON }).click()
 
     // 모달은 닫히고 화면은 그대로 — 보드/목록을 보던 맥락이 끊기지 않는다
@@ -118,7 +118,9 @@ test.describe('S5 딥링크 계약 (FR-11)', () => {
     await page.goto('/issues/new')
     await expect(page.getByRole('dialog', { name: DIALOG_NAME })).toBeVisible()
 
-    await page.getByRole('button', { name: '취소' }).click()
+    // ★`exact: true` 필수 — 본문 리치 에디터 툴바의 **「취소선」** 버튼이 부분 일치로 함께
+    //   걸려 strict 위반이 된다(#468 이 생성 다이얼로그에 에디터를 넣은 뒤 생긴 충돌).
+    await page.getByRole('button', { name: '취소', exact: true }).click()
 
     await page.waitForURL(/\/issues$/)
   })

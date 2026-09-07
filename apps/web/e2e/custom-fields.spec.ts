@@ -348,7 +348,7 @@ test.describe('S5 이슈 생성 시 커스텀 필드 값 입력 (FR-IS-10)', () 
     await page.getByTestId('custom-field-sprint_note').fill('E2E 테스트 스프린트')
 
     // summary 입력 — issueCreateStrings.summaryLabel = '제목'
-    await page.getByLabel('제목').fill('S5 커스텀 필드 이슈')
+    await page.getByLabel('제목', { exact: true }).fill('S5 커스텀 필드 이슈')
 
     // 제출 — issueCreateStrings.submitButton = '이슈 생성'
     await page.getByRole('button', { name: '이슈 생성' }).click()

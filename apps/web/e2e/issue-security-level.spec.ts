@@ -34,7 +34,7 @@ test.describe('FR-PM-06 이슈 보안등급 (IssueSecurityLevelSelect)', () => {
       .getByRole('dialog', { name: '새 이슈 만들기' })
       .getByLabel(i18nLabels.issueCreate.projectKeyLabel)
       .selectOption('ATLAS')
-    await page.getByLabel(i18nLabels.issueCreate.summaryLabel).fill('보안등급 E2E 테스트 이슈')
+    await page.getByLabel(i18nLabels.issueCreate.summaryLabel, { exact: true }).fill('보안등급 E2E 테스트 이슈')
 
     // When. 보안등급 셀렉터에서 Internal 선택
     const securitySelect = page.getByRole('combobox', {
