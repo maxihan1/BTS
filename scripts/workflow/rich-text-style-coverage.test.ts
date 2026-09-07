@@ -64,6 +64,19 @@ const CONTAINER = '.rich-text';
 const SPAN_RULE = '.mention';
 
 /**
+ * 시각 스타일을 줄 것이 **없는** 구조 태그.
+ *
+ * `br` 은 줄바꿈이라는 **제어 동작**이고 자체 박스가 없다. 여기에 규칙을 만들려면
+ * `line-height: inherit` 같은 no-op 을 써야 하는데, 아무것도 안 하는 CSS 를 커버리지
+ * 숫자를 맞추려고 넣는 것은 판별식을 **장식으로 만드는** 짓이다.
+ *
+ * ★**이 집합이 자라면 그 자체가 결함 신호다.** 아래 하한 단언이 크기 1을 못박아,
+ * 「스타일 쓰기 귀찮은 태그」를 여기로 도피시키는 경로를 막는다. 다른 구조 태그
+ * (`tbody`·`thead`·`tfoot`·`tr`)는 테두리·배경을 실제로 줄 수 있으므로 CSS 가 덮는다.
+ */
+const STRUCTURAL_TAGS: ReadonlySet<string> = new Set(['br']);
+
+/**
  * 비-공허 하한.
  *
  * 실측 시점 allowlist 는 30태그, CSS 도 같은 30태그다. 하한을 25 로 두어 파서가 눈이 멀거나
@@ -137,6 +150,7 @@ export function findUncoveredTags(
       if (!hasSpanRule) missing.push('span (전역 .mention 규칙 부재)');
       continue;
     }
+    if (STRUCTURAL_TAGS.has(tag)) continue;
     if (!styled.has(tag)) missing.push(tag);
   }
   return missing;
@@ -187,6 +201,16 @@ describe('리치 텍스트 CSS 커버리지', () => {
       findUncoveredTags(allowed, styled, hasSpanRule),
       [],
       'CSS 가 스타일을 주지 않는 허용 태그가 있다 — 저장은 되는데 화면에 안 보이는 서식이 생긴다.',
+    );
+  });
+
+  test('구조 태그 예외가 자라지 않았다 (도피 경로 차단)', () => {
+    // 이 집합은 「시각 스타일을 줄 것이 원리적으로 없는」 태그만 담는다. 하나라도 늘었다면
+    // 커버리지를 피하려고 태그를 여기로 옮겼을 가능성이 높다 — 그 판단을 사람이 다시 보게 한다.
+    assert.deepEqual(
+      [...STRUCTURAL_TAGS].sort(),
+      ['br'],
+      '구조 태그 예외가 바뀌었다 — 스타일을 쓰기 싫은 태그의 도피처가 되지 않았는지 확인할 것.',
     );
   });
 

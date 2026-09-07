@@ -483,6 +483,226 @@
   }
 }
 
+/* rich-text:start */
+/* 본문·댓글 리치 텍스트 서식 — 서버 sanitize allowlist(MarkdownRenderer.SANITIZE_POLICY)의 짝
+ *
+ * ## 왜 자체 CSS 인가 (plan 2026-09-07 D-1)
+ *
+ * `@tailwindcss/typography` 의 `prose` 를 쓰지 않는다. 그 플러그인의 스타일 대상 목록은
+ * **서버 allowlist 와 무관하게** 정해져, 둘이 갈려도 아무도 모른다 — 그것이 바로 이 블록이
+ * 수습하는 결함의 양식이다. 여기 목록은 `scripts/workflow/rich-text-style-coverage.test.ts`
+ * 가 sanitizer 와 **차집합 0** 으로 대조한다. 태그를 지우면 pre-push 에서 red 가 난다.
+ *
+ * ## 왜 브라우저 기본에 기대지 않나
+ *
+ * Tailwind v4 preflight 가 `ol, ul { list-style: none }` 으로 마커를 지우고 `h1`~`h6` 를
+ * `font-size: inherit` 로 리셋한다. 「기본으로 보이겠지」가 정확히 이 결함의 원인이었다 —
+ * 저장은 되는데 화면에 안 보이는 본문이 몇 달을 살았다. 그래서 `b`·`strong` 처럼 preflight
+ * 가 아직 살려 두는 것까지 **명시한다.**
+ *
+ * ## 색·간격
+ *
+ * 새 색을 만들지 않는다. 위 `:root` 가 정의한 ADS v2 토큰만 참조하므로 다크 모드가 자동으로
+ * 따라온다. 임의 hex·알파 금지(plan NFR N3).
+ */
+
+.rich-text {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* ── 문단 ─────────────────────────────────────────────────────────────────── */
+.rich-text p {
+  margin: 0 0 0.75em;
+}
+.rich-text > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── 제목 — preflight 가 inherit 로 리셋한 크기·굵기를 되돌린다 ────────────── */
+.rich-text h1,
+.rich-text h2,
+.rich-text h3,
+.rich-text h4,
+.rich-text h5,
+.rich-text h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.5em 0 0.5em;
+  color: var(--foreground);
+}
+.rich-text h1 { font-size: 1.5rem; }
+.rich-text h2 { font-size: 1.25rem; }
+.rich-text h3 { font-size: 1.125rem; }
+.rich-text h4 { font-size: 1rem; }
+.rich-text h5 { font-size: 0.9375rem; }
+.rich-text h6 { font-size: 0.875rem; color: var(--muted-foreground); }
+.rich-text > :first-child {
+  margin-top: 0;
+}
+
+/* ── 인라인 서식 ───────────────────────────────────────────────────────────── */
+.rich-text strong,
+.rich-text b {
+  font-weight: 600;
+}
+.rich-text em,
+.rich-text i {
+  font-style: italic;
+}
+.rich-text u {
+  text-decoration: underline;
+}
+.rich-text del,
+.rich-text s {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+/* ── 목록 — preflight 가 지운 마커를 되돌린다. Maxi 지적 2번의 직접 처방 ──── */
+.rich-text ul,
+.rich-text ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.625em;
+}
+.rich-text ul {
+  list-style-type: disc;
+}
+.rich-text ol {
+  list-style-type: decimal;
+}
+/* 중첩 마커 순환 — Jira 와 같다. 3단을 넘으면 다시 처음으로 돈다. */
+.rich-text ol ol { list-style-type: lower-alpha; }
+.rich-text ol ol ol { list-style-type: lower-roman; }
+.rich-text ul ul { list-style-type: circle; }
+.rich-text ul ul ul { list-style-type: square; }
+.rich-text li {
+  margin: 0.25em 0;
+}
+/* 목록 항목 안의 문단은 자체 여백을 갖지 않는다 — 안 그러면 항목 사이가 벌어진다. */
+.rich-text li > p {
+  margin: 0;
+}
+.rich-text li > ul,
+.rich-text li > ol {
+  margin: 0.25em 0 0;
+}
+
+/* ── 체크박스 목록 (TaskList) ─────────────────────────────────────────────── */
+/* `ul[data-type=taskList]` 은 TipTap 이 붙이는 표식이다. 마커를 지우고 체크박스가 그 자리를
+   대신한다 — 마커와 체크박스가 함께 나오면 두 번 세는 것처럼 보인다. */
+.rich-text ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+.rich-text ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+}
+.rich-text input[type='checkbox'] {
+  margin-top: 0.35em;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+
+/* ── 인용 ─────────────────────────────────────────────────────────────────── */
+.rich-text blockquote {
+  margin: 0 0 0.75em;
+  padding-left: 1em;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+/* ── 코드 ─────────────────────────────────────────────────────────────────── */
+.rich-text code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  background-color: var(--accent);
+  padding: 0.125em 0.3em;
+  border-radius: var(--radius-sm);
+}
+.rich-text pre {
+  margin: 0 0 0.75em;
+  padding: 0.75em 1em;
+  background-color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  /* 긴 코드가 레이아웃을 밀어내지 않게 자기 안에서 스크롤한다 (리뷰 D-4). */
+  overflow-x: auto;
+}
+/* 블록 안 코드는 인라인 배경·패딩을 걷는다 — 이중 배경이 되면 지저분하다. */
+.rich-text pre code {
+  background: none;
+  padding: 0;
+  font-size: inherit;
+}
+
+/* ── 구분선 ───────────────────────────────────────────────────────────────── */
+.rich-text hr {
+  margin: 1.5em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ── 표 ───────────────────────────────────────────────────────────────────── */
+/* 넓은 표도 본문을 밀어내지 않게 자기 안에서 스크롤한다 (리뷰 D-4). */
+.rich-text table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 0 0 0.75em;
+  border-collapse: collapse;
+  font-size: 0.9375em;
+}
+.rich-text thead {
+  background-color: var(--muted);
+}
+.rich-text tbody tr:nth-child(even) {
+  background-color: var(--muted);
+}
+.rich-text tfoot {
+  background-color: var(--muted);
+  font-weight: 600;
+}
+.rich-text tr {
+  border-bottom: 1px solid var(--border);
+}
+.rich-text th,
+.rich-text td {
+  border: 1px solid var(--border);
+  padding: 0.375em 0.625em;
+  text-align: left;
+  vertical-align: top;
+}
+.rich-text th {
+  font-weight: 600;
+}
+
+/* ── 이미지 ───────────────────────────────────────────────────────────────── */
+.rich-text img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  margin: 0.25em 0;
+}
+
+/* ── 링크 ─────────────────────────────────────────────────────────────────── */
+.rich-text a {
+  color: var(--brand-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.rich-text a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* `br` 은 시각 스타일 대상이 아니다 — 판별식의 STRUCTURAL_TAGS 가 그 사실을 명시한다.
+   `span` 은 `span[class=mention]` 만 허용되고 아래 전역 `.mention` 규칙이 스타일을 갖는다. */
+/* rich-text:end */
+
 /* FR-MN-01: 멘션(@username) 강조 — prose 인라인 흐름 유지(CONCERN-D1), 링크 오인 방지(EC11) */
 .mention {
   color: var(--brand-text);        /* 브랜드색 텍스트 토큰 — 다크에서 Blue400으로 AA 확보 (PR3 대비 계산: 라이트 4.64:1·다크 5.51:1) */
