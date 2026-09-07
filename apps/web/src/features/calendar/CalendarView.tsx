@@ -5,6 +5,7 @@ import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalSto
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { useCalendar } from '@/api/useCalendar'
 import { Button } from '@/components/ui/button'
+import { useProjectChromePresent } from '@/components/project/project-chrome-context'
 import { calendarLabels } from '@/i18n/calendar-labels'
 import { MonthGrid } from './MonthGrid'
 import { WeekGrid, toDateKey, formatDayLabel } from './WeekGrid'
@@ -158,6 +159,22 @@ export interface CalendarViewProps {
 }
 
 /**
+ * 캘린더 제목 — **셸 크롬이 없을 때만** 그린다 (Jira 패리티 J5-11 · 2026-09-07).
+ *
+ * 이 화면은 두 라우트가 쓴다 (편차 X9 폐기 · J5-12) — 전역 `/calendar` 와 프로젝트
+ * `/projects/$projectKey/calendar`. 후자에서는 셸의 `ProjectViewHeader` 가 프로젝트 이름을
+ * 이미 h1 으로 그렸고 탭이 「캘린더」라고 말한다. 여기서 또 그리면 문서에 h1 이 2개가 된다.
+ *
+ * 🛑 모듈 수준 컴포넌트로 둔다 — `CalendarView` 본문에서 훅을 부르면 그 함수가
+ *    200줄 래칫에 더 가까워지고, 조건부 렌더가 JSX 안에 한 줄 더 늘어난다.
+ */
+function CalendarPageTitle(): JSX.Element | null {
+  return useProjectChromePresent() ? null : (
+    <h1 className="text-2xl font-semibold">{calendarLabels.page.title}</h1>
+  )
+}
+
+/**
  * 개인 캘린더 페이지 컴포넌트(T5).
  *
  * 상단 툴바(이전/다음/오늘, 월↔주 토글) + 월/주 그리드 스위칭을 렌더한다. 현재 뷰의 조회창을
@@ -212,7 +229,7 @@ export function CalendarView({ initialDate }: CalendarViewProps = {}): JSX.Eleme
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6">
-      <h1 className="text-2xl font-semibold">{calendarLabels.page.title}</h1>
+      <CalendarPageTitle />
 
       <CalendarToolbar
         view={view}

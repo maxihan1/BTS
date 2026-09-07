@@ -213,7 +213,7 @@ export function DashboardsListPage(): JSX.Element {
         이미 h1 을 그렸으므로 제목을 접고(J5-11) 버튼만 그 제목행 우측으로 올린다(J5-9).
         `issues.index.tsx` 와 같은 판정·같은 폴백이다.
       */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 empty:hidden">
         {!chromeOwnsTitle && (
           <h1 className="text-xl font-semibold">{dashboardLabels.list.title}</h1>
         )}

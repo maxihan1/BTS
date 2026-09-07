@@ -87,6 +87,10 @@ function useIssueListRouteScope() {
  *
  * 프로젝트 스코프 라우트에서는 `ProjectViewHeader` 가 프로젝트 이름을 이미 h1 으로 그렸다.
  * 여기서 또 그리면 문서에 h1 이 2개가 된다. 전역 `/issues` 에는 크롬이 없으므로 그린다.
+ *
+ * 🛑 이 컴포넌트가 `null` 을 내고 형제 `ProjectHeaderActions` 가 포털로 빠지면 감싼 `<header>`
+ *    가 **DOM 상 빈 요소**가 된다. 그래서 그 줄에 `empty:hidden` 이 붙어 있다 — 없으면 탭바
+ *    아래에 `space-y-4` 만큼 빈 띠가 남는다(실측 · 눈확인 2026-09-07).
  */
 function IssueListPageTitle(): JSX.Element | null {
   return useProjectChromePresent() ? null : <h1 className="text-2xl font-semibold">이슈 목록</h1>
@@ -763,7 +767,7 @@ export function IssueListPage({
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-4">
       {/* 페이지 헤더 — 타이틀 + 새 이슈 진입점 (CREATE 권한 게이트 · J5-9 · J5-11) */}
-      <header className="flex items-center justify-between">
+      <header className="flex items-center justify-between empty:hidden">
         <IssueListPageTitle />
         <ProjectHeaderActions><NewIssueButton access={createAccess} /></ProjectHeaderActions>
       </header>
