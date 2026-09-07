@@ -6,6 +6,7 @@ import type { Editor } from '@tiptap/react'
 import { isMentionSuggestionActive } from './mention-extension'
 import { buildRichTextExtensions } from './rich-text-extensions'
 import { RichTextToolbar } from './RichTextToolbar'
+import { RICH_TEXT_CLASS } from './rich-text-class'
 import { useEditorImageUpload } from './use-editor-image-upload'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { editorLabels } from '@/i18n/editor-labels'
@@ -35,6 +36,13 @@ export interface RichTextEditorProps {
   autoFocus?: boolean
   /** 외부에서 포커스를 주기 위한 DOM 참조 — 단축키 `m` 이 댓글 입력으로 이동할 때 쓴다. */
   contentRef?: RefObject<HTMLDivElement | null>
+  /**
+   * 본문 최소 높이 Tailwind 클래스.
+   *
+   * 상세 화면은 넉넉해도 되지만 **생성 다이얼로그는 좁다** — 기본값 그대로 넣으면 본문이
+   * 종전 `rows={4}` textarea 보다 커져 아래 필드를 밀어낸다(리뷰 D-1). 화면이 높이를 정하게 연다.
+   */
+  minHeightClass?: string
 }
 
 /**
@@ -76,6 +84,7 @@ export function RichTextEditor({
   imageIssueKey,
   autoFocus = false,
   contentRef,
+  minHeightClass = 'min-h-[8rem]',
 }: RichTextEditorProps): JSX.Element {
   const uploadImages = useEditorImageUpload(imageIssueKey ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -98,8 +107,9 @@ export function RichTextEditor({
         'aria-label': ariaLabel,
         'aria-multiline': 'true',
         class: cn(
-          'prose prose-sm max-w-none px-3 py-2 min-h-[8rem] text-sm text-foreground',
-          'focus:outline-none',
+          RICH_TEXT_CLASS,
+          'px-3 py-2 text-sm text-foreground focus:outline-none',
+          minHeightClass,
         ),
       },
       handleKeyDown: (view, event) => {

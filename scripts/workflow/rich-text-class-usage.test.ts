@@ -57,12 +57,24 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /**
+ * 주석을 걷어낸다.
+ *
+ * ★**주석은 검사 대상이 아니다.** 이 블록이 없으면 「종전에는 `prose` 를 썼다」 같은 경위
+ * 설명이 위반으로 잡혀, 이유를 코드에 남길 자리가 사라진다. 판별식이 문서화를 막기 시작하면
+ * 사람은 이유를 안 적거나 표현을 비틀어 판정을 피한다 — 둘 다 판별식을 장식으로 만든다.
+ * (`jira-research-guard.test.ts` 가 같은 함정을 이미 밟았다.)
+ */
+export function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
+/**
  * 소스에서 죽은 `prose` 클래스 사용을 찾는다.
  *
  * `prosemirror` 같은 다른 낱말에 걸리지 않게 **클래스 토큰 경계**로 잰다.
  */
 export function findProseUsage(source: string): boolean {
-  return /(^|["'\s`])prose(-[a-z]+)?(["'\s`]|$)/m.test(source);
+  return /(^|["'\s`])prose(-[a-z]+)?(["'\s`]|$)/m.test(stripComments(source));
 }
 
 describe('리치 텍스트 클래스 사용', () => {
@@ -108,5 +120,16 @@ describe('리치 텍스트 클래스 사용', () => {
     assert.equal(findProseUsage("className={`prose ${x}`}"), true, '템플릿 리터럴 안의 `prose` 를 못 잡았다.');
     // 다른 낱말에 걸리면 안 된다 — `prosemirror` 는 무관하다.
     assert.equal(findProseUsage("import 'prosemirror-state'"), false, '`prosemirror` 를 오탐했다.');
+    // 주석 안의 경위 설명은 위반이 아니다. 막으면 이유를 적을 자리가 사라진다.
+    assert.equal(
+      findProseUsage('// 종전에는 prose 를 썼다\nconst a = 1'),
+      false,
+      '주석 안의 설명을 위반으로 잡았다 — 판별식이 문서화를 막으면 사람이 표현을 비틀어 피한다.',
+    );
+    assert.equal(
+      findProseUsage('/* prose 를 쓰지 않는다 */\n.rich-text { margin: 0 }'),
+      false,
+      'CSS 블록 주석 안의 설명을 위반으로 잡았다.',
+    );
   });
 });
