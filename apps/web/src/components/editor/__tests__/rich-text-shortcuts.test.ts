@@ -42,17 +42,26 @@ afterEach(() => {
 })
 
 /**
+ * `Mod` 가 어느 수식자로 풀리는지.
+ *
+ * ★`prosemirror-keymap` 은 `navigator.platform` 으로 mac 을 판정해 `Mod` 를 `Meta`(mac) 또는
+ * `Ctrl`(그 외)로 normalize 한다. jsdom 의 platform 은 mac 이 아니므로 `metaKey` 만 켜서
+ * 키를 쏘면 **어떤 단축키도 매치되지 않는다** — 실측 2026-09-07, 여섯 건이 전부 red 였다.
+ * 둘 다 켜는 것도 안 된다. `Meta-Ctrl-b` 라는 없는 조합이 되어 역시 매치가 안 난다.
+ */
+const MOD_IS_META = /Mac|iP(hone|[oa]d)/.test(navigator.platform)
+
+/**
  * 키를 쏜다.
  *
- * ProseMirror 키맵은 `view.someProp('handleKeyDown')` 경로로 처리되므로 실제 `KeyboardEvent`
- * 를 만들어 넣는다. `metaKey` 로 `Mod` 를 흉내낸다 — 테스트가 도는 jsdom 은 mac 이 기본이다.
+ * ProseMirror 키맵은 view 의 `handleKeyDown` 경로로 처리되므로 실제 `KeyboardEvent` 를 만든다.
  */
 function press(ed: Editor, key: string, opts: { shift?: boolean; alt?: boolean } = {}): void {
   ed.view.dom.dispatchEvent(
     new KeyboardEvent('keydown', {
       key,
-      metaKey: true,
-      ctrlKey: false,
+      metaKey: MOD_IS_META,
+      ctrlKey: !MOD_IS_META,
       shiftKey: opts.shift ?? false,
       altKey: opts.alt ?? false,
       bubbles: true,
