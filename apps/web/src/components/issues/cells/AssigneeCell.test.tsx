@@ -324,7 +324,15 @@ describe('renderAssigneeCell — 읽기 전용 경로 열람 숨김', () => {
       <>
         {column.render(
           { ...issueAtlas1Fixture, ...overrides },
-          { assigneeName: 'bob', formatDate: () => '', onNavigate: () => undefined },
+          {
+            assigneeName: 'bob',
+            typeIconName: null,
+            typeName: issueAtlas1Fixture.typeKey,
+            statusName: undefined,
+            statusCategory: undefined,
+            formatDate: () => '',
+            onNavigate: () => undefined,
+          },
         )}
       </>,
     )

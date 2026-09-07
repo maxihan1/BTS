@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { isFieldDisabled } from '@/components/issue/IssueMetaPanel'
 import { useIssueListCellField } from '@/hooks/use-issue-list-cell-field'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
+import { priorityVisual } from '../issue-visuals'
 import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
 
 /** 선택 가능한 우선순위 (1=가장 높음 ~ 5=가장 낮음) — IssuePrioritySelect 와 동일 집합 */
@@ -71,7 +72,35 @@ function resolvePriorityLabel(priority: number): string {
  * @returns 우선순위 텍스트 span
  */
 export function PriorityCellDisplay({ priority }: { priority: number }): JSX.Element {
-  return <span className="text-(--text-default)">{resolvePriorityLabel(priority)}</span>
+  // 아이콘·색 정본은 `issue-visuals.ts` 하나다 — 여기서 색을 직접 고르면 목록과 다른
+  // 소비처(추후 상세·보드)가 서로 다른 색을 말하게 된다.
+  const { Icon, colorClass } = priorityVisual(priority)
+  const label = resolvePriorityLabel(priority)
+
+  return (
+    // `block truncate` — 열을 좁히면 라벨이 줄임표로 잘린다(인라인 요소에는 `text-overflow`
+    // 가 걸리지 않아 블록이어야 한다). `title` 로 전문을 hover 노출한다.
+    //
+    // ★아이콘이 셀의 **첫 내용**이 되면서 텍스트 시작 위치가 오른쪽으로 밀렸다. 셀 왼쪽
+    //   패딩에서 시작하는 드래그는 이제 텍스트 앵커를 못 잡는다 — `user-select` 문제가
+    //   아니라 순수한 기하 이동이다(main 기준선 실측 대조 2026-09-07: main 은 +2 에서
+    //   잡히고 +24 에서 안 잡혔다. 지금은 그 반대다). 드래그 복사 회귀 가드
+    //   (`issue-list-inline-edit.spec.ts` §시각검증7)는 아이콘 **뒤**에서 시작하도록 갱신했다.
+    <span className="block max-w-full truncate text-(--text-default)" title={label}>
+      {/*
+        ★아이콘은 **장식**이다 — `aria-hidden` 으로 접근성 트리에서 뺀다. 라벨 텍스트가
+        바로 옆에 있어 이름을 두 번 읽히면 「높음 높음」이 된다.
+        `data-testid` 는 색·모양 판별식이 잡을 손잡이다. 색 클래스만으로는 같은 밴드의
+        두 단계(1↔2, 4↔5)를 구분하는 **모양** 계약을 잴 수 없다.
+      */}
+      <Icon
+        aria-hidden="true"
+        data-testid={`priority-icon-${priority}`}
+        className={`mr-1 inline-block size-4 align-text-bottom ${colorClass}`}
+      />
+      {label}
+    </span>
+  )
 }
 
 /** PriorityCellEditor props */

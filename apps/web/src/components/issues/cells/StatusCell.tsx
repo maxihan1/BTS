@@ -5,7 +5,10 @@ import type { QueryKey } from '@tanstack/react-query'
 import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { statusBadgeVariant } from '../issue-visuals'
+import type { StateCategory } from '../issue-visuals'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
 import { useIssueTransitions } from '@/hooks/use-issue-transitions'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
@@ -22,17 +25,33 @@ import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
  * 체크박스를 `role=checkbox` 로 한정해 이 배지와의 충돌을 피하고 있다). 편집 트리거로
  * 감싸도 이 role 과 className 이 배지에 그대로 남아야 한다.
  *
- * @param props 표시할 현재 상태 키
- * @returns 상태 배지 span
+ * 배지 자체는 `ui/badge.tsx` 프리미티브에 위임한다(계약 §4 — 새로 만들지 않는다). 종전의
+ * 손수 만든 span 은 `variant="neutral"` 과 같은 모양이라 회귀 0 이다.
+ *
+ * @param props 현재 상태 키 · 해석된 이름 · 해석된 카테고리
+ * @returns 상태 배지
  */
-export function StatusCellDisplay({ currentStateKey }: { currentStateKey: string }): JSX.Element {
+export function StatusCellDisplay({
+  currentStateKey,
+  statusName,
+  category,
+}: {
+  /** 백엔드가 준 원시 상태 키 — 이름 해석 실패 시의 폴백 표기다 */
+  currentStateKey: string
+  /** 워크플로우에서 해석한 표시 이름. 미해석이면 undefined */
+  statusName?: string
+  /** 워크플로우에서 해석한 상태 카테고리. 미해석이면 undefined → 중립색 */
+  category?: StateCategory
+}): JSX.Element {
+  const label = statusName ?? currentStateKey
+
   return (
-    <span
-      role="status"
-      className="inline-block shrink-0 rounded-full bg-(--bg-neutral) px-2 py-0.5 text-xs font-medium text-(--text-subtle)"
-    >
-      {currentStateKey}
-    </span>
+    // 배지는 `inline-flex` 라 배지 자신에게는 `text-ellipsis` 가 걸리지 않는다. 폭 상한을
+    // 셀에 맞추고(`max-w-full`) 안쪽 텍스트를 잘라야 좁힌 열에서 줄임표가 나온다.
+    // `title` — 잘린 전체 이름을 hover 로 볼 수 있게 한다(요약 셀과 같은 처방).
+    <Badge role="status" variant={statusBadgeVariant(category)} className="max-w-full" title={label}>
+      <span className="truncate">{label}</span>
+    </Badge>
   )
 }
 
@@ -130,6 +149,10 @@ export interface StatusCellProps {
   issue: IssueResponse
   /** 목록 queryKey — mutation 이 이 캐시를 낙관적으로 patch 한다 */
   listQueryKey: QueryKey
+  /** 워크플로우에서 해석한 상태 표시 이름. 미해석이면 원시 키로 폴백한다 */
+  statusName?: string
+  /** 워크플로우에서 해석한 상태 카테고리 — 배지 색의 근거 */
+  category?: StateCategory
 }
 
 /** StatusCellPopoverBody props */
@@ -188,7 +211,7 @@ function StatusCellPopoverBody({
  * @param props 대상 이슈 · 목록 queryKey
  * @returns 편집 가능한 상태 셀
  */
-export function StatusCell({ issue, listQueryKey }: StatusCellProps): JSX.Element {
+export function StatusCell({ issue, listQueryKey, statusName, category }: StatusCellProps): JSX.Element {
   const [open, setOpen] = useState(false)
   const [pendingDone, setPendingDone] = useState<IssueTransition | null>(null)
   const mutation = useIssueListCellField(listQueryKey)
@@ -235,9 +258,16 @@ export function StatusCell({ issue, listQueryKey }: StatusCellProps): JSX.Elemen
         onOpenChange={setOpen}
         // ★목록은 행이 여러 개다. 이슈 키를 접두로 붙이지 않으면 e2e strict mode 로 즉사한다
         label={`${issue.key} 상태 변경`}
-        // 접근성 이름에 현재 값을 함께 싣는다 (리뷰 C4) — 배지에 보이는 것과 같은 문자열
-        valueLabel={issue.currentStateKey}
-        display={<StatusCellDisplay currentStateKey={issue.currentStateKey} />}
+        // 접근성 이름에 현재 값을 함께 싣는다 (리뷰 C4) — 배지에 보이는 것과 같은 문자열.
+        // ★배지가 이름으로 바뀌었으므로 여기도 같은 폴백을 타야 둘이 어긋나지 않는다.
+        valueLabel={statusName ?? issue.currentStateKey}
+        display={
+          <StatusCellDisplay
+            currentStateKey={issue.currentStateKey}
+            statusName={statusName}
+            category={category}
+          />
+        }
       >
         <StatusCellPopoverBody
           issue={issue}

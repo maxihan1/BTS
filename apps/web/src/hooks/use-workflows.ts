@@ -38,6 +38,36 @@ export function useWorkflows() {
 }
 
 /**
+ * 워크플로우 목록에서 상태 키 → 표시 이름·카테고리 맵을 추출한다.
+ *
+ * 이슈 목록 상태 배지가 **원시 키 대신 이름을, 카테고리에 맞는 색을** 쓰기 위한 정본이다.
+ * 이슈 응답(`IssueResponse`)에는 `currentStateKey` 만 실려 오고 카테고리가 없어, 화면이
+ * 워크플로우에서 되짚는다.
+ *
+ * ★중복 키 처리는 {@link extractStatusOptions} 와 **같은 규칙**(첫 등장 채택)이다. 다르게
+ * 두면 같은 상태가 필터 드롭다운과 목록 배지에서 다른 이름으로 보인다 — 그 어긋남은
+ * 화면에서만 드러난다. 판별식이 두 함수의 결과를 맞대 본다.
+ *
+ * @param workflows 워크플로우 목록 (useWorkflows().data)
+ * @returns 상태 키 → `{ name, category }` 맵. 조회 전·실패면 호출 측이 빈 배열을 넘겨 빈 맵
+ */
+export function extractStatusMeta(
+  workflows: WorkflowView[],
+): Map<string, { name: string; category: WorkflowView['states'][number]['category'] }> {
+  const map = new Map<string, { name: string; category: WorkflowView['states'][number]['category'] }>()
+
+  for (const workflow of workflows) {
+    for (const state of workflow.states) {
+      if (!map.has(state.key)) {
+        map.set(state.key, { name: state.name, category: state.category })
+      }
+    }
+  }
+
+  return map
+}
+
+/**
  * 워크플로우 목록에서 상태 옵션 목록을 추출한다.
  *
  * 규칙.

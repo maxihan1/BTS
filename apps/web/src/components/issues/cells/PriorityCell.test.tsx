@@ -48,6 +48,39 @@ describe('PriorityCellDisplay', () => {
 
     expect(screen.getByText('9')).toBeInTheDocument()
   })
+
+  it('우선순위마다 색 밴드 클래스가 아이콘에 붙는다 (Jira 패리티)', () => {
+    const cases = [
+      [1, 'text-danger-text'],
+      [2, 'text-danger-text'],
+      [3, 'text-warning-text'],
+      [4, 'text-info-text'],
+      [5, 'text-info-text'],
+    ] as const
+
+    for (const [priority, colorClass] of cases) {
+      const { unmount } = render(<PriorityCellDisplay priority={priority} />)
+      expect(screen.getByTestId(`priority-icon-${priority}`)).toHaveClass(colorClass)
+      unmount()
+    }
+  })
+
+  it('같은 색 밴드의 두 단계는 아이콘 모양이 다르다 — 색만으로 구분하지 않는다', () => {
+    const { unmount } = render(<PriorityCellDisplay priority={1} />)
+    const highest = screen.getByTestId('priority-icon-1').innerHTML
+    unmount()
+
+    render(<PriorityCellDisplay priority={2} />)
+
+    expect(screen.getByTestId('priority-icon-2').innerHTML).not.toBe(highest)
+  })
+
+  it('아이콘은 장식이다 — 접근성 이름은 텍스트 라벨이 담당한다', () => {
+    render(<PriorityCellDisplay priority={1} />)
+
+    expect(screen.getByTestId('priority-icon-1')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByText(issueDetailStrings.priorityNames[1])).toBeInTheDocument()
+  })
 })
 
 describe('PriorityCellEditor', () => {

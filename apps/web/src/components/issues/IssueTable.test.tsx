@@ -4,9 +4,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { issueAtlas1Fixture, issueAtlas2Fixture, ISSUE_FILTER_BOB_ID } from '@/mocks/issue-fixtures'
+import { bugIssueTypeFixture, storyIssueTypeFixture } from '@/mocks/issue-type-fixtures'
+import type { IssueTypeResponse } from '@/api/issue-types'
 import { issueDetailStrings } from '@/i18n/ko'
 import { IssueTable } from './IssueTable'
-import type { IssueTableProps, IssueTableSelectionProps } from './IssueTable'
+import type { IssueTableProps, IssueTableSelectionProps, StatusMeta } from './IssueTable'
+import { ISSUE_COLUMN_DEFAULT_WIDTHS } from './issue-columns'
 import type { IssueCellEditContext } from './issue-columns'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +53,19 @@ vi.mock('@/hooks/use-issue-permissions', async (importOriginal) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 전체 컬럼 키 — issue-columns.ts ISSUE_COLUMNS와 동기화 */
-const ALL_COLUMN_KEYS = ['key', 'summary', 'status', 'assignee', 'priority', 'updatedAt']
+const ALL_COLUMN_KEYS = ['type', 'key', 'summary', 'status', 'assignee', 'priority', 'updatedAt']
+
+/** 유형 해석 맵 — issues.index.tsx 가 `useIssueTypes()` 결과로 만드는 것과 같은 모양 */
+const ISSUE_TYPES_BY_KEY = new Map<string, IssueTypeResponse>([
+  [bugIssueTypeFixture.key, bugIssueTypeFixture],
+  [storyIssueTypeFixture.key, storyIssueTypeFixture],
+])
+
+/** 상태 해석 맵 — issues.index.tsx 가 `useWorkflows()` 결과로 만드는 것과 같은 모양 */
+const STATUS_META_BY_KEY = new Map<string, StatusMeta>([
+  ['open', { name: '열림', category: 'TODO' }],
+  ['in_progress', { name: '진행 중', category: 'IN_PROGRESS' }],
+])
 
 /** 셀 인라인 편집 컨텍스트 — 목록 queryKey는 issues.index.tsx의 useQuery 키와 같은 모양이다 */
 const EDIT_CONTEXT: IssueCellEditContext = {
@@ -425,5 +440,132 @@ describe('IssueTable — 셀 인라인 편집 컨텍스트', () => {
     })
     // 열린 이슈 **하나만** 조회한다 — 다른 행 키로는 부르지 않는다
     expect(transitionsSpy).not.toHaveBeenCalledWith(issueAtlas2Fixture.key)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 이슈 유형 컬럼 · 상태 이름/색 해석 (Jira 패리티 — Type/Key/Summary/Status 앞머리)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueTable — 이슈 유형 컬럼', () => {
+  it('T-30: 유형 컬럼 헤더가 있고 행마다 유형 아이콘이 그려진다', () => {
+    renderTable({ issueTypesByKey: ISSUE_TYPES_BY_KEY })
+
+    expect(screen.getByRole('columnheader', { name: '유형' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '버그' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '스토리' })).toBeInTheDocument()
+  })
+
+  it('T-31: 유형 컬럼은 필수다 — 컬럼 선택에서 빠져도 사라지지 않는다', () => {
+    // 「목록에 이슈 유형이 안 나온다」의 재발 방지. localStorage 에 남은 옛 표시 목록에는
+    // `type` 이 없으므로, required 가 아니면 기존 사용자에게 영영 안 보인다.
+    renderTable({ visibleColumnKeys: ['key', 'summary'], issueTypesByKey: ISSUE_TYPES_BY_KEY })
+
+    expect(screen.getByRole('columnheader', { name: '유형' })).toBeInTheDocument()
+  })
+
+  it('T-32: 유형 해석에 실패하면 typeKey 원문을 접근성 이름으로 쓴다 (FR6 폴백)', () => {
+    // 조회 실패·로딩 중이면 빈 맵이 온다 — 이때 「알 수 없음」으로 뭉개지 않는다
+    renderTable({ issueTypesByKey: new Map() })
+
+    expect(screen.getByRole('img', { name: issueAtlas1Fixture.typeKey })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 컬럼 폭 조절 (Jira: drag the right border of a column to resize it)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueTable — 컬럼 폭', () => {
+  /** 컬럼 키 순서대로 `<col>` 의 인라인 폭(px)을 읽는다. 체크박스 열은 첫 칸이라 건너뛴다 */
+  function colWidths(): string[] {
+    return Array.from(document.querySelectorAll('colgroup col')).map(
+      (col) => (col as HTMLElement).style.width,
+    )
+  }
+
+  it('T-35: `<colgroup>` 이 체크박스 열 + 표시 중인 컬럼 폭을 px 로 선언한다', () => {
+    renderTable({ visibleColumnKeys: ALL_COLUMN_KEYS })
+
+    // 체크박스(구조적 고정 열) 1 + 데이터 컬럼 7
+    expect(colWidths()).toHaveLength(ALL_COLUMN_KEYS.length + 1)
+    expect(colWidths().every((width) => width.endsWith('px'))).toBe(true)
+  })
+
+  it('T-36: 전달된 폭이 기본 폭을 이긴다', () => {
+    renderTable({ widths: { ...ISSUE_COLUMN_DEFAULT_WIDTHS, summary: 456 } })
+
+    expect(colWidths()).toContain('456px')
+  })
+
+  it('T-37: 컬럼마다 폭 조절 손잡이가 있고 접근 가능한 이름을 가진다', () => {
+    renderTable()
+
+    // 표시 중인 컬럼 수만큼 — 체크박스 열에는 손잡이가 없다(조절 대상이 아니다)
+    expect(screen.getAllByRole('separator')).toHaveLength(ALL_COLUMN_KEYS.length)
+    expect(screen.getByRole('separator', { name: '요약 열 너비 조절' })).toBeInTheDocument()
+  })
+
+  it('T-38: 화살표 키로 폭을 조절한다 — 포인터 없이도 쓸 수 있어야 한다', async () => {
+    const onResizeColumn = vi.fn()
+    renderTable({ widths: { ...ISSUE_COLUMN_DEFAULT_WIDTHS, summary: 280 }, onResizeColumn })
+
+    const handle = screen.getByRole('separator', { name: '요약 열 너비 조절' })
+    handle.focus()
+    await userEvent.keyboard('{ArrowRight}')
+
+    expect(onResizeColumn).toHaveBeenCalledWith('summary', 296)
+  })
+
+  it('T-39: Shift + 화살표는 더 크게 움직인다', async () => {
+    const onResizeColumn = vi.fn()
+    renderTable({ widths: { ...ISSUE_COLUMN_DEFAULT_WIDTHS, summary: 280 }, onResizeColumn })
+
+    const handle = screen.getByRole('separator', { name: '요약 열 너비 조절' })
+    handle.focus()
+    await userEvent.keyboard('{Shift>}{ArrowLeft}{/Shift}')
+
+    expect(onResizeColumn).toHaveBeenCalledWith('summary', 216)
+  })
+
+  it('T-40: 손잡이 클릭이 정렬 헤더로 번지지 않는다', async () => {
+    // ★번지면 폭을 조절할 때마다 정렬이 뒤집힌다. 손잡이가 정렬 헤더 **안**에 있어서
+    //   전파를 끊지 않으면 반드시 일어난다.
+    const props = renderTable()
+
+    await userEvent.click(screen.getByRole('separator', { name: '요약 열 너비 조절' }))
+
+    expect(props.onSort).not.toHaveBeenCalled()
+  })
+
+  it('T-41: 손잡이는 현재 폭을 값으로 노출한다 (WAI-ARIA separator)', () => {
+    renderTable({ widths: { ...ISSUE_COLUMN_DEFAULT_WIDTHS, summary: 320 } })
+
+    const handle = screen.getByRole('separator', { name: '요약 열 너비 조절' })
+    expect(handle).toHaveAttribute('aria-valuenow', '320')
+    expect(handle).toHaveAttribute('aria-orientation', 'vertical')
+  })
+})
+
+describe('IssueTable — 상태 이름·색 해석', () => {
+  it('T-33: 상태 메타가 있으면 배지가 이름과 카테고리 색을 쓴다', () => {
+    renderTable({ statusMetaByKey: STATUS_META_BY_KEY })
+
+    const badges = screen.getAllByRole('status')
+    const open = badges.find((el) => el.textContent === '열림')
+    const inProgress = badges.find((el) => el.textContent === '진행 중')
+
+    expect(open).toHaveAttribute('data-variant', 'neutral')
+    expect(inProgress).toHaveAttribute('data-variant', 'blue')
+  })
+
+  it('T-34: 상태 메타가 없으면 원시 키 + 중립색으로 폴백한다 (회귀 0)', () => {
+    renderTable()
+
+    const badges = screen.getAllByRole('status')
+    expect(badges.map((el) => el.textContent)).toContain(issueAtlas1Fixture.currentStateKey)
+    for (const badge of badges) {
+      expect(badge).toHaveAttribute('data-variant', 'neutral')
+    }
   })
 })

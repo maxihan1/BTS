@@ -65,6 +65,23 @@ function transitionNameFrom(stateKey: string, wantDone: boolean): string {
   return found.name
 }
 
+/**
+ * 상태 배지에 실제로 보이는 표기 — 워크플로우에서 해석한 **이름**이다.
+ *
+ * ★`currentStateKey`(원시 키 `open`)가 아니다. 배지는 이제 `useWorkflows()` 로 이름을
+ * 풀어 `Open` 을 보인다 — 화면에 원시 키를 내지 않기 위한 의도된 변경이다.
+ * 키를 그대로 단정하면 「사용자가 보는 글자」가 아니라 「서버가 준 식별자」를 재는 셈이라,
+ * 표기를 고쳐도 테스트가 못 잡거나 지금처럼 무관하게 깨진다.
+ */
+function stateNameFrom(stateKey: string): string {
+  const found = softwareDefaultFixture.states.find((s) => s.key === stateKey)
+  if (found === undefined) throw new Error(`fixture 에 ${stateKey} 상태가 없다`)
+  return found.name
+}
+
+/** ATLAS-1(open) 상태 배지에 보이는 표기 — `Open` */
+const OPEN_STATE_LABEL = stateNameFrom(issueAtlas1Fixture.currentStateKey)
+
 /** ATLAS-1(open) 에서 나가는 비종료 전환 이름 — `Start Work` */
 const OPEN_NON_DONE_TRANSITION = transitionNameFrom(issueAtlas1Fixture.currentStateKey, false)
 
@@ -262,7 +279,7 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     })
     await gotoIssueList(page)
     const statusTrigger = editTrigger(page, TARGET_KEY, '상태')
-    await expect(statusTrigger).toHaveText(issueAtlas1Fixture.currentStateKey)
+    await expect(statusTrigger).toHaveText(OPEN_STATE_LABEL)
 
     // When 종료 전환을 고른 뒤 결의안을 고르지 않고 모달을 닫는다
     await statusTrigger.click()
@@ -272,7 +289,7 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     await dialog.getByRole('button', { name: '취소', exact: true }).click()
 
     // Then 상태는 그대로고 전환 요청은 한 번도 나가지 않았다
-    await expect(statusTrigger).toHaveText(issueAtlas1Fixture.currentStateKey)
+    await expect(statusTrigger).toHaveText(OPEN_STATE_LABEL)
     expect(transitionCalls).toBe(0)
   })
 
@@ -310,9 +327,15 @@ test.describe('FR-UX-11 F9 목록 셀 인라인 편집', () => {
     expect(box).not.toBeNull()
     if (box === null) return
 
-    // When 셀 텍스트 위를 실제로 드래그한다
+    // When 셀 텍스트 위를 실제로 드래그한다.
+    // ★시작점은 **우선순위 아이콘 바로 뒤**다. 아이콘이 셀 첫 내용이라 셀 왼쪽 패딩에서
+    //   시작하면 텍스트 앵커가 잡히지 않는다 — `user-select` 와 무관한 기하 문제이고,
+    //   이 테스트가 지키려는 것은 「`<button>` 으로 감싸도 텍스트를 복사할 수 있는가」다.
+    //   좌표를 박지 않고 아이콘 상자에서 계산해, 아이콘 크기가 바뀌어도 살아남게 한다.
+    const iconBox = await trigger.locator('[data-testid^="priority-icon-"]').boundingBox()
+    const startX = iconBox === null ? box.x + 2 : iconBox.x + iconBox.width + 1
     const y = box.y + box.height / 2
-    await page.mouse.move(box.x + 2, y)
+    await page.mouse.move(startX, y)
     await page.mouse.down()
     await page.mouse.move(box.x + box.width - 2, y, { steps: 8 })
     await page.mouse.up()

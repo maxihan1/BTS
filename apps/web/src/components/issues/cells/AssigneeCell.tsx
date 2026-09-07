@@ -211,7 +211,14 @@ export function AssigneeCellDisplay({
       </span>
     )
   }
-  return <span className="text-(--text-default)">{assigneeName ?? ASSIGNEE_UNASSIGNED}</span>
+  const label = assigneeName ?? ASSIGNEE_UNASSIGNED
+  // `title` — 열을 좁히면 셀이 줄임표로 자르므로(`issue-columns.ts` TRUNCATE_CELL_CLASS)
+  // 잘린 전체 이름을 hover 로 볼 수 있게 한다.
+  return (
+    <span className="text-(--text-default)" title={label}>
+      {label}
+    </span>
+  )
 }
 
 /** AssigneeCell props */
