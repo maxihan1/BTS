@@ -7,6 +7,7 @@ import { isMentionSuggestionActive } from './mention-extension'
 import { buildRichTextExtensions } from './rich-text-extensions'
 import { RichTextToolbar } from './RichTextToolbar'
 import { useEditorImageUpload } from './use-editor-image-upload'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { editorLabels } from '@/i18n/editor-labels'
 import { cn } from '@/lib/utils'
 
@@ -177,7 +178,17 @@ export function RichTextEditor({
   }, [editor, editable])
 
   return (
-    <div className="rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
+    // ★`TooltipProvider` 를 여기서 한 번 더 두는 이유 — Radix `Tooltip` 은 Provider 가 없으면
+    //   **throw 한다**(실측 2026-09-07: 「`Tooltip` must be used within `TooltipProvider`」로
+    //   에디터를 렌더하는 테스트 5파일 60건이 한꺼번에 죽었다). 앱 루트에 Provider 가 있어도
+    //   테스트·스토리북처럼 그 밖에서 이 컴포넌트를 렌더하는 자리가 실재하므로, 툴팁을 쓰는
+    //   컴포넌트가 스스로를 지키게 한다.
+    //
+    //   `ui/tooltip.tsx` 의 C6 경고(「self-wrap 하면 전역 delayDuration 이 조용히 덮인다」)에
+    //   걸리지 않는다 — 그 경고는 `Tooltip` **Root** 안에 Provider 를 넣는 것을 막는 것이고,
+    //   여기는 소비처다. `delayDuration` 을 넘기지 않아 값도 앱 루트와 같은 기본 0 이다.
+    <TooltipProvider>
+      <div className="rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
       <RichTextToolbar
         editor={editor}
         // 이슈가 없으면 이미지 경로 자체가 없다 — 버튼도 그리지 않는다.
@@ -201,6 +212,7 @@ export function RichTextEditor({
           }}
         />
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
