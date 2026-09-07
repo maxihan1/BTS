@@ -1,11 +1,13 @@
 // 일괄 작업 접수 mutation + 진행률 폴링 query 훅
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ZodError } from 'zod'
 import { ApiError } from '@/api/client'
 import { submitBulkOperation, fetchBulkOperation } from '@/api/bulk-operations'
 import type { Query } from '@tanstack/react-query'
 import type { BulkUpdateInput, BulkAccepted, BulkOperationResponse } from '@/api/bulk-operations'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 /**
  * 폴링 간격 (ms) — PENDING/RUNNING 상태에서 서버를 재조회하는 주기.
@@ -179,6 +181,7 @@ export function calculateProgressRatio(data: BulkOperationResponse | undefined):
  * @returns TanStack Query useQuery 반환 객체 + 진행률 파생값 `progressRatio`(0~1, 계산 불가 시 null)
  */
 export function useBulkOperationPolling(id: string | null, enabled: boolean) {
+  const queryClient = useQueryClient()
   const query = useQuery<BulkOperationResponse>({
     queryKey: bulkOperationQueryKey(id),
     queryFn: () => fetchBulkOperation(id as string),
@@ -187,6 +190,29 @@ export function useBulkOperationPolling(id: string | null, enabled: boolean) {
     retryDelay: POLL_INTERVAL_MS,
     refetchInterval: computeRefetchInterval,
   })
+
+  /**
+   * 작업이 끝나면 이슈를 보여 주는 화면을 갱신한다 (Maxi 보고 2026-09-07).
+   *
+   * 🛑 **제출 시점(`onSuccess`)이 아니라 종료 시점이다.** 일괄 작업은 서버에서 비동기로 도는
+   *    잡이라 제출 직후에는 아직 아무것도 안 바뀌어 있다. 그때 무효화하면 **바뀌기 전 값**을
+   *    다시 받아 캐시에 굳힌다 — 고치려는 증상이 그대로 남는다.
+   *
+   * 🛑 작업 **id 당 한 번**만 부른다. `refetchInterval` 이 종료 상태에서 멈추지만, 그 사이
+   *    리렌더마다 부르면 종료 프레임에서 무효화가 연달아 나가고 그 무효화가 다시 렌더를
+   *    부르는 고리가 생긴다.
+   *
+   * 어느 이슈가 바뀌었는지는 키로 열거하지 않는다 — 수십 건이고 접두 무효화로 충분하다
+   * (`invalidateIssueViews` KDoc 의 「이슈 키가 없으면」 항목).
+   */
+  const settledIdRef = useRef<string | null>(null)
+  const status = query.data?.status
+  useEffect(() => {
+    if (id === null || status === undefined || !TERMINAL_STATUSES.has(status)) return
+    if (settledIdRef.current === id) return
+    settledIdRef.current = id
+    void invalidateIssueViews(queryClient)
+  }, [id, status, queryClient])
 
   return {
     ...query,

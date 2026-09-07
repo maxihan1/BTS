@@ -5,8 +5,8 @@ import { toast } from 'sonner'
 import { cloneIssue } from './issues'
 import type { CloneIssueInput } from './issues'
 import { ApiError } from './client'
-import { issuesListQueryKey } from './useDeleteIssue'
 import { issueDetailStrings } from '@/i18n/ko'
+import { invalidateIssueViews } from './issue-view-invalidation'
 
 /** useCloneIssue mutate 입력 타입 */
 export interface CloneIssueMutateInput {
@@ -40,7 +40,8 @@ export function useCloneIssue() {
 
     onSuccess: async (newIssue) => {
       toast.success(issueDetailStrings.cloneSuccessToast)
-      await queryClient.invalidateQueries({ queryKey: issuesListQueryKey })
+      // 복제본은 목록뿐 아니라 보드·백로그에도 나타나야 한다.
+      await invalidateIssueViews(queryClient)
       void navigate({ to: `/issues/${newIssue.key}` as string })
     },
 

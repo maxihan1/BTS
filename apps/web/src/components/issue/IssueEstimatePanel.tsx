@@ -6,10 +6,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { updateIssue } from '@/api/issues'
 import type { IssueResponse } from '@/api/issues'
 import { ApiError } from '@/api/client'
-import { issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { Button } from '@/components/ui/button'
 import { formatSeconds, parseHm } from '@/lib/duration'
 import { worklogStrings, issueDetailStrings } from '@/i18n/ko'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -155,11 +155,11 @@ export function IssueEstimatePanel({
         remainingEstimateSeconds: hmDraftToApiValue(draft.remaining),
         expectedVersion: issue.version,
       })
-      await queryClient.invalidateQueries({ queryKey: issueQueryKey(issue.key) })
+      await invalidateIssueViews(queryClient, issue.key)
     } catch (err: unknown) {
       if (err instanceof ApiError && err.status === 409) {
         toast.error(issueDetailStrings.versionConflictError)
-        await queryClient.invalidateQueries({ queryKey: issueQueryKey(issue.key) })
+        await invalidateIssueViews(queryClient, issue.key)
       } else {
         toast.error(worklogStrings.estimateSaveError)
       }

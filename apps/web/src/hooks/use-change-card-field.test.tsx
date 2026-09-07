@@ -30,6 +30,10 @@ import { boardKeys } from './use-boards'
 // 테스트 픽스처
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 이 이슈를 함께 보여 주는 다른 화면들 — 무효화 계약의 대조 대상 */
+const LIST_KEY = ['issues', 'ATLAS', 0, {}, null]
+const BACKLOG_KEY = ['backlog', 'ATLAS', 'b-1']
+
 const BOARD_ID = 'b1a2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
 const COL_A_ID = 'ca000000-0000-4000-a000-000000000001'
 const USER_1 = 'u1000000-0000-4000-a000-000000000001'
@@ -175,6 +179,12 @@ describe('useChangeCardField', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     queryClient.setQueryData(boardKeys.detail(BOARD_ID), INITIAL_BOARD)
+    // 무효화 계약의 대조 대상 — 이 이슈를 함께 보여 주는 다른 화면들.
+    // 씨앗이 없으면 `getQueryState` 가 undefined 라 단언이 조용히 통과한다.
+    queryClient.setQueryData(LIST_KEY, { seeded: true })
+    queryClient.setQueryData(BACKLOG_KEY, { seeded: true })
+    queryClient.setQueryData(['issue', 'ATLAS-1'], { seeded: true })
+    queryClient.setQueryData(['issue', 'ATLAS-2'], { seeded: true })
   })
 
   afterEach(() => {
@@ -341,7 +351,6 @@ describe('useChangeCardField', () => {
 
   it('T-CF-7: 성공 시에도 onSettled가 invalidateQueries를 호출한다', async () => {
     vi.mocked(updateIssue).mockResolvedValue(buildPriorityChangedResponse())
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
       wrapper: createWrapper(queryClient),
@@ -358,15 +367,20 @@ describe('useChangeCardField', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID) }),
-    )
+    // 🛑 종전 단언은 **보드 캐시 하나**만 봤다. 그래서 같은 이슈를 이슈 목록·백로그에서 보고
+    //    있을 때 옛 값이 남는 것을 보지 못했다(Maxi 보고 2026-09-07).
+    //    이제 인자 모양이 아니라 **캐시 상태**를 잰다 — 구현이 접두로 덮든 열거하든
+    //    화면이 실제로 갱신되면 통과한다.
+    await waitFor(() => {
+      for (const key of [boardKeys.detail(BOARD_ID), LIST_KEY, BACKLOG_KEY, ['issue', 'ATLAS-2']]) {
+        expect(queryClient.getQueryState(key as unknown[])?.isInvalidated).toBe(true)
+      }
+    })
   })
 
   it('T-CF-8: 담당자 변경 실패 롤백 — ATLAS-1이 원래 담당자로 복원되고 toast.error + invalidateQueries가 호출된다', async () => {
     const error = Object.assign(new Error('OCC 충돌'), { status: 409 })
     vi.mocked(changeAssignee).mockRejectedValue(error)
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
       wrapper: createWrapper(queryClient),
@@ -392,9 +406,12 @@ describe('useChangeCardField', () => {
     expect(toast.error).toHaveBeenCalledWith(
       expect.stringContaining('담당자'),
     )
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID) }),
-    )
+    // 실패 경로도 같은 계약이다 — 롤백 후 서버 진실로 되맞추는 자리라 화면이 갈라지면 안 된다.
+    await waitFor(() => {
+      for (const key of [boardKeys.detail(BOARD_ID), LIST_KEY, BACKLOG_KEY, ['issue', 'ATLAS-1']]) {
+        expect(queryClient.getQueryState(key as unknown[])?.isInvalidated).toBe(true)
+      }
+    })
   })
 
   it('T-CF-9: 우선순위 변경 실패 롤백 — ATLAS-2가 원래 우선순위로 복원되고 toast.error가 호출된다', async () => {
@@ -504,6 +521,10 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
     queryClient.setQueryData(boardKeys.detail(BOARD_ID), EPIC_BOARD)
+    // 무효화 계약 대조 대상 — 씨앗이 없으면 `getQueryState` 가 undefined 라 단언이 조용히 통과한다.
+    queryClient.setQueryData(LIST_KEY, { seeded: true })
+    queryClient.setQueryData(BACKLOG_KEY, { seeded: true })
+    queryClient.setQueryData(['issue', 'ATLAS-1'], { seeded: true })
   })
 
   afterEach(() => {
@@ -606,7 +627,6 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
     vi.mocked(connectEpicChild)
       .mockRejectedValueOnce(connectError)
       .mockResolvedValueOnce(buildEpicChildSummary('ATLAS-1'))
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
       wrapper: createWrapper(queryClient),
@@ -639,9 +659,12 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
     expect(card?.epicKey).toBe(EPIC_A)
 
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('에픽'))
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID) }),
-    )
+    // 에픽 재배치도 이슈를 바꾸므로 같은 무효화 계약이다 — 인자 모양이 아니라 캐시 상태로 잰다.
+    await waitFor(() => {
+      for (const key of [boardKeys.detail(BOARD_ID), LIST_KEY, BACKLOG_KEY, ['issue', 'ATLAS-1']]) {
+        expect(queryClient.getQueryState(key as unknown[])?.isInvalidated).toBe(true)
+      }
+    })
   })
 
   it('T-EP-7: 이중 실패(disconnect 성공 → connect(B) 실패 → best-effort 재connect(A)도 실패) — console.error 기록 + 원 connectError throw + 롤백 + toast(리뷰 S5)', async () => {
@@ -652,7 +675,6 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
     vi.mocked(connectEpicChild)
       .mockRejectedValueOnce(connectError)
       .mockRejectedValueOnce(rollbackError)
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     const { result } = renderHook(() => useChangeCardField(BOARD_ID), {
       wrapper: createWrapper(queryClient),
@@ -694,9 +716,12 @@ describe('useChangeCardField — 에픽 2-step 재배치', () => {
     expect(card?.epicKey).toBe(EPIC_A)
 
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('에픽'))
-    expect(invalidateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: boardKeys.detail(BOARD_ID) }),
-    )
+    // 에픽 재배치도 이슈를 바꾸므로 같은 무효화 계약이다 — 인자 모양이 아니라 캐시 상태로 잰다.
+    await waitFor(() => {
+      for (const key of [boardKeys.detail(BOARD_ID), LIST_KEY, BACKLOG_KEY, ['issue', 'ATLAS-1']]) {
+        expect(queryClient.getQueryState(key as unknown[])?.isInvalidated).toBe(true)
+      }
+    })
   })
 
   it('T-EP-5: 낙관적 갱신은 최종값 1회 — disconnect가 아직 응답하지 않은 중간에도 캐시는 EPIC_B이고 null이 노출되지 않는다', async () => {

@@ -183,9 +183,26 @@ describe('useIssueListCellField', () => {
   // 바꾸면 409 VERSION_CONFLICT 가 나고 "다른 사용자가 이미 수정했습니다" 가 뜬다.
   // 다른 사용자는 없다. 전환 목록(`['issue-transitions', key]`)도 같은 이유로 낡는다.
   // ───────────────────────────────────────────────────────────────────────────
-  it('저장 후 상세 이슈·전환 목록 캐시까지 무효화한다 (리뷰 C1)', async () => {
+  /**
+   * 저장 뒤 **이 이슈를 보여 주는 화면 전부**가 갱신된다 (Maxi 보고 2026-09-07).
+   *
+   * 🛑 종전 단언은 `invalidateQueries` 가 받은 **인자 모양**을 봤다. 그래서 이 목록 페이지·
+   *    상세·전환 셋만 재고, **보드·백로그가 빠진 것**을 보지 못했다 — 같은 이슈를 보드에서
+   *    보고 있으면 새로고침 전까지 옛 값이었다.
+   *
+   * 지금은 인자가 아니라 **캐시 상태**를 잰다. 접두로 덮든 정확한 키를 열거하든, 화면이
+   * 실제로 갱신되면 통과하고 아니면 red 다 — 구현 방식이 바뀌어도 계약이 살아남는다.
+   */
+  it('저장 후 이 이슈를 보여 주는 화면 캐시가 전부 stale 이 된다', async () => {
     vi.mocked(updateIssue).mockResolvedValue(makeIssue({ priority: 1, version: 2 }))
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const BOARD_KEY = ['board', 'b-1', {}]
+    const BACKLOG_KEY = ['backlog', 'ATLAS', 'b-1']
+    const DETAIL_KEY = ['issue', 'ATLAS-1']
+    const TRANSITIONS_KEY = ['issue-transitions', 'ATLAS-1']
+    for (const key of [BOARD_KEY, BACKLOG_KEY, DETAIL_KEY, TRANSITIONS_KEY]) {
+      queryClient.setQueryData(key, { seeded: true })
+    }
 
     const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
       wrapper: createWrapper(queryClient),
@@ -201,12 +218,11 @@ describe('useIssueListCellField', () => {
     })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    const invalidatedKeys = invalidateSpy.mock.calls.map((call) =>
-      JSON.stringify(call[0]?.queryKey),
-    )
-    expect(invalidatedKeys).toContain(JSON.stringify(LIST_KEY))
-    expect(invalidatedKeys).toContain(JSON.stringify(['issue', 'ATLAS-1']))
-    expect(invalidatedKeys).toContain(JSON.stringify(['issue-transitions', 'ATLAS-1']))
+    await waitFor(() => {
+      for (const key of [LIST_KEY, BOARD_KEY, BACKLOG_KEY, DETAIL_KEY, TRANSITIONS_KEY]) {
+        expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+      }
+    })
   })
 
   it('실패해도 상세 캐시를 무효화한다 — onSettled 경로 (리뷰 C1)', async () => {

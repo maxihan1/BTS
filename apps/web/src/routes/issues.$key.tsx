@@ -55,6 +55,7 @@ import { classifyMetaMutationError } from '@/components/issue/meta/meta-mutation
 // 전환 불가 사유 판정(스펙 E5) — 목록 상태 셀과 공용이라 lib 로 승격했다 (FR-UX-11 F9).
 // 복제하면 상세와 목록이 같은 응답을 서로 다르게 설명하게 된다.
 import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 헬퍼 — pane variant 헤더/포커스/Escape (FR-UX-06 PR20 Task 1)
@@ -467,7 +468,7 @@ export function IssueDetailPage({
     const kind = classifyMetaMutationError(err)
     if (kind === 'version-conflict') {
       toast.error(issueDetailStrings.versionConflictError)
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
       return
     }
     // 커스텀 필드 검증 실패는 **재시도해도 안 되는** 입력 문제라 폴백 문구
@@ -493,7 +494,7 @@ export function IssueDetailPage({
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, issueDetailStrings.typeChangeError)
@@ -506,7 +507,7 @@ export function IssueDetailPage({
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, issueDetailStrings.typeChangeError)
@@ -519,7 +520,7 @@ export function IssueDetailPage({
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, issueDetailStrings.priorityChangeError)
@@ -532,7 +533,7 @@ export function IssueDetailPage({
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, issueDetailStrings.impactChangeError)
@@ -545,7 +546,7 @@ export function IssueDetailPage({
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, issueDetailStrings.environmentSaveError)
@@ -558,7 +559,7 @@ export function IssueDetailPage({
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — PATCH 응답의 descriptionHtml은 항상 null이라
       // 본문이 placeholder로 깜빡인다. invalidate 후 단건 GET refetch가 모든 필드를 정확히 채운다.
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, issueDetailStrings.labelsSaveError)
@@ -570,7 +571,7 @@ export function IssueDetailPage({
       updateIssue(issueKey, { customFields, expectedVersion }),
     onSuccess: () => {
       // C2: setQueryData(updatedIssue) 금지 — invalidate-only로 최신 데이터 refetch
-      void queryClient.invalidateQueries({ queryKey: issueQueryKey(issueKey) })
+      void invalidateIssueViews(queryClient, issueKey)
     },
     onError: (err: unknown) => {
       handleMetaMutationError(err, '커스텀 필드 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.')
