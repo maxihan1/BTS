@@ -43,7 +43,20 @@ describe('PublicGadgetRenderer — 화이트리스트 통과 (정적 가젯)', (
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('PublicGadgetRenderer — 화이트리스트 차단 (fail-closed)', () => {
-  const dataGadgetTypes = ['assigned_to_me', 'recently_created', 'filter_result', 'issue_count']
+  // ★이 목록은 「명시 확인」이지 안전장치가 아니다. 안전은 아래 「미지 타입 자동 차단」이 진다 —
+  //   PublicGadgetRenderer 는 화이트리스트(정적 2종)만 통과시키므로 **어떤 신규 타입도** 자동으로
+  //   막힌다. 그래도 이 PR 이 켠 4종을 여기 적는 이유는, 켜는 순간 공개 대시보드에 실릴 수 있는
+  //   타입이 늘어난 것이 눈에 보이게 하기 위해서다(백엔드 쪽 짝은 AnonymousLayoutSanitizerTest).
+  const dataGadgetTypes = [
+    'assigned_to_me',
+    'recently_created',
+    'filter_result',
+    'issue_count',
+    'pie_chart',
+    'bar_chart',
+    'sprint_burndown',
+    'activity_stream',
+  ]
 
   it.each(dataGadgetTypes)('%s → 로그인 필요 플레이스홀더를 표시하고 네트워크 호출이 없다', (gadgetType) => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')

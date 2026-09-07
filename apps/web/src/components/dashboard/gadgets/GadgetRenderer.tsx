@@ -7,6 +7,9 @@ import { IssueListGadget } from './IssueListGadget'
 import { IssueCountGadget } from './IssueCountGadget'
 import { TextWidgetGadget } from './TextWidgetGadget'
 import { LinkListGadget } from './LinkListGadget'
+import { DistributionChartGadget } from './DistributionChartGadget'
+import { SprintBurndownGadget } from './SprintBurndownGadget'
+import { ActivityStreamGadget } from './ActivityStreamGadget'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -59,6 +62,21 @@ export function GadgetRenderer({ tile }: GadgetRendererProps): JSX.Element | nul
     case 'link_list':
       return <LinkListGadget links={extractLinks(config)} />
 
+    // 분포 차트 2종 — 같은 데이터를 다른 마크로 그린다(M-4). 스코프는 프로젝트다(X-JD-1).
+    case 'pie_chart':
+      return <DistributionChartGadget variant="pie" config={toGadgetConfig(config)} />
+
+    case 'bar_chart':
+      return <DistributionChartGadget variant="bar" config={toGadgetConfig(config)} />
+
+    // boardId 를 받아 활성 스프린트를 자동으로 따라간다(M-3).
+    case 'sprint_burndown':
+      return <SprintBurndownGadget config={toGadgetConfig(config)} />
+
+    // 프로젝트 기준이다 — Jira 의 「your」 기준과 다르다(X-JD-5).
+    case 'activity_stream':
+      return <ActivityStreamGadget config={toGadgetConfig(config)} />
+
     default:
       // EC6 — 미지원 가젯 타입: 페이지를 망가뜨리지 않고 안내 메시지만 표시
       return (
@@ -86,6 +104,10 @@ function toGadgetConfig(config: Record<string, unknown> | undefined): GadgetConf
     projectKey: typeof config['projectKey'] === 'string' ? config['projectKey'] : undefined,
     filterId: typeof config['filterId'] === 'string' ? config['filterId'] : undefined,
     maxItems: typeof config['maxItems'] === 'number' ? config['maxItems'] : undefined,
+    // ★분포 차트·번다운이 쓰는 두 필드. 여기서 빠뜨리면 config 는 저장돼 있는데 가젯이
+    //   못 읽어 「설정이 필요합니다」로만 뜬다 — 사용자에겐 저장이 안 된 것처럼 보인다.
+    field: typeof config['field'] === 'string' ? config['field'] : undefined,
+    boardId: typeof config['boardId'] === 'string' ? config['boardId'] : undefined,
   }
 }
 
