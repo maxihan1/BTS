@@ -8,6 +8,7 @@ import { ApiError } from '@/api/client'
 import { BurndownChart } from '@/components/burndown/BurndownChart'
 import { burndownLabels } from '@/i18n/burndown-labels'
 import { Skeleton } from '@/components/ui/skeleton'
+import { sprintBurndownKeys } from '@/hooks/use-sprint-burndown'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상태별 서브컴포넌트
@@ -121,7 +122,7 @@ export interface SprintBurndownPageProps {
  */
 export function SprintBurndownPage({ sprintId, view, onViewChange }: SprintBurndownPageProps): JSX.Element {
   const { data, isPending, isError, error } = useQuery({
-    queryKey: ['sprint-burndown', sprintId],
+    queryKey: sprintBurndownKeys.detail(sprintId),
     queryFn: () => fetchSprintBurndown(sprintId),
     enabled: sprintId !== '',
   })
