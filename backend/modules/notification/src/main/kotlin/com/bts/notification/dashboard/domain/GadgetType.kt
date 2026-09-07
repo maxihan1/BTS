@@ -184,13 +184,13 @@ enum class GadgetType(
     PIE_CHART(
         key = "pie_chart",
         category = GadgetCategory.CHART,
-        enabled = false,
+        enabled = true,
         configFields = DISTRIBUTION_CHART_FIELDS,
     ),
     BAR_CHART(
         key = "bar_chart",
         category = GadgetCategory.CHART,
-        enabled = false,
+        enabled = true,
         configFields = DISTRIBUTION_CHART_FIELDS,
     ),
     CREATED_VS_RESOLVED(
@@ -206,7 +206,7 @@ enum class GadgetType(
     SPRINT_BURNDOWN(
         key = "sprint_burndown",
         category = GadgetCategory.CHART,
-        enabled = false,
+        enabled = true,
         configFields =
             listOf(
                 ConfigFieldDescriptor("boardId", FieldType.UUID, required = true),
@@ -215,7 +215,7 @@ enum class GadgetType(
     ACTIVITY_STREAM(
         key = "activity_stream",
         category = GadgetCategory.ACTIVITY,
-        enabled = false,
+        enabled = true,
         configFields =
             listOf(
                 ConfigFieldDescriptor("projectKey", FieldType.STRING, required = false, maxLength = 100),
