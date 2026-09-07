@@ -79,8 +79,9 @@ export function IssueDetailSidePanel(): JSX.Element | null {
       //   안쪽 두 열이 각자 갖고, 패널은 높이 경계만 준다.
       className="flex w-[800px] min-w-0 max-w-[55vw] shrink-0 flex-col overflow-hidden border-l border-border bg-background"
     >
-      {/* `min-h-0` 이 없으면 flex 자식의 최소 높이가 콘텐츠 높이라 안쪽 스크롤이 죽는다. */}
-      <div className="min-h-0 flex-1 px-2 pb-2">
+      {/* `min-h-0` 이 없으면 flex 자식의 최소 높이가 콘텐츠 높이라 안쪽 스크롤이 죽는다.
+          ★`flex flex-col` 도 필수다 — 이유는 `IssueDetailModal` 의 같은 줄과 같다. */}
+      <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
         {/* key 로 이슈 전환 시 인스턴스를 강제 재마운트한다 — confirmDelete/isEditingTitle 같은
             잔여 state 가 다음 이슈로 이월되면 **잘못된 이슈가 삭제된다**(split view CONCERNS-3
             과 같은 이유). */}

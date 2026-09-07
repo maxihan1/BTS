@@ -1004,16 +1004,23 @@ export function IssueDetailPage({
   // `ShellLayout` 의 `<main overflow-y-auto>` 안에서 흘러 스크롤이 하나였고, 긴 본문을
   // 읽으려 내리면 담당자·상태 같은 메타가 화면 밖으로 사라졌다.
   //
-  // ★`h-full min-h-0` 이 이 구조의 **전제**다. `<main>` 이 `flex-1 overflow-y-auto` 라
-  //   높이가 확정돼 있고, 여기서 그 높이를 정확히 채워야 바깥 스크롤이 발동하지 않는다.
-  //   `min-h-0` 이 빠지면 flex 자식의 최소 높이가 콘텐츠 높이가 되어 컨테이너가 늘어나고,
+  // ★높이를 **두 방식으로** 받는다 — `h-full` 과 `flex-1`. 한쪽만으로는 표시 방식 3종을
+  //   못 덮는다(2026-09-07 실측).
+  //   - 전체화면. 부모가 `<main>`(block)이고 그 높이는 `h-screen` 사슬로 **확정**돼 있다.
+  //     `h-full`(=100%)이 해소되고 `flex-1` 은 무해한 무동작이다.
+  //   - 모달·사이드패널. 껍데기는 `max-h-[90vh]` 뿐 **확정 높이가 없다.** 그런 flex 컨테이너의
+  //     자식 높이는 백분율 해소에 쓸 수 없어 `h-full` 이 조용히 `auto` 로 떨어진다 — 실측에서
+  //     루트가 414px 대신 **2646px** 로 늘어 안쪽 스크롤이 통째로 죽었다. 그래서 `flex-1` 이
+  //     그 자리를 받는다(껍데기를 flex 로 두는 것이 짝이다).
+  //
+  // ★`min-h-0` 이 빠지면 flex 자식의 최소 높이가 콘텐츠 높이가 되어 컨테이너가 늘어나고,
   //   안쪽 `overflow-y-auto` 는 선언돼 있어도 **한 번도 발동하지 않는다**.
   //   같은 조합을 `routes/issues.index.tsx` 의 split view 가 먼저 쓰고 있다.
   //
   // ★세로 여백을 루트가 아니라 **각 영역**이 갖는다. 루트에 `py-10` 을 두면 그 여백이
   //   스크롤 영역 **밖**에 남아 스크롤 가능 높이를 그만큼 깎는다.
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-[960px] flex-col px-6 pt-10">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[960px] flex-1 flex-col px-6 pt-10">
       <IssueDetailHeader
         issue={issue}
         variant={variant}

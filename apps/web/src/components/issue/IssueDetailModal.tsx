@@ -71,8 +71,11 @@ export function IssueDetailModal(): JSX.Element | null {
             자기 <h2> 로 그리므로 여기서는 스크린리더 전용으로만 둔다. */}
         <DialogTitle className="sr-only">{`이슈 상세 ${openKey}`}</DialogTitle>
         {/* `min-h-0` 이 없으면 flex 자식의 최소 높이가 콘텐츠 높이라 모달이 늘어나고,
-            안쪽 `overflow-y-auto` 가 한 번도 발동하지 않는다. */}
-        <div className="min-h-0 flex-1 px-2 pb-2">
+            안쪽 `overflow-y-auto` 가 한 번도 발동하지 않는다.
+            ★`flex flex-col` 도 필수다 — 상세 루트는 `max-h` 만 있는 껍데기 안에서 `h-full` 로
+              높이를 못 받고(백분율이 해소되지 않는다) `flex-1` 로 받는다. 이 줄이 block 이면
+              그 `flex-1` 이 무동작이 되어 루트가 콘텐츠 높이로 늘어난다(실측 414 → 2646). */}
+        <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
           <IssueDetailPage
             issueKey={openKey}
             variant="pane"
