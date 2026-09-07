@@ -481,7 +481,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   return (
     <div className="p-6 space-y-4">
-      {/* 프로젝트 즐겨찾기 + 이슈 생성 진입점 (분기 공통 헤더) */}
+      {/* 이슈 생성 진입점(셸 헤더로 포털) + 생성 모달 — 분기 공통 (J5-9) */}
       {boardHeaderPortals}
 
       {/* 헤더 행 — 보드 스위처 + 스윔레인 셀렉터. `data-testid` 는 e2e 스코프 전용이고 접근성 트리·렌더 영향 0 이다 (사유. `e2e/fixtures/board-helpers.ts` · `docs/design/jira-parity-contract.md` §2) */}
