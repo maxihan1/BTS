@@ -208,7 +208,7 @@ async function openBoardSettings(page: Page): Promise<void> {
   await boardActionsTrigger(page).click()
   await page.getByRole('menuitem', { name: boardLabels.actions.settingsItem }).click()
   await expect(
-    page.getByRole('heading', { level: 1, name: boardLabels.settings.pageHeading }),
+    page.getByRole('heading', { level: 2, name: boardLabels.settings.pageHeading }),
   ).toBeVisible()
 }
 

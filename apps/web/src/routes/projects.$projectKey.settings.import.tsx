@@ -249,7 +249,7 @@ export function ProjectImportSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{importLabels.pageHeading}</h1>
+        <h2 className="text-xl font-semibold">{importLabels.pageHeading}</h2>
       </header>
       {isResolving ? (
         // 형제 페이지는 로딩 프레임에서 헤더까지 감추지만, 여기서는 h1 을 남긴다 —

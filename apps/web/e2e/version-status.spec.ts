@@ -88,7 +88,7 @@ test.describe('버전 상태 전환 (FR-VR-02)', () => {
     // alice 로 로그인 후 버전 설정 페이지 진입
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
     // 저장소 격리 — 각 테스트 시작 시 versionStore 초기화
     await resetVersionHandlerState(page)
   })

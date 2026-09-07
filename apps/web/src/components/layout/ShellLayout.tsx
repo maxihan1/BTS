@@ -168,11 +168,14 @@ export function ShellLayout(): JSX.Element {
           />
         )}
         <main className="min-w-0 flex-1 overflow-y-auto">
-          {/* 프로젝트 뷰 탭바 (Jira 패리티 J5) — 경로에 projectKey 가 있을 때만 스스로 마운트한다.
-              여기 한 줄이 프로젝트 하위 20여 화면 전부에 같은 탭을 준다. 페이지마다 심으면
-              하나 빠뜨린 화면만 탭이 없어지고, 실제로 그 상태였다(보드·백로그 둘만 있었다). */}
-          <ProjectViewChrome />
-          <Outlet />
+          {/* 프로젝트 크롬 (Jira 패리티 J5) — 제목 헤더 + 탭바. 경로에 projectKey 가 있을 때만
+              스스로 마운트한다. 여기 한 곳이 프로젝트 하위 20여 화면 전부에 같은 정체성 줄을
+              준다. 페이지마다 심으면 하나 빠뜨린 화면만 사라지고, 실제로 그 상태였다.
+              🛑 `<Outlet/>` 을 **자식으로 넘긴다** — 크롬 컨텍스트가 본문까지 닿아야 페이지가
+                 액션을 헤더로 올리고(J5-9) 자기 제목을 접는다(J5-11). */}
+          <ProjectViewChrome>
+            <Outlet />
+          </ProjectViewChrome>
         </main>
         {/* 이슈 상세 사이드패널 (Jira 패리티 J1) — `<main>` 의 **형제**라야 flex 가 본문을
             밀어내 목록·보드와 나란히 보인다. 오버레이로 덮으면 「옆에서 같이 본다」는 목적이

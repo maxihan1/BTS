@@ -126,7 +126,7 @@ test.describe('FR-TT-02 워크로그 집계 보고 (WorklogAggregateReport)', ()
 
     // 페이지 헤더 로드 대기 (h1 렌더 = 컴포넌트 마운트 신호)
     await expect(
-      page.getByRole('heading', { name: labels.page.title, level: 1 }),
+      page.getByRole('heading', { name: labels.page.title, level: 2 }),
     ).toBeVisible()
 
     // Then. by=issue 기본 — 표 헤더 확인
@@ -190,7 +190,7 @@ test.describe('FR-TT-02 워크로그 집계 보고 (WorklogAggregateReport)', ()
 
     // 페이지 헤더 로드 대기
     await expect(
-      page.getByRole('heading', { name: labels.page.title, level: 1 }),
+      page.getByRole('heading', { name: labels.page.title, level: 2 }),
     ).toBeVisible()
 
     // Then. 빈 상태 메시지 표시

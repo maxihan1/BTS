@@ -86,7 +86,7 @@ const MISSING_PROJECT_IMPORT_URL = '/projects/BOGUS/settings/import'
 async function loginAndNavigateToImportPage(page: Page): Promise<void> {
   await loginAsAlice(page)
   await page.goto(IMPORT_URL)
-  await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 1 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 2 })).toBeVisible()
 }
 
 /**
@@ -245,7 +245,7 @@ test.describe('FR-IM-01 D6/D7 CSV/JSON Import (S1 렌더 / S2 happy path / S3 FA
     // Then. 거부 카드 + 사유. 페이지 정체성(h1)은 남는다 — 「왜 빈 화면이지」가 되면 안 된다.
     await expect(page.getByTestId('import-create-denied')).toBeVisible()
     await expect(page.getByText('이 프로젝트에 이슈를 생성할 권한이 없습니다.')).toBeVisible()
-    await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 2 })).toBeVisible()
 
     // Then. 두 모드 모두 진입 불가 — 폼도 모드 토글도 없다.
     await expect(page.getByLabel('가져올 파일', { exact: true })).toHaveCount(0)
@@ -264,6 +264,6 @@ test.describe('FR-IM-01 D6/D7 CSV/JSON Import (S1 렌더 / S2 happy path / S3 FA
     // Then. 부재 카드가 이긴다 — 거부 카드가 아니다.
     await expect(page.getByText('프로젝트를 찾을 수 없습니다')).toBeVisible()
     await expect(page.getByTestId('import-create-denied')).toHaveCount(0)
-    await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '가져오기(Import)', level: 2 })).toBeVisible()
   })
 })

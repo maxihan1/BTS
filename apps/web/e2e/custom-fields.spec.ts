@@ -84,7 +84,7 @@ test.describe('S1 커스텀 필드 정의 생성 (FR-IS-10)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S1-A SHORT_TEXT 필드 생성 → 목록 표시', async ({ page }) => {
@@ -158,7 +158,7 @@ test.describe('S2 커스텀 필드 정의 수정 (FR-IS-10)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S2 수정 Dialog — fieldType/key readonly + name 변경 저장 → 갱신 반영', async ({ page }) => {
@@ -214,7 +214,7 @@ test.describe('S3 커스텀 필드 정의 삭제 (FR-IS-10)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S3 삭제 — 인라인 확인 후 삭제 → 목록에서 사라짐', async ({ page }) => {
@@ -267,7 +267,7 @@ test.describe('S4 커스텀 필드 관리 권한 게이팅 (FR-IS-10)', () => {
 
     // When. 커스텀 필드 설정 페이지 진입 (이 goto부터 플래그 적용)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
 
     // Then. "필드 추가" 버튼 disabled (fail-closed 게이팅)
     const addButton = page.getByRole('button', { name: labels.addButton })
@@ -379,7 +379,7 @@ test.describe('S6-A 커스텀 필드 클라이언트 검증 (FR-IS-10)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S6-A SINGLE_SELECT 옵션 0개일 때 저장 버튼 disabled → 옵션 추가 후 활성화', async ({ page }) => {
@@ -426,7 +426,7 @@ test.describe('S6-B 커스텀 필드 서버 에러 처리 (FR-IS-10)', () => {
 
     // When. 커스텀 필드 설정 페이지 진입
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
 
     // "필드 추가" 클릭 → Dialog 열기
     await page.getByRole('button', { name: labels.addButton }).click()

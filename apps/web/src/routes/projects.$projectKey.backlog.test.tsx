@@ -232,10 +232,12 @@ describe('BacklogPage', () => {
   /**
    * T-BL-R3. Page가 "백로그" h1 헤더를 렌더한다.
    */
-  it('T-BL-R3: BacklogPage가 "백로그" 헤더를 렌더한다', () => {
+  it('T-BL-R3: BacklogPage 는 제목 h1 을 렌더하지 않는다 (셸이 소유 · J5-11)', () => {
     renderPage('ATLAS')
 
-    expect(screen.getByRole('heading', { level: 1, name: '백로그' })).toBeInTheDocument()
+    // 🛑 제목행은 셸이 가져갔다 (J5-11 · 2026-09-07) — 탭이 이미 「백로그」라고 말하므로
+    //    본문이 같은 말을 반복하지 않는다. 페이지에는 어떤 h1 도 남지 않는다.
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0)
   })
 
   /**
@@ -260,7 +262,9 @@ describe('BacklogPage', () => {
 
     // 🛑 앵커 먼저. 부재만 단언하면 페이지가 통째로 안 그려져도 초록이다 — 이 파일이
     //    막으려는 것은 「nav 를 다시 심었다」이지 「아무것도 안 그렸다」가 아니다.
-    expect(screen.getByRole('heading', { level: 1, name: '백로그' })).toBeInTheDocument()
+    // 🛑 제목행은 셸이 가져갔다 (J5-11 · 2026-09-07) — 탭이 이미 「백로그」라고 말하므로
+    //    본문이 같은 말을 반복하지 않는다. 페이지에는 어떤 h1 도 남지 않는다.
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0)
 
     expect(screen.queryByRole('navigation', { name: '프로젝트 뷰 전환' })).not.toBeInTheDocument()
   })

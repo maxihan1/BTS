@@ -49,7 +49,7 @@ interface ProjectWorkflowSchemeSettingsPageProps {
 function PageHeader(): JSX.Element {
   return (
     <header className="space-y-1">
-      <h1 className="text-2xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h1>
+      <h2 className="text-xl font-semibold">{workflowSchemeLabels.assignment.pageHeading}</h2>
       <p className="text-muted-foreground text-sm">
         {workflowSchemeLabels.assignment.pageDescription}
       </p>

@@ -6,7 +6,6 @@ import { BacklogBoard } from '@/components/backlog/BacklogBoard'
 import { BoardSelectorDropdown } from '@/components/board/BoardSelectorDropdown'
 import { useBoards } from '@/hooks/use-boards'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
-import { backlogLabels } from '@/i18n/backlog-labels'
 import { filterToSearch, searchToFilter } from '@/lib/backlog-filter'
 import type { BacklogFilter, BacklogFilterSearch } from '@/lib/backlog-filter'
 
@@ -214,10 +213,11 @@ export function BacklogPage({ projectKey, boardId, filter }: BacklogPageProps): 
 
   return (
     <div className="p-6 space-y-4">
-      {/* 헤더 행 — 제목 + 보드 스위처 + 보드 링크 */}
+      {/* 헤더 행 — 보드 스위처.
+          🛑 제목(h1)은 여기 없다 (Jira 패리티 J5-11 · 2026-09-07) — 셸의 `ProjectViewHeader`
+             가 프로젝트 이름 h1 을 탭바 위에서 소유한다. 되살리면 문서에 h1 이 2개가 된다. */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{backlogLabels.page.title}</h1>
           {/* 보드 스위처 — 백로그는 프로젝트가 아니라 **보드**에 속한다(J14). 보드가 1개여도
               상시 노출해 N개 모델임을 드러낸다(보드 화면과 같은 판단 · J1).
               🛑 `showCreate={false}` — 여기는 보드를 **고르는** 자리다. 「새 보드」가 딸려 오면

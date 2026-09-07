@@ -232,7 +232,7 @@ describe('Router', () => {
     expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
   })
 
-  it('/projects/ATLAS/sprints/:sprintId/burndown 라우트 마운트 (인증 상태) → 페이지 제목 h1 렌더', async () => {
+  it('/projects/ATLAS/sprints/:sprintId/burndown 라우트 마운트 (인증 상태) → 페이지 제목 h2 렌더 (셸이 h1 소유 · X-J5-14)', async () => {
     // 이 라우트는 useQuery로 실제 fetchSprintBurndown을 호출하므로 burndownHandlers를 MSW에 등록 + 시드한다.
     resetBurndownStore()
     seedBurndown(DEFAULT_BURNDOWN)
@@ -244,7 +244,7 @@ describe('Router', () => {
     })
     renderWithRoute('/projects/ATLAS/sprints/a0000000-0000-4000-8000-000000000001/burndown')
     expect(
-      await screen.findByRole('heading', { name: '번다운 / 번업 차트', level: 1 }),
+      await screen.findByRole('heading', { name: '번다운 / 번업 차트', level: 2 }),
     ).toBeInTheDocument()
   })
 
@@ -255,7 +255,7 @@ describe('Router', () => {
     expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
   })
 
-  it('/projects/ATLAS/reports/velocity 라우트 마운트 (인증 상태) → 페이지 제목 h1 렌더', async () => {
+  it('/projects/ATLAS/reports/velocity 라우트 마운트 (인증 상태) → 페이지 제목 h2 렌더 (셸이 h1 소유 · X-J5-14)', async () => {
     // 이 라우트는 useQuery로 실제 fetchProjectVelocity를 호출하므로 velocityHandlers를 MSW에 등록 + 시드한다.
     resetVelocityStore()
     seedVelocity(DEFAULT_VELOCITY)
@@ -267,7 +267,7 @@ describe('Router', () => {
     })
     renderWithRoute('/projects/ATLAS/reports/velocity')
     expect(
-      await screen.findByRole('heading', { name: '벨로시티 차트', level: 1 }),
+      await screen.findByRole('heading', { name: '벨로시티 차트', level: 2 }),
     ).toBeInTheDocument()
   })
 })

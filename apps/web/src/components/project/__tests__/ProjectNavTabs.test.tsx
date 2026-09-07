@@ -102,17 +102,24 @@ describe('ProjectNavTabs', () => {
     expect(links.get('버전')).toBe('/projects/ATLAS/settings/versions')
   })
 
-  it('전역 링크 2종(편차 X9)은 프로젝트 키가 붙지 않는다', async () => {
+  it('캘린더·대시보드·이슈도 프로젝트 스코프 경로로 간다 (편차 X9 폐기 · J5-12)', async () => {
+    // 🛑 이 셋이 전역 경로(`/calendar`·`/dashboards`·`/issues`)로 되돌아가면 누르는 순간
+    //    `ProjectViewChrome` 의 마운트 조건이 깨져 **헤더와 탭바가 통째로 사라진다.**
+    //    「링크가 존재한다」만 단언하면 그 회귀가 초록으로 통과한다 — 목적지를 못박는다.
     const links = new Map(await renderAndReadLinks())
 
-    expect(links.get('캘린더')).toBe('/calendar')
-    expect(links.get('대시보드')).toBe('/dashboards')
+    expect(links.get('캘린더')).toBe('/projects/ATLAS/calendar')
+    expect(links.get('대시보드')).toBe('/projects/ATLAS/dashboards')
+    expect(links.get('이슈')).toBe('/projects/ATLAS/issues')
   })
 
-  it('이슈 탭은 ?projectKey= 로 프로젝트를 좁힌다 (편차 X9)', async () => {
-    const links = new Map(await renderAndReadLinks())
+  it('9탭 어느 것도 프로젝트 밖으로 나가지 않는다 (전수)', async () => {
+    // 위 두 단언은 이름을 아는 탭만 본다. 새 탭이 전역 경로로 추가되면 안 잡힌다.
+    const links = await renderAndReadLinks()
+    expect(links.length).toBe(9)
 
-    expect(links.get('이슈')).toBe('/issues?projectKey=ATLAS')
+    const escaping = links.filter(([, href]) => !href.startsWith('/projects/ATLAS'))
+    expect(escaping).toEqual([])
   })
 
   it('보드·백로그 탭에 각자의 보드 스코프가 실린다 (편차 X7 승계)', async () => {

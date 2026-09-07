@@ -102,7 +102,7 @@ test.describe('FR-RP-03 D6/D7 프로젝트 누적 흐름도(CFD)', () => {
     await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT_KEY}/reports/cfd(\\?.*)?$`))
 
     // Then. CFD 페이지 헤더 표시
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
 
     // Then. 차트 컨테이너(role="img") 표시 — recharts 실렌더는 SVG bbox 좌표 대신
     // 컨테이너 가시성으로 검증한다 (SVG E2E 함정 선례).
@@ -125,7 +125,7 @@ test.describe('FR-RP-03 D6/D7 프로젝트 누적 흐름도(CFD)', () => {
     await page.goto(EMPTY_CFD_URL)
 
     // Then. 페이지 헤더는 정상 표시 (조회 자체는 200 성공)
-    await expect(page.getByRole('heading', { name: labels.page.title, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.page.title, level: 2 })).toBeVisible()
 
     // Then. 빈 상태 안내 문구 표시
     await expect(page.getByText(labels.status.empty, { exact: true })).toBeVisible()

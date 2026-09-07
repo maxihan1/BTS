@@ -47,7 +47,7 @@ export interface BoardSettingsPageProps {
 function PageHeader({ projectKey }: { projectKey: string }): JSX.Element {
   return (
     <header className="space-y-1">
-      <h1 className="text-2xl font-semibold">{boardLabels.settings.pageHeading}</h1>
+      <h2 className="text-xl font-semibold">{boardLabels.settings.pageHeading}</h2>
       <p className="text-muted-foreground text-sm">{boardLabels.settings.pageDescription}</p>
       <Button asChild variant="ghost" size="sm" className="-ml-2">
         <Link to="/projects/$projectKey/board" params={{ projectKey }}>

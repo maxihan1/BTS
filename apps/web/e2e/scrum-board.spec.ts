@@ -29,7 +29,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator, Page, Request } from '@playwright/test'
 import { loginAsAlice } from './fixtures/auth-fixtures'
-import { openTabIfOverflowed } from './fixtures/project-view-tabs'
+import { openTabIfOverflowed, projectViewNav } from './fixtures/project-view-tabs'
 import { projectViewLabels } from '../src/i18n/project-view-labels'
 import {
   backlogSprintColumn,
@@ -182,8 +182,10 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
     await expect(page.getByText(SCRUM_EMPTY.description, { exact: true })).toBeVisible()
     // 활성 스프린트가 없으니 헤더 표기도 없다 — S7 의 「생겼다」가 여기서만 의미를 얻는다
     await expect(page.getByTestId('active-sprint-summary')).toHaveCount(0)
-    // ★early-return 이 아니라 인라인 대체라는 것 — 이것이 깨지면 보드를 지울 수도 없다
-    await expect(page.getByRole('heading', { name: boardLabels.page.title, exact: true })).toBeVisible()
+    // ★early-return 이 아니라 인라인 대체라는 것 — 이것이 깨지면 보드를 지울 수도 없다.
+    //   제목 h1 은 셸의 `ProjectViewHeader` 가 소유하므로(J5-11 · 2026-09-07) 보드 화면
+    //   자신이 여전히 살아 있다는 증거로 **탭바**를 잰다 — 셸 크롬은 보드가 빈 상태여도 남는다.
+    await expect(projectViewNav(page)).toBeVisible()
     // ★`⋯` 조회가 `board-header` 스코프라 컨테이너 실재를 먼저 단언한다. testid 가 어긋나면
     //   하위 조회는 count 0 이 되고, 이 spec 의 부재 단언(`toHaveCount(0)`)들은 그대로 통과한다.
     await expect(boardHeader(page)).toBeVisible()
@@ -191,9 +193,11 @@ test.describe('스크럼 보드 — 활성 스프린트만 보인다 (FR-BD-04 D
 
     // ── S3. 백로그로 이동 — 빈 상태의 CTA 가 데려간다 (J18) ──────────────────
     await page.getByRole('link', { name: SCRUM_EMPTY.backlogLink, exact: true }).click()
+    // 백로그도 제목을 다시 쓰지 않는다(J5-11). 도착 판정은 **활성 탭**으로 한다 —
+    // 탭바는 두 화면에 공통이라 「이동했다」를 그것만으로는 못 재기 때문이다.
     await expect(
-      page.getByRole('heading', { name: backlogLabels.page.title, exact: true }),
-    ).toBeVisible()
+      projectViewNav(page).getByRole('link', { name: backlogLabels.page.title, exact: true }),
+    ).toHaveAttribute('aria-current', 'page')
 
     // ── S4. 그 보드로 **이미** 스코프돼 있다 ───────────────────────────────
     //

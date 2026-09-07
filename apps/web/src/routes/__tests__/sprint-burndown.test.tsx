@@ -151,7 +151,7 @@ describe('SprintBurndownRouteAdapter', () => {
     renderAdapter()
 
     expect(
-      screen.getByRole('heading', { level: 1, name: burndownLabels.page.title }),
+      screen.getByRole('heading', { level: 2, name: burndownLabels.page.title }),
     ).toBeInTheDocument()
 
     await waitFor(() => {

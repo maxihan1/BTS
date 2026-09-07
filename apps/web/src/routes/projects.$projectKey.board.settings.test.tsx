@@ -108,12 +108,16 @@ describe('보드 설정 화면 — 조회 분기 (§8b 상호작용 상태 표)'
     expect(screen.getByRole('button', { name: boardLabels.settings.retry })).toBeInTheDocument()
   })
 
-  it('T-BS-8: 화면 제목은 하나뿐이다 — 즉사 계약(h1 단일)', () => {
+  it('T-BS-8: 화면 제목은 하나뿐이고 h1 이 아니다 — 즉사 계약 (X-J5-14)', () => {
+    // 셸의 `ProjectViewHeader` 가 프로젝트 이름을 문서 h1 으로 소유한다(J5-8). 하위 화면이
+    // h1 을 또 쓰면 문서에 h1 이 2개가 된다. 🛑 「h2 가 하나 있다」만 단언하면 h1 으로
+    // 되돌린 구현이 h2 를 추가로 남겨 둔 채 통과하므로, **h1 이 0개**임을 함께 못박는다.
     renderPage(BOARD_ID)
 
-    const headings = screen.getAllByRole('heading', { level: 1 })
+    const headings = screen.getAllByRole('heading', { level: 2 })
     expect(headings).toHaveLength(1)
     expect(headings[0]).toHaveTextContent(boardLabels.settings.pageHeading)
+    expect(screen.queryAllByRole('heading', { level: 1 })).toHaveLength(0)
   })
 })
 

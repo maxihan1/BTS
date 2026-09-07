@@ -86,11 +86,11 @@ describe('VelocityReportPage', () => {
   /**
    * T-RP-V2. Page가 velocityLabels.page.title h1 헤더를 렌더한다.
    */
-  it('T-RP-V2: Page가 페이지 제목 h1을 렌더한다', () => {
+  it('T-RP-V2: Page가 페이지 제목 h2 를 렌더한다 (셸이 h1 소유 · X-J5-14)', () => {
     renderPage('ATLAS')
 
     expect(
-      screen.getByRole('heading', { level: 1, name: velocityLabels.page.title }),
+      screen.getByRole('heading', { level: 2, name: velocityLabels.page.title }),
     ).toBeInTheDocument()
   })
 

@@ -62,6 +62,7 @@ import { filterBarLabels } from '../src/i18n/filter-bar-labels'
 import { BACKLOG_EPIC_A, BACKLOG_EPIC_B, DEFAULT_BACKLOG } from '../src/mocks/backlog-fixtures'
 import { userAliceFixture } from '../src/mocks/user-fixtures'
 import { openFilterDropdown } from './fixtures/filter-bar'
+import { projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts와 동기화 (import.meta.env 참조 회피)
@@ -154,8 +155,14 @@ const LOAD_FAILED_TEXT = '백로그를 불러올 수 없습니다.'
  */
 const RETRY_BUTTON_NAME = '다시 시도'
 
-/** backlogLabels.page.title 미러 — **라우트가 소유**하는 h1 텍스트 (에러 상태에서도 살아 있어야 한다) */
-const PAGE_TITLE = '백로그'
+/**
+ * 셸 헤더가 그리는 프로젝트 이름 — **문서 h1** 이다 (Jira 패리티 J5-8 · 2026-09-07).
+ *
+ * 백로그 화면 자신은 제목을 쓰지 않는다(J5-11) — 탭이 이미 「백로그」라고 말한다. 그래서
+ * 「에러 상태에서도 화면이 빈 껍데기가 되지 않는다」는 즉사 계약의 앵커가 이 이름으로 옮겨왔다.
+ * 값은 `src/mocks/project-handlers.ts` 의 ATLAS 픽스처와 같아야 한다.
+ */
+const PROJECT_NAME = 'Atlas 프로젝트'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — FR-UX-13 F15 (세로 스택 · 다이얼로그 · 키보드 DnD)
@@ -1225,8 +1232,10 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
     // When. 백로그 페이지 진입
     await page.goto(BACKLOG_URL)
 
-    // Then. 페이지 헤더 확인
-    await expect(page.getByRole('heading', { name: '백로그', level: 1 })).toBeVisible()
+    // Then. 크롬 확인 — 제목 h1 은 셸의 `ProjectViewHeader` 가 소유한다(J5-8 · 2026-09-07).
+    //       백로그 자신은 탭이 이미 말하므로 제목을 다시 쓰지 않는다(J5-11).
+    await expect(page.getByRole('heading', { name: PROJECT_NAME, level: 1 })).toBeVisible()
+    await expect(projectViewNav(page)).toBeVisible()
 
     // Then. 백로그 칸에 ATLAS-1, ATLAS-2 확인
     const backlogColumn = getBacklogColumn(page)
@@ -1310,8 +1319,11 @@ test.describe('FR-BL-01/02 백로그·스프린트 보드 (재정렬/이동/스�
       page.getByRole('button', { name: RETRY_BUTTON_NAME, exact: true }),
     ).toBeVisible()
 
-    // Then. h1 은 라우트 소유라 에러 상태에서도 살아 있다 (jira-parity-contract §2 즉사 계약)
-    await expect(page.getByRole('heading', { name: PAGE_TITLE, level: 1 })).toBeVisible()
+    // Then. 크롬은 **셸 소유**라 에러 상태에서도 살아 있다 (jira-parity-contract §2 즉사 계약).
+    //       소유가 라우트 → 셸로 옮겨갔을 뿐 계약은 그대로다 — 화면이 통째로 빈 껍데기가
+    //       되지 않는다는 것. 🛑 탭바까지 함께 잰다. h1 만 재면 탭바가 죽어도 초록이다.
+    await expect(page.getByRole('heading', { name: PROJECT_NAME, level: 1 })).toBeVisible()
+    await expect(projectViewNav(page)).toBeVisible()
   })
 
   // ─────────────────────────────────────────────────────────────────────────

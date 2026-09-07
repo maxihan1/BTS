@@ -1,7 +1,7 @@
 // 이슈 목록 페이지 — IssueListPage(props 기반) + IssueListRouteAdapter(라우터 연결). 테이블·정렬·컬럼 선택 + split view 결선(FR-UX-06 PR20)
 import type { JSX } from 'react'
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { fetchIssues, ISSUE_SORT_FIELDS } from '@/api/issues'
 import type { IssuePage, IssueFilterParams, IssueSortField } from '@/api/issues'
@@ -30,6 +30,8 @@ import { useIssueListPresentation } from '@/components/issue/use-issue-list-pres
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 import { useResolvedActiveProject } from '@/hooks/use-resolved-active-project'
 import { ActiveProjectGate } from '@/components/project/ActiveProjectGate'
+import { ProjectHeaderActions } from '@/components/project/ProjectChrome'
+import { useProjectChromePresent } from '@/components/project/project-chrome-context'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // router.ts 등록 방법 (code-based 패턴 — PR #11 컨벤션).
@@ -59,6 +61,39 @@ const EMPTY_FILTER: IssueFilterParams = {
   includeUnassigned: false,
   labels: [],
   componentIds: [],
+}
+
+/**
+ * 이 화면이 어느 라우트에서 도는지와, **자기 자신**을 가리킬 때 쓸 이동 목표를 함께 준다.
+ *
+ * 두 라우트가 이 컴포넌트를 공유한다 (편차 X9 폐기 · J5-12) — 전역 `/issues` 와 프로젝트
+ * 스코프 `/projects/$projectKey/issues`. params 가 있으면 그쪽이 이긴다.
+ *
+ * 🛑 `to: '/issues'` 를 그대로 두면 스코프 라우트에서 페이지 이동·행 클릭·커서 이동이
+ *    **전역 목록으로 새어** 프로젝트 스코프와 탭바가 함께 사라진다. 이 화면의 모든 자기
+ *    이동은 `listTarget` 을 스프레드해서 쓴다 — 한 군데라도 빠뜨리면 그 조작만 탈출한다.
+ */
+function useIssueListRouteScope() {
+  const { projectKey: scopedProjectKey } = useParams({ strict: false }) as { projectKey?: string }
+  const listTarget =
+    scopedProjectKey === undefined
+      ? ({ to: '/issues' } as const)
+      : ({ to: '/projects/$projectKey/issues', params: { projectKey: scopedProjectKey } } as const)
+  return { scopedProjectKey, listTarget }
+}
+
+/**
+ * 목록 제목 — **셸 크롬이 없을 때만** 그린다 (J5-11).
+ *
+ * 프로젝트 스코프 라우트에서는 `ProjectViewHeader` 가 프로젝트 이름을 이미 h1 으로 그렸다.
+ * 여기서 또 그리면 문서에 h1 이 2개가 된다. 전역 `/issues` 에는 크롬이 없으므로 그린다.
+ *
+ * 🛑 이 컴포넌트가 `null` 을 내고 형제 `ProjectHeaderActions` 가 포털로 빠지면 감싼 `<header>`
+ *    가 **DOM 상 빈 요소**가 된다. 그래서 그 줄에 `empty:hidden` 이 붙어 있다 — 없으면 탭바
+ *    아래에 `space-y-4` 만큼 빈 띠가 남는다(실측 · 눈확인 2026-09-07).
+ */
+function IssueListPageTitle(): JSX.Element | null {
+  return useProjectChromePresent() ? null : <h1 className="text-2xl font-semibold">이슈 목록</h1>
 }
 
 /** useColumnVisibility localStorage 키 — 기기별 컬럼 표시 상태 persist (S4) */
@@ -731,10 +766,10 @@ export function IssueListPage({
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-4">
-      {/* 페이지 헤더 — 타이틀 + 새 이슈 진입점 (CREATE 권한 게이트) */}
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">이슈 목록</h1>
-        <NewIssueButton access={createAccess} />
+      {/* 페이지 헤더 — 타이틀 + 새 이슈 진입점 (CREATE 권한 게이트 · J5-9 · J5-11) */}
+      <header className="flex items-center justify-between empty:hidden">
+        <IssueListPageTitle />
+        <ProjectHeaderActions><NewIssueButton access={createAccess} /></ProjectHeaderActions>
       </header>
 
       {/*
@@ -873,8 +908,9 @@ export function IssueListRouteAdapter(): JSX.Element {
   } & IssueFilterSearch
   const navigate = useNavigate()
   const isWide = useMediaQuery('(min-width: 1024px)')
-  // FR-UX-07 — URL > 저장값 > 첫 프로젝트 순으로 해소한다. DEFAULT_PROJECT_KEY 하드코딩 대체.
-  const activeProject = useResolvedActiveProject(search.projectKey)
+  const { scopedProjectKey, listTarget } = useIssueListRouteScope()
+  // FR-UX-07 — params > URL search > 저장값 > 첫 프로젝트 순으로 해소한다.
+  const activeProject = useResolvedActiveProject(scopedProjectKey ?? search.projectKey)
   const page = typeof search.page === 'number' ? search.page : 0
   const sort = useMemo(() => parseSortParam(search.sort), [search.sort])
   const selected = normalizeSelectedKey(search.selected)
@@ -896,7 +932,7 @@ export function IssueListRouteAdapter(): JSX.Element {
   )
 
   function handlePageChange(nextPage: number): void {
-    void navigate({ to: '/issues', search: (prev) => ({ ...prev, page: nextPage }) })
+    void navigate({ ...listTarget, search: (prev) => ({ ...prev, page: nextPage }) })
   }
 
   /**
@@ -910,7 +946,7 @@ export function IssueListRouteAdapter(): JSX.Element {
       // 모달 선호(기본)면 URL 을 건드리지 않는다 — 열림 상태는 스토어가 쥔다(J1).
       if (openViaPresentation(key)) return
       void navigate({
-        to: '/issues',
+        ...listTarget,
         search: (prev) => ({ ...prev, selected: prev.selected === key ? undefined : key }),
       })
       return
@@ -923,7 +959,7 @@ export function IssueListRouteAdapter(): JSX.Element {
    * IssueDetailPage(variant='pane')의 onClose(닫기 버튼·Escape)·onIssueClosed(삭제 성공) 양쪽에서 쓰인다.
    */
   function clearSelected(): void {
-    void navigate({ to: '/issues', search: (prev) => ({ ...prev, selected: undefined }) })
+    void navigate({ ...listTarget, search: (prev) => ({ ...prev, selected: undefined }) })
   }
 
   // 표시 방식 결선 (J1) — 진입 분기 + 전환 직후 URL 정리
@@ -934,7 +970,7 @@ export function IssueListRouteAdapter(): JSX.Element {
    * IssueDetailPage(variant='pane')가 옛 키 → 새 키 308 redirect를 감지했을 때(onIssueRedirect) 쓰인다.
    */
   function setSelectedKey(nextKey: string): void {
-    void navigate({ to: '/issues', search: (prev) => ({ ...prev, selected: nextKey }) })
+    void navigate({ ...listTarget, search: (prev) => ({ ...prev, selected: nextKey }) })
   }
 
   /**
@@ -951,7 +987,7 @@ export function IssueListRouteAdapter(): JSX.Element {
    */
   function moveCursorTo(nextKey: string): void {
     void navigate({
-      to: '/issues',
+      ...listTarget,
       search: (prev) => ({ ...prev, selected: nextKey }),
       replace: true,
     })
@@ -981,7 +1017,7 @@ export function IssueListRouteAdapter(): JSX.Element {
   function handleFilterChange(nextFilter: IssueFilterParams): void {
     const nextSearch = issueFilterToSearch(nextFilter)
     void navigate({
-      to: '/issues',
+      ...listTarget,
       search: (prev) => ({
         ...nextSearch,
         page: 0,
@@ -999,7 +1035,7 @@ export function IssueListRouteAdapter(): JSX.Element {
    */
   function handleSortChange(nextSort: IssueTableSortState | null): void {
     void navigate({
-      to: '/issues',
+      ...listTarget,
       search: (prev) => ({ ...prev, sort: serializeSortParam(nextSort), page: 0 }),
     })
   }

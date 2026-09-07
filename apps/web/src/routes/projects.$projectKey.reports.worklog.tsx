@@ -41,7 +41,7 @@ export function ProjectWorklogReportPage({
   return (
     <div className="p-8 space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">{worklogAggregateLabels.page.title}</h1>
+        <h2 className="text-xl font-semibold">{worklogAggregateLabels.page.title}</h2>
         <p className="text-muted-foreground text-sm">{worklogAggregateLabels.page.description}</p>
       </header>
       <WorklogAggregateReport projectKey={projectKey} />

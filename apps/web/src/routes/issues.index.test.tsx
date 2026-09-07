@@ -54,12 +54,20 @@ vi.mock('@/hooks/use-media-query', () => ({
 
 const mockNavigate = vi.fn()
 const mockUseSearch = vi.fn((): IssuesRouteSearchMock => ({}))
+/** 프로젝트 스코프 params — 기본은 전역 문맥(빈 객체) */
+const mockUseParams = vi.fn<() => { projectKey?: string }>(() => ({}))
+
 vi.mock('@tanstack/react-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-router')>()
   return {
     ...actual,
     useNavigate: () => mockNavigate,
     useSearch: () => mockUseSearch(),
+    // 🛑 `useParams` 도 반드시 막는다. 이 화면은 편차 X9 폐기(J5-12) 이후 프로젝트 스코프
+    //    라우트(`/projects/$projectKey/issues`)와 컴포넌트를 공유하므로 params 를 읽는다.
+    //    실물이 새어 나가면 RouterProvider 없는 렌더에서 `useMatch` 가 즉사한다.
+    //    기본값은 **빈 객체 = 전역 문맥**이다 — 이 파일의 단언 전부가 전역 `/issues` 것이다.
+    useParams: () => mockUseParams(),
   }
 })
 

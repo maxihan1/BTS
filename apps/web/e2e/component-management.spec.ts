@@ -74,7 +74,7 @@ test.describe('컴포넌트 관리 (FR-CM-01)', () => {
     await loginAsAlice(page)
     // 컴포넌트 설정 페이지 직접 진입
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   // ───────────────────────────────────────────────────────────────────────────

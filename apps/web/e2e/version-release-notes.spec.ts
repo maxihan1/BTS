@@ -148,7 +148,7 @@ test.describe('버전 릴리즈 노트 (FR-VR-04)', () => {
     // alice 로 로그인 후 버전 설정 페이지 진입 (version-management.spec.ts / version-status.spec.ts 패턴)
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
     // versionStore 격리 — 각 테스트 시작 시 초기화
     await resetVersionStore(page)
   })

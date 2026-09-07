@@ -10,6 +10,8 @@ import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { useAuthUser } from '@/auth/authStore'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ProjectHeaderActions } from '@/components/project/ProjectChrome'
+import { useProjectChromePresent } from '@/components/project/project-chrome-context'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 인라인 Skeleton 헬퍼 — shadcn Skeleton 미설치이므로 board 라우트 패턴 차용
@@ -126,6 +128,8 @@ export function DashboardsListPage(): JSX.Element {
   const { mutate: createDashboard, isPending } = useCreateDashboard()
 
   const [showForm, setShowForm] = useState(false)
+  // 셸의 프로젝트 헤더가 문서 h1 을 이미 소유하고 있는가 (J5-11). 전역 `/dashboards` 에서는 false.
+  const chromeOwnsTitle = useProjectChromePresent()
 
   /** DashboardForm 제출 핸들러 */
   function handleFormSubmit(payload: DashboardFormPayload): void {
@@ -201,15 +205,26 @@ export function DashboardsListPage(): JSX.Element {
 
   return (
     <div className="p-6 space-y-6">
-      {/* 헤더 — 페이지 제목 + 생성 버튼 */}
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">{dashboardLabels.list.title}</h1>
-        <Button
-          type="button"
-          onClick={() => setShowForm((prev) => !prev)}
-        >
-          {dashboardLabels.list.empty.cta}
-        </Button>
+      {/*
+        헤더 — 페이지 제목 + 생성 버튼.
+
+        이 화면도 **두 문맥**에서 돈다 (편차 X9 폐기 · J5-12) — 전역 `/dashboards` 와
+        프로젝트 `/projects/$projectKey/dashboards`. 후자는 셸의 `ProjectViewHeader` 가
+        이미 h1 을 그렸으므로 제목을 접고(J5-11) 버튼만 그 제목행 우측으로 올린다(J5-9).
+        `issues.index.tsx` 와 같은 판정·같은 폴백이다.
+      */}
+      <div className="flex items-center justify-between gap-4 empty:hidden">
+        {!chromeOwnsTitle && (
+          <h1 className="text-xl font-semibold">{dashboardLabels.list.title}</h1>
+        )}
+        <ProjectHeaderActions>
+          <Button
+            type="button"
+            onClick={() => setShowForm((prev) => !prev)}
+          >
+            {dashboardLabels.list.empty.cta}
+          </Button>
+        </ProjectHeaderActions>
       </div>
 
       {/* 인라인 생성 폼 — 버튼 토글로 표시 */}

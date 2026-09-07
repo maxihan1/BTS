@@ -88,7 +88,7 @@ test.describe('S1 이슈 템플릿 목록 표시 (FR-TM-01)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S1-A 버그 타입 템플릿 생성 → 이름+타입명 칩 표시', async ({ page }) => {
@@ -133,7 +133,7 @@ test.describe('S2 이슈 템플릿 생성 (FR-TM-01)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S2 "템플릿 추가" → 이슈 타입+이름+본문 입력 → 저장 → 목록에 추가됨', async ({ page }) => {
@@ -185,7 +185,7 @@ test.describe('S3 이슈 템플릿 중복 409 에러 (FR-TM-01)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S3 같은 이슈 타입으로 중복 생성 → 409 인라인 에러 표시', async ({ page }) => {
@@ -231,7 +231,7 @@ test.describe('S4 이슈 템플릿 수정 (FR-TM-01)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S4 수정 Dialog — issueType disabled + 이름 변경 저장 → 갱신 반영', async ({ page }) => {
@@ -284,7 +284,7 @@ test.describe('S6 이슈 템플릿 삭제 (FR-TM-01)', () => {
   test.beforeEach(async ({ page }) => {
     await loginAsAlice(page)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
   })
 
   test('S6 삭제 — 인라인 확인 후 목록에서 사라짐', async ({ page }) => {
@@ -338,7 +338,7 @@ test.describe('S7 이슈 템플릿 관리 권한 게이팅 (FR-TM-01)', () => {
 
     // When. 설정 페이지 진입 (이 goto부터 플래그 적용)
     await page.goto(SETTINGS_URL)
-    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('heading', { name: labels.pageHeading, level: 2 })).toBeVisible()
 
     // Then. "템플릿 추가" 버튼 disabled (fail-closed 게이팅)
     const addButton = page.getByRole('button', { name: labels.addButton })

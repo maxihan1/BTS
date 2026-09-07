@@ -56,7 +56,7 @@ export function ProjectMembersSettingsPage({
   return (
     <div className="p-8 space-y-6 max-w-2xl">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">멤버 설정</h1>
+        <h2 className="text-xl font-semibold">멤버 설정</h2>
         <p className="text-muted-foreground text-sm">
           프로젝트 멤버를 관리합니다. 관리자만 멤버 추가·역할 변경·제거를 할 수 있습니다.
         </p>

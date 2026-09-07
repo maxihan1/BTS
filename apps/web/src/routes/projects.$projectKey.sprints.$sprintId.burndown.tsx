@@ -131,7 +131,7 @@ export function SprintBurndownPage({ sprintId, view, onViewChange }: SprintBurnd
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">{burndownLabels.page.title}</h1>
+        <h2 className="text-xl font-semibold">{burndownLabels.page.title}</h2>
         <BurndownViewToggle view={view} onChange={onViewChange} />
       </header>
 

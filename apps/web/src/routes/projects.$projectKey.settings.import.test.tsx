@@ -188,11 +188,11 @@ describe('ProjectImportSettingsPage', () => {
   /**
    * T-IM-2. Page가 "가져오기(Import)" h1 헤더를 렌더한다.
    */
-  it('T-IM-2: Page가 페이지 제목 h1을 렌더한다', () => {
+  it('T-IM-2: Page가 페이지 제목 h2 를 렌더한다 (셸이 h1 소유 · X-J5-14)', () => {
     renderPage('ATLAS')
 
     expect(
-      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+      screen.getByRole('heading', { level: 2, name: '가져오기(Import)' }),
     ).toBeInTheDocument()
   })
 
@@ -396,7 +396,7 @@ describe('ProjectImportSettingsPage — CREATE 게이트', () => {
 
     // 페이지 정체성(h1)은 남긴다 — 「왜 빈 화면이지」가 되면 안 된다.
     expect(
-      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+      screen.getByRole('heading', { level: 2, name: '가져오기(Import)' }),
     ).toBeInTheDocument()
   })
 
@@ -470,7 +470,7 @@ describe('ProjectImportSettingsPage — 프로젝트 존재 확인', () => {
 
     // 페이지 정체성(h1)은 여기서도 남긴다.
     expect(
-      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+      screen.getByRole('heading', { level: 2, name: '가져오기(Import)' }),
     ).toBeInTheDocument()
   })
 
@@ -588,7 +588,7 @@ describe('ProjectImportSettingsPage — 로딩 프레임 (no-verdict-while-loadi
     expect(screen.getByRole('status')).toBeInTheDocument()
     expect(screen.queryByTestId('import-form')).not.toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { level: 1, name: '가져오기(Import)' }),
+      screen.getByRole('heading', { level: 2, name: '가져오기(Import)' }),
     ).toBeInTheDocument()
 
     projectGate.release()
