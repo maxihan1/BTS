@@ -18,6 +18,7 @@ import {
   fetchSharedFilters,
   deleteFilter,
   savedFiltersKey,
+  SHARED_FILTER_PAGE_SIZE,
 } from '@/api/saved-filters'
 import type { SavedFilterResponse } from '@/api/saved-filters'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
@@ -26,8 +27,11 @@ import { SaveFilterDialog } from './SaveFilterDialog'
 import { ShareFilterDialog } from './ShareFilterDialog'
 import { savedFilterLabels } from '@/i18n/saved-filter-labels'
 
-/** 공유받은 필터 목록 페이지 크기 — spec FR-3/EC7: size=50 (21~50개 silent 누락 방지) */
-const SHARED_PAGE_SIZE = 50
+/**
+ * 공유받은 필터 목록 페이지 크기 — spec FR-3/EC7: size=50 (21~50개 silent 누락 방지).
+ * 정본은 `@/api/saved-filters` 다 — 대시보드 가젯 설정도 같은 값을 쓴다.
+ */
+const SHARED_PAGE_SIZE = SHARED_FILTER_PAGE_SIZE
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 순수 헬퍼 — SPA 경로 생성

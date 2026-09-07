@@ -5,7 +5,12 @@ import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useProjects } from '@/hooks/use-projects'
 import { useBoards } from '@/hooks/use-boards'
-import { fetchOwnedFilters, fetchSharedFilters, savedFiltersKey } from '@/api/saved-filters'
+import {
+  fetchOwnedFilters,
+  fetchSharedFilters,
+  savedFiltersKey,
+  SHARED_FILTER_PAGE_SIZE,
+} from '@/api/saved-filters'
 import { gadgetPickerLabels } from '@/i18n/dashboard-labels'
 
 /** 폼의 다른 입력과 같은 모양을 쓴다 — 선택기만 튀면 폼이 두 벌처럼 보인다. */
@@ -21,16 +26,21 @@ interface PickerProps {
   readonly onChange: (next: string) => void
   /** label 의 htmlFor 와 잇는 id */
   readonly id: string
-  /**
-   * 접근명. `<label htmlFor>` 가 없는 자리에서만 넘긴다.
-   *
-   * ★`BoardPicker` 가 **내장**한 프로젝트 선택기가 그 자리다. 폼의 `<label>` 은 바깥
-   * 보드 select 를 가리키므로 내장 select 는 이름이 빈 combobox 가 된다 —
-   * 스크린리더로는 드롭다운 둘 중 어느 것이 프로젝트인지 알 수 없다.
-   * 증상은 테스트에도 이미 나 있었다. 이름으로 못 잡아서 유닛은 `getAllByRole('combobox')[0]`,
-   * e2e 는 `selects.nth(0)` 로 **인덱스**를 썼고, 필드 순서가 바뀌면 둘 다 조용히
-   * 엉뚱한 요소를 잰다.
-   */
+}
+
+/**
+ * `ProjectPicker` 전용 props — 접근명을 받는다.
+ *
+ * ★공용 `PickerProps` 에 두지 않는다. 거기 두면 `BoardPicker`·`FilterPicker` 에도 넘길 수 있는데
+ * 그쪽은 쓰지 않아 **조용히 무시**된다 — 넘긴 사람은 접근명을 준 줄 안다.
+ *
+ * ★이 prop 이 필요한 자리는 하나다. `BoardPicker` 가 **내장**한 프로젝트 선택기 —
+ * 폼의 `<label>` 은 바깥 보드 select 를 가리키므로 내장 select 는 이름이 빈 combobox 가 된다.
+ * 증상은 테스트에도 나 있었다. 이름으로 못 잡아서 유닛은 `getAllByRole('combobox')[0]`,
+ * e2e 는 `selects.nth(0)` 로 **인덱스**를 썼고, 필드 순서가 바뀌면 둘 다 조용히 엉뚱한 요소를 잰다.
+ * 단독 `ProjectPicker` 는 `<label htmlFor>` 로 이름을 받으므로 안 넘긴다.
+ */
+interface ProjectPickerProps extends PickerProps {
   readonly ariaLabel?: string
 }
 
@@ -40,7 +50,7 @@ interface PickerProps {
  * 보관(archived) 프로젝트는 제외한다. 가젯이 가리킬 대상이 아니고, 목록에 섞이면
  * 사용자가 왜 데이터가 안 나오는지 못 짚는다.
  */
-export function ProjectPicker({ value, onChange, id, ariaLabel }: PickerProps): JSX.Element {
+export function ProjectPicker({ value, onChange, id, ariaLabel }: ProjectPickerProps): JSX.Element {
   const { data: projects = [], isPending } = useProjects()
 
   return (
@@ -63,9 +73,6 @@ export function ProjectPicker({ value, onChange, id, ariaLabel }: PickerProps): 
     </select>
   )
 }
-
-/** 공유 필터 조회 페이지 크기 — 드롭다운 하나에 담기는 현실적 상한. */
-const SHARED_FILTER_PAGE_SIZE = 100
 
 /**
  * 저장된 필터 선택기 — 값은 필터 UUID.
@@ -96,7 +103,7 @@ export function FilterPicker({ value, onChange, id }: PickerProps): JSX.Element 
   // 둘 다 끝나야 목록이 완성된다. 한쪽만 보고 열면 나머지가 뒤늦게 튀어 들어온다.
   const isPending = owned.isPending || shared.isPending
 
-  return (
+  const select = (
     <select
       id={id}
       className={SELECT_CLASS}
@@ -126,6 +133,25 @@ export function FilterPicker({ value, onChange, id }: PickerProps): JSX.Element 
         </optgroup>
       )}
     </select>
+  )
+
+  return (
+    <div className="space-y-1">
+      {select}
+      {/* ★조용히 자르지 않는다. 백엔드가 `created_at ASC` 라 page 0 은 가장 오래된 목록이고,
+          잘리는 쪽이 하필 방금 공유받은 것이다 — 안 보이면 「공유가 안 됐나」로 오해한다. */}
+      {sharedFilters.length === SHARED_FILTER_PAGE_SIZE && (
+        <p role="status" className="text-muted-foreground text-xs">
+          {gadgetPickerLabels.sharedFiltersTruncated}
+        </p>
+      )}
+      {/* ★조회 실패를 「공유받은 게 없다」와 구분한다. `?? []` 만 두면 둘이 같은 화면이 된다. */}
+      {shared.isError && (
+        <p role="status" className="text-muted-foreground text-xs">
+          {gadgetPickerLabels.sharedFiltersLoadFailed}
+        </p>
+      )}
+    </div>
   )
 }
 
