@@ -188,6 +188,26 @@ export type DashboardLabels = typeof dashboardLabels
  * ⚠️ 백엔드 GadgetType.kt 신규 타입 추가 시 이 매핑도 동기화할 것.
  */
 /**
+ * 가젯 설정 선택기 문구.
+ *
+ * 스코프성 필드(프로젝트·보드·필터)는 자유 입력이 아니라 드롭다운이다 —
+ * 사용자가 UUID 를 손으로 타이핑하지 않게 한다.
+ */
+export const gadgetPickerLabels = {
+  loading: '불러오는 중...',
+  selectProject: '프로젝트를 선택하세요',
+  selectBoard: '보드를 선택하세요',
+  selectFilter: '필터를 선택하세요',
+  /** 보드는 프로젝트에 종속이라 프로젝트를 먼저 골라야 한다 */
+  selectProjectFirst: '먼저 프로젝트를 선택하세요',
+  /** 조용히 비우지 않는다 — 값이 사라진 것처럼 보이면 안 된다 */
+  boardResetByProjectChange: '프로젝트를 바꿔 보드 선택을 지웠습니다. 보드를 다시 골라 주세요.',
+  /** 보드 종류 — 번다운은 스크럼에만 있다 */
+  scrum: '스크럼',
+  kanban: '칸반',
+} as const
+
+/**
  * 가젯 본문의 상태 문구 — 로딩·빈 상태·오류.
  *
  * ★가젯마다 문구를 따로 쓰지 않는다. 「데이터가 없습니다」가 가젯마다 다르게 적히면
