@@ -49,6 +49,24 @@ const REPOSITORY = path.join(BC_MAIN, 'com/bts/issue/repository/IssueRepository.
 const SERVICE = path.join(BC_MAIN, 'com/bts/issue/application/IssueApplicationService.kt');
 
 /**
+ * `IssueRepository` 를 주입받는 이름으로 자주 쓰이는 식별자.
+ *
+ * ★**파일 하나·변수 하나로 좁히지 않는다.** 초안은 `IssueApplicationService.kt` 안의
+ * `repo.insert(` 만 봤다. 그러면 **새 서비스가 `issueRepository.insert(...)` 로 부르는 순간
+ * 판별식이 눈이 먼다** — 이 판별식이 막으려던 바로 그 상황(V039 가 경로 하나를 두고 감)이
+ * 다른 파일에서 재현된다. 리뷰가 그것을 잡았다(2026-09-07).
+ */
+const RECEIVERS = ['repo', 'issueRepository'] as const;
+
+/**
+ * `insert` 를 가진 **다른** 리포지토리 — 오탐 대상.
+ *
+ * `WorkflowStatusMigrationAdapter` 도 `repo.insert(operation)` 를 부르는데 그것은
+ * `IssueRepository` 가 아니다. 파일 안에 `IssueRepository` 타입 참조가 있을 때만 검사한다.
+ */
+const REPOSITORY_TYPE = 'IssueRepository';
+
+/**
  * 생산 호출자 하한.
  *
  * 실측 2곳 — `createIssue` · `cloneIssue`. 하한이 없으면 파서가 눈이 멀어 「0건 대 0건」이
@@ -66,7 +84,7 @@ const MIN_CALLERS = 2;
  */
 export function findInsertCalls(source: string): Array<{ args: number; snippet: string }> {
   const calls: Array<{ args: number; snippet: string }> = [];
-  const marker = /\brepo\.insert\(/g;
+  const marker = new RegExp(String.raw`\b(?:${RECEIVERS.join('|')})\.insert\(`, 'g');
   let match: RegExpExecArray | null;
   while ((match = marker.exec(source)) !== null) {
     const open = match.index + match[0].length - 1;
@@ -98,22 +116,53 @@ export function findInsertCalls(source: string): Array<{ args: number; snippet: 
   return calls;
 }
 
+/** `src/main` 아래 Kotlin 파일을 전부 훑는다. */
+function walkKotlin(dir: string, out: string[] = []): string[] {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) walkKotlin(full, out);
+    else if (entry.name.endsWith('.kt')) out.push(full);
+  }
+  return out;
+}
+
+/**
+ * `IssueRepository` 를 실제로 쓰는 파일만 고른다.
+ *
+ * 다른 리포지토리도 `repo.insert(...)` 를 부르므로(예: `WorkflowStatusMigrationAdapter` 의
+ * 마이그레이션 operation) 타입 참조가 없는 파일은 검사 대상이 아니다.
+ */
+function filesUsingIssueRepository(): Array<{ rel: string; source: string }> {
+  return walkKotlin(BC_MAIN)
+    .map((file) => ({ rel: path.relative(REPO_ROOT, file), source: fs.readFileSync(file, 'utf8') }))
+    .filter((f) => f.source.includes(REPOSITORY_TYPE));
+}
+
 describe('이슈 삽입 경로의 본문 두 컬럼 계약', () => {
   const service = fs.readFileSync(SERVICE, 'utf8');
   const repository = fs.readFileSync(REPOSITORY, 'utf8');
+  const candidates = filesUsingIssueRepository();
 
   test('생산 호출자를 하한 이상 찾는다 (비-공허 짝)', () => {
-    const calls = findInsertCalls(service);
+    const total = candidates.reduce((n, f) => n + findInsertCalls(f.source).length, 0);
     assert.ok(
-      calls.length >= MIN_CALLERS,
-      `IssueApplicationService 에서 repo.insert 호출을 ${calls.length}건만 읽었다 — 파서가 눈이 멀었거나 호출이 사라졌다.`,
+      total >= MIN_CALLERS,
+      `src/main 에서 IssueRepository.insert 호출을 ${total}건만 읽었다 — 파서가 눈이 멀었거나 호출이 사라졌다.`,
+    );
+    // 파일 탐색이 죽으면 위 합계가 0이 되므로 후보 수도 함께 못박는다.
+    assert.ok(
+      candidates.length >= 2,
+      `IssueRepository 를 쓰는 파일을 ${candidates.length}개만 찾았다 — 탐색이 눈이 멀었다.`,
     );
   });
 
   test('생산 경로의 insert 호출 전량이 본문 HTML 을 명시한다', () => {
-    const bad = findInsertCalls(service)
-      .filter((c) => c.args < 2)
-      .map((c) => `repo.insert(${c.snippet}) — 인자 ${c.args}개`);
+    // ★파일 하나가 아니라 `src/main` 전체를 본다. 새 서비스가 인자를 빠뜨리면 여기서 걸린다.
+    const bad = candidates.flatMap((f) =>
+      findInsertCalls(f.source)
+        .filter((c) => c.args < 2)
+        .map((c) => `${f.rel} — insert(${c.snippet}) 인자 ${c.args}개`),
+    );
     assert.deepEqual(
       bad,
       [],
