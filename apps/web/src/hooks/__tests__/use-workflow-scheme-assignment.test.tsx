@@ -1,5 +1,6 @@
 // 프로젝트-스킴 할당 TanStack Query hooks 테스트 — RED phase
 import { renderHook, waitFor, act } from '@testing-library/react'
+import { settlePendingMutations } from '@/test/pending-mutation-guard'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
@@ -325,5 +326,12 @@ describe('useUpdateAssignment', () => {
       expect(optimistic?.key).toBe('new-scheme')
       expect(optimistic?.name).toBe('새 스킴')
     })
+
+    // 🛑 붙잡은 것을 반드시 푼다. 이 테스트는 낙관값을 관측하려고 PUT 을 50ms 붙잡는데,
+    //    그대로 끝내면 전역 미결 mutation 가드(`src/test/setup.ts`)가 teardown 에서 잡는다.
+    //    **단독 실행에서는 통과한다** — 워커에 여유가 있어 teardown 전에 스스로 정착하기
+    //    때문이다. 전량 병렬 실행에서만 red 가 되는 flake 였고, 실제로 2026-09-07 배포를
+    //    프론트 게이트에서 한 번 중단시켰다. 가드의 오류 메시지가 지시하는 처방 그대로다.
+    await settlePendingMutations()
   })
 })

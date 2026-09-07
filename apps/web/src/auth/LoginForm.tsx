@@ -25,6 +25,12 @@ import { useLoginMutation } from './useLoginMutation'
 import { SamlIdpButtons } from './SamlIdpButtons'
 import { OidcIdpButtons } from './OidcIdpButtons'
 import { ssoEntryUrl } from './ssoEntryUrl'
+import {
+  readStoredLoginProvider,
+  resolveLoginProvider,
+  writeStoredLoginProvider,
+  type LoginProviderInput,
+} from './login-provider-preference'
 import { useDomainRouteLookup } from './useDomainRouteLookup'
 import { loginStrings, mfaStrings, mfaErrorMessage } from '@/i18n/ko'
 import { verifyMfa } from '@/api/mfa'
@@ -85,6 +91,26 @@ const loginFormSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginFormSchema>
 
+/**
+ * 로그인에 **성공한** 방식을 기억한다 (Maxi 확정 2026-09-07).
+ *
+ * 🛑 드롭다운 `onValueChange` 에 걸지 않는다. 그러면 사용자가 열어 훑어본 것만으로 기본값이
+ *    바뀌고, 다음 방문에 **성공한 적 없는** 방식을 받는다. 짝 판별식 =
+ *    `LoginForm.test.tsx` 의 「제출 전에는 저장하지 않는다 (대조군)」.
+ *
+ * 🛑 호출 자리는 `mfa_required` 분기보다 **위**다 — MFA 챌린지도 자격 증명이 받아들여진
+ *    것이다. 아래에 두면 2FA 사용자만 영영 기억이 안 되는 비대칭이 생긴다.
+ *
+ * 출처가 `'stored'` 면 값이 이미 같으므로 쓰지 않는다(`lib/active-project.ts` E7 관례).
+ *
+ * @param input 해소 입력 — 저장값과 현재 provider 목록
+ * @param submittedId 실제로 제출된 provider id
+ */
+function rememberLoginProvider(input: LoginProviderInput, submittedId: string): void {
+  if (resolveLoginProvider(input).source === 'stored') return
+  writeStoredLoginProvider(submittedId)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 자격 증명 폼 — provider + username + password + SSO (단일 화면)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,8 +138,13 @@ interface CredentialsFormProps {
  * 사라지고 되돌릴 수 없다. 매칭 도메인에 LOCAL/LDAP 계정이 공존할 수도 있다(FR-AU-06).
  *
  * providers는 부모 LoginForm이 이미 계산해 prop으로 전달한다.
- * 마운트 시 providers[0].id가 이미 확정돼 있으면 defaultValues에서 직접 설정한다.
- * providers가 아직 빈 배열이면 useEffect에서 첫 항목 도착 시 setValue로 설정한다.
+ *
+ * ### 기본 방식은 `local` 이고, 마지막 성공 방식을 기억한다 (Maxi 확정 2026-09-07)
+ * 해소는 `resolveLoginProvider` 가 3단으로 한다(저장값 → `local` → 첫 원소). 종전에는
+ * `providers[0]` 이었고, 서버가 `priority` 순으로 주므로 LDAP 이 0 인 조직에서는 Local 계정
+ * 사용자가 **매번** 드롭다운을 바꿔야 했다.
+ *
+ * providers가 아직 빈 배열이면 useEffect에서 도착 시 같은 해소를 다시 돌린다.
  */
 const LoginCredentialsForm = ({
   onSuccess,
@@ -126,9 +157,10 @@ const LoginCredentialsForm = ({
   const mutation = useLoginMutation()
   const { matchedRoute, scheduleLookup, flushLookup } = useDomainRouteLookup()
 
-  // providers[0]?.id가 이미 있으면 마운트 시 기본값으로 사용한다.
-  // 없으면 '' — useEffect에서 채운다.
-  const initialProvider = providers[0]?.id ?? ''
+  // 🛑 저장값 읽기를 **렌더 본문에서** 한 번만 한다. `useState` 초기화 함수에 넣지 않는
+  //    이유는 이 값이 `defaultValues` 로만 쓰이고 이후 폼이 소유하기 때문이다.
+  const storedProvider = readStoredLoginProvider()
+  const initialProvider = resolveLoginProvider({ storedId: storedProvider, providers }).id
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -139,14 +171,17 @@ const LoginCredentialsForm = ({
     },
   })
 
-  // providers가 비동기로 늦게 도착하는 경우(마운트 시 빈 배열) 첫 항목을 설정한다.
+  // providers가 비동기로 늦게 도착하는 경우(마운트 시 빈 배열) 기본값을 설정한다.
   // 이미 provider 값이 있으면(마운트 시 defaultValues로 설정됨) 덮어쓰지 않는다.
+  //
+  // 🛑 여기서도 `providers[0]` 이 아니라 **같은 3단 해소**를 쓴다. 두 자리가 다른 규칙을 쓰면
+  //    목록이 늦게 오는 경로에서만 기본값이 달라지고, 그것은 로딩 속도에 따라 나타났다
+  //    사라지는 결함이 된다 — 재현이 어려운 쪽으로 갈린다.
   useEffect(() => {
-    const firstProvider = providers[0]
-    if (firstProvider === undefined) return
-    if (form.getValues('provider') === '') {
-      form.setValue('provider', firstProvider.id)
-    }
+    if (providers.length === 0) return
+    if (form.getValues('provider') !== '') return
+    const resolved = resolveLoginProvider({ storedId: readStoredLoginProvider(), providers })
+    if (resolved.id !== '') form.setValue('provider', resolved.id)
   }, [providers, form])
 
   const serverError = form.formState.errors.root?.message ?? null
@@ -155,6 +190,9 @@ const LoginCredentialsForm = ({
     form.clearErrors('root')
     mutation.mutate(values, {
       onSuccess: (data) => {
+        // ★방식 기억 — 규칙은 `rememberLoginProvider` KDoc 에 있다. `mfa_required` 보다
+        //   **위**에 두는 것이 계약이다(비밀번호까지 통과한 것이므로 2FA 사용자도 기억된다).
+        rememberLoginProvider({ storedId: storedProvider, providers }, values.provider)
         if (data.kind === 'mfa_required') {
           // MFA 챌린지 진입 — 챌린지 토큰을 부모에게 전달하고 MFA step으로 전환
           onMfaRequired(data.challengeToken)
