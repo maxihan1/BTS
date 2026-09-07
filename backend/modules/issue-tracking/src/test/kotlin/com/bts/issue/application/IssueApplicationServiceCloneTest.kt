@@ -124,8 +124,10 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                     )
                 } returns true
                 every { repo.findByKey(sourceKey) } returns source
+                // 본문은 두 컬럼이다(V039) — 복제 경로가 원본 HTML 을 따로 읽는다.
+                every { repo.findDescriptionHtml(sourceKey) } returns null
                 every { repo.incrementKeySequence(projectKey) } returns 2L
-                every { repo.insert(any()) } answers { firstArg() }
+                every { repo.insert(any(), any()) } answers { firstArg() }
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
@@ -134,7 +136,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("원본의 복사 대상 필드(summary/description/typeId/priority/labels/environment/impact)를 복사한다") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
 
@@ -149,7 +151,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("includeAssignee=true(기본)면 담당자를 복사한다") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest(includeAssignee = true))
 
@@ -158,7 +160,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("includeAssignee=false면 담당자를 비운다") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest(includeAssignee = false))
 
@@ -167,7 +169,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("summaryOverride를 주면 클론본 제목을 덮어쓴다") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest(summaryOverride = "결제 버그 (재현 케이스)"))
 
@@ -176,7 +178,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("summaryOverride가 공백만이면 원본 summary로 폴백한다") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest(summaryOverride = "   "))
 
@@ -185,7 +187,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("key(새 시퀀스)·reporter(actor)·상태(초기상태)·version=1·projectId(원본)로 새로 시작한다") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
 
@@ -274,7 +276,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
             it("원본 typeId를 활성 재검증 없이 그대로 복사한다 (EC-8)") {
                 val slot: CapturingSlot<Issue> = slot()
-                every { repo.insert(capture(slot)) } answers { slot.captured }
+                every { repo.insert(capture(slot), any()) } answers { slot.captured }
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
 
@@ -298,7 +300,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                     )
                     repo.findByKey(sourceKey)
                     repo.incrementKeySequence(projectKey)
-                    repo.insert(any())
+                    repo.insert(any(), any())
                     eventPublisher.publish(any())
                 }
             }
@@ -333,6 +335,8 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                     )
                 } returns true
                 every { repo.findByKey(sourceKey) } returns null
+                // 본문은 두 컬럼이다(V039) — 복제 경로가 원본 HTML 을 따로 읽는다.
+                every { repo.findDescriptionHtml(sourceKey) } returns null
             }
 
             it("IssueNotFoundException 을 던진다") {
@@ -345,7 +349,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                 runCatching { sut.cloneIssue(actor, sourceKey, CloneIssueRequest()) }
 
                 verify(exactly = 0) { repo.incrementKeySequence(any()) }
-                verify(exactly = 0) { repo.insert(any()) }
+                verify(exactly = 0) { repo.insert(any(), any()) }
             }
         }
 
@@ -364,7 +368,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                 }
                 verify(exactly = 0) { repo.findByKey(sourceKey) }
                 verify(exactly = 0) { repo.incrementKeySequence(any()) }
-                verify(exactly = 0) { repo.insert(any()) }
+                verify(exactly = 0) { repo.insert(any(), any()) }
             }
         }
 
@@ -381,8 +385,10 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                     )
                 } returns true
                 every { repo.findByKey(sourceKey) } returns source
+                // 본문은 두 컬럼이다(V039) — 복제 경로가 원본 HTML 을 따로 읽는다.
+                every { repo.findDescriptionHtml(sourceKey) } returns null
                 every { repo.incrementKeySequence(projectKey) } returns 2L
-                every { repo.insert(any()) } answers { firstArg() }
+                every { repo.insert(any(), any()) } answers { firstArg() }
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
                     workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
@@ -415,7 +421,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
                     sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
                 }
                 verify(exactly = 0) { repo.incrementKeySequence(any()) }
-                verify(exactly = 0) { repo.insert(any()) }
+                verify(exactly = 0) { repo.insert(any(), any()) }
             }
         }
     }

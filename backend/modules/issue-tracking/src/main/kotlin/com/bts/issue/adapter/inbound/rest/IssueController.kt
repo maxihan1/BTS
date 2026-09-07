@@ -187,6 +187,8 @@ class IssueController(
                 reporterId = actor,
                 typeId = request.typeId?.let { IssueTypeId(it) },
                 description = request.description,
+                // 리치 에디터 생성 경로 (V039). `isBodyExclusive` 가 description 과의 동시 전달을 막는다.
+                descriptionHtml = request.descriptionHtml,
                 componentIds = request.componentIds,
                 securityLevelId = request.securityLevelId,
                 // FR-UX-09 B1 — 3필드 1회 제출 (ADR D-2).

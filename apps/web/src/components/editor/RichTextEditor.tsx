@@ -6,7 +6,9 @@ import type { Editor } from '@tiptap/react'
 import { isMentionSuggestionActive } from './mention-extension'
 import { buildRichTextExtensions } from './rich-text-extensions'
 import { RichTextToolbar } from './RichTextToolbar'
+import { RICH_TEXT_CLASS } from './rich-text-class'
 import { useEditorImageUpload } from './use-editor-image-upload'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { editorLabels } from '@/i18n/editor-labels'
 import { cn } from '@/lib/utils'
 
@@ -34,6 +36,13 @@ export interface RichTextEditorProps {
   autoFocus?: boolean
   /** 외부에서 포커스를 주기 위한 DOM 참조 — 단축키 `m` 이 댓글 입력으로 이동할 때 쓴다. */
   contentRef?: RefObject<HTMLDivElement | null>
+  /**
+   * 본문 최소 높이 Tailwind 클래스.
+   *
+   * 상세 화면은 넉넉해도 되지만 **생성 다이얼로그는 좁다** — 기본값 그대로 넣으면 본문이
+   * 종전 `rows={4}` textarea 보다 커져 아래 필드를 밀어낸다(리뷰 D-1). 화면이 높이를 정하게 연다.
+   */
+  minHeightClass?: string
 }
 
 /**
@@ -75,6 +84,7 @@ export function RichTextEditor({
   imageIssueKey,
   autoFocus = false,
   contentRef,
+  minHeightClass = 'min-h-[8rem]',
 }: RichTextEditorProps): JSX.Element {
   const uploadImages = useEditorImageUpload(imageIssueKey ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -97,8 +107,9 @@ export function RichTextEditor({
         'aria-label': ariaLabel,
         'aria-multiline': 'true',
         class: cn(
-          'prose prose-sm max-w-none px-3 py-2 min-h-[8rem] text-sm text-foreground',
-          'focus:outline-none',
+          RICH_TEXT_CLASS,
+          'px-3 py-2 text-sm text-foreground focus:outline-none',
+          minHeightClass,
         ),
       },
       handleKeyDown: (view, event) => {
@@ -177,7 +188,17 @@ export function RichTextEditor({
   }, [editor, editable])
 
   return (
-    <div className="rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
+    // ★`TooltipProvider` 를 여기서 한 번 더 두는 이유 — Radix `Tooltip` 은 Provider 가 없으면
+    //   **throw 한다**(실측 2026-09-07: 「`Tooltip` must be used within `TooltipProvider`」로
+    //   에디터를 렌더하는 테스트 5파일 60건이 한꺼번에 죽었다). 앱 루트에 Provider 가 있어도
+    //   테스트·스토리북처럼 그 밖에서 이 컴포넌트를 렌더하는 자리가 실재하므로, 툴팁을 쓰는
+    //   컴포넌트가 스스로를 지키게 한다.
+    //
+    //   `ui/tooltip.tsx` 의 C6 경고(「self-wrap 하면 전역 delayDuration 이 조용히 덮인다」)에
+    //   걸리지 않는다 — 그 경고는 `Tooltip` **Root** 안에 Provider 를 넣는 것을 막는 것이고,
+    //   여기는 소비처다. `delayDuration` 을 넘기지 않아 값도 앱 루트와 같은 기본 0 이다.
+    <TooltipProvider>
+      <div className="rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
       <RichTextToolbar
         editor={editor}
         // 이슈가 없으면 이미지 경로 자체가 없다 — 버튼도 그리지 않는다.
@@ -201,6 +222,7 @@ export function RichTextEditor({
           }}
         />
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }

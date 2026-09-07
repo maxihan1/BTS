@@ -380,10 +380,20 @@ export interface CreateIssueInput {
   /** FR-UX-09 F2 — 이슈 유형. 미전달이면 서버가 task 로 fallback 한다. */
   typeId?: number
   /**
-   * FR-UX-09 F2 — 이슈 본문(Markdown).
+   * FR-UX-09 F2 — 이슈 본문(Markdown). **레거시·import 경로 전용**.
    * 미전달/공백이면 서버가 프로젝트 템플릿으로 대체한다 (FR-TM-01 옵션 C).
+   *
+   * ★[descriptionHtml] 과 **동시에 보낼 수 없다** — 서버 `isBodyExclusive` 가 400 을 낸다.
    */
   description?: string
+  /**
+   * 이슈 본문 **HTML** — 리치 에디터 경로 (V039 · J23).
+   *
+   * 서버가 `sanitizeHtml` 로 정화해 `description_html` 에 저장한다. max 32767자.
+   * **빈 문서(`<p></p>` 등)면 키를 아예 빼야 한다** — 실으면 서버가 「내용 있음」으로 읽어
+   * 프로젝트 템플릿(FR-TM-01)이 적용되지 않는다. 판정은 `isBlankHtml` 이 한다.
+   */
+  descriptionHtml?: string
   /**
    * FR-UX-09 F2 — 담당자 **3-state** (백엔드 `JsonNullable`, ADR 2026-07-31 D-2).
    *
@@ -704,6 +714,11 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueRespons
   }
   if (input.description !== undefined) {
     body['description'] = input.description
+  }
+  // 리치 에디터 경로 (J23). `description` 과 동시에 실리면 서버가 400 을 낸다 —
+  // 호출부가 둘 중 하나만 채우도록 `buildCreateIssuePayload` 가 보장한다.
+  if (input.descriptionHtml !== undefined) {
+    body['descriptionHtml'] = input.descriptionHtml
   }
   if (input.priority !== undefined) {
     body['priority'] = input.priority

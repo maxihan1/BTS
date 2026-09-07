@@ -243,19 +243,72 @@ class IssueRepository(
      * 이슈를 DB 에 삽입하고 DB 생성 값(id, createdAt, updatedAt, version)을 포함한 Issue 를 반환한다.
      *
      * version=1 은 도메인 생성 시 이미 고정. DB DEFAULT 를 사용하지 않고 명시적으로 삽입한다.
+     *
+     * ## [descriptionHtml] 을 왜 따로 받나
+     *
+     * V039 로 본문이 두 컬럼이 됐다. 도메인 [Issue] 는 마크다운 쪽(`description`)만 갖고 있어
+     * HTML 은 여기로 따로 흘려야 한다 — 표현 계층 산출물이지 불변식을 갖는 도메인 속성이 아니다.
+     *
+     * ## 기본값 `= null` 을 둔 이유와, 그 대신 무엇이 지키는가
+     *
+     * 처음에는 **기본값을 주지 않아** 인자 누락이 컴파일 에러가 되게 했다. 그것이 이 결함의
+     * 가장 강한 처방이기 때문이다 — V039 가 수정 경로만 두 컬럼으로 옮기고 **복제 경로를
+     * 두고 가서**, 리치 에디터로 저장한 이슈를 복제하면 본문이 사라졌다.
+     *
+     * 그런데 실측(2026-09-07) 결과 그 강제를 켜면 **테스트 픽스처 174곳·61파일**이 함께
+     * 컴파일 에러가 났다. 전부 「이슈를 하나 저장해 두고 다른 것을 검증한다」는 준비 코드라
+     * 본문 HTML 과 무관한데, 그 노이즈가 이 PR 의 진짜 변경을 diff 에서 가린다.
+     * 테스트 소스셋 확장 함수로 우회해 봤으나 import 가 없는 93파일이 그대로 남았다.
+     *
+     * ⇒ 기본값을 두되 **`scripts/workflow/issue-insert-body-guard.test.ts` 가
+     * `src/main` 안의 호출 전량이 본문 HTML 을 명시하는지 검사한다.** 생산 호출자는 실측
+     * 2곳(`createIssue`·`cloneIssue`)이라 판별식이 좁고 확실하다. 새 호출자가 인자를
+     * 빠뜨리면 pre-push 에서 red 가 난다.
+     *
+     * @param issue 삽입할 이슈 (마크다운 본문 포함)
+     * @param descriptionHtml 정화된 HTML 본문. 없으면 명시적으로 null 을 넘긴다 —
+     *   생산 코드는 판별식이 **명시**를 강제한다
      */
     @Transactional
-    fun insert(issue: Issue): Issue {
+    fun insert(
+        issue: Issue,
+        descriptionHtml: String? = null,
+    ): Issue {
         log.debug("Inserting issue key={}", issue.key.value)
         val record =
             dsl.insertInto(ISSUES)
                 .set(issue.toInsertRecord())
+                .set(ISSUES.DESCRIPTION_HTML, descriptionHtml?.ifBlank { null })
                 .returning()
                 .fetchOne()
                 ?: error("insert returning() returned null for key=${issue.key.value}")
 
         return record.toIssue()
     }
+
+    /**
+     * 활성 이슈의 **본문 HTML 컬럼만** 읽는다.
+     *
+     * ## 왜 별도 조회인가
+     *
+     * 도메인 [Issue] 에는 `descriptionHtml` 이 **없다**(마크다운 쪽만 갖는다). 그래서
+     * [findByKey] 로 얻은 객체에서는 이 값을 꺼낼 길이 **원리적으로 없다** — 바로 그 부재가
+     * 복제 본문 소실의 원인이었다. 도메인에 필드를 더하면 `Issue.create`·`clone`·`toIssue`·
+     * `toInsertRecord` 와 그 테스트가 연쇄로 바뀌는데, 이 값은 표현 계층 산출물이지
+     * 불변식을 갖는 도메인 속성이 아니다.
+     *
+     * 복제는 단건 조작이라 쿼리 1회 추가가 무해하고, `findByKeyWithType`(응답 DTO 용 JOIN)을
+     * 끌어오는 것보다 훨씬 좁다.
+     *
+     * @return 본문 HTML. 이슈가 없거나 마크다운으로만 저장됐으면 null
+     */
+    @Transactional(readOnly = true)
+    fun findDescriptionHtml(key: IssueKey): String? =
+        dsl.select(ISSUES.DESCRIPTION_HTML)
+            .from(ISSUES)
+            .where(activeByKey(key))
+            .fetchOne()
+            ?.get(ISSUES.DESCRIPTION_HTML)
 
     /**
      * 활성 이슈(deleted_at IS NULL)를 key 로 조회한다.

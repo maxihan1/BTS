@@ -40,6 +40,13 @@ data class CreateIssueRequest(
     val reporterId: ActorId,
     val typeId: IssueTypeId? = null,
     val description: String? = null,
+    /**
+     * 리치 에디터가 보낸 HTML 본문 (V039).
+     *
+     * [description] 과 **동시에 오지 않는다** — REST 층 `CreateIssueRequest.isBodyExclusive`
+     * 가 400 으로 막는다. 내용이 있으면 템플릿 fallback 을 타지 않는다.
+     */
+    val descriptionHtml: String? = null,
     val componentIds: List<UUID> = emptyList(),
     val securityLevelId: UUID? = null,
     val customFields: Map<String, Any?>? = null,
