@@ -3012,8 +3012,10 @@ describe('IssueDetailPage — 본문/메타 독립 스크롤 (Jira 패리티)', 
     const { header, body, meta } = await findRegions()
 
     // pane 은 제목이 h2 로 강등된다(문서 h1 단일 계약) — 그래도 자리는 헤더다.
-    const heading = screen.getByRole('heading', { level: 2 })
-    expect(header.contains(heading)).toBe(true)
+    // ★`screen` 전역으로 h2 를 찾으면 안 된다 — 활동 탭·메타 섹션에도 h2 가 있어 strict 위반이다.
+    //   여기서 재는 것은 「제목이 헤더 안에 있다」이므로 헤더 범위로 좁히는 것이 곧 판정이다.
+    const heading = within(header).getByRole('heading', { level: 2 })
+    expect(heading).toHaveTextContent(issueAtlas1Fixture.summary)
     expect(body.contains(meta)).toBe(false)
     expect(meta.contains(body)).toBe(false)
   })
