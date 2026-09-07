@@ -50,10 +50,10 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   // J1 표시 방식 토글이 조건 렌더 1줄을 더했다(1011 → 1012). 함께 들어온 40줄 중 39줄은
   // `IssueDetailPresentationMenu` 로 떼어내 갚았고, 남은 한 줄은 「이 기능이 존재한다」는
   // 최소 렌더라 0줄로 만들려면 기능을 지우는 수밖에 없다.
-  // ★2026-09-07 (J25~J27 독립 스크롤) 1003 → 926. **줄어든 값이라 승인이 아니라 상환이다.**
+  // ★2026-09-07 (J25~J27 독립 스크롤) 1003 → 929. **줄어든 값이라 승인이 아니라 상환이다.**
   //   본문/메타가 각자 스크롤하게 되면서 머리 영역이 두 스크롤 컨테이너의 바깥 형제가 됐고,
   //   그 층을 `IssueDetailHeader` 로 떼어냈다(구조가 달라진 자리라 파일도 갈랐다).
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 926,
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 929,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
   //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다

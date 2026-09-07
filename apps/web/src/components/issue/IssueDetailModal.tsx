@@ -72,9 +72,10 @@ export function IssueDetailModal(): JSX.Element | null {
         <DialogTitle className="sr-only">{`이슈 상세 ${openKey}`}</DialogTitle>
         {/* `min-h-0` 이 없으면 flex 자식의 최소 높이가 콘텐츠 높이라 모달이 늘어나고,
             안쪽 `overflow-y-auto` 가 한 번도 발동하지 않는다.
-            ★`flex flex-col` 도 필수다 — 상세 루트는 `max-h` 만 있는 껍데기 안에서 `h-full` 로
-              높이를 못 받고(백분율이 해소되지 않는다) `flex-1` 로 받는다. 이 줄이 block 이면
-              그 `flex-1` 이 무동작이 되어 루트가 콘텐츠 높이로 늘어난다(실측 414 → 2646). */}
+            ★`flex flex-col` 이 이 줄의 **핵심**이다. 상세 루트는 `max-h` 만 있고 확정 높이가
+              없는 껍데기 안에서 `h-full`(백분율)로는 높이를 못 받는다 — 이 줄을 block 으로
+              되돌리면 루트가 414px 대신 2646px 로 늘어 안쪽 두 열의 스크롤이 통째로 죽는다
+              (뮤테이션으로 red 확인. 그때 루트에 `flex-1` 이 있어도 소용없었다). */}
         <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
           <IssueDetailPage
             issueKey={openKey}
