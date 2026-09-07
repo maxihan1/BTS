@@ -269,8 +269,18 @@ class IssueApplicationService(
             validateCustomFields(definitions, customFieldValues)
         }
 
-        val resolvedDescription =
-            resolveDescription(request.description, projectId, resolvedTypeId, request.reporterId, request.projectKey)
+        // 본문 두 표현(V039). 수정 경로 [resolveBodyPatch] 와 **같은 규약**이다 —
+        // HTML 이 오면 마크다운 컬럼을 비우고, 어느 쪽도 내용이 없으면 템플릿으로 채운다.
+        val body =
+            resolveCreateBody(
+                description = request.description,
+                descriptionHtml = request.descriptionHtml,
+                projectId = projectId,
+                resolvedTypeId = resolvedTypeId,
+                reporterId = request.reporterId,
+                projectKey = request.projectKey,
+            )
+        val resolvedDescription = body.markdown
 
         // FR-BL-01 옵션 B: 신규 이슈 rank=NULL(lazy). 드래그(rerank) 시 BacklogRankService 가 부여한다.
         val issue =
@@ -293,7 +303,7 @@ class IssueApplicationService(
                 priority = request.priority ?: IssuePriority.MEDIUM.number,
                 labels = request.labels ?: emptyList(),
             )
-        val saved = repo.insert(issue)
+        val saved = repo.insert(issue, body.html)
         autoWatch(saved.id.value, listOfNotNull(saved.reporterId.value, resolvedAssignee?.value))
         repo.insertComponents(saved.id.value, normalizedComponentIds)
         eventPublisher.publish(
@@ -398,7 +408,10 @@ class IssueApplicationService(
                 impact = source.impact,
                 assigneeId = if (request.includeAssignee) source.assigneeId else null,
             )
-        val saved = repo.insert(clone)
+        // ★본문은 두 컬럼이다(V039). 도메인 [Issue] 는 마크다운 쪽만 갖고 있어 HTML 을 따로 읽는다 —
+        //   이 한 줄이 없어서 「리치 에디터로 저장한 이슈를 복제하면 본문이 사라진다」가 났다.
+        //   에디터 경로는 `description` 을 NULL 로 두므로 복사할 것이 아무것도 없었다.
+        val saved = repo.insert(clone, repo.findDescriptionHtml(sourceKey))
         eventPublisher.publish(
             IssueCreated(
                 issueKey = saved.key,
@@ -451,6 +464,43 @@ class IssueApplicationService(
      * @param projectKey 프로젝트 키 문자열 — project 토큰 치환에 사용.
      * @return 최종 결정된 description 문자열. null 이면 이슈 생성 시 description 없음.
      */
+    /**
+     * 생성 요청의 본문 의도를 `description`(마크다운) + `description_html`(HTML) **두 값**으로 푼다.
+     *
+     * 수정 경로 [resolveBodyPatch] 와 **같은 표**를 따른다. 두 경로가 갈리면 「생성한 이슈와
+     * 수정한 이슈의 본문 저장 방식이 다르다」가 되고, 검색용 `description_plain` 이 HTML 을
+     * 우선하므로 한쪽만 채워진 행에서 검색이 어긋난다.
+     *
+     * | 입구 | markdown 컬럼 | html 컬럼 | 템플릿 |
+     * |---|---|---|---|
+     * | `descriptionHtml` 이 **내용 있음** | null | `sanitizeHtml` 결과 | 안 탄다 |
+     * | `descriptionHtml` 이 **빈 문서** | 템플릿 결과 | null | **탄다** |
+     * | `description` 이 non-blank | 원문 | null(읽기 fallback 이 렌더) | 안 탄다 |
+     * | 둘 다 비었음 | 템플릿 결과 | null | 탄다 |
+     *
+     * ★**빈 문서 판정을 서버가 한다.** TipTap 은 빈 문서를 `<p></p>` 로 직렬화하므로
+     * `isNotBlank()` 만으로는 「빈 본문」이 영영 오지 않아 FR-TM-01 이 조용히 죽는다.
+     * 프론트도 같은 판정을 하지만 그것은 보조다 — 모바일·API·자동화가 같은 함정에 빠진다.
+     *
+     * @return 두 컬럼에 실을 값 쌍
+     */
+    private fun resolveCreateBody(
+        description: String?,
+        descriptionHtml: String?,
+        projectId: UUID,
+        resolvedTypeId: IssueTypeId,
+        reporterId: ActorId,
+        projectKey: String,
+    ): BodyPatch {
+        if (!MarkdownRenderer.isBlankHtml(descriptionHtml)) {
+            // 에디터 경로는 마크다운 컬럼을 비운다 — 남기면 옛 내용을 담은 채 영원히 굳는다.
+            // 읽기 fallback 이 HTML 을 우선하므로 무해하고, 「어느 쪽이 진짜인가」가 확정된다.
+            return BodyPatch(markdown = null, html = MarkdownRenderer.sanitizeHtml(descriptionHtml ?: ""))
+        }
+        val resolved = resolveDescription(description, projectId, resolvedTypeId, reporterId, projectKey)
+        return BodyPatch(markdown = resolved, html = null)
+    }
+
     private fun resolveDescription(
         requested: String?,
         projectId: UUID,

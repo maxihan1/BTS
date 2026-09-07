@@ -90,6 +90,25 @@ object MarkdownRenderer {
      */
     private const val ATTACHMENT_SCHEME = "attachment:"
 
+    /**
+     * HTML 태그 한 개. [isBlankHtml] 이 텍스트만 남기려고 쓴다.
+     *
+     * ★**정화 목적이 아니다.** 이 정규식으로 XSS 를 막으려 들면 안 된다 — 그 일은 OWASP
+     * [SANITIZE_POLICY] 가 한다. 여기서는 「글자가 있나」만 재므로 태그를 대충 벗겨도 안전하다.
+     */
+    private val HTML_TAG = Regex("<[^>]*>")
+
+    /**
+     * 텍스트를 담지 않아도 **화면에 무언가를 그리는** 태그.
+     *
+     * [isBlankHtml] 이 이것들을 발견하면 즉시 「내용 있음」으로 판정한다. 이 예외가 없으면
+     * 이미지 한 장짜리 본문이 「빈 본문」으로 읽혀 프로젝트 템플릿에 덮인다.
+     *
+     * 기준은 「글자 없이도 보이는가」다 — `img`(이미지) · `hr`(구분선) · `table`(테두리) ·
+     * `input`(체크박스). `blockquote`·`ul` 처럼 **자식 텍스트가 있어야 보이는** 것은 넣지 않는다.
+     */
+    private val VISUAL_VOID_TAGS = listOf("<img", "<hr", "<table", "<input")
+
     private val ATTACHMENT_SRC =
         Regex("^attachment:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
@@ -187,6 +206,45 @@ object MarkdownRenderer {
      * @return allowlist 밖 태그·속성이 제거된 안전한 HTML 문자열
      */
     fun sanitizeHtml(html: String): String = SANITIZE_POLICY.sanitize(html)
+
+    /**
+     * 리치 에디터가 보낸 HTML 이 **빈 본문**인가.
+     *
+     * ## 왜 필요한가 — FR-TM-01 이 조용히 죽는 것을 막는다
+     *
+     * 「본문을 비운 채 만들면 프로젝트 템플릿으로 채운다」가 FR-TM-01 이다. 마크다운
+     * textarea 시절에는 `isNotBlank()` 한 줄이면 됐다. 그런데 **TipTap 은 빈 문서를 빈
+     * 문자열이 아니라 `<p></p>` 로 직렬화한다.** 그대로 두면 리치 에디터로 바꾸는 순간
+     * 「빈 본문」이 영영 도착하지 않아 템플릿 기능이 죽는다 — 그리고 **아무 오류도 안 난다.**
+     * 이슈는 만들어지고 본문만 비어 있을 뿐이라 발견이 늦다.
+     *
+     * ## 판정식
+     *
+     * 태그를 모두 벗기고 `&nbsp;`·U+00A0 을 공백으로 접은 뒤 `trim()` 했을 때 빈 문자열이고,
+     * **동시에 `<img` 를 포함하지 않으면** 빈 본문이다.
+     *
+     * ★[VISUAL_VOID_TAGS] 예외가 없으면 「이미지만 넣고 저장했더니 프로젝트 템플릿이 덮어썼다」가
+     * 된다. 이미지 한 장짜리 본문은 텍스트가 0자이지만 **비어 있지 않다.** 구분선·표도 같다.
+     *
+     * ## 왜 서버가 정본인가
+     *
+     * 프론트도 같은 판정을 하지만 그것은 보조다. 프론트만 고치면 모바일·API 사용자·자동화가
+     * 같은 함정에 빠져 FR-TM-01 이 그쪽에서 죽는다.
+     *
+     * @param html 검사할 HTML. null 이면 빈 본문이다
+     * @return 빈 본문이면 true
+     */
+    fun isBlankHtml(html: String?): Boolean {
+        if (html == null || html.isBlank()) return true
+        // 텍스트를 담지 않아도 화면에 그려지는 것들 — 태그를 벗기기 **전에** 본다.
+        if (VISUAL_VOID_TAGS.any { html.contains(it, ignoreCase = true) }) return false
+        val text =
+            html
+                .replace(HTML_TAG, "")
+                .replace("&nbsp;", " ")
+                .replace(' ', ' ')
+        return text.isBlank()
+    }
 
     /**
      * Markdown 문자열을 안전한 HTML로 변환한다.
