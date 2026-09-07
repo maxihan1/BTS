@@ -14,12 +14,12 @@ vi.mock('@/hooks/use-projects', () => ({ useProjects: vi.fn() }))
 vi.mock('@/hooks/use-boards', () => ({ useBoards: vi.fn() }))
 vi.mock('@/api/saved-filters', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/saved-filters')>()
-  return { ...actual, fetchOwnedFilters: vi.fn() }
+  return { ...actual, fetchOwnedFilters: vi.fn(), fetchSharedFilters: vi.fn() }
 })
 
 const { useProjects } = await import('@/hooks/use-projects')
 const { useBoards } = await import('@/hooks/use-boards')
-const { fetchOwnedFilters } = await import('@/api/saved-filters')
+const { fetchOwnedFilters, fetchSharedFilters } = await import('@/api/saved-filters')
 const { GadgetConfigForm } = await import('./GadgetConfigForm')
 const { gadgetPickerLabels } = await import('@/i18n/dashboard-labels')
 
@@ -68,6 +68,7 @@ beforeEach(() => {
     isPending: false,
   } as unknown as ReturnType<typeof useBoards>)
   vi.mocked(fetchOwnedFilters).mockResolvedValue([])
+  vi.mocked(fetchSharedFilters).mockResolvedValue([])
 })
 
 describe('GadgetConfigForm — 스코프성 필드는 선택기다', () => {
@@ -91,6 +92,33 @@ describe('GadgetConfigForm — 스코프성 필드는 선택기다', () => {
 
     expect(screen.getByRole('combobox', { name: /filter id/i })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /filter id/i })).not.toBeInTheDocument()
+  })
+
+  it('★공유받은 필터도 고를 수 있다 — 드롭다운화로 기능이 줄면 안 된다', async () => {
+    // ★이 PR 이 `filterId` 를 자유 입력에서 드롭다운으로 바꿨다. 그런데 「내 필터」만 부르면
+    //   종전에 UUID 를 붙여넣어 쓰던 **공유받은 필터를 고를 수단이 사라진다**.
+    //   `filter_result`·`issue_count` 는 이미 출시된 MVP 6종이라 신규 가젯의 제약이 아니라
+    //   **기존 기능의 축소**다. 리뷰가 잡았고 Maxi 가 「지금 고친다」로 판정했다.
+    vi.mocked(fetchOwnedFilters).mockResolvedValue([
+      { id: 'f1111111-1111-4111-8111-111111111111', name: '내 필터', projectKey: 'BTS' },
+    ] as unknown as Awaited<ReturnType<typeof fetchOwnedFilters>>)
+    vi.mocked(fetchSharedFilters).mockResolvedValue([
+      { id: 'f2222222-2222-4222-8222-222222222222', name: '공유 필터', projectKey: 'OPS' },
+    ] as unknown as Awaited<ReturnType<typeof fetchSharedFilters>>)
+
+    renderForm([{ key: 'filterId', type: 'UUID', required: false }])
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /내 필터/ })).toBeInTheDocument()
+    })
+    // 축소가 없었다는 증거 — 공유받은 쪽도 고를 수 있어야 한다.
+    expect(screen.getByRole('option', { name: /공유 필터/ })).toBeInTheDocument()
+
+    // 두 묶음이 섞이지 않게 옵션그룹으로 나뉜다 — 이름이 같아도 출처를 구분할 수 있어야 한다.
+    expect(screen.getByRole('group', { name: gadgetPickerLabels.ownedFilters })).toBeInTheDocument()
+    expect(
+      screen.getByRole('group', { name: gadgetPickerLabels.sharedFilters }),
+    ).toBeInTheDocument()
   })
 
   it('스코프성이 아닌 필드는 그대로 텍스트 입력이다 (분기가 과하게 먹지 않는다)', () => {

@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useProjects } from '@/hooks/use-projects'
 import { useBoards } from '@/hooks/use-boards'
-import { fetchOwnedFilters, savedFiltersKey } from '@/api/saved-filters'
+import { fetchOwnedFilters, fetchSharedFilters, savedFiltersKey } from '@/api/saved-filters'
 import { gadgetPickerLabels } from '@/i18n/dashboard-labels'
 
 /** 폼의 다른 입력과 같은 모양을 쓴다 — 선택기만 튀면 폼이 두 벌처럼 보인다. */
@@ -64,19 +64,37 @@ export function ProjectPicker({ value, onChange, id, ariaLabel }: PickerProps): 
   )
 }
 
+/** 공유 필터 조회 페이지 크기 — 드롭다운 하나에 담기는 현실적 상한. */
+const SHARED_FILTER_PAGE_SIZE = 100
+
 /**
  * 저장된 필터 선택기 — 값은 필터 UUID.
  *
- * 내가 만든 필터만 낸다. 공유받은 필터까지 섞으면 목록이 길어지고, 공유가 풀리면 가젯이
- * 조용히 비는데 사용자는 이유를 모른다.
+ * ★**내 필터와 공유받은 필터를 함께** 낸다. 종전에는 내 것만 냈는데, 그러면 이 PR 이
+ * `filterId` 를 자유 입력에서 드롭다운으로 바꾸면서 **기존 기능이 줄어든다** —
+ * 예전에는 공유받은 필터의 UUID 를 붙여넣을 수 있었다. `filter_result`·`issue_count` 는
+ * 이미 출시된 가젯이라 신규 가젯의 제약이 아니라 축소다(리뷰 지적 · Maxi 판정 「지금 고친다」).
+ *
+ * ★`<optgroup>` 으로 나눈다. 두 묶음에 같은 이름의 필터가 있을 수 있고, 그때 어느 쪽 것인지
+ * 모르면 고른 뒤에야 엉뚱한 결과를 본다.
  */
 export function FilterPicker({ value, onChange, id }: PickerProps): JSX.Element {
   // SavedFilterMenu 와 같은 queryKey 라 캐시를 공유한다.
-  const { data: filters = [], isPending } = useQuery({
+  const owned = useQuery({
     queryKey: savedFiltersKey.owned(),
     queryFn: fetchOwnedFilters,
     staleTime: 30_000,
   })
+  const shared = useQuery({
+    queryKey: savedFiltersKey.shared(0, SHARED_FILTER_PAGE_SIZE),
+    queryFn: () => fetchSharedFilters(0, SHARED_FILTER_PAGE_SIZE),
+    staleTime: 30_000,
+  })
+
+  const ownedFilters = owned.data ?? []
+  const sharedFilters = shared.data ?? []
+  // 둘 다 끝나야 목록이 완성된다. 한쪽만 보고 열면 나머지가 뒤늦게 튀어 들어온다.
+  const isPending = owned.isPending || shared.isPending
 
   return (
     <select
@@ -89,11 +107,24 @@ export function FilterPicker({ value, onChange, id }: PickerProps): JSX.Element 
       disabled={isPending}
     >
       <option value="">{isPending ? gadgetPickerLabels.loading : gadgetPickerLabels.selectFilter}</option>
-      {filters.map((f) => (
-        <option key={f.id} value={f.id}>
-          {f.name} ({f.projectKey})
-        </option>
-      ))}
+      {ownedFilters.length > 0 && (
+        <optgroup label={gadgetPickerLabels.ownedFilters}>
+          {ownedFilters.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name} ({f.projectKey})
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {sharedFilters.length > 0 && (
+        <optgroup label={gadgetPickerLabels.sharedFilters}>
+          {sharedFilters.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.name} ({f.projectKey})
+            </option>
+          ))}
+        </optgroup>
+      )}
     </select>
   )
 }

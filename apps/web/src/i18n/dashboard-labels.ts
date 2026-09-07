@@ -215,6 +215,15 @@ export const gadgetPickerLabels = {
   /** 보드 종류 — 번다운은 스크럼에만 있다 */
   scrum: '스크럼',
   kanban: '칸반',
+  /**
+   * 필터 출처 구분 — 이름이 같아도 어느 쪽 것인지 알 수 있어야 한다.
+   *
+   * ★두 묶음을 합쳐 내는 이유. `filterId` 를 자유 입력에서 드롭다운으로 바꿀 때 「내 필터」만
+   * 부르면, 종전에 UUID 를 붙여넣어 쓰던 **공유받은 필터를 고를 수단이 사라진다**.
+   * `filter_result`·`issue_count` 는 이미 출시된 가젯이라 그것은 기존 기능의 축소다.
+   */
+  ownedFilters: '내 필터',
+  sharedFilters: '공유받은 필터',
 } as const
 
 /**
