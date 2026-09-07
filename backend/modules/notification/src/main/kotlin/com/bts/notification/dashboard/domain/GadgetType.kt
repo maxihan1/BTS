@@ -69,6 +69,27 @@ class RequireAtLeastOne(val keys: List<String>) : AdditionalRule {
 }
 
 /**
+ * 분포 차트 2종(`pie_chart` · `bar_chart`)이 **공유하는** config 필드.
+ *
+ * 둘은 같은 데이터를 다른 마크로 그린다. 목록을 따로 두면 한쪽만 늘어난 상태가
+ * 저장 거부로만 드러나고 그 이유가 화면에 안 보인다 — 그래서 하나를 공유한다.
+ * `GadgetTypeTest` 의 「필드 집합이 같다」 단언은 그대로 둔다. 누가 다시 갈라놓으면 잡는다.
+ *
+ * ★companion object 가 아니라 **파일 최상위**다. enum 상수의 인자는 클래스 초기화 시점에
+ * 평가되는데 companion 은 그보다 늦게 초기화돼 참조할 수 없다.
+ */
+private val DISTRIBUTION_CHART_FIELDS =
+    listOf(
+        ConfigFieldDescriptor("projectKey", FieldType.STRING, required = true, maxLength = 100),
+        ConfigFieldDescriptor(
+            key = "field",
+            type = FieldType.ENUM,
+            required = true,
+            enumValues = setOf("status", "assignee", "priority", "issueType"),
+        ),
+    )
+
+/**
  * 표준 가젯 카탈로그 12종.
  *
  * 각 상수가 자신의 config 필드 디스크립터를 선언적으로 보유한다.
@@ -164,33 +185,13 @@ enum class GadgetType(
         key = "pie_chart",
         category = GadgetCategory.CHART,
         enabled = false,
-        configFields =
-            listOf(
-                ConfigFieldDescriptor(
-                    key = "field",
-                    type = FieldType.ENUM,
-                    required = true,
-                    enumValues = setOf("status", "assignee", "priority", "issueType"),
-                ),
-                ConfigFieldDescriptor("filterId", FieldType.UUID, required = false),
-                ConfigFieldDescriptor("aql", FieldType.STRING, required = false, maxLength = 2000),
-            ),
+        configFields = DISTRIBUTION_CHART_FIELDS,
     ),
     BAR_CHART(
         key = "bar_chart",
         category = GadgetCategory.CHART,
         enabled = false,
-        configFields =
-            listOf(
-                ConfigFieldDescriptor(
-                    key = "field",
-                    type = FieldType.ENUM,
-                    required = true,
-                    enumValues = setOf("status", "assignee", "priority", "issueType"),
-                ),
-                ConfigFieldDescriptor("filterId", FieldType.UUID, required = false),
-                ConfigFieldDescriptor("aql", FieldType.STRING, required = false, maxLength = 2000),
-            ),
+        configFields = DISTRIBUTION_CHART_FIELDS,
     ),
     CREATED_VS_RESOLVED(
         key = "created_vs_resolved",
@@ -208,7 +209,7 @@ enum class GadgetType(
         enabled = false,
         configFields =
             listOf(
-                ConfigFieldDescriptor("sprintId", FieldType.UUID, required = false),
+                ConfigFieldDescriptor("boardId", FieldType.UUID, required = true),
             ),
     ),
     ACTIVITY_STREAM(
