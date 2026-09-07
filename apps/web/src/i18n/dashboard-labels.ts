@@ -187,6 +187,27 @@ export type DashboardLabels = typeof dashboardLabels
  *
  * ⚠️ 백엔드 GadgetType.kt 신규 타입 추가 시 이 매핑도 동기화할 것.
  */
+/**
+ * 가젯 본문의 상태 문구 — 로딩·빈 상태·오류.
+ *
+ * ★가젯마다 문구를 따로 쓰지 않는다. 「데이터가 없습니다」가 가젯마다 다르게 적히면
+ * 사용자는 그 차이를 의미로 읽는다(다른 이유로 비어 있다고 오해한다).
+ */
+export const gadgetStateLabels = {
+  /** 이슈가 0건이라 그릴 분포가 없다 */
+  noDistribution: '표시할 이슈가 없습니다',
+  /** 프로젝트/보드를 못 읽었다 — 404 를 포함해 여기로 흡수한다 */
+  loadFailed: '데이터를 불러오지 못했습니다',
+  /** 스크럼이 아니거나 스프린트를 시작하지 않았다 */
+  noActiveSprint: '활성 스프린트가 없습니다',
+  /** 변경 이력이 0건 */
+  noActivity: '아직 활동이 없습니다',
+  /** 설정이 비어 가젯이 무엇을 그릴지 모른다 */
+  notConfigured: '가젯 설정이 필요합니다',
+  /** 로딩 중 — 스크린리더용 */
+  loading: '불러오는 중',
+} as const
+
 export const gadgetLabels: Readonly<Record<string, string>> = {
   assigned_to_me: '내게 할당된 이슈',
   recently_created: '최근 생성',

@@ -25,12 +25,22 @@ export type DataGadgetType = 'assigned_to_me' | 'recently_created' | 'filter_res
  * - filter_result / issue_count: filterId(필수), maxItems(선택)
  */
 export interface GadgetConfig {
-  /** 프로젝트 키 (이슈 목록 가젯 — projectKey 지정형) */
+  /** 프로젝트 키 (이슈 목록 · 분포 차트 · 활동 스트림) */
   projectKey?: string
   /** 저장 필터 UUID (필터 기반 가젯) */
   filterId?: string
   /** 최대 표시 건수 (1~50, 기본 10). clamp 적용. */
   maxItems?: number
+  /**
+   * 분포 차트의 그룹 기준 — `status` | `priority` | `issueType` | `assignee`.
+   *
+   * 좁은 유니온이 아니라 `string` 인 이유는 이 값이 **저장된 layout JSON 에서** 오기 때문이다.
+   * 타입으로 좁혀 놓아도 런타임에 다른 값이 들어올 수 있고, 그때 조용히 캐스팅하는 것보다
+   * 소비처(`rowsForField`)가 빈 배열로 떨어뜨리는 편이 안전하다.
+   */
+  field?: string
+  /** 보드 UUID (스프린트 번다운 — 활성 스프린트를 여기서 찾는다) */
+  boardId?: string
 }
 
 /**
