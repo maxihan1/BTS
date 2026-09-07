@@ -38,7 +38,8 @@ class GadgetTypeTest : DescribeSpec({
             GadgetType.COMMENTS_RECENT.category shouldBe GadgetCategory.ACTIVITY
         }
 
-        it("MVP 6종 enabled=true, 나머지 6종 enabled=false") {
+        it("10종 enabled=true, 남은 2종은 백엔드 API 가 없어 false") {
+            // MVP 6종
             GadgetType.ASSIGNED_TO_ME.enabled shouldBe true
             GadgetType.RECENTLY_CREATED.enabled shouldBe true
             GadgetType.FILTER_RESULT.enabled shouldBe true
@@ -46,12 +47,24 @@ class GadgetTypeTest : DescribeSpec({
             GadgetType.TEXT_WIDGET.enabled shouldBe true
             GadgetType.LINK_LIST.enabled shouldBe true
 
-            GadgetType.PIE_CHART.enabled shouldBe false
-            GadgetType.BAR_CHART.enabled shouldBe false
+            // 이 PR 이 켠 4종 — 전부 기존 BC API 를 프론트가 직접 부른다(ADR D2). 백엔드 신규 0.
+            GadgetType.PIE_CHART.enabled shouldBe true
+            GadgetType.BAR_CHART.enabled shouldBe true
+            GadgetType.SPRINT_BURNDOWN.enabled shouldBe true
+            GadgetType.ACTIVITY_STREAM.enabled shouldBe true
+
+            // ★남은 2종은 여전히 false 다. issue-tracking BC 에 엔드포인트를 신설해야 하고
+            //   그것은 「한 PR = 한 BC」로 다음 PR 범위다. 여기서 켜면 사용자가 고를 수는 있는데
+            //   데이터가 없는 가젯이 된다.
             GadgetType.CREATED_VS_RESOLVED.enabled shouldBe false
-            GadgetType.SPRINT_BURNDOWN.enabled shouldBe false
-            GadgetType.ACTIVITY_STREAM.enabled shouldBe false
             GadgetType.COMMENTS_RECENT.enabled shouldBe false
+        }
+
+        it("★enabled=true 개수가 정확히 10 이다 (개수와 점단언이 서로를 검사한다)") {
+            // 위 점단언만 있으면 새 타입이 추가되며 켜져도 이 파일이 모른다.
+            // 개수만 있으면 어느 것이 켜졌는지 모른다. 둘을 함께 둔다.
+            GadgetType.entries.count { it.enabled } shouldBe 10
+            GadgetType.entries.size shouldBe 12
         }
     }
 
@@ -234,40 +247,108 @@ class GadgetTypeTest : DescribeSpec({
     }
 
     // ── pie_chart / bar_chart ──────────────────────────────────────────────────
+    //
+    // ★스코프는 projectKey 다(X-JD-1). Jira 실물은 space **또는** filter 를 받지만
+    //   이 PR 은 프로젝트 스코프만 구현하고 필터 스코프를 이연했다. 그래서 filterId·aql 은
+    //   필드 집합에서 **제거**됐고, 값을 줘도 EC5 로 무시된다 — 아래가 그것을 증명한다.
 
     describe("GadgetType.PIE_CHART.validateConfig") {
-        it("field=status 는 통과한다") {
-            GadgetType.PIE_CHART.validateConfig(json("""{"field":"status"}"""))
+        it("projectKey + field=status 는 통과한다") {
+            GadgetType.PIE_CHART.validateConfig(json("""{"projectKey":"BTS","field":"status"}"""))
+        }
+
+        it("★projectKey 누락은 위반한다 (X-JD-1 — 스코프가 프로젝트다)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.PIE_CHART.validateConfig(json("""{"field":"status"}"""))
+            }
         }
 
         it("field=labels 는 위반한다 (EC9 enum 밖)") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.PIE_CHART.validateConfig(json("""{"field":"labels"}"""))
+                GadgetType.PIE_CHART.validateConfig(json("""{"projectKey":"BTS","field":"labels"}"""))
             }
         }
 
         it("field 누락은 위반한다") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.PIE_CHART.validateConfig(json("{}"))
+                GadgetType.PIE_CHART.validateConfig(json("""{"projectKey":"BTS"}"""))
             }
+        }
+
+        it("★filterId 를 줘도 통과한다 — 필드가 제거돼 EC5 로 무시된다") {
+            // 값이 UUID 형식이 아닌데도 통과해야 한다. 필드가 남아 있으면 여기서 throw 한다.
+            GadgetType.PIE_CHART.validateConfig(
+                json("""{"projectKey":"BTS","field":"status","filterId":"not-a-uuid"}"""),
+            )
+        }
+
+        it("★aql 을 줘도 통과한다 — 필드가 제거돼 EC5 로 무시된다") {
+            GadgetType.PIE_CHART.validateConfig(
+                json("""{"projectKey":"BTS","field":"status","aql":"project = BTS"}"""),
+            )
         }
     }
 
     describe("GadgetType.BAR_CHART.validateConfig") {
-        it("field=status 는 통과한다") {
-            GadgetType.BAR_CHART.validateConfig(json("""{"field":"status"}"""))
+        it("projectKey + field=status 는 통과한다") {
+            GadgetType.BAR_CHART.validateConfig(json("""{"projectKey":"BTS","field":"status"}"""))
+        }
+
+        it("★projectKey 누락은 위반한다 (X-JD-1)") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.BAR_CHART.validateConfig(json("""{"field":"status"}"""))
+            }
         }
 
         it("field=labels 는 위반한다 (EC9 enum 밖)") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.BAR_CHART.validateConfig(json("""{"field":"labels"}"""))
+                GadgetType.BAR_CHART.validateConfig(json("""{"projectKey":"BTS","field":"labels"}"""))
             }
         }
 
         it("field 누락은 위반한다") {
             shouldThrow<DashboardDomainException> {
-                GadgetType.BAR_CHART.validateConfig(json("{}"))
+                GadgetType.BAR_CHART.validateConfig(json("""{"projectKey":"BTS"}"""))
             }
+        }
+
+        it("★bar_chart 는 pie_chart 와 필드 집합이 같다 — 한 곳만 고치는 실수를 막는다") {
+            // 둘은 같은 데이터를 다른 마크로 그린다. 필드가 갈리면 한쪽 가젯만 저장이 거부되고
+            // 그 이유가 화면에 드러나지 않는다.
+            GadgetType.BAR_CHART.configFields.map { it.key }.toSet() shouldBe
+                GadgetType.PIE_CHART.configFields.map { it.key }.toSet()
+        }
+    }
+
+    // ── sprint_burndown ────────────────────────────────────────────────────────
+    //
+    // ★M-3 — 가젯은 boardId 를 받고 활성 스프린트를 프론트가 자동으로 찾는다
+    //   (BoardDetail.activeSprint). sprintId 를 직접 받으면 스프린트가 넘어갈 때마다
+    //   사용자가 가젯을 고쳐야 하고, 끝난 스프린트의 번다운이 그대로 박힌다.
+
+    describe("GadgetType.SPRINT_BURNDOWN.validateConfig") {
+        it("boardId(UUID) 는 통과한다") {
+            GadgetType.SPRINT_BURNDOWN.validateConfig(
+                json("""{"boardId":"11111111-2222-3333-4444-555555555555"}"""),
+            )
+        }
+
+        it("★boardId 누락은 위반한다 — 보드가 없으면 활성 스프린트를 찾을 수 없다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.SPRINT_BURNDOWN.validateConfig(json("{}"))
+            }
+        }
+
+        it("boardId 가 UUID 형식이 아니면 위반한다") {
+            shouldThrow<DashboardDomainException> {
+                GadgetType.SPRINT_BURNDOWN.validateConfig(json("""{"boardId":"not-a-uuid"}"""))
+            }
+        }
+
+        it("★sprintId 를 줘도 통과한다 — 필드가 제거돼 EC5 로 무시된다") {
+            GadgetType.SPRINT_BURNDOWN.validateConfig(
+                json("""{"boardId":"11111111-2222-3333-4444-555555555555","sprintId":"not-a-uuid"}"""),
+            )
         }
     }
 
@@ -303,8 +384,11 @@ class GadgetTypeTest : DescribeSpec({
             GadgetType.catalog().size shouldBe 12
         }
 
-        it("enabled=true 엔트리가 정확히 6개다") {
-            GadgetType.catalog().count { it.enabled } shouldBe 6
+        it("enabled=true 엔트리가 정확히 10개다") {
+            // ★enum 쪽 카운트(위 「정확히 10」)와 catalog() 쪽 카운트는 **다른 축**이다.
+            //   catalog() 가 enabled 를 잘못 매핑하면 enum 은 맞는데 응답만 틀릴 수 있다.
+            //   그래서 둘 다 둔다 — 하나를 지우면 그 갈림이 안 보인다.
+            GadgetType.catalog().count { it.enabled } shouldBe 10
         }
 
         it("text_widget 엔트리에 markdown configField(required=true)가 포함된다 — 단일 출처 불변식") {

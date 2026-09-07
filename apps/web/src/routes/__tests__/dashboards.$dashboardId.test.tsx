@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Dashboard } from '@/api/dashboards'
 import { useAuthStore } from '@/auth/authStore'
+import { dashboardModeLabels } from '@/i18n/dashboard-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mock — TanStack Router, use-dashboards, DashboardGrid, DashboardForm, sonner, FavoriteButton
@@ -366,6 +367,16 @@ describe('타일 추가·삭제', () => {
     const user = userEvent.setup()
     mockUseDashboard.mockReturnValue({ data: DASHBOARD_OWNED, isLoading: false, isError: false })
     await renderDetailPage()
+
+    // ★동선이 바뀌었다 — 「가젯 추가」는 이제 **편집 모드**에서만 뜬다 (Jira 패리티 JD-1).
+    //   보기 모드에서 바로 찾으면 없다. 먼저 「편집」을 누른다.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: dashboardModeLabels.enterEdit }),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: '가젯 추가' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: dashboardModeLabels.enterEdit }))
 
     // "가젯 추가" 버튼 클릭 → GadgetCatalogModal open=true
     await waitFor(() =>

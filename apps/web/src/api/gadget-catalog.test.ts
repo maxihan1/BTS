@@ -169,7 +169,12 @@ describe('fetchGadgetCatalog()', () => {
     expect(gadgets).toHaveLength(12)
   })
 
-  it('enabled=true 6종·enabled=false 6종이 정확하다', async () => {
+  it('enabled 플래그를 픽스처 그대로 보존한다 (파서가 안 삼킨다)', async () => {
+    // ★종전에는 「enabled 6종·disabled 6종」이라고 **개수를 손으로 적었다**. 그것은
+    //   이 파일이 카탈로그 구성을 아는 **네 번째 목록**이라는 뜻이고(백엔드 GadgetType ·
+    //   GadgetRenderer case · MSW 픽스처에 이어), 카탈로그가 바뀔 때마다 조용히 썩는다.
+    //   여기가 재야 하는 것은 구성이 아니라 **파서가 플래그를 보존하는가**다.
+    //   구성 계약은 `scripts/workflow/gadget-catalog-renderer-parity.test.ts` 가 진다.
     server.use(
       http.get('/api/v1/dashboards/gadget-catalog', () =>
         HttpResponse.json({ data: { gadgets: GADGET_CATALOG_FIXTURE } }),
@@ -177,10 +182,20 @@ describe('fetchGadgetCatalog()', () => {
     )
 
     const gadgets = await fetchGadgetCatalog()
-    const enabled = gadgets.filter((g) => g.enabled)
-    const disabled = gadgets.filter((g) => !g.enabled)
-    expect(enabled).toHaveLength(6)
-    expect(disabled).toHaveLength(6)
+    const enabled = gadgets
+      .filter((g) => g.enabled)
+      .map((g) => g.type)
+      .sort()
+    const expected = GADGET_CATALOG_FIXTURE.filter((g) => g.enabled)
+      .map((g) => g.type)
+      .sort()
+
+    expect(enabled).toEqual(expected)
+
+    // 비-공허 짝. 양쪽이 다 비면 위 단언은 아무것도 안 지킨다 —
+    // 파서가 enabled 를 전부 삼켜 false 로 만들어도 통과해 버린다.
+    expect(enabled.length).toBeGreaterThan(0)
+    expect(gadgets.length - enabled.length).toBeGreaterThan(0)
   })
 
   it('link_list 가젯의 itemSchema 재귀 파싱이 성공한다', async () => {

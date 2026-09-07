@@ -1,10 +1,8 @@
 // 프로젝트 활동 피드 위젯 — 자체 useQuery 로 요약과 실패를 분리한다 (Jira 패리티 J4)
 import type { JSX } from 'react'
-import { Link } from '@tanstack/react-router'
-import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import { ApiError } from '@/api/client'
 import { useProjectActivity } from '@/hooks/use-project-summary'
-import { formatActivityTime, summarizeEntry } from './summary-view-model'
+import { ActivityEntryList } from './ActivityEntryList'
 import { projectSummaryLabels as labels } from '@/i18n/project-summary-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,7 +29,6 @@ export function ProjectActivityFeed({
   projectKey,
   limit = 10,
 }: ProjectActivityFeedProps): JSX.Element {
-  const openIssueDetail = useOpenIssueDetail()
   const { data, isPending, isError, error } = useProjectActivity(projectKey, limit)
 
   const body = ((): JSX.Element => {
@@ -55,29 +52,12 @@ export function ProjectActivityFeed({
       return <p className="text-muted-foreground mt-3 text-sm">{labels.activity.empty}</p>
     }
 
+    // 목록 본문은 대시보드 가젯과 공유한다 — 요약 문장·시각 표기·링크 동작이 갈리면
+    // 같은 활동이 두 화면에서 다르게 읽힌다.
     return (
-      <ul className="mt-3 space-y-3">
-        {visible.map((entry, index) => (
-          <li key={`${entry.issueKey}-${entry.createdAt}-${String(index)}`} className="text-sm">
-            <div className="flex flex-wrap items-baseline gap-x-2">
-              <Link
-                to="/issues/$key"
-                params={{ key: entry.issueKey }}
-                className="font-medium hover:underline"
-                onClick={(e) => { openIssueDetail(entry.issueKey, e) }}
-              >
-                {entry.issueKey}
-              </Link>
-              <span className="text-muted-foreground">{summarizeEntry(entry)}</span>
-            </div>
-            <p className="text-muted-foreground mt-0.5 text-xs">
-              {entry.actorName ?? labels.activity.unknownActor}
-              {' · '}
-              {formatActivityTime(entry.createdAt)}
-            </p>
-          </li>
-        ))}
-      </ul>
+      <div className="mt-3">
+        <ActivityEntryList entries={visible} />
+      </div>
     )
   })()
 

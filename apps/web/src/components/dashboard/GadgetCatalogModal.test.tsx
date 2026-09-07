@@ -108,6 +108,11 @@ describe('GadgetCatalogModal', () => {
 
   /**
    * C3. enabled=false 가젯은 "준비 중" 레이블과 함께 선택 불가 상태다 (S6).
+   *
+   * ★예시가 Pie Chart 에서 Comments Recent 로 바뀌었다.
+   *   이 PR 이 PIE_CHART 를 켰기 때문이다. 예시를 바꾸기만 하고 끝내면 「전부 disabled 인
+   *   카탈로그」도 통과하므로, 켠 쪽이 실제로 **활성**인 것을 같은 테스트에서 함께 잰다.
+   *   백엔드 DashboardGadgetIntegrationTest 와 e2e S6 도 같은 처방을 받았다.
    */
   it('C3: enabled=false 가젯은 준비 중 표시와 함께 비활성화된다', async () => {
     await renderModal()
@@ -116,8 +121,11 @@ describe('GadgetCatalogModal', () => {
     const comingSoon = screen.getAllByText('준비 중')
     expect(comingSoon.length).toBeGreaterThan(0)
     // enabled=false 가젯 버튼은 disabled
-    const pieChartBtn = screen.getByRole('button', { name: /pie chart/i })
-    expect(pieChartBtn).toBeDisabled()
+    const disabledBtn = screen.getByRole('button', { name: /comments recent/i })
+    expect(disabledBtn).toBeDisabled()
+
+    // 이 PR 이 켠 가젯은 반대로 활성이다.
+    expect(screen.getByRole('button', { name: /pie chart/i })).toBeEnabled()
   })
 
   /**

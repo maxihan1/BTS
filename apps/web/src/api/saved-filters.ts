@@ -124,6 +124,15 @@ export async function fetchOwnedFilters(): Promise<SavedFilterResponse[]> {
  * @param size 페이지 크기
  * @throws ApiError — 401 미인증
  */
+/**
+ * 공유 필터 목록 페이지 크기 — **화면마다 다르면 잘림점도 달라진다**.
+ *
+ * 근거는 저장 필터 spec FR-3/EC7(21~50개 silent 누락 방지)이고, `SavedFilterMenu` 가
+ * 그 값으로 쓰던 것을 여기로 올렸다. 대시보드 가젯 설정도 같은 값을 쓴다 —
+ * 한쪽만 100 이면 같은 사용자가 화면에 따라 다른 목록을 본다.
+ */
+export const SHARED_FILTER_PAGE_SIZE = 50
+
 export async function fetchSharedFilters(page: number, size: number): Promise<SavedFilterResponse[]> {
   return apiGet(`/api/v1/filters/shared?page=${page}&size=${size}`, z.array(savedFilterSchema))
 }

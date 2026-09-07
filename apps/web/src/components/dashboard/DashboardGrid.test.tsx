@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { DashboardTile } from '@/lib/dashboard-layout'
+import { dashboardModeLabels } from '@/i18n/dashboard-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // react-grid-layout stub — jsdom은 컨테이너 width 0이라 WidthProvider가 정상 동작 안 함.
@@ -70,9 +71,16 @@ const TILE_B: DashboardTile = { i: 'tile-b', x: 6, y: 0, w: 6, h: 4, title: '위
 async function renderGrid(props: {
   tiles?: DashboardTile[]
   canEdit?: boolean
+  /**
+   * 편집 **모드**. 기본값은 `canEdit` 를 따라간다 — 이 파일의 기존 테스트가 전부
+   * 「권한이 있으면 드래그된다」를 재고 있어서, 기본을 false 로 두면 그 의미가 통째로 바뀐다.
+   * 두 축이 갈리는 지점은 아래 「보기/편집 모드」 describe 가 따로 잰다.
+   */
+  isEditing?: boolean
   onLayoutChange?: (tiles: DashboardTile[]) => void
   onDeleteTile?: (id: string) => void
   onEditTitle?: (id: string, title: string) => void
+  onDuplicate?: (id: string) => void
   onAddTile?: () => void
   publicMode?: boolean
 }) {
@@ -80,9 +88,11 @@ async function renderGrid(props: {
   const {
     tiles = [],
     canEdit = false,
+    isEditing = canEdit,
     onLayoutChange,
     onDeleteTile,
     onEditTitle,
+    onDuplicate,
     onAddTile,
     publicMode,
   } = props
@@ -90,9 +100,11 @@ async function renderGrid(props: {
     <DashboardGrid
       tiles={tiles}
       canEdit={canEdit}
+      isEditing={isEditing}
       onLayoutChange={onLayoutChange ?? vi.fn()}
       onDeleteTile={onDeleteTile ?? vi.fn()}
       onEditTitle={onEditTitle ?? vi.fn()}
+      onDuplicate={onDuplicate ?? vi.fn()}
       onAddTile={onAddTile ?? (canEdit ? vi.fn() : undefined)}
       publicMode={publicMode}
     />,
@@ -185,27 +197,52 @@ describe('DashboardGrid', () => {
   /**
    * G-8. canEdit=true이면 타일에 삭제 버튼이 렌더된다.
    */
-  it('G-8: canEdit=true이면 타일에 삭제 버튼이 렌더된다', async () => {
+  it('G-8: canEdit=true이면 타일에 ⋯ 메뉴가 렌더된다', async () => {
     await renderGrid({ tiles: [TILE_A], canEdit: true })
-    expect(screen.getByRole('button', { name: /삭제/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeInTheDocument()
   })
 
   /**
-   * G-9. canEdit=false이면 타일에 삭제 버튼이 없다 (읽기 전용 EC3).
+   * G-9. canEdit=false이면 타일에 ⋯ 메뉴가 없다 (읽기 전용 EC3).
+   *
+   * ★종전 단언은 `queryByRole('button', { name: /삭제/i })` 였고 **항상 참**이었다.
+   *   ⋯ 트리거의 접근명은 `가젯 메뉴` 이고 「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라,
+   *   어떤 canEdit/isEditing 조합에서도 그 이름의 `button` 은 존재하지 않는다.
+   *   `canEdit: true, isEditing: true` 로 뒤집어도 20 passed 였다(실측).
+   *   제목만 「⋯ 메뉴가 없다」로 바뀌고 재는 것은 그대로였던 것이다 —
+   *   `invariant-satisfied-by-helptext-not-logic` 양식.
    */
-  it('G-9: canEdit=false이면 타일에 삭제 버튼이 없다', async () => {
+  it('G-9: canEdit=false이면 타일에 ⋯ 메뉴가 없다', async () => {
     await renderGrid({ tiles: [TILE_A], canEdit: false })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
+  })
+
+  /**
+   * G-9b. 권한이 있고 편집 모드면 ⋯ 메뉴가 **있다**.
+   *
+   * G-9 의 짝이다. 부재만 재면 「어떤 조합에서도 없다」와 구분이 안 된다 —
+   * 그 상태가 방금 고친 가짜 그린이었다.
+   */
+  it('G-9b: canEdit=true + 편집 모드면 타일에 ⋯ 메뉴가 있다', async () => {
+    await renderGrid({ tiles: [TILE_A], canEdit: true, isEditing: true })
+    expect(
+      screen.getByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeInTheDocument()
   })
 
   /**
    * G-10. 삭제 버튼 클릭 시 onDeleteTile이 타일 id로 호출된다.
    */
-  it('G-10: 삭제 버튼 클릭 시 onDeleteTile이 타일 id로 호출된다', async () => {
+  it('G-10: ⋯ 메뉴의 삭제를 누르면 onDeleteTile이 타일 id로 호출된다', async () => {
     const user = userEvent.setup()
     const onDeleteTile = vi.fn()
     await renderGrid({ tiles: [TILE_A], canEdit: true, onDeleteTile })
-    await user.click(screen.getByRole('button', { name: /삭제/i }))
+    await user.click(screen.getByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }))
+    await user.click(screen.getByRole('menuitem', { name: /삭제/i }))
     expect(onDeleteTile).toHaveBeenCalledWith('tile-a')
   })
 
@@ -262,7 +299,12 @@ describe('DashboardGrid', () => {
    */
   it('G-15: publicMode=true이면 canEdit=true여도 타일 삭제 버튼이 없다', async () => {
     await renderGrid({ tiles: [TILE_A], canEdit: true, publicMode: true })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**
@@ -282,5 +324,36 @@ describe('DashboardGrid', () => {
     await renderGrid({ tiles: [TILE_A], canEdit: true })
     expect(capturedGridLayoutProps?.isDraggable).toBe(true)
     expect(capturedGridLayoutProps?.isResizable).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 보기/편집 모드 — 권한과 모드는 다른 축이다 (Jira 패리티 JD-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DashboardGrid — 보기/편집 모드', () => {
+  const TILE: DashboardTile = { i: 'a', x: 0, y: 0, w: 4, h: 3, title: '위젯' }
+
+  // react-grid-layout 이 목이라 실제 클래스가 안 붙는다. 이 파일이 이미 쓰는
+  // `capturedGridLayoutProps` 로 **무엇이 전달됐는가**를 잰다 (G-2·G-3 과 같은 방식).
+
+  it('★권한이 있어도 보기 모드면 드래그·리사이즈가 꺼진다', async () => {
+    await renderGrid({ tiles: [TILE], canEdit: true, isEditing: false })
+
+    expect(capturedGridLayoutProps?.isDraggable).toBe(false)
+    expect(capturedGridLayoutProps?.isResizable).toBe(false)
+  })
+
+  it('권한 + 편집 모드면 드래그·리사이즈가 켜진다', async () => {
+    await renderGrid({ tiles: [TILE], canEdit: true, isEditing: true })
+
+    expect(capturedGridLayoutProps?.isDraggable).toBe(true)
+    expect(capturedGridLayoutProps?.isResizable).toBe(true)
+  })
+
+  it('권한이 없으면 편집 모드여도 꺼진다', async () => {
+    await renderGrid({ tiles: [TILE], canEdit: false, isEditing: true })
+
+    expect(capturedGridLayoutProps?.isDraggable).toBe(false)
   })
 })

@@ -179,6 +179,85 @@ export const dashboardLabels = {
 export type DashboardLabels = typeof dashboardLabels
 
 /**
+ * 보기/편집 모드와 타일 메뉴 문구 (Jira 패리티 JD-1 · JD-3).
+ *
+ * ★대시보드는 BTS 에서 **모드를 갖는 유일한 화면**이다. 보드·백로그는 드래그가 주 조작이라
+ * 항상 편집 가능하지만, 대시보드는 **보는 것**이 주 조작이고 배치 자체가 콘텐츠다.
+ * 그래서 보기 중에 실수로 타일을 끌어 배치가 망가지는 것을 막는다.
+ */
+export const dashboardModeLabels = {
+  /** 보기 → 편집 진입 */
+  enterEdit: '편집',
+  /** 편집 → 보기 복귀 */
+  exitEdit: '완료',
+  /** 타일 ⋯ 메뉴 트리거. ⚠️ 타일마다 같은 문구라 e2e 는 컨테이너로 스코프를 좁혀야 한다 */
+  tileMenuAriaLabel: '가젯 메뉴',
+  /** 설정을 그대로 복사해 타일 하나를 더 만든다 */
+  duplicate: '복제',
+  delete: '삭제',
+} as const
+
+/**
+ * 가젯 설정 선택기 문구.
+ *
+ * 스코프성 필드(프로젝트·보드·필터)는 자유 입력이 아니라 드롭다운이다 —
+ * 사용자가 UUID 를 손으로 타이핑하지 않게 한다.
+ */
+export const gadgetPickerLabels = {
+  loading: '불러오는 중...',
+  selectProject: '프로젝트를 선택하세요',
+  selectBoard: '보드를 선택하세요',
+  selectFilter: '필터를 선택하세요',
+  /** 보드는 프로젝트에 종속이라 프로젝트를 먼저 골라야 한다 */
+  selectProjectFirst: '먼저 프로젝트를 선택하세요',
+  /** 조용히 비우지 않는다 — 값이 사라진 것처럼 보이면 안 된다 */
+  boardResetByProjectChange: '프로젝트를 바꿔 보드 선택을 지웠습니다. 보드를 다시 골라 주세요.',
+  /** 보드 종류 — 번다운은 스크럼에만 있다 */
+  scrum: '스크럼',
+  kanban: '칸반',
+  /**
+   * 필터 출처 구분 — 이름이 같아도 어느 쪽 것인지 알 수 있어야 한다.
+   *
+   * ★두 묶음을 합쳐 내는 이유. `filterId` 를 자유 입력에서 드롭다운으로 바꿀 때 「내 필터」만
+   * 부르면, 종전에 UUID 를 붙여넣어 쓰던 **공유받은 필터를 고를 수단이 사라진다**.
+   * `filter_result`·`issue_count` 는 이미 출시된 가젯이라 그것은 기존 기능의 축소다.
+   */
+  ownedFilters: '내 필터',
+  sharedFilters: '공유받은 필터',
+  /**
+   * 공유 필터가 페이지 크기에 걸려 잘렸다.
+   *
+   * ★조용히 자르지 않는다. 백엔드가 `created_at ASC` 로 주므로 page 0 은 **가장 오래된**
+   * 목록이고, 잘리는 쪽이 하필 **방금 공유받은 것**이다 — 「누가 공유해 줘서 가젯에 얹으려는」
+   * 가장 흔한 동선이 정확히 그 자리다. 안 보이면 사용자는 「공유가 안 됐나」로 오해한다.
+   */
+  sharedFiltersTruncated: '공유받은 필터가 많아 일부만 표시됩니다. 검색 화면에서 필터를 즐겨찾기해 두면 찾기 쉽습니다.',
+  /** 공유 필터 조회 자체가 실패했다 — 「없다」와 구분해야 한다. */
+  sharedFiltersLoadFailed: '공유받은 필터를 불러오지 못했습니다.',
+} as const
+
+/**
+ * 가젯 본문의 상태 문구 — 로딩·빈 상태·오류.
+ *
+ * ★가젯마다 문구를 따로 쓰지 않는다. 「데이터가 없습니다」가 가젯마다 다르게 적히면
+ * 사용자는 그 차이를 의미로 읽는다(다른 이유로 비어 있다고 오해한다).
+ */
+export const gadgetStateLabels = {
+  /** 이슈가 0건이라 그릴 분포가 없다 */
+  noDistribution: '표시할 이슈가 없습니다',
+  /** 프로젝트/보드를 못 읽었다 — 404 를 포함해 여기로 흡수한다 */
+  loadFailed: '데이터를 불러오지 못했습니다',
+  /** 스크럼이 아니거나 스프린트를 시작하지 않았다 */
+  noActiveSprint: '활성 스프린트가 없습니다',
+  /** 변경 이력이 0건 */
+  noActivity: '아직 활동이 없습니다',
+  /** 설정이 비어 가젯이 무엇을 그릴지 모른다 */
+  notConfigured: '가젯 설정이 필요합니다',
+  /** 로딩 중 — 스크린리더용 */
+  loading: '불러오는 중',
+} as const
+
+/**
  * gadgetType → 한국어 라벨 매핑 (12종).
  *
  * 백엔드 GadgetType enum의 snake_case 직렬화 키를 한국어 표시명으로 매핑한다.
@@ -186,6 +265,15 @@ export type DashboardLabels = typeof dashboardLabels
  * 미지 타입은 호출측에서 gadgetType 자체를 fallback으로 사용한다.
  *
  * ⚠️ 백엔드 GadgetType.kt 신규 타입 추가 시 이 매핑도 동기화할 것.
+ *
+ * ★이 경고가 유일한 방벽이다. 이 매핑은 A2 차집합 판별식
+ * (`scripts/workflow/gadget-catalog-renderer-parity.test.ts`)이 **보지 않는** 목록이라
+ * (판별식의 세 꼭짓점은 백엔드 `enabled` · 렌더러 `case` · MSW 픽스처다),
+ * 여기가 빠져도 기계가 red 를 내지 않는다 — 타일 헤더에 raw 키가 뜰 뿐이다.
+ *
+ * ★이 doc 블록을 선언에서 떼어 놓지 말 것. 실제로 신규 상수 3종이 이 블록과 선언 사이에
+ * 끼어들어 경고가 엉뚱한 상수 위에 떠 있었다(리뷰 지적) — 다음 사람이 이것을 `gadgetLabels`
+ * 의 경고로 읽지 못한다.
  */
 export const gadgetLabels: Readonly<Record<string, string>> = {
   assigned_to_me: '내게 할당된 이슈',

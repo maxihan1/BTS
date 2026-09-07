@@ -3,7 +3,6 @@ import type { JSX } from 'react'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { toast } from 'sonner'
-import { Plus, Settings, Trash2, Share2 } from 'lucide-react'
 import { useAuthUser } from '@/auth/authStore'
 import { useDashboard, useUpdateDashboard, useDeleteDashboard } from '@/hooks/use-dashboards'
 import { canEditDashboard } from '@/lib/dashboard-permission'
@@ -11,8 +10,8 @@ import { parseLayout, serializeLayout } from '@/lib/dashboard-layout'
 import type { DashboardTile } from '@/lib/dashboard-layout'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
+import { DashboardDetailHeader } from '@/components/dashboard/DashboardDetailHeader'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
-import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
 import { ShareDashboardModal } from '@/components/dashboard/ShareDashboardModal'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -176,6 +175,14 @@ export function DashboardDetailPage({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  /**
+   * 편집 모드 — 권한(`editable`)과 다른 축이다 (Jira 패리티 JD-1).
+   *
+   * 기본은 **보기**다. 대시보드는 BTS 에서 모드를 갖는 유일한 화면인데, 보드·백로그는
+   * 드래그가 주 조작인 반면 대시보드는 보는 것이 주 조작이고 배치 자체가 콘텐츠라
+   * 보는 동안 실수로 끌어 배치가 망가지면 안 되기 때문이다.
+   */
+  const [isEditing, setIsEditing] = useState(false)
 
   /** dashboard.layout이 변경될 때마다 로컬 tiles를 초기화 (key prop 재마운트 불필요 — layout 변경 감지) */
   useEffect(() => {
@@ -206,11 +213,13 @@ export function DashboardDetailPage({
    */
   function handleAddGadgetTile(partial: { gadgetType: string; config: Record<string, unknown> }): void {
     setTiles((prev) => {
-      const maxBottom = prev.reduce((acc, tile) => Math.max(acc, tile.y + tile.h), 0)
       const newTile: DashboardTile = {
         i: crypto.randomUUID(),
+        // ★좌측 컬럼 **최상단**이다 (JD-2). Jira 는 새 가젯을 "at the top of the leftmost
+        //   column" 에 놓는데 종전 BTS 는 y=maxBottom(맨 아래)이라 반대였다 — 가젯을 추가하고
+        //   스크롤해 내려가야 보였다. react-grid-layout 이 겹치는 타일을 아래로 밀어낸다.
         x: 0,
-        y: maxBottom,
+        y: 0,
         w: 4,
         h: 3,
         title: '',
@@ -221,6 +230,22 @@ export function DashboardDetailPage({
       return [...prev, newTile]
     })
     setCatalogOpen(false)
+  }
+
+  /**
+   * 타일을 복제한다 — 설정을 그대로 복사해 바로 아래에 놓는다 (JD-3).
+   *
+   * ★`i` 는 새로 발번한다. 같은 id 로 두면 react-grid-layout 이 두 타일을 같은 것으로 보고
+   * 하나만 그리며, 드래그가 서로를 따라다닌다.
+   */
+  function handleDuplicateTile(id: string): void {
+    setTiles((prev) => {
+      const source = prev.find((t) => t.i === id)
+      if (source === undefined) return prev
+      const copy: DashboardTile = { ...source, i: crypto.randomUUID(), y: source.y + source.h }
+      setDirty(true)
+      return [...prev, copy]
+    })
   }
 
   /** 타일 삭제 */
@@ -316,135 +341,38 @@ export function DashboardDetailPage({
 
   return (
     <div className="flex flex-col h-full">
-      {/* 상단 헤더 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b">
-        <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-xl font-semibold truncate">{dashboard.name}</h1>
-          <FavoriteButton targetType="DASHBOARD" targetId={dashboardId} />
-          {dirty && editable && (
-            <span
-              className="text-xs text-warning-text font-medium shrink-0"
-              role="status"
-              aria-live="polite"
-            >
-              {dashboardLabels.detail.unsavedChanges}
-            </span>
-          )}
-        </div>
-
-        {/* 소유자 전용 액션 버튼 그룹 */}
-        {editable && (
-          <div className="flex items-center gap-2 shrink-0">
-            {/* 삭제 인라인 확인 UI — VersionRow/ComponentRow 동형 패턴 */}
-            {showDeleteConfirm ? (
-              <>
-                <span className="text-sm text-muted-foreground">{dashboardLabels.detail.deleteConfirm}</span>
-                {/* PR22 — 원본이 bg-destructive 솔리드라 variant="destructive"(연한 배경)와 다르다.
-                    className 으로 솔리드를 유지해 삭제 확인의 강조 의도를 보존한다. */}
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="default"
-                  className="min-h-[44px] gap-1 rounded-md bg-destructive px-3 text-destructive-foreground hover:bg-destructive/90"
-                  aria-label={dashboardLabels.detail.confirmDeleteAriaLabel}
-                  disabled={isDeleting}
-                  onClick={handleDeleteConfirm}
-                >
-                  {dashboardLabels.detail.confirmButton}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-1 rounded-md px-3"
-                  aria-label={dashboardLabels.detail.cancelDeleteAriaLabel}
-                  disabled={isDeleting}
-                  onClick={() => setShowDeleteConfirm(false)}
-                >
-                  {dashboardLabels.detail.cancelButton}
-                </Button>
-              </>
-            ) : (
-              <>
-                {/* 가젯 추가 버튼 — 카탈로그 모달 열기 (C4: 위젯 추가 일원화) */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label="가젯 추가"
-                  onClick={() => setCatalogOpen(true)}
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  가젯 추가
-                </Button>
-
-                {/* 공유 버튼 — 소유자 전용 (FR-8), 공유 모달을 조건부 마운트 */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label={dashboardLabels.share.modalTitle}
-                  onClick={() => setShareOpen(true)}
-                >
-                  <Share2 className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.share.modalTitle}
-                </Button>
-
-                {/* 설정 버튼 */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-3"
-                  aria-label={dashboardLabels.detail.settings}
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  <Settings className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.detail.settings}
-                </Button>
-
-                {/* 삭제 버튼 */}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md border-destructive/50 px-3 text-destructive hover:bg-destructive/10"
-                  aria-label={dashboardLabels.detail.delete}
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  {dashboardLabels.detail.delete}
-                </Button>
-
-                {/* 저장 버튼 */}
-                <Button
-                  type="button"
-                  variant="default"
-                  size="default"
-                  className="min-h-[44px] gap-2 rounded-md px-4 hover:bg-primary/90 disabled:cursor-not-allowed"
-                  aria-label={isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-                  disabled={isSaving || !dirty}
-                  onClick={handleSave}
-                >
-                  {isSaving ? dashboardLabels.detail.saving : dashboardLabels.detail.save}
-                </Button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+      <DashboardDetailHeader
+        dashboardId={dashboardId}
+        name={dashboard.name}
+        dirty={dirty}
+        editable={editable}
+        isEditing={isEditing}
+        showDeleteConfirm={showDeleteConfirm}
+        isDeleting={isDeleting}
+        isSaving={isSaving}
+        onToggleEditing={() => {
+          setIsEditing((prev) => !prev)
+        }}
+        onOpenCatalog={() => setCatalogOpen(true)}
+        onOpenShare={() => setShareOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onRequestDelete={() => setShowDeleteConfirm(true)}
+        onCancelDelete={() => setShowDeleteConfirm(false)}
+        onConfirmDelete={handleDeleteConfirm}
+        onSave={handleSave}
+      />
 
       {/* 그리드 영역 */}
       <div className="flex-1 overflow-auto p-4">
         <DashboardGrid
           tiles={tiles}
           canEdit={editable}
+          isEditing={isEditing}
           onLayoutChange={handleLayoutChange}
           onDeleteTile={handleDeleteTile}
           onEditTitle={handleEditTitle}
-          onAddTile={editable ? () => setCatalogOpen(true) : undefined}
+          onDuplicate={handleDuplicateTile}
+          onAddTile={editable && isEditing ? () => setCatalogOpen(true) : undefined}
         />
       </div>
 

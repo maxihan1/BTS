@@ -46,7 +46,12 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,
   "src/components/issues/NodeMappingSection.tsx::Function 'NodeMappingSection'": 232,
   "src/components/search/ExportDialog.tsx::Function 'ExportForm'": 334,
-  "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 332,
+  // ★2026-09-07 (#470) 332 → 261. **올린 것이 아니라 내린 것이다.**
+  //   보기/편집 모드(JD-1)가 391 로 키웠고, 이 파일 머리말의 「늘렸으면 쪼개라」대로
+  //   상단 헤더를 `DashboardDetailHeader` 로 순수 추출했다(DOM 무변경 — 바깥 div 의 class
+  //   문자열이 e2e `headerOf()` 의 스코프다). 그 결과 동결값보다 71줄 아래로 내려갔다.
+  //   여전히 200 위라 줄을 지우지 않는다.
+  "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 261,
   // J1 표시 방식 토글이 조건 렌더 1줄을 더했다(1011 → 1012). 함께 들어온 40줄 중 39줄은
   // `IssueDetailPresentationMenu` 로 떼어내 갚았고, 남은 한 줄은 「이 기능이 존재한다」는
   // 최소 렌더라 0줄로 만들려면 기능을 지우는 수밖에 없다.

@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { DashboardTile as DashboardTileData } from '@/lib/dashboard-layout'
+import { dashboardModeLabels } from '@/i18n/dashboard-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GadgetRenderer mock — gadgetType 분기 단언용
@@ -57,27 +58,43 @@ const GADGET_TILE: DashboardTileData = {
 async function renderTile(opts: {
   tile?: DashboardTileData
   canEdit?: boolean
+  /**
+   * 편집 **모드**. 기본값이 `canEdit` 가 아니라 **false** 인 것이 중요하다 —
+   * 기본을 권한에 맞추면 두 축이 다시 하나로 뭉쳐서, 「보기 모드에서 편집 UI 가 뜬다」는
+   * 결함을 이 테스트 파일이 영영 못 잡는다.
+   */
+  isEditing?: boolean
   onDelete?: (id: string) => void
   onEditTitle?: (id: string, title: string) => void
+  onDuplicate?: (id: string) => void
   publicMode?: boolean
 }) {
   const { DashboardTile } = await import('@/components/dashboard/DashboardTile')
   const {
     tile = LEGACY_TILE,
     canEdit = false,
+    isEditing = false,
     onDelete = vi.fn(),
     onEditTitle = vi.fn(),
+    onDuplicate = vi.fn(),
     publicMode,
   } = opts
   return render(
     <DashboardTile
       tile={tile}
       canEdit={canEdit}
+      isEditing={isEditing}
       onDelete={onDelete}
       onEditTitle={onEditTitle}
+      onDuplicate={onDuplicate}
       publicMode={publicMode}
     />,
   )
+}
+
+/** `⋯` 메뉴를 열고 항목이 뜰 때까지 기다린다. */
+async function openTileMenu(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -116,9 +133,11 @@ describe('DashboardTile — legacy 타일 무회귀', () => {
   /**
    * T7-T4: canEdit=true이면 삭제 버튼이 렌더된다.
    */
-  it('T7-T4: legacy 타일 canEdit=true이면 삭제 버튼이 렌더된다', async () => {
-    await renderTile({ tile: LEGACY_TILE, canEdit: true })
-    expect(screen.getByRole('button', { name: /삭제/i })).toBeInTheDocument()
+  it('T7-T4: legacy 타일 canEdit=true + 편집 모드면 ⋯ 메뉴에 삭제가 있다', async () => {
+    const user = userEvent.setup()
+    await renderTile({ tile: LEGACY_TILE, canEdit: true, isEditing: true })
+    await openTileMenu(user)
+    expect(screen.getByRole('menuitem', { name: /삭제/i })).toBeInTheDocument()
   })
 
   /**
@@ -126,17 +145,108 @@ describe('DashboardTile — legacy 타일 무회귀', () => {
    */
   it('T7-T5: legacy 타일 canEdit=false이면 삭제 버튼이 없다', async () => {
     await renderTile({ tile: LEGACY_TILE, canEdit: false })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**
-   * T7-T6: canEdit=true이면 제목 클릭 시 편집 input이 활성화된다.
+   * T7-T6: 권한 + 편집 모드여야 제목 클릭이 편집으로 들어간다.
    */
-  it('T7-T6: legacy 타일 canEdit=true이면 제목 클릭 시 인라인 편집 input이 활성화된다', async () => {
+  it('T7-T6: legacy 타일 canEdit=true + 편집 모드면 제목 클릭 시 인라인 편집이 활성화된다', async () => {
     const user = userEvent.setup()
-    await renderTile({ tile: LEGACY_TILE, canEdit: true })
+    await renderTile({ tile: LEGACY_TILE, canEdit: true, isEditing: true })
     await user.click(screen.getByText('일반 위젯'))
     expect(screen.getByRole('textbox')).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 보기/편집 모드 — 권한과 모드는 다른 축이다 (Jira 패리티 JD-1 · 리뷰 D-3)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('DashboardTile — 보기/편집 모드 3분기', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('① 권한 없음 → ⋯ 메뉴가 없다', async () => {
+    await renderTile({ tile: GADGET_TILE, canEdit: false, isEditing: true })
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('② 권한 있음 · 보기 모드 → ⋯ 메뉴가 없다 (기본 상태다)', async () => {
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: false })
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('③ 권한 있음 · 편집 모드 → ⋯ 메뉴가 있다', async () => {
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true })
+    expect(
+      screen.getByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeInTheDocument()
+  })
+
+  it('publicMode 는 권한·모드와 무관하게 ①과 같다', async () => {
+    await renderTile({
+      tile: GADGET_TILE,
+      canEdit: true,
+      isEditing: true,
+      publicMode: true,
+    })
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('★보기 모드에서는 제목 클릭이 편집으로 들어가지 않는다 (리뷰 D-3)', async () => {
+    // 드래그 핸들과 ⋯ 만 재고 제목을 빼면 「보기 모드인데 제목이 고쳐진다」로 모드 분리가 뚫린다.
+    const user = userEvent.setup()
+    await renderTile({ tile: LEGACY_TILE, canEdit: true, isEditing: false })
+    await user.click(screen.getByText('일반 위젯'))
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+})
+
+describe('DashboardTile — ⋯ 메뉴 (Jira 패리티 JD-3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('메뉴에 복제와 삭제가 있다', async () => {
+    const user = userEvent.setup()
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true })
+    await openTileMenu(user)
+
+    expect(screen.getByRole('menuitem', { name: dashboardModeLabels.duplicate })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /삭제/i })).toBeInTheDocument()
+  })
+
+  it('복제를 누르면 그 타일 id 로 콜백이 온다', async () => {
+    const user = userEvent.setup()
+    const onDuplicate = vi.fn()
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true, onDuplicate })
+    await openTileMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: dashboardModeLabels.duplicate }))
+
+    expect(onDuplicate).toHaveBeenCalledWith(GADGET_TILE.i)
+  })
+
+  it('삭제를 누르면 그 타일 id 로 콜백이 온다', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true, onDelete })
+    await openTileMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: /삭제/i }))
+
+    expect(onDelete).toHaveBeenCalledWith(GADGET_TILE.i)
   })
 })
 
@@ -190,9 +300,11 @@ describe('DashboardTile — 가젯 타일 통합', () => {
   /**
    * T7-G4: 가젯 타일에서도 canEdit=true이면 삭제 버튼이 렌더된다.
    */
-  it('T7-G4: 가젯 타일 canEdit=true이면 삭제 버튼이 렌더된다', async () => {
-    await renderTile({ tile: GADGET_TILE, canEdit: true })
-    expect(screen.getByRole('button', { name: /삭제/i })).toBeInTheDocument()
+  it('T7-G4: 가젯 타일 canEdit=true + 편집 모드면 ⋯ 메뉴에 삭제가 있다', async () => {
+    const user = userEvent.setup()
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true })
+    await openTileMenu(user)
+    expect(screen.getByRole('menuitem', { name: /삭제/i })).toBeInTheDocument()
   })
 
   /**
@@ -200,7 +312,12 @@ describe('DashboardTile — 가젯 타일 통합', () => {
    */
   it('T7-G5: 가젯 타일 canEdit=false이면 삭제 버튼이 없다', async () => {
     await renderTile({ tile: GADGET_TILE, canEdit: false })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**
@@ -250,7 +367,12 @@ describe('DashboardTile — publicMode 익명 읽기전용', () => {
    */
   it('P-3: publicMode=true이면 canEdit=true여도 삭제 버튼이 없다', async () => {
     await renderTile({ tile: GADGET_TILE, canEdit: true, publicMode: true })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    // ★`button[name=/삭제/]` 로 재지 않는다. ⋯ 트리거의 접근명은 `가젯 메뉴` 이고
+    //   「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라, 어떤 조합에서도 그 이름의
+    //   button 은 없다 — 단언이 항상 참이 된다(G-9 에서 실측한 가짜 그린과 같은 형태).
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
   })
 
   /**

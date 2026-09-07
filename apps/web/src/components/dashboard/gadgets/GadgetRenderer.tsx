@@ -7,6 +7,9 @@ import { IssueListGadget } from './IssueListGadget'
 import { IssueCountGadget } from './IssueCountGadget'
 import { TextWidgetGadget } from './TextWidgetGadget'
 import { LinkListGadget } from './LinkListGadget'
+import { DistributionChartGadget } from './DistributionChartGadget'
+import { SprintBurndownGadget } from './SprintBurndownGadget'
+import { ActivityStreamGadget } from './ActivityStreamGadget'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 타입
@@ -27,8 +30,14 @@ export interface GadgetRendererProps {
  *
  * 분기 규칙.
  * - gadgetType 없음 → null (legacy 타일 — 호출측이 처리)
- * - 지원 타입(6종) → 해당 가젯 컴포넌트
+ * - 지원 타입 → 해당 가젯 컴포넌트
  * - 미지원/unknown 타입 → "지원되지 않는 가젯" 안전 표시 (EC6 — 페이지 무손상)
+ *
+ * ★아래 `case` 목록은 백엔드 `GadgetType.enabled` 와 **정확히 같아야 한다.**
+ * 한쪽만 늘면 사용자가 카탈로그에서 고를 수 있는 가젯이 「지원되지 않는 가젯입니다」로 뜨거나,
+ * 반대로 도달 불가 코드가 조용히 남는다. 이 축은
+ * `scripts/workflow/gadget-catalog-renderer-parity.test.ts` 가 양방향 차집합으로 지킨다 —
+ * `case` 를 지우거나 `enabled` 를 켜기만 하면 그 판별식이 red 를 낸다.
  */
 export function GadgetRenderer({ tile }: GadgetRendererProps): JSX.Element | null {
   const { gadgetType, config } = tile
@@ -52,6 +61,21 @@ export function GadgetRenderer({ tile }: GadgetRendererProps): JSX.Element | nul
 
     case 'link_list':
       return <LinkListGadget links={extractLinks(config)} />
+
+    // 분포 차트 2종 — 같은 데이터를 다른 마크로 그린다(M-4). 스코프는 프로젝트다(X-JD-1).
+    case 'pie_chart':
+      return <DistributionChartGadget variant="pie" config={toGadgetConfig(config)} />
+
+    case 'bar_chart':
+      return <DistributionChartGadget variant="bar" config={toGadgetConfig(config)} />
+
+    // boardId 를 받아 활성 스프린트를 자동으로 따라간다(M-3).
+    case 'sprint_burndown':
+      return <SprintBurndownGadget config={toGadgetConfig(config)} />
+
+    // 프로젝트 기준이다 — Jira 의 「your」 기준과 다르다(X-JD-5).
+    case 'activity_stream':
+      return <ActivityStreamGadget config={toGadgetConfig(config)} />
 
     default:
       // EC6 — 미지원 가젯 타입: 페이지를 망가뜨리지 않고 안내 메시지만 표시
@@ -80,6 +104,10 @@ function toGadgetConfig(config: Record<string, unknown> | undefined): GadgetConf
     projectKey: typeof config['projectKey'] === 'string' ? config['projectKey'] : undefined,
     filterId: typeof config['filterId'] === 'string' ? config['filterId'] : undefined,
     maxItems: typeof config['maxItems'] === 'number' ? config['maxItems'] : undefined,
+    // ★분포 차트·번다운이 쓰는 두 필드. 여기서 빠뜨리면 config 는 저장돼 있는데 가젯이
+    //   못 읽어 「설정이 필요합니다」로만 뜬다 — 사용자에겐 저장이 안 된 것처럼 보인다.
+    field: typeof config['field'] === 'string' ? config['field'] : undefined,
+    boardId: typeof config['boardId'] === 'string' ? config['boardId'] : undefined,
   }
 }
 

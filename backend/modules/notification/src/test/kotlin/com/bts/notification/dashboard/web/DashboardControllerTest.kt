@@ -422,21 +422,27 @@ class DashboardControllerTest {
     }
 
     /**
-     * CATALOG-2. enabled=true 항목 수 == 6 카운트 단언.
+     * CATALOG-2. enabled=true 항목 수 == 10 카운트 단언.
      *
-     * 점단언: issue_count(ISSUE 카테고리) 는 enabled=true,
-     * pie_chart(CHART 카테고리) 는 enabled=false.
+     * 점단언: issue_count·pie_chart 는 enabled=true,
+     * comments_recent 는 여전히 enabled=false(다음 PR 범위).
+     *
+     * ★pie_chart 를 켰으므로 「꺼진 예시」를 comments_recent 로 옮겼다. 점단언에서 꺼진 쪽을
+     * 빼면 「전부 켜졌다」와 「카운트만 맞다」를 구분하지 못한다.
      *
      * Jayway JSONPath 필터 결과에 [0] 인덱싱이 동작하지 않으므로
      * hasItem Hamcrest matcher 를 사용한다(필터 결과는 List 타입).
      */
     @Test
-    fun `GET gadget-catalog enabled true 항목 6개 카운트 단언과 점단언`() {
+    fun `GET gadget-catalog enabled true 항목 10개 카운트 단언과 점단언`() {
         mockMvc.perform(get("/api/v1/dashboards/gadget-catalog"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.data.gadgets[?(@.enabled == true)]", hasSize<Any>(6)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.enabled == true)]", hasSize<Any>(10)))
             .andExpect(jsonPath("$.data.gadgets[?(@.type == 'issue_count')].enabled", hasItem(true)))
-            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'pie_chart')].enabled", hasItem(false)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'pie_chart')].enabled", hasItem(true)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'sprint_burndown')].enabled", hasItem(true)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'activity_stream')].enabled", hasItem(true)))
+            .andExpect(jsonPath("$.data.gadgets[?(@.type == 'comments_recent')].enabled", hasItem(false)))
     }
 
     /**

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { validateGadgetConfig, type GadgetCatalogEntry, type ConfigField } from '@/api/gadget-catalog'
 import { dashboardLabels } from '@/i18n/dashboard-labels'
+import { ProjectPicker, BoardPicker, FilterPicker } from './GadgetScopePicker'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -15,6 +16,27 @@ import { dashboardLabels } from '@/i18n/dashboard-labels'
  * - aql: filter_result/issue_count는 filterId 경로만 MVP에서 지원한다.
  */
 const MVP_HIDDEN_KEYS = new Set<string>(['aql'])
+
+/**
+ * 스코프성 필드 → 선택기 매핑.
+ *
+ * ★이 목록은 백엔드 `GadgetType.kt` 의 필드 목록과 **서로를 검사하지 않는다.** 누가 거기에
+ * 스코프성 필드를 추가해도 폼은 조용히 텍스트 입력으로 떨어지고, 그 상태는 「설정이 어렵다」로만
+ * 드러난다 — 이 매핑이 고치려는 바로 그 결함의 재발이다.
+ * 그래서 `scripts/workflow/gadget-config-picker-coverage.test.ts` 가 차집합으로 강제한다.
+ * 필드를 늘릴 때 여기도 늘리지 않으면 그 판별식이 red 를 낸다.
+ *
+ * 값은 선택기 종류다 — 실제 컴포넌트 매핑은 아래 `renderPicker` 가 한다. 문자열로 두는 이유는
+ * 판별식이 소스를 정규식으로 읽기 때문이다(컴포넌트 참조는 파싱이 취약해진다).
+ */
+const PICKER_BY_KEY = {
+  projectKey: 'project',
+  boardId: 'board',
+  filterId: 'filter',
+} as const
+
+/** `PICKER_BY_KEY` 의 값 유니온 */
+type PickerKind = (typeof PICKER_BY_KEY)[keyof typeof PICKER_BY_KEY]
 
 /** 공용 입력 위젯 CSS 클래스 — 모든 필드 타입이 공유한다 */
 const INPUT_CLASS = cn(
@@ -178,6 +200,31 @@ function FieldRow({
   }
 
   // ENUM → select
+  // ★스코프성 필드는 자유 입력이 아니라 선택기다. 타입 분기(STRING/UUID)보다 **먼저** 본다 —
+  //   projectKey 는 STRING 이고 boardId 는 UUID 라, 타입으로 갈라 놓으면 두 자리에 같은 분기를 써야 한다.
+  const pickerKind: PickerKind | undefined = PICKER_BY_KEY[field.key as keyof typeof PICKER_BY_KEY]
+  if (pickerKind !== undefined) {
+    const setValue = (next: string): void => {
+      setStrVals((prev) => ({ ...prev, [field.key]: next }))
+    }
+    return (
+      <div>
+        <label htmlFor={fieldId} className={LABEL_CLASS}>
+          {label}
+        </label>
+        {pickerKind === 'project' && (
+          <ProjectPicker id={fieldId} value={strVals[field.key] ?? ''} onChange={setValue} />
+        )}
+        {pickerKind === 'board' && (
+          <BoardPicker id={fieldId} value={strVals[field.key] ?? ''} onChange={setValue} />
+        )}
+        {pickerKind === 'filter' && (
+          <FilterPicker id={fieldId} value={strVals[field.key] ?? ''} onChange={setValue} />
+        )}
+      </div>
+    )
+  }
+
   if (field.type === 'ENUM') {
     return (
       <div>

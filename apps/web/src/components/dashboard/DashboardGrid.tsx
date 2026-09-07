@@ -68,6 +68,15 @@ export interface DashboardGridProps {
   tiles: DashboardTileData[]
   /** 편집 권한 — true면 드래그/리사이즈·편집 UI 활성 */
   canEdit: boolean
+  /**
+   * 편집 **모드** — 권한과 다른 축이다 (Jira 패리티 JD-1).
+   *
+   * 권한이 있어도 기본은 보기 모드다. 대시보드는 보는 것이 주 조작이고 배치 자체가
+   * 콘텐츠라, 보는 동안 실수로 끌어 배치가 망가지면 안 된다.
+   */
+  isEditing: boolean
+  /** 타일 복제 요청 (JD-3) */
+  onDuplicate: (id: string) => void
   /** 레이아웃 변경 콜백 (드래그/리사이즈 완료 시) */
   onLayoutChange: (tiles: DashboardTileData[]) => void
   /** 타일 삭제 요청 콜백 */
@@ -108,6 +117,8 @@ export interface DashboardGridProps {
 export function DashboardGrid({
   tiles,
   canEdit,
+  isEditing,
+  onDuplicate,
   onLayoutChange,
   onDeleteTile,
   onEditTitle,
@@ -115,7 +126,7 @@ export function DashboardGrid({
   publicMode = false,
 }: DashboardGridProps): JSX.Element {
   /** publicMode면 canEdit 값과 무관하게 강제 읽기전용 (FR-DB-03 D6/D7 Task-8) */
-  const effectiveCanEdit = canEdit && !publicMode
+  const effectiveCanEdit = canEdit && !publicMode && isEditing
 
   /** react-grid-layout Layout[] 형태로 변환 */
   const layout: Layout[] = tiles.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))
@@ -171,6 +182,8 @@ export function DashboardGrid({
             <DashboardTile
               tile={tile}
               canEdit={canEdit}
+              isEditing={isEditing}
+              onDuplicate={onDuplicate}
               onDelete={onDeleteTile}
               onEditTitle={onEditTitle}
               publicMode={publicMode}
