@@ -324,6 +324,14 @@ pie/bar/burndown 의 `configFields` 가 바뀐다.
 - `assert.deepEqual([...enabled].sort(), [...rendered].sort())` — **양방향**.
   한쪽에만 있으면 어느 쪽인지 메시지에 적는다.
 
+★**리뷰 반영 F-1** — 파서가 필드 디스크립터의 `key` 를 먹는다. `GadgetType.kt` 의
+`key = "` 는 **15줄**인데 enum 상수는 12줄뿐이고, 나머지 3줄은 디스크립터다
+(`key = "links"`:150 · `key = "field"`:170 · `key = "field"`:186). 들여쓰기가
+enum 상수 **8칸** vs 디스크립터 **20칸** 으로 갈린다. 처방 3중 —
+①블록 내 **첫 번째** `key` 만 취한다(선언에서 key 가 항상 첫 인자)
+②들여쓰기 정확히 8칸 조건을 함께 건다
+③하한 `≥6` 을 **등식 `== 12`** 로 올린다. 파서가 3줄을 더 먹으면 15 가 되어 즉시 걸린다.
+
 **REFACTOR**: 두 파서를 export 해 테스트가 직접 호출할 수 있게 한다.
 
 **검증**: `node --experimental-strip-types --test scripts/workflow/gadget-catalog-renderer-parity.test.ts`
@@ -407,6 +415,9 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
 `use-project-summary.ts` 재사용. recharts `PieChart`/`BarChart`.
 **색은 기존 차트 색 토큰만** 쓴다(N2 — `chart-color-tokens.test.ts` 가 이미 강제).
 
+★**리뷰 반영 D-1** — 빈 상태는 `<p>` 를 새로 쓰지 않고 기존 프리미티브
+`apps/web/src/components/ui/empty-state.tsx` 의 `EmptyState` 를 쓴다.
+
 **REFACTOR**: `field → summary 필드` 매핑을 `Record` 상수로 뽑는다.
 
 **검증**:
@@ -428,6 +439,8 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
 
 **GREEN**: `BurndownChart.tsx` 를 **그대로 재사용**한다. 새 차트를 만들지 않는다(C-3).
 
+★**리뷰 반영 D-1** — 「활성 스프린트가 없습니다」 빈 상태는 `EmptyState` 프리미티브를 쓴다.
+
 **REFACTOR**: 2단 조회를 `useSprintBurndownByBoard(boardId)` 훅으로 묶는다.
 
 **검증**:
@@ -448,6 +461,8 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
 - 활동 0건 → 빈 상태.
 
 **GREEN**: `ProjectActivityFeed.tsx` 재사용. 가젯 높이에 맞게 스크롤 컨테이너로 감싼다.
+
+★**리뷰 반영 D-1** — 활동 0건 빈 상태는 `EmptyState` 프리미티브를 쓴다.
 
 **REFACTOR**: 없음 예상.
 
@@ -497,6 +512,14 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
 ★선재 결함 동반 해소 — 이미 활성인 `filter_result`·`issue_count` 의 `filterId` 도 이 매핑을 타서
 자유 입력에서 선택기로 바뀐다 (M-1).
 
+★**리뷰 반영 F-5** — 스코프성 키 유도 규칙을 「`UUID` 타입 **또는** 이름이 `Key`/`Id` 로
+끝남」으로 넓힌다. 좁으면 `xxxId` 가 `STRING` 일 때 **미탐**이 된다(위험한 방향).
+넓혀서 생기는 오탐은 red 로 사람이 보게 되므로 안전한 방향이다. 예외를 두려면
+**사유를 같은 줄에 강제**한다 — 사유 없는 예외는 판별식이 거부한다.
+
+★**리뷰 반영 D-4** — 프로젝트를 바꿔 보드 선택이 비워질 때 **조용히 비우지 않는다.**
+보드 셀렉트 아래 인라인 안내를 띄운다. 동반 테스트에 이 문구 단언을 포함한다.
+
 **REFACTOR**: 매핑을 `PICKER_BY_KEY` 상수로 뽑아 판별식이 한 곳만 보게 한다.
 
 **검증**:
@@ -525,6 +548,10 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
 을 드래그/리사이즈에 넘긴다. `DashboardTile` 의 `Trash2` 단독을 `⋯` `DropdownMenu` 로 바꾸고
 `복제`·`삭제` 를 담는다. `handleAddGadgetTile` 의 `y: maxBottom` → `y: 0`.
 
+★**리뷰 반영 D-3** — A7′ 3분기에 **제목 인라인 편집**을 포함한다. 드래그 핸들과 `⋯` 만
+재면 「보기 모드인데 제목이 고쳐진다」로 모드 분리가 뚫린다. 보기 모드에서 제목 클릭은
+아무 일도 하지 않아야 한다.
+
 **REFACTOR**: 「보기/편집」 라벨을 `dashboard-labels.ts` 로 (하드코딩 문구 금지).
 
 **검증**:
@@ -552,6 +579,14 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
 
 **검증**:
 - `pnpm --filter web test:e2e -- dashboard-gadgets` **3회 연속 green**(플레이크 배제)
+★**리뷰 반영 F-6** — 실행 전 **5173 점유 프로세스의 `cwd` 가 이 worktree 임을 증명**한다.
+`reuseExistingServer: false`(`playwright.config.ts:59`)는 이것을 막지 못한다 — 내 vite 가
+strictPort 로 죽어도 URL 이 응답하면 그대로 진행해 **다른 worktree 의 앱을 잰다**.
+지금 worktree 가 4개 살아 있다. 증명 못 하면 실행하지 않는다.
+
+★**리뷰 반영 F-4** — 최종 눈확인에 **빈 상태 3종**을 넣는다. 4종 가젯이 실린 화면만
+보면 빈 상태가 다크에서 깨져도 못 본다.
+
 - 눈확인 최종 — 4종 가젯이 실린 대시보드를 라이트/다크 각 1회 (A9)
 
 ## Plan 메타
@@ -573,7 +608,112 @@ Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다�
   항목을 여는 것은 config 스키마 확장이라 후속 PR) · `JD-5 편차 X-JD-4`(컬럼 프리셋 미채택 · M-2) ·
   `JD-9·JD-10 → PR2/PR3 범위`. **채택 항목 차집합 0.**
 - **마이그레이션 0 · 신규 엔드포인트 0 · 신규 FR 0**(FR 수 145 불변).
+- ★**wave 2 커밋 규율(F-2)**: wave 2 는 task **5개**가 같은 worktree 에서 병렬로 돈다.
+  `wave-protocol.md:15` 의 「파일 단위 `git add`」로는 **못 막는다** — git 인덱스가 프로세스 간
+  공유라 커밋 시점 인덱스에 옆 task 의 스테이지가 남아 있으면 그것까지 커밋된다
+  (`[[shared-worktree-git-index-defeats-narrow-git-add]]` 10/10 실측). wave 2 의 모든 커밋은
+  **경로 한정 커밋**(`git commit -- <경로>` / `--only`)으로 한다. 로그 파일명에 PID 접미.
+- ★**push 시점 규율(F-3)**: T3 이 `enabled` 를 켜는 순간부터 T7 이 렌더러를 등록할 때까지
+  `gadget-catalog-renderer-parity` 가 **red 다(의도된 설계)**. 그 구간에 push 하면 pre-push 훅이
+  막는다. **T3~T7 은 커밋만 하고 push 하지 않는다.** T7 green 복귀 후 push.
 - **T3 승격 사유**: 없음. 생기면 즉시 정지·보고.
 
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+렌즈 2종(`plan-eng-review` + `plan-design-review` — `type=backend` 행의 「UI 포함 시 design 추가」 적용).
+**findings 10건 · BLOCKER 0 · Maxi 결정 필요 1건(D-2).**
+전부 plan 보강으로 해소하고 각 Task 본문에 `★리뷰 반영` 으로 인라인했다.
+
+### eng 렌즈
+
+| # | 심각도 | 확신 | 내용 |
+|---|---|---|---|
+| F-1 | P1 | 9/10 | **T1 파서가 필드 디스크립터의 `key` 를 가젯 타입으로 오인한다** |
+| F-2 | P1 | 10/10 | **wave 2 병렬 5 task 가 git 인덱스를 공유한다** |
+| F-3 | P2 | 8/10 | T3~T7 사이는 판별식이 red 라 push 가 막힌다 |
+| F-4 | P2 | 7/10 | 최종 눈확인(A9)에 빈 상태 3종이 빠졌다 |
+| F-5 | P3 | 6/10 | T8 스코프성 키 규칙의 미래 미탐 |
+| F-6 | P1 | 10/10 | **T10 E2E 가 다른 worktree 의 앱을 잴 수 있다** |
+
+**F-1.** `GadgetType.kt` 에 `key = "` 가 **15줄**인데 enum 상수는 **12줄**뿐이다. 나머지 3줄은
+필드 디스크립터다 — `key = "links"`(:150) · `key = "field"`(:170) · `key = "field"`(:186).
+들여쓰기가 enum 상수는 **8칸**, 디스크립터는 **20칸**으로 갈린다. 블록 안의 모든 `key =` 를
+잡으면 `field`·`links` 가 가젯 타입으로 들어가 **영구 red** 가 되거나, 더 나쁘게 `PIE_CHART`
+블록의 key 를 `field` 로 읽어 `pie_chart` 자체를 놓친다.
+→ **처방** ①블록 내 **첫 번째** `key = "..."` 만 취한다(enum 상수 선언에서 key 가 항상 첫 인자)
+②들여쓰기 정확히 8칸 조건을 함께 건다(ktlint 가 들여쓰기를 강제하므로 안정적)
+③하한 `≥6` 을 **정확히 `== 12`** 로 올린다 — A3 이 이미 카탈로그 총수 12 를 단언하므로 같은 수다.
+하한보다 등식이 강하고, 파서가 3줄을 더 먹으면 15 가 되어 즉시 걸린다.
+
+**F-2.** `docs/rules/wave-protocol.md:15` 는 아직 「파일 단위 `git add <경로>`만」이라고 적혀 있다.
+learning `[[shared-worktree-git-index-defeats-narrow-git-add]]`(10/10, 2026-09-04 실측)이
+**바로 그 조항으로는 사고를 못 막는다**고 판정했다 — git 인덱스는 프로세스 간 공유라
+`add` 를 자기 파일로 좁혀도 커밋 시점 인덱스에 옆 task 가 스테이지해 둔 파일이 남아 있으면
+`git commit` 이 인덱스 전체를 커밋한다. 실측에서 Task 1 의 RED 커밋이 Task 3 의 파일 2개를 흡수했다.
+이 PR 은 wave 2 에 task **5개**가 몰려 정확히 그 조건이다.
+→ **처방** wave 2 의 모든 커밋을 **경로 한정 커밋**(`git commit -- <경로>` 또는 `--only`)으로 한다.
+로그 파일명에 PID 접미. `Plan 메타` 에 규율로 못 박았다.
+
+**F-3.** T3 이 `enabled` 를 켜면 T7 까지 `gadget-catalog-renderer-parity` 가 red 다. 이건 **의도된
+설계**지만, 그 구간에 push 하면 pre-push 훅이 판별식 전량을 돌려 **막힌다**.
+→ **처방** T3~T7 은 커밋만 하고 push 하지 않는다. T7 이 green 을 복귀시킨 뒤 push. `Plan 메타` 에 명시.
+
+**F-6.** `apps/web/playwright.config.ts:16,51` 이 `localhost:5173` 고정이고 `reuseExistingServer: false`(:59)다.
+learning `[[port-5173-shared-across-worktrees-measures-wrong-app]]`(10/10, 2026-09-04 실측) —
+`reuseExistingServer: false` 는 「포트가 응답하면 죽는다」가 **아니다**. 내 vite 가 strictPort 로
+죽어도 URL 이 응답하면 그대로 진행하므로 **다른 worktree 의 앱을 잰다**. 지금 이 저장소에
+worktree 가 **4개**(main + 잔재 3개) 살아 있다.
+→ **처방** T10 실행 전 5173 점유 프로세스의 `cwd` 를 확인해 **자기 worktree 임을 증명**한다.
+증명 못 하면 실행하지 않는다. `**검증**` 에 못 박았다.
+
+### design 렌즈
+
+| # | 심각도 | 확신 | 내용 |
+|---|---|---|---|
+| D-1 | P2 | 9/10 | **`EmptyState` 프리미티브가 이미 있는데 plan 이 안 가리킨다** |
+| D-2 | P2 | 8/10 | **`bar_chart` 와 `DistributionWidget` 이 같은 것을 두 방식으로 그린다** — Maxi 결정 |
+| D-3 | P2 | 8/10 | A7′ 가 제목 인라인 편집을 안 다룬다 |
+| D-4 | P3 | 7/10 | 선택기 계단식 초기화가 조용하다 |
+| D-5 | PASS | — | 모드 토글이 BTS 에서 대시보드만 갖는 것은 정당하다 |
+
+**D-1.** `apps/web/src/components/ui/empty-state.tsx` 에 `EmptyState` 프리미티브가 있다
+(title/description/icon/action 슬롯). plan 의 빈 상태 3종이 이걸 쓴다고 **명시하지 않았다.**
+명시가 없으면 구현자가 `<p>` 를 새로 쓴다 — 실제로 `DistributionWidget.tsx:31` 이 지금
+`<p className="text-muted-foreground mt-3 text-sm">` 로 그렇게 하고 있다(선재 · 이 PR 범위 밖).
+→ **처방** T4·T5·T6 의 빈 상태를 전부 `EmptyState` 로 못 박았다.
+
+**D-2 — Maxi 결정 필요.** `DistributionWidget.tsx:1` 의 헤더 주석이
+「상태·우선순위·유형·담당자 **4종이 같은 막대 목록**을 쓴다 (Jira 패리티 J4)」다.
+이 PR 의 `bar_chart` 가젯과 **데이터도 목적도 같다**. 그런데 plan 은 recharts `BarChart` 를
+새로 그린다 — 같은 것을 프로젝트 요약 화면에서는 막대 목록으로, 대시보드에서는 recharts 로
+**두 방식으로** 그리게 된다. 재사용 사다리 1단(이미 있는 것)을 건너뛴다.
+반대 논거도 있다 — `pie_chart` 는 막대 목록으로 못 그리니 recharts 가 필요하고, pie/bar 를
+한 컴포넌트 `variant` 로 겸하려면 bar 도 recharts 여야 설계가 균일하다.
+X-JD-2 에서 「`bar_chart` 는 Jira 카탈로그에 없다 — ADS 준용」으로 이미 판정했으므로
+**BTS 내부 일관성이 Jira 근거보다 우선**한다는 논리도 성립한다. → 게이트 1 에 올린다.
+
+**D-3.** A7′ 3분기가 **드래그 핸들과 `⋯` 만** 다루고 제목 인라인 편집을 안 다룬다.
+`DashboardTile` 은 제목 클릭으로 편집에 들어가는데(X-JD-3 으로 유지 결정), 보기 모드에서도
+그게 살아 있으면 **모드 분리가 뚫린다** — 「보기 모드인데 제목이 고쳐진다」.
+→ **처방** A7′ 에 제목 인라인 편집을 3분기 전수에 포함. T9 에 반영.
+
+**D-4.** E8 은 「프로젝트를 바꾸면 보드가 초기화된다」만 말하고 **사용자가 그것을 어떻게 아는지**가 없다.
+조용히 비면 값이 사라진 것처럼 보인다.
+→ **처방** 보드 선택이 비워질 때 인라인 안내 문구를 띄운다. 조용히 비우지 않는다. T8 에 반영.
+
+**D-5 PASS.** BTS 의 다른 화면(보드·백로그·이슈목록)은 모드 토글이 없고 권한만으로 갈린다.
+대시보드만 모드를 갖는 것은 **정당하다** — 대시보드는 **배치 자체가 콘텐츠**인 유일한 화면이라
+보는 것이 주 조작이고, 드래그가 주 조작인 보드와 성격이 다르다. Jira 패리티(JD-1)와도 맞는다.
+
+### PASS 로 확인한 것 4건 (근거 대조 완료)
+
+- **저장된 `pie_chart` 타일 존재 불가 논증에 구멍 없음.** `validateLayout` 을 부르는 경로가
+  `create`(`Dashboard.kt:96`)와 `applyPatch`(`:283`) **둘뿐**이고 양쪽 다 검증한다. 우회 쓰기 경로 0.
+  Sanity 발견 1 의 결론이 그대로 선다 → T2 의 `filterId`/`aql` 제거는 안전.
+- **pie/bar fall-through 정규식 안전.** `case 'a': case 'b': return X` 패턴을 기존 코드가 이미
+  쓰고 있고(`GadgetRenderer.tsx:42-44`), `case '<k>':` 정규식이 각 줄을 독립으로 잡는다.
+- **`summary` API 중복 호출 없음.** `PROJECT_SUMMARY_KEYS.summary(projectKey)` 로 queryKey 가
+  projectKey 기반이라 같은 프로젝트를 보는 pie/bar 가젯 여럿이 TanStack Query 에서 자동 dedupe 된다.
+- **가젯마다 `projectKey` 가 따로인 것이 맞다.** Jira 도 가젯 단위로 space/filter 를 받는다(JD-6).
+
