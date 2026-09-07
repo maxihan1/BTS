@@ -5,8 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useProjects } from '@/hooks/use-projects'
 import { useBoards } from '@/hooks/use-boards'
-import { fetchOwnedFilters } from '@/api/saved-filters'
-import { savedFiltersKey } from '@/api/saved-filters'
+import { fetchOwnedFilters, savedFiltersKey } from '@/api/saved-filters'
 import { gadgetPickerLabels } from '@/i18n/dashboard-labels'
 
 /** 폼의 다른 입력과 같은 모양을 쓴다 — 선택기만 튀면 폼이 두 벌처럼 보인다. */
@@ -22,6 +21,17 @@ interface PickerProps {
   readonly onChange: (next: string) => void
   /** label 의 htmlFor 와 잇는 id */
   readonly id: string
+  /**
+   * 접근명. `<label htmlFor>` 가 없는 자리에서만 넘긴다.
+   *
+   * ★`BoardPicker` 가 **내장**한 프로젝트 선택기가 그 자리다. 폼의 `<label>` 은 바깥
+   * 보드 select 를 가리키므로 내장 select 는 이름이 빈 combobox 가 된다 —
+   * 스크린리더로는 드롭다운 둘 중 어느 것이 프로젝트인지 알 수 없다.
+   * 증상은 테스트에도 이미 나 있었다. 이름으로 못 잡아서 유닛은 `getAllByRole('combobox')[0]`,
+   * e2e 는 `selects.nth(0)` 로 **인덱스**를 썼고, 필드 순서가 바뀌면 둘 다 조용히
+   * 엉뚱한 요소를 잰다.
+   */
+  readonly ariaLabel?: string
 }
 
 /**
@@ -30,12 +40,13 @@ interface PickerProps {
  * 보관(archived) 프로젝트는 제외한다. 가젯이 가리킬 대상이 아니고, 목록에 섞이면
  * 사용자가 왜 데이터가 안 나오는지 못 짚는다.
  */
-export function ProjectPicker({ value, onChange, id }: PickerProps): JSX.Element {
+export function ProjectPicker({ value, onChange, id, ariaLabel }: PickerProps): JSX.Element {
   const { data: projects = [], isPending } = useProjects()
 
   return (
     <select
       id={id}
+      aria-label={ariaLabel}
       className={SELECT_CLASS}
       value={value}
       onChange={(e) => {
@@ -115,7 +126,12 @@ export function BoardPicker({ value, onChange, id }: PickerProps): JSX.Element {
 
   return (
     <div className="space-y-2">
-      <ProjectPicker id={`${id}-project`} value={projectKey} onChange={handleProjectChange} />
+      <ProjectPicker
+        id={`${id}-project`}
+        value={projectKey}
+        onChange={handleProjectChange}
+        ariaLabel={gadgetPickerLabels.selectProject}
+      />
       <select
         id={id}
         className={SELECT_CLASS}

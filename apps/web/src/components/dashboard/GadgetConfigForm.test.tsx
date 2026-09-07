@@ -122,8 +122,10 @@ describe('GadgetConfigForm — 보드 선택기의 프로젝트 종속 (엣지 E
 
     renderForm([{ key: 'boardId', type: 'UUID', required: true }])
 
-    // 보드 선택기가 내장한 프로젝트 드롭다운 (id 가 `${fieldId}-project`)
-    const projectSelect = screen.getAllByRole('combobox')[0] as HTMLSelectElement
+    // ★인덱스가 아니라 **접근명**으로 잡는다. 종전에는 `getAllByRole('combobox')[0]` 이었는데,
+    //   그것은 내장 프로젝트 select 에 이름이 없어서 쓴 우회였다(리뷰 지적). 필드 순서가
+    //   바뀌면 조용히 엉뚱한 요소를 잰다.
+    const projectSelect = screen.getByRole('combobox', { name: gadgetPickerLabels.selectProject })
     await user.selectOptions(projectSelect, 'BTS')
 
     await waitFor(() => {
@@ -144,7 +146,8 @@ describe('GadgetConfigForm — 보드 선택기의 프로젝트 종속 (엣지 E
 
     renderForm([{ key: 'boardId', type: 'UUID', required: true }])
 
-    const [projectSelect, boardSelect] = screen.getAllByRole('combobox') as HTMLSelectElement[]
+    const projectSelect = screen.getByRole('combobox', { name: gadgetPickerLabels.selectProject })
+    const boardSelect = screen.getByRole('combobox', { name: /board id/i })
 
     await user.selectOptions(projectSelect as HTMLSelectElement, 'BTS')
     await waitFor(() => {

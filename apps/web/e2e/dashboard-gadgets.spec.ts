@@ -521,12 +521,14 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
     // Then. 두 드롭다운이 있다 — 내장 프로젝트 선택기 + 보드 선택기.
     //   자유 입력(textbox)이면 이 PR 이 고치려던 상태 그대로다.
     const dialog = page.getByRole('dialog')
-    const selects = dialog.getByRole('combobox')
-    await expect(selects).toHaveCount(2)
+    await expect(dialog.getByRole('combobox')).toHaveCount(2)
     await expect(dialog.getByRole('textbox')).toHaveCount(0)
 
-    const projectSelect = selects.nth(0)
-    const boardSelect = selects.nth(1)
+    // ★인덱스(`nth(0)`)가 아니라 **접근명**으로 잡는다. 종전 인덱스 질의는 내장 프로젝트
+    //   select 에 이름이 없어서 쓴 우회였고(리뷰 지적), 필드 순서가 바뀌면 조용히 엉뚱한
+    //   요소를 잰다 — 실패가 아니라 **다른 것을 재는 통과**가 되는 자리다.
+    const projectSelect = dialog.getByRole('combobox', { name: gadgetPickerLabels.selectProject })
+    const boardSelect = dialog.getByRole('combobox', { name: /board id/i })
 
     // Then. 프로젝트를 고르기 전 보드는 비활성이다
     await expect(boardSelect).toBeDisabled()
