@@ -6,6 +6,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { mfaStrings } from '@/i18n/ko'
 import { LoginForm } from './LoginForm'
+import { LOGIN_PROVIDER_STORAGE_KEY } from './login-provider-preference'
 import { useAuthStore } from './authStore'
 
 // @simplewebauthn/browser mock — jsdom은 PublicKeyCredential 미정의라 false 반환.
@@ -88,6 +89,8 @@ const defaultRouteHandler = http.get('/api/v1/auth/route', () =>
 
 beforeEach(async () => {
   useAuthStore.setState({ accessToken: null, user: null })
+  // 🛑 로그인 방식 기억이 테스트 사이로 새면 기본값 판별식이 앞 테스트의 저장값을 본다.
+  window.localStorage.clear()
   vi.spyOn(window, 'location', 'get').mockReturnValue({
     ...window.location,
     assign: vi.fn(),
@@ -149,6 +152,99 @@ describe('LoginForm — 폼 로그인', () => {
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
     expect(useAuthStore.getState().accessToken).toBe('test-token')
+  })
+
+  /**
+   * 저장 시점 계약 (Maxi 확정 2026-09-07) — **성공했을 때만** 쓴다.
+   *
+   * 🛑 「선택을 바꾸면 저장」이 아니다. 그러면 드롭다운을 열어 훑어본 것만으로 기본값이 바뀌고
+   *    다음 방문에 성공한 적 없는 방식을 받는다. 아래 세 판별식이 그 둘을 갈라 얼린다.
+   *
+   * 🛑 **드롭다운을 조작해서 재지 않는다.** Radix Select 는 jsdom 에서 열리지 않는다
+   *    (`target.hasPointerCapture is not a function`). 그래서 「제출된 값이 저장된다」는
+   *    **providers 목록을 갈아** 기본값 자체를 바꾸는 방식으로 잰다 — 상수 `'local'` 을
+   *    쓰는 구현과 실제로 갈린다.
+   */
+  it('로그인에 성공하면 그 방식을 저장한다 — 다음 방문의 기본값이 된다', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json({ access_token: 'test-token', token_type: 'Bearer', expires_in: 3600 }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: 'u1',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+    await fillIdentifier(user, 'alice@example.com')
+    await waitForProvidersLoaded()
+    await user.clear(screen.getByLabelText('사용자명'))
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem(LOGIN_PROVIDER_STORAGE_KEY)).toBe('local'),
+    )
+  })
+
+  it('저장되는 값은 상수가 아니라 **제출한 방식**이다 (local 이 없는 조직)', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      http.get('/api/v1/auth/providers', () =>
+        HttpResponse.json({
+          providers: [{ id: 'ldap', type: 'LDAP', displayName: 'Ldap', priority: 0, available: true }],
+        }),
+      ),
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json({ access_token: 'test-token', token_type: 'Bearer', expires_in: 3600 }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: 'u1',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    renderLoginForm()
+    await fillIdentifier(user, 'alice@example.com')
+    await waitForProvidersLoaded()
+    await user.clear(screen.getByLabelText('사용자명'))
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await waitFor(() =>
+      expect(window.localStorage.getItem(LOGIN_PROVIDER_STORAGE_KEY)).toBe('ldap'),
+    )
+  })
+
+  it('제출 전에는 저장하지 않는다 (대조군)', async () => {
+    // 마운트·목록 도착만으로 쓰면 「성공한 방식을 기억한다」가 「마지막으로 화면을 열었을 때의
+    // 기본값을 기억한다」로 바뀐다. 두 문장은 다르고, 이 대조군이 그 차이를 지킨다.
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+    await fillIdentifier(user, 'alice@example.com')
+    await waitForProvidersLoaded()
+
+    // 앵커 — 폼이 실제로 떠 있다(부재 단언만으로는 공허하다)
+    expect(screen.getByRole('combobox', { name: '로그인 방식' })).toHaveTextContent('Local')
+    expect(window.localStorage.getItem(LOGIN_PROVIDER_STORAGE_KEY)).toBeNull()
   })
 
   it('빈 username 제출 시 Zod 검증 에러 메시지가 표시된다', async () => {
@@ -227,7 +323,16 @@ describe('LoginForm — 폼 로그인', () => {
     })
   })
 
-  it('provider 드롭다운 기본 선택값이 providers 응답 첫 항목(ldap)의 id이다', async () => {
+  /**
+   * 기본 선택값 계약 (Maxi 확정 2026-09-07).
+   *
+   * 종전 계약은 「응답 첫 항목(ldap)」이었다. 서버가 `priority` 순으로 주므로 LDAP 이 0 인
+   * 이 픽스처에서는 Local 계정 사용자가 **매번** 드롭다운을 바꿔야 했다.
+   *
+   * 🛑 픽스처가 `local` 을 **첫 항목이 아닌 자리**에 두는 것이 이 판별식의 전제다.
+   *    `local` 이 첫 항목이면 새 규칙과 옛 규칙이 같은 답을 내 red 가 되지 않는다.
+   */
+  it('provider 드롭다운 기본 선택값이 첫 항목이 아니라 `local` 이다 (저장값 없음)', async () => {
     const user = userEvent.setup({ delay: null })
     renderLoginForm()
 
@@ -235,7 +340,35 @@ describe('LoginForm — 폼 로그인', () => {
 
     await waitFor(() => {
       const trigger = screen.getByRole('combobox', { name: '로그인 방식' })
-      expect(trigger).toHaveTextContent('LDAP-corp')
+      expect(trigger).toHaveTextContent('Local')
+    })
+    // 대조군 — 옛 기본값이 더는 선택돼 있지 않다
+    expect(screen.getByRole('combobox', { name: '로그인 방식' })).not.toHaveTextContent('LDAP-corp')
+  })
+
+  it('저장된 방식이 있으면 그것이 기본값이다 — 다음 로그인에 불러온다', async () => {
+    window.localStorage.setItem(LOGIN_PROVIDER_STORAGE_KEY, 'ldap')
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await fillIdentifier(user)
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '로그인 방식' })).toHaveTextContent('LDAP-corp')
+    })
+  })
+
+  it('저장값이 목록에 없으면 버리고 `local` 로 돌아간다 (자가 치유 · 보안 렌즈 S2)', async () => {
+    // localStorage 는 같은 오리진 스크립트가 쓸 수 있고 provider 는 조직 설정에서 사라진다.
+    // 대조 없이 채우면 드롭다운이 빈 값으로 뜨고 폼이 서버가 모르는 값을 제출한다.
+    window.localStorage.setItem(LOGIN_PROVIDER_STORAGE_KEY, 'no-such-provider')
+    const user = userEvent.setup({ delay: null })
+    renderLoginForm()
+
+    await fillIdentifier(user)
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: '로그인 방식' })).toHaveTextContent('Local')
     })
   })
 
