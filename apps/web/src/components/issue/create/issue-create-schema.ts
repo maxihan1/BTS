@@ -1,6 +1,7 @@
 // 이슈 생성 폼의 검증 스키마·상수·요청 본문 조립 (FR-UX-09 F2)
 import { z } from 'zod'
 import { issueCreateStrings } from '@/i18n/ko'
+import { isBlankHtml } from '@/components/editor/rich-text-empty'
 import type { CreateIssueInput, CustomFieldValues } from '@/api/issues'
 
 /**
@@ -29,8 +30,14 @@ export const issueCreateSchema = z.object({
     .string()
     .min(1, issueCreateStrings.summaryRequired)
     .max(SUMMARY_MAX_LENGTH, issueCreateStrings.summaryTooLong),
-  /** FR-UX-09 F2 — 본문. 비우면 서버가 프로젝트 템플릿으로 채운다(FR-TM-01)라 필수가 아니다. */
-  description: z.string(),
+  /**
+   * 본문 **HTML** — 상세 화면과 같은 리치 에디터가 만든다 (J23).
+   *
+   * 비우면 서버가 프로젝트 템플릿으로 채우므로(FR-TM-01) 필수가 아니다. 다만 TipTap 은
+   * 빈 문서를 `<p></p>` 로 직렬화하므로 **빈 판정을 문자열 길이로 하면 안 된다** —
+   * [buildCreateIssuePayload] 가 `isBlankHtml` 로 재고 키 자체를 뺀다.
+   */
+  descriptionHtml: z.string(),
 })
 
 /** Zod 스키마에서 추론한 폼 값 타입 */
@@ -78,11 +85,14 @@ export function buildCreateIssuePayload(
   values: IssueCreateFormValues,
   selections: IssueCreateSelections,
 ): CreateIssueInput {
-  const { description, ...rest } = values
+  const { descriptionHtml, ...rest } = values
   return {
     ...rest,
     ...(selections.typeId !== null ? { typeId: selections.typeId } : {}),
-    ...(description.trim() !== '' ? { description } : {}),
+    // ★`trim() !== ''` 로 재면 안 된다 — TipTap 의 빈 문서는 `<p></p>` 라 항상 「내용 있음」이
+    //   되어 FR-TM-01 템플릿이 조용히 죽는다. 서버도 같은 판정을 하지만 여기서 키를 빼 주는
+    //   편이 의도가 분명하다.
+    ...(isBlankHtml(descriptionHtml) ? {} : { descriptionHtml }),
     ...(selections.assigneeIntent !== undefined
       ? { assigneeId: selections.assigneeIntent }
       : {}),

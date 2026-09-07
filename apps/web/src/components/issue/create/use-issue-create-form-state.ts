@@ -105,7 +105,9 @@ export function useIssueCreateFormState(
     defaultValues: {
       projectKey: '',
       summary: sanitizeInitialSummary(initialSummary),
-      description: '',
+      // 빈 HTML 이 아니라 **빈 문자열**로 시작한다 — TipTap 이 빈 문단으로 정규화하고,
+      // `isBlankHtml` 이 어느 쪽이든 빈 본문으로 읽는다.
+      descriptionHtml: '',
     },
   })
 

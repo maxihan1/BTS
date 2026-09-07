@@ -1,6 +1,7 @@
 // 생성 폼이 리치 에디터 HTML 을 보내고, 빈 문서는 키 자체를 빼는지 재는 판별식 (FR-TM-01)
 import { describe, it, expect } from 'vitest'
 import { buildCreateIssuePayload } from '../issue-create-schema'
+import type { IssueCreateFormValues, IssueCreateSelections } from '../issue-create-schema'
 import { isBlankHtml } from '@/components/editor/rich-text-empty'
 
 /**
@@ -17,20 +18,21 @@ import { isBlankHtml } from '@/components/editor/rich-text-empty'
  * 의도를 분명히 한다 — 서버 판정은 다른 클라이언트를 위한 방어선이다.
  */
 
-const selections = {
+// ★캐스팅으로 뭉개지 않는다 — 실제 타입을 쓰면 필드명이 바뀔 때 여기서 컴파일이 막힌다.
+//   `as unknown as` 로 눌렀다가 `customFieldValues` 를 `customFields` 로 잘못 적어
+//   런타임에서야 터졌다(2026-09-07 실측).
+const selections: IssueCreateSelections = {
   typeId: null,
   assigneeIntent: undefined,
   priority: 3,
-  labels: [] as string[],
-  componentIds: [] as string[],
+  labels: [],
+  componentIds: [],
   securityLevelId: null,
-  customFields: {},
-} as unknown as Parameters<typeof buildCreateIssuePayload>[1]
+  customFieldValues: {},
+}
 
-function values(descriptionHtml: string) {
-  return { projectKey: 'PROJ', summary: '제목', descriptionHtml } as unknown as Parameters<
-    typeof buildCreateIssuePayload
-  >[0]
+function values(descriptionHtml: string): IssueCreateFormValues {
+  return { projectKey: 'PROJ', summary: '제목', descriptionHtml }
 }
 
 describe('생성 페이로드 — 본문 HTML', () => {
