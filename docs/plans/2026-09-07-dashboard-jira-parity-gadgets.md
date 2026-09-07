@@ -731,3 +731,49 @@ X-JD-2 에서 「`bar_chart` 는 Jira 카탈로그에 없다 — ADS 준용」�
   projectKey 기반이라 같은 프로젝트를 보는 pie/bar 가젯 여럿이 TanStack Query 에서 자동 dedupe 된다.
 - **가젯마다 `projectKey` 가 따로인 것이 맞다.** Jira 도 가젯 단위로 space/filter 를 받는다(JD-6).
 
+
+## 구현 결과 (T10 완료 시점)
+
+### 검증 실행 기록 — 종료 코드로 판정
+
+| 항목 | 명령 | 결과 |
+|---|---|---|
+| 판별식 전량 | `node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` | **EXIT=0** · 621/621 |
+| 백엔드 | `:modules:notification:test --no-build-cache --rerun-tasks` | **EXIT=0** · `9 executed` · XML 63건 신선 |
+| E2E | `playwright test dashboard-gadgets` **3회 연속** | **EXIT=0 ×3** · 8 passed · 1 skipped |
+| 문서 인덱스 | `build-doc-index.mjs --check` | **EXIT=0** · 고아 0 · drift 0 |
+| 정본 정합 | `verify-master-plan.sh` | **EXIT=0** · FR 145/145 불변 |
+
+★백엔드는 **두 번 헛돌았다**. 1차는 `UP-TO-DATE`, 2차는 `cleanTest` 뒤에도 `FROM-CACHE` 였다.
+「BUILD SUCCESSFUL」을 실행의 증거로 읽으면 안 된다 — `9 executed` 와 XML 타임스탬프까지
+봐야 실제로 돈 것이다(메모리 `lint-fails-first-leaves-stale-test-xml` 의 판본).
+
+### 뮤테이션 검증 (A2 세 번째 꼭짓점)
+
+MSW 픽스처의 `pie_chart` 를 `enabled: false, // MUTATION` 으로 바꿔 판별식이 **red** 인 것을
+확인하고 원복했다(EXIT=1 → EXIT=0).
+
+★1차 시도는 **가짜 그린**이었다. `parseFixtureTypes` 가 항목 경계를 고정 20줄 창으로 잡아,
+`enabled: false, // 주석` 이 줄 끝 `,` 앵커에 미매치되자 `find` 가 **다음 항목**의 `enabled` 를
+읽고 조용히 통과했다. 경계를 「다음 `type:` 줄」로 바꿔 고쳤다.
+
+### A9 눈확인 (라이트/다크 각 1회 · F-4 빈 상태 포함)
+
+- 4종 가젯이 실린 대시보드 — 라이트/다크 정상.
+- 빈 상태 3종 — 「표시할 이슈가 없습니다」 · 「활성 스프린트가 없습니다」 · 「아직 활동이
+  없습니다」. 라이트/다크 양쪽 정상, 문구가 각각 다른 이유를 낸다.
+
+**눈확인이 결함 1건을 잡았다 — 파이 차트에 범례가 없었다.** 막대는 X축 라벨이 이름을 내지만
+파이에는 축이 없어 조각의 뜻을 알 방법이 색뿐이었다. 이 저장소가 기존 차트 3종
+(`BurndownChart`·`VelocityChart`·`CfdChart`)에 이미 「색-단독 구분 금지(WCAG) →
+Legend/Tooltip 텍스트 병행」을 못박아 뒀는데 새 파이만 그 밖에 있었다. RED → GREEN 으로 수정.
+
+### 범위 밖에서 발견한 것 2건 (이 PR 에서 안 고침)
+
+- **`agile-planning` ktlint 위반 4건** — `BoardSettingsValueCheckMigrationTest.kt:273,303` ·
+  `BoardSettingsTabErrorEnvelopeTest.kt:580`(2건). #457 에서 들어왔고 이 브랜치는 그 모듈을
+  건드리지 않는다(`git diff --name-only origin/main...HEAD -- backend/modules/agile-planning/` 이 0건).
+  `./gradlew ktlintCheck` 를 모듈 지정 없이 부르면 여기서 막힌다.
+- **worktree 간 5173 포트 경합** — 실행 중 두 번, 다른 worktree(`fix-e2e-label-strict-mode` ·
+  `admin-scheme-index-nav`)의 vite 가 5173 을 잡았다. F-6 규율대로 `lsof -a -p <pid> -d cwd` 로
+  주인을 증명하고, 남의 서버를 죽이지 않고 비기를 기다렸다. 눈확인은 5199 로 옮겨 돌렸다.
