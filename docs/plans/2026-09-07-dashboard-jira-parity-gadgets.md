@@ -298,6 +298,282 @@ pie/bar/burndown 의 `configFields` 가 바뀐다.
 - **A5′** 익명 차단을 백엔드(카테고리 치환)·프론트(타입 화이트리스트) **양쪽에서** 4종 전수로 잰다.
 
 
-## Plan (← /bts-plan 채움)
+## Plan
+
+### Task 1. A2 차집합 판별식 — 카탈로그 `enabled` 집합 ↔ 렌더러 `case` 집합
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`scripts/workflow/gadget-catalog-renderer-parity.test.ts`]
+- depends-on: []
+- jira: []
+
+**RED**: 이 판별식은 **현재 저장소에서 green 이 정상**이다(카탈로그 6종 = 렌더러 6종).
+그러므로 red 는 「지금 실패하는 테스트」가 아니라 **비-공허 뮤테이션**으로 세운다.
+- 대조군 — 지금 돌려서 green 임을 확인한다. green 이 아니면 파서가 틀린 것이다.
+- ★**공허 방지 짝** — 파싱 결과가 0건이면 두 빈 집합이 같아져 조용히 통과한다.
+  `enabled=true` 개수 **≥ 6**, `case` 개수 **≥ 6** 하한을 함께 단언한다.
+  이 하한이 없으면 정규식이 깨져도 초록이다.
+
+**GREEN**:
+- `backend/.../GadgetType.kt` 를 읽어 `key = "<k>"` 와 그 상수의 `enabled = true|false` 를 짝지어
+  파싱 → `enabledTypes: Set<string>`.
+  ★같은 상수 블록 안에서 짝지어야 한다. 파일 전체에서 `key` 와 `enabled` 를 따로 모으면
+  순서가 어긋나도 개수가 같아 통과한다(메모리 `[[partial-column-parser-lets-unread-column-rot]]`).
+- `apps/web/.../GadgetRenderer.tsx` 를 읽어 `case '<k>':` 를 파싱 → `renderedTypes: Set<string>`.
+- `assert.deepEqual([...enabled].sort(), [...rendered].sort())` — **양방향**.
+  한쪽에만 있으면 어느 쪽인지 메시지에 적는다.
+
+**REFACTOR**: 두 파서를 export 해 테스트가 직접 호출할 수 있게 한다.
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/gadget-catalog-renderer-parity.test.ts`
+★**뮤테이션 2회** — ①`GadgetRenderer.tsx` 의 `case 'issue_count':` 를 지우면 red
+②`GadgetType.kt` 의 `TEXT_WIDGET` 을 `enabled = false` 로 바꾸면 red.
+**Python assert-후-replace 로 적용하고 `grep -c` 로 되잰다** — BSD `sed` 가 미매치해도 조용히
+0건을 적용하고 초록을 내던 전례가 있다(2026-09-04). GREEN 선커밋 뒤에 뮤테이션한다.
+
+### Task 2. `GadgetType` config 스키마 — pie/bar `projectKey`, burndown `boardId`
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/GadgetType.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/domain/GadgetTypeTest.kt`]
+- depends-on: []
+- jira: [JD-6]
+
+**RED**: `GadgetTypeTest.kt`
+- `pie_chart` config 에 `projectKey` 만 주면 통과한다 → 지금은 `field` required 위반으로 실패
+- `pie_chart` 에 `filterId` 를 주면 **무시된다**(EC5 미지 키 무시) — 필드가 사라졌음을 확인
+- `sprint_burndown` 에 `boardId`(UUID) 를 주면 통과, `sprintId` 는 무시된다
+- `bar_chart` 는 `pie_chart` 와 **같은 필드 집합**이다 (한 곳만 고치는 실수 차단)
+
+**GREEN**: `GadgetType.kt`
+- `PIE_CHART`·`BAR_CHART` — `projectKey`(STRING, required, maxLength 100) + `field`(ENUM, required,
+  `status|assignee|priority|issueType`). `filterId`·`aql` 과 `additionalRules` **제거**.
+- `SPRINT_BURNDOWN` — `sprintId`(UUID) → `boardId`(UUID, **required**).
+- `ACTIVITY_STREAM` — 변경 없음(`projectKey`·`maxItems` 유지).
+- `enabled` 는 **이 task 에서 건드리지 않는다** (Task 3 이 켠다 — 사이클 분리).
+
+**REFACTOR**: pie/bar 의 동일 필드 목록을 `private val` 로 뽑아 두 상수가 공유한다.
+
+**검증**: `(cd backend && ./gradlew :modules:notification:test --tests '*GadgetTypeTest*')`
+
+### Task 3. `enabled` 4종 전환 + 개수 단언 교정 + 익명 차단 양방향 못 박기
+
+**메타**.
+- agent: `backend-engineer`
+- files: [`backend/modules/notification/src/main/kotlin/com/bts/notification/dashboard/domain/GadgetType.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/domain/GadgetTypeTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardControllerTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/web/DashboardGadgetIntegrationTest.kt`, `backend/modules/notification/src/test/kotlin/com/bts/notification/dashboard/application/AnonymousLayoutSanitizerTest.kt`]
+- depends-on: [2]
+- jira: []
+
+★**익명 차단을 같은 task 에 넣는 이유** — `enabled` 를 켜는 순간 그 타입이 공개 대시보드에
+실릴 수 있다. 켜고 나중에 막으면 그 사이가 구멍이다. 한 사이클에서 켜고 막는다.
+
+**RED**:
+- `GadgetTypeTest.kt:41` — 「MVP 6종」을 **10종 enabled=true / 2종 false** 로 고치고 4종 점단언 추가.
+  `comments_recent`·`created_vs_resolved` 는 `false` 점단언(**여전히 꺼져 있음**을 지킨다).
+- `DashboardControllerTest.kt:434` · `DashboardGadgetIntegrationTest.kt:232` — `hasSize(6)` → `hasSize(10)`.
+  총수 `length() == 12` 는 **그대로 둔다**(타입을 추가하지 않았다).
+- `DashboardGadgetIntegrationTest.kt:197` — EC10 저장 거부 단언의 대상을 `pie_chart` →
+  **`comments_recent`** 로 교체한다. ★삭제하면 EC10 회귀 가드를 통째로 잃는다. 교체다.
+- `AnonymousLayoutSanitizerTest.kt` — 신규 4종 **전수**가 `requiresAuth: true` 플레이스홀더로
+  치환되고 `config` 가 제거되는지. (A5 백엔드 쪽)
+
+**GREEN**: `GadgetType.kt` 의 `SPRINT_BURNDOWN`·`ACTIVITY_STREAM`·`PIE_CHART`·`BAR_CHART` 를
+`enabled = true` 로. ★`AnonymousLayoutSanitizer` 는 **카테고리 기반 fail-closed** 라
+코드 변경이 **불필요**하다 — 실측으로 확인했고, 테스트는 그 사실을 못 박을 뿐이다.
+
+**REFACTOR**: 없음(플래그 4개).
+
+**검증**: `(cd backend && ./gradlew :modules:notification:test)`
+★이 시점에 **Task 1 판별식이 red 로 뒤집힌다** — 카탈로그는 10종인데 렌더러는 6종이다.
+Task 7 이 green 으로 되돌린다. **이 red 가 판별식이 살아 있다는 증거다.**
+
+### Task 4. `pie_chart`·`bar_chart` 가젯 — `summary` API 재사용
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/gadgets/DistributionChartGadget.tsx`, `apps/web/src/components/dashboard/gadgets/DistributionChartGadget.test.tsx`, `apps/web/src/components/dashboard/gadgets/gadget-types.ts`]
+- depends-on: [2]
+- jira: [JD-6]
+
+**RED(동반 테스트)**:
+- `field=status` 면 `summary.statusOverview` 를, `priority`/`issueType`/`assignee` 면 각각
+  `priorityBreakdown`/`typesOfWork`/`teamWorkload` 를 읽는다 — **4종 전수**.
+- `variant='pie'` 와 `'bar'` 가 **같은 데이터**로 다른 마크를 낸다.
+- 이슈 0건 → 「데이터 없음」. 빈 파이를 그리지 않는다 (E3).
+- 없는 `projectKey` → 404 를 빈 상태로 흡수. 대시보드는 살아 있다 (E4).
+
+**GREEN**: `DistributionChartGadget.tsx` 하나가 `variant` prop 으로 pie/bar 를 겸한다.
+`use-project-summary.ts` 재사용. recharts `PieChart`/`BarChart`.
+**색은 기존 차트 색 토큰만** 쓴다(N2 — `chart-color-tokens.test.ts` 가 이미 강제).
+
+**REFACTOR**: `field → summary 필드` 매핑을 `Record` 상수로 뽑는다.
+
+**검증**:
+- `pnpm --filter web test -- DistributionChartGadget`
+- 눈확인: 파이·막대 각각 라이트/다크 (N3)
+
+### Task 5. `sprint_burndown` 가젯 — `boardId` → 활성 스프린트 자동
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/gadgets/SprintBurndownGadget.tsx`, `apps/web/src/components/dashboard/gadgets/SprintBurndownGadget.test.tsx`]
+- depends-on: [2]
+- jira: [JD-8]
+
+**RED(동반 테스트)**:
+- `boardId` → `fetchBoard` → `activeSprint.sprintId` → `fetchSprintBurndown` 순으로 부른다.
+- ★**칸반 보드**(`activeSprint === null`) → 「활성 스프린트가 없습니다」 빈 상태. **오류가 아니다** (E1/S6).
+- 보드 404 → 빈 상태 흡수 (E2).
+
+**GREEN**: `BurndownChart.tsx` 를 **그대로 재사용**한다. 새 차트를 만들지 않는다(C-3).
+
+**REFACTOR**: 2단 조회를 `useSprintBurndownByBoard(boardId)` 훅으로 묶는다.
+
+**검증**:
+- `pnpm --filter web test -- SprintBurndownGadget`
+- 눈확인: 스크럼(차트) · 칸반(빈 상태) 각각 라이트/다크
+
+### Task 6. `activity_stream` 가젯 — `ProjectActivityFeed` 재사용
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/gadgets/ActivityStreamGadget.tsx`, `apps/web/src/components/dashboard/gadgets/ActivityStreamGadget.test.tsx`]
+- depends-on: [2]
+- jira: [JD-7]
+
+**RED(동반 테스트)**:
+- `projectKey` + `maxItems` 로 `GET /projects/{key}/activity?limit=` 를 부른다.
+- `maxItems` 미지정 → 기본 10, 범위 1~50 클램프 (기존 `clampMaxItems` 규칙 계승).
+- 활동 0건 → 빈 상태.
+
+**GREEN**: `ProjectActivityFeed.tsx` 재사용. 가젯 높이에 맞게 스크롤 컨테이너로 감싼다.
+
+**REFACTOR**: 없음 예상.
+
+**검증**:
+- `pnpm --filter web test -- ActivityStreamGadget`
+- 눈확인: 활동 있음/없음 각각 라이트/다크
+
+### Task 7. `GadgetRenderer` 4종 등록 — Task 1 판별식 green 복귀
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/dashboard/gadgets/GadgetRenderer.tsx`, `apps/web/src/components/dashboard/gadgets/GadgetRenderer.test.tsx`, `apps/web/src/components/dashboard/gadgets/PublicGadgetRenderer.test.tsx`]
+- depends-on: [1, 4, 5, 6]
+- jira: []
+
+**RED(동반 테스트)**:
+- 4종 각각이 「지원되지 않는 가젯입니다」가 **아닌** 것을 렌더한다.
+- `PublicGadgetRenderer` 가 4종 **전수**를 거부한다 (A5′ 프론트 쪽 — 화이트리스트 밖).
+
+**GREEN**: `case 'pie_chart'`·`'bar_chart'`(→ `DistributionChartGadget` variant 분기) ·
+`'sprint_burndown'` · `'activity_stream'` 추가.
+
+**REFACTOR**: `default` 안내 문구는 그대로(N1 — 미지 타입은 여전히 안전하게 떨어져야 한다).
+
+**검증**:
+- `node --experimental-strip-types --test scripts/workflow/gadget-catalog-renderer-parity.test.ts` — **green 복귀**
+- `pnpm --filter web test -- GadgetRenderer PublicGadgetRenderer`
+
+### Task 8. A10 선택기 판별식 + `GadgetConfigForm` 선택기 3종
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`scripts/workflow/gadget-config-picker-coverage.test.ts`, `apps/web/src/components/dashboard/GadgetConfigForm.tsx`, `apps/web/src/components/dashboard/GadgetConfigForm.test.tsx`]
+- depends-on: [2]
+- jira: []
+
+**RED**:
+- **판별식** — `GadgetType.kt` 가 선언한 **스코프성 키**(`projectKey`·`boardId`·`filterId`) 전량이
+  `GadgetConfigForm` 의 「키→선택기」 매핑에 있다. 차집합이 비어야 한다. **지금은 매핑이 없어 red.**
+  ★스코프성 키 목록 자체가 하드코딩이면 그것이 또 하나의 썩는 목록이다 —
+  「`UUID` 타입이거나 이름이 `*Key` 로 끝나는 필드」처럼 **파일에서 유도**한다.
+- **폼 테스트** — `projectKey` 필드가 `<input>` 이 아니라 프로젝트 `<select>` 로 렌더된다.
+  프로젝트를 고르면 보드 목록이 그 프로젝트로 좁혀지고, **프로젝트를 바꾸면 고른 보드가 초기화된다** (E8).
+
+**GREEN**: `GadgetConfigForm` 에 매핑 추가 —
+`projectKey`→`listProjects` · `boardId`→`fetchBoards(projectKey)` 계단식 · `filterId`→`fetchOwnedFilters`.
+★선재 결함 동반 해소 — 이미 활성인 `filter_result`·`issue_count` 의 `filterId` 도 이 매핑을 타서
+자유 입력에서 선택기로 바뀐다 (M-1).
+
+**REFACTOR**: 매핑을 `PICKER_BY_KEY` 상수로 뽑아 판별식이 한 곳만 보게 한다.
+
+**검증**:
+- `node --experimental-strip-types --test scripts/workflow/gadget-config-picker-coverage.test.ts`
+- ★뮤테이션 — `PICKER_BY_KEY` 에서 `boardId` 줄을 지우면 red (Python assert-후-replace · `grep -c` 되재기)
+- 눈확인: 가젯 추가 모달에서 프로젝트→보드 계단식 — 라이트/다크
+
+### Task 9. 보기/편집 모드 토글 + 타일 `⋯` 메뉴 + 새 가젯 삽입 위치
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/dashboards.$dashboardId.tsx`, `apps/web/src/components/dashboard/DashboardGrid.tsx`, `apps/web/src/components/dashboard/DashboardTile.tsx`, `apps/web/src/components/dashboard/DashboardTile.test.tsx`, `apps/web/src/components/dashboard/DashboardGrid.test.tsx`]
+- depends-on: []
+- jira: [JD-1, JD-2, JD-3]
+
+**RED(동반 테스트)** — **A7′ 3분기를 전수로 잰다.**
+- ①`canEdit=false` → **편집 버튼 자체가 없다**(모드 진입 수단 없음)
+- ②`canEdit=true` · 보기 모드(기본) → 드래그 핸들·타일 `⋯` **부재**
+- ③편집 모드 → 둘 다 **존재**
+- `publicMode=true` 는 `canEdit` 과 무관하게 ①과 같다 (기존 규칙 계승)
+- 타일 `⋯` 메뉴에 `복제`·`삭제` 가 있다 (JD-3)
+- ★새 가젯이 **좌측 컬럼 최상단**에 놓인다 (JD-2) — 현재는 `y: maxBottom`(맨 아래)이라
+  Jira 와 반대다. `y: 0` 으로 바꾸고 나머지가 밀려나는지 확인한다.
+
+**GREEN**: 라우트에 `isEditing` 상태 추가. `DashboardGrid` 가 `canEdit` 대신 `canEdit && isEditing`
+을 드래그/리사이즈에 넘긴다. `DashboardTile` 의 `Trash2` 단독을 `⋯` `DropdownMenu` 로 바꾸고
+`복제`·`삭제` 를 담는다. `handleAddGadgetTile` 의 `y: maxBottom` → `y: 0`.
+
+**REFACTOR**: 「보기/편집」 라벨을 `dashboard-labels.ts` 로 (하드코딩 문구 금지).
+
+**검증**:
+- `pnpm --filter web test -- DashboardTile DashboardGrid`
+- 눈확인: 보기↔편집 전환 · `⋯` 메뉴 열림 — 라이트/다크
+
+### Task 10. E2E + 최종 눈확인
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/dashboard-gadgets.spec.ts`]
+- depends-on: [7, 8, 9]
+- jira: []
+
+**RED(동반 테스트)**:
+- 가젯 4종을 **각각** 추가하고 「지원되지 않는 가젯입니다」가 **아닌** 것을 확인 (A8).
+  ★타입 목록을 e2e 에 손으로 적지 않는다 — 적으면 그것이 세 번째 목록이 된다.
+  카탈로그 응답에서 `enabled=true` 인 신규 4종을 읽어 순회한다.
+- 편집 모드에서만 드래그 핸들이 보인다 (A7′).
+- 선택기로 프로젝트를 고르면 보드가 좁혀진다 (A6).
+
+**GREEN**: 기존 대시보드 e2e 픽스처·헬퍼 재사용.
+
+**REFACTOR**: 없음.
+
+**검증**:
+- `pnpm --filter web test:e2e -- dashboard-gadgets` **3회 연속 green**(플레이크 배제)
+- 눈확인 최종 — 4종 가젯이 실린 대시보드를 라이트/다크 각 1회 (A9)
+
+## Plan 메타
+
+- **task 수**: 10 · **예상 wave**: 4
+  - wave 1 — T1(판별식) · T2(config 스키마) · T9(편집 모드 · 독립)
+  - wave 2 — T3(enabled+익명) · T4(pie/bar) · T5(burndown) · T6(activity) · T8(선택기)
+  - wave 3 — T7(렌더러 등록 → 판별식 green 복귀)
+  - wave 4 — T10(E2E)
+- **구현 규율**: TDD red→green→refactor + **ui 시각 검증 트랙**(전 UI task 에 라이트/다크 눈확인).
+  T2/T3 은 백엔드라 정식 red-first.
+- **추가 검증**: `tsc` · `eslint` · `ktlint` · `detekt` · `vitest` · `playwright` ·
+  판별식 전량(`node --test 'scripts/**/*.test.ts'`) · `build-doc-index --check` · `verify-master-plan`
+- **신규 판별식 2종**: `gadget-catalog-renderer-parity`(A2) · `gadget-config-picker-coverage`(A10).
+  둘 다 **비-공허 뮤테이션 짝**을 갖는다. 뮤테이션은 **GREEN 선커밋 뒤** Python
+  assert-후-replace 로 적용하고 `grep -c` 로 되잰다(BSD `sed` 미매치 함정).
+- **Jira 매핑**: `JD-1→T9` · `JD-2→T9` · `JD-3→T9` · `JD-6→T2,T4` · `JD-7→T6` · `JD-8→T5` ·
+  `JD-4 범위 밖`(가젯별 갱신 주기 — 현재 전 가젯 고정 30초 `GADGET_STALE_TIME`. 가젯마다 설정
+  항목을 여는 것은 config 스키마 확장이라 후속 PR) · `JD-5 편차 X-JD-4`(컬럼 프리셋 미채택 · M-2) ·
+  `JD-9·JD-10 → PR2/PR3 범위`. **채택 항목 차집합 0.**
+- **마이그레이션 0 · 신규 엔드포인트 0 · 신규 FR 0**(FR 수 145 불변).
+- **T3 승격 사유**: 없음. 생기면 즉시 정지·보고.
+
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
