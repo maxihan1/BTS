@@ -205,11 +205,33 @@ describe('DashboardGrid', () => {
   })
 
   /**
-   * G-9. canEdit=false이면 타일에 삭제 버튼이 없다 (읽기 전용 EC3).
+   * G-9. canEdit=false이면 타일에 ⋯ 메뉴가 없다 (읽기 전용 EC3).
+   *
+   * ★종전 단언은 `queryByRole('button', { name: /삭제/i })` 였고 **항상 참**이었다.
+   *   ⋯ 트리거의 접근명은 `가젯 메뉴` 이고 「삭제」는 **닫힌 드롭다운 안의 `menuitem`** 이라,
+   *   어떤 canEdit/isEditing 조합에서도 그 이름의 `button` 은 존재하지 않는다.
+   *   `canEdit: true, isEditing: true` 로 뒤집어도 20 passed 였다(실측).
+   *   제목만 「⋯ 메뉴가 없다」로 바뀌고 재는 것은 그대로였던 것이다 —
+   *   `invariant-satisfied-by-helptext-not-logic` 양식.
    */
   it('G-9: canEdit=false이면 타일에 ⋯ 메뉴가 없다', async () => {
     await renderGrid({ tiles: [TILE_A], canEdit: false })
-    expect(screen.queryByRole('button', { name: /삭제/i })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeNull()
+  })
+
+  /**
+   * G-9b. 권한이 있고 편집 모드면 ⋯ 메뉴가 **있다**.
+   *
+   * G-9 의 짝이다. 부재만 재면 「어떤 조합에서도 없다」와 구분이 안 된다 —
+   * 그 상태가 방금 고친 가짜 그린이었다.
+   */
+  it('G-9b: canEdit=true + 편집 모드면 타일에 ⋯ 메뉴가 있다', async () => {
+    await renderGrid({ tiles: [TILE_A], canEdit: true, isEditing: true })
+    expect(
+      screen.getByRole('button', { name: dashboardModeLabels.tileMenuAriaLabel }),
+    ).toBeInTheDocument()
   })
 
   /**

@@ -69,6 +69,13 @@ interface ConfigField {
   readonly type: string;
 }
 
+/** 소스에서 `ConfigFieldDescriptor(` 가 나오는 **모든** 오프셋. `data class` 선언 자체도 포함. */
+function descriptorOffsets(source: string): number[] {
+  const offsets: number[] = [];
+  for (const m of source.matchAll(/ConfigFieldDescriptor\(/g)) offsets.push(m.index);
+  return offsets;
+}
+
 /**
  * `GadgetType.kt` 의 `ConfigFieldDescriptor(...)` 를 전부 읽는다.
  *
@@ -76,27 +83,55 @@ interface ConfigField {
  * 과 named(`ConfigFieldDescriptor(key = "field", type = FieldType.ENUM, …)`).
  * 한쪽만 읽으면 다른 표기로 쓴 필드가 통째로 빠지고, 빠진 필드는 차집합에 안 나타난다.
  *
+ * ★★본문을 통째로 삼키는 정규식을 쓰지 않는다. 종전 구현은
+ *   `/ConfigFieldDescriptor\(([\s\S]*?)\)(?=,|\s*\))/g` 였는데, 바깥 디스크립터의 매칭이
+ *   **중첩된 안쪽 디스크립터를 삼켜** `LINK_LIST.itemSchema` 의 첫 항목(`label`)이 한 번도
+ *   방출되지 않았다(실측 — 선언 22건 · 파서 21건). 그 상태에서 `itemSchema` 첫 자리에
+ *   UUID·`*Id` 필드를 넣으면 폼은 자유 입력으로 떨어지는데 판별식은 초록이다 —
+ *   이 판별식이 막으려던 바로 그 결함이 판별식 안에 있었다.
+ *   지금은 **출현 위치를 전부 잡고 다음 출현 직전까지를 창으로** 삼는다(파리티 파서가
+ *   enum 상수에 쓴 「다음 선언까지」와 같은 기법). 중첩이 있어도 각 디스크립터가 자기 창을 갖는다.
+ *
  * @param source `GadgetType.kt` 원문.
  * @returns 선언 순서대로의 필드 목록(중복 포함 — 같은 키가 여러 가젯에 있다).
  * @throws Error 한 건도 못 읽으면. **못 읽은 것을 빈 것으로 세면 판정이 공허해진다.**
  */
 export function parseConfigFields(source: string): ConfigField[] {
   const found: ConfigField[] = [];
+  const offsets = descriptorOffsets(source);
 
-  for (const m of source.matchAll(/ConfigFieldDescriptor\(([\s\S]*?)\)(?=,|\s*\))/g)) {
-    const body = m[1] as string;
+  offsets.forEach((offset, index) => {
+    const end = offsets[index + 1] ?? source.length;
+    const body = source.slice(offset, end);
 
     const keyMatch = /(?:key\s*=\s*)?"([A-Za-z0-9_]+)"/.exec(body);
     const typeMatch = /FieldType\.([A-Z]+)/.exec(body);
-    if (keyMatch === null || typeMatch === null) continue;
+    // `data class ConfigFieldDescriptor(` 선언 자체는 문자열 리터럴이 없어 여기서 걸러진다.
+    if (keyMatch === null || typeMatch === null) return;
 
     found.push({ key: keyMatch[1] as string, type: typeMatch[1] as string });
-  }
+  });
 
   if (found.length === 0) {
     throw new Error('ConfigFieldDescriptor 를 한 건도 못 읽었다 — 파서가 소스를 못 읽었다');
   }
   return found;
+}
+
+/**
+ * 파서가 읽은 수와 **소스의 실제 출현 수**를 맞춰 보기 위한 값.
+ *
+ * 이 짝이 「하한」의 자리를 대신한다. 하한(`>= 12`)은 실측 21~22 대비 너무 낮아
+ * 파서가 절반을 놓쳐도 통과시켰다 — 실제로 1건을 놓치고 있었는데 아무도 몰랐다.
+ * 출현 수는 소스에서 세므로 가젯이 늘어도 저절로 따라온다. **숫자를 손으로 적지 않는다.**
+ *
+ * @param source `GadgetType.kt` 원문.
+ * @returns `data class` 선언을 뺀 실제 사용 건수.
+ */
+export function countDescriptorUsages(source: string): number {
+  // 선언은 `data class ConfigFieldDescriptor(` 한 곳뿐이다. 그것만 뺀다.
+  const declarations = (source.match(/data class ConfigFieldDescriptor\(/g) ?? []).length;
+  return descriptorOffsets(source).length - declarations;
 }
 
 /**
@@ -128,19 +163,30 @@ export function parsePickerKeys(source: string): Set<string> {
 }
 
 describe('가젯 설정 선택기 커버리지', () => {
-  test('파서가 config 필드를 읽는다 (공허 통과 방지)', () => {
-    const fields = parseConfigFields(read(KOTLIN_SOURCE));
+  test('★파서가 선언된 필드를 하나도 빠뜨리지 않는다 (공허 통과 방지)', () => {
+    const source = read(KOTLIN_SOURCE);
+    const fields = parseConfigFields(source);
 
-    // 12종 가젯이 최소 한 필드씩은 갖는다. 정확한 수는 스펙 변화에 따라 바뀌므로 하한만 건다.
-    assert.ok(
-      fields.length >= 12,
-      `config 필드를 ${fields.length}건 읽었다 — 12 미만이면 파서가 표기 하나를 놓쳤다`,
+    // ★하한이 아니라 **등식**이다. 소스가 선언한 만큼 정확히 읽어야 한다.
+    //   종전에는 `>= 12` 였는데 실측이 21이라 파서가 9건(43%)을 놓쳐도 통과했고,
+    //   실제로 중첩 `itemSchema` 의 첫 항목 1건을 놓치고 있었다.
+    //   기대값을 손으로 적지 않고 소스에서 세므로 가젯이 늘어도 이 단언은 안 썩는다.
+    assert.equal(
+      fields.length,
+      countDescriptorUsages(source),
+      `선언 ${countDescriptorUsages(source)}건 중 ${fields.length}건만 읽었다 — ` +
+        '파서가 일부를 삼켰다. 못 읽은 필드는 차집합에 안 나타나므로 미탐이 된다.',
     );
 
     // 두 표기가 모두 읽혔는지 — positional 과 named 각각의 대표를 짚는다.
     const keys = new Set(fields.map((f) => f.key));
     assert.ok(keys.has('projectKey'), 'positional 표기를 못 읽었다 (projectKey)');
     assert.ok(keys.has('field'), 'named 표기를 못 읽었다 (field)');
+
+    // ★중첩(`itemSchema`) 안의 필드도 읽히는지 — 머리말이 「전량을 훑는다」고 주장하는 자리다.
+    //   종전 파서는 바로 이 `label` 을 못 읽으면서 그 주장을 하고 있었다.
+    assert.ok(keys.has('label'), '중첩 itemSchema 의 필드를 못 읽었다 (label)');
+    assert.ok(keys.has('url'), '중첩 itemSchema 의 필드를 못 읽었다 (url)');
   });
 
   test('★스코프성 필드가 전부 선택기 매핑에 있다', () => {
