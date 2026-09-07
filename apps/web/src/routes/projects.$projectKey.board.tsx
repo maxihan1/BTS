@@ -246,8 +246,8 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   const { data: boardDetail, isLoading: boardDetailLoading } = useBoard(currentBoardId, stableFilter)
 
-  // 스윔레인 업데이트 mutation — currentBoardId가 확정된 시점에만 유효
-  const { mutate: updateSwimlane } = useUpdateSwimlane(currentBoardId ?? '')
+  // 스윔레인 mutation — 🛑`?? ''` 금지(빈 세그먼트→401). 차단은 useUpdateSwimlane 안에 있다
+  const { mutate: updateSwimlane } = useUpdateSwimlane(currentBoardId)
 
   // CREATE 권한 여부 — undefined이면 false-safe (로딩 중에는 셀렉터 미노출)
   const canCreate: boolean = projectPermissions?.permissions.CREATE === true

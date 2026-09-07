@@ -421,8 +421,8 @@ export function IssueDetailPage({
     staleTime: 60_000,
   })
 
-  /** 프로젝트 버전 목록 — issue 로드 후 projectKey 기준으로 조회 */
-  const { data: projectVersions = [] } = useVersions(issue?.projectKey ?? '')
+  /** 프로젝트 버전 목록 — 🛑`?? ''` 금지(빈 세그먼트→401). 차단은 useVersions 안에 있다 */
+  const { data: projectVersions = [] } = useVersions(issue?.projectKey)
 
   /** 커스텀 필드 정의 목록 — changelog refs 주입용. issue 로드 후 활성화 */
   const { data: customFieldDefinitions = [] } = useCustomFields(
