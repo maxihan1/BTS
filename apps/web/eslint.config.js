@@ -49,9 +49,11 @@ export const BUTTON_PRIMITIVE_EXEMPT_FILES = [
   'src/components/automation/RuleExecutionTraceRow.tsx',
   'src/components/dashboard/DashboardTile.tsx',
   'src/components/issue/IssueChangelog.tsx',
+  // 2026-09-07 — 제목 인라인 편집 진입면이 `routes/issues.$key.tsx` 에서 이리로 **이동**했다
+  // (본문/메타 독립 스크롤로 헤더가 별도 영역이 되며 추출). 예외가 늘어난 것이 아니라 옮겨 온 것이다.
+  'src/components/issue/IssueDetailHeader.tsx',
   'src/components/layout/ProjectTree.tsx',
   'src/features/calendar/MonthGrid.tsx',
-  'src/routes/issues.$key.tsx',
 ]
 
 // ─────────────────────────────────────────────────────────────────────────

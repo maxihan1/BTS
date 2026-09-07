@@ -36,9 +36,18 @@ test.describe('이슈 수정이 목록에 즉시 반영된다 (FR-IS-04)', () =>
 
     // 제목을 고친다 — 제목 텍스트 자체가 편집 진입면이다(`inline-edit.spec.ts` 선례).
     // 🛑 `dialog.getByRole('heading').first()` 를 쓰지 마라 — 그것은 다이얼로그 제목
-    //    (「이슈 상세 ATLAS-1」)이고 버튼이 없다. 이슈 제목은 `region "이슈 상세"` 안에 있다.
-    const detail = dialog.getByRole('region', { name: '이슈 상세' })
-    await detail.getByRole('button', { name: ORIGINAL_SUMMARY, exact: true }).click()
+    //    (「이슈 상세 ATLAS-1」)이고 버튼이 없다.
+    // ★2026-09-07 — 종전에는 `region "이슈 상세"` 안으로 좁혔는데 **그 전제가 깨졌다.**
+    //   본문/메타 독립 스크롤(J25~J27)로 제목이 스크롤 영역 **밖** 고정 헤더로 옮겨졌고,
+    //   그 region 은 이제 본문 스크롤 영역만 가리킨다.
+    //   범위를 `dialog` 로 **넓히지 않는다** — 넓히면 「이름이 유일하다」는 전제에 기대게 되고,
+    //   나중에 연결 이슈 패널 등이 같은 요약 문자열을 버튼으로 그리면 strict 위반으로 조용히
+    //   죽는다. 새 자리인 헤더로 **더 좁게** 잡으면 「제목은 헤더에 있다」는 새 사실까지 판정이
+    //   품는다.
+    await dialog
+      .getByTestId('issue-detail-header')
+      .getByRole('button', { name: ORIGINAL_SUMMARY, exact: true })
+      .click()
     const titleInput = page.getByLabel(issueDetailStrings.titleEditLabel)
     await expect(titleInput).toBeVisible()
     await titleInput.fill(UPDATED_SUMMARY)

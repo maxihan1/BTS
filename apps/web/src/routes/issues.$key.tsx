@@ -25,14 +25,11 @@ import { useUsers } from '@/hooks/use-users'
 import { useIssuePeople } from '@/hooks/use-issue-people'
 import { useDebounce } from '@/hooks/use-debounce'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
-import { FileDown, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { IssueDetailPresentationMenu } from '@/components/issue/IssueDetailPresentationMenu'
-import { Input } from '@/components/ui/input'
+import { IssueDetailHeader } from '@/components/issue/IssueDetailHeader'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
-import { SUMMARY_MAX_LENGTH } from '@/components/issue/create/issue-create-schema'
 import type { ChangelogRefs } from '@/lib/changelog-labels'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
@@ -995,151 +992,81 @@ export function IssueDetailPage({
     }
   }
 
-  // ── 제목 본문 ─────────────────────────────────────────────────────────────
-  // 수정 권한이 있으면 제목 텍스트 자체를 편집 진입면(button)으로 감싼다.
-  // heading 요소는 그대로 두고 "안쪽만" 감싸므로 heading 의 접근성 이름은
-  // 내부 텍스트에서 계산돼 보존된다 (jira-parity-contract §2 즉사 계약).
-  // <button> 이라 키보드 Tab·Enter 로도 도달·발동된다.
-  const titleContent = canEdit ? (
-    // PR22 OUT — P6 전체 클릭 영역: 제목 인라인 편집 트리거로 w-full text-left 가 필요하고,
-    // Button 프리미티브의 inline-flex justify-center · h-8 px-2.5 text-sm 과 충돌한다
-    // (DashboardTile 타일 제목 인라인 편집과 동형 — 같은 P6 판정).
-    //
-    // 🛑 이 버튼에 `aria-label` 을 붙이지 마라. 감싸는 h1/h2 의 접근성 이름은 자손 텍스트로
-    //    계산되는데, aria-label 이 붙으면 **heading 의 이름까지 그 문자열로 대체돼**
-    //    jira-parity-contract §2 즉사 계약(h1 verbatim)과 E2E `getByRole('heading',{name})`
-    //    가 동시에 깨진다 (F8-T1-2 가 현재 보존의 증인).
-    //    용도 설명이 필요하면 `aria-describedby` + 시각적 숨김 텍스트를 쓸 것.
-    //
-    // 🛑 `select-text` 를 지우지 마라 — 장식이 아니다. <button> 에서 `user-select: auto` 는
-    //    CSS UI 규격상 **none 으로 해석**된다(Chromium 실측. 이 클래스 없이 드래그하면 선택
-    //    길이 0). 제목을 버튼으로 감싼 순간 사용자가 **제목을 복사할 수 없게 되는** 회귀가
-    //    생기고(감싸기 전 <h1> 순수 텍스트에서는 됐다), 선택 자체가 안 생기니 아래
-    //    handleTitleClick 의 isCollapsed 가드도 영원히 발동하지 못한다.
-    <button
-      ref={titleButtonRef}
-      type="button"
-      onClick={handleTitleClick}
-      className="text-left w-full rounded-sm select-text hover:bg-(--bg-neutral-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--border-focus)"
-    >
-      {issue.summary}
-    </button>
-  ) : (
-    issue.summary
-  )
-
   const changelogRefs = buildChangelogRefs(availableTypes, projectComponents, projectVersions, customFieldDefinitions)
 
   // ── 성공 레이아웃 ─────────────────────────────────────────────────────────
+  //
+  // ## 3영역 — 고정 헤더 · 본문 스크롤 · 메타 스크롤 (Jira 패리티 J25~J27)
+  //
+  // Atlassian 이 이슈 뷰의 오른쪽을 「the right scroll area on an issue」라고 부른다
+  // (developer.atlassian.com/cloud/jira/platform/issue-view/ · 2026-09-07 조회) — 오른쪽
+  // 필드 열은 본문과 **별개의 스크롤 영역**이다. 종전 BTS 는 격자 하나가 통째로
+  // `ShellLayout` 의 `<main overflow-y-auto>` 안에서 흘러 스크롤이 하나였고, 긴 본문을
+  // 읽으려 내리면 담당자·상태 같은 메타가 화면 밖으로 사라졌다.
+  //
+  // ★높이를 받는 방식이 표시 방식마다 다르다(2026-09-07 실측 · 뮤테이션으로 확정).
+  //   - 전체화면. 부모 `<main>` 의 높이가 `h-screen` 사슬로 **확정**돼 있어 `h-full`(=100%)이
+  //     해소된다. 이 자리에서 `h-full` 을 빼면 바깥이 스크롤한다.
+  //   - 모달·사이드패널. 껍데기는 `max-h-[90vh]` 뿐 **확정 높이가 없다.** 그런 컨테이너의
+  //     자식에게는 백분율이 해소되지 않아 `h-full` 이 조용히 `auto` 로 떨어진다 — 실측에서
+  //     루트가 414px 대신 **2646px** 로 늘어 안쪽 스크롤이 통째로 죽었다.
+  //     대신 껍데기 안쪽 래퍼가 `flex flex-col` 이라 이 루트가 **flex 축소로** 높이를 받는다
+  //     (`min-h-0` 이 콘텐츠 높이 아래로 줄어드는 것을 허용한다).
+  //   ★여기에 `flex-1` 을 더하고 싶어지지만 **불필요하다.** 뮤테이션으로 확인했다 — 지워도
+  //     E2E 5/5 초록이고, 같은 실험에서 래퍼의 `flex flex-col` 을 지우자 red 가 났다.
+  //     실제로 값을 하는 것은 래퍼 쪽이다.
+  //
+  // ★`min-h-0` 이 빠지면 flex 자식의 최소 높이가 콘텐츠 높이가 되어 컨테이너가 늘어나고,
+  //   안쪽 `overflow-y-auto` 는 선언돼 있어도 **한 번도 발동하지 않는다**.
+  //   같은 조합을 `routes/issues.index.tsx` 의 split view 가 먼저 쓰고 있다.
+  //
+  // ★세로 여백을 루트가 아니라 **각 영역**이 갖는다. 루트에 `py-10` 을 두면 그 여백이
+  //   스크롤 영역 **밖**에 남아 스크롤 가능 높이를 그만큼 깎는다.
+  //
+  // ★독립 스크롤 전체를 `lg:` 로 건다 — **2단 격자와 같은 분기**여야 한다. `lg:` 미만에서는
+  //   격자가 1열 2행이 되는데 그때도 두 행이 각자 스크롤하면 좁은 화면에서 **각각 반쪽짜리
+  //   구멍**이 된다(900×700 실측 — 메타 2459px 를 229px 창으로 본다). 그 폭에서는 종전처럼
+  //   `<main overflow-y-auto>` 가 한 덩어리로 흐르게 둔다.
+  //   좁은 폭은 미지원이 아니다 — `routes/issues.index.tsx` 가 `(min-width: 1024px)` 미만을
+  //   명시적 지원 모드로 선언하고 그 모드의 행 클릭이 **이 화면**으로 온다.
   return (
-    <div className="max-w-[960px] mx-auto px-6 py-10">
-      {/* breadcrumb 행 — 좌측 경로 / 우측 액션 버튼 */}
-      <div className="flex items-center justify-between mb-4">
-        <nav aria-label="이동 경로" className="text-sm text-muted-foreground">
-          <span>{issue.projectKey}</span>
-          <span className="mx-1.5">/</span>
-          <span className="font-medium text-foreground">{issue.key}</span>
-        </nav>
-        <div className="flex gap-2">
-          {/* 이슈 이동 버튼 — UPDATE 권한 게이팅 (FR-MV-01 D6) */}
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="이슈 이동"
-              onClick={() => setMoveDialogOpen(true)}
-            >
-              이슈 이동
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={isPdfDownloading}
-            aria-label={issueDetailStrings.pdfDownloadAriaLabel}
-            onClick={() => { void handlePdfDownload(issue.key) }}
-          >
-            <FileDown className="size-4 mr-1.5" aria-hidden="true" />
-            {issueDetailStrings.pdfDownloadButton}
-          </Button>
-          {variant === 'pane' && <IssueDetailPresentationMenu issueKey={issueKey} />}
-          {/* pane 전용 닫기 버튼 — split view 우측 페인 (FR-UX-06 PR20 Task 1) */}
-          {variant === 'pane' && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="닫기"
-              onClick={() => onClose?.()}
-            >
-              <X className="size-4" aria-hidden="true" />
-            </Button>
-          )}
-        </div>
-      </div>
+    <div className="mx-auto flex w-full max-w-[960px] flex-col px-6 pt-10 lg:h-full lg:min-h-0">
+      <IssueDetailHeader
+        issue={issue}
+        variant={variant}
+        issueKey={issueKey}
+        canEdit={canEdit}
+        isEditingTitle={isEditingTitle}
+        editSummary={editSummary}
+        isSavingTitle={updateMutation.isPending}
+        isPdfDownloading={isPdfDownloading}
+        onEditSummaryChange={setEditSummary}
+        onTitleKeyDown={handleTitleKeyDown}
+        onTitleClick={handleTitleClick}
+        onEditStart={handleEditStart}
+        onEditSave={handleEditSave}
+        onEditCancel={handleEditCancel}
+        onPdfDownload={() => { void handlePdfDownload(issue.key) }}
+        onMoveClick={() => setMoveDialogOpen(true)}
+        onClose={onClose}
+        titleInputRef={titleInputRef}
+        titleButtonRef={titleButtonRef}
+        paneTitleRef={paneTitleRef}
+      />
 
-      {/* 2-컬럼 그리드 — 좌 본문 / 우 메타패널 */}
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_340px] lg:items-start">
-        {/* 좌측 본문 */}
-        <section aria-label="이슈 상세">
-          {/* 제목 영역 */}
-          {isEditingTitle ? (
-            <div className="flex flex-col gap-2">
-              <Input
-                ref={titleInputRef}
-                aria-label={issueDetailStrings.titleEditLabel}
-                value={editSummary}
-                onChange={(e) => setEditSummary(e.target.value)}
-                onKeyDown={handleTitleKeyDown}
-                // ★상한이 **아예 없었다** — 생성 폼에만 zod 검증이 있어 저장 시점에야 400 이었다.
-                maxLength={SUMMARY_MAX_LENGTH}
-                className="text-xl font-semibold"
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleEditSave}
-                  disabled={updateMutation.isPending || !canEdit}
-                  aria-label={issueDetailStrings.saveButton}
-                  data-testid="issue-title-save"
-                >
-                  {issueDetailStrings.saveButton}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleEditCancel}
-                  aria-label={issueDetailStrings.cancelButton}
-                >
-                  {issueDetailStrings.cancelButton}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* pane이면 h2로 강등 — 문서 h1 단일 계약 (FR-UX-06 PR20 Task 1) */}
-              {variant === 'pane' ? (
-                <h2 ref={paneTitleRef} tabIndex={-1} className="text-2xl font-semibold leading-snug mb-1">
-                  {titleContent}
-                </h2>
-              ) : (
-                <h1 className="text-2xl font-semibold leading-snug mb-1">{titleContent}</h1>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                onClick={handleEditStart}
-                disabled={!canEdit}
-                className="text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label={issueDetailStrings.editTitleButton}
-              >
-                {issueDetailStrings.editTitleButton}
-              </Button>
-            </>
-          )}
-
-          <div className="mt-6">
+      {/* 2-컬럼 그리드 — 좌 본문 / 우 메타패널. 두 열이 **각자** 스크롤한다. */}
+      <div className="grid grid-cols-1 gap-8 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_340px]">
+        {/* 좌측 본문 — 설명·첨부·활동.
+            ⚠️ `aria-label` 이 「이슈 상세」인데 이 요소는 이제 **본문 열만** 가리킨다(제목·액션은
+               헤더로 나갔다). 이름과 범위가 어긋나 있다 — 이름을 바꾸지 않는 이유는 `landmark.spec`
+               이 이 문자열로 범위를 좁히고 있어서다. 이 region 안에서 제목을 찾으면 안 된다
+               (`issue-update-propagation.spec.ts` 가 실제로 그 함정을 밟았다). */}
+        <section
+          aria-label="이슈 상세"
+          data-testid="issue-detail-body-scroll"
+          className="py-6 lg:min-h-0 lg:overflow-y-auto"
+        >
+          <div>
             <IssueDescription
               descriptionHtml={issue.descriptionHtml}
               issueKey={issue.key}
@@ -1168,81 +1095,92 @@ export function IssueDetailPage({
           />
         </section>
 
-        {/* 우측 메타패널 + 삭제 확인 UI */}
-        {confirmDelete ? (
-          <aside className="flex flex-col gap-3">
-            <div className="border border-destructive/40 rounded-xl p-4 text-sm text-destructive space-y-3">
-              <p>{issueDetailStrings.deleteConfirmMessage}</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="flex-1 min-h-[44px]"
-                  onClick={handleDeleteConfirm}
-                  disabled={deleteMutation.isPending}
-                  aria-label={issueDetailStrings.confirmButton}
-                >
-                  {issueDetailStrings.confirmButton}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 min-h-[44px]"
-                  onClick={handleDeleteCancel}
-                >
-                  {issueDetailStrings.cancelButton}
-                </Button>
+        {/* 우측 메타패널 + 삭제 확인 UI — Jira 의 「right scroll area」(J26).
+            ★스크롤 컨테이너를 **삼항 밖**에 둔다. 두 분기 각각에 두면 판별식·E2E 가 잡을
+              `issue-detail-meta-scroll` 이 **둘**이 되고, 그러면 「어느 쪽을 재고 있는가」가
+              분기 상태에 따라 달라진다.
+            ★종전 주석은 여기에 「스크롤 위치가 유지된다」도 적었는데 **거짓이다**(리뷰 실측).
+              삭제 확인 UI 가 짧아 `scrollHeight == clientHeight` 가 되면 브라우저가 `scrollTop`
+              을 0 으로 clamp 하고 취소해도 0 이다. 컨테이너를 밖에 둔 것과 무관하다. */}
+        <div
+          data-testid="issue-detail-meta-scroll"
+          className="py-6 lg:min-h-0 lg:overflow-y-auto"
+        >
+          {confirmDelete ? (
+            <aside className="flex flex-col gap-3">
+              <div className="border border-destructive/40 rounded-xl p-4 text-sm text-destructive space-y-3">
+                <p>{issueDetailStrings.deleteConfirmMessage}</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="flex-1 min-h-[44px]"
+                    onClick={handleDeleteConfirm}
+                    disabled={deleteMutation.isPending}
+                    aria-label={issueDetailStrings.confirmButton}
+                  >
+                    {issueDetailStrings.confirmButton}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 min-h-[44px]"
+                    onClick={handleDeleteCancel}
+                  >
+                    {issueDetailStrings.cancelButton}
+                  </Button>
+                </div>
+              </div>
+            </aside>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <IssueMetaPanel
+                issue={issue}
+                availableTypes={availableTypes}
+                onTypeChange={handleTypeChange}
+                onDeleteClick={handleDeleteClick}
+                onCloneClick={() => setCloneDialogOpen(true)}
+                transitions={transitions}
+                onTransition={handleTransition}
+                isTransitioning={transitionFlow.isPending}
+                unavailableReason={transitionUnavailableReason}
+                onPriorityChange={handlePriorityChange}
+                onImpactChange={handleImpactChange}
+                onEnvironmentSave={handleEnvironmentSave}
+                onLabelsSave={handleLabelsSave}
+                users={assigneeCandidates}
+                onAssigneeSearch={setAssigneeSearchQuery}
+                onAssigneeChange={handleAssigneeChange}
+                currentAssignee={currentAssignee}
+                reporter={reporter}
+                componentIds={issue.componentIds}
+                components={projectComponents}
+                onComponentsChange={handleComponentsChange}
+                versions={projectVersions}
+                affectsVersionIds={issue.affectsVersionIds}
+                fixVersionIds={issue.fixVersionIds}
+                onAffectsVersionsChange={handleAffectsVersionsChange}
+                onFixVersionsChange={handleFixVersionsChange}
+                onSecurityLevelChange={handleSecurityLevelChange}
+                onCustomFieldsSave={handleCustomFieldsSave}
+                assigneeSearchRef={assigneeSearchRef}
+                labelsInputRef={labelsInputRef}
+                favoriteToggleRef={favoriteToggleRef}
+                watchToggleRef={watchToggleRef}
+              />
+              {/* 일정 필드 — FR-PL-01 시작일·마감일·목표일 (IssueMetaPanel 인근 하단 배치) */}
+              <div className="border border-border rounded-xl px-3.5 py-3">
+                <p className="text-xs text-muted-foreground mb-3">{issueDetailStrings.scheduleLabel}</p>
+                <IssueScheduleFields issue={issue} disabled={!canEdit} />
+              </div>
+              {/* 추정 카드 — FR-TT-01 원 추정·잔여 추정·기록 시간 (design-C1: wrapper는 route가) */}
+              <div className="border border-border rounded-xl px-3.5 py-3">
+                <p className="text-xs text-muted-foreground mb-3">{worklogStrings.estimateSectionTitle}</p>
+                <IssueEstimatePanel issue={issue} disabled={!canEdit} />
               </div>
             </div>
-          </aside>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <IssueMetaPanel
-              issue={issue}
-              availableTypes={availableTypes}
-              onTypeChange={handleTypeChange}
-              onDeleteClick={handleDeleteClick}
-              onCloneClick={() => setCloneDialogOpen(true)}
-              transitions={transitions}
-              onTransition={handleTransition}
-              isTransitioning={transitionFlow.isPending}
-              unavailableReason={transitionUnavailableReason}
-              onPriorityChange={handlePriorityChange}
-              onImpactChange={handleImpactChange}
-              onEnvironmentSave={handleEnvironmentSave}
-              onLabelsSave={handleLabelsSave}
-              users={assigneeCandidates}
-              onAssigneeSearch={setAssigneeSearchQuery}
-              onAssigneeChange={handleAssigneeChange}
-              currentAssignee={currentAssignee}
-              reporter={reporter}
-              componentIds={issue.componentIds}
-              components={projectComponents}
-              onComponentsChange={handleComponentsChange}
-              versions={projectVersions}
-              affectsVersionIds={issue.affectsVersionIds}
-              fixVersionIds={issue.fixVersionIds}
-              onAffectsVersionsChange={handleAffectsVersionsChange}
-              onFixVersionsChange={handleFixVersionsChange}
-              onSecurityLevelChange={handleSecurityLevelChange}
-              onCustomFieldsSave={handleCustomFieldsSave}
-              assigneeSearchRef={assigneeSearchRef}
-              labelsInputRef={labelsInputRef}
-              favoriteToggleRef={favoriteToggleRef}
-              watchToggleRef={watchToggleRef}
-            />
-            {/* 일정 필드 — FR-PL-01 시작일·마감일·목표일 (IssueMetaPanel 인근 하단 배치) */}
-            <div className="border border-border rounded-xl px-3.5 py-3">
-              <p className="text-xs text-muted-foreground mb-3">{issueDetailStrings.scheduleLabel}</p>
-              <IssueScheduleFields issue={issue} disabled={!canEdit} />
-            </div>
-            {/* 추정 카드 — FR-TT-01 원 추정·잔여 추정·기록 시간 (design-C1: wrapper는 route가) */}
-            <div className="border border-border rounded-xl px-3.5 py-3">
-              <p className="text-xs text-muted-foreground mb-3">{worklogStrings.estimateSectionTitle}</p>
-              <IssueEstimatePanel issue={issue} disabled={!canEdit} />
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* DONE 전환 시 Resolution 선택 모달 (B9) */}

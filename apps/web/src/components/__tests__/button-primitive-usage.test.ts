@@ -29,6 +29,9 @@ const BATCH1_FILES = [
   'components/issue/EpicChildrenSection.tsx',
   'components/issue/IssueChangelog.tsx',
   'components/issue/IssueDescription.tsx',
+  // 2026-09-07 — `routes/issues.$key.tsx` 에서 제목 편집 진입면이 이리로 추출됐다(J25~J27).
+  // 스캔 목록에 안 넣으면 그 발생이 **아예 안 보여** 이 가드가 조용히 놓친다.
+  'components/issue/IssueDetailHeader.tsx',
   'components/issue/IssueLinksPanel.tsx',
   'components/issue/meta/IssueLabelsEdit.tsx',
   'components/ooo/OooModal.tsx',
@@ -147,7 +150,10 @@ const EXPECTED_OUT = [
   // FR-UX-11 F8 T1 — 제목 인라인 편집 진입면. `w-full text-left` 보유로 판정식상 OUT이며
   // DashboardTile(타일 제목 인라인 편집)과 동형이라 같은 P6로 분류한다.
   // 배치1 구획에 두는 이유. 이 파일은 BATCH1_FILES 원소다(공용 Button을 이미 소비하는 파일).
-  'routes/issues.$key.tsx::P6',
+  // ★2026-09-07 `routes/issues.$key.tsx` 에서 여기로 **이동**했다(J25~J27 독립 스크롤로
+  //   제목이 스크롤 밖 고정 헤더가 되며 `IssueDetailHeader` 로 추출). 예외가 는 것이 아니다 —
+  //   같은 발생 하나가 자리를 옮겼고, 옛 경로를 남기면 유령 키가 되어 「초과」로 red 가 난다.
+  'components/issue/IssueDetailHeader.tsx::P6',
   // ── 배치 2 (T7) 9발생 ──
   // 판정식 `role= OR text-left OR justify-start` 으로 기계 도출했고, 같은 규칙을 완료된 배치1에
   // 역적용해 IN=0/OUT=11 로 T6의 수동 분류를 100% 재현하는 것으로 규칙의 정확성을 확인했다.
@@ -306,6 +312,40 @@ describe('FR-UX-06 PR22 — 원시 <button>은 Button 프리미티브로 흡수�
     const hardcoded = [...BATCH1_FILES, ...BATCH2_FILES] as readonly string[]
     const derivedOnly = files.filter((f) => !hardcoded.includes(f))
     expect(derivedOnly.length).toBeGreaterThan(0)
+  })
+
+  /**
+   * eslint 예외 목록 ⊆ 스캔 목록.
+   *
+   * ★이 방향은 **기계가 안 보고 있었다.** `BUTTON_PRIMITIVE_EXEMPT_FILES` 에는 있는데
+   * `SCANNED_FILES` 에는 없는 파일은 eslint 도 면제고 이 가드도 미스캔이라, 사유 주석 없이
+   * 원시 `<button>` 이 살 수 있고 `EXPECTED_OUT` 도 그 사실을 모른다 — 세 목록이 전부 초록이다.
+   * 지금 차집합이 비어 있는 것은 사실이지만 그것을 **확인하는 장치가 없었다**.
+   * `eslint.config.js` 의 주석이 「1:1 대응하며 테스트가 전수 비교로 강제한다」고 적고 있는데
+   * 그 강제가 이 방향에는 없던 것이라, 문서와 기계가 갈려 있었다.
+   *
+   * 정적 import 를 쓰지 않는 이유는 `lint-ratchet.test.ts` 와 같다 — `allowJs: false` 라
+   * JS 모듈 정적 import 는 TS7016(암묵 any)로 타입체크를 깬다.
+   */
+  it('eslint 예외 목록이 전부 스캔 대상이다 (면제만 되고 안 세지는 파일 차단)', async () => {
+    const mod: unknown = await import(
+      /* @vite-ignore */ resolve(SRC_ROOT, '../eslint.config.js')
+    )
+    const exempt: unknown =
+      typeof mod === 'object' && mod !== null && 'BUTTON_PRIMITIVE_EXEMPT_FILES' in mod
+        ? mod.BUTTON_PRIMITIVE_EXEMPT_FILES
+        : undefined
+    if (!Array.isArray(exempt) || !exempt.every((e): e is string => typeof e === 'string')) {
+      throw new Error('eslint.config.js 가 BUTTON_PRIMITIVE_EXEMPT_FILES(문자열 배열)를 export 해야 한다')
+    }
+
+    // 비-공허. import 가 조용히 빈 배열을 주면 아래 차집합이 무조건 통과한다.
+    expect(exempt.length).toBeGreaterThan(0)
+    expect(exempt).toContain('src/components/issue/IssueDetailHeader.tsx')
+
+    // eslint 는 `src/` 접두를 쓰고 이 가드는 `SRC_ROOT` 기준 상대경로를 쓴다. 표기를 맞춘다.
+    const normalized = exempt.map((f) => f.replace(/^src\//, ''))
+    expect(normalized.filter((f) => !SCANNED_FILES.includes(f))).toEqual([])
   })
 
   it('남아 있는 모든 원시 <button>은 직전 줄에 PR22 OUT 사유 주석을 갖는다', () => {

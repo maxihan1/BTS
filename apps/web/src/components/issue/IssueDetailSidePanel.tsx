@@ -74,9 +74,17 @@ export function IssueDetailSidePanel(): JSX.Element | null {
       // 기준(`lg:`)이라 패널이 좁아도 2단으로 펼쳐진다 — 560px 로 뒀더니 우측 메타패널이 잘려
       // 저장 버튼이 화면 밖으로 나갔다(눈확인에서 발견). 본문 400px + 메타 340px + gap 이
       // 들어갈 만큼 준다. 좁은 화면에서 목록을 다 먹지 않도록 55vw 로 묶는다.
-      className="flex w-[800px] min-w-0 max-w-[55vw] shrink-0 flex-col overflow-y-auto border-l border-border bg-background"
+      // ★`overflow-y-auto` 가 아니라 `overflow-clip` 이다(J26). 패널 자신이 스크롤하면
+      //   본문과 메타가 함께 밀려 Jira 의 「right scroll area」가 성립하지 않는다 — 스크롤은
+      //   안쪽 두 열이 각자 갖고, 패널은 높이 경계만 준다.
+      //   `hidden` 이 아니라 `clip` 인 이유는 `IssueDetailModal` 의 같은 줄과 같다 —
+      //   `hidden` 은 스크롤 컨테이너를 만들어 `scrollIntoView` 에 밀린다. 이 패널은 지금
+      //   유령 범위가 0 이지만, 같은 계약을 두 곳에 다르게 쓰면 다음에 갈린다.
+      className="flex w-[800px] min-w-0 max-w-[55vw] shrink-0 flex-col overflow-clip border-l border-border bg-background"
     >
-      <div className="px-2 py-2">
+      {/* `min-h-0` 이 없으면 flex 자식의 최소 높이가 콘텐츠 높이라 안쪽 스크롤이 죽는다.
+          ★`flex flex-col` 도 필수다 — 이유는 `IssueDetailModal` 의 같은 줄과 같다. */}
+      <div className="flex min-h-0 flex-1 flex-col px-2 pb-2">
         {/* key 로 이슈 전환 시 인스턴스를 강제 재마운트한다 — confirmDelete/isEditingTitle 같은
             잔여 state 가 다음 이슈로 이월되면 **잘못된 이슈가 삭제된다**(split view CONCERNS-3
             과 같은 이유). */}
