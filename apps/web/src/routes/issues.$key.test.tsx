@@ -2921,3 +2921,100 @@ describe('IssueDetailPage — 보고자 배선', () => {
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 본문/상세필드 독립 스크롤 + 고정 헤더 (Jira 패리티 J25~J27)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 상세 화면이 **세 영역**으로 갈라져 있는지 본다 — 고정 헤더 · 본문 스크롤 · 메타 스크롤.
+ *
+ * ## 왜 jsdom 에서 클래스를 단언하나
+ *
+ * jsdom 에는 레이아웃 엔진이 없어 `scrollHeight`·`clientHeight` 가 전부 0 이다. 「정말로 따로
+ * 스크롤되는가」는 실제 브라우저 몫이고 `apps/web/e2e/issue-detail-split-scroll.spec.ts` 가 잰다.
+ * 여기서 지키는 것은 그보다 앞의 것 — **구조**다. 헤더가 스크롤 영역 안으로 들어가 버리거나
+ * 두 스크롤 영역이 하나로 합쳐지면 E2E 가 돌기 전에 여기서 red 가 난다.
+ *
+ * ★**포함 관계와 속성을 함께** 단언한다. testid 존재만 보면 `overflow-y-auto` 를 지워도
+ * 초록이다(#468 에서 실제로 그 가짜 통과를 뮤테이션이 잡았다 — 태그는 남고 속성만 사라진
+ * 형태). 그래서 세 영역의 **자리**와 각 스크롤 영역의 **선언**을 둘 다 본다.
+ */
+describe('IssueDetailPage — 본문/메타 독립 스크롤 (Jira 패리티)', () => {
+  /** 레이아웃 3영역을 한 번에 집는다. 없으면 그 자리에서 실패한다. */
+  async function findRegions() {
+    const header = await screen.findByTestId('issue-detail-header')
+    const body = screen.getByTestId('issue-detail-body-scroll')
+    const meta = screen.getByTestId('issue-detail-meta-scroll')
+    return { header, body, meta }
+  }
+
+  it('J25-1: 헤더·본문·메타가 서로를 포함하지 않는 3영역으로 갈라진다', async () => {
+    setupIssueFoundHandler()
+    renderPage('ATLAS-1')
+
+    const { header, body, meta } = await findRegions()
+
+    // 헤더는 어느 스크롤 영역에도 들어가지 않는다 — 들어가면 본문과 함께 밀려 올라간다.
+    expect(body.contains(header)).toBe(false)
+    expect(meta.contains(header)).toBe(false)
+    // 두 스크롤 영역은 형제다. 한쪽이 다른 쪽을 품으면 스크롤이 다시 하나로 합쳐진다.
+    expect(body.contains(meta)).toBe(false)
+    expect(meta.contains(body)).toBe(false)
+  })
+
+  it('J26-1: 두 스크롤 영역이 각각 세로 스크롤과 min-h-0 을 선언한다', async () => {
+    setupIssueFoundHandler()
+    renderPage('ATLAS-1')
+
+    const { body, meta } = await findRegions()
+
+    for (const region of [body, meta]) {
+      // `overflow-y-auto` 가 없으면 넘치는 내용이 조상으로 새어 페이지가 통째로 스크롤된다.
+      expect(region.className).toContain('overflow-y-auto')
+      // `min-h-0` 이 없으면 flex/grid 자식의 최소 높이가 콘텐츠 높이라 컨테이너가 늘어나고,
+      // `overflow-y-auto` 는 선언돼 있어도 **한 번도 발동하지 않는다**.
+      expect(region.className).toContain('min-h-0')
+    }
+  })
+
+  it('J27-1: 제목은 헤더 안, 본문은 본문 영역 안, 메타패널은 메타 영역 안에 있다', async () => {
+    setupIssueFoundHandler()
+    renderPage('ATLAS-1')
+
+    const { header, body, meta } = await findRegions()
+
+    // 제목 — Maxi 지적 「본문 스크롤 시 서머리가 따라 올라간다」의 직접 처방이다.
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(header.contains(heading)).toBe(true)
+    expect(body.contains(heading)).toBe(false)
+
+    // 본문 — 설명 편집 진입면이 본문 스크롤 영역 소속이어야 한다.
+    const descriptionEdit = screen.getByRole('button', {
+      name: issueDetailStrings.descriptionEditButton,
+    })
+    expect(body.contains(descriptionEdit)).toBe(true)
+
+    // 메타 — IssueMetaPanel 은 스스로 <aside> 를 그린다(T7-5 가 그 사실의 증인).
+    const aside = meta.querySelector('aside')
+    expect(aside).not.toBeNull()
+  })
+
+  it('J25-2: pane(모달·사이드패널) 표시 방식에서도 같은 3영역을 유지한다', async () => {
+    setupIssueFoundHandler()
+    const client = makeClient()
+    render(
+      <QueryClientProvider client={client}>
+        <IssueDetailPage issueKey="ATLAS-1" variant="pane" />
+      </QueryClientProvider>,
+    )
+
+    const { header, body, meta } = await findRegions()
+
+    // pane 은 제목이 h2 로 강등된다(문서 h1 단일 계약) — 그래도 자리는 헤더다.
+    const heading = screen.getByRole('heading', { level: 2 })
+    expect(header.contains(heading)).toBe(true)
+    expect(body.contains(meta)).toBe(false)
+    expect(meta.contains(body)).toBe(false)
+  })
+})
