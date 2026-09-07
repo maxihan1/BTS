@@ -741,10 +741,12 @@ X-JD-2 에서 「`bar_chart` 는 Jira 카탈로그에 없다 — ADS 준용」�
 | 판별식 전량 | `node --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'` | **EXIT=0** · 621/621 |
 | 프론트 전량 | `vitest run` | **EXIT=0** · 11,320/11,320 · 679 파일 |
 | 백엔드 | `:modules:notification:test --no-build-cache --rerun-tasks` | **EXIT=0** · `9 executed` · XML 63건 신선 |
-| E2E | `playwright test dashboard-gadgets` **3회 연속** | **EXIT=0 ×3** · 8 passed · 1 skipped |
-| E2E(대시보드 2종) | `playwright test dashboard.spec dashboard-gadgets.spec` | **EXIT=0** · 18 passed · 2 skipped |
+| E2E(대시보드 2종) | `playwright test dashboard.spec dashboard-gadgets.spec` **3회 연속** | **EXIT=0 ×3** · 18 passed · 2 skipped |
 | 문서 인덱스 | `build-doc-index.mjs --check` | **EXIT=0** · 고아 0 · drift 0 |
 | 정본 정합 | `verify-master-plan.sh` | **EXIT=0** · FR 145/145 불변 |
+
+★E2E 3회 연속은 **헤더 추출 뒤에 다시 쟀다.** 추출 전에 잰 3회는 최종 코드의 것이 아니다 —
+「이미 3회 돌렸다」로 넘어가면 리팩터가 넣은 플레이크를 못 본다.
 
 ★백엔드는 **두 번 헛돌았다**. 1차는 `UP-TO-DATE`, 2차는 `cleanTest` 뒤에도 `FROM-CACHE` 였다.
 「BUILD SUCCESSFUL」을 실행의 증거로 읽으면 안 된다 — `9 executed` 와 XML 타임스탬프까지
