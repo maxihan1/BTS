@@ -105,6 +105,16 @@ data class CreateIssueRequest(
      *
      * `@JsonIgnore` — 검증 전용 파생 속성이라 요청 스키마에 노출하지 않는다.
      */
+    @get:AssertTrue(message = "라벨 하나는 50자 이하이고 공백만으로 이루어질 수 없습니다.")
+    @get:JsonIgnore
+    val isLabelsValid: Boolean
+        get() =
+            labels?.all { label ->
+                // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다(Issue.kt:371 과 대칭).
+                label.isEmpty() ||
+                    (label.isNotBlank() && label.length <= IssueLabelConstraints.MAX_LENGTH)
+            } != false
+
     /**
      * 본문을 **한 표현으로만** 보낸다 — [description](마크다운) 또는 [descriptionHtml](HTML).
      *
@@ -122,14 +132,4 @@ data class CreateIssueRequest(
     @get:JsonIgnore
     val isBodyExclusive: Boolean
         get() = description == null || descriptionHtml == null
-
-    @get:AssertTrue(message = "라벨 하나는 50자 이하이고 공백만으로 이루어질 수 없습니다.")
-    @get:JsonIgnore
-    val isLabelsValid: Boolean
-        get() =
-            labels?.all { label ->
-                // 빈 문자열은 도메인이 필터링하므로 여기서 막지 않는다(Issue.kt:371 과 대칭).
-                label.isEmpty() ||
-                    (label.isNotBlank() && label.length <= IssueLabelConstraints.MAX_LENGTH)
-            } != false
 }

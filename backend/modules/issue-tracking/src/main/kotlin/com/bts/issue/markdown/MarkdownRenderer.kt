@@ -99,6 +99,14 @@ object MarkdownRenderer {
     private val HTML_TAG = Regex("<[^>]*>")
 
     /**
+     * `&nbsp;` 의 문자 표기(U+00A0).
+     *
+     * ★**이스케이프로 쓴다.** 소스에 리터럴을 두면 일반 공백과 눈으로 구별되지 않아
+     * 나중에 누가 지워도 알 수 없다. 프론트 `rich-text-empty.ts` 도 같은 규율을 쓴다.
+     */
+    private const val NBSP_CHAR = '\u00a0'
+
+    /**
      * 텍스트를 담지 않아도 **화면에 무언가를 그리는** 태그.
      *
      * [isBlankHtml] 이 이것들을 발견하면 즉시 「내용 있음」으로 판정한다. 이 예외가 없으면
@@ -234,17 +242,18 @@ object MarkdownRenderer {
      * @param html 검사할 HTML. null 이면 빈 본문이다
      * @return 빈 본문이면 true
      */
-    fun isBlankHtml(html: String?): Boolean {
-        if (html == null || html.isBlank()) return true
-        // 텍스트를 담지 않아도 화면에 그려지는 것들 — 태그를 벗기기 **전에** 본다.
-        if (VISUAL_VOID_TAGS.any { html.contains(it, ignoreCase = true) }) return false
-        val text =
-            html
-                .replace(HTML_TAG, "")
-                .replace("&nbsp;", " ")
-                .replace(' ', ' ')
-        return text.isBlank()
-    }
+    fun isBlankHtml(html: String?): Boolean =
+        when {
+            html == null || html.isBlank() -> true
+            // 텍스트를 담지 않아도 화면에 그려지는 것들 — 태그를 벗기기 **전에** 본다.
+            VISUAL_VOID_TAGS.any { html.contains(it, ignoreCase = true) } -> false
+            else ->
+                html
+                    .replace(HTML_TAG, "")
+                    .replace("&nbsp;", " ")
+                    .replace(NBSP_CHAR, ' ')
+                    .isBlank()
+        }
 
     /**
      * Markdown 문자열을 안전한 HTML로 변환한다.

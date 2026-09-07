@@ -464,6 +464,18 @@ class IssueApplicationService(
      * @param projectKey 프로젝트 키 문자열 — project 토큰 치환에 사용.
      * @return 최종 결정된 description 문자열. null 이면 이슈 생성 시 description 없음.
      */
+    private fun resolveDescription(
+        requested: String?,
+        projectId: UUID,
+        resolvedTypeId: IssueTypeId,
+        reporterId: ActorId,
+        projectKey: String,
+    ): String? =
+        requested?.takeIf { it.isNotBlank() }
+            ?: issueTemplateRepository
+                ?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
+                ?.let { substituteTemplateVariables(it, reporterId, projectKey) }
+
     /**
      * 생성 요청의 본문 의도를 `description`(마크다운) + `description_html`(HTML) **두 값**으로 푼다.
      *
@@ -500,18 +512,6 @@ class IssueApplicationService(
         val resolved = resolveDescription(description, projectId, resolvedTypeId, reporterId, projectKey)
         return BodyPatch(markdown = resolved, html = null)
     }
-
-    private fun resolveDescription(
-        requested: String?,
-        projectId: UUID,
-        resolvedTypeId: IssueTypeId,
-        reporterId: ActorId,
-        projectKey: String,
-    ): String? =
-        requested?.takeIf { it.isNotBlank() }
-            ?: issueTemplateRepository
-                ?.findActiveContentByProjectAndType(projectId, resolvedTypeId.value)
-                ?.let { substituteTemplateVariables(it, reporterId, projectKey) }
 
     /**
      * 템플릿 content 의 변수 토큰을 실제 값으로 치환한다 (FR-TM-02).
