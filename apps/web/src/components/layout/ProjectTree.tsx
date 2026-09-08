@@ -151,9 +151,17 @@ const REPORT_LINKS: ReadonlyArray<ProjectSubLink> = [
   { to: '/projects/$projectKey/reports/worklog', label: '작업 로그' },
 ]
 
-/** 프로젝트 설정 그룹 서브링크 12종 (FR4, GAP-1 전 인증자 표시 — 게이팅 없음). "일반"은 FR-PJ PR-5 FE-4(11→12) */
+/**
+ * 프로젝트 설정 그룹 서브링크 13종 (FR4, GAP-1 전 인증자 표시 — 게이팅 없음).
+ * "일반"은 FR-PJ PR-5 FE-4(11→12) · "워크플로우"는 FR-WF-08 Task 4-4(12→13).
+ *
+ * ★개수를 주석에 적는다 — 이 저장소가 「지시문에 개수를 쓰지 마라」로 경계하는 자리와 다르다.
+ *  여기 숫자는 **배열 옆에 붙어 같은 커밋에서 함께 바뀌는** 서술이지, 사람에게 「N건만 보라」고
+ *  시키는 눈가리개가 아니다. 그래도 갱신을 빠뜨리면 조용히 썩으므로 링크를 더할 때 함께 고친다.
+ */
 const SETTINGS_LINKS: ReadonlyArray<ProjectSubLink> = [
   { to: PROJECT_SETTINGS_PATH, label: '일반' },
+  { to: '/projects/$projectKey/settings/workflows', label: '워크플로우' },
   { to: '/projects/$projectKey/settings/workflow-scheme', label: '워크플로우 스킴' },
   { to: '/projects/$projectKey/settings/members', label: '멤버' },
   { to: '/projects/$projectKey/settings/components', label: '컴포넌트' },

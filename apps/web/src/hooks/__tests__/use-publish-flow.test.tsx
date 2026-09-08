@@ -44,6 +44,7 @@ function workflowDetailHandler() {
           { key: 'done', name: '완료', category: 'DONE', displayOrder: 2 },
         ],
         transitions: [],
+              projectId: null,
       },
     }),
   )

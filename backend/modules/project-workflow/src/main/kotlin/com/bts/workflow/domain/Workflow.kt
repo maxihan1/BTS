@@ -2,6 +2,8 @@
 
 package com.bts.workflow.domain
 
+import java.util.UUID
+
 /**
  * FSM(유한 상태 기계) 워크플로우 Aggregate Root.
  *
@@ -21,6 +23,16 @@ data class Workflow private constructor(
     val description: String?,
     val states: List<WorkflowState>,
     val transitions: List<WorkflowTransition>,
+    /**
+     * 소유 프로젝트 `projects.id`. null = 전역 공유 워크플로우 (FR-WF-08).
+     *
+     * ★**읽기 전용 정보다.** 소유를 실제로 정하는 자리는
+     * [com.bts.workflow.repository.WorkflowWriteRepository.insertWorkflow] 이고 그쪽은 기본값이
+     * 없다 — 쓰기 경로가 이 factory 를 타지 않기 때문이다(PR ② 실측). 여기 기본값 `null` 은
+     * 「소유를 모르는 채로 조립한 aggregate 는 전역으로 읽는다」는 뜻이고, 호출부 대부분이
+     * 전역이 정답인 테스트 픽스처다.
+     */
+    val projectId: UUID? = null,
 ) {
     companion object {
         /**
@@ -41,13 +53,19 @@ data class Workflow private constructor(
          * (ADR `docs/adr/2026-08-18-workflow-transition-id-identity.md` §D1 · §D4).
          *
          * @throws IllegalArgumentException 위 invariant 중 하나라도 위반 시
+         *
+         * @suppress LongParameterList — aggregate 의 필드 6개를 그대로 받는 factory 다.
+         * 파라미터 객체로 묶으면 「Workflow 를 만들려면 WorkflowSpec 을 먼저 만든다」가 되어
+         * 호출부 75곳이 한 겹 더 깊어지기만 한다. 전역 임계값은 건드리지 않는다.
          */
+        @Suppress("LongParameterList")
         fun of(
             key: String,
             name: String,
             description: String? = null,
             states: List<WorkflowState>,
             transitions: List<WorkflowTransition>,
+            projectId: UUID? = null,
         ): Workflow {
             require(states.isNotEmpty()) {
                 "Workflow '$key': states must not be empty"
@@ -67,6 +85,7 @@ data class Workflow private constructor(
                 description = description,
                 states = states,
                 transitions = transitions,
+                projectId = projectId,
             )
         }
 

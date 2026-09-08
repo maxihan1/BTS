@@ -33,7 +33,8 @@ BC 격리(한 PR = 한 BC)와 「마이그레이션은 되돌리기 어렵다」
 | ① | project-workflow | T3 | FR-WF-08 등재 + 마이그레이션 — `project_id` 2컬럼 + 부분 유니크 재편 | 어렵다. 단독 PR |
 | ② | project-workflow | T2 | 스코프 결정 + CRUD 판정 전환 + 목록 필터 | 코드만 |
 | ③ | identity-access + shared-kernel | T3 | 공용 `WorkflowScope` 신설 + 정의 resolver 스코프 도입 | 코드만 |
-| ④ | apps/web | T1 | 프로젝트 설정 라우트 2종 + 가드 + E2E | 코드만 |
+| ④ | project-workflow + apps/web | **T2** | 프로젝트 스코프 워크플로우 목록 API + 설정 라우트 2종 + E2E | 코드만 |
+| ⑤ | project-workflow + apps/web | T2 | 프로젝트 설정에서 스킴 생성·편집 (관리 형태 목록 API) | 코드만 |
 
 ★①을 ②와 합치지 않는다. 컬럼만 추가하고 아무도 안 읽는 상태는 안전하지만, 판정 전환까지 한 PR 에 넣으면 롤백이 마이그레이션 되돌리기가 된다.
 
@@ -184,7 +185,30 @@ ADR [`2026-09-08-workflow-scope-shared-type`](../adr/2026-09-08-workflow-scope-s
 
 ---
 
-## PR ④ 프로젝트 설정 UI (T1)
+## PR ④ 프로젝트 설정 UI (T1 → **T2**)
+
+### 착수 실측 — 계획 이탈 3건
+
+**① 티어가 T1 → T2 로 올라갔다. 백엔드를 건드린다(Maxi 확정 2026-09-08).**
+`GET /api/v1/workflows` 는 **권한 게이트가 없는 전량 목록**이고(READ 무게이트는 의도된 관례 —
+이슈 화면이 상태 목록을 그린다) `WorkflowDto` 에 소유 필드도 없었다. 그대로 프로젝트 설정 화면을
+만들면 **남의 프로젝트 전용 워크플로우가 이름째 보인다** — PR ② 가 스킴 목록에서 닫은 것과
+정반대다. 선택지 4개를 놓고 Maxi 가 **프로젝트 스코프 엔드포인트 신설**을 골랐다.
+`GET /api/v1/projects/{projectKey}/workflows` — PR ② 의 `listAssignableSchemes` 와 동형이다.
+
+**② `Workflow` 도메인에 소유 필드를 추가한다.**
+PR ② 는 쓰기 경로(`insertWorkflow`)에만 소유를 넣고 도메인은 건드리지 않았다 — 그때는 읽을
+이유가 없었다. 화면이 「전역 템플릿」과 「내 프로젝트 것」을 갈라 그리려면 읽기 경로에도 소유가
+필요하다. 안 실으면 사용자가 전역 행에 편집을 눌러 **403 을 받고서야** 알게 된다.
+읽기 계약이 바뀌므로 `WorkflowReadContractProdBootTest` 의 「정확히 5키」를 6키로 옮겼다.
+
+**③ Task 4-3(스킴 관리를 프로젝트 설정으로)은 이 PR 에 넣지 않는다.**
+`WorkflowSchemeSidebar` 가 쓰는 목록 타입(`SchemeListItem` — `isStandard`·`mappingsCount`·
+`projectId`)과 프로젝트 스코프 목록 타입(`AssignedScheme` — 코어 필드만)이 **다르다.** 프로젝트
+설정에서 스킴을 만들고 고치려면 관리 형태를 주는 프로젝트 스코프 엔드포인트가 **하나 더**
+필요하고, 그 형태 결정은 계획에 없다. PR ④ 는 이미 백엔드 엔드포인트 1개 + 읽기 계약 변경을
+담고 있어, 두 번째 엔드포인트까지 얹으면 리뷰 단위가 무너진다. 별건으로 가른다.
+
 
 ### Task 4-1. 라우트 2종 추가
 - `/projects/$projectKey/settings/workflows` — 목록
@@ -198,9 +222,8 @@ ADR [`2026-09-08-workflow-scope-shared-type`](../adr/2026-09-08-workflow-scope-s
 - **금지**: 편집기 내부에 프로젝트 분기 추가. 복제.
 - **verify**: 편집기 컴포넌트 diff 0 줄
 
-### Task 4-3. 스킴 관리도 프로젝트 설정으로
-- 기존 `/projects/$projectKey/settings/workflow-scheme`(배정 전용)에 **생성·편집**을 얹는다. `WorkflowSchemeSidebar` · `MappingTable` · `SchemeMetaPanel` 재사용.
-- **verify**: 프로젝트 어드민이 스킴을 만들고 그 자리에서 배정까지 된다
+### Task 4-3. ~~스킴 관리도 프로젝트 설정으로~~ → **PR ⑤ 로 이동** (Maxi 확정 2026-09-08)
+사유는 위 「착수 실측 ③」. 목록 타입이 달라 관리 형태 엔드포인트가 하나 더 필요하고, 그 형태 결정이 계획에 없다.
 
 ### Task 4-4. 사이드바 링크
 - `ProjectTree.tsx` `SETTINGS_LINKS` 12종 → 13종(「워크플로우」 추가).
@@ -208,9 +231,30 @@ ADR [`2026-09-08-workflow-scope-shared-type`](../adr/2026-09-08-workflow-scope-s
 - **verify**: 링크 렌더 + 이동
 
 ### Task 4-5. E2E
-- 프로젝트 어드민으로 로그인 → 설정 → 워크플로우 생성 → 편집 → 저장 → 스킴에 매핑 → 이슈에서 그 상태가 보인다.
+- 프로젝트 어드민으로 로그인 → 설정 → 워크플로우 목록 → 편집기 진입 → 목록 복귀.
 - ★유닛은 `useNavigate`·권한 훅이 목이라 통과한다. 실제 URL·권한 응답을 보는 E2E 가 유일한 증거다.
 - **verify**: 비-어드민 멤버 시나리오도 함께(403 화면)
+- ★`page.route()` 를 쓰지 않는다 — MSW Service Worker 가 먼저 응답해 무효임이 이 저장소에 실측돼 있다. 목 쪽 스위치(`E2E_IS_SYSTEM_ADMIN_KEY` 선례)를 둔다.
+
+---
+
+## PR ⑤ 프로젝트 설정에서 스킴 생성·편집 (T2)
+
+PR ④ 에서 갈라 나왔다(Maxi 확정 2026-09-08). 사유는 PR ④ 「착수 실측 ③」.
+
+### Task 5-1. 관리 형태 프로젝트 스코프 스킴 목록 API
+- `WorkflowSchemeSidebar` 는 `SchemeListItem`(`isStandard`·`mappingsCount`·`projectId`)을 먹는데, 프로젝트 스코프 창구 `listAssignableSchemes` 는 `AssignedScheme`(코어 필드만)을 준다. 형태가 달라 그대로 못 꽂는다.
+- 두 선택지 중 하나를 먼저 정한다 — ⓐ `listAssignableSchemes` 응답을 관리 형태로 넓힌다 ⓑ 관리 전용 엔드포인트를 새로 둔다. ⓐ 는 배정 화면의 계약을 건드리고, ⓑ 는 창구가 둘이 된다.
+- **verify**: 프로젝트 A 어드민에게 B 전용 스킴이 목록에 안 나온다 (PR ② 의 판정과 같은 모양)
+
+### Task 5-2. 사이드바·매핑표·메타패널을 프로젝트 설정에 올린다
+- `/projects/$projectKey/settings/workflow-scheme` 에 생성·편집을 얹는다. 세 컴포넌트 재사용.
+- **금지**: 컴포넌트 안에 프로젝트 분기 추가. 데이터 출처만 props 로 가른다.
+- **verify**: 컴포넌트 내부 diff 0 줄
+
+### Task 5-3. 생성이 소유를 싣는다
+- `POST /workflow-schemes` 에 `projectKey` 를 실어 프로젝트 전용 스킴을 만든다(PR ② 가 이미 받는다).
+- **verify**: 만든 스킴의 `projectId` 가 그 프로젝트다 · 그 자리에서 배정까지 된다
 
 ---
 

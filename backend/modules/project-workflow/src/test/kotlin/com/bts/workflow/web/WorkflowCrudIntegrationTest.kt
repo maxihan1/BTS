@@ -72,6 +72,9 @@ class WorkflowCrudIntegrationTest {
         /** 소유 프로젝트 UUID — V209 는 FK 가 없으므로(cross-BC) `projects` 행 없이도 실린다. */
         val ATLAS_ID: UUID = UUID.fromString("aaaaaaaa-0000-4000-8000-0000000000a1")
 
+        /** 남의 프로젝트 UUID. `projectLookup` 이 모르는 값이라 키 경로로는 만들 수 없다. */
+        val OTHER_PROJECT_ID: UUID = UUID.fromString("bbbbbbbb-0000-4000-8000-0000000000b2")
+
         /** `ATLAS` 하나만 아는 프로젝트 조회 스텁. 나머지 키는 없는 프로젝트로 취급한다. */
         private val projectLookup =
             object : ProjectLookupPort {
@@ -328,6 +331,41 @@ class WorkflowCrudIntegrationTest {
     }
 
     @Test
+    fun `프로젝트 목록은 전역과 그 프로젝트 것만 담는다`() {
+        create("list-global")
+        service.duplicate(actor, "list-global", newKey = "list-mine", newName = "내 것", targetProjectKey = "ATLAS")
+        create("list-others")
+        // 남의 프로젝트 소유를 직접 심는다 — projectLookup 이 모르는 UUID 라 키로는 못 만든다.
+        setOwner("list-others", OTHER_PROJECT_ID)
+
+        val keys = repository.findAllForProject(ATLAS_ID).map { it.key }
+
+        assertThat(keys).contains("list-global", "list-mine")
+        assertThat(keys).doesNotContain("list-others")
+    }
+
+    @Test
+    fun `조회한 워크플로우는 소유를 싣고 온다`() {
+        // ★화면이 「전역 템플릿」과 「내 프로젝트 것」을 가르는 유일한 근거다. 안 실리면 전부
+        //  같아 보이고, 사용자는 전역 워크플로우에 편집을 눌러 403 을 받고서야 알게 된다.
+        create("own-src")
+        service.duplicate(actor, "own-src", newKey = "own-mine", newName = "내 것", targetProjectKey = "ATLAS")
+
+        val byKey = repository.findAllForProject(ATLAS_ID).associateBy { it.key }
+
+        assertThat(byKey.getValue("own-src").projectId).isNull()
+        assertThat(byKey.getValue("own-mine").projectId).isEqualTo(ATLAS_ID)
+    }
+
+    @Test
+    fun `프로젝트 목록에서 소프트 삭제한 것은 빠진다`() {
+        create("list-deleted")
+        service.delete(actor, "list-deleted")
+
+        assertThat(repository.findAllForProject(ATLAS_ID).map { it.key }).doesNotContain("list-deleted")
+    }
+
+    @Test
     fun `없는 프로젝트로 복제하면 거부된다`() {
         create("nowhere-src")
 
@@ -377,6 +415,20 @@ class WorkflowCrudIntegrationTest {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement("UPDATE workflows SET is_locked = TRUE WHERE key = ?").use { stmt ->
                 stmt.setString(1, key)
+                stmt.executeUpdate()
+            }
+        }
+    }
+
+    /** 워크플로우의 소유를 직접 바꾼다 — 키 경로로 만들 수 없는 「남의 프로젝트」를 세울 때만 쓴다. */
+    private fun setOwner(
+        key: String,
+        projectId: UUID,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement("UPDATE workflows SET project_id = ? WHERE key = ?").use { stmt ->
+                stmt.setObject(1, projectId)
+                stmt.setString(2, key)
                 stmt.executeUpdate()
             }
         }

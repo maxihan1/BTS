@@ -70,6 +70,8 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     '/_shell/projects/$projectKey/reports/cfd',
     '/_shell/projects/$projectKey/reports/cycle-time',
     '/_shell/projects/$projectKey/settings/details',
+    '/_shell/projects/$projectKey/settings/workflows',
+    '/_shell/projects/$projectKey/settings/workflows/$workflowKey',
     '/_shell/projects/$projectKey/settings/workflow-scheme',
     '/_shell/projects/$projectKey/settings/members',
     '/_shell/projects/$projectKey/settings/components',
@@ -293,7 +295,7 @@ describe('라우트 가드 행렬 — 나머지 클래스', () => {
   //    "발견된 라우트 59개 이상"(routesById 기준)은 이 구멍을 막지 못한다(맵/필터가 죽어도 라우트 수는 그대로).
   it.each([
     // 40 → 41(부채 177 보드 설정) → 44(J5-12 편차 X9 폐기 — 프로젝트 스코프 이슈·캘린더·대시보드).
-    ['PROTECTED_3', 44],
+    ['PROTECTED_3', 46],
     ['AUTH_ONLY', 5],
     ['LOGIN', 1],
     ['INDEX_ALWAYS_REDIRECT', 1],

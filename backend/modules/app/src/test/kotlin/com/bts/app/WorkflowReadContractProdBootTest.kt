@@ -119,16 +119,18 @@ class WorkflowReadContractProdBootTest : ProdAssemblyHttpTestBase() {
     }
 
     @Test
-    fun `GET workflows-key 응답 최상위 키가 정확히 key name description states transitions 5개다`() {
+    fun `GET workflows-key 응답 최상위 키가 정확히 key name description states transitions projectId 6개다`() {
         val envelope = readWorkflow()
 
         // 봉투는 data 하나뿐이다 — 성공 응답 포맷(DEVELOPMENT.md §응답 포맷)의 정본.
         assertThat(envelope.fieldNames().asSequence().toList()).containsExactly("data")
-        // ★ 「이 키들이 있다」가 아니라 「정확히 이 5개다」. 포함만 보면 필드가 늘어도 통과해
+        // ★ 「이 키들이 있다」가 아니라 「정확히 이 6개다」. 포함만 보면 필드가 늘어도 통과해
         //   계약이 새는 것을 못 잡는다 — 프론트 Zod 의 .strict() 가 그 순간 런타임에서 터진다.
+        //   `projectId` 는 FR-WF-08 이 더했다. 화면이 「전역 템플릿」과 「이 프로젝트 것」을
+        //   가르는 근거이고, 없으면 사용자는 전역에 편집을 눌러 403 을 받고서야 알게 된다.
         assertThat(envelope.path("data").fieldNames().asSequence().toList())
             .`as`("읽기 응답 형태 불변(N1) — 필드 추가·삭제·개명은 전부 계약 변경이다")
-            .containsExactlyInAnyOrder("key", "name", "description", "states", "transitions")
+            .containsExactlyInAnyOrder("key", "name", "description", "states", "transitions", "projectId")
     }
 
     @Test

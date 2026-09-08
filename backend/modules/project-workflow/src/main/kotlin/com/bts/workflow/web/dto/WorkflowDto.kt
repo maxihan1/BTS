@@ -27,6 +27,8 @@ data class WorkflowDto(
     val description: String,
     val states: List<WorkflowStateDto>,
     val transitions: List<WorkflowTransitionDto>,
+    /** 소유 프로젝트 UUID. null = 전역 공유 템플릿. 화면이 「전역」과 「이 프로젝트」를 가르는 근거다. */
+    val projectId: UUID?,
 )
 
 /**
@@ -85,6 +87,7 @@ fun Workflow.toDto(): WorkflowDto =
         description = description ?: "",
         states = states.map { it.toDto() },
         transitions = transitions.map { it.toDto() },
+        projectId = projectId,
     )
 
 /**

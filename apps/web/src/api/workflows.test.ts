@@ -51,6 +51,7 @@ const softwareDefault = {
     { key: transitionKey('done', 'closed'), name: 'Close', fromStateKey: 'done', toStateKey: 'closed', id: mockTransitionId(15), kind: 'NORMAL' },
     { key: transitionKey('open', 'closed'), name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed', id: mockTransitionId(16), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 const bugTracking = {
@@ -72,6 +73,7 @@ const bugTracking = {
     { key: transitionKey('resolved', 'closed'), name: 'Close', fromStateKey: 'resolved', toStateKey: 'closed', id: mockTransitionId(24), kind: 'NORMAL' },
     { key: transitionKey('resolved', 'in_progress'), name: 'Reopen', fromStateKey: 'resolved', toStateKey: 'in_progress', id: mockTransitionId(25), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 const simple = {
@@ -89,6 +91,7 @@ const simple = {
     { key: transitionKey('doing', 'done'), name: 'Complete', fromStateKey: 'doing', toStateKey: 'done', id: mockTransitionId(32), kind: 'NORMAL' },
     { key: transitionKey('done', 'doing'), name: 'Reopen', fromStateKey: 'done', toStateKey: 'doing', id: mockTransitionId(33), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 const kanbanBasic = {
@@ -107,6 +110,7 @@ const kanbanBasic = {
     { key: transitionKey('ready', 'in_progress'), name: 'Pull', fromStateKey: 'ready', toStateKey: 'in_progress', id: mockTransitionId(42), kind: 'NORMAL' },
     { key: transitionKey('in_progress', 'done'), name: 'Finish', fromStateKey: 'in_progress', toStateKey: 'done', id: mockTransitionId(43), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 const allWorkflows = [softwareDefault, bugTracking, simple, kanbanBasic]

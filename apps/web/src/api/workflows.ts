@@ -50,6 +50,14 @@ export const workflowViewSchema = z.object({
   description: z.string(),
   states: z.array(workflowStateViewSchema),
   transitions: z.array(workflowTransitionViewSchema),
+  /**
+   * 소유 프로젝트 UUID. null = 전역 공유 템플릿 (FR-WF-08).
+   *
+   * ★선택 필드로 두지 않는다. 백엔드는 항상 보내므로 `optional` 은 「안 올 수도 있다」는
+   * 거짓말이 되고, 목 픽스처가 이 필드를 빠뜨린 채 초록으로 남는다 — 그러면 화면이
+   * 전역/전용을 못 가르는 것이 테스트에 안 잡힌다.
+   */
+  projectId: z.string().uuid().nullable(),
 })
 
 /** 워크플로우 목록 Zod 스키마 */
@@ -94,6 +102,24 @@ const dataResponseSchema = <T>(innerSchema: z.ZodSchema<T>) =>
 export async function fetchWorkflows(): Promise<WorkflowView[]> {
   const wrapped = await apiGet(
     '/api/v1/workflows',
+    dataResponseSchema(workflowListSchema),
+  )
+  return wrapped.data
+}
+
+/**
+ * 프로젝트가 쓸 수 있는 워크플로우 목록을 조회한다 — 전역 공유 + 그 프로젝트 전용.
+ * GET /api/v1/projects/{projectKey}/workflows → { data: WorkflowView[] }
+ *
+ * ★[fetchWorkflows] 를 프로젝트 화면에서 쓰지 않는다. 그쪽은 **권한 게이트가 없는 전량 목록**이라
+ * 남의 프로젝트 전용 워크플로우가 이름째 온다(FR-WF-08). 서버가 좁힌 창구를 따로 탄다.
+ *
+ * 403 은 「이 프로젝트의 워크플로우를 관리할 권한이 없다」, 404 는 「그 프로젝트가 없다」다.
+ */
+export async function fetchProjectWorkflows(projectKey: string): Promise<WorkflowView[]> {
+  const wrapped = await apiGet(
+    // 경로 파라미터가 URL 에서 그대로 온다 — 인코딩 없이 박으면 `..%2F` 로 다른 자원에 닿는다
+    `/api/v1/projects/${encodeURIComponent(projectKey)}/workflows`,
     dataResponseSchema(workflowListSchema),
   )
   return wrapped.data

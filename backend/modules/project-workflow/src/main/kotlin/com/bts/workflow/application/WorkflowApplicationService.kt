@@ -11,6 +11,7 @@ import com.bts.workflow.repository.WorkflowRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 /**
  * 워크플로우 도메인 유스케이스 진입점.
@@ -42,6 +43,21 @@ class WorkflowApplicationService(
     fun listWorkflows(): List<Workflow> {
         log.debug("WorkflowApplicationService.listWorkflows")
         return workflowRepository.findAll()
+    }
+
+    /**
+     * [projectId] 프로젝트가 쓸 수 있는 워크플로우 목록을 반환한다 — 전역 공유 + 그 프로젝트 전용.
+     *
+     * ★ [listWorkflows] 는 전량을 준다. 프로젝트 설정 화면이 그걸 그대로 쓰면 남의 프로젝트 전용
+     * 워크플로우가 이름째 보인다(FR-WF-08). 프로젝트 스코프 경로는 이쪽을 탄다.
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return 전역 + 해당 프로젝트 소유 워크플로우.
+     */
+    @Transactional(readOnly = true)
+    fun listWorkflowsForProject(projectId: UUID): List<Workflow> {
+        log.debug("WorkflowApplicationService.listWorkflowsForProject projectId={}", projectId)
+        return workflowRepository.findAllForProject(projectId)
     }
 
     /**

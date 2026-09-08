@@ -60,6 +60,7 @@ export const softwareDefaultFixture: WorkflowView = {
     { key: transitionKey('done', 'closed'), name: 'Close', fromStateKey: 'done', toStateKey: 'closed', id: fixtureTransitionId(1, 5), kind: 'NORMAL' },
     { key: transitionKey('open', 'closed'), name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed', id: fixtureTransitionId(1, 6), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** 버그 추적 워크플로우 — 5 상태 + 6 전환(INITIAL 1 + NORMAL 5) */
@@ -82,6 +83,7 @@ export const bugTrackingFixture: WorkflowView = {
     { key: transitionKey('resolved', 'closed'), name: 'Close', fromStateKey: 'resolved', toStateKey: 'closed', id: fixtureTransitionId(2, 4), kind: 'NORMAL' },
     { key: transitionKey('resolved', 'in_progress'), name: 'Reopen', fromStateKey: 'resolved', toStateKey: 'in_progress', id: fixtureTransitionId(2, 5), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** 단순 워크플로우 — 3 상태 + 4 전환(INITIAL 1 + NORMAL 3) */
@@ -100,6 +102,7 @@ export const simpleFixture: WorkflowView = {
     { key: transitionKey('doing', 'done'), name: 'Complete', fromStateKey: 'doing', toStateKey: 'done', id: fixtureTransitionId(3, 2), kind: 'NORMAL' },
     { key: transitionKey('done', 'doing'), name: 'Reopen', fromStateKey: 'done', toStateKey: 'doing', id: fixtureTransitionId(3, 3), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** 칸반 기본 워크플로우 — 4 상태 + 4 전환(INITIAL 1 + NORMAL 3) */
@@ -119,6 +122,7 @@ export const kanbanBasicFixture: WorkflowView = {
     { key: transitionKey('ready', 'in_progress'), name: 'Pull', fromStateKey: 'ready', toStateKey: 'in_progress', id: fixtureTransitionId(4, 2), kind: 'NORMAL' },
     { key: transitionKey('in_progress', 'done'), name: 'Finish', fromStateKey: 'in_progress', toStateKey: 'done', id: fixtureTransitionId(4, 3), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** 4 표준 워크플로우 전체 목록 */

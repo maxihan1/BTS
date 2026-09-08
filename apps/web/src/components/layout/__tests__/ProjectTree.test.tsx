@@ -45,6 +45,7 @@ const REPORT_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
 
 const SETTINGS_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
   ['일반', '/projects/ATLAS/settings/details'],
+  ['워크플로우', '/projects/ATLAS/settings/workflows'],
   ['워크플로우 스킴', '/projects/ATLAS/settings/workflow-scheme'],
   ['멤버', '/projects/ATLAS/settings/members'],
   ['컴포넌트', '/projects/ATLAS/settings/components'],

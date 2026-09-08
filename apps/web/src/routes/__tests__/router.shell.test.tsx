@@ -38,11 +38,11 @@ describe('프로젝트 CRUD 라우트 3종 등록 (_shell 재부모화, FR-PJ PR
     )
   })
 
-  it('라우트 카운트가 65개로 갱신된다 (62 + 편차 X9 폐기 프로젝트 스코프 3종, router.ts 헤더 주석과 동일 형식)', () => {
+  it('라우트 카운트가 67개로 갱신된다 (65 + FR-WF-08 프로젝트 워크플로우 목록·편집기 2종, router.ts 헤더 주석과 동일 형식)', () => {
     const shellChildCount = Object.values(byId).filter(
       (route) => route.parentRoute?.id === '/_shell',
     ).length
-    expect(shellChildCount).toBe(65)
+    expect(shellChildCount).toBe(67)
   })
 })
 

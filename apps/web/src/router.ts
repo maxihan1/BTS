@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 65개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가 | Jira 패리티 J4 캠페인 PR ④: projectSummaryRoute /projects/$projectKey 추가 — 프로젝트 기본 착지 | 부채 177: projectBoardSettingsRoute /projects/$projectKey/board/settings 추가 — 지라 Board settings Columns 탭 | Jira 패리티 J5-12 (2026-09-07): 편차 X9 폐기 — projectIssuesRoute /projects/$projectKey/issues · projectCalendarRoute /projects/$projectKey/calendar · projectDashboardsRoute /projects/$projectKey/dashboards 추가, 9탭 전량 프로젝트 스코프)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 67개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가 | Jira 패리티 J4 캠페인 PR ④: projectSummaryRoute /projects/$projectKey 추가 — 프로젝트 기본 착지 | 부채 177: projectBoardSettingsRoute /projects/$projectKey/board/settings 추가 — 지라 Board settings Columns 탭 | Jira 패리티 J5-12 (2026-09-07): 편차 X9 폐기 — projectIssuesRoute /projects/$projectKey/issues · projectCalendarRoute /projects/$projectKey/calendar · projectDashboardsRoute /projects/$projectKey/dashboards 추가, 9탭 전량 프로젝트 스코프 | FR-WF-08 Task 4-1·4-2: projectWorkflowsSettingsRoute /projects/$projectKey/settings/workflows · projectWorkflowEditorRoute /projects/$projectKey/settings/workflows/$workflowKey 추가 — 프로젝트 소유 워크플로우 편집 진입점, 65→67)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards, redirectToStartPage } from './auth/routeGuard'
 
@@ -25,6 +25,8 @@ import { ProjectCreateRouteAdapter } from './routes/projects.new'
 import { ProjectSummaryRouteAdapter } from './routes/projects.$projectKey'
 import { ProjectDetailsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.details'
 import { ProjectWorkflowSchemeSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflow-scheme'
+import { ProjectWorkflowsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.workflows'
+import { ProjectWorkflowEditorRouteAdapter } from './routes/projects.$projectKey.settings.workflows.$workflowKey'
 import { ProjectMembersSettingsRouteAdapter } from './routes/projects.$projectKey.settings.members'
 import { ProjectComponentsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.components'
 import { ProjectVersionsSettingsRouteAdapter } from './routes/projects.$projectKey.settings.versions'
@@ -516,6 +518,31 @@ const projectWorkflowSchemeSettingsRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/projects/$projectKey/settings/workflow-scheme',
   component: ProjectWorkflowSchemeSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/**
+ * 프로젝트 워크플로우 목록 라우트 — /projects/$projectKey/settings/workflows (FR-WF-08 Task 4-1).
+ *
+ * ★프론트 어드민 가드를 새로 만들지 않는다. 프로젝트 설정 라우트 전부가
+ * `requireAuthAndPasswordChanged` 하나이고(GAP-1 — 게이팅 없음), 권한은 백엔드 403 +
+ * 안내 카드가 받는 것이 이 저장소의 관례다. 여기만 다른 가드를 두면 「어디서 막는가」가
+ * 두 곳이 되고, 둘이 갈리는 날 화면은 통과시키고 API 는 거부한다.
+ */
+const projectWorkflowsSettingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/settings/workflows',
+  component: ProjectWorkflowsSettingsRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
+/** 프로젝트 워크플로우 편집기 라우트 — /projects/$projectKey/settings/workflows/$workflowKey (FR-WF-08 Task 4-2) */
+const projectWorkflowEditorRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/settings/workflows/$workflowKey',
+  component: ProjectWorkflowEditorRouteAdapter,
   staticData: { requireAuth: true },
   beforeLoad: requireAuthAndPasswordChanged,
 })
@@ -1021,6 +1048,8 @@ export const routeTree = rootRoute.addChildren([
     projectDetailsSettingsRoute,
     // project-workflow BC — 프로젝트별 스킴 할당
     projectWorkflowSchemeSettingsRoute,
+    projectWorkflowsSettingsRoute,
+    projectWorkflowEditorRoute,
     // project-membership BC — 프로젝트 멤버 관리
     projectMembersSettingsRoute,
     // component-management BC — 프로젝트 컴포넌트 관리

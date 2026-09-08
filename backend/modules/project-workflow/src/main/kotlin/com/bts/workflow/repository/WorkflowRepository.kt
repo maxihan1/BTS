@@ -130,6 +130,22 @@ class WorkflowRepository(private val dsl: DSLContext) {
         return rows.toWorkflows()
     }
 
+    /**
+     * [projectId] 프로젝트가 쓸 수 있는 워크플로우를 조회한다 — 전역 공유 + 그 프로젝트 전용.
+     *
+     * ★ [findAll] 은 전량을 준다. 프로젝트 설정 화면이 그걸 그대로 쓰면 **남의 프로젝트 전용
+     * 워크플로우가 보인다** — 이름만으로도 그 팀이 무슨 흐름을 쓰는지 새는 셈이다.
+     * PR ② 가 스킴 목록에 같은 필터를 넣었고(`WorkflowSchemeRepository.findAllForProject`),
+     * 워크플로우 쪽만 전량으로 남으면 두 목록이 서로 다른 규칙을 갖게 된다.
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return 전역 + 해당 프로젝트 소유 워크플로우.
+     */
+    fun findAllForProject(projectId: UUID): List<Workflow> {
+        val rows = fetchJoinedRows(WORKFLOWS.PROJECT_ID.isNull.or(WORKFLOWS.PROJECT_ID.eq(projectId)))
+        return rows.toWorkflows()
+    }
+
     // ── 내부 구현 ───────────────────────────────────────────────────────────────
 
     /**
@@ -151,6 +167,8 @@ class WorkflowRepository(private val dsl: DSLContext) {
                     WORKFLOWS.KEY,
                     WORKFLOWS.NAME,
                     WORKFLOWS.DESCRIPTION,
+                    // 화면이 「전역 템플릿」과 「이 프로젝트 것」을 갈라 그리는 근거다(FR-WF-08).
+                    WORKFLOWS.PROJECT_ID,
                     // 상태 — 전역 카탈로그 2단 (workflow_statuses ⋈ statuses)
                     WORKFLOW_STATUSES.ID,
                     WORKFLOW_STATUSES.DISPLAY_ORDER,
@@ -195,6 +213,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
             val workflowKey = firstRow[WORKFLOWS.KEY]!!
             val workflowName = firstRow[WORKFLOWS.NAME]!!
             val workflowDescription = firstRow[WORKFLOWS.DESCRIPTION]
+            val workflowProjectId = firstRow[WORKFLOWS.PROJECT_ID]
 
             // states — 전역 카탈로그 편성(workflow_statuses.id) 기준 dedup
             val states =
@@ -223,6 +242,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
                 description = workflowDescription,
                 states = states,
                 transitions = transitions,
+                projectId = workflowProjectId,
             )
         }
     }
