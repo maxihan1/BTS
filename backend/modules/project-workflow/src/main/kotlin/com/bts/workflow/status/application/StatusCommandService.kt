@@ -4,6 +4,7 @@ package com.bts.workflow.status.application
 
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.status.application.command.CreateStatusCommand
 import com.bts.workflow.status.application.command.UpdateStatusCommand
@@ -55,7 +56,13 @@ class StatusCommandService(
         actorId: UUID,
         command: CreateStatusCommand,
     ): UUID {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.CREATE)
+        // SCOPE-GLOBAL: 상태 카탈로그는 사이트 전역 자원이다 — `statuses` 에 project_id 가 없고,
+        // 한 상태를 여러 프로젝트의 워크플로우가 함께 편성한다. 소유로 좁힐 대상 자체가 없다.
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.CREATE,
+            WorkflowScope.Global,
+        )
         if (statusRepository.existsLiveByKey(command.key)) {
             throw StatusKeyConflictException(command.key)
         }
@@ -80,7 +87,13 @@ class StatusCommandService(
         id: UUID,
         command: UpdateStatusCommand,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        // SCOPE-GLOBAL: 상태 카탈로그는 사이트 전역 자원이다 — `statuses` 에 project_id 가 없고,
+        // 한 상태를 여러 프로젝트의 워크플로우가 함께 편성한다. 소유로 좁힐 대상 자체가 없다.
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            WorkflowScope.Global,
+        )
         val status = statusRepository.findLiveById(id) ?: throw StatusNotFoundException(id)
         if (statusRepository.existsLiveByLowerName(command.name, excludeId = id)) {
             throw StatusNameConflictException(command.name)
@@ -103,7 +116,13 @@ class StatusCommandService(
         actorId: UUID,
         id: UUID,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.DELETE)
+        // SCOPE-GLOBAL: 상태 카탈로그는 사이트 전역 자원이다 — `statuses` 에 project_id 가 없고,
+        // 한 상태를 여러 프로젝트의 워크플로우가 함께 편성한다. 소유로 좁힐 대상 자체가 없다.
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.DELETE,
+            WorkflowScope.Global,
+        )
         val status = statusRepository.findLiveById(id) ?: throw StatusNotFoundException(id)
         requireDeletable(status)
 

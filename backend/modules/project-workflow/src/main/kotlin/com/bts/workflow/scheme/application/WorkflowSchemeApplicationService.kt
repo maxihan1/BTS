@@ -6,7 +6,7 @@ package com.bts.workflow.scheme.application
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
@@ -401,7 +401,7 @@ class WorkflowSchemeApplicationService(
      *
      * ## 권한
      * 사용자 명시 배정(실 actor UUID)은 [WorkflowSchemePermission.ASSIGN_SCHEME] —
-     * [WorkflowSchemeScope.Project] 범위 검증을 통과해야 한다(프로젝트 어드민 레벨 권한).
+     * [WorkflowScope.Project] 범위 검증을 통과해야 한다(프로젝트 어드민 레벨 권한).
      * 단, [SYSTEM_ACTOR](nil UUID sentinel)로 호출된 EC-1 D10 auto-assign 은 권한 검사를 우회한다
      * (아래 "## EC-1 D10 auto-assign 권한 우회" 참조).
      *
@@ -460,7 +460,7 @@ class WorkflowSchemeApplicationService(
             permissionResolver.requirePermission(
                 actorUuid,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project(projectKey),
+                WorkflowScope.Project(projectKey),
             )
         }
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)

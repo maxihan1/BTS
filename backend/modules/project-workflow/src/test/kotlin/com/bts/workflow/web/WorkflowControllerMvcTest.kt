@@ -5,6 +5,7 @@ package com.bts.workflow.web
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
@@ -15,6 +16,8 @@ import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
 import com.bts.workflow.domain.WorkflowTransition
+import com.bts.workflow.globalOnlyOwnershipScope
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
@@ -101,7 +104,12 @@ class WorkflowControllerMvcTest {
             commandService: WorkflowCommandService,
             cache: WorkflowCache,
             resolver: WorkflowDefinitionPermissionResolver,
-        ): WorkflowController = WorkflowController(service, commandService, cache, resolver)
+            scopeResolver: WorkflowOwnershipScopeResolver,
+        ): WorkflowController = WorkflowController(service, commandService, cache, resolver, scopeResolver)
+
+        /** 캐시 무효화 슬라이스는 소유를 재지 않는다 — 전역으로 고정한다(FR-WF-08). */
+        @Bean
+        open fun ownershipScopeResolver(): WorkflowOwnershipScopeResolver = globalOnlyOwnershipScope()
 
         @Bean
         open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()
@@ -220,7 +228,7 @@ class WorkflowControllerMvcTest {
     @Test
     @WithMockUser(username = ACTOR_ID)
     fun `POST 캐시 무효화 — 권한 판정을 통과하면 200`() {
-        every { permissionResolver.requirePermission(any(), any()) } returns Unit
+        every { permissionResolver.requirePermission(any(), any(), any()) } returns Unit
         val body = mapOf("key" to "software-default")
 
         mockMvc.perform(
@@ -234,10 +242,11 @@ class WorkflowControllerMvcTest {
     @Test
     @WithMockUser(username = ACTOR_ID)
     fun `POST 캐시 무효화 — 권한 판정이 거부하면 403`() {
-        every { permissionResolver.requirePermission(any(), any()) } throws
+        every { permissionResolver.requirePermission(any(), any(), any()) } throws
             WorkflowDefinitionAccessDeniedException(
                 java.util.UUID.fromString(ACTOR_ID),
                 WorkflowDefinitionPermission.UPDATE,
+                WorkflowScope.Global,
             )
         val body = mapOf("key" to "software-default")
 

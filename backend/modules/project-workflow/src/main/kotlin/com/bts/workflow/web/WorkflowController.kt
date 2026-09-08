@@ -9,6 +9,7 @@ import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.port.outbound.toUuid
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.web.dto.CreateWorkflowRequest
 import com.bts.workflow.web.dto.DuplicateWorkflowRequest
 import com.bts.workflow.web.dto.TransitionDefinitionRequest
@@ -73,6 +74,7 @@ class WorkflowController(
     private val workflowCommandService: WorkflowCommandService,
     private val workflowCache: WorkflowCache,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -172,7 +174,11 @@ class WorkflowController(
         @RequestBody body: CacheInvalidateRequest,
     ): ResponseEntity<DataResponse<Nothing?>> {
         val actor = CurrentActor.current()
-        permissionResolver.requirePermission(actor.toUuid(), WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(body.key),
+        )
         log.info("WorkflowController.invalidateCache key={}", body.key)
         workflowCache.invalidate(body.key)
         return ResponseEntity.ok(DataResponse(data = null))

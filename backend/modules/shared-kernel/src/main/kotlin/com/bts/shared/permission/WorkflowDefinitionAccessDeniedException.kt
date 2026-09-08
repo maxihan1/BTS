@@ -12,12 +12,16 @@ import java.util.UUID
  *
  * @param actorId 거부된 행위자
  * @param permission 요청했던 권한
+ * @param scope 대상 워크플로우의 소유 범위 (FR-WF-08). 감사 로그가 「어느 프로젝트 것을
+ *   만지려 했는가」를 남기려면 권한 이름만으로는 부족하다.
  */
 class WorkflowDefinitionAccessDeniedException(
     actorId: UUID,
     permission: WorkflowDefinitionPermission,
+    scope: WorkflowScope,
 ) : RuntimeException(
-        "Access denied: actor=$actorId, permission=${permission.name}, resource=workflow-definition",
+        "Access denied: actor=$actorId, permission=${permission.name}, " +
+            "scope=$scope, resource=workflow-definition",
     ) {
     val errorCode: String = WORKFLOW_DEFINITION_ACCESS_DENIED
 

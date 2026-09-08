@@ -4,6 +4,7 @@ package com.bts.workflow.web
 
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.UpdateWorkflowCommand
@@ -16,8 +17,10 @@ import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
+import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -87,6 +90,7 @@ class WorkflowCrudIntegrationTest {
                 override fun requirePermission(
                     actorId: UUID,
                     permission: WorkflowDefinitionPermission,
+                    scope: WorkflowScope,
                 ) = Unit
             }
 
@@ -103,7 +107,15 @@ class WorkflowCrudIntegrationTest {
             repository = WorkflowRepository(dsl)
             cache = WorkflowCache(repository, dsl)
             service =
-                WorkflowCommandService(WorkflowWriteRepository(dsl), repository, cache, allowAll, projectLookup)
+                WorkflowCommandService(
+                    WorkflowWriteRepository(dsl),
+                    repository,
+                    cache,
+                    allowAll,
+                    projectLookup,
+                    // 이 테스트는 소유를 실제로 잰다 — 스텁이 아니라 실물 결정기를 쓴다.
+                    WorkflowOwnershipScopeResolver(WorkflowSchemeRepository(dsl), repository, projectLookup),
+                )
         }
 
         private fun migrateTo(target: String) {

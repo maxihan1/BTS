@@ -16,14 +16,14 @@ import java.util.UUID
  * 도메인당 enum 1개 + resolver 1개가 이 저장소의 관례다(`VersionPermission`·`ComponentPermission`·
  * `TemplatePermission`·`CustomFieldPermission`).
  *
- * ### 왜 스코프 인자가 없나
- * 워크플로우 정의는 **사이트 전역 자원**이라 축이 하나다. `WorkflowSchemeScope` 는 Global/Project
- * 두 축이 있어 sealed 계층이 필요했지만 여기는 아니다 — `VersionPermissionResolver` 가
- * 「축이 하나면 sealed 계층 대신 단순화한다」고 남긴 판단과 같다.
+ * ### 스코프 인자 (FR-WF-08 에서 생겼다)
+ * 종전에는 「워크플로우 정의는 사이트 전역 자원이라 축이 하나다」였다. `workflows.project_id` 가
+ * 생기면서 그 전제가 무너졌고, 이제 스킴 판정기와 **같은** `WorkflowScope` 를 받는다(스펙 D8).
+ * 타입을 따로 두면 두 판정기가 서로를 검사하지 않는 두 목록이 된다.
  *
  * ### 왜 Boolean 이 아니라 Guard(예외) 인가
- * 전역 자원 + 같은 BC 소비라는 두 조건에서 `WorkflowSchemePermissionResolver` 와 동형이다.
- * `VersionPermissionResolver` 의 `Boolean` 규약은 프로젝트 스코프 자원의 것이다.
+ * 같은 BC 가 소비하고 거부가 BC 를 가로지른다는 점에서 `WorkflowSchemePermissionResolver` 와
+ * 동형이다. `VersionPermissionResolver` 의 `Boolean` 규약은 호출부가 분기를 직접 쓰는 자원의 것이다.
  */
 class WorkflowDefinitionPermissionTest {
     @Test
@@ -39,16 +39,24 @@ class WorkflowDefinitionPermissionTest {
                 override fun requirePermission(
                     actorId: UUID,
                     permission: WorkflowDefinitionPermission,
-                ) = throw WorkflowDefinitionAccessDeniedException(actorId, permission)
+                    scope: WorkflowScope,
+                ) = throw WorkflowDefinitionAccessDeniedException(actorId, permission, scope)
             }
 
-        assertThatThrownBy { denying.requirePermission(UUID.randomUUID(), WorkflowDefinitionPermission.UPDATE) }
+        assertThatThrownBy {
+            denying.requirePermission(UUID.randomUUID(), WorkflowDefinitionPermission.UPDATE, WorkflowScope.Global)
+        }
             .isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
     }
 
     @Test
     fun `거부 예외는 고유 에러 코드를 갖는다`() {
-        val ex = WorkflowDefinitionAccessDeniedException(UUID.randomUUID(), WorkflowDefinitionPermission.DELETE)
+        val ex =
+            WorkflowDefinitionAccessDeniedException(
+                UUID.randomUUID(),
+                WorkflowDefinitionPermission.DELETE,
+                WorkflowScope.Global,
+            )
         assertThat(ex.errorCode).isEqualTo("WORKFLOW_DEFINITION_ACCESS_DENIED")
         // 스킴 권한 거부와 코드가 겹치면 프론트가 두 상황을 같은 문구로 안내한다.
         assertThat(ex.errorCode).isNotEqualTo(WorkflowSchemeAccessDeniedException.WORKFLOW_SCHEME_ACCESS_DENIED)
@@ -57,7 +65,12 @@ class WorkflowDefinitionPermissionTest {
     @Test
     fun `거부 예외 메시지는 행위자와 권한을 담는다`() {
         val actorId = UUID.randomUUID()
-        val ex = WorkflowDefinitionAccessDeniedException(actorId, WorkflowDefinitionPermission.PUBLISH)
-        assertThat(ex.message).contains(actorId.toString()).contains("PUBLISH")
+        val ex =
+            WorkflowDefinitionAccessDeniedException(
+                actorId,
+                WorkflowDefinitionPermission.PUBLISH,
+                WorkflowScope.Project("ATLAS"),
+            )
+        assertThat(ex.message).contains(actorId.toString()).contains("PUBLISH").contains("ATLAS")
     }
 }

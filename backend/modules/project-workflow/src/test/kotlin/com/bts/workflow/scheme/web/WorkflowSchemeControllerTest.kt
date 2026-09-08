@@ -6,7 +6,7 @@ import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
@@ -93,14 +93,14 @@ class WorkflowSchemeControllerTest {
         @Bean
         open fun scopeResolver(): WorkflowOwnershipScopeResolver =
             mockk {
-                every { ofScheme(any()) } returns WorkflowSchemeScope.Global
+                every { ofScheme(any()) } returns WorkflowScope.Global
                 // ofProjectKey 는 순수 변환이라 실제 의미를 그대로 흉내 낸다 — Global 로 고정하면
                 // 「지목한 프로젝트 스코프로 판정한다」를 재는 테스트가 통과할 수 없다.
                 // 이 흉내가 실물과 같은지는 WorkflowOwnershipScopeResolverTest 가 지킨다.
                 every { ofProjectKey(any()) } answers {
-                    firstArg<String?>()?.let { WorkflowSchemeScope.Project(it) } ?: WorkflowSchemeScope.Global
+                    firstArg<String?>()?.let { WorkflowScope.Project(it) } ?: WorkflowScope.Global
                 }
-                every { ofProjectId(any()) } returns WorkflowSchemeScope.Global
+                every { ofProjectId(any()) } returns WorkflowScope.Global
             }
 
         @Bean
@@ -184,7 +184,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Project("ATLAS"),
+                WorkflowScope.Project("ATLAS"),
             )
         }
     }
@@ -373,13 +373,13 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
 
         val result =
@@ -417,13 +417,13 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
 
         val result =
@@ -476,7 +476,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
     }
@@ -501,7 +501,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
     }
@@ -639,7 +639,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
     }
@@ -671,7 +671,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
     }
@@ -738,7 +738,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 authActorUuid,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
     }
@@ -783,7 +783,7 @@ class WorkflowSchemeControllerTest {
             permissionResolver.requirePermission(
                 capture(capturedActor),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
 

@@ -5,6 +5,7 @@ package com.bts.workflow.application
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
@@ -14,6 +15,7 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowVersionRow
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.seed.StandardWorkflowDefaults
 import com.bts.workflow.seed.WorkflowYamlDto
 import org.springframework.stereotype.Service
@@ -38,7 +40,13 @@ import java.util.UUID
  * 위 사고가 나는 자리다. 그래서 요청이 앵커를 싣고, 유지는
  * [com.bts.workflow.repository.WorkflowDraftRepository.upsert] 가 `DO UPDATE` 에서 그 컬럼을
  * 빼는 것으로 SQL 이 강제한다.
+ *
+ * @suppress LongParameterList — 협력자 7개다. 초안 왕복에 필요한 저장소 3(초안·발행·현재정의) +
+ * 기본값 카탈로그 1 + 규칙 기록 1 + 권한 판정 2(판정기 · 소유 스코프 결정)로, 묶을 만한 응집이
+ * 없다. 억지로 파라미터 객체를 만들면 이름만 있고 의미가 없는 상자가 하나 는다. 전역 임계값은
+ * 건드리지 않는다.
  */
+@Suppress("LongParameterList")
 @Service
 class WorkflowDraftService(
     private val draftRepository: WorkflowDraftRepository,
@@ -47,6 +55,7 @@ class WorkflowDraftService(
     private val standardDefaults: StandardWorkflowDefaults,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val ruleWriter: DraftRuleWriter,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
 ) {
     /**
      * 초안을 돌려준다. 없으면 지금 발행된 정의를 초안 형태로 돌려준다(저장하지는 않는다).
@@ -58,7 +67,11 @@ class WorkflowDraftService(
         actorId: UUID,
         key: String,
     ): DraftView {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(key),
+        )
         val workflow = requireLive(key)
         val restorable = canResetToDefault(key, workflow)
         val stored = draftRepository.findByWorkflowId(workflow.id)
@@ -97,7 +110,11 @@ class WorkflowDraftService(
         definition: WorkflowDraftDefinition,
         baseVersion: Long,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(key),
+        )
         val workflow = requireLive(key)
         validate(key, definition)
         requireAnchorNotAhead(key, baseVersion, workflow.version)
@@ -134,7 +151,12 @@ class WorkflowDraftService(
         actorId: UUID,
         key: String,
     ): Boolean {
-        requireAnyPermission(actorId, WorkflowDefinitionPermission.UPDATE, WorkflowDefinitionPermission.PUBLISH)
+        requireAnyPermission(
+            actorId,
+            scopeResolver.ofWorkflow(key),
+            WorkflowDefinitionPermission.UPDATE,
+            WorkflowDefinitionPermission.PUBLISH,
+        )
         return draftRepository.deleteByWorkflowId(requireLive(key).id)
     }
 
@@ -153,7 +175,11 @@ class WorkflowDraftService(
         key: String,
         baseVersion: Long,
     ): DraftView {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(key),
+        )
         val workflow = requireLive(key)
         if (workflow.origin != SEED_ORIGIN) {
             throw WorkflowInvalidRequestException(key, "사용자가 만든 워크플로우에는 되돌릴 기본값이 없다")
@@ -220,12 +246,13 @@ class WorkflowDraftService(
      */
     private fun requireAnyPermission(
         actorId: UUID,
+        scope: WorkflowScope,
         vararg candidates: WorkflowDefinitionPermission,
     ) {
         var first: RuntimeException? = null
         for (candidate in candidates) {
             try {
-                permissionResolver.requirePermission(actorId, candidate)
+                permissionResolver.requirePermission(actorId, candidate, scope)
                 return
             } catch (ex: WorkflowDefinitionAccessDeniedException) {
                 if (first == null) first = ex

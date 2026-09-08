@@ -12,6 +12,7 @@ import com.bts.workflow.domain.exception.WorkflowStatusInUseException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.status.domain.exception.StatusNotFoundException
 import com.bts.workflow.status.repository.StatusRepository
@@ -45,6 +46,7 @@ class WorkflowStatusCompositionService(
     private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
     private val workflowCache: WorkflowCache,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -61,7 +63,11 @@ class WorkflowStatusCompositionService(
         statusId: UUID,
         displayOrder: Int,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(workflowKey),
+        )
         val workflowId = requireLiveWorkflow(workflowKey)
         statusRepository.findLiveById(statusId) ?: throw StatusNotFoundException(statusId)
 
@@ -83,7 +89,11 @@ class WorkflowStatusCompositionService(
         workflowKey: String,
         statusId: UUID,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(workflowKey),
+        )
         val workflowId = requireLiveWorkflow(workflowKey)
         val composition = compositionRepository.findComposition(workflowId)
         val target =
@@ -108,7 +118,11 @@ class WorkflowStatusCompositionService(
         workflowKey: String,
         orderedStatusIds: List<UUID>,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(workflowKey),
+        )
         val workflowId = requireLiveWorkflow(workflowKey)
         val current = compositionRepository.findComposition(workflowId).map { it.statusId }.toSet()
 

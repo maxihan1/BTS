@@ -18,6 +18,7 @@ import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import org.slf4j.LoggerFactory
@@ -52,6 +53,7 @@ class WorkflowCommandService(
     private val workflowCache: WorkflowCache,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val projectLookupPort: ProjectLookupPort,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -67,7 +69,12 @@ class WorkflowCommandService(
         actorId: UUID,
         command: CreateWorkflowCommand,
     ): UUID {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.CREATE)
+        // 아직 저장되지 않아 소유를 DB 에서 되짚을 수 없다 — 요청이 지목한 프로젝트가 근거다.
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.CREATE,
+            scopeResolver.ofProjectKey(command.projectKey),
+        )
         if (command.statuses.isEmpty()) {
             throw WorkflowInvalidRequestException(
                 command.key,
@@ -99,7 +106,11 @@ class WorkflowCommandService(
         key: String,
         command: UpdateWorkflowCommand,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(key),
+        )
         val workflowId = requireLiveWorkflow(key)
         if (writeRepository.isLocked(workflowId)) {
             throw WorkflowLockedException(key)
@@ -122,7 +133,13 @@ class WorkflowCommandService(
         actorId: UUID,
         key: String,
     ) {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.DELETE)
+        // 소유를 사실대로 넘긴다. 「삭제는 시스템 관리자만」은 판정기가 D6 대로 정한다 —
+        // 호출부가 Global 로 눌러 쓰면 그 규칙이 두 곳에 생기고 한쪽만 바뀐다.
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.DELETE,
+            scopeResolver.ofWorkflow(key),
+        )
         val workflowId = requireLiveWorkflow(key)
         if (writeRepository.isLocked(workflowId)) {
             throw WorkflowLockedException(key)
@@ -157,7 +174,13 @@ class WorkflowCommandService(
         newName: String,
         targetProjectKey: String?,
     ): UUID {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.CREATE)
+        // 원본이 아니라 **사본**의 소유가 근거다 — 전역 템플릿을 내 프로젝트로 복제하는 것이
+        // Jira 권장 우회로이고, 그때 판정 대상은 만들어질 사본 쪽이다.
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.CREATE,
+            scopeResolver.ofProjectKey(targetProjectKey),
+        )
         val sourceId = requireLiveWorkflow(sourceKey)
         val ownerId = resolveOwner(newKey, targetProjectKey)
         if (writeRepository.existsByKey(newKey, ownerId)) {
@@ -373,7 +396,11 @@ class WorkflowCommandService(
         actorId: UUID,
         workflowKey: String,
     ): UUID {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(workflowKey),
+        )
         val workflowId = requireLiveWorkflow(workflowKey)
         if (writeRepository.isLocked(workflowId)) {
             throw WorkflowLockedException(workflowKey)

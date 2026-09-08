@@ -4,7 +4,7 @@ package com.bts.workflow.scheme.web
 
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
@@ -283,7 +283,7 @@ class WorkflowSchemeExceptionHandlerTest {
             throw WorkflowSchemeAccessDeniedException(
                 actorId = UUID.fromString("00000000-0000-4000-8000-000000000001"),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
     }
 }

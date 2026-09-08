@@ -33,7 +33,7 @@ interface ProjectLookupPort {
     /**
      * [projectId] 에 해당하는 프로젝트 키를 반환한다.
      *
-     * 소유 프로젝트 UUID 를 권한 스코프([com.bts.shared.permission.WorkflowSchemeScope.Project])로
+     * 소유 프로젝트 UUID 를 권한 스코프([com.bts.shared.permission.WorkflowScope.Project])로
      * 옮길 때 쓴다 — 스코프는 키를 요구하는데 `workflows.project_id` · `workflow_schemes.project_id`
      * 는 UUID 라서 한 번 되짚어야 한다(FR-WF-08).
      *

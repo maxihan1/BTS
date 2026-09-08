@@ -63,7 +63,7 @@ import java.util.UUID
  * [WorkflowSchemeApplicationService][com.bts.workflow.scheme.application.WorkflowSchemeApplicationService])
  * 이 `actor = WorkflowSchemeApplicationService.SYSTEM_ACTOR`(nil UUID sentinel)로
  * `assignToProject`를 호출하고, 그 메서드는 `WorkflowSchemePermission.ASSIGN_SCHEME` 권한을
- * `WorkflowSchemeScope.Project` 범위로 요구한다. prod 구현체
+ * `WorkflowScope.Project` 범위로 요구한다. prod 구현체
  * [com.atlas.bts.identity.permission.IdentityAccessWorkflowSchemePermissionResolver.hasProjectPermission]
  * 은 `membershipRepo.findByProjectAndUser(projectId, actorId)` 로 **actor 의 프로젝트 멤버십**을 먼저
  * 요구하는데, SYSTEM_ACTOR(`00000000-0000-0000-0000-000000000000`)는 `users` 테이블에 존재하지 않는

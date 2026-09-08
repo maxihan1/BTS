@@ -5,7 +5,7 @@ package com.bts.workflow.validator.web
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
@@ -120,7 +120,7 @@ class ValidatorControllerTest {
         open fun manageSchemeGuard(resolver: WorkflowSchemePermissionResolver): ManageSchemeGuard =
             ManageSchemeGuard(
                 resolver,
-                mockk { every { ofWorkflow(any()) } returns WorkflowSchemeScope.Global },
+                mockk { every { ofWorkflow(any()) } returns WorkflowScope.Global },
             )
 
         @Bean
@@ -826,13 +826,13 @@ class ValidatorControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 actorId = UUID.fromString(DENIED_ACTOR),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
     }
 
@@ -841,7 +841,7 @@ class ValidatorControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
     }

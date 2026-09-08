@@ -14,6 +14,7 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.globalOnlyOwnershipScope
 import com.bts.workflow.jooq.tables.WorkflowDrafts.Companion.WORKFLOW_DRAFTS
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.PermissionResolver
@@ -169,6 +170,7 @@ class WorkflowDraftServiceIntegrationTest {
                     PostActionRepository(dsl, objectMapper),
                     ruleGuard,
                 ),
+            scopeResolver = globalOnlyOwnershipScope(),
         )
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────

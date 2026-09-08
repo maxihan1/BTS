@@ -3,7 +3,7 @@
 package com.bts.workflow.postaction
 
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.TransitionRuleGuard
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowTransition
@@ -251,7 +251,7 @@ class PostActionE2EIntegrationTest {
             val guard =
                 ManageSchemeGuard(
                     permissionResolver,
-                    mockk { every { ofWorkflow(any()) } returns WorkflowSchemeScope.Global },
+                    mockk { every { ofWorkflow(any()) } returns WorkflowScope.Global },
                 )
             val controller = PostActionController(service, guard)
 

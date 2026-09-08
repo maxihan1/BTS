@@ -4,6 +4,7 @@ package com.bts.workflow.status
 
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.status.application.StatusCommandService
@@ -67,6 +68,7 @@ class StatusCrudIntegrationTest {
                 override fun requirePermission(
                     actorId: UUID,
                     permission: WorkflowDefinitionPermission,
+                    scope: WorkflowScope,
                 ) = Unit
             }
 
