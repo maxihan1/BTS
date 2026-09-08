@@ -25,6 +25,12 @@ Maxi 원문 4건 + 추가 1건.
 | 프로젝트 아이콘 저장 방식 (백엔드 지원 0) | **풀스택 — 마이그레이션 + API + UI** |
 | 설정 페이지 진입 시 사이드바 | **사이드바 전체 교체** + 「← 프로젝트로 돌아가기」 |
 | 잔재 worktree 3개 | 유지 + 새 작업 추가 |
+| (조회 후) 리포트 화면의 탭바 | **유지** + 리포트 내부 서브내비 — 탭이므로 자기를 지우면 안 된다 |
+| (조회 후) 아이콘 배치 | **별도 메뉴 없음.** 「일반」 탭에 추가 + **생성 폼에도 선택 UI** + **기본 아이콘 나열** |
+
+⚠️ 아래 두 행은 **Jira 실물 재조회가 착수 가정을 뒤집은 결과**다. 경위는 `## Jira 대조` §「조회가
+착수 판단 2건을 뒤집었다」에 있다 — ①은 컨트롤러가 구 내비게이션 문서를 인용한 오류였고
+Maxi 의 되물음이 그것을 잡았다.
 
 ### 컨트롤러 결정 (Maxi 에게 고지 후 진행)
 
@@ -58,6 +64,86 @@ T3 선언 근거는 ④가 `projects` 테이블 마이그레이션을 요구한�
 - FR-UX-06 · FR-UX-08 — 사이드바/프로젝트 내비게이션 정본
 - FR-PJ-02 · FR-PJ-03 — 프로젝트 CRUD (아이콘 필드가 여기 붙는지 신규 FR 인지 spec 이 판정)
 - 신규 FR 필요 여부는 `docs/rules/fr-sync-checklist.md` 전수 동기화 대상
+
+## Jira 대조
+
+계약 §1 절차. 조회일 **2026-09-08** · 전부 Cloud · 도메인 `support.atlassian.com`.
+
+### §1-0 승계 — 재조회하지 않은 것
+
+`docs/plans/2026-09-07-jira-parity-project-header-and-scoped-tabs.md` 가 남긴 탭 «집합» 근거를
+**URL·조회일 그대로** 승계한다. 이 PR 은 탭 집합에 「리포트」 하나를 더할 뿐 규칙을 바꾸지 않는다.
+
+| # | 항목 | 출처 | 조회일 |
+|---|---|---|---|
+| J5-1 | 탭은 수평 나열이고 집합은 스페이스 유형·활성 기능에 달렸다 | [space navigation](https://support.atlassian.com/jira-software-cloud/docs/manage-and-customize-the-project-navigation/) | 2026-09-03 |
+| J5-12 | 목록·앱 탭은 제거할 수 없다 — 뷰가 스페이스 안에 산다 | 〃 | 2026-09-07 |
+| J5-13 | 착지 탭을 스페이스 단위로 정한다 | 〃 | 2026-09-07 |
+
+### 신규 조회 — 조작감 갭 표
+
+| # | 항목 | 원문 인용 | 출처 (Cloud · 2026-09-08) |
+|---|---|---|---|
+| JR-1 | **리포트는 스페이스 «내비게이션»(수평 탭)에서 연다.** 사이드바가 아니다 | "Navigate to the space you want to report on." / "Select **Reports** from the space navigation." | [generate a report](https://support.atlassian.com/jira-software-cloud/docs/generate-a-report/) |
+| JR-2 | 리포트 탭의 착지는 **개별 차트가 아니라 인사이트 대시보드**이고, 전체 목록은 그 안의 버튼으로 연다 | 착지 후 "space insights dashboard" 를 보고 "**More reports** button to open the classic Jira report catalog" | 〃 |
+| JR-3 | 신 내비게이션 **사이드바 항목에 Reports 가 없다** — For you · Recent · Starred · Spaces · Dashboards · Assets · Goals · Apps · More/Customize sidebar 가 전부 | 사이드바 항목 열거에 Reports 부재 · 탭 쪽은 "Horizontal space navigation … Space admins can reorder and remove space tabs" | [what is the new navigation in Jira](https://support.atlassian.com/jira-software-cloud/docs/what-is-the-new-navigation-in-jira/) |
+| JS-1 | 설정 진입은 **사이드바 스페이스 이름 옆 `⋯`** 이다 | "Next to the name of your space in the sidebar, select **More actions** (•••), then **Space settings**." | [navigate to your work](https://support.atlassian.com/jira-software-cloud/docs/navigate-to-your-work/) |
+| JS-2 | 설정 안에서는 **설정 자체의 사이드바**로 페이지를 고른다 | "…then selecting **Space settings** and choosing **Permissions from the sidebar**." | [change which permission scheme a space uses](https://support.atlassian.com/jira-cloud-administration/docs/change-which-permission-scheme-a-space-uses/) |
+| JI-1 | 아이콘은 **별도 메뉴가 아니라 「Details」 페이지** 안에 있다 | "Select **Details**." / "Under your space's current avatar, select **Change icon**." | [edit a space's details](https://support.atlassian.com/jira-work-management/docs/edit-a-projects-details/) |
+| JI-2 | 아이콘은 **기본 아이콘 목록 중 선택**하거나 업로드한다 | "Choose from a **default icon** or upload your own, then use **Select** to save your choice." | 〃 |
+| JI-3 | Details 페이지는 아바타를 **다른 기본 필드와 한 화면에** 둔다 | 필드 = Name · Space key · URL · Description · Category · **Avatar** · Space owner · Default assignee · Space background · Card covers | 〃 |
+
+### ★ 조회가 착수 판단 2건을 뒤집었다
+
+**① 리포트 위치 — 컨트롤러가 틀렸고 Maxi 가 맞았다.**
+1차 조회에서 [velocity chart](https://support.atlassian.com/jira-software-cloud/docs/view-and-understand-the-velocity-chart/)
+의 "From your space's **sidebar**, select **Reports** then **Velocity Chart**" 를 근거로
+「Jira 는 리포트를 사이드바에 둔다」고 보고했다. Maxi 가 「지라 클라우드에서는 리포트가
+사이드바에 없는데?」로 되물어 재조회했고, **그 문서 쪽이 구 내비게이션 문구**임이 확인됐다 —
+정본 진입 문서(`generate-a-report`)는 space navigation 이라 적고, 신 내비게이션 문서의
+사이드바 항목 열거에 Reports 가 아예 없다(JR-1·JR-3).
+**한 문서의 한 문장을 근거로 삼은 것이 원인이다.** 같은 개념을 두 문서가 다르게 적을 때
+어느 쪽이 현행인지는 「그 개념의 정본 진입 문서」가 정한다.
+
+**② 아이콘 배치 — Jira 는 별도 메뉴를 두지 않는다.**
+Maxi 원문 ④는 「프로젝트 아이콘 메뉴 신설」이었으나 Jira 는 Details 안이다(JI-1·JI-3).
+Maxi 결정으로 **Jira 배치를 채택**하고 여기에 **생성 폼 아이콘 선택 UI**를 더한다.
+
+### 채택 (이번 변경이 따르는 Jira 동작)
+
+| # | 채택 | 물리는 요구 |
+|---|---|---|
+| A-1 | 리포트를 **정본 탭으로 승격**하고 사이드바 트리에서 뺀다 (JR-1·JR-3) | Maxi ① + ⑤ |
+| A-2 | 리포트 탭 착지는 **개별 차트가 아니라 리포트 목록 화면** (JR-2) | Maxi ⑤ 후속 결정 |
+| A-3 | 리포트 화면에서도 **탭바를 유지**한다 — 탭이므로 (J5-1·JR-1) | Maxi 결정(재확인) |
+| A-4 | 설정은 `⋯` 로 들어가고 **자체 사이드바**를 가진다 (JS-1·JS-2) | Maxi ② |
+| A-5 | 아이콘은 **「일반(Details)」 안**에 두고 **기본 아이콘 목록**에서 고른다 (JI-1·JI-2·JI-3) | Maxi ④ |
+
+### 의도적 편차
+
+- **X-N1 — 설정 화면에서 탭바를 감춘다.** Jira 문서는 설정 진입 시 스페이스 탭이 남는지
+  **한 줄도 적지 않는다**(JS-1·JS-2 어느 쪽도 서술 없음 · 실물 스크린샷도 없음).
+  근거가 없으므로 「Jira 가 그렇게 한다」고 주장하지 않는다. Maxi 지적 ③을 근거로 감추고,
+  **이것이 문서 근거가 아니라 제품 결정임을 여기 명시**한다.
+- **X-N2 — 컴포넌트·버전은 탭으로만 남기고 설정 메뉴에서 뺀다.** 두 화면의 라우트가
+  `/settings/...` 라 X-N1 과 충돌한다. Jira 는 릴리스·컴포넌트를 스페이스 탭으로 두므로
+  «탭이라는 성격»은 Jira 정합이지만, **경로를 안 옮기고 목록에서만 빼는 것**은 이 저장소 사정이다.
+  경로 이동은 라우트 id 변경이라 별건으로 남긴다.
+- **X-N3 — 아이콘 업로드는 하지 않는다.** JI-2 는 「기본 아이콘 선택 **또는** 업로드」인데
+  업로드는 MinIO 연동·썸네일·용량 정책이 붙는다. **기본 아이콘 목록만** 채택하고 업로드는
+  이연한다. Maxi 결정 「지라처럼 템플릿이 나열 되어 있어야 함」이 정확히 앞 절반이다.
+- **X-N4 — 생성 폼 아이콘 선택은 Jira 대응이 없다.** Jira 스페이스 생성 플로우가 아이콘을
+  묻는다는 근거를 찾지 못했다(Details 는 «생성 후» 편집 화면이다). Maxi 요구
+  「프로젝트 생성 시 아이콘 추가하는 UI가 필요」를 그대로 채택하되, **대응 없음 — 설정 화면과
+  같은 아이콘 그리드 컴포넌트를 재사용**하는 것으로 ADS 준용 대신 자체 자산 재사용을 근거로 삼는다.
+
+### Maxi 최종 결정 (조회 결과 반영 후)
+
+| 항목 | 결정 |
+|---|---|
+| 리포트 | **탭바에 리포트 탭** + 리포트 화면에서 **탭바 유지** + 리포트 내부 서브내비 |
+| 아이콘 | **생성 폼에 아이콘 선택 UI** + **Jira 처럼 기본 아이콘 나열** + **「일반」 탭에 추가** (별도 메뉴 X) |
+| 설정 | 사이드바 전체 교체 |
 
 ## 도메인 정리 (← /bts-spec §1 채움)
 
