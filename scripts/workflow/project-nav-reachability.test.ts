@@ -64,10 +64,26 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const LEGACY_SOURCE_SHA = '26e9a6d07';
 
 /**
+ * 픽스처 원소 수 — 줄면 보호 대상이 조용히 빠진다. 이 상수와 배열이 **서로를 검사한다.**
+ *
+ * ### 왜 16인가
+ * **리포트 4 + 프로젝트 설정 12** 다. 설정 12 중 「일반」(`settings/details`)은 소스에서
+ * `{ to: PROJECT_SETTINGS_PATH, label: '일반' }` 로 **상수 참조 뒤에** 있었고, 그래서 리터럴만
+ * grep 한 `e2e/project-tree.spec.ts` 의 `SETTINGS_LINK_CONTRACT` 는 **11** 만 셌다(리뷰 E-3).
+ * 즉 **12 가 아니라 11 로 보이던 자리가 실재한다** — 그것이 이 상수를 못박는 이유다.
+ *
+ * 직접 링크 2(백로그·타임라인)는 이미 정본 탭이 덮고 있어 트리가 유일한 진입로가 아니었다.
+ * 그래서 18 이 아니라 16 이다.
+ *
+ * 🛑 **줄이지 마라.** 원소를 하나 지워도 차집합 `LEGACY_16 ∖ reachable` 은 더 작아질 뿐
+ * 여전히 비어 있어 판별식이 초록이다. 그 순간 그 경로가 보호 대상에서 조용히 빠진다.
+ */
+const LEGACY_COUNT = 16;
+
+/**
  * 사이드바 트리가 **유일한 진입로**로 들고 있던 16경로.
  *
- * 리포트 4 + 프로젝트 설정 12. 직접 링크 2(백로그·타임라인)는 이미 정본 탭이 덮고 있어
- * 트리가 유일한 진입로가 아니었으므로 대상이 아니다.
+ * 구성과 그 근거는 {@link LEGACY_COUNT} 에 있다.
  *
  * 출처: `git show <LEGACY_SOURCE_SHA>:apps/web/src/components/layout/ProjectTree.tsx`
  * (`REPORT_LINKS` · `SETTINGS_LINKS`. 「일반」의 `to` 는 상수 `PROJECT_SETTINGS_PATH` =
@@ -202,6 +218,14 @@ export function sliceArrayLiteral(source: string, constName: string): string {
  * **정확히 11개**가 되어 1건이 조용히 무방비였다. 그래서 `to:` **출현 수**와 **리터럴로 읽힌
  * 수**가 다르면 통과시키지 않고 실패로 올린다 — 상수 참조가 다시 생기면 즉시 걸린다.
  *
+ * ### ⚠️ 경로 리터럴은 **단따옴표만** 받는다 — 의도된 fail-closed 다
+ * 정본 3파일이 언젠가 `to: "…"` 나 백틱으로 바뀌면 이 함수는 **조용히 0건을 내지 않고 throw**
+ * 한다(위 개수 등식이 잡는다). 넓게 받는 것보다 이쪽이 낫다고 판단했다 — 백틱을 허용하는
+ * 순간 `` to: `/projects/${key}` `` 같은 **정적 경로가 아닌 것**까지 도달 집합에 들어오는데,
+ * 그것은 과소계상보다 나쁜 **거짓 도달**이다.
+ * 🛑 따옴표를 바꾸다 영문 모를 red 를 만났다면 그것이 이 설계다. **정규식을 넓히지 말고**
+ * 정본의 따옴표를 되돌리거나, 넓힐 값어치가 있다고 판단되면 별건으로 올려라.
+ *
  * @param source 정본 파일 원문(주석 포함 가능).
  * @param constName 읽을 상수 이름.
  * @returns 선언 순서대로의 라우트 경로 목록.
@@ -263,6 +287,32 @@ export function unreachablePaths(
 }
 
 describe('프로젝트 내비 도달성 (A-2)', () => {
+  // ★이 test 를 「정본 3개를 … 읽었다」 안에 합치지 않는다. 그쪽은 **파일에서 읽은 결과**를
+  //   재는 자리고, 이쪽은 **이 파일 안의 픽스처 자신**을 재는 자리다. 층위가 다르다 —
+  //   합치면 파일 파싱이 죽었을 때와 픽스처가 줄었을 때가 한 이름 아래 섞여, 실패 메시지만
+  //   보고는 어느 쪽을 고쳐야 하는지 갈리지 않는다.
+  //   순서상 **맨 앞**에 둔다. 아래 두 단언의 전제이기 때문이다.
+  test('픽스처 LEGACY_16 자신이 16건 그대로다 (픽스처의 비-공허)', () => {
+    // 🛑 여기가 없으면 픽스처만 무방비다. 아래 「16경로 전수」 test 도 이것을 못 막는다 —
+    //    그 test 는 LEGACY_16 을 **순회**하므로 배열이 줄면 순회 횟수만 줄고 통과한다.
+    assert.equal(
+      LEGACY_16.length,
+      LEGACY_COUNT,
+      `LEGACY_16 이 ${LEGACY_16.length}건이다 — ${LEGACY_COUNT} 이어야 한다.\n` +
+        '  줄었다면 그 경로가 보호 대상에서 조용히 빠진 것이다. 차집합은 더 작아질 뿐 여전히 비어\n' +
+        '  있으므로 이 단언 말고는 아무것도 그 사실을 말해 주지 않는다.\n' +
+        `  구성: 리포트 4 + 프로젝트 설정 12 (출처 git show ${LEGACY_SOURCE_SHA}:apps/web/src/components/layout/ProjectTree.tsx)`,
+    );
+
+    // 중복이 섞이면 길이는 16 그대로인데 **실제로 지키는 경로는 15**가 된다.
+    // 길이만 재면 이 형태를 놓치므로 같은 자리에서 함께 잰다.
+    assert.equal(
+      new Set(LEGACY_16).size,
+      LEGACY_COUNT,
+      'LEGACY_16 에 중복이 있다 — 길이는 맞는데 실제 보호 대상이 그만큼 줄었다',
+    );
+  });
+
   test('정본 3개를 개수 하한 이상으로 읽었다 (공허 통과 방지)', () => {
     const survey = surveyReachable();
 
