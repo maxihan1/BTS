@@ -145,11 +145,50 @@ Maxi 결정으로 **Jira 배치를 채택**하고 여기에 **생성 폼 아이�
 | 아이콘 | **생성 폼에 아이콘 선택 UI** + **Jira 처럼 기본 아이콘 나열** + **「일반」 탭에 추가** (별도 메뉴 X) |
 | 설정 | 사이드바 전체 교체 |
 
-## 도메인 정리 (← /bts-spec §1 채움)
+## 도메인 정리
 
-## 스펙 (← /bts-spec §2 채움 · T3 이므로 `docs/specs/` 본체를 여기서 링크)
+| 항목 | 값 |
+|---|---|
+| BC | **`issue-tracking` 단일** — `projects` 테이블이 `issue-tracking/V001__issues_initial.sql` 소유 · `BC_KEYWORDS` 의 '프로젝트' 도 같은 BC (정본 `scripts/workflow/classify-task.ts`) |
+| 영향 엔티티 | `Project` (Aggregate Root) — `id·key·name·archivedAt` 에 **`iconKey` 1개 추가** |
+| 새 용어 | **프로젝트 아이콘** — Maxi 승인(2026-09-08)으로 `glossary.md` 등재. 「사용자 아바타(MinIO 업로드)」와 **구분해서** 적는다 |
+| 관련 ADR | **3건 대조 · 충돌 0.** `fr-ux-06-jira-redesign` **D2**(「프로젝트 선택 시 사이드바가 프로젝트 메뉴로 확장」)는 이 PR 의 서브앱 사이드바를 **지지**한다 — 무효화 아님. 같은 ADR 의 `aria-label` 4종 · `<h1>` 34건은 즉사 계약으로 승계(C-1·C-3). `fr-pr-01-user-profile-placement` **D4**(아바타 = MinIO 배선)는 편차 X-N3(업로드 이연)의 근거로 인용 |
+| 신규 ADR | **1건 필요** — 아이콘 카탈로그를 프론트가 소유하고 서버는 형식만 검증한다는 결정(스펙 D-2) |
+| FR | **신규 0 · 145 불변.** FR-PJ-01·FR-PJ-03 **문구 확장** (Maxi 결정) |
 
-## Sanity Check (← /bts-spec §3 채움)
+## 스펙
+
+**본체** → [`docs/specs/2026-09-08-project-nav-subapp-icon.md`](../specs/2026-09-08-project-nav-subapp-icon.md) (9섹션 + 설계결정 D-1~D-4 + 엣지 E-1~E-10 + 제약 C-1~C-7 + 완료기준 A-1~A-15)
+
+핵심 3줄.
+
+1. **판정을 한 곳에 모은다.** 순수 함수 `resolveProjectShellMode(pathname, projectKey)` 가
+   `'tree' | 'settings'` 를 내고 **사이드바와 탭바가 그 함수 하나를 공유**한다. 판정은
+   `PROJECT_SETTINGS_NAV` 목록에서 **유도**되므로 컴포넌트·버전 예외를 따로 쓰지 않는다.
+2. **리포트는 정본 탭 한 행이 전부다.** `PROJECT_VIEW_TABS` 9→10 · `exact:false` 라
+   하위 리포트 화면에서도 탭이 활성이고 탭바가 남는다(A-3).
+3. **아이콘 카탈로그는 프론트 단일 소유.** 서버는 `^[a-z][a-z0-9-]{1,31}$` 형식만 보고,
+   미지의 키는 **첫 글자 아바타로 폴백**한다. 마이그레이션 1건(`V040`) + `init_codegen.sql` 미러 동반.
+
+## Sanity Check
+
+**❓ 발견 5건** — 전부 스펙 본문에 반영했다(재작성 아님 · 보강 1회).
+
+| # | 발견 | 반영 |
+|---|---|---|
+| 1 | Kotlin `data class` 의 nullable 필드는 「JSON 부재」와 「명시적 null」이 **둘 다 null** → 이름만 바꾸는 PATCH 가 아이콘을 지운다 | D-4 · E-1 · A-10 |
+| 2 | 「사이드바에서 뺐다」와 「다른 데서 닿는다」가 서로를 검사하지 않는다 (`two-lists-never-check-each-other`) | **A-2 차집합 판별식 + 비-공허 짝** 신설 |
+| 3 | 아이콘 카탈로그가 DB CHECK·Kotlin enum·TS 3벌이 될 뻔했다 | D-2 로 프론트 단일 소유 · 대가는 E-3 폴백 + A-11 |
+| 4 | 탭 9→10 이 오버플로 e2e 의 개수 단언을 깰 수 있다 | A-6 + plan 이 `project-tabs-overflow.spec.ts` 실측 |
+| 5 | 「컴포넌트·버전을 설정에서 뺀다」가 도달성 감소로 오해될 수 있다 — 실측상 둘은 **이미 정본 탭** | A-2 가 기계적으로 증명 |
+
+**★ Maxi 결정이 검증 공백을 하나 만들었고 그것도 메웠다.**
+「기존 FR 확장 · 145 유지」를 고르면 카운트가 안 바뀌어 `verify-master-plan.sh` 룰 E 가
+FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하는 쪽이 오히려 기계 검증을
+받았을 것이다. 결정은 그대로 받되 **A-13′ 문자열 판별식**(sdd ↔ product 두 파일의 FR-PJ-01·03
+행에 `icon` 이 둘 다 있는가 · 비-공허 짝)을 완료기준에 신설했다.
+
+**✅ 통과** — gap 잔여 0. 2회 보강 없이 1회로 닫혔다.
 
 ## Plan (← /bts-plan 채움)
 
