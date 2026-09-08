@@ -60,7 +60,7 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     '/_shell/projects/$projectKey/board',
     '/_shell/projects/$projectKey/board/settings',
     '/_shell/projects/$projectKey/timeline',
-    // 편차 X9 폐기 (J5-12) — 9탭 전부가 프로젝트 스코프 라우트를 갖는다
+    // 편차 X9 폐기 (J5-12) — 정본 탭 10종 전부가 프로젝트 스코프 라우트를 갖는다
     '/_shell/projects/$projectKey/issues',
     '/_shell/projects/$projectKey/calendar',
     '/_shell/projects/$projectKey/dashboards',
