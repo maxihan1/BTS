@@ -1,8 +1,9 @@
--- jOOQ 코드 생성용 초기화 SQL (project-workflow BC) — V200 · V203 · V205 · V207 · V208 구조 미러 (시드 제외, codegen은 구조만 필요)
+-- jOOQ 코드 생성용 초기화 SQL (project-workflow BC) — V200 · V203 · V205 · V207 · V208 · V209 구조 미러 (시드 제외, codegen은 구조만 필요)
 --
 -- workflows / workflow_states / workflow_transitions / workflow_validators / workflow_post_actions DDL 은
 -- V200__init_workflow.sql 과 동일하게 유지한다(미러 누락 시 jOOQ 상수 미생성).
 -- workflows 의 version/origin/deleted_at/is_locked 는 V205__workflows_add_version_origin.sql 과 동일하게 유지한다.
+-- workflows 의 project_id 와 key 유니크 3종은 V209__workflow_project_ownership.sql 과 동일하게 유지한다.
 -- statuses / workflow_statuses DDL 은 V203__add_global_status_catalog.sql 과 동일하게 유지한다.
 -- workflow_transitions 의 kind/from_status_id/to_status_id/display_order 는
 -- V207__transitions_multi_and_global.sql 과 동일하게 유지한다 (파일 끝의 V207 블록).
@@ -28,7 +29,7 @@
 -- ── workflows ─────────────────────────────────────────────────────────────────
 CREATE TABLE workflows (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    key         TEXT        NOT NULL,  -- V206. 컬럼 UNIQUE → 부분 유니크 인덱스 uq_workflows_key
+    key         TEXT        NOT NULL,  -- V206. 컬럼 UNIQUE → 부분 유니크 인덱스 · V209 에서 소유별로 갈렸다
     name        TEXT        NOT NULL,
     description TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -38,10 +39,19 @@ CREATE TABLE workflows (
     origin      TEXT        NOT NULL DEFAULT 'CUSTOM',
     deleted_at  TIMESTAMPTZ,
     is_locked   BOOLEAN     NOT NULL DEFAULT FALSE,
+    -- V209. NULL=전역 공유 템플릿, 값=그 프로젝트 전용 (cross-BC 라 FK 없음)
+    project_id  UUID,
     CONSTRAINT ck_workflows_origin CHECK (origin IN ('SEED', 'CUSTOM'))
 );
 
-CREATE UNIQUE INDEX uq_workflows_key ON workflows (key) WHERE deleted_at IS NULL;
+-- V209. key 유니크가 소유별로 갈렸다. 전역끼리의 유일성을 따로 두지 않으면
+-- NULL 은 서로 같지 않아 전역 key 중복이 조용히 통과한다.
+CREATE UNIQUE INDEX uq_workflows_key_global
+    ON workflows (key) WHERE project_id IS NULL AND deleted_at IS NULL;
+CREATE UNIQUE INDEX uq_workflows_key_project
+    ON workflows (project_id, key) WHERE project_id IS NOT NULL AND deleted_at IS NULL;
+CREATE INDEX ix_workflows_project_active
+    ON workflows (project_id) WHERE deleted_at IS NULL;
 
 -- ── workflow_states ───────────────────────────────────────────────────────────
 CREATE TABLE workflow_states (

@@ -198,7 +198,10 @@ class SprintBurndownLookupAdapter(
         changes: List<StatusChangeRow>,
         typeIdToKey: Map<Long, IssueTypeKey>,
         stateCache: Map<IssueTypeKey, Map<String, String>>,
-    ): Instant? = changes.lastOrNull { categoryOf(row, it.toValue, typeIdToKey, stateCache) == StatusCategory.DONE }?.changedAt
+    ): Instant? =
+        changes
+            .lastOrNull { categoryOf(row, it.toValue, typeIdToKey, stateCache) == StatusCategory.DONE }
+            ?.changedAt
 
     /** [stateKey] 가 이 이슈 타입의 워크플로우에서 어느 카테고리인가. 모르면 TODO 로 폴백한다. */
     private fun categoryOf(
