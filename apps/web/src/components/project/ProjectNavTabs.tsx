@@ -1,4 +1,4 @@
-// 프로젝트 뷰 전환 탭바 — 정본 9탭 + 폭 부족 시 「더 보기」 오버플로 (Jira 패리티 J5)
+// 프로젝트 뷰 전환 탭바 — 정본 10탭 + 폭 부족 시 「더 보기」 오버플로 (Jira 패리티 J5)
 import { useState, type JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 import { navLabels } from '@/i18n/nav-labels'
@@ -11,7 +11,22 @@ import {
   type ProjectViewTab,
 } from '@/components/project/project-view-tabs'
 
-/** 탭 링크 공통 스타일 — 활성 표시는 TanStack 이 붙이는 `.active` 클래스에 건다(사이드바 관례) */
+/**
+ * 활성 탭에 붙는 클래스 — 🛑 **`activeProps` 에 직접 넘겨야 한다.**
+ *
+ * TanStack `Link` 의 `activeProps` 기본값이 `{ className: 'active' }` 인데, `activeProps` 를
+ * 주면 그 기본값이 **통째로 대체된다**(`link.js` 의 `functionalUpdate(activeProps, {}) ??
+ * STATIC_ACTIVE_OBJECT`). 그래서 `activeProps={{ 'aria-current': 'page' }}` 만 넘겼던 동안
+ * `aria-current` 는 붙는데 `active` 클래스가 사라져 아래 `[&.active]:` 규칙이 **한 줄도
+ * 발화하지 않았다** — 스크린리더는 현재 위치를 알고 **눈으로 보는 사람만 몰랐다.**
+ *
+ * 실측(2026-09-08 브라우저 눈확인 · `/projects/ATLAS/backlog`) — 활성 탭의 `fontWeight` 400 ·
+ * `color rgb(98,111,134)` 로 비활성과 **완전히 동일**했다. 유닛은 `aria-current` 만 봐서 전부
+ * 초록이었다. 짝 단언을 `__tests__/ProjectNavTabs.test.tsx` 가 클래스까지 함께 본다.
+ */
+const ACTIVE_CLASS = 'active'
+
+/** 탭 링크 공통 스타일 — 활성 표시는 위 `ACTIVE_CLASS` 가 붙는 `.active` 에 건다(사이드바 관례) */
 const TAB_LINK_CLASS =
   'inline-flex whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-muted-foreground ' +
   'hover:bg-accent hover:text-accent-foreground ' +
@@ -76,7 +91,7 @@ function ProjectViewTabLink(props: {
       {...(tab.usesProjectParam ? { params: { projectKey } } : {})}
       search={tabSearch(tab, boardScope)}
       activeOptions={{ exact: tab.exact }}
-      activeProps={{ 'aria-current': 'page' }}
+      activeProps={{ 'aria-current': 'page', className: ACTIVE_CLASS }}
       className={TAB_LINK_CLASS}
     >
       {tab.label}
@@ -131,7 +146,7 @@ export function ProjectNavTabs({
         `<ul>` 을 `flex-1` 로 두고 트리거를 형제로 놓으면 트리거가 렌더되는 순간 `<ul>` 이
         그만큼 좁아진다. 그런데 `computeVisibleTabIndexes` 는 예산에서 트리거 폭을 **또** 뺀다
         — 같은 폭을 두 번 빼는 것이다. 결과는 두 가지였다(실측).
-        ① **히스테리시스** — 880px 에서 9탭이 보이던 화면을 860px 로 좁혔다 880px 로 되돌리면
+        ① **히스테리시스** — 880px 에서 전량이 보이던 화면을 860px 로 좁혔다 880px 로 되돌리면
            6탭에 고정된다. 「트리거가 있는가」가 폭을 정하고 그 폭이 다시 트리거 유무를 정하는
            되먹임 고리다. 창을 줄였다 되돌리는 평범한 조작으로 전 화면 탭바가 틀어졌다.
         ② **한 칸을 헛되이 접는다** — 오른쪽이 비어 있는데도 마지막 탭이 팝오버로 들어갔다.

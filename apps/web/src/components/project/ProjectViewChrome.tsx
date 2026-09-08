@@ -8,6 +8,7 @@ import {
   resolveBacklogTabSearch,
   resolveBoardTabSearch,
 } from '@/components/project/project-view-tabs'
+import { resolveProjectShellMode } from '@/components/project/project-shell-mode'
 import { useBoards } from '@/hooks/use-boards'
 
 /** {@link ProjectViewChrome} Props */
@@ -39,6 +40,18 @@ export interface ProjectViewChromeProps {
  * 그 param 이 없다 — 그 셋은 크롬 없이 본문만 나온다(사이드바에서 들어온 전역 화면이다).
  * **프로젝트 스코프 형제 라우트**(`/projects/$key/issues` 등)가 따로 있고 탭은 그쪽을 가리킨다.
  *
+ * ### 설정 서브앱에서는 탭바를 렌더하지 않는다 (편차 X-N1)
+ * 설정 화면에도 요약·타임라인·보드…가 떠 있으면 「나는 지금 어느 서브앱에 있나」가 흐려진다.
+ * 판정은 **`resolveProjectShellMode` 하나**가 한다 — 사이드바(`Sidebar`)와 이 컴포넌트가 같은
+ * 함수를 부르고, 그 함수는 `PROJECT_SETTINGS_NAV` 목록에서 판정을 «유도»한다(완료기준 A-4).
+ *
+ * 🛑 **여기에 경로 판정식을 다시 쓰지 않는다.** `pathname.includes('/settings/')` 같은 식을
+ *    이 파일에 두면 `컴포넌트`·`버전` 탭(편차 X-N2 · 경로가 `/settings/...` 인데 정본 탭이다)을
+ *    위해 예외 분기가 붙고, 그 분기는 설정 메뉴 목록과 서로를 검사하지 않는 두 번째 목록이 된다.
+ *
+ * 🛑 **`ProjectViewHeader` 는 남긴다.** 제목까지 사라지면 설정 화면에 프로젝트 정체성이 0이 된다.
+ *    대신 헤더가 `shellMode` 를 받아 「프로젝트 설정」 부제를 낸다(★리뷰 D-3).
+ *
  * ### 편차 X7 승계 — 보드 스코프를 백로그 탭으로 실어 나른다
  * `?board=` 가 URL 에 **있을 때만** 보드 목록을 묻는다. 그 파라미터는 보드·백로그 화면에서만
  * 생기고 두 화면은 이미 같은 목록을 캐시에 갖고 있어 추가 요청이 사실상 없다. 없을 때
@@ -56,6 +69,7 @@ export function ProjectViewChrome({ children }: ProjectViewChromeProps): JSX.Ele
   const { data: boards } = useBoards(scopeLookupKey)
 
   const present = projectKey !== undefined && projectKey !== ''
+  const shellMode = resolveProjectShellMode(pathname, projectKey)
 
   // 두 탭의 규칙이 다르다 — 보드는 종류를 안 가리고, 백로그는 스크럼일 때만 받는다.
   const boardScope = {
@@ -67,8 +81,14 @@ export function ProjectViewChrome({ children }: ProjectViewChromeProps): JSX.Ele
     <ProjectChromeProvider present={present} actionHost={actionHost}>
       {present && projectKey !== undefined && (
         <>
-          <ProjectViewHeader projectKey={projectKey} onActionHost={setActionHost} />
-          <ProjectNavTabs projectKey={projectKey} pathname={pathname} boardScope={boardScope} />
+          <ProjectViewHeader
+            projectKey={projectKey}
+            onActionHost={setActionHost}
+            shellMode={shellMode}
+          />
+          {shellMode !== 'settings' && (
+            <ProjectNavTabs projectKey={projectKey} pathname={pathname} boardScope={boardScope} />
+          )}
         </>
       )}
       {children}
