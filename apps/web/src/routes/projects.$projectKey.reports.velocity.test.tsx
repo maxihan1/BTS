@@ -125,4 +125,22 @@ describe('VelocityReportPage', () => {
     expect(report).toBeInTheDocument()
     expect(report).toHaveAttribute('data-project-key', 'MYPROJECT')
   })
+
+  /**
+   * T-RP-V5. Page가 리포트 서브내비를 실제로 마운트하고 projectKey를 그대로 넘긴다 (A-7).
+   *
+   * 🛑 스텁이 있다고 마운트된 것이 아니다. 이 단언이 없으면 누가 `<ProjectReportsNav />` 를
+   *    본문에서 **지워도 이 파일은 초록으로 남는다** — 이 저장소가
+   *    `mock-swallowed-prop-is-invisible-to-unit-tests` 로 이름 붙인 양식 그대로다.
+   *    `data-project-key` 까지 보는 이유는 존재만 단언하면 `projectKey` 를 안 넘겨도
+   *    통과하기 때문이고, 기본값('ATLAS')이 아닌 키로 렌더해야 그 전달이 실제로 관측된다.
+   */
+  it('T-RP-V5: Page가 ProjectReportsNav를 렌더하고 projectKey를 전달한다', () => {
+    renderPage('MYPROJECT')
+
+    expect(screen.getByTestId('project-reports-nav')).toHaveAttribute(
+      'data-project-key',
+      'MYPROJECT',
+    )
+  })
 })
