@@ -441,9 +441,10 @@ class WorkflowSchemeApplicationService(
      *   [SYSTEM_ACTOR](EC-1 D10 auto-assign)는 권한 검사를 우회한다.
      * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
-     * @param schemeKey 배정할 스킴 키.
+     * @param schemeKey 배정할 스킴 키. 전역 템플릿이거나 [projectId] 소유여야 한다([requireAssignableTo]).
      * @return 저장된 [ProjectWorkflowSchemeAssignment].
-     * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없을 때.
+     * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없거나,
+     *   그 스킴이 **다른 프로젝트 소유**일 때 (FR-WF-08).
      */
     fun assignToProject(
         actor: ActorId,
@@ -463,6 +464,7 @@ class WorkflowSchemeApplicationService(
             )
         }
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        requireAssignableTo(scheme, projectId)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 
         val now = Instant.now()
@@ -484,6 +486,31 @@ class WorkflowSchemeApplicationService(
             ),
         )
         return assignment
+    }
+
+    /**
+     * [scheme] 이 [projectId] 프로젝트에 배정 가능한지 확인한다. 전역 템플릿이거나 그 프로젝트 소유여야 한다.
+     *
+     * ★ **읽기만 좁히면 쓰기가 구멍이 된다.** FR-WF-08 이 배정 후보 목록을
+     * 「전역 + 이 프로젝트」로 좁혔지만([listForProject]), 배정 자체가 같이 좁혀지지 않으면 A 프로젝트
+     * 관리자가 키만 알면 B 전용 스킴을 자기 프로젝트에 배정할 수 있다. 배정되는 순간 B 팀의 이슈타입
+     * 편성과 워크플로우가 A 에서 읽힌다. 목록과 쓰기가 서로를 검사하지 않는 자리다.
+     *
+     * 403 이 아니라 404 로 떨어뜨린다 — 403 은 「그 키의 스킴은 존재한다」를 응답으로 흘려서
+     * 남의 프로젝트 스킴 키를 열거하는 probe 가 된다.
+     *
+     * @param scheme 배정 대상 스킴.
+     * @param projectId 배정받을 프로젝트 `projects.id`.
+     * @throws WorkflowSchemeNotFoundException 스킴이 다른 프로젝트 소유일 때.
+     */
+    private fun requireAssignableTo(
+        scheme: WorkflowScheme,
+        projectId: UUID,
+    ) {
+        val owner = scheme.projectId ?: return
+        if (owner == projectId) return
+        log.warn("assignToProject 거부: 스킴 {} 은 다른 프로젝트 소유다", scheme.key.value)
+        throw WorkflowSchemeNotFoundException(scheme.key.value)
     }
 
     /**

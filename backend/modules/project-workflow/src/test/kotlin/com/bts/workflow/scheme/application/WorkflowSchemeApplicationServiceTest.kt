@@ -409,6 +409,34 @@ class WorkflowSchemeApplicationServiceTest {
     }
 
     @Test
+    fun `assignToProject — 다른 프로젝트 전용 스킴은 배정되지 않는다`() {
+        val schemeKey = WorkflowSchemeKey("other-project-scheme")
+        val myProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
+        val otherProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000b2")
+        every { schemeRepo.findByKey(schemeKey) } returns buildScheme(schemeKey, projectId = otherProjectId)
+
+        // 403 이 아니라 404 다 — 403 은 「그 키의 스킴은 있다」를 응답으로 흘린다(존재 probe).
+        assertThatThrownBy {
+            service.assignToProject(actor, myProjectId, "ATLAS", schemeKey)
+        }.isInstanceOf(WorkflowSchemeNotFoundException::class.java)
+
+        verify(exactly = 0) { assignmentRepo.saveAssignment(any()) }
+    }
+
+    @Test
+    fun `assignToProject — 그 프로젝트 소유 스킴은 그대로 배정된다`() {
+        val schemeKey = WorkflowSchemeKey("my-project-scheme")
+        val projectId = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
+        every { schemeRepo.findByKey(schemeKey) } returns buildScheme(schemeKey, projectId = projectId)
+        justRun { assignmentRepo.saveAssignment(any()) }
+        justRun { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+
+        service.assignToProject(actor, projectId, "ATLAS", schemeKey)
+
+        verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
+    }
+
+    @Test
     fun `findAssignedScheme — assignment 존재 시 해당 scheme 을 반환한다`() {
         val schemeKey = WorkflowSchemeKey("software-scheme")
         val schemeId = WorkflowSchemeId(1L)
@@ -577,6 +605,7 @@ class WorkflowSchemeApplicationServiceTest {
         name: String = key.value,
         isDefault: Boolean = false,
         id: WorkflowSchemeId = WorkflowSchemeId(1L),
+        projectId: UUID? = null,
     ): WorkflowScheme {
         val now = Instant.now()
         return WorkflowScheme.reconstruct(
@@ -588,7 +617,7 @@ class WorkflowSchemeApplicationServiceTest {
             createdAt = now,
             updatedAt = now,
             deletedAt = null,
-            projectId = null,
+            projectId = projectId,
         )
     }
 }

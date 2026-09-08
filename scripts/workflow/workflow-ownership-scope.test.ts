@@ -129,23 +129,26 @@ describe('워크플로우 소유 스코프', () => {
 
   test('규칙 B — 소유 파라미터에 기본값을 두지 않는다', () => {
     const offenders: string[] = []
-    let seen = 0
+    const barren: string[] = []
 
     for (const file of OWNER_PARAM_FILES) {
       const source = readFileSync(file, 'utf8')
+      let seenInFile = 0
       for (const match of source.matchAll(OWNER_PARAM)) {
-        seen += 1
+        seenInFile += 1
         if (match[1] === undefined) continue
         const line = source.slice(0, match.index).split('\n').length
         offenders.push(`${file}:${line}`)
       }
+      if (seenInFile === 0) barren.push(file)
     }
 
-    // 범위 확인 — 파일에서 파라미터가 사라지면(이름 변경·이동) 이 판별은 무음 통과한다.
-    assert.ok(
-      seen >= OWNER_PARAM_FILES.length,
-      `소유 파라미터 선언을 ${seen}건밖에 못 찾았다 (대상 파일 ${OWNER_PARAM_FILES.length}개) — ` +
-        '이름이 바뀌었는지 확인할 것',
+    // ★범위 확인은 **파일마다** 한다. 총합만 세면 한 파일이 선언 3개를 갖고 나머지 둘이 0개여도
+    //  합계가 문턱을 넘어 통과한다 — 판별 범위가 조용히 3분의 1로 줄어든 채 초록이다.
+    assert.deepEqual(
+      barren,
+      [],
+      '소유 파라미터 선언을 하나도 못 찾은 파일이 있다 — 이름이 바뀌었거나 다른 파일로 옮겼는지 확인할 것',
     )
 
     assert.deepEqual(
