@@ -721,3 +721,66 @@ TanStack `Link` 의 `activeProps` 기본값은 `{ className: 'active' }` 인데 
 - Task 3 verifier — 표 밖 2곳 추가 수정이 범위 이탈인지 물었을 때, 이 저장소 메모리
   (`지시문에 개수를 쓰지 마라 · 「N건」은 눈가리개`)를 인용해 **「6곳은 실측 결과지 상한
   선언이 아니다」**로 판정했다. controller 가 만든 함정을 정확히 지목한 것이다.
+
+### Task 7 실측 — E2E + 고아·stale 정리 (2026-09-08)
+
+신규 `e2e/project-settings-nav.spec.ts` 4시나리오. 지정 명령
+(`project-settings-nav project-tabs-overflow project-tree project-velocity project-cfd
+project-cycle-time project-member-management`)이 **3회 연속 29 passed · EXIT 0**
+(37.2s / 37.5s / 37.1s). 판별식 `# pass 633 / # fail 0 · EXIT=0`.
+
+#### 계획이 틀렸던 것 2건 — 둘 다 **처방을 그대로 쓰면 red** 였다
+
+| # | 계획·지시 | 실측 |
+|---|---|---|
+| 1 | 「셀렉터는 `exact: true` 규약을 지킨다」 | 리포트 착지 **카드 링크에는 그대로 못 쓴다.** `<Link>` 가 `CardTitle` 과 `CardDescription` 을 함께 감싸 접근가능 이름이 **`라벨 + 질문 한 줄`** 이다(실측 `벨로시티 스프린트마다 얼마나 끝냈나`). 라벨만으로 exact 를 걸면 **element not found**. 둘을 이어 붙여 exact 로 재도록 고쳤고, 그래서 같은 단언이 「질문 줄이 실제로 함께 나온다」(★리뷰 D-4)까지 함께 진다 |
+| 2 | 후속 1 처방 「스코프를 본문으로 좁힌다」 | **행까지만 좁히면 여전히 red.** 밥의 행 «안»에 역할 배지 span 과 역할 Select 의 값 span 이 둘 다 `멤버` 라 strict mode violation 이 난다. 같은 파일 S3 가 이미 `span.rounded-full` 로 그 둘을 가르고 있었다 — 처방은 「행」이 아니라 **「행 + 배지 span」** 이다 |
+
+#### B-4 가 끌고 온 기존 조회 — grep 전수 2곳
+
+`settings/details` 를 프로젝트명 heading 으로 찾던 자리는 **유닛 2건 + e2e 3줄**이었다.
+e2e 쪽(`project-crud.spec.ts` S4·S5)은 Task 7 의 files 목록에 **없던 파일**이다 —
+「그 화면의 기존 테스트를 먼저 grep 하라」가 없었으면 `level: 2` 조회 3줄이 머지 시점에
+red 로 터졌을 것이다. 이름은 이제 셸 헤더 `<h1>` 이므로 `level: 1` 로 옮겼고, S4 의
+「재조회로 새 이름 반영」 계약은 같은 `useProject` 캐시를 셸 헤더가 읽으므로 그대로 산다.
+
+유닛 T6-0(「RouteAdapter 가 projectKey 를 전달한다」)은 종전에 **헤딩 문구**로 전달을
+재고 있었는데, `useProject` 목이 인자와 무관하게 같은 값을 돌려주므로 그 단언은 애초에
+전달을 관측하지 못했다. 헤딩이 화면 이름으로 바뀐 김에 조회 훅의 **인자**를 직접 보게 했다.
+
+#### 🔴 계획 밖 발견 1건 — 파일 범위 밖이라 **미수정 보고**
+
+`apps/web/src/components/__tests__/button-primitive-usage.test.ts` 가 red 다
+(전체 유닛 `684 파일 중 1 failed` · 그 1건이 이것).
+
+```
+expected [ …(18) ] to deeply equal [ …(19) ]
+-   "components/layout/ProjectTree.tsx::P6",
+```
+
+Task 6 이 `ProjectTree` 에서 중첩그룹 디스클로저 `<button>` 을 지우면서 그 파일의 원시
+`<button>` 발생이 **0개**가 됐는데(`grep -n "<button" ProjectTree.tsx` → 0), 판별식의
+`EXPECTED_OUT`(`:164`)에 그 키가 남아 「초과」로 red 다. 그 판별식 자신의 주석이 예고한
+**유령 키**(`옛 경로를 남기면 유령 키가 되어 「초과」로 red 가 난다`) 그대로다.
+처방은 `EXPECTED_OUT` 에서 그 한 줄 삭제(`:68` 의 `BATCH_FILES` 항목은 `ProjectTree` 가
+여전히 `Button` 프리미티브를 쓰므로 **그대로 둔다**). Task 7 의 허용 파일 목록 밖이라
+손대지 않았다 — 머지 전에 닫아야 한다.
+
+#### 과거 시점 기록으로 판단해 **남긴 것**
+
+가른 기준은 「현재 사실을 주장하는가, 과거를 기록하는가」 하나다.
+
+- `i18n/backlog-labels.ts` — 「뷰 전환 링크 5종이 여기 있었다 … J5 로 … 사라졌고 라벨도 함께
+  나갔다」는 **그때의 사실**이라 그대로. 뒤이은 「리포트 3종은 탭이 아니므로 사이드바 트리의
+  라벨이 정본이다」만 현재 사실 주장이라 갱신했다.
+- `reports.cycle-time.test.tsx` — 「탭바가 정본 **9탭**을 소유하면서 그 nav 가 사라졌다」의
+  숫자는 J5 시점 기록이라 **10으로 고치지 않았다**(고치면 오히려 거짓이 된다). 괄호 안
+  「(리포트는 탭이 아니다)」만 그 시점 서술로 명시하고, UI 경로 문장은 현재 사실로 갱신했다.
+- Task 6 이 남긴 4곳(`scrum-board.spec.ts:113` · `hooks/__tests__/use-tab-overflow.test.ts:15` ·
+  `i18n/board-labels.ts:92` · `routes/__tests__/projects.board.test.tsx:1155`)은
+  **뒤집지 않았다.** 앞 셋은 각각 「접힘 동작 설명 시점의 판」·「테스트 자신의 9칸 픽스처」·
+  「J5 때 여기 있던 것이 나갔다」라 과거 기록이 맞다.
+  ⚠️ 다만 넷째(`projects.board.test.tsx:1155` 「**지금은** `ShellLayout` 안의
+  `ProjectViewChrome` 이 정본 **9탭**을 소유한다」)는 **현재형 주장 + stale 한 숫자**라
+  경계선이다. 판단 주체가 Task 6 이고 Task 7 의 지시가 명시적으로 보존이라 손대지 않았다 —
+  기록만 남긴다(한 낱말 `9탭` → `10탭` 이면 닫힌다).

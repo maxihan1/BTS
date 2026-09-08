@@ -288,15 +288,20 @@ ALTER TABLE projects ADD CONSTRAINT projects_icon_key_check
 
 ## 측정 가능한 완료 기준
 
+**표기 (2026-09-08 · PR1 종료 시점).** `✅ PR1` = PR1 범위에서 충족·검증 완료 ·
+`◐` = 부분 충족(남은 몫을 같은 칸에 적었다) · 표기 없음 = **PR2(아이콘) 몫**이라 PR1 대상이
+아니다(A-8~A-13″). 근거 실행 결과는 `docs/plans/2026-09-08-project-nav-subapp-icon.md`
+§구현 중 실측.
+
 | # | 기준 | 검증 |
 |---|---|---|
-| A-1 | `ProjectTree` 렌더 결과에 `리포트`·`프로젝트 설정` 디스클로저 버튼이 **0개** | 유닛 (RTL) |
-| A-2 | **차집합 판별식** — `PROJECT_SETTINGS_NAV` 경로 집합 ∪ `PROJECT_VIEW_TABS` 경로 집합 ⊇ 「기존 `SETTINGS_LINKS` 12 + `REPORT_LINKS` 4」. 즉 **도달성을 잃은 화면이 0개**. 비-공허 짝 — 목록에서 1건을 빼면 red | 판별식 (`scripts/workflow/`) |
-| A-3 | `resolveProjectShellMode` 가 `PROJECT_SETTINGS_NAV` **전 경로**에서 `'settings'`, `컴포넌트`·`버전`·보드설정·요약·보드·백로그·타임라인·리포트 4종에서 `'tree'` | 순수 함수 단위 |
-| A-4 | **사이드바와 탭바가 같은 함수를 쓴다** — 두 컴포넌트 소스에 각자의 경로 판정식이 없다. 뮤테이션: 함수 본문을 뒤집으면 두 컴포넌트 테스트가 **함께** red | 판별식 + 뮤테이션 짝 |
-| A-5 | 설정 라우트 렌더 시 `role="navigation"` `name="프로젝트 뷰 전환"` 이 **부재**, 비설정 라우트에서는 **존재** | 유닛 (RTL) |
-| A-6 | `PROJECT_VIEW_TABS.length === 10` 이고 실 라우트 전수에서 **활성 탭이 2개 이상이 되지 않는다** | 기존 `project-view-tabs.test.ts` 확장 |
-| A-7 | 리포트 4화면 각각에서 나머지 3개로 가는 링크가 있다 | 유닛 |
+| A-1 | `ProjectTree` 렌더 결과에 `리포트`·`프로젝트 설정` 디스클로저 버튼이 **0개** | ✅ PR1 — 유닛 (RTL · `ProjectTree.test.tsx:302-303`) |
+| A-2 | **차집합 판별식** — `PROJECT_SETTINGS_NAV` 경로 집합 ∪ `PROJECT_VIEW_TABS` 경로 집합 ⊇ 「기존 `SETTINGS_LINKS` 12 + `REPORT_LINKS` 4」. 즉 **도달성을 잃은 화면이 0개**. 비-공허 짝 — 목록에서 1건을 빼면 red | ✅ PR1 — 판별식 (`scripts/workflow/project-nav-reachability.test.ts` · 8/8) |
+| A-3 | `resolveProjectShellMode` 가 `PROJECT_SETTINGS_NAV` **전 경로**에서 `'settings'`, `컴포넌트`·`버전`·보드설정·요약·보드·백로그·타임라인·리포트 4종에서 `'tree'` | ✅ PR1 — 순수 함수 단위 (`project-shell-mode.test.ts`) |
+| A-4 | **사이드바와 탭바가 같은 함수를 쓴다** — 두 컴포넌트 소스에 각자의 경로 판정식이 없다. 뮤테이션: 함수 본문을 뒤집으면 두 컴포넌트 테스트가 **함께** red | ✅ PR1 — 뮤테이션 짝 (`Sidebar.test.tsx` + `ProjectViewChrome.test.tsx` 가 실 함수를 쓴다) |
+| A-5 | 설정 라우트 렌더 시 `role="navigation"` `name="프로젝트 뷰 전환"` 이 **부재**, 비설정 라우트에서는 **존재** | ✅ PR1 — 유닛 (RTL · `ProjectViewChrome.test.tsx:184` 설정 경로 전수) + E2E S1·S2 |
+| A-6 | `PROJECT_VIEW_TABS.length === 10` 이고 실 라우트 전수에서 **활성 탭이 2개 이상이 되지 않는다** | ✅ PR1 — `project-view-tabs.test.ts:46,122` |
+| A-7 | 리포트 4화면 각각에서 나머지 3개로 가는 링크가 있다 | ✅ PR1 — 유닛 (`ProjectReportsNav.test.tsx` + 리포트 4화면 각 test) |
 | A-8 | `V040` 적용 후 `projects.icon_key` 가 존재하고, 잘못된 형식 INSERT 가 **CHECK 위반**으로 거부된다 | Testcontainers 통합 |
 | A-9 | `init_codegen.sql` ↔ 마이그레이션 **양방향 차집합 0** | `codegen-mirror-parity.test.ts` |
 | A-10 | `PATCH {name}` 만 보내면 `icon_key` 가 **변하지 않는다**. `PATCH {iconKey:null}` 은 NULL 로 만든다 | 통합 (E-1) |
@@ -305,8 +310,8 @@ ALTER TABLE projects ADD CONSTRAINT projects_icon_key_check
 | A-13 | `verify-master-plan.sh` EXIT 0 · **FR 145/145 불변** | 스크립트 |
 | A-13′ | **FR-PJ-01·03 문구가 두 파일에서 같다** — `docs/sdd/02-requirements.md` 와 `docs/plan/product/issue-tracking.md` 의 해당 행에 `icon` 이 **둘 다** 있다. 카운트 룰이 못 잡는 자리라 **문자열 판별식**을 신설한다. 비-공허 짝 — 한쪽에서 `icon` 을 지우면 red | 판별식 (`scripts/workflow/`) |
 | A-13″ | `glossary.md` 에 「프로젝트 아이콘」 항목이 있고 **「아바타」와 구분**을 적는다 (Maxi 승인 2026-09-08) | 수동 + doc-index |
-| A-14 | E2E — 설정 진입 시 탭바 부재 · 리포트 탭으로 리포트 착지 · 아이콘 지정 후 사이드바 반영 | Playwright |
-| A-15 | 눈확인 — **라이트/다크 둘 다**. 설정 사이드바 · 리포트 착지 · 아이콘 그리드 | 수동 |
+| A-14 | E2E — 설정 진입 시 탭바 부재 · 리포트 탭으로 리포트 착지 · 아이콘 지정 후 사이드바 반영 | ◐ PR1 몫 완료 — `e2e/project-settings-nav.spec.ts` S1~S4 **3회 연속 통과**. 아이콘 반영은 PR2 |
+| A-15 | 눈확인 — **라이트/다크 둘 다**. 설정 사이드바 · 리포트 착지 · 아이콘 그리드 | ◐ 설정 사이드바만 완료 (그룹 헤딩 대비 라이트 5.30:1 · 다크 6.14:1 실측 · §구현 중 실측). 리포트 착지는 PR1 잔여, 아이콘 그리드는 PR2 |
 
 ## Sanity Check
 
