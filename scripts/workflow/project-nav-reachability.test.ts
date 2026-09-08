@@ -251,3 +251,71 @@ describe('프로젝트 내비 도달성 (A-2)', () => {
     );
   });
 });
+
+// ── 비-공허 짝 — 판정 함수를 픽스처로 직접 흔든다 ────────────────────────────────
+//
+// 위 두 단언은 **지금 초록인 것이 정상**이다. 그래서 그 초록만으로는 「지킨다」와
+// 「아무것도 안 본다」를 구분할 수 없다. 아래가 그 구분을 세우는 유일한 증거다.
+describe('프로젝트 내비 도달성 — 비-공허 짝', () => {
+  test('★도달 집합에서 1건이 빠지면 반드시 잡는다 (16경로 전수)', () => {
+    const { reachable } = surveyReachable();
+
+    for (const lost of LEGACY_16) {
+      const shrunk = new Set([...reachable].filter((p) => p !== lost));
+      assert.deepStrictEqual(
+        unreachablePaths(LEGACY_16, shrunk),
+        [lost],
+        `${lost} 를 도달 집합에서 빼도 판정이 조용히 통과한다 — 이 경로는 무방비다`,
+      );
+    }
+  });
+
+  test('★판정 함수는 파일 없이도 흔들린다 (순수 픽스처)', () => {
+    const legacy = ['/a', '/b'];
+    assert.deepStrictEqual(unreachablePaths(legacy, new Set(['/a', '/b'])), []);
+    assert.deepStrictEqual(unreachablePaths(legacy, new Set(['/a'])), ['/b']);
+    assert.deepStrictEqual(unreachablePaths(legacy, new Set()), ['/a', '/b']);
+  });
+
+  test('★상수 참조로 숨은 목적지를 통과시키지 않는다 (리뷰 E-3 재현)', () => {
+    // 종전 `SETTINGS_LINKS` 의 「일반」이 정확히 이 모양이었고, 리터럴만 세는 파서는
+    // 12항목을 11로 읽어 1건을 무방비로 남겼다.
+    const fixture = [
+      "const SETTINGS_LINKS = [",
+      "  { to: PROJECT_SETTINGS_PATH, label: '일반' },",
+      "  { to: '/projects/$projectKey/settings/members', label: '멤버' },",
+      ']',
+    ].join('\n');
+
+    assert.throws(
+      () => parseToPaths(fixture, 'SETTINGS_LINKS'),
+      /경로 리터럴은 1건만 읽었다/,
+      '상수 참조를 못 본 채 통과하면 그 화면이 조용히 무방비가 된다',
+    );
+  });
+
+  test('★주석 처리된 목적지를 「닿는다」로 세지 않는다', () => {
+    const fixture = [
+      'const LINKS = [',
+      "  { to: '/live' },",
+      "  // { to: '/commented-out' },",
+      "  /* { to: '/block-commented' }, */",
+      ']',
+    ].join('\n');
+
+    assert.deepStrictEqual(
+      parseToPaths(fixture, 'LINKS'),
+      ['/live'],
+      '주석 안의 목적지를 도달 집합에 넣으면 차집합이 0 이 되는 false green 이 난다',
+    );
+  });
+
+  test('★상수를 못 찾으면 0건이 아니라 실패다', () => {
+    // 이름이 바뀌거나 배열이 통째로 사라졌을 때 조용히 빈 집합을 내면 두 빈 집합이 같아져
+    // 차집합이 공허하게 통과한다 (`partial-column-parser-lets-unread-column-rot`).
+    assert.throws(
+      () => parseToPaths('const OTHER = []\n', 'PROJECT_SETTINGS_NAV'),
+      /PROJECT_SETTINGS_NAV 선언을 못 찾았다/,
+    );
+  });
+});
