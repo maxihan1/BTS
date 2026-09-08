@@ -65,6 +65,8 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     '/_shell/projects/$projectKey/calendar',
     '/_shell/projects/$projectKey/dashboards',
     '/_shell/projects/$projectKey/sprints/$sprintId/burndown',
+    // Jira 패리티 JR-2 — 리포트 착지(4종 카드 목록). 하위 4라우트와 형제다
+    '/_shell/projects/$projectKey/reports',
     '/_shell/projects/$projectKey/reports/worklog',
     '/_shell/projects/$projectKey/reports/velocity',
     '/_shell/projects/$projectKey/reports/cfd',
@@ -292,8 +294,9 @@ describe('라우트 가드 행렬 — 나머지 클래스', () => {
   // ★ 클래스별 개수 어서션 — 이게 없으면 idsOf 가 빈 배열을 돌려줄 때 it.each([]) 가 무음 통과한다.
   //    "발견된 라우트 59개 이상"(routesById 기준)은 이 구멍을 막지 못한다(맵/필터가 죽어도 라우트 수는 그대로).
   it.each([
-    // 40 → 41(부채 177 보드 설정) → 44(J5-12 편차 X9 폐기 — 프로젝트 스코프 이슈·캘린더·대시보드).
-    ['PROTECTED_3', 44],
+    // 40 → 41(부채 177 보드 설정) → 44(J5-12 편차 X9 폐기 — 프로젝트 스코프 이슈·캘린더·대시보드)
+    // → 45(JR-2 리포트 착지 `/projects/$projectKey/reports`).
+    ['PROTECTED_3', 45],
     ['AUTH_ONLY', 5],
     ['LOGIN', 1],
     ['INDEX_ALWAYS_REDIRECT', 1],

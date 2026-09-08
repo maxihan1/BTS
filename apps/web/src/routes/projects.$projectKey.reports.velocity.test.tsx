@@ -14,6 +14,18 @@ vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ projectKey: 'ATLAS' }),
 }))
 
+// 본문 상단 리포트 서브내비 격리 (Jira 패리티 JR-2).
+// 🛑 이 파일은 `@tanstack/react-router` 를 **모듈 통째로** mock 하므로 `Link` 가 없다.
+//    서브내비를 그대로 렌더하면 「No "Link" export is defined on the mock」으로 죽는다.
+//    서브내비의 실제 계약(4링크 · aria-current · nav 이름)은 라우터가 실재하는
+//    `components/project/__tests__/ProjectReportsNav.test.tsx` 가 전수로 지킨다 —
+//    여기서 보는 것은 이 화면의 관심사(useParams 추출 · 헤더 · 본문 컴포넌트)뿐이다.
+vi.mock('@/components/project/ProjectReportsNav', () => ({
+  ProjectReportsNav: ({ projectKey }: { projectKey: string }) => (
+    <div data-testid="project-reports-nav" data-project-key={projectKey} />
+  ),
+}))
+
 // VelocityReport는 별도 통합 테스트에서 검증하므로 단위 테스트에서 vi.mock으로 격리
 vi.mock('@/components/velocity/VelocityReport', () => ({
   VelocityReport: ({ projectKey }: { projectKey: string }) => (
