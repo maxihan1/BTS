@@ -1,10 +1,15 @@
-# 프로젝트 내비게이션 서브앱 재편 + 프로젝트 아이콘 신설
+# 프로젝트 내비게이션 서브앱 재편 (PR1 of 2) — 아이콘은 PR2
 
-> 티어: T3
+> 티어: T2
 > slug: project-nav-subapp-icon
-> type: migration
-> agent: db-engineer
+> type: ui
+> agent: frontend-engineer
 > 생성: 2026-09-08
+
+> 🛑 **착수 선언은 T3 이었고 PR 분할로 T2 가 됐다.** 티어를 내린 근거는 아이콘(마이그레이션)을
+> PR2 로 뺀 것 하나뿐이다 — 이 PR 에 `MIGRATION` 표면이 남아 있지 않다. **절차는 T3 것을 그대로
+> 둔다**(spec 분리 · ADR 대조 · plan). 실측 티어는 머지 전 `detect-tier` 로 다시 재어 게이트 2
+> 요약에 선언과 나란히 싣는다. 자세한 분할표는 §PR 분할.
 
 ## Brief
 
@@ -190,6 +195,267 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 
 **✅ 통과** — gap 잔여 0. 2회 보강 없이 1회로 닫혔다.
 
-## Plan (← /bts-plan 채움)
+## PR 분할 (Maxi 결정 2026-09-08)
+
+분해가 **12 task** 로 나와 한 PR 상한(10)을 넘었다. 두 덩어리가 서로 독립이라 갈랐다.
+
+| PR | 범위 | task | 티어 | 마이그레이션 |
+|---|---|---|---|---|
+| **PR1 = 이 PR (#476)** | 내비게이션 재편 — Maxi ①②③⑤ | **7** | T2(선언) | **0** |
+| PR2 (별건) | 프로젝트 아이콘 풀스택 — Maxi ④ | 6 | T3 | 1 (`V040`) |
+
+**PR1 은 `apps/web` + 판별식 + 문서만 건드린다.** 백엔드 0줄 · 마이그레이션 0.
+그래서 **선언 티어를 T3 → T2 로 내린다** — 근거는 `MIGRATION` 표면이 이 PR 에 없다는 것이다.
+🛑 **절차는 되돌리지 않는다.** spec·plan 은 이미 T3 서식으로 썼고 그대로 둔다(더 강한 쪽은 해가
+없다). 실측 티어는 머지 전 `detect-tier` 로 다시 재어 게이트 2 요약에 **선언과 나란히** 싣는다.
+
+**PR2 로 넘어가는 것** — `## Jira 대조` 의 채택 **A-5**(JI-1·JI-2·JI-3) 전량 ·
+스펙 §FR-IC-1~8 · §데이터 모델 변경 · §API 인터페이스 · 완료기준 A-8~A-13″.
+스펙 파일은 **하나로 둔다** — 두 PR 이 같은 스펙을 나눠 구현하고, 각 PR 이 자기 완료기준만 문다.
+
+## Plan
+
+### Task 1. 셸 모드 정본 — `PROJECT_SETTINGS_NAV` + `resolveProjectShellMode`
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/project/project-shell-mode.ts`, `apps/web/src/components/project/__tests__/project-shell-mode.test.ts`]
+- depends-on: []
+- jira: [JS-2]
+
+**RED**:
+- 파일: `apps/web/src/components/project/__tests__/project-shell-mode.test.ts`
+- 테스트 (A-3):
+  ```ts
+  it('PROJECT_SETTINGS_NAV 전 경로에서 settings 다', () => { /* 10경로 전수 순회 */ })
+  it('컴포넌트·버전·보드설정·요약·보드·백로그·타임라인·리포트4 에서 tree 다', () => { ... })
+  it('그룹은 4개이고 항목 합이 10이다 (비-공허 하한)', () => { ... })
+  ```
+- 실패 메시지 (예상): `project-shell-mode` 모듈 없음
+
+**GREEN**:
+- 파일: `apps/web/src/components/project/project-shell-mode.ts`
+- `PROJECT_SETTINGS_NAV` — 4그룹 10항목 (스펙 §FR-N2 표 그대로 · `컴포넌트`·`버전` 제외)
+- `resolveProjectShellMode(pathname, projectKey): 'tree' | 'settings'` — **목록에서 유도**한다.
+  🛑 `pathname.includes('/settings/')` 를 쓰지 않는다. 그러면 `컴포넌트`·`버전`을 위해
+  예외 분기를 따로 써야 하고, 그 분기가 목록과 갈리는 **두 번째 목록**이 된다(스펙 D-1).
+
+**REFACTOR**:
+- KDoc — 「왜 목록에서 유도하는가」 + `two-lists-never-check-each-other` 참조
+
+**검증**: `pnpm --filter web test -- project-shell-mode`
+
+---
+
+### Task 2. 리포트 착지 화면 + 리포트 서브내비 + 라우트
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/routes/projects.$projectKey.reports.index.tsx`, `apps/web/src/components/project/ProjectReportsNav.tsx`, `apps/web/src/components/project/project-report-links.ts`, `apps/web/src/components/project/__tests__/ProjectReportsNav.test.tsx`, `apps/web/src/routes/__tests__/projects.$projectKey.reports.index.test.tsx`, `apps/web/src/router.ts`, `apps/web/src/routes/projects.$projectKey.reports.velocity.tsx`, `apps/web/src/routes/projects.$projectKey.reports.cfd.tsx`, `apps/web/src/routes/projects.$projectKey.reports.cycle-time.tsx`, `apps/web/src/routes/projects.$projectKey.reports.worklog.tsx`]
+- depends-on: []
+- jira: [JR-2]
+
+**RED** (동반 테스트):
+- 착지 화면이 리포트 **4종 링크를 전부** 그린다 (A-7 의 절반)
+- `ProjectReportsNav` 가 **자기 자신을 포함한 4개**를 그리고 현재 것에 `aria-current="page"` 를 준다
+- 4개 리포트 화면 각각에서 나머지 3개로 가는 링크가 있다 (A-7)
+
+**GREEN**:
+- `project-report-links.ts` — 리포트 4종 **단일 정본**(`ProjectTree.REPORT_LINKS` 를 여기로 이관).
+  🛑 목록을 두 벌 두지 않는다 — Task 4 판별식이 이 상수를 직접 읽는다.
+- `ProjectReportsNav.tsx` — `nav` + `Link`. **Radix Tabs 금지**(C-5)
+- `projects.$projectKey.reports.index.tsx` — 4종 카드 목록 (JR-2 「목록/인사이트 화면」)
+- `router.ts` — `projectReportsIndexRoute` 등록 + 헤더 주석의 라우트 수 갱신
+- 기존 리포트 4화면에 `<ProjectReportsNav />` 삽입
+
+**REFACTOR**:
+- 카드 스타일을 기존 `EmptyState`/카드 프리미티브로 정렬 (§4 재사용 자산)
+
+**검증**:
+- 기존 E2E: `apps/web/e2e/project-tabs-overflow.spec.ts` (탭 목록 상수) · 리포트 관련 spec 사전 grep
+- 눈확인: 리포트 착지 카드 4장 · 리포트 서브내비 활성 표시 — **라이트/다크 양쪽**
+
+---
+
+### Task 3. 탭바 — 「리포트」 탭 신설(9→10) + 설정 서브앱에서 탭바 숨김
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/project/project-view-tabs.ts`, `apps/web/src/i18n/project-view-labels.ts`, `apps/web/src/components/project/ProjectViewChrome.tsx`, `apps/web/src/components/project/__tests__/project-view-tabs.test.ts`, `apps/web/src/components/project/__tests__/ProjectViewChrome.test.tsx`, `apps/web/src/i18n/__tests__/project-view-labels.test.ts`, `apps/web/e2e/project-tabs-overflow.spec.ts`]
+- depends-on: [1, 2]
+- jira: [JR-1, JR-3, J5-1]
+
+**RED**:
+- `PROJECT_VIEW_TABS` 가 **10개**이고 `reports` 키가 있다 (A-6)
+- 실 라우트 전수에서 **활성 탭이 2개 이상이 되지 않는다** (기존 단언 확장)
+- 설정 라우트 렌더 시 `role="navigation"` `name="프로젝트 뷰 전환"` **부재**, 비설정에서 **존재** (A-5)
+- 리포트 하위 화면(`/reports/velocity`)에서 **리포트 탭이 활성이고 탭바가 있다** (A-3 · JR-1)
+
+**GREEN**:
+- 탭 행 추가 — `{ key:'reports', to:'/projects/$projectKey/reports', label:'리포트',
+  usesProjectParam:true, exact:false }`.
+  🛑 `summary` 의 `exact:true` 를 **건드리지 않는다** — 빠지면 전 화면에서 요약이 함께 강조된다.
+- `ProjectViewChrome` — `resolveProjectShellMode(...) === 'settings'` 이면 `<ProjectNavTabs>` 를
+  렌더하지 않는다. **`ProjectViewHeader` 는 남긴다**(제목까지 사라지면 설정 화면에 정체성이 없다).
+
+**REFACTOR**:
+- 「9탭」이라 적힌 주석·KDoc 전수를 **10탭**으로 교정.
+  🛑 실측 대상 — `project-view-tabs.ts` · `ProjectNavTabs.tsx` · `ProjectViewHeader.tsx` ·
+  `router.ts` · `router.admin-guards.test.tsx` · `project-view-tabs.test.ts` ·
+  `e2e/project-tabs-overflow.spec.ts`. **숫자가 코드에도 있다** — `toHaveLength(9)` 2곳(:46,:108)과
+  e2e 의 「가시+접힘 = 9」 불변식·`VISIBLE_TABS` 상수. 주석만 고치면 red 다.
+
+**검증**:
+- 기존 E2E: `apps/web/e2e/project-tabs-overflow.spec.ts` S2·S3·S4 (개수 불변식 3곳)
+- 눈확인: 탭 10개 배치 · 좁은 폭 「더 보기」 · 설정 화면에 탭바 없음 — **라이트/다크**
+
+---
+
+### Task 4. A-2 도달성 차집합 판별식 (비-공허 짝)
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`scripts/workflow/project-nav-reachability.test.ts`]
+- depends-on: [1, 3]
+- jira: []
+
+**RED → GREEN 순서가 이 task 의 요점이다.**
+판별식을 **먼저** 세우고 Task 5 가 사이드바에서 링크를 지운다. 순서를 바꾸면 지운 뒤에
+「없어진 게 없다」를 확인하는 꼴이라 **잃어버린 링크를 못 잡는다.**
+
+**RED**:
+- 파일: `scripts/workflow/project-nav-reachability.test.ts`
+- 단언 (A-2):
+  ```ts
+  // LEGACY_16 = 이 PR 이전 ProjectTree 의 REPORT_LINKS 4 + SETTINGS_LINKS 12.
+  // 🛑 소스에서 읽지 않는다 — 그 상수가 이 PR 로 사라진다. 고정 픽스처로 박는다.
+  assert.deepEqual(LEGACY_16.filter(p => !reachable.has(p)), [])
+  ```
+  `reachable` = `PROJECT_SETTINGS_NAV` 경로 ∪ `PROJECT_VIEW_TABS` 경로 ∪ `project-report-links` 경로
+- **비-공허 짝** — ① 파싱 결과가 0건이면 **실패**로 떨어뜨린다(두 빈 집합은 같다 ·
+  `partial-column-parser-lets-unread-column-rot`) ② 픽스처로 판정 함수를 직접 흔들어
+  `PROJECT_SETTINGS_NAV` 에서 1건을 빼면 **반드시 red** 임을 같은 파일에서 단언한다
+
+**GREEN**:
+- 현 상태에서 green 이어야 한다(아직 아무것도 안 지웠으므로). **뮤테이션으로 red 를 세운다** —
+  green 으로 시작하는 판별식은 공허 통과와 구분되지 않는다.
+
+**REFACTOR**:
+- 헤더 주석에 「왜 LEGACY_16 을 하드코딩하는가」 + 이 판별식이 지키는 사고(C-2)
+
+**검증**: `node --experimental-strip-types --test scripts/workflow/project-nav-reachability.test.ts`
++ 뮤테이션 2종 red 실측 (**`grep -c` 로 뮤테이션이 실제로 적용됐는지 되잰다** — BSD `sed` 가
+대괄호·캐럿을 미매치해 뮤테이션 미적용인데 초록이던 실측 사고가 있다)
+
+---
+
+### Task 5. 설정 서브앱 사이드바 — `ProjectSettingsNav` + `Sidebar` 모드 분기
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/project/ProjectSettingsNav.tsx`, `apps/web/src/components/project/__tests__/ProjectSettingsNav.test.tsx`, `apps/web/src/components/layout/Sidebar.tsx`, `apps/web/src/components/layout/__tests__/Sidebar.test.tsx`, `apps/web/src/i18n/nav-labels.ts`, `apps/web/src/i18n/__tests__/nav-labels.test.ts`]
+- depends-on: [1]
+- jira: [JS-1, JS-2]
+
+**RED**:
+- 설정 경로에서 `Sidebar` 가 **프로젝트 트리 대신** 설정 메뉴를 그린다 (S2-①)
+- 설정 메뉴에 **4그룹 10항목**이 전부 있다
+- 최상단에 `← {프로젝트명}` 복귀 링크가 있고 목적지가 `/projects/$projectKey` 다 (S3)
+- **`<h1>` 이 없다** (C-3)
+- 새 nav `aria-label` 이 `navLabels.projectNav`('프로젝트')를 **substring 으로 품지 않는다** (C-1)
+
+**GREEN**:
+- `ProjectSettingsNav.tsx` — 그룹 헤딩(`h2`/`h3`) + `Link` 목록. 접힘 레일에서는 기존
+  `ProjectTree` 관례를 따라 라벨을 `sr-only` 로 (E-8 동형)
+- `Sidebar.tsx` — `useParams({strict:false})` 로 `projectKey` 를 읽고
+  `resolveProjectShellMode` 로 분기. **판정식을 여기 다시 쓰지 않는다**(A-4)
+- `nav-labels.ts` — 새 라벨 1개.
+  🛑 값 선정 주의 — `nav-labels.test.ts` FR15 가 **모든 값 쌍의 substring 관계 0**과
+  **값 중복 0** 을 단언한다. `'프로젝트 설정'` 은 `'프로젝트'` 를 품어 **red 다.**
+  이 제약을 만족하는 값을 고르거나(예: `'스페이스 설정 메뉴'`) 값을
+  `project-view-labels` 처럼 **별도 레지스트리**로 가른다 — 어느 쪽인지는 구현자가 실측으로 정한다.
+
+**REFACTOR**:
+- 그룹 편성이 Jira 근거가 아님(X-N5)을 KDoc 에 명시
+
+**검증**:
+- 기존 E2E: 설정 화면을 여는 spec 전수 사전 grep (`workflow-scheme`·`members`·`automation`·`import` 등)
+- 눈확인: 설정 사이드바 그룹 4개 · 복귀 링크 · 접힘 레일 — **라이트/다크**
+
+---
+
+### Task 6. `ProjectTree` — 「리포트」·「프로젝트 설정」 중첩그룹 제거
+
+**메타**.
+- agent: `frontend-engineer`
+- files: [`apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/layout/__tests__/ProjectTree.test.tsx`, `apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`]
+- depends-on: [4, 5]
+- jira: [JR-1, JR-3]
+
+**의존이 4·5 인 이유** — 판별식(4)과 대체 진입로(5)가 **먼저 초록**이어야 이 삭제가 안전하다.
+순서를 바꾸면 16화면이 고아인 구간이 커밋 히스토리에 남는다.
+
+**RED**:
+- `ProjectTree` 렌더 결과에 `리포트`·`프로젝트 설정` 디스클로저 버튼이 **0개** (A-1)
+- 펼친 프로젝트 하위에 보드 목록 + `백로그` + `타임라인` **만** 있다 (S1)
+- `aria-label="프로젝트"` nav 는 **그대로 존재**한다 (C-1)
+
+**GREEN**:
+- `ProjectSubLinkGroup` 호출 2건 제거 · `REPORT_LINKS`·`SETTINGS_LINKS`·`REPORTS_GROUP_LABEL`
+  삭제 · `reportsExpanded`/`settingsExpanded` 상태와 그 props 제거
+- **`SpaceActionsMenu` 의 `프로젝트 설정` 항목은 남긴다** — JS-1 의 진입로이고 Maxi ②가
+  「`⋯` 를 눌러 들어가면」을 전제한다. `PROJECT_SETTINGS_PATH` 상수도 유지
+- `ProjectSubLinkGroup` 컴포넌트 자체는 소비자가 0이 되므로 **함께 삭제**(내 변경이 만든 고아)
+
+**REFACTOR**:
+- `:460` 주석(「16화면의 유일한 진입로」)을 **새 사실로 교체** — 이제 탭바와 설정 사이드바가
+  진입로이고 그 보증은 Task 4 판별식이다
+
+**검증**:
+- 기존 E2E: 사이드바에서 설정·리포트로 가던 spec 전수 사전 grep — **있으면 새 경로로 고친다**
+- 눈확인: 사이드바가 짧아짐 · `⋯` → 프로젝트 설정 진입 — **라이트/다크**
+
+---
+
+### Task 7. E2E + 문서 동기화
+
+**메타**.
+- agent: `qa-engineer`
+- files: [`apps/web/e2e/project-settings-nav.spec.ts`, `apps/web/e2e/project-tabs-overflow.spec.ts`, `docs/plans/2026-09-08-project-nav-subapp-icon.md`, `docs/specs/2026-09-08-project-nav-subapp-icon.md`]
+- depends-on: [3, 5, 6]
+- jira: [JR-1, JR-2, JS-1, JS-2]
+
+**RED** (신규 E2E · A-14 의 PR1 몫):
+- 사이드바 `⋯` → 프로젝트 설정 → **탭바 부재** + 설정 사이드바 존재
+- 설정 사이드바 항목을 눌러 다른 설정으로 이동해도 **탭바가 계속 없다**
+- `← 프로젝트` 로 나오면 탭바·프로젝트 트리 복귀
+- 탭바 `리포트` → 착지 화면 4카드 → 하나 눌러 이동 → **탭바 유지**
+
+**GREEN**:
+- 셀렉터는 `nav aria-label` 스코프 + `exact: true` 규약을 지킨다
+  (`보드`·`백로그` 부분일치 함정 · `project-view-labels` 조회 규약 ①②③)
+
+**REFACTOR**:
+- plan `## 리뷰 결과` 아래에 실측 기록 · 스펙 완료기준 중 **PR1 몫에 체크**
+
+**검증**:
+- `pnpm --filter web test:e2e -- project-settings-nav project-tabs-overflow` **3회 연속 통과**
+- 눈확인 총괄 — 라이트/다크
+
+## Plan 메타
+
+- **task 수**: 7 · **예상 wave**: 5
+  (w1 = T1·T2 · w2 = T3·T5 · w3 = T4 · w4 = T6 · w5 = T7)
+- **구현 규율**: TDD red-first + **ui 시각 검증 트랙**(전 task 에 기존 E2E 목록 + 라이트/다크 눈확인)
+- **추가 검증**: `pnpm verify`(lint+typecheck+test+build) · `pnpm test:workflow` · Playwright ·
+  `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh`
+- **백엔드**: 0줄 · **마이그레이션**: 0 · **신규 엔드포인트**: 0 · **FR 수**: 145 불변
+- **신규 판별식**: 1종 (`project-nav-reachability`) — 비-공허 뮤테이션 짝 필수
+
+**Jira 매핑** (§1-7 차집합) —
+`JR-1→T3,T6` · `JR-2→T2,T7` · `JR-3→T3,T6` · `JS-1→T5,T7` · `JS-2→T1,T5,T7` ·
+`J5-1→T3` · **`JI-1`·`JI-2`·`JI-3`→ PR2 (아이콘 · 범위 밖 · Maxi PR 분할 결정)** ·
+`J5-12`·`J5-13` → 승계만 하고 이 PR 이 바꾸지 않음.
+**채택 A-1~A-4 는 전부 물렸고 A-5(아이콘)만 PR2 로 이연 — 차집합 0.**
 
 ## 리뷰 결과 (← /bts-review-plan 채움)
