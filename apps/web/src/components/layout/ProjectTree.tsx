@@ -1,5 +1,5 @@
 // 사이드바 스페이스 트리 — 별표/최근/추가 3그룹 + 프로젝트별 보드 목록 + 스페이스·보드 `⋯` (Jira 패리티 캠페인 PR ⑩ · J2)
-import { useId, useMemo, useState, useEffect, type JSX } from 'react'
+import { useId, useMemo, useEffect, type JSX } from 'react'
 import { Link, useParams, useSearch } from '@tanstack/react-router'
 import { ChevronRight, ChevronDown, MoreHorizontal, Plus, Settings, Star, StarOff } from 'lucide-react'
 import { toast } from 'sonner'
@@ -29,7 +29,7 @@ import { partitionProjectsForTree, pickBoardLookupKeys } from './project-tree-or
 // 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 서브링크(직접링크/리포트/설정) 1건 — `to`는 `$projectKey` 플레이스홀더 포함 라우트 경로 */
+/** 직접 링크 1건 — `to`는 `$projectKey` 플레이스홀더 포함 라우트 경로 */
 interface ProjectSubLink {
   readonly to: string
   readonly label: string
@@ -64,7 +64,7 @@ const ALL_PROJECTS_LINK_CLASS =
   'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ' +
   '[&.active]:bg-sidebar-accent [&.active]:text-sidebar-accent-foreground [&.active]:font-semibold'
 
-/** 하위 링크(직접링크/리포트/설정 항목) 스타일 — 실제 라우트 활성 시 `[&.active]`로 강조 */
+/** 하위 링크(백로그·타임라인) 스타일 — 실제 라우트 활성 시 `[&.active]`로 강조 */
 const SUB_LINK_CLASS =
   'block truncate rounded-md px-2 py-1 text-sm text-sidebar-foreground/70 ' +
   'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ' +
@@ -78,15 +78,12 @@ const DISCLOSURE_BUTTON_CLASS =
   'flex shrink-0 items-center justify-center rounded p-1 text-sidebar-foreground/60 ' +
   'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
 
-/** 리포트/설정 그룹 디스클로저 버튼 스타일 — 아이콘+라벨 가로 배치 */
-const GROUP_DISCLOSURE_BUTTON_CLASS = `${DISCLOSURE_BUTTON_CLASS} w-full justify-start gap-1 px-2 text-sm text-sidebar-foreground/70`
-
 /** 3그룹 헤더(별표/최근/추가) 스타일 — 클릭 대상이 아닌 순수 구분 라벨이다 */
 const TREE_GROUP_HEADING_CLASS =
   'px-2 pb-0.5 pt-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/50'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 상수 — 서브링크 데이터 (router.ts 실측 실 라우트만, S3 죽은 링크 0)
+// 상수 — 서브링크 데이터 (router.ts 실측 실 라우트만)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 프로젝트 보드 라우트 경로 — 보드 목록의 각 보드 링크가 `?board=<id>` 를 실어 이동한다 */
@@ -105,7 +102,12 @@ const ALL_PROJECTS_PATH = '/projects'
 /** 프로젝트 생성 라우트 경로 — 트리 헤더 `＋` (상단바 「만들기」의 프로젝트 진입과 같은 목적지) */
 const NEW_PROJECT_PATH = '/projects/new'
 
-/** 프로젝트 일반 설정 라우트 경로 — 스페이스 `⋯` 의 설정 항목 */
+/**
+ * 프로젝트 상세정보 설정 라우트 경로 — 스페이스 `⋯` 의 설정 항목.
+ *
+ * 🛑 **트리에서 설정 서브앱으로 가는 유일한 길이다.** 설정 중첩그룹이 사라지면서(JS-1)
+ * 이 한 줄이 입구가 됐다 — 지우면 `⋯` 에서 설정으로 갈 방법이 없어진다.
+ */
 const PROJECT_SETTINGS_PATH = '/projects/$projectKey/settings/details'
 
 /** "모든 프로젝트" 진입 링크 라벨 (G2) */
@@ -114,7 +116,7 @@ const ALL_PROJECTS_LABEL = '모든 프로젝트'
 /**
  * 트리 헤더 `＋` 의 접근성 이름.
  *
- * 이 파일의 다른 표시 문구(`ALL_PROJECTS_LABEL` · `REPORTS_GROUP_LABEL` · `SETTINGS_GROUP_LABEL`)와
+ * 이 파일의 다른 표시 문구(`ALL_PROJECTS_LABEL` · `SETTINGS_GROUP_LABEL`)와
  * 같은 자리에 둔다 — `navLabels` 는 **nav `aria-label`** 의 출처이고 이것은 링크 이름이다.
  *
  * 부수적으로, `navLabels` 에 넣었다면 `nav-labels.test.ts` FR15 substring 판별식이 red 였을 것이다
@@ -134,7 +136,7 @@ const NEW_PROJECT_LABEL = '새 프로젝트'
  */
 const spaceActionsTriggerLabel = (projectName: string): string => `스페이스 관리, ${projectName}`
 
-/** 스페이스 `⋯` 의 프로젝트 설정 항목 라벨 — 설정 중첩그룹 헤더와 같은 문구를 공유한다 */
+/** 스페이스 `⋯` 의 프로젝트 설정 항목 라벨 — 설정 중첩그룹이 사라져 이제 유일한 소비처다 */
 const SETTINGS_GROUP_LABEL = '프로젝트 설정'
 
 /** 직접 링크 2종 — 백로그·타임라인. 「보드」는 보드 **목록**으로 갈렸다(J2) */
@@ -143,32 +145,6 @@ const DIRECT_LINKS: ReadonlyArray<ProjectSubLink> = [
   { to: '/projects/$projectKey/timeline', label: '타임라인' },
 ]
 
-/** 리포트 그룹 서브링크 4종 (FR4) */
-const REPORT_LINKS: ReadonlyArray<ProjectSubLink> = [
-  { to: '/projects/$projectKey/reports/velocity', label: '벨로시티' },
-  { to: '/projects/$projectKey/reports/cfd', label: '누적 흐름도(CFD)' },
-  { to: '/projects/$projectKey/reports/cycle-time', label: '사이클/리드 타임' },
-  { to: '/projects/$projectKey/reports/worklog', label: '작업 로그' },
-]
-
-/** 프로젝트 설정 그룹 서브링크 12종 (FR4, GAP-1 전 인증자 표시 — 게이팅 없음). "일반"은 FR-PJ PR-5 FE-4(11→12) */
-const SETTINGS_LINKS: ReadonlyArray<ProjectSubLink> = [
-  { to: PROJECT_SETTINGS_PATH, label: '일반' },
-  { to: '/projects/$projectKey/settings/workflow-scheme', label: '워크플로우 스킴' },
-  { to: '/projects/$projectKey/settings/members', label: '멤버' },
-  { to: '/projects/$projectKey/settings/components', label: '컴포넌트' },
-  { to: '/projects/$projectKey/settings/versions', label: '버전' },
-  { to: '/projects/$projectKey/settings/custom-fields', label: '커스텀 필드' },
-  { to: '/projects/$projectKey/settings/issue-templates', label: '이슈 템플릿' },
-  { to: '/projects/$projectKey/settings/field-permissions', label: '필드 권한' },
-  { to: '/projects/$projectKey/settings/automation', label: '자동화' },
-  { to: '/projects/$projectKey/settings/slack-channels', label: 'Slack 채널' },
-  { to: '/projects/$projectKey/settings/project-lead', label: '프로젝트 리드' },
-  { to: '/projects/$projectKey/settings/import', label: '가져오기' },
-]
-
-/** 리포트 중첩그룹 디스클로저 라벨 */
-const REPORTS_GROUP_LABEL = '리포트'
 /** 빈 목록 문구 */
 const EMPTY_MESSAGE = '접근 가능한 프로젝트가 없습니다'
 /** 보드가 하나도 없는 프로젝트의 안내 문구 — **빈 배열일 때만** 낸다(조회 중에는 내지 않는다) */
@@ -349,52 +325,6 @@ function ProjectBoardList({ projectKey, boards }: ProjectBoardListProps): JSX.El
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 서브 컴포넌트 — 리포트/설정 중첩그룹 (2단 디스클로저)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface ProjectSubLinkGroupProps {
-  readonly projectKey: string
-  readonly label: string
-  readonly links: ReadonlyArray<ProjectSubLink>
-  readonly expanded: boolean
-  readonly onToggle: () => void
-}
-
-/** 리포트·설정 그룹 공용 중첩 디스클로저. 그룹 헤더 텍스트 자체가 버튼 접근가능 이름이다 */
-function ProjectSubLinkGroup({ projectKey, label, links, expanded, onToggle }: ProjectSubLinkGroupProps): JSX.Element {
-  return (
-    <li>
-      {/* PR22 OUT — P6 전체 클릭 영역: GROUP_DISCLOSURE_BUTTON_CLASS 가 w-full justify-start 로
-          좌측 정렬 전체폭 행을 만들며, Button의 justify-center와 충돌한다 */}
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={onToggle}
-        className={GROUP_DISCLOSURE_BUTTON_CLASS}
-      >
-        {expanded ? (
-          <ChevronDown aria-hidden="true" className={TREE_ICON_CLASS} />
-        ) : (
-          <ChevronRight aria-hidden="true" className={TREE_ICON_CLASS} />
-        )}
-        <span>{label}</span>
-      </button>
-      {expanded && (
-        <ul className="ml-4 flex flex-col gap-0.5 border-l border-sidebar-border pl-2">
-          {links.map((link) => (
-            <li key={link.to}>
-              <Link to={link.to} params={{ projectKey }} className={SUB_LINK_CLASS}>
-                {link.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // 서브 컴포넌트 — 프로젝트 행 (접힘 레일 / 펼침 트리)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -439,26 +369,22 @@ function ProjectTreeCollapsedRow({
 interface ProjectTreeExpandedContentProps {
   readonly projectKey: string
   readonly boards: readonly BoardSummary[] | undefined
-  readonly reportsExpanded: boolean
-  readonly onToggleReports: () => void
-  readonly settingsExpanded: boolean
-  readonly onToggleSettings: () => void
 }
 
-/** 펼친 프로젝트 행의 하위 콘텐츠 — 보드 목록 + 직접 링크 2 + 리포트/설정 중첩그룹 2 (FR4 · J2) */
-function ProjectTreeExpandedContent({
-  projectKey,
-  boards,
-  reportsExpanded,
-  onToggleReports,
-  settingsExpanded,
-  onToggleSettings,
-}: ProjectTreeExpandedContentProps): JSX.Element {
+/** 펼친 프로젝트 행의 하위 콘텐츠 — 보드 목록 + 직접 링크 2(백로그·타임라인) (J2 · JR-3) */
+function ProjectTreeExpandedContent({ projectKey, boards }: ProjectTreeExpandedContentProps): JSX.Element {
   return (
     <ul className="ml-4 flex flex-col gap-0.5 border-l border-sidebar-border pl-2">
       <ProjectBoardList projectKey={projectKey} boards={boards} />
-      {/* 🛑 백로그·타임라인·리포트 4·설정 12 는 여기 그대로 둔다 — 그 14개 화면의 **유일한
-          진입로**다(2026-09-04 전수 grep, 대체 진입로 0건). 보드만 목록으로 갈렸다. */}
+      {/* 🛑 여기 있던 종전 주석은 「백로그·타임라인·리포트 4·설정 12 의 **유일한 진입로**」라고
+          못박고 있었다(2026-09-04 전수 grep). **그 문장은 이제 거짓이다.** Jira 신 내비게이션은
+          리포트를 수평 탭으로 열고 사이드바에는 두지 않으며(JR-1·JR-3), 설정은 스페이스 `⋯` 로
+          들어가 **설정 자체의 사이드바**로 페이지를 고른다(JS-1·JS-2). 그래서 리포트 4는 탭바
+          `리포트` 탭 → 착지 화면이, 설정 10은 `⋯` → `ProjectSettingsNav` 가 진입로다.
+          🛑 그 보증은 사람 기억이 아니라 기계가 진다 —
+          `scripts/workflow/project-nav-reachability.test.ts` 가 이 PR 직전의 16경로를 고정
+          픽스처로 들고 「전부 어딘가에서 닿는가」를 차집합으로 잰다. 링크를 또 옮길 때 그
+          판별식이 red 면 진입로를 잃은 것이다. */}
       {DIRECT_LINKS.map((link) => (
         <li key={link.to}>
           <Link to={link.to} params={{ projectKey }} className={SUB_LINK_CLASS}>
@@ -466,20 +392,6 @@ function ProjectTreeExpandedContent({
           </Link>
         </li>
       ))}
-      <ProjectSubLinkGroup
-        projectKey={projectKey}
-        label={REPORTS_GROUP_LABEL}
-        links={REPORT_LINKS}
-        expanded={reportsExpanded}
-        onToggle={onToggleReports}
-      />
-      <ProjectSubLinkGroup
-        projectKey={projectKey}
-        label={SETTINGS_GROUP_LABEL}
-        links={SETTINGS_LINKS}
-        expanded={settingsExpanded}
-        onToggle={onToggleSettings}
-      />
     </ul>
   )
 }
@@ -516,10 +428,8 @@ function ProjectTreeRowHeader({ project, isActive, expanded, isFavorite, onToggl
   )
 }
 
-/** 프로젝트 1건 — 헤더(디스클로저+링크+`⋯`) + 펼침 시 보드 목록·2단 서브그룹, 접힘 레일이면 아이콘 행 (FR3~FR6) */
+/** 프로젝트 1건 — 헤더(디스클로저+링크+`⋯`) + 펼침 시 보드 목록·직접 링크, 접힘 레일이면 아이콘 행 (FR3~FR6) */
 function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
-  const [reportsExpanded, setReportsExpanded] = useState(false)
-  const [settingsExpanded, setSettingsExpanded] = useState(false)
   const { project, isActive, expanded, collapsed, boards } = props
 
   if (collapsed) {
@@ -529,16 +439,7 @@ function ProjectTreeRow(props: ProjectTreeRowProps): JSX.Element {
   return (
     <li>
       <ProjectTreeRowHeader {...props} />
-      {expanded && (
-        <ProjectTreeExpandedContent
-          projectKey={project.key}
-          boards={boards}
-          reportsExpanded={reportsExpanded}
-          onToggleReports={() => { setReportsExpanded((prev) => !prev) }}
-          settingsExpanded={settingsExpanded}
-          onToggleSettings={() => { setSettingsExpanded((prev) => !prev) }}
-        />
-      )}
+      {expanded && <ProjectTreeExpandedContent projectKey={project.key} boards={boards} />}
     </li>
   )
 }
@@ -611,7 +512,7 @@ function ProjectTreeGroup({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 사이드바 스페이스 트리 — `GET /api/v1/projects` 첫 소비자(useProjects), 3그룹 × 2단 아코디언.
+ * 사이드바 스페이스 트리 — `GET /api/v1/projects` 첫 소비자(useProjects), 3그룹 아코디언.
  *
  * - `<nav aria-label={navLabels.projectNav}>`("프로젝트", 🔒 e2e 계약. '프로젝트 뷰 전환'의
  *   substring이므로 Playwright role 조회는 항상 `exact: true` 사용 — 자세한 내용은
@@ -624,11 +525,11 @@ function ProjectTreeGroup({
  *   {@link partitionProjectsForTree} 이고 이 컴포넌트는 그것을 소비만 한다.
  * - 각 프로젝트 행 = 디스클로저 버튼(`aria-expanded`) + 프로젝트명 링크(→ `/projects/{key}` 요약)
  *   + 스페이스 `⋯`(별표 토글 · 프로젝트 설정).
- * - 펼침 시 **보드 목록**(J2) + 직접 링크 2(백로그·타임라인) + `리포트` 중첩그룹(4) +
- *   `프로젝트 설정` 중첩그룹(12). 보드 목록은 펼쳐진 프로젝트에 대해서만 조회한다
- *   ({@link useProjectBoards} — 최상위 `useQueries` 하나).
- *   ★한때 여기 있던 「보드」 **링크 한 줄**이 보드 목록으로 갈린 것이고, 나머지 14개 링크는
- *   그 화면들의 유일한 진입로라 그대로 남는다.
+ * - 펼침 시 **보드 목록**(J2) + 직접 링크 2(백로그·타임라인)**뿐**이다. 보드 목록은 펼쳐진
+ *   프로젝트에 대해서만 조회한다({@link useProjectBoards} — 최상위 `useQueries` 하나).
+ *   ★한때 여기 있던 「리포트」(4)·「프로젝트 설정」(12) 중첩그룹은 Jira 신 내비게이션에 맞춰
+ *   사라졌다 — 리포트는 수평 탭(JR-1·JR-3), 설정은 `⋯` → 설정 서브앱(JS-1·JS-2)이다.
+ *   그 16화면이 여전히 닿는지는 `scripts/workflow/project-nav-reachability.test.ts` 가 잰다.
  * - **자동 펼침의 근거는 URL이 담은 프로젝트 키다** — 경로 파라미터(`/projects/$projectKey/*`)
  *   우선, 없으면 검색 파라미터(`/issues?projectKey=` · `/search?projectKey=`). 둘 다 없으면
  *   (프로젝트 컨텍스트 밖) 자동 펼침이 일어나지 않는다.
@@ -637,11 +538,12 @@ function ProjectTreeGroup({
  * - **★ 자동 펼침은 더하기만 한다 (FR-UX-06 PR12 FR5 정정, ADR 2026-07-30 §D2).**
  *   {@link useProjectTreeExpanded}의 `expand`가 키를 **추가만** 하고 다른 키를 제거하지 않는다.
  * - **수동 펼침(디스클로저 클릭)은 localStorage에 영속한다** — `bts.project-tree.expanded`.
- *   영속 범위는 **프로젝트 레벨**이고, 중첩그룹("리포트"·"프로젝트 설정")은 여전히
- *   {@link ProjectTreeRow} 로컬 `useState`라 영속되지 않는다(스펙 L6).
+ *   영속 범위는 **프로젝트 레벨**이고 그 아래 단계는 이제 없다 — 스펙 L6 의 「중첩그룹은
+ *   영속하지 않는다」 단서가 가리키던 대상(로컬 `useState` 2개)이 함께 사라졌다.
  * - 사이드바 접힘(64px 레일)이면 각 프로젝트는 아이콘(이니셜)만 노출하고 텍스트는 `sr-only`로
  *   감추며, 그룹 펼침은 비활성화된다(FR6). 펼침이 없으므로 **보드 조회도 나가지 않는다**.
- * - GAP-1(게이트1 확정) — 설정 그룹 12링크는 모든 인증 사용자에게 표시한다.
+ * - 설정 항목의 권한 게이팅(GAP-1)은 이제 `ProjectSettingsNav` 의 몫이다 — 이 트리는
+ *   설정 목록을 더 이상 그리지 않는다.
  * - 로딩=스켈레톤, 빈 배열=빈 상태 문구, 에러=`null` 반환으로 트리 자체를 렌더하지 않는다
  *   (조용한 fail-safe — 사이드바 전체를 차단하지 않는다).
  */

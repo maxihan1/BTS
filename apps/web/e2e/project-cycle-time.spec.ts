@@ -14,7 +14,7 @@
 //     별도 시드 스크립트가 불필요하다.
 //
 // 시나리오.
-//   S1. 백로그 페이지 "프로젝트 뷰 전환" nav의 "사이클/리드 타임" 링크 클릭 → 라우트 이동(URL) + 페이지 헤더 표시.
+//   S1. 백로그 페이지 → 탭바 "리포트" 탭 → 착지 화면 "사이클/리드 타임" 카드 클릭 → 라우트 이동(URL) + 페이지 헤더 표시.
 //   S2. ATLAS 프로젝트 Cycle Time / Lead Time 페이지 직접 진입 → 두 섹션 모두 히스토그램·박스플롯 컨테이너
 //       표시 + 요약 타일 수치 텍스트 존재.
 //   S3. PROJECT-EMPTY 프로젝트 직접 진입 → 빈 상태 안내 문구 표시, 차트 컨테이너 미표시.
@@ -22,7 +22,7 @@
 
 import { test, expect, type Page } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
-import { openProjectReportFromSidebar, projectViewNav } from './fixtures/project-view-tabs'
+import { clickProjectViewTab, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts DEFAULT_BACKLOG / cycle-time-handlers.ts DEFAULT_CYCLE_TIME와 동기화
@@ -45,12 +45,19 @@ function cycleTimeUrl(projectKey: string): string {
   return `/projects/${projectKey}/reports/cycle-time`
 }
 
+/** 정본 탭바의 리포트 탭 라벨 — `i18n/project-view-labels.ts` 의 `reports` 와 같은 값이어야 한다 */
+const REPORTS_TAB_LABEL = '리포트'
+
 /**
  * 화면 문구 미러 — 값만 복사한다(로직 재구현 아님).
  *
- * ★`nav.cycleTimeLink` 의 정본이 **바뀌었다.** 옛 정본 `backlogLabels.page.cycleTimeLink` 는
- * Jira 패리티 J5 로 백로그 인라인 nav 가 사라지며 함께 지워졌고, 지금 이 값이 가리키는 것은
- * 사이드바 트리(`ProjectTree.tsx` `REPORT_LINKS`)의 라벨이다 — 리포트는 탭이 아니다.
+ * ★`nav.cycleTimeLink` 의 정본이 **두 번** 바뀌었다. ①옛 정본
+ * `backlogLabels.page.cycleTimeLink` 는 Jira 패리티 J5 로 백로그 인라인 nav 가 사라지며
+ * 지워졌고 ②그 뒤를 이은 사이드바 트리 `REPORT_LINKS` 도 이 PR 로 사라졌다. 지금 이 값이
+ * 가리키는 것은 `components/project/project-report-links.ts` 의 `PROJECT_REPORT_LINKS`
+ * 라벨이고, 그것을 **리포트 착지 화면의 카드**와 **리포트 서브내비**가 함께 소비한다.
+ * 🛑 「리포트는 탭이 아니다」라고 적혀 있던 종전 주석은 **이 PR 로 거짓이 됐다** —
+ * Jira 는 리포트를 스페이스 내비게이션(수평 탭)에서 열고 사이드바에는 두지 않는다(JR-1·JR-3).
  */
 const labels = {
   page: {
@@ -99,30 +106,27 @@ test.describe('FR-RP-04 D6/D7 프로젝트 Cycle Time / Lead Time 분포', () =>
   //
   // Given  alice로 로그인, DEFAULT_BACKLOG 자동 시드(ATLAS 프로젝트)
   //        cycle-time-handlers.ts DEFAULT_CYCLE_TIME 자동 시드(동일 projectKey='ATLAS')
-  // When   /projects/ATLAS/backlog 진입 → "프로젝트 뷰 전환" nav의 "사이클/리드 타임" 링크 클릭
+  // When   /projects/ATLAS/backlog 진입 → 탭바 "리포트" 탭 → 착지 화면 "사이클/리드 타임" 카드 클릭
   // Then   URL이 /projects/ATLAS/reports/cycle-time 로 이동
   //        Cycle/Lead Time 페이지 헤더(h1) 표시
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 백로그 "프로젝트 뷰 전환" nav "사이클/리드 타임" 클릭 → 라우트 이동 + 페이지 헤더 표시', async ({
+  test('S1 백로그 → 탭바 "리포트" → 착지 화면 "사이클/리드 타임" 카드 클릭 → 라우트 이동 + 페이지 헤더 표시', async ({
     page,
   }) => {
     // Given. alice 로그인 + 백로그 페이지 진입
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
-    //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
-    //        그룹 하나다. 여기서는 탭바가 떠 있는 것만 확인한다 — 「탭바에 리포트 링크가
-    //        없다」는 정본 9탭 순서 단언(`project-view-tabs.test.ts`)이 더 강하게 지킨다.
+    // Given. 리포트는 **이제 탭이다** (Jira JR-1·JR-3 — "Select Reports from the space
+    //        navigation." · 신 내비게이션 사이드바 항목 열거에 Reports 부재). 종전 진입로였던
+    //        사이드바 트리 `리포트` 그룹은 이 PR 로 사라졌다. 탭바가 떠 있는 것부터 확인한다.
     await expect(projectViewNav(page)).toBeVisible()
 
-    // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
-    const cycleTimeLink = await openProjectReportFromSidebar(
-      page,
-      'Atlas 프로젝트',
-      labels.nav.cycleTimeLink,
-    )
-    await cycleTimeLink.click()
+    // When ①. 탭바 `리포트` 탭 → 착지 화면 (SPA 내부 이동 — 🛑 goto 금지, MSW store 리셋)
+    await clickProjectViewTab(page, REPORTS_TAB_LABEL)
+
+    // When ②. 착지 화면의 「사이클/리드 타임」 카드 클릭 — 착지는 개별 차트가 아니라 목록이다(JR-2)
+    await page.getByRole('main').getByRole('link', { name: labels.nav.cycleTimeLink }).click()
 
     // Then. URL이 Cycle Time 라우트로 이동
     // SPA 클라이언트 라우팅(history.pushState)이라 waitForURL(glob) 기본 waitUntil='load' 이벤트가

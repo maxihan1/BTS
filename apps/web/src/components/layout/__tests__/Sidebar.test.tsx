@@ -10,43 +10,69 @@ import type { WhoamiResponse } from '@/api/schemas'
 import { favoriteLabels } from '@/i18n/favorite-labels'
 import { navLabels } from '@/i18n/nav-labels'
 import { projectListHandlers } from '@/mocks/project-list-handlers'
+import { projectHandlers } from '@/mocks/project-handlers'
+import { PROJECT_SETTINGS_NAV } from '@/components/project/project-shell-mode'
 import { ADMIN_HUB_LINKS } from '@/lib/admin-hub-links'
 import { Sidebar } from '../Sidebar'
 
+/** 🔒 설정 서브앱 사이드바의 nav 이름 — `ProjectSettingsNav.tsx` 의 `SETTINGS_NAV_LABEL` 과 같아야 한다 */
+const SETTINGS_NAV_NAME = '설정 메뉴'
+
 // ─────────────────────────────────────────────────────────────────────────────
-// TanStack Router Link/useParams 모킹 — 라우터 컨텍스트 없이 컴포넌트 isolation 렌더 (Header.test.tsx·
-// FavoritesMenu.test.tsx 동일 패턴). `useParams`는 Sidebar가 배선하는 `ProjectTree`(FR-UX-06 PR12
-// Task 2)가 활성 프로젝트 판별에 사용하므로 함께 모킹한다 — 항상 빈 객체를 반환해 "프로젝트 컨텍스트
-// 밖"으로 취급된다(이 파일의 계약과 무관, ProjectTree 자체 활성 펼침 검증은 ProjectTree.test.tsx 소관).
+// TanStack Router Link/useParams/useRouterState 모킹 — 라우터 컨텍스트 없이 컴포넌트 isolation
+// 렌더 (Header.test.tsx·FavoritesMenu.test.tsx 동일 패턴). `useParams`는 Sidebar가 배선하는
+// `ProjectTree`(FR-UX-06 PR12 Task 2)가 활성 프로젝트 판별에 사용하고, Sidebar 자신도 셸 모드
+// 판정(JS-2)에 `useParams` + `useRouterState().location.pathname` 을 읽는다.
+//
+// 기본값은 「프로젝트 컨텍스트 밖」(파라미터 없음 · 경로 `/`)이라 기존 단언들은 종전 그대로
+// 트리 모드에서 성립한다. 설정 모드 단언만 아래 두 변수를 갈아끼운다.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** useParams 반환값 — 설정 모드 테스트만 갈아끼운다 (ShellLayout.test.tsx 동일 관례) */
+let mockParams: Record<string, string | undefined> = {}
+/** useRouterState 가 돌려줄 pathname — 셸 모드 판정의 나머지 절반 */
+let mockPathname = '/'
 
 vi.mock('@tanstack/react-router', () => ({
   // `search`를 href 쿼리스트링으로 직렬화한다 — "내 작업"(FR12)이 `search={{ assignee }}`를
   // 싣는데, 직렬화하지 않으면 href 단언이 `projectKey` 미탑재(§1-A)를 검증할 수 없다.
+  // `params`도 실제 `Link`와 같게 치환한다 — 설정 메뉴 10링크가 `$projectKey` 플레이스홀더를
+  // 그 경로로 넘기므로, 치환하지 않으면 href 단언이 플레이스홀더를 그대로 보고 통과한다
+  // (mock 이 삼킨 prop 은 유닛에 보이지 않는다 · `mock-swallowed-prop-is-invisible-to-unit-tests`).
   // `activeOptions`(E8)는 활성 표시 계산용이라 DOM에 영향이 없어 받기만 하고 버린다.
   Link: ({
     to,
+    params,
     search,
     children,
     className,
   }: {
     to: string
+    params?: Record<string, string>
     search?: Record<string, string>
     activeOptions?: { includeSearch?: boolean }
     children: React.ReactNode
     className?: string
   }) => {
+    const path = Object.entries(params ?? {}).reduce(
+      (acc, [key, value]) => acc.replace(`$${key}`, value),
+      to,
+    )
     const query = search === undefined ? '' : `?${new URLSearchParams(search).toString()}`
     return (
-      <a href={`${to}${query}`} className={className}>
+      <a href={`${path}${query}`} className={className}>
         {children}
       </a>
     )
   },
-  useParams: () => ({}),
+  useParams: () => mockParams,
   // ProjectTree가 검색 파라미터 `?projectKey=`도 활성 프로젝트 근거로 읽는다(FR-UX-08 FR7).
   // 이 파일의 계약(사이드바 랜드마크·라벨)과는 무관하므로 빈 검색 파라미터로 모킹한다.
   useSearch: () => ({}),
+  // Sidebar 가 셸 모드 판정에 pathname 을 구독한다(JS-2). selector 를 그대로 실행해 실제 훅과
+  // 같은 모양을 돌려준다(ShellLayout.test.tsx 동일 관례).
+  useRouterState: <T,>({ select }: { select: (state: { location: { pathname: string } }) => T }): T =>
+    select({ location: { pathname: mockPathname } }),
 }))
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,6 +114,9 @@ function renderSidebar() {
 
 beforeEach(() => {
   window.localStorage.clear()
+  // 셸 모드 기본값 — 프로젝트 컨텍스트 밖(트리 모드). 설정 모드 테스트만 이 둘을 바꾼다.
+  mockParams = {}
+  mockPathname = '/'
   useAuthStore.setState({ accessToken: 'test-token', user: BASE_USER })
   // useSidebarCollapsed는 모듈 전역 zustand 싱글톤 — 이전 테스트의 toggle()이 남긴 상태가
   // 누출되지 않도록 매 테스트 펼침(기본값)으로 리셋한다(테스트 간 격리)
@@ -306,6 +335,119 @@ describe('Sidebar', () => {
 
       // 순서도 계약이다 — 메인 메뉴가 먼저고 스페이스 트리가 뒤다 (캠페인 PR ⑩ · J2)
       expect(navNames).toEqual([navLabels.mainNav, navLabels.projectNav])
+    })
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 셸 모드 분기 — 설정 서브앱에서는 트리 자리가 설정 메뉴로 바뀐다 (JS-2 · Task 5)
+  //
+  // 🛑 판정은 `resolveProjectShellMode` 를 **실물로** 부른다(모킹하지 않는다). 그 함수를
+  //    뒤집으면 이 블록과 `ProjectViewChrome` 쪽 탭바 테스트가 **함께 red** 여야 한다는 것이
+  //    완료기준 A-4 다 — 여기서 판정을 스텁으로 대체하면 그 짝이 끊긴다.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe('설정 서브앱 모드 (JS-2)', () => {
+    /** 정본 4그룹의 항목을 평탄화한 10건 — 손으로 나열하지 않는다 */
+    const SETTINGS_ITEMS = PROJECT_SETTINGS_NAV.flatMap((group) => group.items)
+
+    beforeEach(() => {
+      // 복귀 링크가 `useProject` 로 프로젝트 이름을 읽는다(MSW 는 미핸들 요청을 에러로 낸다).
+      server.use(...projectHandlers)
+    })
+
+    /** 셸 모드 입력 두 개를 한 번에 세팅한다 — 라우터 mock 의 파라미터/경로 */
+    function enterProject(pathname: string): void {
+      mockParams = { projectKey: 'ATLAS' }
+      mockPathname = pathname
+    }
+
+    it('비-공허: 설정 정본 항목이 0건이 아니다', () => {
+      // ★아래 전수 순회가 0건이면 「트리 대신 설정 메뉴」 단언이 조용히 통과한다.
+      expect(SETTINGS_ITEMS.length).toBeGreaterThan(0)
+    })
+
+    it('설정 경로에서 프로젝트 트리 대신 설정 메뉴를 그린다 (S2-①)', async () => {
+      enterProject('/projects/ATLAS/settings/details')
+      renderSidebar()
+
+      const settingsNav = await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+      expect(settingsNav).toBeInTheDocument()
+      // ★부재 쪽이 이 task 의 요점이다 — 둘 다 뜨면 「교체」가 아니라 「추가」다.
+      expect(
+        screen.queryByRole('navigation', { name: navLabels.projectNav }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('설정 메뉴가 정본 항목을 전수 그리고 href 에 projectKey 가 실린다', async () => {
+      enterProject('/projects/ATLAS/settings/automation')
+      renderSidebar()
+
+      const settingsNav = await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+      for (const item of SETTINGS_ITEMS) {
+        expect(
+          within(settingsNav).getByRole('link', { name: item.label }),
+          `설정 항목 「${item.label}」 부재`,
+        ).toHaveAttribute('href', item.to.replace('$projectKey', 'ATLAS'))
+      }
+    })
+
+    it('설정 경로에서도 「메인 메뉴」 nav 는 남는다 (★결정 — 전역 도달성을 줄이지 않는다)', async () => {
+      // ★근거. Jira 는 설정에서 사이드바를 통째로 갈아도 상단바가 전역 항목을 이고 있어
+      //   도달성이 유지되지만, BTS `TopBar` 에는 이슈·대시보드·캘린더가 없다. 메인 nav 까지
+      //   지우면 그 셋이 **1클릭으로 닿지 않게 된다**.
+      enterProject('/projects/ATLAS/settings/members')
+      renderSidebar()
+
+      await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+      const mainNav = screen.getByRole('navigation', { name: navLabels.mainNav })
+      expect(within(mainNav).getByRole('link', { name: navLabels.issues })).toBeInTheDocument()
+      expect(within(mainNav).getByRole('link', { name: navLabels.dashboards })).toBeInTheDocument()
+      expect(within(mainNav).getByRole('link', { name: navLabels.calendar })).toBeInTheDocument()
+    })
+
+    it('설정 경로의 nav 랜드마크는 「메인 메뉴」+「설정 메뉴」 둘이다', async () => {
+      enterProject('/projects/ATLAS/settings/custom-fields')
+      renderSidebar()
+
+      await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+      const navNames = screen.getAllByRole('navigation').map((el) => el.getAttribute('aria-label'))
+      expect(navNames).toEqual([navLabels.mainNav, SETTINGS_NAV_NAME])
+    })
+
+    it('설정 메뉴 최상단에 `/projects/$projectKey` 복귀 링크가 있다 (★D-2)', async () => {
+      enterProject('/projects/ATLAS/settings/details')
+      renderSidebar()
+
+      const settingsNav = await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+      expect(within(settingsNav).getAllByRole('link')[0]).toHaveAttribute('href', '/projects/ATLAS')
+    })
+
+    it('비설정 프로젝트 경로에서는 트리가 그대로 뜬다 (편차 X-N2 포함)', async () => {
+      // `/settings/versions` 는 경로에 `settings` 가 있어도 **설정 서브앱이 아니다**(정본 탭).
+      // 문자열 판정식(`pathname.includes('/settings/')`)을 되살리면 이 케이스가 red 다.
+      for (const pathname of ['/projects/ATLAS/board', '/projects/ATLAS/settings/versions']) {
+        enterProject(pathname)
+        const { unmount } = renderSidebar()
+
+        expect(
+          await screen.findByRole('navigation', { name: navLabels.projectNav }),
+          `${pathname} 에서 프로젝트 트리가 사라졌다`,
+        ).toBeInTheDocument()
+        expect(
+          screen.queryByRole('navigation', { name: SETTINGS_NAV_NAME }),
+          `${pathname} 에서 설정 메뉴가 떴다`,
+        ).not.toBeInTheDocument()
+
+        unmount()
+      }
+    })
+
+    it('프로젝트 밖(`/dashboards`)에서는 설정 메뉴가 뜨지 않는다 (★E-4)', async () => {
+      mockParams = {}
+      mockPathname = '/dashboards'
+      renderSidebar()
+
+      await screen.findByRole('navigation', { name: navLabels.projectNav })
+      expect(screen.queryByRole('navigation', { name: SETTINGS_NAV_NAME })).not.toBeInTheDocument()
     })
   })
 })

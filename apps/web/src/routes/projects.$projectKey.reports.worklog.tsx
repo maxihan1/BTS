@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { WorklogAggregateReport } from '@/components/worklog/WorklogAggregateReport'
 import { worklogAggregateLabels } from '@/i18n/worklog-aggregate-labels'
+import { ProjectReportsNav } from '@/components/project/ProjectReportsNav'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -44,6 +45,8 @@ export function ProjectWorklogReportPage({
         <h2 className="text-xl font-semibold">{worklogAggregateLabels.page.title}</h2>
         <p className="text-muted-foreground text-sm">{worklogAggregateLabels.page.description}</p>
       </header>
+      {/* 리포트 4종 서브내비 — 자기 자신 포함 4개 (Jira 패리티 JR-2) */}
+      <ProjectReportsNav projectKey={projectKey} />
       <WorklogAggregateReport projectKey={projectKey} />
     </div>
   )

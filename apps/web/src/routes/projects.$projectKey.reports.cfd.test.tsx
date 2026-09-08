@@ -14,6 +14,18 @@ vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ projectKey: 'ATLAS' }),
 }))
 
+// 본문 상단 리포트 서브내비 격리 (Jira 패리티 JR-2).
+// 🛑 이 파일은 `@tanstack/react-router` 를 **모듈 통째로** mock 하므로 `Link` 가 없다.
+//    서브내비를 그대로 렌더하면 「No "Link" export is defined on the mock」으로 죽는다.
+//    서브내비의 실제 계약(4링크 · aria-current · nav 이름)은 라우터가 실재하는
+//    `components/project/__tests__/ProjectReportsNav.test.tsx` 가 전수로 지킨다 —
+//    여기서 보는 것은 이 화면의 관심사(useParams 추출 · 헤더 · 본문 컴포넌트)뿐이다.
+vi.mock('@/components/project/ProjectReportsNav', () => ({
+  ProjectReportsNav: ({ projectKey }: { projectKey: string }) => (
+    <div data-testid="project-reports-nav" data-project-key={projectKey} />
+  ),
+}))
+
 // CfdReport는 별도 통합 테스트에서 검증하므로 단위 테스트에서 vi.mock으로 격리
 vi.mock('@/components/cfd/CfdReport', () => ({
   CfdReport: ({ projectKey }: { projectKey: string }) => (
@@ -112,5 +124,23 @@ describe('CfdReportPage', () => {
     const report = screen.getByTestId('cfd-report')
     expect(report).toBeInTheDocument()
     expect(report).toHaveAttribute('data-project-key', 'MYPROJECT')
+  })
+
+  /**
+   * T-RP-C5. Page가 리포트 서브내비를 실제로 마운트하고 projectKey를 그대로 넘긴다 (A-7).
+   *
+   * 🛑 스텁이 있다고 마운트된 것이 아니다. 이 단언이 없으면 누가 `<ProjectReportsNav />` 를
+   *    본문에서 **지워도 이 파일은 초록으로 남는다** — 이 저장소가
+   *    `mock-swallowed-prop-is-invisible-to-unit-tests` 로 이름 붙인 양식 그대로다.
+   *    `data-project-key` 까지 보는 이유는 존재만 단언하면 `projectKey` 를 안 넘겨도
+   *    통과하기 때문이고, 기본값('ATLAS')이 아닌 키로 렌더해야 그 전달이 실제로 관측된다.
+   */
+  it('T-RP-C5: Page가 ProjectReportsNav를 렌더하고 projectKey를 전달한다', () => {
+    renderPage('MYPROJECT')
+
+    expect(screen.getByTestId('project-reports-nav')).toHaveAttribute(
+      'data-project-key',
+      'MYPROJECT',
+    )
   })
 })
