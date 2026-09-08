@@ -75,6 +75,26 @@ const BACK_LINK_CLASS =
 const GROUP_HEADING_CLASS =
   'px-2 pb-0.5 pt-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/70'
 
+/**
+ * 활성 링크에 붙는 클래스 — 🛑 **`activeProps` 로 직접 넘겨야 한다.**
+ *
+ * TanStack `Link` 의 `activeProps` 기본값이 `{ className: 'active' }` 인데, `activeProps` 를
+ * 주면 그 기본값이 **통째로 대체된다.** 그래서 `activeProps={{ 'aria-current': 'page' }}` 만
+ * 쓰면 `aria-current` 는 붙지만 `active` 클래스는 사라지고, 아래 `[&.active]:` 로 건 시각
+ * 강조가 **한 줄도 적용되지 않는다** — 스크린리더는 현재 위치를 알고 **눈으로 보는 사람만
+ * 모른다**. 이 PR 이 형제 nav 둘(`ProjectNavTabs`·`ProjectReportsNav`)에서 실제로 겪고
+ * 브라우저 눈확인으로 잡아낸 결함이다(2026-09-08).
+ *
+ * 🛑 **`activeProps` 자체를 지우고 「기본값이 알아서 붙여 준다」에 기대지 마라.** 그러면
+ * `aria-current` 가 사라지고, 시각 강조 3줄이 **기본값 위에 우연히 얹힌** 상태로 돌아간다 —
+ * 다음 사람이 `aria-current` 하나를 더하는 순간(형제 둘이 이미 그 모양이라 가장 자연스러운
+ * 다음 수정이다) 강조가 조용히 죽는다.
+ *
+ * 유닛이 `aria-current` 만 보면 이 회귀가 초록으로 통과한다. 그래서 짝 단언을
+ * `__tests__/ProjectSettingsNav.test.tsx` 가 **클래스까지 함께** 본다.
+ */
+const ACTIVE_CLASS = 'active'
+
 /** 설정 항목 링크 스타일 — `Sidebar.NAV_LINK_CLASS` 와 같은 시각 언어(`[&.active]` 강조 포함) */
 const SETTINGS_LINK_CLASS =
   'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm ' +
@@ -132,9 +152,14 @@ export function ProjectSettingsNavGroupSection({
       <ul aria-labelledby={headingId} className="flex flex-col gap-0.5">
         {group.items.map(({ to, label, Icon }) => (
           <li key={to}>
+            {/* 🛑 `activeOptions` 는 기본값(`exact: false`)을 그대로 쓴다. 설정 하위에 상세
+                경로가 생기는 날(`/settings/automation/rules/1` 같은 것) 그 항목이 계속 강조돼야
+                하고, 10개 경로는 **서로의 접두사가 아니라** 함께 켜질 위험이 없다.
+                복귀 링크는 사정이 달라 `exact: true` 다 — 아래 참조. */}
             <Link
               to={to}
               params={{ projectKey }}
+              activeProps={{ 'aria-current': 'page', className: ACTIVE_CLASS }}
               className={collapsed ? `${SETTINGS_LINK_CLASS} justify-center` : SETTINGS_LINK_CLASS}
             >
               <Icon aria-hidden="true" className={NAV_ICON_CLASS} />
@@ -188,7 +213,18 @@ export function ProjectSettingsNav({ projectKey }: ProjectSettingsNavProps): JSX
   return (
     <nav aria-label={SETTINGS_NAV_LABEL} className="flex flex-col gap-1 p-2">
       <div className={BACK_LINK_WRAPPER_CLASS}>
-        <Link to={PROJECT_HOME_PATH} params={{ projectKey }} className={BACK_LINK_CLASS}>
+        {/* 🛑 `exact: true` 다. `/projects/$projectKey` 는 설정 10경로 **전부의 접두사**라
+            기본 판정(fuzzy)이면 어느 설정 화면에서나 이 링크가 「현재 페이지」로 켜진다 —
+            `PROJECT_VIEW_TABS` 의 `summary` 탭이 같은 이유로 `exact: true` 인 것과 같은 규칙이다.
+            지금은 `[&.active]` 규칙이 없어 눈에 안 보이지만, 그 상태로 두면 강조를 더하는
+            날에야 거짓말이 드러난다. */}
+        <Link
+          to={PROJECT_HOME_PATH}
+          params={{ projectKey }}
+          activeOptions={{ exact: true }}
+          activeProps={{ 'aria-current': 'page', className: ACTIVE_CLASS }}
+          className={BACK_LINK_CLASS}
+        >
           <ArrowLeft aria-hidden="true" className={NAV_ICON_CLASS} />
           <span className={collapsed ? 'sr-only' : 'truncate'}>{projectName}</span>
         </Link>

@@ -84,6 +84,24 @@ function hrefOf(to: string): string {
   return to.replace('$projectKey', PROJECT_KEY)
 }
 
+/** 지금 화면에서 **시각 강조 클래스**(`active`)가 붙은 설정 메뉴 링크의 텍스트 목록 */
+async function readVisuallyActiveLabels(): Promise<readonly string[]> {
+  const nav = await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+  return within(nav)
+    .getAllByRole('link')
+    .filter((link) => link.classList.contains('active'))
+    .map((link) => link.textContent ?? '')
+}
+
+/** 지금 화면에서 `aria-current="page"` 인 설정 메뉴 링크의 텍스트 목록 */
+async function readCurrentLabels(): Promise<readonly string[]> {
+  const nav = await screen.findByRole('navigation', { name: SETTINGS_NAV_NAME })
+  return within(nav)
+    .getAllByRole('link')
+    .filter((link) => link.getAttribute('aria-current') === 'page')
+    .map((link) => link.textContent ?? '')
+}
+
 beforeEach(() => {
   useAuthStore.setState({ accessToken: 'test-token', user: null })
   // useSidebarCollapsed 는 모듈 전역 zustand 싱글톤 — 이전 테스트가 남긴 접힘이 새지 않도록
@@ -192,6 +210,60 @@ describe('ProjectSettingsNav', () => {
     const nav = await renderNav()
 
     expect(within(nav).getAllByRole('link')[0]).toHaveAttribute('href', `/projects/${PROJECT_KEY}`)
+  })
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 활성 강조 — `aria-current` 와 시각 클래스를 **짝으로** 본다
+  //
+  // 🔴 형제 nav 둘(`ProjectNavTabs`·`ProjectReportsNav`)에서 실제로 난 결함의 재현 단언이다
+  //    (2026-09-08 브라우저 눈확인이 잡았다). `activeProps` 를 주면 TanStack 기본값
+  //    `{ className: 'active' }` 가 **대체돼** `[&.active]:` 강조가 한 줄도 발화하지 않는데,
+  //    `aria-current` 만 보는 유닛은 **전부 초록**이다. 그래서 클래스까지 같은 자리에서 본다.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('설정 10항목 전수에서 지금 보는 것 하나만 aria-current + 시각 강조다', async () => {
+    const items = PROJECT_SETTINGS_NAV.flatMap((group) => group.items)
+    // ★비-공허. 정본이 비면 아래 루프가 한 번도 안 돌고 통과한다.
+    expect(items.length).toBeGreaterThan(0)
+
+    for (const item of items) {
+      const { unmount } = renderAt(hrefOf(item.to), <ProjectSettingsNav projectKey={PROJECT_KEY} />)
+
+      // 🛑 「현재 항목에 붙는다」만 보면 **전부에 붙는** 회귀가 통과한다. 목록 등가로 개수까지
+      //    못박는다 — 복귀 링크가 접두사 매칭으로 함께 켜지는 것도 여기서 걸린다.
+      expect(
+        await readCurrentLabels(),
+        `${item.label} 화면에서 aria-current 가 어긋난다`,
+      ).toEqual([item.label])
+      expect(
+        await readVisuallyActiveLabels(),
+        `${item.label} 화면에서 시각 강조가 어긋난다 — activeProps 가 기본 className 을 대체했는가`,
+      ).toEqual([item.label])
+
+      unmount()
+    }
+  })
+
+  it('복귀 링크는 설정 화면에서 활성이 아니다 (exact:true — 접두사 매칭 봉인)', async () => {
+    // 🛑 `activeOptions={{ exact: true }}` 를 빼면 `/projects/ATLAS` 가 설정 10경로 **전부의
+    //    접두사**라 복귀 링크가 어느 설정 화면에서나 「현재 페이지」로 켜진다.
+    //    `PROJECT_VIEW_TABS` 의 `summary` 탭이 같은 이유로 `exact: true` 인 것과 같은 규칙이다.
+    const nav = await renderNav()
+
+    const back = within(nav).getAllByRole('link')[0]
+    expect(back).toHaveAttribute('href', `/projects/${PROJECT_KEY}`)
+    expect(back).not.toHaveAttribute('aria-current')
+    expect(back?.classList.contains('active')).toBe(false)
+  })
+
+  it('복귀 목적지(`/projects/$projectKey`)에 서면 그때는 복귀 링크가 활성이다 (짝 단언)', async () => {
+    // ★위 단언만 두면 「복귀 링크는 영원히 활성이 아니다」라는 구현도 통과한다 —
+    //   `exact: true` 를 `activeOptions={{ exact: 'never' }}` 같은 것으로 바꿔도 초록이다.
+    //   판정이 살아 있다는 것을 반대편에서 한 번 보여야 그 구멍이 닫힌다.
+    renderAt(`/projects/${PROJECT_KEY}`, <ProjectSettingsNav projectKey={PROJECT_KEY} />)
+
+    expect(await readCurrentLabels()).toHaveLength(1)
+    expect(await readVisuallyActiveLabels()).toHaveLength(1)
   })
 
   // ───────────────────────────────────────────────────────────────────────────
