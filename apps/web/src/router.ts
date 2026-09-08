@@ -1,4 +1,4 @@
-// TanStack Router 라우트 트리 정의 — code-based 패턴, 65개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가 | Jira 패리티 J4 캠페인 PR ④: projectSummaryRoute /projects/$projectKey 추가 — 프로젝트 기본 착지 | 부채 177: projectBoardSettingsRoute /projects/$projectKey/board/settings 추가 — 지라 Board settings Columns 탭 | Jira 패리티 J5-12 (2026-09-07): 편차 X9 폐기 — projectIssuesRoute /projects/$projectKey/issues · projectCalendarRoute /projects/$projectKey/calendar · projectDashboardsRoute /projects/$projectKey/dashboards 추가, 9탭 전량 프로젝트 스코프)
+// TanStack Router 라우트 트리 정의 — code-based 패턴, 66개 라우트 (공통 3 + 이슈 3 + 워크플로우 스킴 3 + 워크플로우 정의 3 + 프로젝트 설정 11 + 프로젝트 보드 1 + 프로젝트 백로그 1 + 프로젝트 타임라인 1 + 스프린트 번다운 1 + 프로젝트 벨로시티 1 + 프로젝트 CFD 1 + 프로젝트 Cycle/Lead Time 1 + settings 12 + 사용자 생성 1 + 감사 로그 1 + 알림 정책 1 + workflow detail 1 + 워크로그 보고 1 + 대시보드 3 + 알림 보관함 1 + 검색 1 + Webhook 2 + Slack 연결 1 + 캘린더 1 + 관리 허브 인덱스 1 + 프로젝트 목록·생성·일반 설정 3 | FR-IM-01 D6/D7: projectImportSettingsRoute /projects/$projectKey/settings/import 추가 | FR-RP-04 D6/D7: projectCycleTimeRoute /projects/$projectKey/reports/cycle-time 추가 | FR-PR-01 D6: settingsProfileRoute /settings/profile 추가 | FR-PF-01 Task 7: settingsPreferencesRoute /settings/preferences 추가 | FR-SL-01 D6/D7 Task 7: adminSlackRoute /admin/slack 추가 | FR-PF-03 Task 9: settingsKeymapRoute /settings/keymap 추가 | FR-CA-01 Task 7: calendarRoute /calendar 추가 | FR-CA-02 Task 9: settingsCalendarRoute /settings/calendar 추가 | FR-AT-01 D6 Task 8: projectAutomationSettingsRoute /projects/$projectKey/settings/automation 추가 | FR-SL-02 D6 Task 8: settingsSlackRoute /settings/slack 추가 | FR-SL-06 D6 Task 5: projectSlackChannelsRoute /projects/$projectKey/settings/slack-channels 추가 | FR-UX-06 PR13 Task 4: settingsIndexRoute /settings 추가 | FR-UX-06 PR13 Task 5: adminIndexRoute /admin 추가 | FR-PJ PR-5 Task 7: projectsIndexRoute /projects, projectsNewRoute /projects/new, projectDetailsSettingsRoute /projects/$projectKey/settings/details 추가 | FR-WF-04 D6: adminWorkflowsRoute /admin/workflows, adminWorkflowsNewRoute /admin/workflows/new, adminWorkflowsDetailRoute /admin/workflows/$workflowKey 추가 | Jira 패리티 J4 캠페인 PR ④: projectSummaryRoute /projects/$projectKey 추가 — 프로젝트 기본 착지 | 부채 177: projectBoardSettingsRoute /projects/$projectKey/board/settings 추가 — 지라 Board settings Columns 탭 | Jira 패리티 J5-12 (2026-09-07): 편차 X9 폐기 — projectIssuesRoute /projects/$projectKey/issues · projectCalendarRoute /projects/$projectKey/calendar · projectDashboardsRoute /projects/$projectKey/dashboards 추가, 9탭 전량 프로젝트 스코프 | Jira 패리티 JR-2 (2026-09-08): projectReportsIndexRoute /projects/$projectKey/reports 추가 — 리포트 착지는 개별 차트가 아니라 4종 카드 목록)
 import { createRouter, createRoute, createRootRoute } from '@tanstack/react-router'
 import { requireAuth, redirectIfAuth, requirePasswordChanged, requireMfaEnrolled, requireSystemAdmin, composeGuards, redirectToStartPage } from './auth/routeGuard'
 
@@ -56,6 +56,7 @@ import { ProjectWorklogReportRouteAdapter } from './routes/projects.$projectKey.
 import { ProjectVelocityReportRouteAdapter } from './routes/projects.$projectKey.reports.velocity'
 import { ProjectCfdReportRouteAdapter } from './routes/projects.$projectKey.reports.cfd'
 import { ProjectCycleTimeReportRouteAdapter } from './routes/projects.$projectKey.reports.cycle-time'
+import { ProjectReportsIndexRouteAdapter } from './routes/projects.$projectKey.reports.index'
 import { BoardRouteAdapter } from './routes/projects.$projectKey.board'
 import { BoardSettingsRouteAdapter } from './routes/projects.$projectKey.board.settings'
 import { BacklogRouteAdapter } from './routes/projects.$projectKey.backlog'
@@ -686,6 +687,20 @@ const settingsNotificationsRoute = createRoute({
   beforeLoad: requireAuthAndPasswordChanged,
 })
 
+/**
+ * 리포트 착지 라우트 — /projects/$projectKey/reports, requireAuth (Jira 패리티 JR-2).
+ *
+ * 리포트 탭이 가리키는 곳이고 개별 차트가 아니라 **4종 카드 목록**을 그린다. 하위 4라우트와
+ * 경로가 겹치지 않는다(`/reports` 는 `/reports/velocity` 의 접두일 뿐 같은 경로가 아니다).
+ */
+const projectReportsIndexRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/projects/$projectKey/reports',
+  component: ProjectReportsIndexRouteAdapter,
+  staticData: { requireAuth: true },
+  beforeLoad: requireAuthAndPasswordChanged,
+})
+
 /** 워크로그 집계 보고 라우트 — /projects/$projectKey/reports/worklog, requireAuth (FR-TT-02) */
 const projectWorklogReportRoute = createRoute({
   getParentRoute: () => shellRoute,
@@ -949,6 +964,7 @@ const calendarRoute = createRoute({
  *   · /projects/:projectKey/settings/slack-channels
  *   · /projects/:projectKey/settings/project-lead
  *   · /projects/:projectKey/settings/import
+ *   · /projects/:projectKey/reports (리포트 착지 · JR-2)
  *   · /projects/:projectKey/reports/worklog · /projects/:projectKey/reports/velocity · /projects/:projectKey/reports/cfd
  *   · /projects/:projectKey/reports/cycle-time
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
@@ -1041,6 +1057,8 @@ export const routeTree = rootRoute.addChildren([
     projectLeadSettingsRoute,
     // search-export-import BC — 프로젝트 Import(CSV/JSON) 설정 (FR-IM-01 D6/D7)
     projectImportSettingsRoute,
+    // agile-planning BC — 리포트 착지(4종 카드 목록) (Jira 패리티 JR-2)
+    projectReportsIndexRoute,
     // issue-tracking BC — 워크로그 집계 보고 (FR-TT-02)
     projectWorklogReportRoute,
     // agile-planning BC — 벨로시티 차트 보고 (FR-RP-02 D6/D7)

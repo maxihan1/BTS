@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { CfdReport } from '@/components/cfd/CfdReport'
 import { cfdLabels } from '@/i18n/cfd-labels'
+import { ProjectReportsNav } from '@/components/project/ProjectReportsNav'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter
@@ -42,6 +43,8 @@ export function CfdReportPage({ projectKey }: CfdReportPageProps): JSX.Element {
         <h2 className="text-xl font-semibold">{cfdLabels.page.title}</h2>
         <p className="text-muted-foreground text-sm">{cfdLabels.page.description}</p>
       </header>
+      {/* 리포트 4종 서브내비 — 자기 자신 포함 4개 (Jira 패리티 JR-2) */}
+      <ProjectReportsNav projectKey={projectKey} />
       <CfdReport projectKey={projectKey} />
     </div>
   )
