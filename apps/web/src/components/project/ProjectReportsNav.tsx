@@ -25,6 +25,20 @@ const REPORTS_NAV_LABEL = '리포트 전환'
  * `TAB_LINK_CLASS` 와 같은 관례이고, 이 화면이 탭바 **바로 아래**에 오므로 시각 언어를
  * 맞춘다. 다만 한 단계 아래 층위라 활성 배경(`bg-accent`)으로 구분을 얹는다.
  */
+/**
+ * 활성 링크에 붙는 클래스 — 🛑 **직접 넘겨야 한다.**
+ *
+ * TanStack `Link` 의 `activeProps` 기본값이 `{ className: 'active' }` 인데, `activeProps` 를
+ * 주면 그 기본값이 **통째로 대체된다.** 그래서 `activeProps={{ 'aria-current': 'page' }}` 만
+ * 쓰면 `aria-current` 는 붙지만 `active` 클래스는 사라지고, `[&.active]:` 로 건 시각 강조가
+ * **한 줄도 적용되지 않는다** — 스크린리더는 현재 위치를 알고 눈으로 보는 사람만 모른다.
+ *
+ * 유닛이 `aria-current` 만 보면 이 회귀가 초록으로 통과한다. 그래서 짝 단언을
+ * `__tests__/ProjectReportsNav.test.tsx` 가 클래스까지 함께 본다.
+ * (실측 2026-09-08 — 브라우저 눈확인에서 잡았다.)
+ */
+const ACTIVE_CLASS = 'active'
+
 const REPORT_LINK_CLASS =
   'inline-flex whitespace-nowrap rounded-md px-3 py-1.5 text-sm text-muted-foreground ' +
   'hover:bg-accent hover:text-accent-foreground ' +
@@ -70,7 +84,7 @@ export function ProjectReportsNav({ projectKey }: ProjectReportsNavProps): JSX.E
               to={link.to}
               params={{ projectKey }}
               activeOptions={{ exact: false }}
-              activeProps={{ 'aria-current': 'page' }}
+              activeProps={{ 'aria-current': 'page', className: ACTIVE_CLASS }}
               className={REPORT_LINK_CLASS}
             >
               {link.label}
