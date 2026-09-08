@@ -1,10 +1,10 @@
 {
   "_주석": "「전이」(Transition 의 구 표기)가 살아남아야 하는 자리의 동결 목록. 갱신은 의도적으로만 한다.",
   "_기준": "git ls-files. 빌드 산출물·생성 코드는 세지 않는다 — 그것들은 gradle 이 도는 동안 수치가 움직인다.",
-  "총건수": 387,
+  "총건수": 388,
   "파일수": 162,
   "낱말별": {
-    "전이": 111,
+    "전이": 112,
     "버전이": 112,
     "기전이": 21,
     "전이라": 11,
@@ -182,7 +182,7 @@
     "docs/plans/2026-08-12-backend-ci-module-selection.md": 4,
     "docs/plans/2026-08-14-node-ts-invocation-flag-guard.md": 4,
     "docs/plans/2026-08-18-workflow-editor-adr-fr.md": 28,
-    "docs/progress.html": 44,
+    "docs/progress.html": 45,
     "docs/rules/behavior-rules.md": 1,
     "docs/runbooks/self-hosted-runner.md": 1,
     "docs/specs/2026-05-27-workflow-spi-extraction.md": 1,
