@@ -834,13 +834,31 @@ class V203ToV206MigrationTest {
         assertThat(definition).contains("deleted_at IS NULL")
     }
 
+    /**
+     * ★V209 가 이 인덱스를 소유별로 갈랐다 — `uq_workflows_key` 라는 이름은 더 이상 없다.
+     *
+     * 이 클래스는 `migrateToLatest` 로 돌므로 **현재 스키마**를 재야 한다. 그렇다고 단언을 지우면
+     * V206 이 지키던 성질(소프트 삭제된 행은 key 를 점유하지 않는다)을 아무도 안 보게 된다 —
+     * 후속 인덱스 **양쪽 모두**가 그 조건을 이어받았는지로 바꾼다. 한쪽만 이어받아도 red 다.
+     *
+     * 아래 두 행위 테스트(재생성·중복 거부)는 `project_id` 를 안 주므로 전역 인덱스를 타고
+     * 그대로 통과한다 — 그쪽은 손대지 않았다.
+     */
     @Test
-    fun `V206 workflows key 는 소프트 삭제를 제외한 부분 UNIQUE 인덱스다`() {
-        assertThat(indexExists("uq_workflows_key")).isTrue()
-        val definition =
-            query("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_workflows_key'") { it.getString(1) }
-        assertThat(definition).contains("UNIQUE")
-        assertThat(definition).contains("deleted_at IS NULL")
+    fun `V206 이 연 소프트 삭제 조건을 V209 의 후속 인덱스 양쪽이 이어받았다`() {
+        assertThat(indexExists("uq_workflows_key"))
+            .describedAs("V209 가 갈랐으므로 옛 이름은 남아 있으면 안 된다")
+            .isFalse()
+
+        listOf("uq_workflows_key_global", "uq_workflows_key_project").forEach { name ->
+            assertThat(indexExists(name)).describedAs("$name 존재").isTrue()
+            val definition =
+                query("SELECT indexdef FROM pg_indexes WHERE indexname = '$name'") { it.getString(1) }
+            assertThat(definition).describedAs("$name UNIQUE").contains("UNIQUE")
+            assertThat(definition)
+                .describedAs("$name 이 소프트 삭제 조건을 잃으면 지웠다 다시 만들기가 막힌다")
+                .contains("deleted_at IS NULL")
+        }
     }
 
     @Test

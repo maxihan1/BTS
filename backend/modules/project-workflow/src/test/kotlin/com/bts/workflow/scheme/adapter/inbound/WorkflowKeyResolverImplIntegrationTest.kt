@@ -207,7 +207,7 @@ class WorkflowKeyResolverImplIntegrationTest {
                             ('bug-tracking',     '버그 추적 워크플로우',            NULL),
                             ('simple',           '단순 워크플로우',                 NULL),
                             ('kanban-basic',     '칸반 기본 워크플로우',            NULL)
-                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
+                        ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }
@@ -323,7 +323,7 @@ class WorkflowKeyResolverImplIntegrationTest {
                         """
                         INSERT INTO workflow_schemes (key, name, is_default)
                         VALUES ('no-default-scheme', 'No Default Scheme', false)
-                        ON CONFLICT (key) DO NOTHING
+                        ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }

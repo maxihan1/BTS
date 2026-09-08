@@ -843,7 +843,8 @@ class BulkOperationIntegrationTest {
             val wfId: UUID =
                 conn.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('software-default', 'Software Default') " +
-                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                        " DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -867,7 +868,7 @@ class BulkOperationIntegrationTest {
                     """
                     INSERT INTO workflow_schemes (key, name, is_default)
                     VALUES ('software-scheme', 'Software Scheme', true)
-                    ON CONFLICT (key) DO NOTHING
+                    ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                     """.trimIndent(),
                 )
             }

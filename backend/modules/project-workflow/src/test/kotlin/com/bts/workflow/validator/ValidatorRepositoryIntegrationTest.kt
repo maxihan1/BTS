@@ -112,7 +112,7 @@ class ValidatorRepositoryIntegrationTest {
             connection().use { conn ->
                 conn.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES (?, ?)" +
-                        " ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING",
+                        " ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING",
                 ).use { stmt ->
                     stmt.setString(1, "validator-test-wf")
                     stmt.setString(2, "validator 테스트 워크플로우")

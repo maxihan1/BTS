@@ -552,7 +552,8 @@ class IssueTransitionResolutionIntegrationTest {
             val wfId =
                 conn.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('resolution-test-wf', 'resolution 테스트 워크플로우') " +
-                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                        " DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -574,7 +575,8 @@ class IssueTransitionResolutionIntegrationTest {
                 conn.prepareStatement(
                     "INSERT INTO workflow_schemes (key, name, is_default) " +
                         "VALUES ('resolution-test-scheme', 'resolution 테스트 스킴', false) " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                        " DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
