@@ -70,7 +70,7 @@ Given `/projects/new` 생성 폼에 있다
 When 아이콘 그리드에서 하나를 고르고 키·이름을 넣어 생성한다
 Then 생성된 프로젝트가 **그 아이콘으로** 사이드바에 나타난다 (편차 X-N4).
 
-**S7. 만든 뒤에도 「일반」에서 바꾼다.**
+**S7. 만든 뒤에도 「상세정보」에서 바꾼다.**
 Given `/projects/ATLAS/settings/details` 에 있다
 When 현재 아이콘 아래 `아이콘 변경` 을 눌러 그리드에서 다른 것을 고르고 저장한다 (JI-1·JI-2)
 Then 사이드바·프로젝트 목록의 아이콘이 즉시 바뀐다.
@@ -172,7 +172,7 @@ label:'리포트', usesProjectParam:true, exact:false }`.
 
 | 그룹 | 항목 | 경로 |
 |---|---|---|
-| 일반 | 일반 | `/projects/$projectKey/settings/details` |
+| 일반 | 상세정보 | `/projects/$projectKey/settings/details` |
 | 일반 | 프로젝트 리드 | `/projects/$projectKey/settings/project-lead` |
 | 이슈 | 워크플로우 스킴 | `/projects/$projectKey/settings/workflow-scheme` |
 | 이슈 | 이슈 템플릿 | `/projects/$projectKey/settings/issue-templates` |
