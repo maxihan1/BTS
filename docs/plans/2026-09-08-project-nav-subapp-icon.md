@@ -337,7 +337,7 @@ plan 초안은 위치를 안 정했는데, 위치가 오버플로에서 무엇�
 |---|---|
 | `project-view-tabs.test.ts:46` | `expect(PROJECT_VIEW_TABS).toHaveLength(9)` |
 | `project-view-tabs.test.ts:108` | 〃 (두 번째 단언) |
-| `e2e/project-tabs-overflow.spec.ts:21` | `VISIBLE_TABS` 상수 — 「정본 9탭, 소스와 같은 순서」 |
+| `e2e/project-tabs-overflow.spec.ts:21` | 탭 상수 — 「정본 9탭, 소스와 같은 순서」 |
 | 〃 `:69` | 불변식 ① 「접힌 게 없으면 9개가 다 보인다」 |
 | 〃 `:77` | 불변식 ② 「접힌 것을 펼치면 정확히 9개」 |
 | 〃 `:93` | 「마지막 탭(**버전**)은 이 폭에서 확실히 접힌다」 → E-8 로 **`리포트`** 가 된다 |
@@ -345,6 +345,23 @@ plan 초안은 위치를 안 정했는데, 위치가 오버플로에서 무엇�
 주석만 고치면 red 다 — **숫자가 코드에 있다.**
 그 밖 주석 전용 — `project-view-tabs.ts` · `ProjectNavTabs.tsx` · `ProjectViewHeader.tsx` ·
 `router.ts` · `router.admin-guards.test.tsx`.
+
+**★★ 구현 실측 정정 (2026-09-08) — 위 표는 6곳인데 실제로는 8곳이었다.**
+E-7 을 「실측 완료」라 적어 구현자에게 「이것만 보면 된다」로 읽히게 만든 것이 이 표의 잘못이다.
+구현이 표 밖 2곳을 더 찾았다.
+
+| 누락분 | 무엇 | 왜 표가 놓쳤나 |
+|---|---|---|
+| `ProjectNavTabs.test.tsx:119` | `expect(links.length).toBe(9)` | **주석이 아니라 코드 숫자**인데 `9탭` 문자열이 없어 grep 에 안 걸렸다 |
+| `e2e/project-tabs-overflow.spec.ts:126·130·135` | 뷰포트 폭 `880/860/880` → `960/900/960` | 숫자가 **탭 개수가 아니라 픽셀**이라 「9」를 찾는 눈에 안 보인다. 탭 10종에서 880px 는 7개만 남아 실측 red(`expected 10, received 7`) |
+
+★그 e2e 폭은 **원래 설계대로 스스로 알렸다** — 종전 주석이 「탭이 10종이 되면 첫 단언이 먼저
+red 가 되어 폭을 다시 고르라고 알린다. 조용히 통과하지 않는다」라고 예고해 뒀고 실제로 그렇게 됐다.
+새 값의 임계는 900↔940(900 → 8+트리거 · 940 → 10)이고 960 은 그 위 여유값이다. 왕복 불변식과
+데스크톱 구간(>768px) 제약은 그대로다.
+
+★`router.ts:1` 의 「9탭 전량 프로젝트 스코프」는 **2026-09-07 J5-12 시점의 changelog** 라
+숫자를 바꾸면 거짓이 된다 — 의도적으로 보존했다.
 
 **검증**:
 - 기존 E2E: `apps/web/e2e/project-tabs-overflow.spec.ts` S2·S3·S4 (개수 불변식 3곳)
@@ -461,9 +478,28 @@ FE-4 가 11→12 로 늘릴 때 e2e 를 안 고쳤다). 제목의 「직접링�
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/layout/__tests__/ProjectTree.test.tsx`, `apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`, `apps/web/e2e/project-tree.spec.ts`, `apps/web/e2e/project-velocity.spec.ts`, `apps/web/e2e/project-cfd.spec.ts`]
+- files: [`apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/layout/__tests__/ProjectTree.test.tsx`, `apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`, `apps/web/e2e/project-tree.spec.ts`, `apps/web/e2e/project-velocity.spec.ts`, `apps/web/e2e/project-cfd.spec.ts`, `apps/web/e2e/project-cycle-time.spec.ts`]
 - depends-on: [4, 5]
 - jira: [JR-1, JR-3]
+
+**★★ 실측 정정 (2026-09-08 · Task 3 구현이 보고) — `project-cycle-time.spec.ts` 가 빠져 있었다.**
+리포트 spec 3개가 전부 「**리포트는 탭이 아니다**」라는 주석을 달고 사이드바 그룹으로 진입하는데,
+plan 초안은 `velocity`·`cfd` 둘만 `files` 에 넣었다. 세 번째가 같은 상태인 것을 **분해 시점에
+전수로 확인하지 않은 것**이 원인이다(2개를 보고 「둘이구나」로 닫았다).
+이 PR 로 리포트가 탭이 되므로 그 주석은 **셋 다 거짓이 된다.**
+
+| spec | stale 주석 위치 |
+|---|---|
+| `project-velocity.spec.ts` | `:77`·`:80` |
+| `project-cfd.spec.ts` | `:87`·`:90` |
+| **`project-cycle-time.spec.ts`** | `:113`·`:116` ← **초안 누락분** |
+
+**그 밖 stale 「9탭」·「리포트는 탭이 아니다」 잔여** (다른 표면 · 이 PR 범위 밖이면 그대로 둔다) —
+`scrum-board.spec.ts:113` · `use-tab-overflow.test.ts:15` · `board-labels.ts:92` ·
+`backlog-labels.ts:68` · `backlog.test.tsx:251` · `projects.board.test.tsx:1155` ·
+`reports.cycle-time.test.tsx:132`. **손댈지 말지를 구현자가 판단하고 보고한다** —
+「리포트는 탭이 아니다」류는 거짓이 됐으므로 고치고, 단순 「9탭」 표기는 그 문장이 **현재 사실을
+서술하는가 과거 시점 기록인가**로 가른다(`router.ts:1` 이 후자의 선례다).
 
 **의존이 4·5 인 이유** — 판별식(4)과 대체 진입로(5)가 **먼저 초록**이어야 이 삭제가 안전하다.
 순서를 바꾸면 16화면이 고아인 구간이 커밋 히스토리에 남는다.
@@ -512,9 +548,36 @@ FE-4 가 11→12 로 늘릴 때 e2e 를 안 고쳤다). 제목의 「직접링�
 
 **메타**.
 - agent: `qa-engineer`
-- files: [`apps/web/e2e/project-settings-nav.spec.ts`, `apps/web/e2e/project-tabs-overflow.spec.ts`, `docs/plans/2026-09-08-project-nav-subapp-icon.md`, `docs/specs/2026-09-08-project-nav-subapp-icon.md`]
+- files: [`apps/web/e2e/project-settings-nav.spec.ts`, `apps/web/e2e/project-member-management.spec.ts`, `apps/web/src/routes/projects.$projectKey.settings.details.tsx`, `docs/plans/2026-09-08-project-nav-subapp-icon.md`, `docs/specs/2026-09-08-project-nav-subapp-icon.md`]
 - depends-on: [3, 5, 6]
 - jira: [JR-1, JR-2, JS-1, JS-2]
+
+**★★ 구현이 넘긴 후속 3건 (2026-09-08 실측) — 이 task 가 받는다.**
+
+**후속 1 — `project-member-management.spec.ts:68` 의 단언이 «약해졌다».**
+그 줄은 `page.getByText('멤버').first()` 인데, 설정 사이드바의 `멤버` 링크가 **DOM 상 먼저**
+오므로 `.first()` 가 이제 본문이 아니라 **사이드바 쪽**을 집는다.
+🛑 **red 가 아니다**(`toBeVisible()` 이라 사이드바 링크로도 통과한다 · Task 5 가 실행으로 확인).
+그래서 **아무도 알려 주지 않는다** — 계약이 조용히 「본문에 멤버 화면이 떴다」에서
+「어딘가에 '멤버'라는 글자가 있다」로 내려앉았다. 스코프를 본문으로 좁혀 원래 의도로 되돌린다.
+
+**후속 2 — 설정 부제 조회는 role 스코프 또는 settled 로케이터를 쓴다.**
+SPA 전환 «중» `getByText('프로젝트 설정', { exact: true })` 가 순간 **2건**이 된다 —
+두 번째는 `ProjectTree` 의 설정 그룹 토글 `button` 이 전환 프레임에 남은 것이다.
+Task 6 이 그 토글을 지우면 사라지지만, **지금 그 사실에 기대어 조회를 느슨하게 쓰면**
+나중에 비슷한 문구가 생겼을 때 다시 깨진다.
+
+**후속 3 — `/settings/details` 에 프로젝트명이 «두 번» 뜬다.**
+셸 헤더 `<h1>Atlas 프로젝트</h1>` 바로 아래 본문 `<h2>Atlas 프로젝트</h2>` 다.
+**이 PR 이전부터 있던 것**(헤더가 셸로 올라간 J5-8 의 잔재)이지만, ★D-3 부제가 그 둘 사이에
+끼면서 **눈에 띄게 나빠졌다** — 「이름 / 프로젝트 설정 / 이름」으로 읽힌다.
+정본 계약이 이미 있다 — **J5-11 「뷰는 자기 제목을 다시 쓰지 않는다」**. `ProjectSummaryPage` 는
+2026-09-07 에 같은 이유로 자기 `h1` 을 지웠고 그 KDoc 이 「되살리면 같은 이름이 두 줄로 겹친다」
+라고 적어 뒀다. 이 화면만 그 처방을 못 받았다.
+→ 본문 `h2` 를 **프로젝트명이 아니라 화면 이름(`상세정보`)** 으로 바꾼다. 한 줄이고
+이미 결정된 계약을 이 화면에 적용하는 것이라 새 판단이 아니다.
+🛑 그 파일의 `h1` 문구 보존 주석(F21)은 **`PageHeader` 시절 것**이라 지금 `h2` 와 무관하다 —
+헷갈리지 말 것. 바꾼 뒤 그 주석도 현재 사실로 갱신한다.
 
 **RED** (신규 E2E · A-14 의 PR1 몫):
 - 사이드바 `⋯` → 프로젝트 설정 → **탭바 부재** + 설정 사이드바 존재
@@ -605,3 +668,56 @@ findings **14건 · BLOCKER 0.** 전부 plan 보강으로 해소하고 각 Task 
   있어서 성립한다. 아이콘 없는 목록에 같은 규칙을 적용하면 빈 행이 된다.
 
 **BLOCKER 0** — 14건 전부 plan 보강으로 닫혔다.
+
+## 구현 중 실측 — 계획을 뒤집거나 보탠 것
+
+wave 1·2 (task 1·2·3·5) 완료 시점 기록. verifier 4건 전부 PASS.
+
+### 🔴 프로덕션 결함 1건을 눈확인이 잡았다 — 계획에 없던 것
+
+**정본 탭바에서 「지금 어느 탭에 있는가」가 시각적으로 표시되지 않고 있었다.**
+TanStack `Link` 의 `activeProps` 기본값은 `{ className: 'active' }` 인데 `activeProps` 를 주면
+그 기본값이 **통째로 대체된다**(`link.js` 의 `functionalUpdate(activeProps, {}) ?? STATIC_ACTIVE_OBJECT`).
+`ProjectNavTabs` 는 `activeProps={{ 'aria-current': 'page' }}` 만 넘겼고, `TAB_LINK_CLASS` 의
+`[&.active]:font-semibold` · `[&.active]:text-foreground` 가 **한 줄도 발화하지 않았다.**
+
+| `/projects/ATLAS/backlog` | `.active` | fontWeight | color(라이트) |
+|---|---|---|---|
+| **수정 전** 활성 탭 `백로그` | **false** | **400** | **rgb(98,111,134)** |
+| 수정 전 비활성 탭 9개 | false | 400 | rgb(98,111,134) |
+| **수정 후** 활성 탭 | **true** | **600** | **rgb(23,43,77)** |
+
+**활성과 비활성이 바이트 단위로 같았다.** `aria-current` 는 붙어 있었으므로
+**스크린리더는 알고 눈으로 보는 사람만 몰랐다.** 유닛이 `aria-current` 만 봐서 초록이었다 —
+그래서 짝 단언(`classList.contains('active')` 헬퍼)을 함께 넣어 재발을 막았다.
+`ProjectTree` 는 `activeProps` 를 아예 안 줘서 기본값이 살아 정상이었다(대조군).
+
+### 계획이 틀렸던 것 3건
+
+| # | 계획 | 실측 |
+|---|---|---|
+| 1 | E-7 「9탭 숫자 6곳」 | **8곳.** 「N건」을 쓴 것이 눈가리개였다 — §Task 3 정정표 |
+| 2 | Task 6 files 에 리포트 spec **2개** | **3개.** `project-cycle-time.spec.ts` 누락 — §Task 6 정정 |
+| 3 | 「TopBar 에 이슈·대시보드·캘린더 대체 경로가 없다」(Task 5 근거) | **부분 오류.** `TopBar.tsx:134` 에 `to="/dashboards"` 가 있다. 다만 그것은 **Atlas 워드마크 홈 링크**이고 접근가능 이름이 `Atlas` 라 「대시보드로 가는 길」로 읽히지 않는다. 이슈·캘린더는 정말 없다 → **결론(메인 nav 유지)은 유지** |
+
+### 계획에 없었지만 실측으로 정한 것 2건
+
+- **`settings/details` 라벨 `'일반'` → `'상세정보'`.** 정본의 `general` 그룹 라벨 `'일반'` 과
+  그 첫 항목 라벨이 **같은 글자**라 화면에 「일반 / 일반」이 붙어 보였다. 그 라벨의 e2e 의존이
+  **0건**임을 실측하고(`SETTINGS_LINK_CONTRACT` 11개에 「일반」이 애초에 없다 — E-3 기전),
+  Jira 원문 JI-1 「"Select **Details**."」에 맞췄다. **중복 회피가 아니라 Jira 정합 회복**이다.
+- **그룹 헤딩 대비 `/60` → `/70`.** `/60` 이 라이트 **3.91:1** 로 AA(4.5) 미달이었다.
+  `/70` 상향 후 **라이트 5.30:1 · 다크 6.14:1** 로 둘 다 통과.
+  측정은 캔버스 합성 픽셀 읽기와 수동 oklab 변환 **두 방법이 교차 검증**됐다.
+  (「새 토큰 금지」가 막은 것은 새 CSS 변수 신설이지 같은 토큰의 알파 조정이 아니다.)
+
+### verifier 가 controller 를 교정한 것 2건
+
+이 체인에서 **verifier 가 실제로 값을 했다.** 둘 다 controller 의 첨부 축약을 잡았다.
+
+- Task 1 verifier — 「구현 파일 KDoc 이 첨부에서 생략됐다고 스스로 밝히므로 ⑤는 **미검증으로
+  분리**한다. PASS 에 넣으면 확인 안 한 것을 확인했다고 말하는 셈이다」. `diff --stat` 143줄 vs
+  첨부 57줄이라는 **줄 수 불일치**를 근거로 댔다. controller 가 grep 으로 닫았다.
+- Task 3 verifier — 표 밖 2곳 추가 수정이 범위 이탈인지 물었을 때, 이 저장소 메모리
+  (`지시문에 개수를 쓰지 마라 · 「N건」은 눈가리개`)를 인용해 **「6곳은 실측 결과지 상한
+  선언이 아니다」**로 판정했다. controller 가 만든 함정을 정확히 지목한 것이다.
