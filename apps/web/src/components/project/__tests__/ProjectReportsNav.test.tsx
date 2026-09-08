@@ -80,6 +80,15 @@ async function renderNavAndReadLinks(
     .map((link) => [link.textContent ?? '', link.getAttribute('href') ?? ''] as const)
 }
 
+/** 지금 화면에서 시각 강조 클래스(`active`)가 붙은 서브내비 링크의 텍스트 목록 */
+async function readVisuallyActiveLabels(): Promise<readonly string[]> {
+  const nav = await screen.findByRole('navigation', { name: REPORTS_NAV_NAME })
+  return within(nav)
+    .getAllByRole('link')
+    .filter((link) => link.classList.contains('active'))
+    .map((link) => link.textContent ?? '')
+}
+
 /** 지금 화면에서 `aria-current="page"` 인 서브내비 링크의 텍스트 목록 */
 async function readCurrentLabels(): Promise<readonly string[]> {
   const nav = await screen.findByRole('navigation', { name: REPORTS_NAV_NAME })
@@ -118,6 +127,20 @@ describe('ProjectReportsNav', () => {
       )
 
       expect(await readCurrentLabels()).toEqual([link.label])
+
+      unmount()
+    }
+  })
+
+  it('현재 항목에 시각 강조 클래스가 함께 붙는다 — aria-current 만으로는 눈에 안 보인다', async () => {
+    // 🛑 `activeProps` 를 주면 TanStack 의 기본값 `{ className: 'active' }` 가 **대체된다.**
+    //    `aria-current` 만 넘기면 스크린리더는 현재 위치를 알고 **눈으로 보는 사람만 모른다**
+    //    (2026-09-08 브라우저 눈확인 실측 — 그때까지 유닛은 전부 초록이었다).
+    //    `[&.active]:` 로 건 강조가 실제로 발화하는지를 클래스로 못박는다.
+    for (const link of PROJECT_REPORT_LINKS) {
+      const { unmount } = renderAt(hrefOf(link.to), <ProjectReportsNav projectKey={PROJECT_KEY} />)
+
+      expect(await readVisuallyActiveLabels()).toEqual([link.label])
 
       unmount()
     }
