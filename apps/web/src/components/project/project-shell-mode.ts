@@ -57,13 +57,22 @@ export interface ProjectSettingsNavGroup {
  * 아이콘이 필수인 이유는 접힘 레일(64px)이다 — 라벨을 `sr-only` 로 숨기면 시각 앵커가 없는
  * 항목 10개가 **구분 불가능한 빈 행**이 된다. `lib/settings-hub-links.ts` 가 개인 설정 11개에
  * 쓰는 `Icon: LucideIcon` 패턴을 그대로 재사용한다(새 추상화 아님).
+ *
+ * ### `settings/details` 의 라벨은 `'상세정보'` 다 — Jira 원문이 Details 다 (JI-1)
+ * "Select **Details**." ([edit a space's details], Cloud · 조회 2026-09-08). 종전 `'일반'` 은
+ * 그 자리의 BTS 자체 명명이었고, 이 교정은 중복 회피가 아니라 **Jira 정합 회복**이다.
+ * 부수적으로 그룹 라벨 `'일반'`(`general`)과의 글자 충돌도 사라져 「일반 › 상세정보」로 읽힌다.
+ * 교체 비용 0 — 이 문자열에 걸린 e2e 는 0건이다(2026-09-08 전수 실측 · `SETTINGS_LINK_CONTRACT`
+ * 11개에 「일반」이 애초에 없었다. 그 누락 자체가 리뷰 E-3 드리프트의 기전이다).
+ *
+ * [edit a space's details]: https://support.atlassian.com/jira-work-management/docs/edit-a-projects-details/
  */
 export const PROJECT_SETTINGS_NAV: readonly ProjectSettingsNavGroup[] = [
   {
     key: 'general',
     label: '일반',
     items: [
-      { to: '/projects/$projectKey/settings/details', label: '일반', Icon: Settings2 },
+      { to: '/projects/$projectKey/settings/details', label: '상세정보', Icon: Settings2 },
       { to: '/projects/$projectKey/settings/project-lead', label: '프로젝트 리드', Icon: UserCheck },
     ],
   },

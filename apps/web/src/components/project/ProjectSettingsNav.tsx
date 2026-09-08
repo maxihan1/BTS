@@ -55,11 +55,25 @@ const BACK_LINK_CLASS =
 /**
  * 그룹 헤딩 스타일.
  *
- * `--sidebar-*` 팔레트에 그룹 헤딩 대응 토큰이 없다. **새 토큰을 만들지 않고**
- * `text-sidebar-foreground/60` 관례를 쓴다(★리뷰 D-6). 다크에서 60% 가 읽히는지는 눈확인 항목이다.
+ * `--sidebar-*` 팔레트에 그룹 헤딩 대응 토큰이 없다. **새 CSS 변수를 신설하지 않고**
+ * `text-sidebar-foreground/<알파>` 관례를 쓴다(★리뷰 D-6).
+ *
+ * 알파는 `/70` 이다 — D-6 이 지정한 `/60` 에서 한 단계 올렸다. 알파 조정은 새 CSS 변수가
+ * 아니라 같은 토큰의 다른 불투명도이므로 D-6 의 「새 토큰 금지」와 충돌하지 않는다.
+ *
+ * 근거는 실측 대비다(2026-09-08 · Chromium 캔버스 합성으로 실제 픽셀을 읽어 WCAG 계산).
+ *
+ * | 알파 | 라이트 | 다크 |
+ * |---|---|---|
+ * | `/50` (기존 트리 헤딩 관례) | 2.96:1 ❌ | 3.80:1 ❌ |
+ * | `/60` (D-6 최초 지정) | **3.91:1 ❌** | 4.80:1 ✅ |
+ * | **`/70` (채택)** | **5.30:1 ✅** | **6.14:1 ✅** |
+ *
+ * 🛑 `/60` 으로 되돌리지 마라 — 라이트가 AA(4.5:1) 미달이다. 「기존 트리 헤딩보다는 낫다」는
+ * **「더 나쁜 것이 있다」이지 「통과했다」가 아니다.** 12px 이라 large text 완화도 못 받는다.
  */
 const GROUP_HEADING_CLASS =
-  'px-2 pb-0.5 pt-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60'
+  'px-2 pb-0.5 pt-2 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/70'
 
 /** 설정 항목 링크 스타일 — `Sidebar.NAV_LINK_CLASS` 와 같은 시각 언어(`[&.active]` 강조 포함) */
 const SETTINGS_LINK_CLASS =

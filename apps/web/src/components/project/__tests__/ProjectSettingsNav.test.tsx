@@ -114,10 +114,14 @@ describe('ProjectSettingsNav', () => {
     const nav = await renderNav()
 
     for (const group of PROJECT_SETTINGS_NAV) {
-      // 🛑 `getByText(group.label)` 로 헤딩을 찾지 않는다 — 정본의 `general` 그룹 라벨('일반')과
-      //    그 그룹 첫 항목 라벨('일반')이 **같은 글자**라 두 요소가 잡힌다. 목록의 접근가능
-      //    이름(= `aria-labelledby` 로 이어진 헤딩)으로 조회하면 그 모호함이 없고, 덤으로
-      //    「헤딩이 실제로 목록과 묶였는가」까지 함께 재게 된다.
+      // 🛑 `getByText(group.label)` 이 아니라 **목록의 접근가능 이름**으로 조회한다. 이유 두 겹.
+      //    ① 더 많은 것을 잰다 — 「헤딩 글자가 어딘가 있다」가 아니라 「헤딩이 자기 목록과
+      //       `aria-labelledby` 로 실제로 묶였다」까지 한 번에 걸린다. 연결이 끊기면
+      //       목록 앞을 지나가는 텍스트 한 줄일 뿐이라 구간 경계가 스크린리더에 들리지 않는다.
+      //    ② 라벨 글자 충돌에 좌우되지 않는다. 한때 `general` 그룹('일반')과 그 첫 항목이
+      //       **같은 글자**여서 `getByText` 가 2개를 잡았다. 그 항목은 Jira 원문(JI-1 "Details")에
+      //       맞춰 '상세정보' 가 되어 지금은 충돌이 없지만, 설정은 항목이 계속 늘어나는 표면이라
+      //       조회 방식이 라벨 충돌에 인질로 잡히지 않는 편이 낫다.
       expect(
         within(nav).getByRole('list', { name: group.label }),
         `그룹 「${group.label}」 헤딩 부재`,
@@ -247,8 +251,11 @@ describe('ProjectSettingsNav', () => {
     const nav = await renderNav()
 
     for (const group of PROJECT_SETTINGS_NAV) {
-      // 헤딩 요소는 목록의 `aria-labelledby` 를 되짚어 집는다 — 위와 같은 이유로 텍스트 조회는 모호하다.
-      const headingId = within(nav).getByRole('list', { name: group.label }).getAttribute('aria-labelledby')
+      // 헤딩 요소는 목록의 `aria-labelledby` 를 되짚어 집는다 — 위와 같은 이유(연결까지 함께
+      // 재고, 라벨 충돌에 좌우되지 않는다)로 텍스트 조회를 쓰지 않는다.
+      const headingId = within(nav)
+        .getByRole('list', { name: group.label })
+        .getAttribute('aria-labelledby')
       expect(headingId).not.toBeNull()
       expect(headingId === null ? null : document.getElementById(headingId)?.className).toContain(
         'sr-only',
