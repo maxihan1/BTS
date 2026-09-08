@@ -339,7 +339,7 @@
 
 > **cross-BC 주의**. 이슈 일괄 이관의 실제 UPDATE 는 issue-tracking BC 소유다. 다중 BC 트랜잭션 금지 규칙에 따라 project-workflow 는 포트로 큐잉만 하고, 처리는 기존 `bulk_operations` 인프라가 맡는다. 기존 `BULK_TRANSITION` 은 엔진을 태우므로 **재사용할 수 없다** — 이관 대상은 이미 워크플로우에서 빠진 상태라 유효한 전환이 없어 전량 실패한다. `STATUS_MIGRATION` 타입을 따로 둔다.
 
-### §2.8 FR-WF-08 — 프로젝트 소유 워크플로우·스킴 (프로젝트 관리자 편집)
+### §2.8 FR-WF-08 — 워크플로우 정의·스킴 소유 스코프
 
 **우선순위**. 필수 | **선행**. §2.2 · §2.4 · FR-PM-04 | **Plan slug**. `workflow/project-owned-workflows`
 

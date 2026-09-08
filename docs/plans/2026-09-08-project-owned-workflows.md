@@ -1,6 +1,14 @@
 # 프로젝트 소유 워크플로우 — 구현 계획
 
+티어: T3
+타입: migration
+
 스펙 `docs/specs/2026-09-08-project-owned-workflows.md`. **신설 FR-WF-08** (정본 145 → 146, Maxi 2026-09-08 확정).
+
+> **티어 선언은 기계가 읽는다.** `scripts/workflow/tier-floor.test.ts` 가 이 파일의 `티어:` 줄을
+> 파싱해 「마이그레이션을 건드렸는데 선언이 T0/T1 인가」를 막는다(ⓑ Flyway T3 하한). 이 줄을 지우면
+> plan 이 있어도 **선언 부재**로 읽혀 red 다 — PR ① 착수 때 실제로 그렇게 걸렸다.
+> 전 PR 중 가장 높은 티어를 적는다. PR ③ 이 shared-kernel 을 건드려 역시 T3 다.
 
 ## Jira 대조
 
