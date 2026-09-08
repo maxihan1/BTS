@@ -36,7 +36,28 @@ export interface ProjectSettingsNavGroup {
   readonly items: readonly ProjectSettingsNavItem[]
 }
 
-/** 프로젝트 설정 서브앱 메뉴 정본 — 4그룹 10항목 */
+/**
+ * 프로젝트 설정 서브앱 메뉴 **단일 정본** — 4그룹 10항목.
+ *
+ * ### 이 목록이 곧 「설정 서브앱의 경계」다
+ * 설정 사이드바(`ProjectSettingsNav`)가 그리는 대상이자 {@link resolveProjectShellMode} 의
+ * 판정 근거다. 두 소비자가 **같은 배열 하나**를 읽으므로 「사이드바에 있는데 탭바가 남는」
+ * 어긋남이 구조적으로 생기지 않는다.
+ *
+ * ### 🛑 `컴포넌트`·`버전`은 여기 없다 (편차 X-N2)
+ * 두 화면은 경로가 `/projects/$projectKey/settings/...` 인데도 **정본 탭**(`PROJECT_VIEW_TABS`)
+ * 으로만 유지한다. 그래서 규칙이 「설정 «경로» = 탭바 없음」이 아니라 **「설정 서브앱에 «속한»
+ * 경로 = 탭바 없음」**이 된다. 넣으면 두 화면에서 탭바가 사라져 정본 탭이 스스로를 지운다.
+ *
+ * ### 소비자 계약 — 항목 0개인 그룹은 헤딩도 그리지 않는다 (★리뷰 D-5)
+ * 지금은 권한 게이팅이 없어 항상 10항목이지만 설정은 게이팅이 붙는 표면이다(스펙 GAP-1).
+ * 그날 필터가 그룹을 비우면 소비자는 **그룹 헤딩까지 함께 생략**해야 한다 — 빈 헤딩만 남은
+ * 사이드바는 「권한이 없다」가 아니라 「고장났다」로 읽힌다.
+ *
+ * 아이콘이 필수인 이유는 접힘 레일(64px)이다 — 라벨을 `sr-only` 로 숨기면 시각 앵커가 없는
+ * 항목 10개가 **구분 불가능한 빈 행**이 된다. `lib/settings-hub-links.ts` 가 개인 설정 11개에
+ * 쓰는 `Icon: LucideIcon` 패턴을 그대로 재사용한다(새 추상화 아님).
+ */
 export const PROJECT_SETTINGS_NAV: readonly ProjectSettingsNavGroup[] = [
   {
     key: 'general',
@@ -85,7 +106,22 @@ export const PROJECT_SETTINGS_NAV: readonly ProjectSettingsNavGroup[] = [
 ]
 
 /**
- * 현재 경로가 설정 서브앱에 속하는지 판정한다.
+ * 현재 경로가 설정 서브앱에 속하는지 판정한다 — 사이드바와 탭바가 **이 함수 하나를 공유**한다.
+ *
+ * ### 왜 문자열이 아니라 목록에서 유도하는가
+ * 🛑 `pathname.includes('/settings/')` 로 판정하면 `컴포넌트`·`버전`(편차 X-N2)을 되살리려고
+ * **예외 분기**를 따로 써야 한다. 그 분기는 {@link PROJECT_SETTINGS_NAV} 와 서로를 검사하지
+ * 않는 **두 번째 목록**이다 — 메뉴에 항목을 하나 더하는 사람은 분기를 모르고, 분기를 고치는
+ * 사람은 메뉴를 안 본다. 이 저장소가 `two-lists-never-check-each-other` 로 이름 붙인 지배
+ * 결함 양식이고, 실물 증거가 이미 있다(`SETTINGS_LINK_CONTRACT` 11 vs 소스 12 · 리뷰 E-3).
+ * 목록에서 유도하면 판정은 **정의상** 메뉴와 같다.
+ *
+ * ### 경계 2개
+ * - `projectKey` 부재 → 무조건 `'tree'`. `Sidebar` 는 `/issues`·`/dashboards`·`/calendar`
+ *   에서도 렌더되고 그때 키가 `undefined` 다(★리뷰 E-4). 치환을 그대로 두면
+ *   `/projects/undefined/settings/details` 와 비교하며 **우연히** 동작한다.
+ * - 접두사가 아니라 **세그먼트**로 비교한다. `startsWith(href)` 만 쓰면
+ *   `/settings/details` 가 `/settings/details-v2` 를 먹는다.
  *
  * @param pathname 라우터가 만든 현재 pathname
  * @param projectKey 현재 프로젝트 키 — 프로젝트 밖에서는 `undefined`
