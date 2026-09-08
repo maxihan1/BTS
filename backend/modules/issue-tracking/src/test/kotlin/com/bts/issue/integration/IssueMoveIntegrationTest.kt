@@ -918,7 +918,7 @@ class IssueMoveIntegrationTest {
                 stmt.execute(
                     "INSERT INTO workflows (key, name) " +
                         "VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING",
                 )
             }
 
@@ -975,7 +975,7 @@ class IssueMoveIntegrationTest {
                 stmt.execute(
                     "INSERT INTO workflow_schemes (key, name, is_default) " +
                         "VALUES ('software-scheme', 'Software Scheme', true) " +
-                        "ON CONFLICT (key) DO NOTHING",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING",
                 )
             }
 

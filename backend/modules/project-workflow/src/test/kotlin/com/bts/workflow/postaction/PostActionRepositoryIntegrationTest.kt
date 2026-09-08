@@ -107,7 +107,7 @@ class PostActionRepositoryIntegrationTest {
                         """
                         INSERT INTO workflows (key, name)
                         VALUES ('test-wf', '테스트 워크플로우')
-                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
+                        ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }

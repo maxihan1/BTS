@@ -124,7 +124,7 @@ class WorkflowSchemeControllerIntegrationTest {
                             ('bug-tracking',     '버그 추적 워크플로우'),
                             ('simple',           '단순 워크플로우'),
                             ('kanban-basic',     '칸반 기본 워크플로우')
-                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
+                        ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }

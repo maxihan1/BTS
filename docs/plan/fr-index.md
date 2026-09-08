@@ -1,8 +1,8 @@
-<!-- 145개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
+<!-- 146개 FR 역인덱스 (FR ID → BC → 본문 §x.y) + Open Questions -->
 
 # FR 역인덱스 + Open Questions
 
-## §A.1 FR 역인덱스 (145개 전수)
+## §A.1 FR 역인덱스 (146개 전수)
 
 > 출처. SDD `docs/sdd/02-requirements.md` §2.2 "기능 요구사항 (FR) 상세".
 > 검증. `scripts/verify-master-plan.sh` — 145개 모두 product/*.md에 등장해야 함.
@@ -55,6 +55,7 @@
 | FR-WF-05 | 전환 ID 식별자 — 다중 전환 + 전역/최초 전환 | 필수 | project-workflow | §2.5 |
 | FR-WF-06 | 전환 규칙(조건/검증기/후처리) 편집 | 필수 | project-workflow | §2.6 |
 | FR-WF-07 | 워크플로우 초안·발행 + 상태 이관 마법사 | 필수 | project-workflow | §2.7 |
+| FR-WF-08 | 워크플로우 정의·스킴 소유 스코프 — 전역 템플릿 / 프로젝트 전용 | 필수 | project-workflow | §2.8 |
 | FR-AT-01 | 트리거 (생성/변경/댓글/스케줄/Webhook) | 필수 | automation | §2.1 |
 | FR-AT-02 | 액션 (필드 변경/담당자/댓글/API 호출) | 필수 | automation | §2.2 |
 | FR-AT-03 | 조건 분기 (if-else, 표현식) | 필수 | automation | §2.3 |
@@ -253,14 +254,14 @@
 |---|---|---|
 | identity-access | 25 | AU(10) + MF(5) + PM(10) |
 | issue-tracking | 38 | IS(10) + CM(4) + VR(4) + AC(2) + MN(3) + CO(2) + WT(1) + LK(2) + HS(2) + TM(2) + MV(2) + PJ(4) |
-| project-workflow | 7 | WF(7) |
+| project-workflow | 8 | WF(8) |
 | agile-planning | 15 | BD(4) + BL(2) + EP(2) + TL(3) + TT(2) + PL(2) |
 | automation | 7 | AT(7) |
 | notification-dashboard | 14 | NT(5) + DB(3) + RP(4) + UX-02,03(2) |
 | slack-integration | 6 | SL(6) |
 | personalization | 21 | PR(4) + PF(3) + CA(2) + UX-01,04,05,06,07~14(12) |
 | search-export-import | 12 | SR(4) + EX(2) + IM(2) + API(4) |
-| **합계** | **145** | |
+| **합계** | **146** | |
 
 ## §A.3 미해결 결정 (Open Questions)
 

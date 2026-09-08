@@ -432,7 +432,8 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
             val wfId =
                 c.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('software-default', '소프트웨어 개발 기본 워크플로우') " +
-                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                        " DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -447,7 +448,7 @@ class IssueChangeComponentsAutoAssignIntegrationTest {
                     """
                     INSERT INTO workflow_schemes (key, name, is_default)
                     VALUES ('chgcmp-scheme', 'Change Components Test Scheme', false)
-                    ON CONFLICT (key) DO NOTHING
+                    ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                     """.trimIndent(),
                 )
             }

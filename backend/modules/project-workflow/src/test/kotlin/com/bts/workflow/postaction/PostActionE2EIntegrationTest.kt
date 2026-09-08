@@ -168,7 +168,7 @@ class PostActionE2EIntegrationTest {
                         """
                         INSERT INTO workflows (key, name)
                         VALUES ('$WORKFLOW_KEY', '단순 워크플로우')
-                        ON CONFLICT (key) WHERE deleted_at IS NULL DO NOTHING
+                        ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL DO NOTHING
                         """.trimIndent(),
                     )
                 }
@@ -418,7 +418,8 @@ class PostActionE2EIntegrationTest {
         ): UUID =
             conn.prepareStatement(
                 "INSERT INTO workflows (key, name) VALUES (?, ?)" +
-                    " ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name" +
+                    " ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                    " DO UPDATE SET name = EXCLUDED.name" +
                     " RETURNING id",
             ).use { stmt ->
                 stmt.setString(1, key)

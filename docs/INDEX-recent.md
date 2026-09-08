@@ -1,12 +1,13 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (524건, 최신순)
+# 시간 축 인덱스 (525건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-09-08 | project-nav-subapp-icon | ✔ | ✔ | — | — | FR-PJ-01 FR-PJ-02 FR-PJ-03 FR-PJ-04 FR-RP-02 FR-RP-03 FR-RP-04 FR-TT-02 FR-UX-06 FR-UX-08 |
+| 2026-09-08 | project-owned-workflows | ✔ | ✔ | — | — | FR-PM-04 FR-WF-02 FR-WF-04 FR-WF-08 |
 | 2026-09-07 | dashboard-jira-parity-gadgets | — | ✔ | — | — | FR-DB-01 FR-DB-02 FR-RP-01 |
 | 2026-09-07 | jira-parity-project-header-and-scoped-tabs | — | ✔ | — | — | FR-BD-01 FR-CA-01 FR-DB-01 FR-IS-01 FR-UX-06 |
 | 2026-09-07 | login-provider-default-and-recall | — | ✔ | — | — | FR-AU-01 FR-AU-06 FR-PF-01 |

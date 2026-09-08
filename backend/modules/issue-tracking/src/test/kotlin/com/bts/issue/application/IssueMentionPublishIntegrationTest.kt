@@ -550,7 +550,8 @@ class IssueMentionPublishIntegrationTest {
             val wfId: UUID =
                 c.prepareStatement(
                     "INSERT INTO workflows (key, name) VALUES ('mention-test-wf', '멘션 테스트 워크플로우') " +
-                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                        " DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -565,7 +566,8 @@ class IssueMentionPublishIntegrationTest {
                 c.prepareStatement(
                     "INSERT INTO workflow_schemes (key, name, is_default) " +
                         "VALUES ('mention-test-scheme', '멘션 테스트 스킴', false) " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                        " DO UPDATE SET name = EXCLUDED.name RETURNING id",
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()

@@ -651,7 +651,8 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
         val schemeId =
             conn.prepareStatement(
                 "INSERT INTO workflow_schemes (key, name, is_default) VALUES (?, ?, false) " +
-                    "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                    "ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                    " DO UPDATE SET name = EXCLUDED.name RETURNING id",
             ).use { stmt ->
                 stmt.setString(1, schemeKey)
                 stmt.setString(2, schemeName)

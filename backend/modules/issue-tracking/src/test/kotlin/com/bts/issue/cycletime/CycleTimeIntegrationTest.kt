@@ -863,7 +863,8 @@ class CycleTimeIntegrationTest {
                 """
                 INSERT INTO workflow_schemes (key, name, is_default)
                 VALUES ('cycletime-scheme', 'Cycle Time Test Scheme', false)
-                ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id
+                ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL
+                DO UPDATE SET name = EXCLUDED.name RETURNING id
                 """.trimIndent(),
             ).use { stmt ->
                 stmt.executeQuery().use { rs ->
@@ -904,7 +905,7 @@ class CycleTimeIntegrationTest {
     ): UUID =
         conn.prepareStatement(
             "INSERT INTO workflows (key, name) VALUES (?, ?)" +
-                " ON CONFLICT (key) WHERE deleted_at IS NULL" +
+                " ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
                 " DO UPDATE SET name = EXCLUDED.name RETURNING id",
         ).use { stmt ->
             stmt.setString(1, key)

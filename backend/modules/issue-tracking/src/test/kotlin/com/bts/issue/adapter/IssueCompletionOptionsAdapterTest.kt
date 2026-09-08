@@ -81,6 +81,17 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
     private lateinit var projectId: UUID
 
     companion object {
+        /**
+         * 전역(비-프로젝트) 워크플로우·스킴 upsert 의 conflict 절.
+         *
+         * V209 가 `key` 유니크를 소유별로 갈랐다. `ON CONFLICT` 는 **인덱스 술어를 함의하는 WHERE 절**이
+         * 있어야 추론되므로, 술어를 빠뜨리면 `there is no unique or exclusion constraint matching the
+         * ON CONFLICT specification` 으로 죽는다. 여기 픽스처는 전부 전역 행이라 전역 인덱스를 가리킨다.
+         */
+        private const val CONFLICT_KEY_GLOBAL =
+            " ON CONFLICT (key) WHERE project_id IS NULL AND deleted_at IS NULL" +
+                " DO UPDATE SET name = EXCLUDED.name RETURNING id"
+
         private const val PROJECT_KEY = "SLCOMP"
     }
 
@@ -190,8 +201,8 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
 
             val wfId =
                 conn.prepareStatement(
-                    "INSERT INTO workflows (key, name) VALUES ('slcomp-wf', 'Slack 완료 테스트 워크플로우') " +
-                        "ON CONFLICT (key) WHERE deleted_at IS NULL DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                    "INSERT INTO workflows (key, name) VALUES ('slcomp-wf', 'Slack 완료 테스트 워크플로우')" +
+                        CONFLICT_KEY_GLOBAL,
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
@@ -209,8 +220,8 @@ class IssueCompletionOptionsAdapterTest : IssueTestcontainersBase() {
             val schemeId =
                 conn.prepareStatement(
                     "INSERT INTO workflow_schemes (key, name, is_default) " +
-                        "VALUES ('slcomp-scheme', 'Slack 완료 테스트 스킴', false) " +
-                        "ON CONFLICT (key) DO UPDATE SET name = EXCLUDED.name RETURNING id",
+                        "VALUES ('slcomp-scheme', 'Slack 완료 테스트 스킴', false)" +
+                        CONFLICT_KEY_GLOBAL,
                 ).use { stmt ->
                     stmt.executeQuery().use { rs ->
                         rs.next()
