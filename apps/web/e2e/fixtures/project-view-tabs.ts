@@ -62,40 +62,15 @@ export async function clickProjectViewTab(page: Page, label: string): Promise<vo
   await tab.click()
 }
 
-/**
- * 사이드바 프로젝트 트리의 **리포트** 링크로 이동한다.
+/*
+ * ★`openProjectReportFromSidebar` 가 여기 있었다 — 사이드바 트리의 `리포트` 그룹을 펼쳐
+ *   리포트 3종으로 가던 헬퍼다. 그 그룹이 사라지면서(Jira JR-1·JR-3 — 리포트는 스페이스
+ *   내비게이션의 «탭»이고 신 내비게이션 사이드바에는 Reports 가 없다) 소비자가 0이 됐고,
+ *   본문이 `tree.getByRole('button', { name: '리포트' })` 를 누르므로 **남겨 두면 반드시
+ *   실패하는 함수**가 됐다. 스스로 「캠페인 PR ⑨ 가 이 하위 목록을 갈아치운다. 그때 이 헬퍼도
+ *   함께 바뀐다」라고 예고해 뒀고, 그 예고가 실현된 것이다.
  *
- * ### 왜 이 헬퍼가 탭 헬퍼 옆에 있는가
- * 리포트 3종(벨로시티·누적 흐름도·사이클/리드 타임)은 **탭이 아니다.** 예전에는 백로그 화면의
- * 인라인 nav 에 섞여 있었는데, 탭바가 정본 9탭으로 통합되면서 그 자리가 없어졌다.
- * 남은 UI 경로는 사이드바 트리의 `리포트` 그룹 하나뿐이라, 「리포트로 어떻게 가는가」의 답이
- * 여기 있어야 탭 헬퍼를 찾은 사람이 같이 본다.
- *
- * 🛑 `page.goto` 로 대체하지 않는다 — SPA 내부 이동이라야 MSW store 가 리셋되지 않는다.
- *
- * ⚠️ 캠페인 PR ⑨ 가 이 하위 목록을 보드 목록으로 갈아치운다. 그때 이 헬퍼도 함께 바뀐다.
- *
- * @param page Playwright 페이지
- * @param projectName 사이드바에 보이는 프로젝트 **이름**(키가 아니다)
- * @param label 리포트 링크 라벨
+ *   리포트로 가는 길은 이제 탭바다 — 위 `clickProjectViewTab(page, '리포트')` → 착지 화면
+ *   4카드(`components/project/project-report-links.ts`)가 그 자리를 잇는다. 도달성 보증은
+ *   `scripts/workflow/project-nav-reachability.test.ts` 가 차집합으로 진다.
  */
-export async function openProjectReportFromSidebar(
-  page: Page,
-  projectName: string,
-  label: string,
-): Promise<Locator> {
-  const tree = page.getByRole('navigation', { name: '프로젝트', exact: true })
-  await expect(tree).toBeVisible()
-
-  const projectToggle = tree.getByRole('button', { name: `${projectName} 하위 메뉴`, exact: true })
-  if ((await projectToggle.getAttribute('aria-expanded')) !== 'true') await projectToggle.click()
-  await expect(projectToggle).toHaveAttribute('aria-expanded', 'true')
-
-  const reportsToggle = tree.getByRole('button', { name: '리포트', exact: true })
-  if ((await reportsToggle.getAttribute('aria-expanded')) !== 'true') await reportsToggle.click()
-  await expect(reportsToggle).toHaveAttribute('aria-expanded', 'true')
-
-  const link = tree.getByRole('link', { name: label, exact: true })
-  await expect(link).toBeVisible()
-  return link
-}

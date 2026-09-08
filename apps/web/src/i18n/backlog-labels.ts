@@ -67,7 +67,10 @@ export const backlogLabels = {
    * ★뷰 전환 링크 5종(보드·타임라인·벨로시티·누적 흐름도·사이클/리드 타임)이 여기 있었다.
    * Jira 패리티 J5 로 탭바가 정본 9탭을 소유하면서 이 페이지의 인라인 nav 가 사라졌고,
    * 그 라벨들도 함께 나갔다. 탭 라벨의 정본은 `i18n/project-view-labels.ts` 다.
-   * 리포트 3종은 탭이 아니므로 사이드바 트리(`ProjectTree`)의 라벨이 정본이다.
+   * 리포트도 **이제 탭이고**(Jira JR-1·JR-3 — 리포트는 스페이스 내비게이션에서 열고 신
+   * 내비게이션 사이드바에는 없다), 리포트 4종 라벨의 정본은
+   * `components/project/project-report-links.ts` 다 — 착지 화면과 리포트 서브내비가 그 한
+   * 목록을 함께 소비한다.
    */
   page: {
     title: '백로그',
