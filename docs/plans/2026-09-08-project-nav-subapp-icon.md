@@ -230,8 +230,18 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
   it('PROJECT_SETTINGS_NAV 전 경로에서 settings 다', () => { /* 10경로 전수 순회 */ })
   it('컴포넌트·버전·보드설정·요약·보드·백로그·타임라인·리포트4 에서 tree 다', () => { ... })
   it('그룹은 4개이고 항목 합이 10이다 (비-공허 하한)', () => { ... })
+  it('projectKey 가 undefined 면 tree 다 (★리뷰 E-4)', () => { ... })
   ```
 - 실패 메시지 (예상): `project-shell-mode` 모듈 없음
+
+**★리뷰 반영 (E-4 · 9/10)** — `Sidebar` 는 `/issues`·`/dashboards`·`/calendar` 에서도 렌더되고
+그때 `projectKey` 는 `undefined` 다. 그 케이스가 A-3 에 없었다. 빠지면 `undefined` 를 치환해
+`/projects/undefined/settings/details` 와 비교하고, **우연히 false 라 조용히 동작하다** 나중에
+깨진다. 위 4번째 단언이 그것을 못박는다.
+
+**★리뷰 반영 (D-5 · 7/10)** — `PROJECT_SETTINGS_NAV` 소비자는 **항목 0개인 그룹의 헤딩을
+그리지 않는다.** 지금은 게이팅이 없어 항상 10개지만, 설정은 권한 게이팅이 붙는 표면이다
+(스펙 GAP-1). 코드 한 줄을 지금 넣어 두면 그날 빈 헤딩이 남지 않는다.
 
 **GREEN**:
 - 파일: `apps/web/src/components/project/project-shell-mode.ts`
@@ -268,6 +278,16 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 - `router.ts` — `projectReportsIndexRoute` 등록 + 헤더 주석의 라우트 수 갱신
 - 기존 리포트 4화면에 `<ProjectReportsNav />` 삽입
 
+**★리뷰 반영 (D-4 · 8/10)** — 카드에 **제목만 두지 않는다.** 제목만이면 「벨로시티」와
+「사이클/리드 타임」 중 무엇을 누를지 모른다. 카드마다 **답하는 질문 한 줄**을 붙인다.
+
+| 카드 | 한 줄 |
+|---|---|
+| 벨로시티 | 스프린트마다 얼마나 끝냈나 |
+| 누적 흐름도(CFD) | 어느 단계에 일이 쌓이나 |
+| 사이클/리드 타임 | 하나 끝내는 데 얼마나 걸리나 |
+| 작업 로그 | 누가 어디에 시간을 썼나 |
+
 **REFACTOR**:
 - 카드 스타일을 기존 `EmptyState`/카드 프리미티브로 정렬 (§4 재사용 자산)
 
@@ -298,16 +318,37 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 - `ProjectViewChrome` — `resolveProjectShellMode(...) === 'settings'` 이면 `<ProjectNavTabs>` 를
   렌더하지 않는다. **`ProjectViewHeader` 는 남긴다**(제목까지 사라지면 설정 화면에 정체성이 없다).
 
+**★리뷰 반영 (E-8 · 7/10) — 탭을 «맨 끝»(버전 뒤)에 넣는다.**
+plan 초안은 위치를 안 정했는데, 위치가 오버플로에서 무엇이 접히는지를 정한다. Jira 는 Reports
+위치를 문서로 못박지 않으므로 **선택**이다. 맨 끝이면 기존 9탭의 **인덱스가 안 바뀌어**
+`resolveActiveTabIndex`·핀 고정 회귀 표면이 최소다.
+
+**★리뷰 반영 (D-3 · 8/10) — 탭바가 사라지는 것을 본문이 설명하게 한다.**
+탭 10개를 보다가 설정을 누르면 통째로 사라진다. 첫 반응은 「내가 프로젝트를 나갔나?」다.
+`ProjectViewHeader` 가 설정 모드에서 프로젝트명 아래 **「프로젝트 설정」 부제 한 줄**을 낸다.
+🛑 `h1` 을 하나 더 만들지 않는다 — 부제는 `p` 다(e2e `<h1>` 단독 34건 · C-3).
+
 **REFACTOR**:
 - 「9탭」이라 적힌 주석·KDoc 전수를 **10탭**으로 교정.
-  🛑 실측 대상 — `project-view-tabs.ts` · `ProjectNavTabs.tsx` · `ProjectViewHeader.tsx` ·
-  `router.ts` · `router.admin-guards.test.tsx` · `project-view-tabs.test.ts` ·
-  `e2e/project-tabs-overflow.spec.ts`. **숫자가 코드에도 있다** — `toHaveLength(9)` 2곳(:46,:108)과
-  e2e 의 「가시+접힘 = 9」 불변식·`VISIBLE_TABS` 상수. 주석만 고치면 red 다.
+
+**★리뷰 반영 (E-7 · 7/10) — 실측 끝났다. 「구현자가 실측」으로 미루지 않는다. 6곳이다.**
+
+| 파일:행 | 무엇 |
+|---|---|
+| `project-view-tabs.test.ts:46` | `expect(PROJECT_VIEW_TABS).toHaveLength(9)` |
+| `project-view-tabs.test.ts:108` | 〃 (두 번째 단언) |
+| `e2e/project-tabs-overflow.spec.ts:21` | `VISIBLE_TABS` 상수 — 「정본 9탭, 소스와 같은 순서」 |
+| 〃 `:69` | 불변식 ① 「접힌 게 없으면 9개가 다 보인다」 |
+| 〃 `:77` | 불변식 ② 「접힌 것을 펼치면 정확히 9개」 |
+| 〃 `:93` | 「마지막 탭(**버전**)은 이 폭에서 확실히 접힌다」 → E-8 로 **`리포트`** 가 된다 |
+
+주석만 고치면 red 다 — **숫자가 코드에 있다.**
+그 밖 주석 전용 — `project-view-tabs.ts` · `ProjectNavTabs.tsx` · `ProjectViewHeader.tsx` ·
+`router.ts` · `router.admin-guards.test.tsx`.
 
 **검증**:
 - 기존 E2E: `apps/web/e2e/project-tabs-overflow.spec.ts` S2·S3·S4 (개수 불변식 3곳)
-- 눈확인: 탭 10개 배치 · 좁은 폭 「더 보기」 · 설정 화면에 탭바 없음 — **라이트/다크**
+- 눈확인: 탭 10개 배치 · 좁은 폭 「더 보기」 · 설정 화면에 탭바 없음 + **부제 「프로젝트 설정」** — **라이트/다크**
 
 ---
 
@@ -331,6 +372,19 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
   // 🛑 소스에서 읽지 않는다 — 그 상수가 이 PR 로 사라진다. 고정 픽스처로 박는다.
   assert.deepEqual(LEGACY_16.filter(p => !reachable.has(p)), [])
   ```
+
+**★리뷰 반영 (E-3 · 9/10) — `LEGACY_16` 의 출처는 «소스 상수»다. e2e 가 아니다.**
+실측으로 **두 목록이 이미 갈려 있다** — `e2e/project-tree.spec.ts` 의 `SETTINGS_LINK_CONTRACT`
+는 **11**개인데 `ProjectTree.SETTINGS_LINKS` 는 **12**개다(「일반」이 e2e 에 없다 · FR-PJ PR-5
+FE-4 가 11→12 로 늘릴 때 e2e 를 안 고쳤다). 제목의 「직접링크3」도 실제 `DIRECT_LINK_CONTRACT`
+**2** 와 다르다. **e2e 를 출처로 잡았다면 「일반」 1건을 처음부터 놓쳤다.**
+→ 이 PR 직전 커밋의 `ProjectTree.tsx` 에서 뽑고 **그 SHA 를 판별식 헤더에 적는다.**
+이 드리프트 자체가 A-2 가 필요한 이유의 **실물 증거**이므로 헤더에 함께 인용한다.
+
+**★리뷰 반영 (E-5 · 8/10) — 이 판별식은 «회귀 방지»지 «불변식»이 아니다.**
+`LEGACY_16` 은 이 PR 이후 아무도 갱신하지 않는다 — 새 설정 화면이 생겨도 16 그대로다.
+그 성격을 헤더에 못박는다. 진짜 불변식(「모든 설정 라우트가 어딘가에서 닿는다」)은 `router.ts`
+를 읽어야 하고 **별건이다. 지금 범위를 넓히지 않는다.**
   `reachable` = `PROJECT_SETTINGS_NAV` 경로 ∪ `PROJECT_VIEW_TABS` 경로 ∪ `project-report-links` 경로
 - **비-공허 짝** — ① 파싱 결과가 0건이면 **실패**로 떨어뜨린다(두 빈 집합은 같다 ·
   `partial-column-parser-lets-unread-column-rot`) ② 픽스처로 판정 함수를 직접 흔들어
@@ -364,9 +418,21 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 - **`<h1>` 이 없다** (C-3)
 - 새 nav `aria-label` 이 `navLabels.projectNav`('프로젝트')를 **substring 으로 품지 않는다** (C-1)
 
+**★리뷰 반영 (D-1 · 9/10) — 「`ProjectTree` 관례대로 `sr-only`」가 그 관례의 «전제»를 안 봤다.**
+트리의 `sr-only` 는 **첫 글자 아바타라는 시각 앵커가 있어서** 성립한다. 설정 항목 10개는
+아이콘이 없어 64px 레일에서 라벨을 숨기면 **구분 불가능한 빈 행 10개**가 된다.
+→ **항목마다 lucide 아이콘을 준다.** `lib/settings-hub-links.ts` 가 개인 설정 11개에 이미
+그 패턴을 쓴다(**재사용 자산 · 새로 만들지 않는다**). 펼침 상태에서도 스캔이 빨라진다.
+
+**★리뷰 반영 (D-2 · 9/10) — 돌아오는 길이 스크롤하면 사라진다.**
+10항목+그룹 헤딩 4개면 짧은 뷰포트에서 `← ATLAS` 가 화면 밖이다. 「내가 어디 있나」는
+**항상** 보여야 한다(Krug wayfinding). → 복귀 링크를 **sticky top** 으로 둔다.
+(대안이던 「`ProjectViewHeader` 프로젝트명을 링크로」는 D-3 부제와 자리가 겹쳐 접었다.)
+
 **GREEN**:
-- `ProjectSettingsNav.tsx` — 그룹 헤딩(`h2`/`h3`) + `Link` 목록. 접힘 레일에서는 기존
-  `ProjectTree` 관례를 따라 라벨을 `sr-only` 로 (E-8 동형)
+- `ProjectSettingsNav.tsx` — 그룹 헤딩(`h2`/`h3`) + **아이콘 + 라벨** `Link` 목록.
+  복귀 링크는 sticky. 접힘 레일에서는 아이콘만 남고 라벨은 `sr-only` (E-8 동형)
+- **항목 0개인 그룹은 헤딩도 그리지 않는다** (★D-5)
 - `Sidebar.tsx` — `useParams({strict:false})` 로 `projectKey` 를 읽고
   `resolveProjectShellMode` 로 분기. **판정식을 여기 다시 쓰지 않는다**(A-4)
 - `nav-labels.ts` — 새 라벨 1개.
@@ -379,8 +445,15 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 - 그룹 편성이 Jira 근거가 아님(X-N5)을 KDoc 에 명시
 
 **검증**:
-- 기존 E2E: 설정 화면을 여는 spec 전수 사전 grep (`workflow-scheme`·`members`·`automation`·`import` 등)
-- 눈확인: 설정 사이드바 그룹 4개 · 복귀 링크 · 접힘 레일 — **라이트/다크**
+- 기존 E2E: **사전 grep 실측 완료 — 8 spec 이 설정 경로를 연다.**
+  `project-member-management`·`automation-rules`·`slack-channel-mapping`·`workflow-scheme-assignment`·
+  `workflow-scheme-in-use-modal`·`admin-scheme-index-nav`·`project-crud`·`project-tree`.
+  🛑 **앞 7개는 전부 `page.goto(SETTINGS_URL)` 직접 진입**이라 사이드바 변경에 영향이 없다(실측).
+  영향받는 것은 `project-tree` 하나이고 그것은 Task 6 이 맡는다.
+- 눈확인 (★D-6): 설정 사이드바 그룹 4개 · **sticky 복귀 링크가 스크롤해도 남는지** ·
+  64px 레일에서 **아이콘만으로 구분되는지** · **그룹 헤딩이 다크에서 읽히는지**
+  (`text-sidebar-foreground/60` 관례 — 새 토큰 만들지 않는다. #472 「다크 인라인코드가 안 보임」이
+  같은 형태의 사고다) — **라이트/다크 양쪽**
 
 ---
 
@@ -388,7 +461,7 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 
 **메타**.
 - agent: `frontend-engineer`
-- files: [`apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/layout/__tests__/ProjectTree.test.tsx`, `apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`]
+- files: [`apps/web/src/components/layout/ProjectTree.tsx`, `apps/web/src/components/layout/__tests__/ProjectTree.test.tsx`, `apps/web/src/components/layout/__tests__/navigation-contract.test.tsx`, `apps/web/e2e/project-tree.spec.ts`, `apps/web/e2e/project-velocity.spec.ts`, `apps/web/e2e/project-cfd.spec.ts`]
 - depends-on: [4, 5]
 - jira: [JR-1, JR-3]
 
@@ -411,8 +484,26 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 - `:460` 주석(「16화면의 유일한 진입로」)을 **새 사실로 교체** — 이제 탭바와 설정 사이드바가
   진입로이고 그 보증은 Task 4 판별식이다
 
+**★리뷰 반영 (E-1 · 10/10) — 리포트 E2E 2건은 `page.goto` 가 «금지»돼 있다.**
+`project-velocity.spec.ts:83` · `project-cfd.spec.ts:93` 주석 원문 —
+「사이드바 리포트 그룹에서 링크 클릭 (**SPA 내부 이동 — goto 금지, MSW store 리셋**)」.
+이 task 가 그 그룹을 지우면 **두 spec 의 유일한 진입 동작이 사라진다.**
+🛑 `goto` 로 대체하면 MSW store 가 리셋돼 시드가 날아가고 **무의미한 초록**이 된다.
+→ 대체 경로는 **탭바 `리포트` → 착지 카드 클릭** (2클릭 · 전부 SPA 내부). 두 spec 을
+`files` 에 명시적으로 넣었다. 두 spec 머리의 「리포트는 탭이 아니다」 주석도 **거짓이 되므로**
+같은 커밋에서 교체한다.
+
+**★리뷰 반영 (E-2 · 10/10) — `project-tree.spec.ts` S3 는 「고친다」가 아니라 「재작성」이다.**
+그 테스트(`:103`)의 존재 이유가 **리포트4+설정11 그룹 전수 href 확인**이다. 지우는 대상이
+곧 테스트 대상이라 부분 수정이 성립하지 않는다.
+→ ①S3 를 「하위에 보드목록+백로그+타임라인만 · 리포트·설정 토글 **0개**」로 재작성
+②원래 지키던 **「죽은 링크 0」 계약은 Task 4 판별식이 승계**한다는 것을 그 spec 주석에 남긴다.
+계약을 옮겼다는 기록이 없으면 다음 사람이 「보증이 사라졌다」고 읽는다.
+
 **검증**:
-- 기존 E2E: 사이드바에서 설정·리포트로 가던 spec 전수 사전 grep — **있으면 새 경로로 고친다**
+- 기존 E2E (**사전 grep 실측 완료**): `project-tree.spec.ts` S3 재작성 ·
+  `project-velocity.spec.ts`·`project-cfd.spec.ts` 진입 경로 교체.
+  나머지 8 spec 은 `page.goto` 직접 진입이라 무영향
 - 눈확인: 사이드바가 짧아짐 · `⋯` → 프로젝트 설정 진입 — **라이트/다크**
 
 ---
@@ -446,6 +537,13 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 
 - **task 수**: 7 · **예상 wave**: 5
   (w1 = T1·T2 · w2 = T3·T5 · w3 = T4 · w4 = T6 · w5 = T7)
+
+**★리뷰 반영 (E-6 · 8/10) — wave 1·2 는 같은 worktree 에 2 task 병렬이다. 경로 한정 커밋을 쓴다.**
+2026-09-07 실측 — 파일단위 `git add` 로는 못 막는다. **git 인덱스가 프로세스 간 공유**라
+한쪽의 GREEN 커밋이 다른 쪽의 RED 산출물을 흡수한다(lint-staged 자동 stage 가 이것을 키운다).
+`files` 교집합은 0이지만 **인덱스는 공유**다.
+→ 각 task 는 `git add <자기 files 경로만>` 직후 **즉시** 커밋한다. `git add -A`·`git add .` 금지.
+그리고 worktree 함정 — `lint-staged` 가 옆 작업의 미커밋 파일을 훔치므로 `--only` 로 좁힌다.
 - **구현 규율**: TDD red-first + **ui 시각 검증 트랙**(전 task 에 기존 E2E 목록 + 라이트/다크 눈확인)
 - **추가 검증**: `pnpm verify`(lint+typecheck+test+build) · `pnpm test:workflow` · Playwright ·
   `node scripts/build-doc-index.mjs --check` · `bash scripts/verify-master-plan.sh`
@@ -458,4 +556,52 @@ FR 문구 drift 를 **못 본다**(룰 E 는 개수만 센다). FR 을 신설하
 `J5-12`·`J5-13` → 승계만 하고 이 PR 이 바꾸지 않음.
 **채택 A-1~A-4 는 전부 물렸고 A-5(아이콘)만 PR2 로 이연 — 차집합 0.**
 
-## 리뷰 결과 (← /bts-review-plan 채움)
+## 리뷰 결과
+
+렌즈 **2종**(`type == "ui"` 행) — `plan-eng-review` + `plan-design-review`. 한 응답에 병렬 발행.
+findings **14건 · BLOCKER 0.** 전부 plan 보강으로 해소하고 각 Task 에 `★리뷰 반영` 으로 인라인했다.
+
+> **목업 생성은 건너뛰었다.** `design` 바이너리는 있으나(실측 `DESIGN_READY`) 이 PR 은 **기존
+> 컴포넌트의 재배치**이고 시각 기준은 루트 `DESIGN.md` + `jira-parity-contract` 가 이미 소유한다.
+> 새 시각 언어를 만드는 작업이 아니다. `codex` 는 미설치(실측 `CODEX_NOT_AVAILABLE`)라
+> 외부 렌즈는 단일 모델이다 — 그 사실을 여기 남긴다.
+
+### 🔧 plan-eng-review
+
+| # | 심각도 | finding |
+|---|---|---|
+| **E-1** | **10/10** | **리포트 E2E 2건이 `page.goto` 를 명시적으로 금지한다.** `project-velocity.spec.ts:83` · `project-cfd.spec.ts:93` 주석 — 「사이드바 리포트 그룹에서 링크 클릭 (**SPA 내부 이동 — goto 금지, MSW store 리셋**)」. Task 6 이 그 그룹을 지우면 두 spec 의 **유일한 진입 동작**이 사라지는데, plan 의 처방(「새 경로로 고친다」)은 `goto` 대체를 암시한다. `goto` 하면 MSW store 가 리셋돼 시드가 날아가고 테스트가 **무의미한 초록**이 된다. → 처방. 탭바 `리포트` → 착지 카드 클릭(2클릭 · 전부 SPA 내부). **Task 6 `files` 에 두 spec 을 명시** |
+| **E-2** | **10/10** | **`project-tree.spec.ts` S3 는 「고친다」가 아니라 「재작성」이다.** 그 테스트의 존재 이유가 리포트4+설정11 그룹 전수 href 확인이다(`:103`). plan 은 삭제/재작성 판단을 구현자에게 미뤘다. → 처방. S3 를 「하위에 보드목록+백로그+타임라인만 · 리포트·설정 토글 0개」로 재작성하고, 원래 지키던 **「죽은 링크 0」 계약을 Task 4 판별식이 승계**한다는 것을 그 spec 주석에 남긴다 |
+| **E-3** | **9/10** | **두 목록이 이미 갈려 있다 — A-2 가 필요한 이유의 실물 증거.** `SETTINGS_LINK_CONTRACT` **11** vs `ProjectTree.SETTINGS_LINKS` **12**(「일반」이 e2e 에 없다 · FE-4 가 11→12 로 늘릴 때 e2e 를 안 고쳤다). 테스트 제목의 「직접링크3」도 실제 `DIRECT_LINK_CONTRACT` **2** 와 다르다. → 처방. `LEGACY_16` 을 **e2e 가 아니라 `ProjectTree.tsx` 소스 상수**에서 뽑고, 뽑은 커밋 SHA 를 판별식 헤더에 적는다 |
+| **E-4** | **9/10** | **`resolveProjectShellMode` 가 프로젝트 밖에서 불린다.** `Sidebar` 는 `/issues`·`/dashboards`·`/calendar` 에서도 렌더되고 그때 `projectKey` 는 `undefined` 다. A-3 단언 목록에 그 케이스가 **없다**. 빠지면 `undefined` 를 치환해 `/projects/undefined/settings/details` 와 비교하고, 우연히 false 라 조용히 동작하다 나중에 깨진다. → **A-3 에 「`projectKey` 부재 → `'tree'`」 행 추가** |
+| **E-5** | **8/10** | **`LEGACY_16` 고정 픽스처는 옳지만 반감기가 있다.** 이 PR 이후 아무도 그 배열을 갱신하지 않는다 — 새 설정 화면이 생겨도 16 그대로다. 즉 **회귀 방지지 불변식이 아니다.** → 처방. 헤더에 그 성격을 못박는다. 진짜 불변식(「모든 설정 라우트가 어딘가에서 닿는다」)은 `router.ts` 를 읽어야 하고 **별건이다. 지금 범위를 넓히지 않는다** |
+| **E-6** | **8/10** | **wave 2 의 T3·T5 가 같은 worktree 병렬이다.** 2026-09-07 실측(리뷰 F-2) — 파일단위 `git add` 로는 못 막는다. **git 인덱스가 프로세스 간 공유**라 한쪽 GREEN 커밋이 다른 쪽 RED 산출물을 흡수한다. `files` 교집합은 0이지만 인덱스는 공유다. → **경로 한정 커밋**(`git add <경로들>` 직후 즉시 커밋)을 wave 2 에 명시 |
+| **E-7** | **7/10** | **탭 9→10 의 파장은 이미 실측됐다 — 「구현자가 실측」으로 미룰 필요가 없다.** 6곳. 유닛 `project-view-tabs.test.ts:46`·`:108` `toHaveLength(9)` · e2e `project-tabs-overflow.spec.ts:21` `VISIBLE_TABS` 상수 · `:69`·`:77` 불변식 2개 · `:93` 「마지막 탭(**버전**)은 이 폭에서 확실히 접힌다」. → **Task 3 REFACTOR 에 6곳 열거** |
+| **E-8** | **7/10** | **탭 «순서»를 정하지 않았다.** plan 은 「행 하나를 더한다」고만 적는데, 위치가 오버플로에서 무엇이 접히는지를 정한다. Jira 는 Reports 위치를 문서로 못박지 않으므로 **선택**이다. → **맨 끝(버전 뒤)을 권한다.** 기존 9탭의 인덱스가 안 바뀌어 `resolveActiveTabIndex`·핀고정 회귀 표면이 최소다. 대신 E-7 의 `:93` 주석 대상이 `버전`→`리포트` 로 바뀌므로 같이 고친다 |
+
+### 🎨 plan-design-review
+
+초기 평점 **6/10** — 「무엇이 어디로 가는가」는 정확한데 **문맥 전환의 감각**(전환 순간·돌아오는 길·
+좁은 폭)이 비어 있다. 아래 6건 반영 후 **9/10**.
+
+| # | 평점 | finding |
+|---|---|---|
+| **D-1** | **9/10** | **접힘 레일(64px)에서 설정 사이드바가 「빈 행 10개」가 된다.** plan 은 「`ProjectTree` 관례대로 `sr-only`」라 적는데, 트리는 **첫 글자 아바타라는 시각 앵커가 있고** 설정 항목 10개는 **아이콘이 없다**. 라벨을 숨기면 구분 불가능하다. → 처방 ②를 권한다. ①설정 모드에서 접힘 무시(항상 펼침) ②**항목마다 lucide 아이콘** — `lib/settings-hub-links.ts` 가 개인 설정 11개에 이미 그 패턴을 쓴다(**재사용 자산**). 펼침 상태에서도 스캔이 빨라진다 |
+| **D-2** | **9/10** | **돌아오는 길이 하나뿐이고 스크롤하면 사라진다.** 10항목+그룹 헤딩 4개면 짧은 뷰포트에서 `← ATLAS` 가 화면 밖이다. Krug 의 wayfinding — 「내가 어디 있나」는 **항상** 보여야 한다. → 처방. 복귀 링크를 **sticky top** 으로 두거나 `ProjectViewHeader` 의 프로젝트명을 링크로 만든다. **후자가 자산 재사용**이다 |
+| **D-3** | **8/10** | **탭바가 사라지는 순간에 설명이 없다.** 방금까지 탭 10개를 보다가 설정을 누르면 통째로 사라진다 — 첫 반응은 「내가 프로젝트를 나갔나?」다. plan 은 **사이드바 교체만** 적고 **본문 쪽 신호가 0** 이다. → 처방. `ProjectViewHeader` 가 설정 모드에서 프로젝트명 아래 「프로젝트 설정」 부제를 낸다. **한 줄이고 방향 감각을 준다** |
+| **D-4** | **8/10** | **리포트 착지가 「카드 4장」으로만 적혀 있다.** 제목만 있으면 「벨로시티」와 「사이클/리드 타임」 중 무엇을 누를지 모른다. → 처방. 카드마다 **답하는 질문 한 줄**. 벨로시티 「스프린트마다 얼마나 끝냈나」 · CFD 「어느 단계에 일이 쌓이나」 · 사이클/리드 「하나 끝내는 데 얼마나 걸리나」 · 작업 로그 「누가 어디에 시간을 썼나」. **문구 4줄이고 카드가 실제로 유용해진다** |
+| **D-5** | **7/10** | **권한 게이팅이 붙는 날 빈 그룹 헤딩이 남는다.** 스펙은 지금 게이팅 없음(GAP-1)이라 적었지만 설정은 게이팅이 붙는 표면이다. → 처방. **항목 0개면 그룹 헤딩도 안 그린다**를 지금 못박는다. 코드 한 줄이고, 나중에 조용히 깨지지 않는다 |
+| **D-6** | **7/10** | **눈확인에 「무엇을 볼지」가 없다.** 설정 사이드바 그룹 헤딩은 `--sidebar-*` 팔레트에 **대응이 없다**(기존 사이드바에 그룹 헤딩이 없었다). 새 토큰을 만들지 말고 `text-sidebar-foreground/60` 관례를 쓰되 **다크에서 60% 가 읽히는지**를 눈확인 항목으로 명시. #472 의 「다크 인라인코드가 안 보임」이 같은 형태다 |
+
+### ★ 리뷰가 바꾼 것
+
+- **E-1·E-2 는 「E2E 를 고친다」를 「E2E 를 재설계한다」로 바꿨다.** 두 리포트 spec 은 `goto` 가
+  금지돼 있어 대체 경로가 **2클릭 SPA 내부 이동**이어야 하고, `project-tree` S3 는 지키던 계약을
+  Task 4 판별식에 **넘기고** 재작성해야 한다. plan 의 한 줄짜리 「있으면 고친다」로는 이 둘이 안 나온다.
+- **E-3 은 A-2 판별식의 정당성을 실물로 증명했다.** `SETTINGS_LINK_CONTRACT` 11 vs 소스 12 는
+  이 저장소가 이름 붙인 지배 결함 양식이 **이미 실현된 상태**다. 그리고 `LEGACY_16` 의 출처를
+  e2e 로 잡았다면 「일반」 1건을 처음부터 놓쳤을 것이다.
+- **D-1 은 「관례를 따른다」가 관례의 «전제»를 안 본 사례다.** 트리의 `sr-only` 는 아이콘이
+  있어서 성립한다. 아이콘 없는 목록에 같은 규칙을 적용하면 빈 행이 된다.
+
+**BLOCKER 0** — 14건 전부 plan 보강으로 닫혔다.
