@@ -63,7 +63,7 @@ export interface ProjectSettingsNavGroup {
  * 그 자리의 BTS 자체 명명이었고, 이 교정은 중복 회피가 아니라 **Jira 정합 회복**이다.
  * 부수적으로 그룹 라벨 `'일반'`(`general`)과의 글자 충돌도 사라져 「일반 › 상세정보」로 읽힌다.
  * 교체 비용 0 — 이 문자열에 걸린 e2e 는 0건이다(2026-09-08 전수 실측 · `SETTINGS_LINK_CONTRACT`
- * 11개에 「일반」이 애초에 없었다. 그 누락 자체가 리뷰 E-3 드리프트의 기전이다).
+ * 11개에 「일반」이 애초에 없었다. 그 누락 자체가 리뷰 E-3 드리프트의 원인 메커니즘이다).
  *
  * [edit a space's details]: https://support.atlassian.com/jira-work-management/docs/edit-a-projects-details/
  */
