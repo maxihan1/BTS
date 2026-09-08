@@ -19,6 +19,7 @@ import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.status.repository.StatusRepository
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
@@ -117,7 +118,14 @@ class WorkflowStatusCompositionIntegrationTest {
             statusRepository = StatusRepository(dsl)
             val cache = WorkflowCache(repository, dsl)
             val writeRepository = WorkflowWriteRepository(dsl)
-            workflowService = WorkflowCommandService(writeRepository, repository, cache, allowAll)
+            workflowService =
+                WorkflowCommandService(
+                    writeRepository,
+                    repository,
+                    cache,
+                    allowAll,
+                    mockk(relaxed = true),
+                )
             service =
                 WorkflowStatusCompositionService(
                     WorkflowStatusCompositionRepository(dsl),
@@ -223,6 +231,7 @@ class WorkflowStatusCompositionIntegrationTest {
                     statusKeys.mapIndexed { i, s ->
                         WorkflowStatusSeed(key = s, name = "$key-$s", category = "TODO", displayOrder = i)
                     },
+                projectKey = null,
             ),
         )
 

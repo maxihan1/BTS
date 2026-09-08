@@ -3,6 +3,7 @@
 package com.bts.workflow.postaction
 
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.application.TransitionRuleGuard
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowTransition
@@ -12,8 +13,10 @@ import com.bts.workflow.postaction.web.PostActionExceptionHandler
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.transition.TransitionKeyResolver
+import com.bts.workflow.web.ManageSchemeGuard
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.mockk.every
 import io.mockk.mockk
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -245,7 +248,12 @@ class PostActionE2EIntegrationTest {
             // permissionResolver — relaxed mock (always allow)
             val permissionResolver: WorkflowSchemePermissionResolver = mockk(relaxed = true)
 
-            val controller = PostActionController(service, permissionResolver)
+            val guard =
+                ManageSchemeGuard(
+                    permissionResolver,
+                    mockk { every { ofWorkflow(any()) } returns WorkflowSchemeScope.Global },
+                )
+            val controller = PostActionController(service, guard)
 
             mockMvc =
                 MockMvcBuilders.standaloneSetup(controller)

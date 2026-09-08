@@ -166,17 +166,25 @@ class SchemeHandlerPermissionMatrixTest {
         private val GUARDED_HANDLER_PACKAGES =
             arrayOf(SCHEME_WEB_PACKAGE, VALIDATOR_WEB_PACKAGE, POST_ACTION_WEB_PACKAGE)
 
-        /** 모듈 공용 최상위 가드가 사는 패키지 — 본문 해석용으로만 임포트한다 (판별 대상 아님). */
+        /** 모듈 공용 가드가 사는 패키지 — 본문 해석용으로만 임포트한다 (판별 대상 아님). */
         private const val MANAGE_SCHEME_GUARD_PACKAGE = "com.bts.workflow.web"
 
         private const val REQUIRE_PERMISSION_METHOD_NAME = "requirePermission"
         private val PERMISSION_RESOLVER_FQN = WorkflowSchemePermissionResolver::class.java.name
 
-        /** 모듈 공용 최상위 가드의 JVM 소유 클래스(Kotlin 파일 파사드) FQN. */
-        private const val MANAGE_SCHEME_GUARD_FQN = "com.bts.workflow.web.ManageSchemeGuardKt"
+        /**
+         * 모듈 공용 가드의 FQN.
+         *
+         * ✔ **2026-09-08(FR-WF-08) — 최상위 확장 함수에서 `@Component` 클래스로 바뀌었다.**
+         * 가드가 스코프를 결정하려면 협력자(`WorkflowOwnershipScopeResolver`)를 들어야 하는데
+         * 최상위 함수는 주입을 받을 자리가 없다. 그때 이 봉인이 **red 로 먼저 알려 줬다** — 파일
+         * 파사드 `ManageSchemeGuardKt` 를 찾다 실패해 규칙 컨트롤러 8개가 전부 위반으로 잡혔다.
+         * 이름만 대조했다면 조용히 통과했을 자리다.
+         */
+        private const val MANAGE_SCHEME_GUARD_FQN = "com.bts.workflow.web.ManageSchemeGuard"
 
-        /** 모듈 공용 최상위 가드의 함수명. */
-        private const val REQUIRE_MANAGE_SCHEME_METHOD_NAME = "requireManageScheme"
+        /** 모듈 공용 가드의 메서드명. */
+        private const val REQUIRE_MANAGE_SCHEME_METHOD_NAME = "requireForWorkflow"
 
         /**
          * 축 1 판별 대상 — [GUARDED_HANDLER_PACKAGES] 안의 요청 매핑 핸들러.
@@ -223,11 +231,11 @@ class SchemeHandlerPermissionMatrixTest {
          * 2. 같은 클래스의 private 헬퍼를 거쳐 1단계만 호출 — [callsRequirePermissionViaPrivateHelper].
          *    직접 호출만 인정하면 `WorkflowSchemeController` 7벌 중복을 헬퍼로 DRY 리팩토링하는 것
          *    자체가 금지되므로 1단계 경유를 함께 인정한다.
-         * 3. 모듈 공용 최상위 가드 경유 — [callsRequirePermissionViaSharedGuard].
+         * 3. 모듈 공용 가드 클래스 경유 — [callsRequirePermissionViaSharedGuard].
          *
          * ✔ **2026-08-26 — 범위를 규칙 컨트롤러까지 넓히면서 3번 갈래를 함께 넣었다.**
          * task-15b 가 예고한 상황이다. `validator.web` · `postaction.web` 은 2026-08-25 부터 모듈
-         * 공용 최상위 확장 `com.bts.workflow.web.requireManageScheme` 을 부르므로, 「직접 호출 또는
+         * 공용 가드 `com.bts.workflow.web.ManageSchemeGuard` 를 부르므로, 「직접 호출 또는
          * 같은 클래스 private 1단계」만 인정하던 그때의 판정으로 범위만 넓혔다면 8개 핸들러가 전부
          * 위반으로 잡혔을 것이다. 판정 확장([callsRequirePermissionViaSharedGuard])과 범위 확장
          * ([GUARDED_HANDLER_PACKAGES])은 **한 쌍**이다 — 한쪽만 하면 red 다.
@@ -260,7 +268,7 @@ class SchemeHandlerPermissionMatrixTest {
             }
 
         /**
-         * [method] 가 모듈 공용 최상위 가드 [MANAGE_SCHEME_GUARD_FQN].[REQUIRE_MANAGE_SCHEME_METHOD_NAME]
+         * [method] 가 모듈 공용 가드 [MANAGE_SCHEME_GUARD_FQN].[REQUIRE_MANAGE_SCHEME_METHOD_NAME]
          * 을 호출하고, **그 가드의 본문이 [REQUIRE_PERMISSION_METHOD_NAME] 을 직접 호출하는지**까지
          * 확인한다.
          *

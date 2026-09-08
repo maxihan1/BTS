@@ -37,9 +37,20 @@ class WorkflowWriteRepository(
     private val dsl: DSLContext,
 ) {
     /** 살아 있는 워크플로우 중 같은 key 가 있는지. 소프트 삭제된 것은 세지 않는다. */
-    fun existsByKey(key: String): Boolean =
+    fun existsByKey(
+        key: String,
+        projectId: UUID?,
+    ): Boolean =
         dsl.fetchExists(
-            dsl.selectOne().from(WORKFLOWS).where(WORKFLOWS.KEY.eq(key)).and(WORKFLOWS.DELETED_AT.isNull),
+            dsl
+                .selectOne()
+                .from(WORKFLOWS)
+                .where(WORKFLOWS.KEY.eq(key))
+                .and(WORKFLOWS.DELETED_AT.isNull)
+                // V209 이후 key 유일성은 소유별이다 — 전역끼리, 그리고 같은 프로젝트끼리만 충돌한다.
+                // 소유를 무시하고 물으면 전역에 같은 key 가 있다는 이유로 프로젝트 생성이 막힌다.
+                // `IS NOT DISTINCT FROM` 이라야 NULL(전역) 끼리도 같다고 본다.
+                .and(WORKFLOWS.PROJECT_ID.isNotDistinctFrom(projectId)),
         )
 
     /** 살아 있는 워크플로우의 id. 없으면 null. */
@@ -78,12 +89,16 @@ class WorkflowWriteRepository(
         key: String,
         name: String,
         description: String?,
+        projectId: UUID?,
     ): UUID =
         dsl
             .insertInto(WORKFLOWS)
             .set(WORKFLOWS.KEY, key)
             .set(WORKFLOWS.NAME, name)
             .set(WORKFLOWS.DESCRIPTION, description)
+            // ★ 소유는 여기서만 정해진다. 기본값을 두지 않는다 — 빠뜨리면 조용히 전역이 되고
+            // 그 워크플로우는 프로젝트 관리자가 영영 못 고친다(FR-WF-08).
+            .set(WORKFLOWS.PROJECT_ID, projectId)
             .set(WORKFLOWS.ORIGIN, "CUSTOM")
             .returning(WORKFLOWS.ID)
             .fetchOne(WORKFLOWS.ID)

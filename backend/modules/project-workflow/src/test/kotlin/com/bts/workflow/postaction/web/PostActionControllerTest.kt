@@ -11,6 +11,7 @@ import com.bts.workflow.postaction.PostActionNotFoundException
 import com.bts.workflow.postaction.PostActionRow
 import com.bts.workflow.postaction.PostActionValidationException
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
+import com.bts.workflow.web.ManageSchemeGuard
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
@@ -68,11 +69,22 @@ class PostActionControllerTest {
         @Bean
         open fun permissionResolver(): WorkflowSchemePermissionResolver = mockk(relaxed = true)
 
+        /**
+         * 전환 규칙 가드. 실제 [ManageSchemeGuard] 를 쓰되 스코프 판정만 전역으로 고정한다 —
+         * 이 파일의 픽스처는 전부 전역 워크플로우다. 소유별 판정은 별도 테스트가 잰다.
+         */
+        @Bean
+        open fun manageSchemeGuard(resolver: WorkflowSchemePermissionResolver): ManageSchemeGuard =
+            ManageSchemeGuard(
+                resolver,
+                mockk { every { ofWorkflow(any()) } returns WorkflowSchemeScope.Global },
+            )
+
         @Bean
         open fun postActionController(
             svc: PostActionAdminService,
-            resolver: WorkflowSchemePermissionResolver,
-        ): PostActionController = PostActionController(svc, resolver)
+            guard: ManageSchemeGuard,
+        ): PostActionController = PostActionController(svc, guard)
 
         @Bean
         open fun postActionExceptionHandler(): PostActionExceptionHandler = PostActionExceptionHandler()

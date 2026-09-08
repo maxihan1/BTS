@@ -8,7 +8,9 @@ import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.port.outbound.ActorId
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
@@ -18,6 +20,7 @@ import com.bts.workflow.scheme.exception.MappingDuplicateException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
+import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.web.dto.MappingResponseDetail
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -75,6 +78,8 @@ import java.util.UUID
 @ExtendWith(SpringExtension::class)
 @ContextConfiguration(classes = [WorkflowSchemeControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
+// LargeClass — 한 컨트롤러의 7 엔드포인트 × (정상 · 권한거부 · 스코프) 조합이다.
+@Suppress("LargeClass")
 class WorkflowSchemeControllerTest {
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
@@ -86,10 +91,28 @@ class WorkflowSchemeControllerTest {
         open fun permissionResolver(): WorkflowSchemePermissionResolver = mockk(relaxed = true)
 
         @Bean
+        open fun scopeResolver(): WorkflowOwnershipScopeResolver =
+            mockk {
+                every { ofScheme(any()) } returns WorkflowSchemeScope.Global
+                // ofProjectKey 는 순수 변환이라 실제 의미를 그대로 흉내 낸다 — Global 로 고정하면
+                // 「지목한 프로젝트 스코프로 판정한다」를 재는 테스트가 통과할 수 없다.
+                // 이 흉내가 실물과 같은지는 WorkflowOwnershipScopeResolverTest 가 지킨다.
+                every { ofProjectKey(any()) } answers {
+                    firstArg<String?>()?.let { WorkflowSchemeScope.Project(it) } ?: WorkflowSchemeScope.Global
+                }
+                every { ofProjectId(any()) } returns WorkflowSchemeScope.Global
+            }
+
+        @Bean
+        open fun projectLookupPort(): ProjectLookupPort = mockk(relaxed = true)
+
+        @Bean
         open fun workflowSchemeController(
             svc: WorkflowSchemeApplicationService,
             resolver: WorkflowSchemePermissionResolver,
-        ): WorkflowSchemeController = WorkflowSchemeController(svc, resolver)
+            scopeResolver: WorkflowOwnershipScopeResolver,
+            projectLookupPort: ProjectLookupPort,
+        ): WorkflowSchemeController = WorkflowSchemeController(svc, resolver, scopeResolver, projectLookupPort)
 
         @Bean
         open fun workflowSchemeExceptionHandler(): WorkflowSchemeExceptionHandler = WorkflowSchemeExceptionHandler()
@@ -103,6 +126,9 @@ class WorkflowSchemeControllerTest {
 
     @Autowired
     private lateinit var permissionResolver: WorkflowSchemePermissionResolver
+
+    @Autowired
+    private lateinit var projectLookupPort: ProjectLookupPort
 
     private lateinit var mockMvc: MockMvc
     private val mapper: ObjectMapper = ObjectMapper().registerKotlinModule()
@@ -119,6 +145,77 @@ class WorkflowSchemeControllerTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(wac).build()
     }
 
+    // ── FR-WF-08. 생성 요청이 지목한 소유로 스코프가 갈린다 ────────────────────
+    //
+    // ★판별자는 상태코드가 아니라 **권한 포트가 받은 스코프**다. Global 로 굳어 있으면
+    // 프로젝트 관리자는 자기 프로젝트 스킴조차 못 만든다 — 이 FR 이 없애려는 바로 그 상태다.
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `POST 스킴 생성 — projectKey 를 실으면 그 프로젝트 스코프로 판정한다`() {
+        val ownerId = UUID.fromString("aaaaaaaa-0000-4000-8000-0000000000a1")
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns ownerId
+        every {
+            applicationService.create(
+                actor = authActor,
+                key = WorkflowSchemeKey("atlas-scheme"),
+                name = "아틀라스 스킴",
+                description = null,
+                projectId = ownerId,
+            )
+        } returns buildScheme("atlas-scheme", "아틀라스 스킴")
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "key" to "atlas-scheme",
+                            "name" to "아틀라스 스킴",
+                            "description" to null,
+                            "projectKey" to "ATLAS",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isCreated)
+
+        verify(exactly = 1) {
+            permissionResolver.requirePermission(
+                authActorUuid,
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowSchemeScope.Project("ATLAS"),
+            )
+        }
+    }
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `POST 스킴 생성 — 없는 프로젝트를 지목하면 404 이고 생성은 일어나지 않는다`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("GHOST")) } returns null
+
+        mockMvc.perform(
+            post("/api/v1/workflow-schemes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    mapper.writeValueAsString(
+                        mapOf(
+                            "key" to "ghost-scheme",
+                            "name" to "유령 스킴",
+                            "description" to null,
+                            "projectKey" to "GHOST",
+                        ),
+                    ),
+                ),
+        ).andExpect(status().isNotFound)
+
+        // ★ 값 클래스(ActorId · WorkflowSchemeKey)에 any() 를 쓰면 mockk 가 무작위 문자열로
+        // 인스턴스를 만들다 init 검증에 걸린다. 구체값으로 대조한다.
+        verify(exactly = 0) {
+            applicationService.create(authActor, WorkflowSchemeKey("ghost-scheme"), "유령 스킴", null, any(), any())
+        }
+    }
+
     // ── C1. POST /api/v1/workflow-schemes — 201 Created ──────────────────────
 
     @Test
@@ -131,6 +228,7 @@ class WorkflowSchemeControllerTest {
                 key = WorkflowSchemeKey("team-a-scheme"),
                 name = "팀 A 스킴",
                 description = "설명",
+                projectId = null,
             )
         } returns scheme
 
@@ -552,7 +650,7 @@ class WorkflowSchemeControllerTest {
     @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 매핑 삭제 — 204 No Content`() {
         justRun {
-            applicationService.deleteMapping(authActor, 42L)
+            applicationService.deleteMapping(authActor, WorkflowSchemeKey("team-a-scheme"), 42L)
         }
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme/mappings/42"))
@@ -563,7 +661,7 @@ class WorkflowSchemeControllerTest {
     @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
     fun `DELETE 매핑 삭제 — permissionResolver MANAGE_SCHEME 호출 검증`() {
         justRun {
-            applicationService.deleteMapping(authActor, 99L)
+            applicationService.deleteMapping(authActor, WorkflowSchemeKey("team-a-scheme"), 99L)
         }
 
         mockMvc.perform(delete("/api/v1/workflow-schemes/team-a-scheme/mappings/99"))
@@ -618,6 +716,7 @@ class WorkflowSchemeControllerTest {
                 key = WorkflowSchemeKey("team-b-scheme"),
                 name = "팀 B 스킴",
                 description = null,
+                projectId = null,
             )
         } returns scheme
 
@@ -675,6 +774,7 @@ class WorkflowSchemeControllerTest {
                 key = WorkflowSchemeKey("team-a-scheme"),
                 name = "팀 A 스킴",
                 description = "설명",
+                projectId = null,
             )
         } returns scheme
 
@@ -735,6 +835,7 @@ class WorkflowSchemeControllerTest {
             createdAt = Instant.parse("2026-01-01T00:00:00Z"),
             updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
             deletedAt = null,
+            projectId = null,
         )
 
     private fun buildSchemeDetail(
@@ -750,6 +851,7 @@ class WorkflowSchemeControllerTest {
             name = name,
             description = null,
             isStandard = false,
+            projectId = null,
             createdAt = "2026-01-01T00:00:00Z",
             updatedAt = "2026-01-01T00:00:00Z",
             usedByProjectsCount = usedByProjectsCount,

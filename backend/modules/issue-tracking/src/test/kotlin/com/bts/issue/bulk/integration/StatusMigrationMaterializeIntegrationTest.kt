@@ -7,6 +7,7 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import com.bts.issue.GlobalOnlyProjectLookup
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.adapter.outbound.workflow.WorkflowStatusMigrationAdapter
 import com.bts.issue.application.IssueApplicationService
@@ -50,6 +51,7 @@ import com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
@@ -281,6 +283,9 @@ class StatusMigrationMaterializeIntegrationTest {
                 permissionResolver = permissionResolver,
                 workflowRepo = workflowRepo,
                 issueTypeLookupPort = issueTypeLookupPort,
+                // 이 테스트는 이슈 전환을 잰다 — 소유는 전역으로 고정한다 (FR-WF-08).
+                scopeResolver =
+                    WorkflowOwnershipScopeResolver(schemeRepo, workflowRepo, GlobalOnlyProjectLookup),
             )
 
         @Bean

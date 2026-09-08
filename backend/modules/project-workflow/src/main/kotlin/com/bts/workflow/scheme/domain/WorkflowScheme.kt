@@ -4,6 +4,7 @@ package com.bts.workflow.scheme.domain
 
 import java.time.Clock
 import java.time.Instant
+import java.util.UUID
 
 /**
  * 워크플로우 스킴(WorkflowScheme) Aggregate Root.
@@ -33,16 +34,23 @@ import java.time.Instant
  * @property name 사람이 읽을 수 있는 스킴 이름. 빈 문자열 불허.
  * @property description 스킴 설명. 관리자용. null 허용 (DB nullable 컬럼).
  * @property isDefault true = 시스템 표준 스킴. Jira workflowscheme.is_default 패턴.
+ * @property projectId 소유 프로젝트(`projects.id`). null = 전역 공유 템플릿(SYSTEM_ADMIN 소관),
+ * 값이 있으면 그 프로젝트 전용(그 프로젝트의 PROJECT_ADMIN 소관). FR-WF-08.
  * @property createdAt 스킴 생성 시각 (UTC).
  * @property updatedAt 스킴 최종 변경 시각 (UTC).
  * @property deletedAt Soft delete 시각. null = 활성 상태.
+ *
+ * @suppress LongParameterList — 스킴이 실제로 갖는 필드 수다. 묶어 봐야 인위적인 그룹만 생기고
+ * factory 가 검증하는 불변식(name 이 비었나)이 한 겹 뒤로 밀린다.
  */
+@Suppress("LongParameterList")
 class WorkflowScheme private constructor(
     val id: WorkflowSchemeId?,
     val key: WorkflowSchemeKey,
     val name: String,
     val description: String?,
     val isDefault: Boolean,
+    val projectId: UUID?,
     val createdAt: Instant,
     val updatedAt: Instant,
     val deletedAt: Instant?,
@@ -60,6 +68,8 @@ class WorkflowScheme private constructor(
          * @param name 스킴 이름. 빈 문자열/공백만 허용하지 않음.
          * @param description 스킴 설명. null 허용.
          * @param isDefault 표준 스킴 여부. 기본값 false.
+         * @param projectId 소유 프로젝트. null = 전역 템플릿. **기본값을 두지 않는다** — 빠뜨리면
+         * 조용히 전역이 되고 그 스킴은 프로젝트 관리자가 영영 못 고친다(FR-WF-08).
          * @param clock 생성·변경 시각 기준 시계. 테스트에서 고정 시각 주입에 사용.
          * @throws IllegalArgumentException [name]이 빈 문자열이거나 공백만 있을 때.
          */
@@ -68,6 +78,7 @@ class WorkflowScheme private constructor(
             name: String,
             description: String?,
             isDefault: Boolean = false,
+            projectId: UUID?,
             clock: Clock = Clock.systemUTC(),
         ): WorkflowScheme {
             require(name.isNotBlank()) {
@@ -81,6 +92,7 @@ class WorkflowScheme private constructor(
                 name = name,
                 description = description,
                 isDefault = isDefault,
+                projectId = projectId,
                 createdAt = now,
                 updatedAt = now,
                 deletedAt = null,
@@ -99,6 +111,7 @@ class WorkflowScheme private constructor(
          * @param name 스킴 이름.
          * @param description 스킴 설명. null 허용.
          * @param isDefault 표준 스킴 여부.
+         * @param projectId 소유 프로젝트. null = 전역 템플릿.
          * @param createdAt 생성 시각.
          * @param updatedAt 최종 변경 시각.
          * @param deletedAt soft-delete 시각. null = 활성.
@@ -109,6 +122,7 @@ class WorkflowScheme private constructor(
             name: String,
             description: String?,
             isDefault: Boolean,
+            projectId: UUID?,
             createdAt: Instant,
             updatedAt: Instant,
             deletedAt: Instant?,
@@ -119,6 +133,7 @@ class WorkflowScheme private constructor(
                 name = name,
                 description = description,
                 isDefault = isDefault,
+                projectId = projectId,
                 createdAt = createdAt,
                 updatedAt = updatedAt,
                 deletedAt = deletedAt,

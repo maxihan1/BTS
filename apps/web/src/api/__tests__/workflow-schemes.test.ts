@@ -58,6 +58,7 @@ const schemeFixture: SchemeListItem = {
   name: 'Atlas 기본 스킴',
   description: 'Atlas 프로젝트 워크플로우 스킴',
   isStandard: false,
+  projectId: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   usedByProjectsCount: 2,
@@ -76,6 +77,7 @@ const mutationResultFixture: SchemeMutationResult = {
   name: 'Atlas 기본 스킴',
   description: 'Atlas 프로젝트 워크플로우 스킴',
   isStandard: false,
+  projectId: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }

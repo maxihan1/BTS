@@ -3,6 +3,7 @@
 
 package com.bts.issue.bulk.integration
 
+import com.bts.issue.GlobalOnlyProjectLookup
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.bulk.application.BulkEditPayload
@@ -42,6 +43,7 @@ import com.bts.workflow.scheme.adapter.inbound.WorkflowResolverImpl
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
@@ -257,6 +259,9 @@ class BulkOperationIntegrationTest {
                 permissionResolver = permissionResolver,
                 workflowRepo = workflowRepo,
                 issueTypeLookupPort = issueTypeLookupPort,
+                // 이 테스트는 이슈 전환을 잰다 — 소유는 전역으로 고정한다 (FR-WF-08).
+                scopeResolver =
+                    WorkflowOwnershipScopeResolver(schemeRepo, workflowRepo, GlobalOnlyProjectLookup),
             )
 
         @Bean

@@ -15,6 +15,7 @@ import com.bts.workflow.validator.ValidatorNotFoundException
 import com.bts.workflow.validator.ValidatorRow
 import com.bts.workflow.validator.ValidatorTypeNotEditableException
 import com.bts.workflow.validator.ValidatorValidationException
+import com.bts.workflow.web.ManageSchemeGuard
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -111,15 +112,23 @@ class ValidatorControllerTest {
          * 테스트 대상 컨트롤러.
          *
          * @param svc validator 관리 서비스 mock.
-         * @param resolver 권한 평가 포트 mock.
+         * @param guard 전환 규칙 가드. 실제 [ManageSchemeGuard] 를 쓰되 스코프 판정만 전역으로
+         * 고정한다 — 이 파일의 픽스처는 전부 전역 워크플로우다. 소유별 판정은 별도 테스트가 잰다.
          * @param factory 실물 validator 팩토리.
          */
         @Bean
+        open fun manageSchemeGuard(resolver: WorkflowSchemePermissionResolver): ManageSchemeGuard =
+            ManageSchemeGuard(
+                resolver,
+                mockk { every { ofWorkflow(any()) } returns WorkflowSchemeScope.Global },
+            )
+
+        @Bean
         open fun validatorController(
             svc: ValidatorAdminService,
-            resolver: WorkflowSchemePermissionResolver,
+            guard: ManageSchemeGuard,
             factory: WorkflowValidatorFactory,
-        ): ValidatorController = ValidatorController(svc, resolver, factory)
+        ): ValidatorController = ValidatorController(svc, guard, factory)
 
         /** validator 패키지 전용 예외 핸들러. */
         @Bean

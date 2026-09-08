@@ -54,4 +54,23 @@ class JdbcProjectLookupAdapter(private val dsl: DSLContext) : ProjectLookupPort 
             .fetchOne()
             ?.get(COL_ID)
     }
+
+    /**
+     * projects.id(UUID) 로 프로젝트 키를 조회한다.
+     *
+     * [findIdByKey] 와 같은 임시 stub 성격이다 — FR-PM-04 정식 포트 도입 시 함께 교체한다.
+     *
+     * @param projectId 조회할 프로젝트 UUID.
+     * @return 프로젝트 키, 없으면 null.
+     */
+    override fun findKeyById(projectId: UUID): ProjectKey? {
+        log.debug("findKeyById projectId={}", projectId)
+        return dsl
+            .select(COL_KEY)
+            .from(TABLE)
+            .where(COL_ID.eq(projectId))
+            .fetchOne()
+            ?.get(COL_KEY)
+            ?.let { ProjectKey(it) }
+    }
 }

@@ -59,6 +59,14 @@ export const assignedSchemeSchema = schemeCoreSchema
 export const schemeMutationResultSchema = schemeCoreSchema.extend({
   /** 생성·수정 응답에서는 항상 존재한다(저장 후 PK). */
   id: z.number().int(),
+  /**
+   * 소유 프로젝트 UUID. `null` 이면 전역 공유 템플릿이다 (FR-WF-08).
+   *
+   * ★ `schemeCoreSchema` 가 아니라 여기에 둔다. 배정 후보·배정 조회가 쓰는
+   * `ProjectWorkflowSchemeController.SchemeResponse` 에는 이 필드가 없어서, core 에 넣으면
+   * 그쪽이 `.strict()` 로 깨진다 — 형태가 다르면 스키마도 갈라야 한다.
+   */
+  projectId: z.string().uuid().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 })
@@ -155,11 +163,13 @@ export type AssignmentRecord = z.infer<typeof assignmentRecordSchema>
 // Input 인터페이스 — 뮤테이션 요청 타입 (백엔드 request DTO 와 1:1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 스킴 생성 입력 — 백엔드 `CreateWorkflowSchemeRequest{key,name,description}` 와 1:1. */
+/** 스킴 생성 입력 — 백엔드 `CreateWorkflowSchemeRequest{key,name,description,projectKey}` 와 1:1. */
 export interface CreateSchemeInput {
   key: string
   name: string
   description?: string
+  /** 소유 프로젝트 키. 생략하면 전역 공유 템플릿을 만든다 (FR-WF-08). */
+  projectKey?: string
 }
 
 /**

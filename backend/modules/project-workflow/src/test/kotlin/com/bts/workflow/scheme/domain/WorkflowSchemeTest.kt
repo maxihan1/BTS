@@ -41,6 +41,7 @@ class WorkflowSchemeTest {
                 description = "소프트웨어 개발 기본 스킴",
                 isDefault = true,
                 clock = fixedClock,
+                projectId = null,
             )
 
         assertThat(scheme.key).isEqualTo(validKey)
@@ -61,6 +62,7 @@ class WorkflowSchemeTest {
                 name = validName,
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
 
         assertThat(scheme.isDefault).isFalse()
@@ -76,6 +78,7 @@ class WorkflowSchemeTest {
                 name = validName,
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
 
         assertThat(scheme.description).isNull()
@@ -91,6 +94,7 @@ class WorkflowSchemeTest {
                 name = "",
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("name")
@@ -106,6 +110,7 @@ class WorkflowSchemeTest {
                 name = "   ",
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
         }.isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("name")
@@ -121,6 +126,7 @@ class WorkflowSchemeTest {
                 name = validName,
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
 
         val expected = Instant.parse("2024-01-15T09:00:00Z")
@@ -138,6 +144,7 @@ class WorkflowSchemeTest {
                 name = "이름 A",
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
         val scheme2 =
             WorkflowScheme.create(
@@ -146,6 +153,7 @@ class WorkflowSchemeTest {
                 description = "설명",
                 isDefault = true,
                 clock = fixedClock,
+                projectId = null,
             )
 
         assertThat(scheme1).isEqualTo(scheme2)
@@ -160,6 +168,7 @@ class WorkflowSchemeTest {
                 name = validName,
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
         val scheme2 =
             WorkflowScheme.create(
@@ -167,6 +176,7 @@ class WorkflowSchemeTest {
                 name = validName,
                 description = null,
                 clock = fixedClock,
+                projectId = null,
             )
 
         assertThat(scheme1).isNotEqualTo(scheme2)

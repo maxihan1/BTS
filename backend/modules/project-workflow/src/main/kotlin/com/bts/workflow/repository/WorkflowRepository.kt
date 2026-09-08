@@ -35,6 +35,8 @@ import java.util.UUID
  * 별도 join 도 필요 없다.
  */
 @Repository
+// TooManyFunctions — 한 aggregate 의 조회 경로다. 나누면 JOIN 재조립 헬퍼가 둘로 갈린다.
+@Suppress("TooManyFunctions")
 class WorkflowRepository(private val dsl: DSLContext) {
     /**
      * key 로 [Workflow] aggregate 를 조회한다.
@@ -77,6 +79,25 @@ class WorkflowRepository(private val dsl: DSLContext) {
             .and(WORKFLOWS.DELETED_AT.isNull)
             .fetchOne()
             ?.get(WORKFLOWS.ID) as UUID?
+
+    /**
+     * key 로 워크플로우의 소유 프로젝트(`workflows.project_id`)를 조회한다.
+     *
+     * null = 전역 공유 워크플로우. 권한 스코프 결정에 쓴다(FR-WF-08).
+     * 워크플로우가 없어도 null 이므로, 호출부는 「없음」과 「전역」을 구분하지 않고 전역으로 판정한다
+     * — 전역 판정은 SYSTEM_ADMIN 만 통과하므로 없는 키에 대해 fail-closed 다.
+     *
+     * @param key 워크플로우 식별 키.
+     * @return 소유 프로젝트 UUID, 전역이거나 부재 시 null.
+     */
+    fun findProjectIdByKey(key: String): UUID? =
+        dsl
+            .select(WORKFLOWS.PROJECT_ID)
+            .from(WORKFLOWS)
+            .where(WORKFLOWS.KEY.eq(key))
+            .and(WORKFLOWS.DELETED_AT.isNull)
+            .fetchOne()
+            ?.get(WORKFLOWS.PROJECT_ID)
 
     /**
      * UUID 목록으로 [Workflow] aggregate 를 일괄 조회한다.

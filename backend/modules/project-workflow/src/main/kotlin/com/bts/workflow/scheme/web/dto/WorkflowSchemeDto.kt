@@ -6,6 +6,7 @@ import com.bts.shared.issue.IssueTypeRef
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowScheme
+import java.util.UUID
 
 /**
  * 매핑 추가 요청 DTO.
@@ -121,6 +122,7 @@ data class MappingResponseDetail(
  * @property name 스킴 이름.
  * @property description 스킴 설명. null 허용.
  * @property isStandard 시스템 표준 스킴 여부 (DB 컬럼 `is_default`, 도메인 `WorkflowScheme.isDefault`).
+ * @property projectId 소유 프로젝트 UUID. null = 전역 공유 템플릿 (FR-WF-08).
  * @property createdAt 생성 시각 (ISO-8601).
  * @property updatedAt 최종 변경 시각 (ISO-8601).
  * @property usedByProjectsCount 이 스킴을 사용하는 프로젝트 수.
@@ -140,6 +142,8 @@ data class WorkflowSchemeDetailResponse(
      * [MappingResponseDetail.isDefault] 와 **다른 개념**임에 주의한다.
      */
     val isStandard: Boolean,
+    /** 소유 프로젝트. null = 전역 템플릿. 화면이 「전역」과 「이 프로젝트」를 가르는 근거다. */
+    val projectId: UUID?,
     val createdAt: String,
     val updatedAt: String,
     val usedByProjectsCount: Long = 0L,
@@ -160,6 +164,7 @@ data class WorkflowSchemeDetailResponse(
                 name = scheme.name,
                 description = scheme.description,
                 isStandard = scheme.isDefault,
+                projectId = scheme.projectId,
                 createdAt = scheme.createdAt.toString(),
                 updatedAt = scheme.updatedAt.toString(),
             )
@@ -183,6 +188,7 @@ data class WorkflowSchemeDetailResponse(
                 name = scheme.name,
                 description = scheme.description,
                 isStandard = scheme.isDefault,
+                projectId = scheme.projectId,
                 createdAt = scheme.createdAt.toString(),
                 updatedAt = scheme.updatedAt.toString(),
                 usedByProjectsCount = usedByProjectsCount,
@@ -205,6 +211,11 @@ data class CreateWorkflowSchemeRequest(
     val key: String,
     val name: String,
     val description: String?,
+    /**
+     * 소유 프로젝트 키. null 이면 전역 공유 템플릿을 만든다(SYSTEM_ADMIN 소관).
+     * 값이 있으면 그 프로젝트 전용 스킴이고 그 프로젝트의 관리자가 만들 수 있다(FR-WF-08).
+     */
+    val projectKey: String? = null,
 )
 
 /**
@@ -228,6 +239,7 @@ data class UpdateWorkflowSchemeRequest(
  * @property name 스킴 이름.
  * @property description 스킴 설명. null 허용.
  * @property isStandard 시스템 표준 스킴 여부 (DB 컬럼 `is_default`, 도메인 `WorkflowScheme.isDefault`).
+ * @property projectId 소유 프로젝트 UUID. null = 전역 공유 템플릿 (FR-WF-08).
  * @property createdAt 생성 시각 (ISO-8601).
  * @property updatedAt 최종 변경 시각 (ISO-8601).
  */
@@ -238,6 +250,8 @@ data class WorkflowSchemeResponse(
     val description: String?,
     /** 시스템 표준 스킴 여부. 도메인·DB 는 `isDefault`/`is_default` 그대로다(ADR D2 — 뷰 레이어 한정). */
     val isStandard: Boolean,
+    /** 소유 프로젝트. null = 전역 템플릿. 화면이 「전역」과 「이 프로젝트」를 가르는 근거다. */
+    val projectId: UUID?,
     val createdAt: String,
     val updatedAt: String,
 ) {
@@ -255,6 +269,7 @@ data class WorkflowSchemeResponse(
                 name = scheme.name,
                 description = scheme.description,
                 isStandard = scheme.isDefault,
+                projectId = scheme.projectId,
                 createdAt = scheme.createdAt.toString(),
                 updatedAt = scheme.updatedAt.toString(),
             )

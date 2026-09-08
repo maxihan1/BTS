@@ -44,6 +44,9 @@ data class CreateWorkflowRequest(
     @field:NotEmpty
     @field:Valid
     val statuses: List<WorkflowStatusSeedRequest>,
+    /** 소유 프로젝트 키. 생략하면 전역 공유 워크플로우를 만든다 (FR-WF-08). */
+    @field:Size(max = 10)
+    val projectKey: String? = null,
 ) {
     fun toCommand(): CreateWorkflowCommand =
         CreateWorkflowCommand(
@@ -51,6 +54,7 @@ data class CreateWorkflowRequest(
             name = name,
             description = description,
             statuses = statuses.map { WorkflowStatusSeed(it.key, it.name, it.category, it.displayOrder) },
+            projectKey = projectKey,
         )
 }
 
@@ -77,6 +81,14 @@ data class DuplicateWorkflowRequest(
     @field:NotBlank
     @field:Size(max = 200)
     val name: String,
+    /**
+     * 사본의 소유 프로젝트 키. 생략하면 전역 사본이다.
+     *
+     * ★ 전역 템플릿을 자기 프로젝트로 복제해 고치는 것이 Jira 가 권장하는 우회로다. 이 값을
+     * 안 실으면 사본도 전역이 되어 프로젝트 관리자가 결국 못 고친다(FR-WF-08).
+     */
+    @field:Size(max = 10)
+    val projectKey: String? = null,
 )
 
 /**

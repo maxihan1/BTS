@@ -240,8 +240,13 @@ class WorkflowController(
         @RequestBody request: DuplicateWorkflowRequest,
     ): DataResponse<CreatedWorkflowResponse> {
         val actor = CurrentActor.current()
-        log.info("WorkflowController.duplicateWorkflow source={} target={}", key, request.key)
-        workflowCommandService.duplicate(actor.toUuid(), key, request.key, request.name)
+        log.info(
+            "WorkflowController.duplicateWorkflow source={} target={} projectKey={}",
+            key,
+            request.key,
+            request.projectKey,
+        )
+        workflowCommandService.duplicate(actor.toUuid(), key, request.key, request.name, request.projectKey)
         return DataResponse(CreatedWorkflowResponse(request.key))
     }
 
