@@ -1,6 +1,6 @@
 # 프로젝트 소유 워크플로우 — 구현 계획
 
-스펙 `docs/specs/2026-09-08-project-owned-workflows.md`. FR-WF-02 · FR-WF-04 · FR-PM-04 범위 확장.
+스펙 `docs/specs/2026-09-08-project-owned-workflows.md`. **신설 FR-WF-08** (정본 145 → 146, Maxi 2026-09-08 확정).
 
 ## Jira 대조
 
@@ -22,9 +22,9 @@ BC 격리(한 PR = 한 BC)와 「마이그레이션은 되돌리기 어렵다」
 
 | PR | BC | 티어 | 내용 | 되돌리기 |
 |---|---|---|---|---|
-| ① | project-workflow | T3 | 마이그레이션 — `project_id` 2컬럼 + 부분 유니크 재편 | 어렵다. 단독 PR |
+| ① | project-workflow | T3 | FR-WF-08 등재 + 마이그레이션 — `project_id` 2컬럼 + 부분 유니크 재편 | 어렵다. 단독 PR |
 | ② | project-workflow | T2 | 스코프 결정 + CRUD 판정 전환 + 목록 필터 | 코드만 |
-| ③ | identity-access | T2 | `WorkflowDefinitionPermissionResolver` 프로젝트 스코프 도입 | 코드만 |
+| ③ | identity-access + shared-kernel | T3 | 공용 `WorkflowScope` 신설 + 정의 resolver 스코프 도입 | 코드만 |
 | ④ | apps/web | T1 | 프로젝트 설정 라우트 2종 + 가드 + E2E | 코드만 |
 
 ★①을 ②와 합치지 않는다. 컬럼만 추가하고 아무도 안 읽는 상태는 안전하지만, 판정 전환까지 한 PR 에 넣으면 롤백이 마이그레이션 되돌리기가 된다.
@@ -89,11 +89,18 @@ BC 격리(한 PR = 한 BC)와 「마이그레이션은 되돌리기 어렵다」
 
 ---
 
-## PR ③ 워크플로우 정의 권한 (T2 · 보안)
+## PR ③ 공용 스코프 + 워크플로우 정의 권한 (T3 · 보안 · shared-kernel)
+
+★티어가 T2 → **T3** 로 올라갔다. Task 3-0 이 `shared-kernel` 을 건드리기 때문이다(작업 티어표 — shared-kernel 은 T3). ADR 이 필요하고 리뷰에 ceo 가 붙는다.
+
+### Task 3-0. shared-kernel 공용 `WorkflowScope` 신설 (스펙 D8 확정)
+- 중립 이름의 스코프 타입 하나를 `com.bts.shared.permission` 에 둔다. `Global` · `Project(key)` 2분기.
+- `WorkflowSchemeScope` 사용처를 치환한다(1회). **`WorkflowSchemeScope` 를 일반화해 재사용하지 않는다** — 이름에 `Scheme` 이 남으면 `WorkflowDefinitionPermission` KDoc 이 경고한 개념 혼동을 그대로 일으킨다. 그 KDoc 때문에 enum 은 이미 둘로 갈라져 있다.
+- **금지**: 정의 resolver 전용 스코프 타입을 따로 두는 것. 두 타입은 서로를 검사하지 않는 두 목록이 된다.
+- **verify**: `WorkflowSchemeScope` 잔존 0 · 두 resolver 가 같은 타입을 받는다
 
 ### Task 3-1. `WorkflowDefinitionPermissionResolver` 에 스코프 도입
-- 지금은 인자가 `(actorId, permission)` 뿐이다(`:34-38`). `WorkflowSchemeScope` 와 **같은 형태**의 스코프 인자를 받게 넓힌다.
-- ★두 resolver 가 스코프 타입을 각자 만들면 두 목록이 된다. `WorkflowSchemeScope` 를 일반화하거나 공용 타입을 shared-kernel 에 둔다 — 어느 쪽인지 ADR 에 적는다.
+- 지금은 인자가 `(actorId, permission)` 뿐이다(`:34-38`). Task 3-0 의 공용 `WorkflowScope` 를 받게 넓힌다.
 - **verify**: 스펙 §4 D6 표 4행이 각각 red-first
 
 ### Task 3-2. DELETE 는 SYSTEM_ADMIN 유지
@@ -136,12 +143,16 @@ BC 격리(한 PR = 한 BC)와 「마이그레이션은 되돌리기 어렵다」
 
 ---
 
-## 착수 전 확인 필요
+## 착수 전 확인 — **전부 해소됐다. 착수 가능.**
 
 1. ~~`WorkflowKeyResolver` 호출부 규모~~ — **해소.** 이미 전 호출부가 `projectKey` 를 넘긴다(위 Task 2-5). 변경 대상이 아니라 동결 대상이다.
-2. **스코프 타입 공용화 형태** — PR ③ Task 3-1. `WorkflowSchemeScope` 일반화 vs shared-kernel 공용 타입 신설. ADR 에 적을 결정.
+2. ~~스코프 타입 공용화 형태~~ — **확정(Maxi 2026-09-08).** shared-kernel 공용 `WorkflowScope` 신설. 스펙 D8 · Task 3-0. ADR 대상은 그대로다.
 3. ~~기존 프로젝트 설정 라우트의 어드민 가드~~ — **해소.** 프론트에 프로젝트 어드민 가드가 없다(설정 12종 전부 `requireAuthAndPasswordChanged`). 신설하지 않고 백엔드 403 + 안내 카드 관례를 따른다(위 Task 4-1).
 
-## 미해결 — FR 동기화
+## FR 동기화 — PR ① 에 포함 (스펙 D7 확정)
 
-145 FR 전량 D 완료 상태에서 이 변경이 **기존 FR 의 범위 확장**인지 **새 FR**인지 정해야 한다. `docs/rules/fr-sync-checklist.md` 전수 동기화 대상이 달라진다. Maxi 확인 필요.
+### Task 1-0. FR-WF-08 등재 + 카운트 전수 동기화
+- `docs/rules/fr-sync-checklist.md` **전 항목**을 따른다. 이 계획에 대상 개수를 새기지 않는다 — 개수 리터럴이 drift 원천이다.
+- 145 → 146. 마스터플랜 · SDD · `product/<bc>.md` · CLAUDE.md 헤더 · fr-index 등.
+- **verify**: `bash scripts/verify-master-plan.sh` EXIT=0. 실패(EXIT 4)면 누락된 정본을 **같은 PR 에서** 채운다
+- ★이 task 를 PR ① 에 넣는 이유 — 마이그레이션 PR 이 이 FR 의 첫 착지다. 뒤 PR 로 미루면 그 사이 `verify-master-plan` 이 계속 빨간불이다.

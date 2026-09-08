@@ -6,7 +6,7 @@
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
-| 2026-09-08 | project-owned-workflows | ✔ | ✔ | — | — | FR-PM-04 FR-WF-02 FR-WF-04 |
+| 2026-09-08 | project-owned-workflows | ✔ | ✔ | — | — | FR-PM-04 FR-WF-02 FR-WF-04 FR-WF-08 |
 | 2026-09-07 | dashboard-jira-parity-gadgets | — | ✔ | — | — | FR-DB-01 FR-DB-02 FR-RP-01 |
 | 2026-09-07 | jira-parity-project-header-and-scoped-tabs | — | ✔ | — | — | FR-BD-01 FR-CA-01 FR-DB-01 FR-IS-01 FR-UX-06 |
 | 2026-09-07 | login-provider-default-and-recall | — | ✔ | — | — | FR-AU-01 FR-AU-06 FR-PF-01 |

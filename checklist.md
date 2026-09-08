@@ -2,15 +2,16 @@
 
 스펙 `docs/specs/2026-09-08-project-owned-workflows.md` · 계획 `docs/plans/2026-09-08-project-owned-workflows.md`
 
-## 착수 전 (Maxi 확인)
+## 착수 전 — **전부 해소. 착수 가능.**
 
-- [ ] FR 처리 — 기존 FR 범위 확장인가 새 FR 인가 (계획 §미해결)
-- [ ] 스코프 타입 공용화 형태 — `WorkflowSchemeScope` 일반화 vs shared-kernel 신설 (ADR 대상)
-- [x] ~~`WorkflowKeyResolver` 폭발 반경~~ — 실측 해소. 이미 전 호출부가 `projectKey` 를 넘긴다
-- [x] ~~프론트 프로젝트 어드민 가드 유무~~ — 실측 해소. 없다. 백엔드 403 + 안내 카드 관례를 따른다
+- [x] FR 처리 — **새 FR-WF-08 신설**, 정본 145 → 146 (Maxi 2026-09-08)
+- [x] 스코프 타입 — **shared-kernel 공용 `WorkflowScope` 신설** (Maxi 2026-09-08). PR ③ 이 T3 로 올라간다
+- [x] `WorkflowKeyResolver` 폭발 반경 — 실측 해소. 이미 전 호출부가 `projectKey` 를 넘긴다
+- [x] 프론트 프로젝트 어드민 가드 유무 — 실측 해소. 없다. 백엔드 403 + 안내 카드 관례를 따른다
 
-## PR ① 마이그레이션 (T3 · project-workflow)
+## PR ① FR 등재 + 마이그레이션 (T3 · project-workflow)
 
+- [ ] 1-0 FR-WF-08 등재 + 카운트 전수 동기화 (`fr-sync-checklist.md` 전 항목 · `verify-master-plan.sh` EXIT=0)
 - [ ] 1-1 `workflows.project_id` + 부분 유니크 재편 (V206 소프트삭제 인덱스와 3조건 겹침 확인)
 - [ ] 1-2 `workflow_schemes.project_id` + 동형 재편 (V201 `ix_workflow_schemes_key_active` 확인)
 - [ ] 1-3 jOOQ 재생성 + `init_codegen.sql` 미러
@@ -26,9 +27,10 @@
 - [ ] 2-4 스코프 결정 전수 판별식 + 비-공허 짝
 - [ ] 2-5 키 단독 조회 **동결** 판별식 + 비-공허 짝
 
-## PR ③ 워크플로우 정의 권한 (T2 · identity-access · 보안)
+## PR ③ 공용 스코프 + 정의 권한 (T3 · shared-kernel + identity-access · 보안)
 
-- [ ] 3-1 `WorkflowDefinitionPermissionResolver` 스코프 도입
+- [ ] 3-0 shared-kernel 공용 `WorkflowScope` 신설 + `WorkflowSchemeScope` 치환 (잔존 0)
+- [ ] 3-1 `WorkflowDefinitionPermissionResolver` 가 공용 `WorkflowScope` 를 받는다
 - [ ] 3-2 `DELETE` 는 SYSTEM_ADMIN 유지
 - [ ] 3-3 권한 매트릭스 ↔ 엔드포인트 짝 판별식 + 비-공허 짝
 - [ ] 게이트 — 스펙 §4 D6 표 4행 각각 red-first
