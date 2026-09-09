@@ -88,6 +88,8 @@ T0/T1 에서 3회에 도달하면 보고에 **「티어 재판정 제안」**을
 |---|---|---|
 | `.husky/pre-commit` — `build-doc-index.mjs --check` | 커밋 | **강등 금지.** 저장소 밖 메모리의 유일한 봉인 |
 | `.husky/pre-commit` — lint-staged | 커밋 | worktree 가 훅을 침묵 무력화한 실측이 있다 — 로컬 훅은 **보조**다 |
+| `.husky/pre-push` — 판별식 전량 | 푸시 | **백엔드·프론트 테스트는 여기서 빠졌다**(2026-09-09 · 젠킨스 이전). 판별식만 남는다 |
+| 젠킨스 `bts-ci` — 빠른 게이트 | 푸시 후 (`pollSCM` 최대 5분) | 백엔드·프론트 검증의 새 자리. **푸시를 막지 못한다** — 깨진 커밋이 원격에 올라갈 수 있고, 그것을 잡는 자리는 게이트 2 다 |
 | `scripts/verify-master-plan.sh` EXIT 3/4 | PR (CI 잡) | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
 | `scripts/workflow/*.test.ts` 판별식 | PR | 하네스·CI·문서 배선의 차집합 0 |
 | `frontend-ci.yml` `visual` 잡 | PR | 파일럿 기간은 `continue-on-error` — **비차단** |

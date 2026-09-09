@@ -47,6 +47,7 @@ pnpm test:workflow  # 판별식 — CI 와 같은 목록
 node scripts/build-doc-index.mjs [--check]  # 인덱스 · pre-commit
 node scripts/build-dashboard.mjs  # progress.html
 bash scripts/verify-master-plan.sh  # 정본 정합 (EXIT 4 차단)
+node --experimental-strip-types scripts/workflow/jenkins-build-status.ts  # 0 초록·1 빨강·2 판정불가
 bash scripts/doc-index/mutation-probe.sh  # 비-공허 확인
 docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 ```
@@ -58,6 +59,7 @@ docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 - worktree `node_modules` 는 심볼릭 — pnpm auto install 이 깨진다. `.bin` 부재부터 의심.
 - 가드 수정 시 **표면을 없애면 판별자도 사라진다**. 일부러 끊어 red 1회 확인.
 - 뮤테이션 검증은 **GREEN 선커밋 뒤**. 미커밋 원복은 소실이다.
+- **푸시 성공 ≠ 검증 통과.** 백엔드·프론트 테스트는 훅에서 빠져 젠킨스로 갔다(2026-09-09). 푸시는 안 막힌다.
 - 지시문에 **개수를 쓰지 마라**. 「N건」은 눈가리개 — 전수 열거만 시킨다.
 
 그 밖 6건. `docs/rules/traps.md`
