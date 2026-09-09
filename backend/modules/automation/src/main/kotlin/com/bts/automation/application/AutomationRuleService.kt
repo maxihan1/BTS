@@ -100,7 +100,7 @@ import java.util.UUID
  * cross-BC 존재 검증은 하지 않는다, 트리거/액션 선례 동형). [conditionRepository] 가 룰 저장/갱신과
  * **같은 `@Transactional` 경계 안에서** `replace` 를 호출한다(조건 replace 트랜잭션성). [get]/[list] 는
  * [AutomationRuleRepository] 의 find 계열이 [AutomationRule.condition] 을 로드하지 않으므로
- * [conditionRepository.findByRuleId] 로 별도 로드해 채운다(actions 와 동일 설계, [hydrateRule] 참고).
+ * [conditionRepository.findByRuleId] 로 별도 로드해 채운다(actions 와 동일 설계, [hydrateRules] 참고).
  *
  * ## 규칙 충돌 lint 통합 (FR-AT-04 Task 5, 저장 트랜잭션 분리 hotfix — 코드리뷰 BLOCKER 수정)
  * [create]/[patch] 자신은 저장(및 OCC/도메인 검증)만 담당하고 `conflicts` 는 항상 빈 리스트 placeholder
@@ -235,7 +235,7 @@ class AutomationRuleService(
 
     /**
      * [projectKey] 의 활성 룰 목록을 반환한다. 각 룰의 [AutomationRule.actions]/[AutomationRule.condition]
-     * 은 [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrateRule]).
+     * 은 [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrateRules]).
      *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 조회할 프로젝트 키.
@@ -248,12 +248,12 @@ class AutomationRuleService(
         projectKey: String,
     ): List<AutomationRule> {
         assertManageAutomation(actorId, projectKey)
-        return repository.findByProject(projectKey).map { hydrateRule(actionRepository, conditionRepository, it) }
+        return hydrateRules(actionRepository, conditionRepository, repository.findByProject(projectKey))
     }
 
     /**
      * [projectKey] 소속 [id] 룰을 단건 조회한다. [AutomationRule.actions]/[AutomationRule.condition] 은
-     * [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrateRule]).
+     * [actionRepository]/[conditionRepository] 로 별도 로드해 채운다([hydrateRules]).
      *
      * @param actorId 조회를 요청하는 행위자.
      * @param projectKey 룰이 속해야 하는 프로젝트 키(경로 스코프).
@@ -269,7 +269,8 @@ class AutomationRuleService(
         id: UUID,
     ): AutomationRule {
         assertManageAutomation(actorId, projectKey)
-        return hydrateRule(actionRepository, conditionRepository, findInProject(projectKey, id))
+        return hydrateRules(actionRepository, conditionRepository, listOf(findInProject(projectKey, id)))
+            .single()
     }
 
     /**
@@ -277,7 +278,7 @@ class AutomationRuleService(
      * (FR-AT-06 GitOps Task 3).
      *
      * [repository.findByProject] 는 [AutomationRule.actions]/[AutomationRule.condition] 을 로드하지
-     * 않으므로(클래스 KDoc §액션/actor 매핑·§조건 게이트 매핑 참고) 규칙별로 [hydrateRule] 을 거쳐 채운 뒤
+     * 않으므로(클래스 KDoc §액션/actor 매핑·§조건 게이트 매핑 참고) 규칙별로 [hydrateRules] 을 거쳐 채운 뒤
      * [ExportRuleInput] 으로 매핑한다. [repository.findByProject] 가 이미 `created_at, id` 순으로 반환하므로
      * ([com.bts.automation.adapter.AutomationRuleRepository] `SQL_FIND_BY_PROJECT` 참고) GitOps git diff
      * 안정성을 위한 결정적 순서(spec FR1)가 별도 정렬 없이 그대로 보장된다.
@@ -298,9 +299,7 @@ class AutomationRuleService(
         projectKey: String,
     ): List<ExportRuleInput> {
         assertManageAutomation(actorId, projectKey)
-        return repository
-            .findByProject(projectKey)
-            .map { hydrateRule(actionRepository, conditionRepository, it) }
+        return hydrateRules(actionRepository, conditionRepository, repository.findByProject(projectKey))
             .map(AutomationRule::toExportRuleInput)
     }
 
@@ -504,7 +503,9 @@ class AutomationRuleService(
         condition: String? = null,
     ): PatchedAutomationRule {
         assertManageAutomation(actorId, projectKey)
-        val existing = hydrateRule(actionRepository, conditionRepository, findInProject(projectKey, id))
+        val existing =
+            hydrateRules(actionRepository, conditionRepository, listOf(findInProject(projectKey, id)))
+                .single()
         if (existing.version != expectedVersion) {
             throw AutomationRuleVersionConflictException(id)
         }
@@ -566,7 +567,7 @@ class AutomationRuleService(
      *
      * ## 저장 트랜잭션과 완전히 분리된 별도 호출 (클래스 KDoc §규칙 충돌 lint 통합 참고)
      * 이 메서드는 `@Transactional` 이 **아니다** — [repository]/[actionRepository]/[conditionRepository]
-     * 의 find 계열([hydrateRule] 이 호출)은 각각 자신의 `@Transactional(readOnly = true)` 로 독립된 새
+     * 의 find 계열([hydrateRules] 이 호출)은 각각 자신의 `@Transactional(readOnly = true)` 로 독립된 새
      * 트랜잭션을 연다(참여할 상위 트랜잭션이 없으므로). 그래서 이 메서드가 [create]/[patch] **저장이
      * 이미 커밋된 뒤**([com.bts.automation.adapter.web.AutomationRuleController] 가 별도로 호출) 실행돼도
      * 방금 저장한 규칙이 재조회에 포함되고(read-committed), 이 안의 어떤 read 예외도 이미 끝난 저장에
@@ -584,8 +585,8 @@ class AutomationRuleService(
      * @return 검출된 [RuleConflict] 목록. 분석 실패 시 빈 리스트.
      */
     fun analyzeProjectConflicts(projectKey: String): List<RuleConflict> =
-        analyzeConflicts(projectKey, repository, conflictAnalyzer, log) {
-            hydrateRule(actionRepository, conditionRepository, it)
+        analyzeConflicts(projectKey, repository, conflictAnalyzer, log) { rules ->
+            hydrateRules(actionRepository, conditionRepository, rules)
         }
 
     /**
@@ -763,7 +764,7 @@ private fun sha256Hex(plaintext: String): String {
 /**
  * [SecureRandom] 256bit 원문 + SHA-256 hex 해시를 발급한다(notification `ShareTokenMinter` 패턴 미러).
  *
- * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule]/
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRules]/
  * [toExportRuleInput] 와 동일하다 — 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수
  * ([TooManyFunctions]) 예산을 넘긴다(FR-AT-06 GitOps Task 3 에서 [AutomationRuleService.exportRules] 가
  * 추가되며 예산 확보를 위해 이 함수를 클래스 멤버에서 top-level 로 이동했다). [secureRandom] 을 명시
@@ -780,35 +781,65 @@ private fun mintWebhookToken(secureRandom: SecureRandom): WebhookToken {
 private data class WebhookToken(val plaintext: String, val hash: String)
 
 /**
- * [rule] 에 [actionRepository]/[conditionRepository] 로 조회한 현재 액션·조건을 채워 반환한다.
+ * [rules] 전량을 **쿼리 2회로** 채운다(N+1 제거).
  *
  * [AutomationRuleRepository] 의 find 계열은 [AutomationRule.actions]/[AutomationRule.condition] 을 항상
  * 빈 리스트/`null` 로 매핑하므로(Task 6 결정, FR-AT-03 Task 8 동일 적용), CRUD 응답이 실제 액션·조건을
  * 반영하려면 이 헬퍼로 별도 로드해야 한다.
  *
  * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex] 와 동일하다 — 클래스 멤버로
- * 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다(코드리뷰 BLOCKER 수정으로
- * [AutomationRuleService.analyzeProjectConflicts] 가 추가되며 예산 확보를 위해 이 함수를 클래스 멤버에서
- * top-level 로 이동했다). [actionRepository]/[conditionRepository] 를 명시 파라미터로 받는다 —
- * 이 함수가 인스턴스 필드에 암묵 접근하지 않고 [actionRepository]/[conditionRepository] 를 호출자가
- * 매번 명시 파라미터로 넘긴다(top-level 함수라 인스턴스 필드에 접근할 수 없다).
+ * 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다. 그래서
+ * [actionRepository]/[conditionRepository] 를 호출자가 명시 파라미터로 넘긴다(top-level 이라
+ * 인스턴스 필드에 접근할 수 없다).
+ *
+ * ## 왜 필요했나 — 2코어 VM 실측 (2026-09-09)
+ *
+ * 종전에는 하이드레이션이 규칙마다 단건 조회를 불렀다. 규칙 n 개면 액션 n 회 +
+ * 조건 n 회 = **2n 왕복**이다. 스펙(`2026-07-13-fr-at-04-conflict-analysis.md:73`)이
+ * 「N+1은 허용하되 100규칙 1s 임계 내」라고 조건부 허용했는데, 그 조건이 깨졌다.
+ *
+ * | n | findByProject | 하이드레이션(N+1) | 충돌 분석(CPU) |
+ * |---|---|---|---|
+ * | 100 | 19ms | **2,331ms** | 7ms |
+ * | 200 | 17ms | **4,152ms** | 16ms |
+ *
+ * 왕복 1회당 약 11.6ms · 전체의 **98.9%**. 쿼리가 느린 게 아니라 왕복이 많다 —
+ * 같은 100건을 `findByProject` 는 한 번에 19ms 에 가져온다.
+ *
+ * ★CPU 쪽 `RuleConflictAnalyzer` 는 O(n²)인데도 200개에서 16ms 다. 코드만 보면 그쪽이
+ *   범인처럼 보이지만 실측이 0.3% 로 만들었다 — **재보지 않고 고쳤으면 헛수고였다.**
+ *
+ * ★단건 조회도 이 함수를 `listOf(rule)` 로 부른다. 단건은 어차피 왕복 2회(액션 1 + 조건 1)라
+ *   비용이 같고, 하이드레이션 경로가 하나로 남아 「목록만 배치를 탄다」는 갈림이 생기지 않는다.
+ *   경로가 둘이면 새 호출자가 어느 쪽을 골라야 하는지가 또 하나의 판단거리가 된다.
+ *
+ * @param rules 채울 대상. 비면 리포지토리를 치지 않는다.
+ * @return `actions`·`condition` 이 채워진 [rules] (입력 순서 보존).
  */
-private fun hydrateRule(
+private fun hydrateRules(
     actionRepository: AutomationActionRepository,
     conditionRepository: AutomationConditionRepository,
-    rule: AutomationRule,
-): AutomationRule =
-    rule.copy(
-        actions = actionRepository.findByRuleId(rule.id),
-        condition = conditionRepository.findByRuleId(rule.id),
-    )
+    rules: List<AutomationRule>,
+): List<AutomationRule> {
+    if (rules.isEmpty()) return rules
+    val ids = rules.map { it.id }
+    val actionsByRule = actionRepository.findByRuleIds(ids)
+    val conditionByRule = conditionRepository.findByRuleIds(ids)
+    return rules.map { rule ->
+        rule.copy(
+            // 키가 없으면 「액션 0건」이다 — 리포지토리가 빈 리스트 키를 만들지 않는 계약과 짝이다.
+            actions = actionsByRule[rule.id] ?: emptyList(),
+            condition = conditionByRule[rule.id],
+        )
+    }
+}
 
 /**
  * [AutomationRule] → [ExportRuleInput] 매핑(FR-AT-06 GitOps Task 3, [AutomationRuleService.exportRules] 전용).
  *
- * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule] 와 동일하다 —
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRules] 와 동일하다 —
  * 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다. 호출자가 이미
- * [hydrateRule] 로 actions/condition 을 채운 [rule] 을 전달한다고 전제한다(호출 순서는
+ * [hydrateRules] 로 actions/condition 을 채운 [rule] 을 전달한다고 전제한다(호출 순서는
  * [AutomationRuleService.exportRules] 참고). `webhookTokenHash`/`nextFireAt`/`version`/`createdBy`/
  * `createdAt`/`updatedAt` 은 [ExportRuleInput] 이 애초에 필드로 갖지 않으므로 이 매핑에서 다루지 않는다.
  */
@@ -1022,9 +1053,9 @@ private fun updateImportedRule(
  * [projectKey] 소속 규칙 전체를 재조회·hydrate 해 [analyzer] 로 정적 분석한다(FR-AT-04 Task 5,
  * [AutomationRuleService.analyzeProjectConflicts] 전용 구현체, 코드리뷰 BLOCKER 수정).
  *
- * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRule] 와 동일하다 —
+ * top-level 함수로 둔 이유는 [applyFieldPatch]/[toDomainAction]/[sha256Hex]/[hydrateRules] 와 동일하다 —
  * 클래스 멤버로 두면 [AutomationRuleService] 의 함수 개수([TooManyFunctions]) 예산을 넘긴다. 재조회된 각
- * 룰에 actions/condition 을 채우는 로직은 [hydrate] 파라미터로 받는다(호출자가 [hydrateRule] 을 바인딩한
+ * 룰에 actions/condition 을 채우는 로직은 [hydrate] 파라미터로 받는다(호출자가 [hydrateRules] 을 바인딩한
  * 람다를 넘긴다).
  *
  * ## fail-safe + 저장 트랜잭션과의 완전한 분리 (호출자 KDoc §규칙 충돌 lint 통합 참고, 코드리뷰 BLOCKER 수정)
@@ -1044,7 +1075,7 @@ private fun updateImportedRule(
  * @param repository [AutomationRule] 재조회용 리포지토리.
  * @param analyzer 정적 분석기.
  * @param log 실패 시 경고를 남길 호출자([AutomationRuleService]) 로거.
- * @param hydrate 재조회된 각 룰에 actions/condition 을 채우는 함수([hydrateRule] 바인딩 람다).
+ * @param hydrate 재조회된 각 룰에 actions/condition 을 채우는 함수([hydrateRules] 바인딩 람다).
  * @return 검출된 [RuleConflict] 목록. 분석 실패 시 빈 리스트.
  */
 @Suppress("TooGenericExceptionCaught")
@@ -1053,10 +1084,10 @@ private fun analyzeConflicts(
     repository: AutomationRuleRepository,
     analyzer: RuleConflictAnalyzer,
     log: Logger,
-    hydrate: (AutomationRule) -> AutomationRule,
+    hydrate: (List<AutomationRule>) -> List<AutomationRule>,
 ): List<RuleConflict> =
     try {
-        analyzer.analyze(repository.findByProject(projectKey).map(hydrate))
+        analyzer.analyze(hydrate(repository.findByProject(projectKey)))
     } catch (e: Exception) {
         log.warn("automation_rule_conflict_analysis_failed projectKey={} error={}", projectKey, e.message, e)
         emptyList()

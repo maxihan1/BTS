@@ -149,8 +149,9 @@ class AutomationRuleServiceConflictTest : DescribeSpec({
                 )
 
             every { repository.findById(existingRule.id) } returns existingRule
-            every { actionRepository.findByRuleId(existingRule.id) } returns emptyList()
-            every { conditionRepository.findByRuleId(existingRule.id) } returns null
+            // ★하이드레이션 경로는 단건·목록 공통으로 배치다(2026-09-09 N+1 제거).
+            every { actionRepository.findByRuleIds(listOf(existingRule.id)) } returns emptyMap()
+            every { conditionRepository.findByRuleIds(listOf(existingRule.id)) } returns emptyMap()
             every { repository.update(any()) } just runs
 
             val patched =
@@ -183,8 +184,9 @@ class AutomationRuleServiceConflictTest : DescribeSpec({
                 )
 
             every { repository.findById(existingRule.id) } returns existingRule
-            every { actionRepository.findByRuleId(existingRule.id) } returns emptyList()
-            every { conditionRepository.findByRuleId(existingRule.id) } returns null
+            // ★하이드레이션 경로는 단건·목록 공통으로 배치다(2026-09-09 N+1 제거).
+            every { actionRepository.findByRuleIds(listOf(existingRule.id)) } returns emptyMap()
+            every { conditionRepository.findByRuleIds(listOf(existingRule.id)) } returns emptyMap()
 
             val patched =
                 service.patch(
@@ -219,8 +221,11 @@ class AutomationRuleServiceConflictTest : DescribeSpec({
                 )
 
             every { repository.findByProject(PROJECT_KEY) } returns listOf(rule)
-            every { actionRepository.findByRuleId(rule.id) } returns listOf(sampleAction)
-            every { conditionRepository.findByRuleId(rule.id) } returns null
+            // ★목록 하이드레이션은 배치다(2026-09-09 N+1 제거). 단건 findByRuleId 를 stub 하면
+            //   호출되지 않아 mockk 가 실제 호출에서 예외를 내고, 그 예외를 fail-safe 가 삼켜
+            //   「빈 conflicts」로 조용히 통과한다 — 그게 이 테스트가 잡아야 할 것과 정반대다.
+            every { actionRepository.findByRuleIds(listOf(rule.id)) } returns mapOf(rule.id to listOf(sampleAction))
+            every { conditionRepository.findByRuleIds(listOf(rule.id)) } returns emptyMap()
             every { conflictAnalyzer.analyze(any()) } returns listOf(sampleConflict)
 
             val conflicts = service.analyzeProjectConflicts(PROJECT_KEY)
@@ -260,7 +265,7 @@ class AutomationRuleServiceConflictTest : DescribeSpec({
                     now = FIXED_NOW,
                 )
             every { repository.findByProject(PROJECT_KEY) } returns listOf(rule)
-            every { actionRepository.findByRuleId(rule.id) } throws IllegalStateException("action 파싱 실패")
+            every { actionRepository.findByRuleIds(any()) } throws IllegalStateException("action 파싱 실패")
 
             val conflicts = service.analyzeProjectConflicts(PROJECT_KEY)
 
@@ -283,8 +288,9 @@ class AutomationRuleServiceConflictTest : DescribeSpec({
 
             every { repository.findById(rule.id) } returns rule
             every { repository.findByProject(PROJECT_KEY) } returns listOf(rule)
-            every { actionRepository.findByRuleId(rule.id) } returns emptyList()
-            every { conditionRepository.findByRuleId(rule.id) } returns null
+            // ★get(단건)과 list(목록)가 같은 배치 경로를 탄다 — hydrateRules 하나로 통일했다.
+            every { actionRepository.findByRuleIds(listOf(rule.id)) } returns emptyMap()
+            every { conditionRepository.findByRuleIds(listOf(rule.id)) } returns emptyMap()
 
             val single = service.get(actorId, PROJECT_KEY, rule.id)
             val list = service.list(actorId, PROJECT_KEY)
