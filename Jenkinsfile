@@ -33,7 +33,15 @@ pipeline {
 
   options {
     // 2코어다. 동시 빌드는 Testcontainers 컨테이너까지 겹쳐 스왑으로 민다.
-    disableConcurrentBuilds()
+    //
+    // ★`abortPrevious: true` 가 핵심이다. 이것이 없으면 새 빌드가 **큐에서 기다린다** —
+    //   executor 가 1개라 낡은 빌드가 도는 동안 현재 커밋의 검증이 시작조차 못 한다.
+    //   GitHub Actions 시절 `concurrency.cancel-in-progress: true` 가 막던 그 상태이고,
+    //   2026-08-07 실측에서 큐 8건 중 3건이 **이미 머지되고 브랜치까지 삭제된 PR** 의
+    //   검증이었다. 그때 현재 main 을 검증하는 run 은 0건이었다.
+    //   `disableConcurrentBuilds()` 만 쓰면 「동시 실행은 막았는데 낡은 것이 먼저 돈다」가
+    //   되어 절반만 고친 상태가 된다 — 포팅하면서 실제로 그렇게 써 놓았다가 잡혔다.
+    disableConcurrentBuilds(abortPrevious: true)
     timestamps()
     buildDiscarder(logRotator(numToKeepStr: '30', artifactNumToKeepStr: '10'))
     timeout(time: 3, unit: 'HOURS')

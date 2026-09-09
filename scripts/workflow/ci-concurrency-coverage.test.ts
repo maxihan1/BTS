@@ -193,6 +193,45 @@ describe('CI — 트리거를 가진 워크플로우는 낡은 run 을 취소한
     )
   })
 
+  // ── 젠킨스 포팅 (2026-09-09 · P4) ────────────────────────────────────────
+  //
+  // ★이 판별식이 지키려던 것은 **「낡은 실행이 현재 커밋의 검증을 막지 않는다」**이지
+  //   `concurrency:` 라는 문자열이 아니다. CI 정본이 젠킨스로 옮겨졌으므로 그 보장도 옮긴다.
+  //
+  // ★글자 그대로 옮기면 안 되는 자리다. Actions 의 `cancel-in-progress: true` 는
+  //   새 run 이 오면 **이전 것을 취소**한다. 젠킨스의 `disableConcurrentBuilds()` 는
+  //   **큐에서 기다린다** — 동시 실행은 막지만 낡은 것이 먼저 끝나야 새 것이 돈다.
+  //   executor 가 1개인 이 머신에서는 그것이 정확히 막으려던 상태다.
+  //   짝은 `disableConcurrentBuilds(abortPrevious: true)` 다.
+  //   ★포팅하면서 실제로 `abortPrevious` 없이 써 놓았다가 이 단언을 쓰며 잡았다.
+  test('★젠킨스 파이프라인이 낡은 빌드를 중단한다 (abortPrevious)', () => {
+    const jf = fs.readFileSync(path.join(REPO_ROOT, 'Jenkinsfile'), 'utf8')
+
+    // 양성 대조군 — options 블록을 실제로 뽑았다. 못 뽑으면 아래가 공허하게 통과한다.
+    const options = jf.match(/options\s*\{[\s\S]*?\n\s*\}/)?.[0] ?? ''
+    assert.ok(options.length > 0, 'Jenkinsfile 에서 options 블록을 못 뽑았다 — 추출기가 깨졌다')
+
+    assert.match(
+      options,
+      /disableConcurrentBuilds\s*\(\s*abortPrevious\s*:\s*true\s*\)/,
+      '낡은 빌드를 중단하지 않는다.\n' +
+        '  executor 가 1개라 낡은 빌드가 도는 동안 현재 커밋의 검증이 시작조차 못 한다.\n' +
+        '  2026-08-07 실측 — 큐 8건 중 3건이 이미 머지되고 브랜치까지 삭제된 PR 의 검증이었고,\n' +
+        '  그때 현재 main 을 검증하는 run 은 0건이었다.\n' +
+        '  처방. options { disableConcurrentBuilds(abortPrevious: true) }',
+    )
+  })
+
+  test('★판정기가 abortPrevious 없는 형태를 실제로 거른다 (합성 뮤테이션)', () => {
+    // 위 단언이 정규식만 스쳐도 통과하는 형태가 아닌지 본다.
+    const bare = 'options {\n  disableConcurrentBuilds()\n  timestamps()\n}'
+    assert.doesNotMatch(
+      bare,
+      /disableConcurrentBuilds\s*\(\s*abortPrevious\s*:\s*true\s*\)/,
+      '인자 없는 형태를 통과시킨다 — 절반만 고친 상태가 초록이 된다',
+    )
+  })
+
   test('★자기 run 을 만드는 워크플로우는 전부 concurrency 취소를 선언한다', () => {
     const violations = workflows
       .filter((w) => classify(w.source) === 'creates-own-run')

@@ -1,4 +1,20 @@
-// 문서 인덱스 판별식 — 재생성 diff(I) · 고아(J) · 깨진 링크(K) · SOURCES⟺CI paths(L)
+// 문서 인덱스 판별식 — 재생성 diff(I) · 고아(J·J-역) · 깨진 링크(K)
+//
+// ## ★「룰 L」은 없다 (2026-09-09 정정)
+//
+// 종전 이 줄은 `SOURCES⟺CI paths(L)` 을 광고했고 `doc-index/config.mjs` 도 「룰 L 이
+// 강제한다」고 적어 뒀다. **그 테스트는 쓰인 적이 없다.** 남아 있던 것은 참조 0 인
+// `CI_FILE` 상수 하나뿐이었다 — 없는 가드를 「막는다」고 적은 상태이고,
+// `behavior-rules.md` 머리말이 「강제 수단이 비면 그 규칙은 지켜지지 않을 수 있다」고
+// 적은 그것보다 나쁘다. **있다고 믿게 만들기 때문**이다.
+//
+// 그리고 이제는 필요도 없다. 룰 L 이 막으려던 사고는 「생성기가 읽는 폴더를 늘렸는데
+// CI 트리거 경로에 안 넣어서 검사가 아예 안 도는」 것이었는데, 젠킨스는 **판별식을
+// 조건 없이 전량** 돌린다(`Jenkinsfile` 빠른 게이트 · `.husky/pre-push`). 어느 폴더를
+// 고쳤든 무조건 돌므로 「조건 목록」이라는 두 번째 목록 자체가 존재하지 않는다.
+//
+// 되살릴 일이 생긴다면(= 경로별 선별을 도입한다면) 그때 **테스트를 실제로 쓰고** 이 주석을
+// 고쳐라. 주석만 되돌리면 같은 상태로 돌아간다.
 // 실행. node --experimental-strip-types --test scripts/workflow/doc-index-coverage.test.ts
 //
 // 왜 판별식인가. 이 저장소의 지배 결함은 "두 하드코딩 목록이 서로를 안 봐서 조용히 갈라지는" 것이다.
@@ -13,7 +29,6 @@ import { fileURLToPath } from 'node:url';
 import { MEMORY_DIR } from '../doc-index/config.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const CI_FILE = path.join(REPO_ROOT, '.github/workflows/workflow-scripts-ci.yml');
 const INDEX_FILES = ['docs/INDEX.md', 'docs/INDEX-fr.md', 'docs/INDEX-recent.md'];
 
 // 생성기가 승계 원천으로 읽는 저장소 **밖** 경로. 사본을 두지 않고 생성기의 상수를 그대로 쓴다 —
