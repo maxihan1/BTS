@@ -110,7 +110,17 @@ export function changedFiles(): string[] | null {
   const base = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']) ?? FALLBACK_BASE
   const merged = git(['merge-base', base, 'HEAD'])
   if (merged === null) return null
-  const out = git(['diff', '--name-only', merged, 'HEAD'])
+  // ★`--no-renames` 가 없으면 **좁게 고른다.** git 은 rename 을 감지하면 새 경로 하나로
+  //   접어서, 파일이 모듈 A → B 로 옮겨졌을 때 A 가 목록에서 통째로 빠진다. A 의 테스트가
+  //   안 돌고 그것이 초록으로 보인다 — 넓게 고르는 실수는 느릴 뿐이지만 좁게 고르는 실수는
+  //   검증 안 된 코드를 머지시킨다.
+  //
+  // ★이 플래그는 종전에 `.github/workflows/backend-ci.yml` 의 select 잡에만 있었다.
+  //   젠킨스는 YAML 대신 이 계산기가 내부에서 diff 하므로 그 배선이 통째로 사라져 있었다
+  //   (2026-09-09 · P4 포팅 중 적발). 「YAML 이 하던 일을 계산기가 물려받았다」는 이전에서
+  //   가장 놓치기 쉬운 자리다 — 옮긴 쪽에는 그 줄이 애초에 없기 때문이다.
+  //   계약. scripts/workflow/select-backend-modules.test.ts §--no-renames
+  const out = git(['diff', '--name-only', '--no-renames', merged, 'HEAD'])
   if (out === null) return null
   return out === '' ? [] : out.split('\n')
 }

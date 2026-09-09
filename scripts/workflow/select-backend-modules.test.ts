@@ -333,6 +333,27 @@ describe('backend-ci 모듈 선별', () => {
     )
   })
 
+  // ★젠킨스판. Actions 의 「매트릭스에 모듈 목록을 다시 적지 마라」와 같은 보장이다.
+  //   젠킨스에는 매트릭스가 없지만 손으로 목록을 적을 자리는 그대로 있다 —
+  //   `for m in identity-access issue-tracking …` 같은 형태가 그것이고, 그 순간
+  //   `settings.gradle.kts` 와 서로를 안 보는 두 목록이 된다.
+  test('★★Jenkinsfile 에 모듈 목록이 하드코딩되지 않았다 (두 목록 차단)', () => {
+    const jf = fs.readFileSync(path.join(REPO_ROOT, 'Jenkinsfile'), 'utf8')
+    const code = jf
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('#'))
+      .join('\n')
+
+    const hardcoded = allModules().filter((m) => m !== 'app' && new RegExp(`\\b${m}\\b`).test(code))
+    assert.deepEqual(
+      hardcoded,
+      [],
+      `Jenkinsfile 이 BC 모듈 이름을 직접 적고 있다: ${hardcoded.join(', ')}\n` +
+        '  무엇을 돌릴지는 select-test-scope.ts 가 정한다. 여기 목록을 두면\n' +
+        '  settings.gradle.kts 와 서로를 검사하지 않는 두 목록이 되고, 새 BC 가 조용히 빠진다.',
+    )
+  })
+
   test('★★매트릭스가 고정 목록으로 되돌아가지 않았다 (두 목록 차단)', () => {
     // 목록을 워크플로우에 다시 적으면 그 목록과 `backend/modules/` 실물이 서로를 안 보는
     // 두 목록이 된다 — 새 BC 를 추가하고 목록에 안 적으면 그 모듈은 **한 번도 안 돈다.**
@@ -739,6 +760,27 @@ describe('backend-ci 모듈 선별', () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
     }
+  })
+
+  // ★2026-09-09 P4 포팅. 이 배선이 **젠킨스 경로에서 통째로 사라져 있었다.**
+  //
+  //   Actions 시절에는 워크플로우 YAML 의 select 잡이 직접 `git diff` 를 돌렸고 거기에
+  //   `--no-renames` 가 있었다. 젠킨스는 YAML 대신 `select-test-scope.ts` 가 **내부에서**
+  //   diff 하는데, 옮기면서 그 플래그가 따라오지 않았다.
+  //
+  //   ★「YAML 이 하던 일을 스크립트가 물려받았다」는 이전에서 가장 놓치기 쉬운 자리다 —
+  //   옮긴 쪽에는 그 줄이 **애초에 없어서** 지운 흔적조차 남지 않는다. 이 단언을 포팅하며
+  //   비로소 드러났다.
+  test('★★계산기의 diff 명령에 `--no-renames` 가 있다 (젠킨스 배선)', () => {
+    const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/workflow/select-test-scope.ts'), 'utf8')
+    assert.match(
+      src,
+      /git\(\[\s*'diff',\s*'--name-only',\s*'--no-renames'/,
+      'select-test-scope.ts 의 변경 파일 수집에 `--no-renames` 가 없다.\n' +
+        '  모듈 간 파일 이동에서 **출발 모듈의 테스트가 통째로 건너뛰어진다** — 좁아지는 방향이고,\n' +
+        '  좁게 고르는 실수만이 치명적이다(검증 안 된 코드가 초록으로 머지된다).\n' +
+        '  젠킨스는 이 계산기가 유일한 diff 자리다 — 워크플로우 YAML 에는 이제 아무것도 없다.',
+    )
   })
 
   test('★★backend-ci 의 diff 명령에 `--no-renames` 가 있다 (배선)', () => {
