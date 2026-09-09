@@ -36,6 +36,11 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  * 그 목록 자체가 또 하나의 썩는 두 번째 목록이 된다).
  */
 const LIVE_ROOTS: readonly string[] = [
+  // ★CI/CD 정의가 둘이다(2026-09-09 P4 진행 중). 젠킨스가 정본이고 Actions 는 철거 대상이지만,
+  //   **재조준이 끝나기 전에 지우면** 그것을 읽던 판별식들이 red 도 안 내고 사라진다.
+  //   그래서 둘 다 살아 있는 문서로 본다 — 철거는 재조준 완료 후(P4b).
+  'Jenkinsfile',
+  'infra/jenkins',
   '.github/workflows',
   '.claude/skills',
   '.claude/agents',
