@@ -62,7 +62,7 @@ docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 - **푸시 성공 ≠ 검증 통과.** 백엔드·프론트 테스트는 훅에서 빠져 젠킨스로 갔다(2026-09-09). 푸시는 안 막힌다.
 - 지시문에 **개수를 쓰지 마라**. 「N건」은 눈가리개 — 전수 열거만 시킨다.
 
-그 밖 6건. `docs/rules/traps.md`
+그 밖 8건. `docs/rules/traps.md`
 
 ## 핵심 패턴
 
