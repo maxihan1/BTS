@@ -1,0 +1,64 @@
+# 젠킨스 설정 정본 (JCasC) — UI 에서 만든 설정은 저장소에 안 남으므로 전부 여기에 적는다
+#
+# ## 왜 JCasC 인가
+#
+# 이 저장소가 반복해 물린 결함 양식이 「두 목록이 서로를 검사하지 않는다」다. UI 설정은
+# **저장소에 목록이 아예 없는** 극단이라 더 나쁘다 — 컨트롤러를 잃으면 무엇이 설정돼 있었는지
+# 아무도 모른다. 그래서 UI 마법사를 끄고(`Dockerfile` 의 `runSetupWizard=false`) 여기만 본다.
+#
+# ## ★★최소로 유지한다 — 2026-09-09 에 세 번 틀렸다
+#
+# CasC 는 모르는 키를 **경고가 아니라 `SEVERE` 로 init 중단**한다. 그러면 젠킨스가 503 을
+# 돌려주는데 컨테이너는 `restart: unless-stopped` 로 계속 살아 있어서 **「아직 뜨는 중」처럼
+# 보인다.** 로그를 열기 전에는 구분되지 않는다 — 이 저장소가 이름 붙인 「실패가 아니라 침묵」이다.
+#
+# 실측 3건.
+#   1. `queueItemAuthenticator: global` — 구현은 `authorize-project` 플러그인이 준다. 없었다
+#   2. `buildDiscarders.jobBuildDiscarder.discarder` — 중첩이 틀렸다. `jobBuildDiscarder` 는
+#      인자를 받지 않고, 인자를 받는 것은 `simpleBuildDiscarder` 다
+#   3. `remotingSecurity` · `tool.git` — 버전에 따라 키가 사라지거나 자동 탐지로 충분하다
+#
+# 그래서 **여기 있는 것은 전부 「없으면 실제로 곤란한 것」뿐이다.** 편의 설정을 늘리지 마라.
+# 빌드 보존은 `Jenkinsfile` 의 `options { buildDiscarder(...) }` 가 잡 단위로 이미 한다 —
+# 전역에 또 두면 중복이고, 틀릴 자리만 하나 는다.
+#
+# ## 비밀은 여기 적지 않는다
+#
+# `${VAR}` 는 컨테이너 환경변수를 읽는다. 값은 `infra/jenkins/.env`(gitignored)에서 온다.
+jenkins:
+  systemMessage: |
+    BTS CI/CD — 설정 정본은 infra/jenkins/casc.yaml 이다.
+    UI 에서 고친 것은 컨테이너 재생성 시 사라진다. 저장소를 고쳐라.
+
+  # ★2코어다. 늘리면 Testcontainers 가 띄우는 컨테이너까지 겹쳐 스왑으로 밀린다.
+  #   벽시계 이득은 러너 1대 구조에서 이미 0 이라는 것이 backend-ci 에서 실측됐다
+  #   (잡 합계 34.8분 · 벽시계 39.8분 — 거의 완전 직렬).
+  numExecutors: 1
+  mode: NORMAL
+
+  # JNLP 에이전트 포트를 끈다. `network_mode: host` 라 이 포트가 열리면 호스트에 바로 뜬다.
+  # 에이전트를 쓰지 않으므로 열 이유가 없다.
+  slaveAgentPort: -1
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  # 익명에게 아무것도 주지 않는다. 127.0.0.1 바인딩이 1차 방어지만 그것에만 기대지 않는다.
+  authorizationStrategy:
+    globalMatrix:
+      entries:
+        - user:
+            name: "${JENKINS_ADMIN_ID}"
+            permissions:
+              - "Overall/Administer"
+
+unclassified:
+  location:
+    # 젠킨스가 만드는 링크의 기준. 루프백이라 외부에서 열리지 않는다 —
+    # 접근은 SSH 터널로 한다(docs/runbooks/jenkins.md §2).
+    url: "http://127.0.0.1:18081/"
+    adminAddress: "${JENKINS_ADMIN_EMAIL}"

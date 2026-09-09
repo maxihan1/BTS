@@ -1,0 +1,35 @@
+# 젠킨스 플러그인 목록 — 이미지 빌드 시 사전 설치된다
+#
+# ★버전을 적지 않는 것은 의도다. 지금 적는 숫자는 「오늘의 최신」일 뿐 검증된 조합이 아니고,
+#   가짜 정밀도가 된다. 대신 **설치된 실제 버전을 잠근다** — 기동 후
+#   `bootstrap.sh --lock` 이 컨트롤러에서 실제 버전을 뽑아 `plugins.lock.txt` 로 커밋한다.
+#   그 파일이 재현의 정본이고 이 파일은 「무엇이 필요한가」만 갖는다.
+#
+# 넣지 않은 것도 기록한다 — 넣지 않기로 한 것과 잊은 것은 다르다.
+#   · `blueocean` — 무겁다(플러그인 40여 개를 끌고 온다). 2코어 머신에 값을 못 한다
+#   · `docker-workflow` — 파이프라인에서 `docker` CLI 를 직접 부른다. 래퍼가 한 겹 더 늘 뿐
+#   · `ssh-agent` — 배포는 `bts-deploy.sh` 가 자기 방식으로 한다(P6)
+
+# ── 파이프라인 ──
+workflow-aggregator
+pipeline-stage-view
+pipeline-utility-steps
+
+# ── 설정 정본화 (UI 설정이 저장소 밖에 남는 것을 막는다) ──
+configuration-as-code
+
+# ── SCM ──
+git
+github-branch-source
+
+# ── 자격증명 ──
+credentials-binding
+
+# ── 결과·위생 ──
+junit
+timestamper
+ws-cleanup
+build-timeout
+
+# ── 권한 ──
+matrix-auth
