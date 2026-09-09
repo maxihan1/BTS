@@ -78,7 +78,19 @@ pipeline {
   }
 
   environment {
-    GRADLE_OPTS = '-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g'
+    // ★`GRADLE_OPTS` 를 **설정하지 않는다.** 성능 설정의 정본은 `backend/gradle.properties`
+    //   하나이고, `gradle-perf-contract.test.ts` 가 그 값을 계약으로 강제한다.
+    //
+    // ★초안은 `-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3g` 를 넣었다가 되돌렸다.
+    //   `GRADLE_OPTS` 는 `gradle.properties` 보다 **우선**하므로 정본을 통째로 덮는다.
+    //     · `daemon=true`(2026-08-25 실측으로 켠 것) → false 로 뒤집혀 매 호출마다 JVM 재기동
+    //     · `jvmargs` 의 `-Xmx4096m` · `MaxMetaspaceSize=1024m` · 힙덤프 옵션이 전부 소실
+    //     · `kotlin.daemon.jvmargs`(3G)도 함께 날아가 Kotlin 컴파일 데몬이 기본값으로 돈다
+    //   판별식은 **파일만** 보므로 이 상태에서도 초록이었다 —
+    //   「선언과 실행이 어긋난다」가 런타임 오버라이드로 발현한 형태다.
+    //
+    //   컨테이너가 살아 있으므로 데몬은 빌드 사이에도 재사용된다. 2코어에서 그 이득이 크다.
+
     // 조립 부팅 postgres 를 **실행별로 유일하게** 만든다. 이름이 고정이면 두 빌드가 겹칠 때
     // 뒤 빌드의 `docker rm -f` 가 앞 빌드 DB 를 테스트 도중에 죽인다 — `backend-ci.yml` 의
     // assembly 잡이 「러너를 늘리면 이 조건이 성립한다」고 경고한 바로 그 상태가

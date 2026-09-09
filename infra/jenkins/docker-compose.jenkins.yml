@@ -60,8 +60,24 @@ services:
       # 빌드가 호스트에 띄우는 컨테이너를 사람이 알아볼 수 있게 한다.
       TESTCONTAINERS_RYUK_DISABLED: "false"
 
-    mem_limit: 6g
-    cpus: 1.5
+    # ★2026-09-09 상향. 초안은 `cpus: 1.5` · `mem_limit: 6g` 로 보수적으로 잡았는데,
+    #   빌드 중 실측이 그 여유를 보여줬다.
+    #
+    #     bts-jenkins  CPU 124.97%(상한 150%에 붙음) · 메모리 1.476GiB / 6GiB
+    #     운영 6컨테이너 합  CPU **5.7%** · 메모리 1.9GiB
+    #     호스트  load 1.7~3.7 · 여유 메모리 11.3GB · 운영 응답 19~42ms(평소와 같음)
+    #
+    #   즉 젠킨스는 상한에 막혀 있고 운영은 거의 놀고 있었다. CPU 를 2코어 전부로 연다.
+    #
+    # ★메모리를 10g 로 올리는 이유는 여유가 아니라 **정본 때문**이다.
+    #   `backend/gradle.properties` 가 `org.gradle.jvmargs=-Xmx4096m` +
+    #   `kotlin.daemon.jvmargs=-Xmx3072m` 를 선언한다. 둘이 동시에 뜨면 7GB 이고,
+    #   6g 상한에서는 그 설정이 애초에 성립하지 않는다.
+    #
+    # ★상한을 없애지는 않는다. Gradle 데몬이 새면 운영을 밀어낼 수 있고,
+    #   그때 `bts.maxihan.com` 이 먼저 죽는다.
+    mem_limit: 10g
+    cpus: 2.0
 
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18081/login"]
