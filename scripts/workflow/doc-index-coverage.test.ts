@@ -10,15 +10,52 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MEMORY_DIR } from '../doc-index/config.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const CI_FILE = path.join(REPO_ROOT, '.github/workflows/workflow-scripts-ci.yml');
 const INDEX_FILES = ['docs/INDEX.md', 'docs/INDEX-fr.md', 'docs/INDEX-recent.md'];
 
-test('룰 I — 현재 인덱스가 재생성 결과와 같다 (--check, 파일을 쓰지 않는다)', () => {
+// 생성기가 승계 원천으로 읽는 저장소 **밖** 경로. 사본을 두지 않고 생성기의 상수를 그대로 쓴다 —
+// 여기 경로를 다시 적으면 그것이 두 번째 목록이 되고, 생성기가 경로를 옮겨도 안 따라온다.
+const MEMORY_MD = path.join(MEMORY_DIR, 'MEMORY.md');
+
+test('룰 I — 현재 인덱스가 재생성 결과와 같다 (--check, 파일을 쓰지 않는다)', (t) => {
   // ★ 여기서 생성기를 **쓰기 모드**로 돌리면 안 된다. 재생성이 검사 대상인 손 수정을
   //   덮어써서 판별식이 스스로 증거를 지운다 — 뮤테이션에서 이 테스트뿐 아니라
   //   뒤따르는 룰 J·K 까지 전부 green 이 됐다(1차 주입 실측). --check 는 비교만 한다.
+
+  // ★★메모리가 없는 기계에서는 이 룰이 성립하지 않는다 — 건너뛴다.
+  //
+  // 생성기는 승계 원천으로 `MEMORY_DIR/MEMORY.md` 를 읽는데 그 경로는 **저장소 밖**
+  // (`$HOME/.claude/projects/…`)이다. `doc-index/config.mjs` 가 그 자리에
+  // 「메모리는 저장소 밖이다. CI 가 볼 수 없다」고 이미 적어 두었는데, 이 룰은 그 생성기를
+  // 조건 없이 불러서 두 진술이 서로를 안 보고 있었다 — 이 저장소의 지배 결함 양식 그대로다.
+  //
+  // 실측으로 드러난 증상이 있다. `self-hosted-runner.md` 가 「러너 2대가 같은 라벨이라
+  // 판정이 배정에 따라 갈렸다(판별식 잡 최근 12회 중 7회 실패)」를 원인 미상으로 적어 뒀는데,
+  // 그 원인이 이것이다 — 맥 러너에는 그 경로가 있고 리눅스 러너에는 없다.
+  // 2026-09-09 젠킨스 빌드에서 `ENOENT … memory/MEMORY.md` 로 재현했다.
+  //
+  // ★건너뛰기가 조용히 영구화되지 않게 두 가지를 함께 단언한다.
+  //   ① 건너뛰는 경로가 **저장소 밖**일 것 — 저장소 안 경로가 없어서 통과하는 일은 없다
+  //   ② 봉인 자리가 남아 있을 것 — pre-commit 이 이 검사를 여전히 들고 있어야 한다
+  //      (`behavior-rules.md §4` 가 「저장소 밖 메모리의 유일한 봉인」이라 적은 그 자리)
+  if (!fs.existsSync(MEMORY_MD)) {
+    assert.ok(
+      !path.resolve(MEMORY_MD).startsWith(path.resolve(REPO_ROOT) + path.sep),
+      `건너뛸 수 있는 것은 저장소 밖 경로뿐이다. 저장소 안인데 없다면 그것은 결함이다: ${MEMORY_MD}`,
+    );
+    const hook = fs.readFileSync(path.join(REPO_ROOT, '.husky/pre-commit'), 'utf8');
+    assert.match(
+      hook,
+      /build-doc-index\.mjs[^\n]*--check/,
+      'CI 에서 건너뛰는 대신 pre-commit 이 이 검사를 들고 있어야 한다. 훅에서 사라지면 봉인이 0곳이 된다.',
+    );
+    t.skip(`메모리 부재(${MEMORY_MD}) — 저장소 밖이라 CI 가 볼 수 없다. 봉인은 pre-commit 이 유지한다.`);
+    return;
+  }
+
   let failed = false;
   let out = '';
   try {
