@@ -52,17 +52,43 @@ fi
 #
 # uid 를 상수로 적지 않는다. 이미지의 jenkins uid 가 바뀌면 그 숫자가 두 번째 목록이 된다 —
 # 컨테이너에게 직접 묻는다. 컨테이너가 아직 없으면(최초 기동) 이미지에서 묻는다.
+JENKINS_UID="$(docker run --rm --entrypoint id bts-jenkins:local -u 2>/dev/null \
+  || docker run --rm --entrypoint id jenkins/jenkins:lts-jdk21 -u 2>/dev/null)"
+[ -n "$JENKINS_UID" ] || echo "⚠️ jenkins uid 를 못 구했다 — 아래 소유권 조정이 전부 건너뛰어진다" >&2
+
 DEPLOY_KEY="$SCRIPT_DIR/.deploy-key"
-if [ -f "$DEPLOY_KEY" ]; then
-  JENKINS_UID="$(docker run --rm --entrypoint id bts-jenkins:local -u 2>/dev/null \
-    || docker run --rm --entrypoint id jenkins/jenkins:lts-jdk21 -u 2>/dev/null)"
-  if [ -n "$JENKINS_UID" ]; then
-    chown "$JENKINS_UID" "$DEPLOY_KEY"
-    chmod 600 "$DEPLOY_KEY"
-    echo "→ deploy key 소유권 uid=$JENKINS_UID (컨테이너 jenkins) · 600"
-  else
-    echo "⚠️ jenkins uid 를 못 구했다 — deploy key 를 컨테이너가 못 읽으면 클론이 실패한다" >&2
-  fi
+if [ -f "$DEPLOY_KEY" ] && [ -n "$JENKINS_UID" ]; then
+  chown "$JENKINS_UID" "$DEPLOY_KEY"
+  chmod 600 "$DEPLOY_KEY"
+  echo "→ deploy key 소유권 uid=$JENKINS_UID (컨테이너 jenkins) · 600"
+fi
+
+# ★★named volume 마운트 지점을 컨테이너의 jenkins 가 쓸 수 있게 만든다.
+#
+# Docker 는 **이미지에 없는 경로**에 named volume 을 붙일 때 그 디렉터리를 root:root 로 만든다.
+# 이미지에 있는 경로면 그 내용과 소유권을 복사해 주지만, 없으면 빈 root 디렉터리가 생긴다.
+# `/var/jenkins_home/.gradle` 가 정확히 그 경우다.
+#
+# 실패가 기동에서 안 난다는 것이 이 함정의 핵심이다. 컨테이너는 정상으로 뜨고 파이프라인도
+# 돌다가, **첫 `./gradlew` 호출**에서 죽는다 — 2026-09-09 빌드 #16 은 프론트 전량 30분을
+# 다 돌고 나서 백엔드 시작 0초 만에 이걸로 떨어졌다.
+#   Could not create parent directory for lock file /var/jenkins_home/.gradle/wrapper/….lck
+# 배포키(위)와 같은 양식이다 — 「붙었다」와 「쓸 수 있다」는 다르다.
+#
+# ★볼륨 이름을 여기 적지 않는다. compose 의 서비스 정의로 실행해 정본을 하나로 둔다 —
+#   이름을 옮겨 적으면 그것이 두 번째 목록이 되고, compose 에서 볼륨을 바꿔도 여기가 안 따라온다.
+# ★대상 경로는 `VOLUME_PATHS` 하나로 모은다. `jenkins-volume-chown.test.ts` 가 이 목록과
+#   compose 의 named volume 마운트 경로 차집합이 0 인지 검사한다.
+VOLUME_PATHS="/var/jenkins_home/.gradle"
+if [ -n "$JENKINS_UID" ]; then
+  for VP in $VOLUME_PATHS; do
+    if "${COMPOSE[@]}" run --rm --no-deps --user 0 --entrypoint chown jenkins \
+         -R "$JENKINS_UID:$JENKINS_UID" "$VP" >/dev/null 2>&1; then
+      echo "→ 볼륨 소유권 $VP → uid=$JENKINS_UID"
+    else
+      echo "⚠️ $VP chown 실패 — 첫 gradlew 호출에서 lock file 오류로 죽는다" >&2
+    fi
+  done
 fi
 
 case "${1:-up}" in
