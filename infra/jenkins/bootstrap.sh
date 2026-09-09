@@ -41,6 +41,30 @@ if ! grep -qE '^JENKINS_ADMIN_PASSWORD=.+' "$SCRIPT_DIR/.env"; then
   exit 1
 fi
 
+# ★★deploy key 를 컨테이너의 jenkins 가 읽을 수 있게 만든다.
+#
+# 이 줄이 없으면 **가장 나쁜 형태로 실패한다.** 키 파일이 root 소유면 컨테이너의 jenkins(uid
+# 1000)가 못 읽고, JCasC 의 `${readFile:}` 는 그때 오류를 내지 않고 **빈 문자열로 대체**한다.
+#   WARNING … Error looking up file '/var/jenkins_conf/deploy-key' … Will default to empty string
+# 그러면 자격증명이 `/manage/credentials` 에 **정상 등록된 것으로 보이는데** 개인키가 비어 있고,
+# 실패는 한참 뒤 클론 단계에서 `Permission denied (publickey)` 로 나타난다
+# (2026-09-09 실측 — 「등록됐다」와 「쓸 수 있다」는 다르다).
+#
+# uid 를 상수로 적지 않는다. 이미지의 jenkins uid 가 바뀌면 그 숫자가 두 번째 목록이 된다 —
+# 컨테이너에게 직접 묻는다. 컨테이너가 아직 없으면(최초 기동) 이미지에서 묻는다.
+DEPLOY_KEY="$SCRIPT_DIR/.deploy-key"
+if [ -f "$DEPLOY_KEY" ]; then
+  JENKINS_UID="$(docker run --rm --entrypoint id bts-jenkins:local -u 2>/dev/null \
+    || docker run --rm --entrypoint id jenkins/jenkins:lts-jdk21 -u 2>/dev/null)"
+  if [ -n "$JENKINS_UID" ]; then
+    chown "$JENKINS_UID" "$DEPLOY_KEY"
+    chmod 600 "$DEPLOY_KEY"
+    echo "→ deploy key 소유권 uid=$JENKINS_UID (컨테이너 jenkins) · 600"
+  else
+    echo "⚠️ jenkins uid 를 못 구했다 — deploy key 를 컨테이너가 못 읽으면 클론이 실패한다" >&2
+  fi
+fi
+
 case "${1:-up}" in
   up)
     echo "→ NODE_VERSION=$NODE_VERSION (.nvmrc) · DOCKER_GID=$DOCKER_GID (getent)"
@@ -73,5 +97,31 @@ case "${1:-up}" in
        done' | sort > "$SCRIPT_DIR/plugins.lock.txt"
     echo "✅ $(wc -l < "$SCRIPT_DIR/plugins.lock.txt") 개 고정 → plugins.lock.txt"
     ;;
-  *) echo "사용. $0 {up|down|logs|lock}" >&2; exit 1 ;;
+  job)
+    # 잡 정의를 저장소 파일에서 적용한다. UI·API 로만 만든 잡은 저장소에 흔적이 없어
+    # 컨트롤러를 잃으면 무엇이 걸려 있었는지 아무도 모른다.
+    BRANCH="${2:-main}"
+    . "$SCRIPT_DIR/.env"
+    AUTH="$JENKINS_ADMIN_ID:$JENKINS_ADMIN_PASSWORD"
+    CJ="$(mktemp)"; XML="$(mktemp)"
+    CRUMB="$(curl -s -u "$AUTH" -c "$CJ" http://127.0.0.1:18081/crumbIssuer/api/json \
+      | sed -n 's/.*"crumb":"\([^"]*\)".*/\1/p')"
+    sed "s|@BRANCH@|*/${BRANCH}|" "$SCRIPT_DIR/job-bts-ci.xml" > "$XML"
+
+    # 있으면 갱신, 없으면 생성. 두 경로를 나눠야 기존 빌드 이력이 보존된다.
+    if curl -sf -u "$AUTH" -o /dev/null http://127.0.0.1:18081/job/bts-ci/api/json; then
+      URL="http://127.0.0.1:18081/job/bts-ci/config.xml"
+    else
+      URL="http://127.0.0.1:18081/createItem?name=bts-ci"
+    fi
+    CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$AUTH" -b "$CJ" \
+      -H "Jenkins-Crumb: $CRUMB" -H 'Content-Type: application/xml' \
+      --data-binary "@$XML" "$URL")"
+    rm -f "$CJ" "$XML"
+    case "$CODE" in
+      200|302) echo "✅ 잡 적용 (브랜치 */${BRANCH})" ;;
+      *) echo "❌ 잡 적용 실패 HTTP $CODE" >&2; exit 1 ;;
+    esac
+    ;;
+  *) echo "사용. $0 {up|down|logs|lock|job [브랜치]}" >&2; exit 1 ;;
 esac
