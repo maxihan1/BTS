@@ -122,9 +122,13 @@ export const SURFACES = {
       // 동일성을 판별식이 강제하는데, 없으면 그 배포 스크립트만 바꾸는 PR 이 표면 0 →
       // 기본 T1 로 떨어져 훅 쪽(T2)과 절차 강도가 갈린다.
       'infra/deploy/**',
+      // 호스트 노출면을 정하는 자리. Docker 는 publish 포트를 `INPUT` 정책 밖으로 빼므로
+      // 여기 한 줄이 방화벽 전체보다 넓게 작동한다 — `-j DROP` 을 지우는 1행 변경이
+      // 표면 0 → T1 로 통과하면 리뷰 1종·계획 0 으로 노출면이 열린다.
+      'infra/security/**',
     ],
     tier: 'T2',
-    note: '강제 장치 4층 — CI · 훅 · 판별식·생성기 · 배포 게이트. 여기가 조용히 망가지면 나머지 전부가 눈이 먼다',
+    note: '강제 장치 5층 — CI · 훅 · 판별식·생성기 · 배포 게이트 · 호스트 노출면. 여기가 조용히 망가지면 나머지 전부가 눈이 먼다',
   },
   SHELL: {
     globs: ['apps/web/src/routes/__root.tsx', 'apps/web/src/routes/admin.*'],

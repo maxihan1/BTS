@@ -38,7 +38,7 @@
 | `API` | 공개 계약 — web · event · spi · port 패키지 | T2 |
 | `DEPS` | 의존성 — 루트 gradle 4종 · `package.json` · lockfile | T2 |
 | `BE_MAIN` | 백엔드 잔여 `src/main` | T2 |
-| `GUARD_CI` | 가드·CI — 워크플로우 · 훅 · 판별식 · 생성기 스크립트 · 배포 게이트 | T2 |
+| `GUARD_CI` | 가드·CI — 워크플로우 · 훅 · 판별식 · 생성기 스크립트 · 배포 게이트 · 호스트 노출면 | T2 |
 | `SHELL` | 앱 셸 — 루트 라우트 · 관리자 라우트 | T1 (조건부 T2) |
 | `FE_SRC` | 프론트 잔여 `apps/web/src` | T1 |
 | `HARNESS` | 하네스 `.claude/**` | T1 |

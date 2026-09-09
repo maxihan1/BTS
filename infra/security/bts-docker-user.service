@@ -1,0 +1,22 @@
+# DOCKER-USER 심층방어 규칙을 부팅·Docker 재시작마다 다시 넣는 systemd 유닛
+#
+# ★`PartOf=docker.service` 가 핵심이다. Docker 는 재시작할 때 DOCKER-USER 체인을 새로
+#   만들어 우리 규칙을 통째로 날린다. PartOf 가 없으면 그 순간부터 방어가 **말없이** 사라지고
+#   `systemctl is-active` 는 여전히 active 를 보고한다 — 이 저장소가 반복해 물린
+#   「실패가 아니라 침묵」 양식이다.
+#
+# 설치. /etc/systemd/system/bts-docker-user.service
+#   systemctl daemon-reload && systemctl enable --now bts-docker-user.service
+[Unit]
+Description=BTS DOCKER-USER 심층방어 규칙
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/bts-docker-user.sh
+
+[Install]
+WantedBy=multi-user.target
