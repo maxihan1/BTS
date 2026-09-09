@@ -108,6 +108,11 @@ case "${1:-up}" in
       | sed -n 's/.*"crumb":"\([^"]*\)".*/\1/p')"
     sed "s|@BRANCH@|*/${BRANCH}|" "$SCRIPT_DIR/job-bts-ci.xml" > "$XML"
 
+    # ★`charset=utf-8` 이 없으면 한글이 깨진다. Jenkins(Stapler)는 charset 미지정 본문을
+    #   ISO-8859-1 로 읽는다 — JVM 이 UTF-8 이어도(file.encoding=UTF-8) 소용없다.
+    #   2026-09-09 실측. `—`(E2 80 94)가 `303 242 &#x80; &#x94;` 로 저장돼 설명이
+    #   「BTS CI â íì´íë¼ì¸…」이 됐다. 증상이 UI 에서만 보여서 원인을 엉뚱한 데서 찾기 쉽다.
+    #
     # 있으면 갱신, 없으면 생성. 두 경로를 나눠야 기존 빌드 이력이 보존된다.
     if curl -sf -u "$AUTH" -o /dev/null http://127.0.0.1:18081/job/bts-ci/api/json; then
       URL="http://127.0.0.1:18081/job/bts-ci/config.xml"
@@ -115,7 +120,7 @@ case "${1:-up}" in
       URL="http://127.0.0.1:18081/createItem?name=bts-ci"
     fi
     CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$AUTH" -b "$CJ" \
-      -H "Jenkins-Crumb: $CRUMB" -H 'Content-Type: application/xml' \
+      -H "Jenkins-Crumb: $CRUMB" -H 'Content-Type: application/xml; charset=utf-8' \
       --data-binary "@$XML" "$URL")"
     rm -f "$CJ" "$XML"
     case "$CODE" in
