@@ -128,9 +128,8 @@ export const SURFACES = {
       'infra/security/**',
       // CI/CD 정의 정본. `.github/workflows/**` 가 여기 있는 것과 같은 이유다 —
       // 파이프라인이 무엇을 돌리는지를 정하는 자리라 1행 변경이 검증 전체를 끌 수 있다.
-      // 루트 `Jenkinsfile` 은 P2 에서 신설될 때 함께 등재한다. 지금 적으면 아무 파일도 안 무는
-      // 죽은 글로브가 되고, `tier-floor.test.ts` 가 그것을 정확히 막는다.
       'infra/jenkins/**',
+      'Jenkinsfile',
     ],
     tier: 'T2',
     note: '강제 장치 5층 — CI · 훅 · 판별식·생성기 · 배포 게이트 · 호스트 노출면. 여기가 조용히 망가지면 나머지 전부가 눈이 먼다',
