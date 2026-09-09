@@ -45,6 +45,13 @@ pipeline {
       defaultValue: false,
       description: '전 모듈 + 조립 부팅 + 인프라 봉인. main 과 야간 크론은 이 값과 무관하게 전량이다.'
     )
+    // ★기본값 거짓이다. 이 값이 참일 때만 배포 단계가 파이프라인에 나타나고, 나타나도
+    //   `input` 승인 앞에서 멈춘다 — 두 겹이라 실수로 운영에 나가지 않는다.
+    booleanParam(
+      name: 'DEPLOY',
+      defaultValue: false,
+      description: '운영(bts.maxihan.com) 배포까지 간다. 전량 검증을 통과한 뒤 사람이 승인해야 실행된다.'
+    )
   }
 
   triggers {
@@ -246,6 +253,54 @@ pipeline {
           set -eu
           bash scripts/verify/nginx-log-masking.sh
           bash scripts/verify/springdoc-not-exposed.sh
+        '''
+      }
+    }
+
+    // ── CD ────────────────────────────────────────────────────────────────
+    //
+    // ★배포는 **사람이 눌러야** 시작된다. 아래 `input` 이 그 자리다.
+    //   게이트 2 가 사람 손에 남는 구조를 파이프라인이 깨지 않게 하는 장치이고,
+    //   그래프 뷰에서는 이 지점이 클릭 가능한 승인 버튼으로 그려진다.
+    //
+    // ★`DEPLOY` 파라미터가 참일 때만 이 단계가 보인다. 기본값이 거짓이라
+    //   평소 빌드는 여기까지 오지 않는다 — 실수로 배포창이 뜨는 일이 없다.
+    stage('배포 승인') {
+      when {
+        allOf {
+          expression { params.DEPLOY }
+          environment name: 'RUN_FULL', value: 'true'
+        }
+      }
+      steps {
+        // 타임아웃을 둔다. 승인을 안 누르고 두면 executor 1개를 무한 점유해
+        // 2코어 머신의 CI 가 통째로 멈춘다.
+        timeout(time: 30, unit: 'MINUTES') {
+          input message: '운영(bts.maxihan.com)에 배포한다. 계속할까?', ok: '배포'
+        }
+      }
+    }
+
+    stage('배포') {
+      when {
+        allOf {
+          expression { params.DEPLOY }
+          environment name: 'RUN_FULL', value: 'true'
+        }
+      }
+      steps {
+        // ★`bts-deploy.sh` 를 **호출한다. 다시 쓰지 않는다.**
+        //   그 안에 배포 전 전량 게이트 · `require_web_module` · DB 덤프(실패 시 중단) ·
+        //   pnpm 폴백 같은 사고 방어가 들어 있고, Jenkinsfile 에 옮겨 적으면 두 벌이 되어
+        //   한쪽만 고쳐지는 자리가 된다.
+        //
+        // ★`BTS_DEPLOY_LOCAL=1` — 젠킨스는 **배포 대상 위에** 있다. 그 모드는 전송 수단만
+        //   바꾸고(rsync 원격→로컬 · ssh→bash) 본문은 스크립트 한 벌 그대로 쓴다.
+        //
+        // ★`BTS_SKIP_DEPLOY_TEST` 를 넘기지 않는다. 그 값이 서면 이 배포는 전수 검증 0회다.
+        sh '''
+          set -eu
+          BTS_DEPLOY_LOCAL=1 bash infra/deploy/bts-deploy.sh
         '''
       }
     }

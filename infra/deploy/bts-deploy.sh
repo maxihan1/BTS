@@ -137,8 +137,28 @@ if ! pnpm --filter @bts/web build; then
 fi
 [ -f apps/web/dist/index.html ] || { echo "❌ dist/index.html 부재 — 빌드가 산출물을 남기지 못했다"; exit 1; }
 
-# 3. 서버로 전송 (빌드 산출물 포함, 소스/의존성 제외)
-echo "📤 서버 업로드"
+# ── 전송 수단 — 어디서 실행하느냐만 다르다 ─────────────────────────────────────
+#
+# ★`BTS_DEPLOY_LOCAL=1` 은 **배포 대상 서버 위에서** 이 스크립트를 돌릴 때 쓴다(젠킨스).
+#   그때 rsync 전송과 원격 SSH 는 자기 자신에게 하는 꼴이라 의미가 없다.
+#
+# ★바꾸는 것은 **전송 수단뿐이고 아래 본문은 한 벌 그대로**다. DB 덤프·compose·health 를
+#   Jenkinsfile 에 옮겨 적으면 그 순간 두 벌이 되고, 한쪽만 고쳐지는 자리가 된다 —
+#   이 저장소가 반복해 물린 결함 양식이다. 그래서 heredoc 을 복제하지 않고
+#   실행기(`run_on_target`)만 갈아 끼운다.
+if [ "${BTS_DEPLOY_LOCAL:-}" = "1" ]; then
+  echo "🏠 로컬 모드 — 배포 대상 위에서 실행 중이다(전송·SSH 생략)"
+  RSYNC_DEST="${REMOTE_DIR}/"
+  RSYNC_TRANSPORT=()
+  run_on_target() { bash -s; }
+else
+  RSYNC_DEST="${SSH_USER}@${SERVER}:${REMOTE_DIR}/"
+  RSYNC_TRANSPORT=(-e "ssh -i $SSH_KEY -o StrictHostKeyChecking=yes")
+  run_on_target() { ssh -i "$SSH_KEY" "${SSH_USER}@${SERVER}" bash -s; }
+fi
+
+# 3. 대상으로 전송 (빌드 산출물 포함, 소스/의존성 제외)
+echo "📤 산출물 반영"
 rsync -avz --delete \
   --include='backend/modules/app/build/' \
   --include='backend/modules/app/build/libs/' \
@@ -150,12 +170,12 @@ rsync -avz --delete \
   --exclude='infra/prod/.env' \
   --exclude='infra/secrets' \
   --exclude='*.log' \
-  -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=yes" \
-  ./ "${SSH_USER}@${SERVER}:${REMOTE_DIR}/"
+  "${RSYNC_TRANSPORT[@]}" \
+  ./ "$RSYNC_DEST"
 
-# 4. 원격 compose build + up + health
-echo "🔄 원격 compose build + up"
-ssh -i "$SSH_KEY" "${SSH_USER}@${SERVER}" bash -s <<REMOTE
+# 4. 대상에서 compose build + up + health
+echo "🔄 compose build + up"
+run_on_target <<REMOTE
 set -euo pipefail
 cd ${REMOTE_DIR}
 

@@ -6,14 +6,23 @@
 #   그 파일이 재현의 정본이고 이 파일은 「무엇이 필요한가」만 갖는다.
 #
 # 넣지 않은 것도 기록한다 — 넣지 않기로 한 것과 잊은 것은 다르다.
-#   · `blueocean` — 무겁다(플러그인 40여 개를 끌고 온다). 2코어 머신에 값을 못 한다
+#   · `blueocean` — 무겁다(플러그인 40여 개를 끌고 온다). 2코어 머신에 값을 못 한다.
+#     그리고 업스트림이 유지보수 모드다 — 그 자리를 `pipeline-graph-view` 가 대신한다
 #   · `docker-workflow` — 파이프라인에서 `docker` CLI 를 직접 부른다. 래퍼가 한 겹 더 늘 뿐
 #   · `ssh-agent` — 배포는 `bts-deploy.sh` 가 자기 방식으로 한다(P6)
 
 # ── 파이프라인 ──
 workflow-aggregator
-pipeline-stage-view
 pipeline-utility-steps
+
+# ── 시각화 2종. 보는 축이 달라 둘 다 둔다 ──
+# `stage-view`  격자. 행=빌드 · 열=스테이지 · 칸=소요시간. **여러 빌드를 가로질러** 비교한다
+#               — 어느 스테이지가 느려지고 있는지, 어디서 자주 깨지는지가 여기서 보인다
+# `graph-view`  그래프. 스테이지가 노드로 이어지고 병렬은 갈래로 갈린다. **한 빌드를 깊게**
+#               본다. P6 에서 배포 stage 에 `input` 승인이 붙으면 그 지점이 그래프 위의
+#               클릭 가능한 승인 버튼이 된다 — 「빌드/배포를 GUI 로 본다」의 완성형이 이것이다
+pipeline-stage-view
+pipeline-graph-view
 
 # ── 설정 정본화 (UI 설정이 저장소 밖에 남는 것을 막는다) ──
 configuration-as-code
