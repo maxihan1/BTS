@@ -40,6 +40,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - jenkins-home:/var/jenkins_home
       - ./casc.yaml:/var/jenkins_conf/casc.yaml:ro
+      # GitHub deploy key (read-only). 서버에서 `ssh-keygen` 으로 만들고 저장소에는
+      # `.gitignore` 로 올라가지 않는다 — casc.yaml 은 `${readFile:}` 로 **경로만** 참조한다.
+      - ./.deploy-key:/var/jenkins_conf/deploy-key:ro
       # Gradle 캐시를 볼륨으로 뺀다. 컨테이너를 다시 만들어도 의존성을 다시 받지 않는다.
       - jenkins-gradle:/var/jenkins_home/.gradle
 

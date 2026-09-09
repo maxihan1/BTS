@@ -56,6 +56,39 @@ jenkins:
             permissions:
               - "Overall/Administer"
 
+# SSH 호스트 키 검증. 컨테이너는 매번 빈 `known_hosts` 로 시작하므로 기본 전략
+# (`knownHostsFile`)이면 첫 클론이 무조건 실패한다.
+#
+# ★TOFU 를 고른 근거와 그 대가를 같이 적는다. `manuallyProvidedKey` 가 더 강하지만 GitHub 의
+#   호스트 키를 저장소에 새기는 것이라, GitHub 이 키를 돌리면(2023 에 실제로 돌렸다) 이 파일이
+#   따라오지 않는 두 번째 목록이 된다. 그 대가로 **컨테이너를 새로 만든 직후의 첫 연결 1회**가
+#   MITM 창이다. 저장소는 read-only deploy key 로만 클론되고 쓰기 권한이 없다는 점이 이 선택의
+#   전제다 — 쓰기 자격증명을 여기 걸게 되면 이 결정을 다시 하라.
+security:
+  gitHostKeyVerificationConfiguration:
+    sshHostKeyVerificationStrategy: "acceptFirstConnectionStrategy"
+
+# GitHub deploy key (read-only). 저장소가 private 이라 이것 없이는 클론이 안 된다.
+#
+# ★키 값을 여기 적지 않는다. `${readFile:}` 로 **경로만** 참조하고, 실제 파일은 서버에서
+#   `ssh-keygen` 으로 만들어 `infra/jenkins/.deploy-key`(600 · gitignored)에 둔다.
+#   compose 가 그것을 `:ro` 로 마운트한다 — 관리자 비밀번호를 `.env` 에서 읽는 것과 같은 규율이다.
+#
+# ★UI 로 만들지 않는 이유가 이 파일의 존재 이유 그대로다. UI 자격증명은 저장소에 흔적이 없어
+#   컨트롤러를 잃으면 무엇이 걸려 있었는지 아무도 모른다.
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              scope: GLOBAL
+              id: "bts-deploy-key"
+              username: "git"
+              description: "GitHub deploy key (read-only) — jenkins@bts-vm"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${readFile:/var/jenkins_conf/deploy-key}"
+
 unclassified:
   location:
     # 젠킨스가 만드는 링크의 기준. 루프백이라 외부에서 열리지 않는다 —

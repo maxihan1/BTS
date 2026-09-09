@@ -127,10 +127,15 @@ pipeline {
       steps {
         script {
           def nightly = currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')
-          // `BRANCH_NAME` 은 멀티브랜치에서만 채워진다. 단일 파이프라인에서는 null 이므로
-          // git 에게 직접 묻는다 — 없는 변수를 믿고 「main 이 아니다」로 넘어가면
-          // main 이 영원히 빠른 게이트만 도는 상태가 조용히 고정된다.
-          def branch = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+          // ★브랜치 판정은 세 곳을 순서대로 본다. 하나만 믿으면 main 이 영원히 빠른 게이트만
+          //   도는 상태가 **조용히** 고정된다.
+          //     · `BRANCH_NAME`  멀티브랜치에서만 채워진다. 단일 파이프라인에서는 null
+          //     · `GIT_BRANCH`   git 플러그인이 채운다. `origin/main` 형태라 접두사를 떼야 한다
+          //     · `git rev-parse` 마지막 폴백. 젠킨스는 **detached HEAD** 로 체크아웃하므로
+          //       이것만 쓰면 `HEAD` 가 나와 어떤 브랜치와도 안 맞는다 — 초안의 실제 결함이다
+          def branch = (env.BRANCH_NAME ?: env.GIT_BRANCH
+            ?: sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim())
+          branch = branch.replaceFirst(/^origin\//, '').trim()
           env.RUN_FULL = (params.FULL || branch == 'main' || nightly) ? 'true' : 'false'
           echo "브랜치=${branch} · 야간=${nightly ? 'Y' : 'N'} · FULL=${params.FULL} → 전량=${env.RUN_FULL}"
         }
