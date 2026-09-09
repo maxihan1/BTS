@@ -111,7 +111,9 @@ export const SURFACES = {
   },
   GUARD_CI: {
     globs: [
-      '.github/workflows/**',
+      // ★`.github/workflows/**` 를 지웠다(2026-09-09 · P4b). CI 정본이 젠킨스로 옮겨지고
+      //   워크플로우 4종을 철거해 **아무 파일도 안 무는 죽은 글로브**가 됐다.
+      //   그 자리는 아래 `Jenkinsfile` · `infra/jenkins/**` 가 잇는다.
       '.husky/**',
       'scripts/verify-*.sh',
       'scripts/verify/**',

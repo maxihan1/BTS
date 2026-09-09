@@ -59,7 +59,11 @@ const NOT_IN_MATRIX = new Set(['app'])
 /** 이 경로가 바뀌면 영향 범위를 알 수 없다 — 전 모듈로 간다. */
 const WIDEN_PREFIXES = [
   'backend/',
-  '.github/workflows/backend-ci.yml',
+  // ★CI 정의가 바뀌면 전 모듈이다. 2026-09-09 이전까지는
+  //   `.github/workflows/backend-ci.yml` 이었고, CI 정본이 젠킨스로 옮겨지며 그 파일을
+  //   철거했다(P4b). 경로만 바꾸면 되는 자리이되, **빠뜨리면 파이프라인을 고친 PR 이
+  //   일부 모듈로만 검증된다** — 그 변경 자체를 검증하지 못하는 상태다.
+  'Jenkinsfile',
   // ★선별기 자신이 바뀌면 전 모듈이다. 이 파일이 「무엇을 돌릴지」를 정하므로, 그 변경을
   //   일부 모듈로만 검증하면 **좁히는 실수를 그 PR 안에서 못 잡는다.**
   'scripts/workflow/select-backend-modules.ts',
