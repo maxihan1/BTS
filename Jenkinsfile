@@ -213,11 +213,72 @@ pipeline {
       }
     }
 
+    /*
+     * ★DB 마련이 전량보다 **앞**이다 — 2026-09-09 빌드 #17 이 그 순서를 강제했다.
+     *
+     * `./gradlew test`(전량)는 `:modules:app:test` 를 포함하고, 그 테스트의 베이스
+     * `ProdAssemblyHttpTestBase` 는 **Testcontainers 를 관리하지 않는다**(그 파일 주석 34~35행).
+     * `spring.datasource.url` 기본값 `jdbc:postgresql://localhost:5433/bts` 에 그냥 붙는다.
+     *
+     * 맥에서는 `docker-compose.dev.yml` 의 postgres 가 늘 떠 있어 초록이었다.
+     * 깨끗한 리눅스로 옮기자 60건이 한꺼번에 죽었다 —
+     *   IllegalStateException at DefaultCacheAwareContextLoaderDelegate
+     *     → BeanCreationException → FlywaySqlException → PSQLException → ConnectException
+     * **테스트가 환경에 몰래 의존하고 있었고 아무도 그 의존을 몰랐다.**
+     * 맥이라는 「항상 뭔가 떠 있는 환경」을 벗어나야 보이는 종류다.
+     *
+     * 그래서 DB 를 전량보다 먼저 띄우고 `BTS_DB_URL` 을 파이프라인 env 에 올린다.
+     * `application.yml` 이 이미 `${BTS_DB_URL:...}` 오버라이드 지점을 가져 Kotlin 변경은 0이다.
+     */
+    stage('DB 마련') {
+      when { environment name: 'RUN_FULL', value: 'true' }
+      steps {
+        sh '''
+          set -eu
+          # ★pgmq 확장 필수. 일반 postgres:16 은 마이그레이션에서 죽는다
+          #   (ADR docs/adr/2026-05-22-pgmq-postgres-image.md).
+          # ★포트를 고정하지 않는다. `-p 0:5432` 로 커널이 고르게 하고 실제 포트를 조회한다.
+          #   고정 55433 은 러너 1대일 때만 안전한 설계였다.
+          # ★dev postgres(5433)를 재사용하지 않는다. 볼륨이 영속이라 선재 행이 남아
+          #   「마이그레이션이 안 넣음」과 「데이터 없음」이 구분되지 않는다 — 가짜 초록이다.
+          docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true
+          docker run -d --name "$CI_PG_CONTAINER" \
+            -e POSTGRES_DB=bts -e POSTGRES_USER=bts -e POSTGRES_PASSWORD=bts \
+            -p 0:5432 quay.io/tembo/pg16-pgmq:latest
+
+          i=1
+          while [ "$i" -le 30 ]; do
+            if docker exec "$CI_PG_CONTAINER" pg_isready -U bts -d bts >/dev/null 2>&1; then
+              echo "postgres ready (${i}회차)"; break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "postgres 가 60초 안에 안 떴다"; docker logs "$CI_PG_CONTAINER"; exit 1
+            fi
+            i=$((i + 1)); sleep 2
+          done
+        '''
+        script {
+          // 포트는 실행마다 다르다. 셸 변수는 stage 를 넘지 못하므로 파이프라인 env 에 올린다.
+          def pgPort = sh(
+            script: 'docker port "$CI_PG_CONTAINER" 5432/tcp | head -1 | sed "s/.*://"',
+            returnStdout: true,
+          ).trim()
+          if (!pgPort) { error('postgres 포트 조회 실패 — 뒤 stage 가 조용히 5433 에 붙는다') }
+          env.BTS_DB_URL = "jdbc:postgresql://localhost:${pgPort}/bts"
+          echo "postgres → localhost:${pgPort} · BTS_DB_URL 설정됨"
+        }
+      }
+    }
+
     stage('전량') {
       when { environment name: 'RUN_FULL', value: 'true' }
       steps {
         sh '''
           set -eu
+          # ★`BTS_DB_URL` 이 비면 여기서 죽인다. 비면 `application.yml` 기본값 localhost:5433 으로
+          #   조용히 떨어지고, 그건 이 머신에 없다 — 실패가 컨텍스트 로드 오류 60건으로 나타나
+          #   원인이 안 보인다(빌드 #17).
+          [ -n "${BTS_DB_URL:-}" ] || { echo "BTS_DB_URL 이 비었다 — DB 마련 stage 를 확인하라"; exit 1; }
           node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
           pnpm --filter @bts/web test
           cd backend
@@ -233,46 +294,17 @@ pipeline {
       steps {
         sh '''
           set -eu
-          # ★pgmq 확장 필수. 일반 postgres:16 은 마이그레이션에서 죽는다
-          #   (ADR docs/adr/2026-05-22-pgmq-postgres-image.md).
-          # ★포트를 고정하지 않는다. `-p 0:5432` 로 커널이 고르게 하고 실제 포트를 조회한다.
-          #   고정 55433 은 러너 1대일 때만 안전한 설계였다.
-          # ★dev postgres(5433)를 재사용하지 않는다. 볼륨이 영속이라 선재 행이 남아
-          #   「마이그레이션이 안 넣음」과 「데이터 없음」이 구분되지 않는다 — 가짜 초록이다.
-          docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true
-          docker run -d --name "$CI_PG_CONTAINER" \\
-            -e POSTGRES_DB=bts -e POSTGRES_USER=bts -e POSTGRES_PASSWORD=bts \\
-            -p 0:5432 quay.io/tembo/pg16-pgmq:latest
-
-          PG_PORT="$(docker port "$CI_PG_CONTAINER" 5432/tcp | head -1 | sed 's/.*://')"
-          [ -n "$PG_PORT" ] || { echo "postgres 포트 조회 실패"; exit 1; }
-          echo "postgres → localhost:$PG_PORT"
-
-          i=1
-          while [ "$i" -le 30 ]; do
-            if docker exec "$CI_PG_CONTAINER" pg_isready -U bts -d bts >/dev/null 2>&1; then
-              echo "postgres ready (${i}회차)"; break
-            fi
-            if [ "$i" -eq 30 ]; then
-              echo "postgres 가 60초 안에 안 떴다"; docker logs "$CI_PG_CONTAINER"; exit 1
-            fi
-            i=$((i + 1)); sleep 2
-          done
-
-          # application.yml 이 이미 `${BTS_DB_URL:...}` 오버라이드 지점을 갖는다 — Kotlin 변경 0.
-          BTS_DB_URL="jdbc:postgresql://localhost:${PG_PORT}/bts"; export BTS_DB_URL
+          # ★DB 기동은 「DB 마련」 stage 로 옮겼다(2026-09-09). 여기서 다시 띄우지 않는다.
+          #   `:modules:app:test` 는 전량의 `./gradlew test` 에도 포함돼 있어서, 종전 구조는
+          #   같은 테스트를 DB 없이 한 번(전량·실패) + DB 붙여 한 번(여기) 돌리고 있었다.
+          [ -n "${BTS_DB_URL:-}" ] || { echo "BTS_DB_URL 이 비었다 — DB 마련 stage 를 확인하라"; exit 1; }
           cd backend
-          ./gradlew :modules:app:test --console=plain
+          # ★`:modules:app:test` 를 여기서 다시 돌리지 않는다. 전량이 같은 DB 를 보고 이미 돌렸다.
           # 별도 태스크 = 별도 JVM 이어야 한다. @ActiveProfiles 가 컨텍스트 캐시 키의 일부라
           # 같은 JVM 에 두면 9-BC 컨텍스트가 두 벌 뜨고 @Scheduled 워커가 같은 pgmq 큐를
           # 동시 폴링한다. 이 스텝을 지우면 태그로 분리된 가드가 0회 실행된다.
           ./gradlew :modules:app:nonProdAssemblyTest --console=plain
         '''
-      }
-      post {
-        // self-hosted 는 머신이 살아남는다. 지우지 않으면 컨테이너가 쌓인다 —
-        // GitHub 호스팅 러너에는 없던 책임이다. 실패해도 돌아야 하므로 always.
-        always { sh 'docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true' }
       }
     }
 
@@ -338,6 +370,14 @@ pipeline {
 
   post {
     always {
+      // ★postgres 정리를 파이프라인 post 로 올렸다(2026-09-09).
+      //
+      //   종전에는 「조립 부팅」 stage 의 post 에 있었다. 그런데 DB 를 띄우는 자리가
+      //   「DB 마련」으로 옮겨가면서 **전량이 실패하면 조립 부팅이 skip 되고**,
+      //   stage post 는 skip 된 stage 에서 돌지 않는다 — 컨테이너가 그대로 남는다.
+      //   self-hosted 는 머신이 살아남으므로 그렇게 쌓인다.
+      //   정리는 **DB 를 쓰는 모든 stage 를 덮는 자리**에 있어야 한다.
+      sh 'docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true'
       junit allowEmptyResults: true, testResults: 'backend/modules/*/build/test-results/**/*.xml'
       // 잔재성 거짓 초록을 막는다 — `actions/checkout@v4` 의 `clean: true` 가 하던 일이다.
       cleanWs(deleteDirs: true, notFailBuild: true)
