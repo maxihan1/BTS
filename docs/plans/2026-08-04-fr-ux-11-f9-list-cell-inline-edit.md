@@ -1,5 +1,9 @@
 # FR-UX-11 F9 — 이슈 목록 셀 인라인 편집
 
+> ⚠️ **2026-09-09 부기.** 본문이 인용하는 「판별식 룰 L」은 실재한 적이 없다.
+> 비유로 든 원리(두 목록이 서로를 검사한다)는 유효하지만 그 사례는 유효하지 않다.
+> `docs/rules/doc-index.md` 참조.
+
 > slug: fr-ux-11-f9-list-cell-inline-edit
 > type: ui
 > agent: frontend-engineer
