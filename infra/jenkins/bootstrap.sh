@@ -127,6 +127,28 @@ case "${1:-up}" in
       200|302) echo "✅ 잡 적용 (브랜치 */${BRANCH})" ;;
       *) echo "❌ 잡 적용 실패 HTTP $CODE" >&2; exit 1 ;;
     esac
+
+    # ★★적용 직후 **파라미터 없는** 빌드를 한 번 돌린다. 자동화가 아니라 복구다.
+    #
+    # 이 XML 에는 `parameters`·`triggers` 가 없다(정본이 Jenkinsfile 이라 일부러 비웠다).
+    # 그래서 적용하는 순간 젠킨스가 학습해 뒀던 그 둘이 지워지고, 다음 호출이
+    # `buildWithParameters` HTTP 400 으로 죽는다. 증상은 「FULL 이 갑자기 없는 파라미터가
+    # 됐다」이고 원인과 전혀 안 닮았다.
+    #
+    # ★주석으로는 못 막는다는 것이 실증됐다 — 2026-09-09 에 이 함정을 XML 주석에 적어 두고도
+    #   같은 날 **또 밟았다.** 그래서 사람이 기억할 일을 스크립트가 하게 옮긴다.
+    #   `/build` 다. `buildWithParameters` 가 아니다 — 지워진 파라미터를 넘길 수 없다.
+    CJ2="$(mktemp)"
+    CRUMB2="$(curl -s -u "$AUTH" -c "$CJ2" http://127.0.0.1:18081/crumbIssuer/api/json \
+      | sed -n 's/.*"crumb":"\([^"]*\)".*/\1/p')"
+    RC="$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$AUTH" -b "$CJ2" \
+      -H "Jenkins-Crumb: $CRUMB2" http://127.0.0.1:18081/job/bts-ci/build)"
+    rm -f "$CJ2"
+    if [ "$RC" = "201" ]; then
+      echo "→ 등록 빌드 트리거 (parameters·triggers 재등록). 완료까지 몇 분 걸린다"
+    else
+      echo "⚠️ 등록 빌드 트리거 실패 HTTP $RC — 손으로 한 번 돌려야 파라미터가 살아난다" >&2
+    fi
     ;;
   *) echo "사용. $0 {up|down|logs|lock|job [브랜치]}" >&2; exit 1 ;;
 esac
