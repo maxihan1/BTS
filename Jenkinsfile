@@ -87,9 +87,21 @@ pipeline {
           echo "node $have == .nvmrc ✅"
 
           corepack enable
-          # 계산기가 `origin/main` 을 비교 기준으로 쓴다(FALLBACK_BASE). 없으면 판정 불가로
-          # 읽고 전량으로 넓히므로 안전하지만, 매번 전량이면 2단이 무의미해진다.
-          git fetch --no-tags origin main:refs/remotes/origin/main || true
+
+          echo "--- 비교 기준(origin/main) ---"
+          # ★셸의 `git` 은 자격증명이 없다. deploy key 는 젠킨스 자격증명 저장소에 있고
+          #   SCM 체크아웃만 그것을 쓴다 — 여기서 `git fetch` 를 부르면
+          #   `Permission denied (publickey)` 다(빌드 #1 실측).
+          #   그래서 **잡의 refspec 이 모든 브랜치를 받아 오게** 하고 여기서는 확인만 한다.
+          #
+          # ★`|| true` 로 삼키지 않는다. 기준이 없으면 계산기가 전량으로 넓히므로 안전하지만,
+          #   그러면 2단이 조용히 1단이 된다 — 「느려졌다」로만 보이고 원인이 안 보인다.
+          if git rev-parse --verify --quiet refs/remotes/origin/main > /dev/null; then
+            echo "origin/main 있음 ✅ — 범위 계산 가능"
+          else
+            echo "⚠️ origin/main 없음 — 계산기가 전량으로 넓힌다(안전하지만 느리다)."
+            echo "   처방. 잡 설정의 refspec 이 +refs/heads/*:refs/remotes/origin/* 인지 확인."
+          fi
         '''
       }
     }
@@ -102,12 +114,17 @@ pipeline {
 
     stage('정합 게이트') {
       steps {
-        // 티어와 무관하게 항상 돈다. FR 카운트 drift 와 문서 인덱스 부패는 범위 계산의
-        // 대상이 아니고, 둘 다 초 단위다.
+        // 티어와 무관하게 항상 돈다. FR 카운트 drift 는 범위 계산의 대상이 아니고 초 단위다.
+        //
+        // ★`build-doc-index.mjs --check` 를 여기 두지 않는다. 그 생성기는 저장소 **밖**
+        //   `~/.claude/projects/<프로젝트>/memory/MEMORY.md` 를 읽어서 CI 머신에서는
+        //   `ENOENT` 로 죽는다(빌드 #1 실측). 그래서 GitHub Actions 4종 어디에도 없었고
+        //   `.husky/pre-commit` 에만 걸려 있다 — 「저장소 밖 메모리의 유일한 봉인」이라고
+        //   `behavior-rules.md §4` 가 적은 그 위치가 정답이다.
+        //   초안에서 그것을 모르고 옮겨 왔다가 되돌렸다. 다시 넣지 말 것.
         sh '''
           set -eu
           bash scripts/verify-master-plan.sh
-          node scripts/build-doc-index.mjs --check
         '''
       }
     }
