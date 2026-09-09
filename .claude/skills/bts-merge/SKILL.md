@@ -116,9 +116,19 @@ cd /Users/maxi.moff/Projects/BTS
 # ★2026-08-21 — 좀비 run 정리 단계를 지웠다. CI 자동 실행을 껐으므로 머지가 만드는 run 이
 #   0건이고, 정리할 큐 자체가 생기지 않는다. 되살리려면 git 이력에서 이 블록을 복원한다.
 
-# worktree 제거 (Step 1에서 미커밋 0 확인했으므로 안전)
-git worktree remove --force .worktrees/<slug> 2>/dev/null \
-  || echo "worktree 이미 제거됨 또는 부재"
+# ★worktree 제거 — 맨몸 `--force` 를 쓰지 않는다.
+#
+#   종전은 이랬다.
+#     # worktree 제거 (Step 1에서 미커밋 0 확인했으므로 안전)
+#     git worktree remove --force .worktrees/<slug>
+#
+#   Step 1 의 검사와 이 파괴 사이에 Step 2~4 가 커밋·푸시·리뷰를 한다. 그 과정에서
+#   파일이 새로 생길 수 있고(ktlintFormat 포맷 변경이 대표적), 그러면 `--force` 가
+#   경고 없이 버린다. **「아까 봤다」는 지금의 근거가 아니다.**
+#
+#   아래 스크립트는 지우기 직전에 미커밋(untracked 포함)과 미푸시를 다시 보고,
+#   하나라도 있으면 **지우지 않고 종료 코드 2** 로 죽는다. 그때는 커밋·푸시부터 한다.
+node --experimental-strip-types scripts/workflow/safe-worktree-remove.ts .worktrees/<slug>
 git worktree prune
 
 # 원격 브랜치 잔여 정리 (--delete-branch 실패했을 경우)
