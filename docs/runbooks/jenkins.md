@@ -15,7 +15,7 @@
 | 컨테이너 | `bts-jenkins` · 이미지 `bts-jenkins:local` |
 | 설정 정본 | `infra/jenkins/casc.yaml` (JCasC) |
 | 접근 | `http://127.0.0.1:18081/` — **루프백 전용. 외부에서 열리지 않는다** |
-| 자원 | `mem_limit 6g` · `cpus 1.5` |
+| 자원 | `mem_limit 10g` · `cpus 2.0` (2026-09-09 상향 · 근거는 §4-6) |
 
 ## 2. 접근 — SSH 터널
 
@@ -65,9 +65,30 @@ Testcontainers 는 호스트 데몬에 컨테이너를 띄우고 **`localhost:<�
 ### 4-3. DooD — 데몬은 호스트 것을 쓴다
 
 `/var/run/docker.sock` 마운트. DinD 를 쓰면 이미지 캐시가 두 벌이 되고 2코어 머신에서
-그 비용이 크다. 대신 **젠킨스가 띄우는 컨테이너는 호스트에 뜨고 `mem_limit 6g` 밖이다** —
-Testcontainers 몫을 따로 계산해야 한다. 여유는 약 4.5GB
-(16GB − 운영 4,992MB − 젠킨스 6,144MB).
+그 비용이 크다. 대신 **젠킨스가 띄우는 컨테이너는 호스트에 뜨고 `mem_limit` 밖이다** —
+Testcontainers 몫은 이 상한이 제한하지 않으므로 따로 계산해야 한다.
+
+★`mem_limit 10g` 는 **예약이 아니라 상한**이다. 산술로만 보면
+16GB − 운영 4,992MB − 젠킨스 10,240MB = 약 0.7GB 로 여유가 없어 보이지만,
+실측 사용량은 1.5GiB 이고 스왑이 8GB 있다. 이 값을 10g 로 올린 이유는 여유가 아니라
+**정본 때문**이다 — `backend/gradle.properties` 가 `-Xmx4096m` + kotlin 데몬 `-Xmx3072m`
+= 7GB 를 선언하므로 6g 상한에서는 그 설정이 애초에 성립할 수 없었다.
+
+### 4-6. named volume 은 root 소유로 생긴다 — 기동에서 안 걸린다
+
+Docker 는 **이미지에 없는 경로**에 named volume 을 붙이면 그 디렉터리를 root:root 로 만든다.
+`/var/jenkins_home/.gradle` 가 그 경우고, 컨테이너의 jenkins(uid 1000)는 못 쓴다.
+
+실패가 나는 자리가 기동이 아니라는 것이 이 함정의 핵심이다. 컨테이너는 정상으로 뜨고
+파이프라인도 돌다가 **첫 `./gradlew` 호출**에서 죽는다 — 빌드 #16 은 프론트 전량 30분을
+다 돌고 나서 백엔드 시작 0초 만에 떨어졌다.
+
+    Could not create parent directory for lock file
+      /var/jenkins_home/.gradle/wrapper/dists/…/gradle-8.10-bin.zip.lck
+
+`bootstrap.sh` 의 `VOLUME_PATHS` 가 소유권을 고치고,
+`scripts/workflow/jenkins-volume-chown.test.ts` 가 compose 의 볼륨 경로와 그 목록의
+차집합을 양방향으로 검사한다. **compose 에 볼륨을 추가하면 그 판별식이 먼저 red 가 된다.**
 
 ### 4-4. `numExecutors: 1`
 
@@ -113,12 +134,30 @@ UI 변경은 컨테이너 재생성 시 없어진다 — 저장소를 고쳐라.
 **남은 것**
 
 - **E2E·시각 회귀 미이전** (P3). 선행 조건 3개는 폐지된 `frontend-ci.yml` visual 잡 자리
-  주석에 있었다 — 그 파일은 지웠으므로 git 이력에서 꺼내 쓴다
-  (`git log --all --diff-filter=D -- .github/workflows/frontend-ci.yml`).
+  주석에 있었다 — 그 파일은 지웠으므로 git 이력에서 꺼내 쓴다.
   ① 백엔드 기동 또는 MSW 전량 목킹 ② 그 위에서 기준 이미지 생성 ③ 20회 무변경 flaky 측정.
-  기준 이미지는 맥 ARM64 에서 만들어져 Linux x86_64 에서 전량 diff 난다 — **재생성이 필요**하고
-  `snapshot-baseline-guard.test.ts` 가 무단 갱신을 막는다.
-- **P0 실측 미완** — 2코어 대비 배율이 아직 추정치다.
+
+  ★**「재생성」이 아니라 최초 생성이다** (2026-09-09 정정). 이 저장소에 커밋된 스냅샷 기준
+  이미지는 추적 파일 기준 **0장**이다. 종전 계획은 「맥 ARM64 PNG 가 Linux 에서 전량 diff
+  나므로 재생성이 필요하다」고 적었는데, diff 날 원본 자체가 없다.
+  `snapshot-baseline-guard.test.ts` 가 막는 것은 **갱신**이고, 최초 생성은 그 판별식의
+  대상이 아니다 — 첫 커밋에서 `apps/web/src/**` 동반 여부를 사람이 봐야 한다.
+
+  ★그동안 **시각 회귀를 막는 기계는 0개다.** `frontend-ci.yml` 의 `visual` 잡을 지웠고
+  젠킨스로는 아직 안 옮겼다. 그 사이 UI 변경의 시각 검증은 브라우저 눈확인 한 겹뿐이다.
+- **P0 실측 진행 중** — 프론트 전량은 실측됐다(아래). 백엔드 Gradle 은 빌드 #16 이
+  볼륨 권한으로 죽어 아직 한 번도 완주하지 않았다.
+
+  | 프론트 전량 (521파일 · 빌드 #16 실측) | |
+  |---|---|
+  | 벽시계 | **30.1분** |
+  | environment(jsdom) | 690.2초 — 단일 최대 |
+  | tests(실제 테스트) | 481.2초 — **전체의 27%뿐** |
+  | setup · import · transform | 289.1 · 211.7 · 20.2초 |
+
+  나머지 73%가 준비 비용이다. `pool: 'threads'` 는 그중 fork 비용만 걷어낸다
+  (109파일 기준 −18.5% 실측). `isolate: false` 로 `environment` 690초를 없앨 수 있지만
+  쓰지 않는다 — 근거는 `apps/web/vitest.config.ts` 주석.
 - **잡 파라미터·트리거 재등록** — `./bootstrap.sh job` 이 자동으로 처리한다(§3).
 
 ## 관련
