@@ -3,8 +3,9 @@
 # 젠킨스 운영 (`bts-jenkins`)
 
 > 도입 2026-09-09 (P1). 계획 정본은 `~/.claude/plans/functional-kindling-map.md` P0~P8.
-> **GitHub Actions 4종을 전면 대체한다** — 다만 철거는 P4 이고, 그전까지 두 벌이 공존한다.
-> 러너 운영은 [`self-hosted-runner.md`](self-hosted-runner.md) 가 아직 정본이다.
+> **CI 정의는 이제 이것 하나다** — GitHub Actions 4종은 P4b 에서 철거했고,
+> self-hosted 러너 2대도 등록 0건이다(2026-09-09 실측).
+> [`self-hosted-runner.md`](self-hosted-runner.md) 는 폐지됐고 과거 기록으로만 남는다.
 
 ## 1. 어디에 있나
 
@@ -96,16 +97,32 @@ UI 변경은 컨테이너 재생성 시 없어진다 — 저장소를 고쳐라.
 | Testcontainers 가 DB 에 못 붙음 | `docker ps` | host 네트워크가 풀렸는지 — compose 의 `network_mode` |
 | 운영 응답 지연 | `uptime` · `docker stats` | `cpus` 를 낮춘다. 전량 빌드는 야간으로 |
 
-## 7. 아직 안 된 것
+## 7. 끝난 것 · 남은 것
 
-- **Jenkinsfile 이 없다** (P2). 지금은 컨트롤러만 떠 있고 도는 잡이 0 이다.
-- **GitHub Actions 가 아직 산다** (P4). 판별식 9종이 `.github/workflows` 를 읽고 있어
-  재조준 전에 지우면 가드가 조용히 사라진다.
-- **E2E·시각 회귀 미이전** (P3). 선행 조건 3개는 `frontend-ci.yml` visual 잡 자리 주석.
-- **`plugins.lock.txt` 미생성** — 첫 기동 뒤 `./bootstrap.sh lock`.
+**끝난 것** (2026-09-09)
+
+| | |
+|---|---|
+| P1 컨트롤러 | JCasC · DooD · 루프백 바인딩 |
+| P2 파이프라인 | 2단(빠른 게이트 · 전량) · `Jenkinsfile` |
+| P5 훅 이전 | `.husky/pre-push` 에서 백엔드·프론트 테스트 제거. 푸시 14.5초 |
+| P6 일부 | 배포 승인 + 배포 stage. **배포는 아직 한 번도 실행하지 않았다** |
+| P7 하네스 | `jenkins-build-status.ts` 3분기 판정 · 게이트 2 배선 |
+| P4 Actions 철거 | 판별식 7종 재조준 후 워크플로우 4종 삭제 |
+
+**남은 것**
+
+- **E2E·시각 회귀 미이전** (P3). 선행 조건 3개는 폐지된 `frontend-ci.yml` visual 잡 자리
+  주석에 있었다 — 그 파일은 지웠으므로 git 이력에서 꺼내 쓴다
+  (`git log --all --diff-filter=D -- .github/workflows/frontend-ci.yml`).
+  ① 백엔드 기동 또는 MSW 전량 목킹 ② 그 위에서 기준 이미지 생성 ③ 20회 무변경 flaky 측정.
+  기준 이미지는 맥 ARM64 에서 만들어져 Linux x86_64 에서 전량 diff 난다 — **재생성이 필요**하고
+  `snapshot-baseline-guard.test.ts` 가 무단 갱신을 막는다.
+- **P0 실측 미완** — 2코어 대비 배율이 아직 추정치다.
+- **잡 파라미터·트리거 재등록** — `./bootstrap.sh job` 이 자동으로 처리한다(§3).
 
 ## 관련
 
 - VM 하드닝 [`vm-hardening.md`](vm-hardening.md)
-- 러너(승계 대상) [`self-hosted-runner.md`](self-hosted-runner.md)
+- 러너(**폐지**) [`self-hosted-runner.md`](self-hosted-runner.md) — 과거 기록
 - 배포 [`infra/deploy/bts-deploy.sh`](../../infra/deploy/bts-deploy.sh) — P6 에서 젠킨스가 호출한다
