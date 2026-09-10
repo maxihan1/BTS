@@ -189,6 +189,32 @@ export function e2eTouched(files: string[] | null): boolean {
 }
 
 /**
+ * 바뀐 Playwright 시나리오 목록(`apps/web` 기준 상대경로). 전량을 뜻할 때는 `null`.
+ *
+ * ## 왜 「돌린다/만다」가 아니라 목록인가
+ *
+ * 종전 [e2eTouched] 는 참이면 `playwright test` 를 **인자 없이** 냈다 — 167파일 전량이다.
+ * 2코어 실측으로 그것이 **약 3시간**이다(1파일 46초 · 3파일 165초 → 파일당 약 60초,
+ * 고정 비용 거의 0).
+ *
+ * E2E 한 줄을 고쳐도 3시간이 뜨면 **아무도 안 돌린다.** 가드가 있어도 쓰이지 않으면 없는
+ * 것과 같다 — 실제로 그 명령은 훅 어디에도 배선되지 않았고, E2E 를 고쳐도 푸시 전에
+ * 아무것도 확인되지 않았다. 바뀐 파일만이면 1파일 46초라 사람이 실제로 돌린다.
+ *
+ * ★`null`(전량)과 `[]`(돌 것 없음)를 **구분한다.** 둘을 같은 값으로 만들면 「변경 목록을
+ *   못 구했다」가 조용히 「생략」이 된다 — 이 저장소가 이름 붙인 침묵 실패다.
+ *
+ * @param files 변경 파일 목록. `null` 이면 목록을 못 구한 것이라 전량을 뜻한다.
+ * @returns `apps/web` 기준 상대경로 목록. 전량이면 `null`.
+ */
+export function e2eSpecs(files: string[] | null): string[] | null {
+  if (files === null) return null
+  return files
+    .filter((f) => f.startsWith(FRONTEND_E2E) && f.endsWith('.spec.ts'))
+    .map((f) => f.slice(FRONTEND_PREFIX.length))
+}
+
+/**
  * plan 이 task 마다 적어 둔 검증 명령을 전부 뽑는다.
  *
  * 서식 정본. `.claude/skills/bts-plan/plan-format.md` 의 `**검증**:` 줄.
@@ -213,6 +239,8 @@ export interface TestScope {
   backendReason: string
   frontend: FrontendScope
   e2e: boolean
+  /** 바뀐 시나리오 목록(`apps/web` 상대경로). 전량이면 `null`, 돌 것이 없으면 `[]`. */
+  e2eSpecs: string[] | null
   planVerify: string[]
 }
 
@@ -240,6 +268,7 @@ export function computeScope(files: string[] | null, planText: string | null): T
     backendReason,
     frontend: frontendScope(files),
     e2e: e2eTouched(files),
+    e2eSpecs: e2eSpecs(files),
     planVerify: planText === null ? [] : planVerifyCommands(planText),
   }
 }
@@ -270,8 +299,17 @@ export function renderCommands(scope: TestScope): string {
   }
 
   lines.push('')
-  lines.push(scope.e2e ? '# E2E — 시나리오가 바뀌었다. 돌린다.' : '# E2E — 생략 (시나리오 변경 없음)')
-  if (scope.e2e) lines.push('apps/web/node_modules/.bin/playwright test')
+  // ★바뀐 파일만 인자로 붙인다. 인자 없는 `playwright test` 는 전량(약 3시간)이라
+  //   사람이 안 돌린다 — 안 돌리는 가드는 없는 가드다.
+  if (scope.e2eSpecs === null) {
+    lines.push('# E2E — 변경 목록을 못 구했다. 전량을 돈다(약 3시간).')
+    lines.push('(cd apps/web && node_modules/.bin/playwright test)')
+  } else if (scope.e2eSpecs.length > 0) {
+    lines.push(`# E2E — 바뀐 시나리오 ${scope.e2eSpecs.length}개만 돈다.`)
+    lines.push(`(cd apps/web && node_modules/.bin/playwright test ${scope.e2eSpecs.join(' ')})`)
+  } else {
+    lines.push('# E2E — 생략 (시나리오 변경 없음)')
+  }
 
   if (scope.planVerify.length > 0) {
     lines.push('')
