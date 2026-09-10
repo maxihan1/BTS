@@ -396,7 +396,12 @@ pipeline {
       steps {
         sh '''
           set -eu
-          bash scripts/verify/nginx-log-masking.sh
+          # ★DooD 에서 `docker run -v` 의 좌변은 **호스트 데몬이 보는 경로**다.
+          #   젠킨스 컨테이너 안의 워크스페이스 경로를 그대로 주면 호스트에 없어서
+          #   **빈 디렉터리가 마운트**되고, nginx 가 설정 없이 떠 문법 검증이 실패한다 —
+          #   「이 설정으로 배포하면 프론트 전체가 뜨지 않는다」는 오진이 나온다.
+          #   설정은 멀쩡했다(2026-09-10 빌드 #26 실측).
+          BTS_HOST_WORKSPACE="$HOST_WS" bash scripts/verify/nginx-log-masking.sh
           bash scripts/verify/springdoc-not-exposed.sh
         '''
       }
