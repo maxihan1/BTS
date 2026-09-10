@@ -577,6 +577,7 @@ class BoardSettingsTabErrorEnvelopeTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""{"groups":{"GENERAL":["summary"]}}"""),
         ).andReturn()
+
     /**
      * ⑦ 의 한 줄 — 400 을 내는 요청과 그때 나가야 할 사유.
      *
