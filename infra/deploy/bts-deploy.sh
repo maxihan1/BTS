@@ -137,6 +137,26 @@ if ! pnpm --filter @bts/web build; then
 fi
 [ -f apps/web/dist/index.html ] || { echo "❌ dist/index.html 부재 — 빌드가 산출물을 남기지 못했다"; exit 1; }
 
+# ★★배포본이 **자기 커밋을 말하게** 한다. `dist/version.json`
+#
+# 왜 필요한가. 이것이 없으면 「지금 서버에 뭐가 떠 있나」를 물어볼 창구가 없다.
+#   · 배포 후 E2E 가 「새 판이 반영됐나」를 확인할 수 없다 — `curl $BASE_URL` 은
+#     **옛 버전도 200 을 준다.** 배포가 실패해 옛것이 그대로여도 전량 초록이 나온다
+#     (2026-09-10 설계 검토에서 적발 — 검증 대상이 배포본인지 아무도 안 물었다).
+#   · 사람도 서버에 들어가 `git log` 를 봐야 안다. 배포 이력과 실물이 갈려도 모른다.
+#
+# ★`/actuator/info` 를 쓰지 않는다. nginx 가 `/actuator` 를 프록시하지 않는다
+#   (이 파일 아래 health 확인 주석 참고 — SPA fallback 가짜그린 방지). 정적 파일은
+#   HTTPS 로 바로 닿으므로 젠킨스 밖에서도, 브라우저에서도 확인된다.
+#
+# ★`git rev-parse` 가 실패해도 배포를 막지 않는다. 커밋을 모르는 배포가 커밋을 아는 배포보다
+#   낫지는 않지만, **배포 자체를 못 하게 만들 이유는 아니다.** 그때는 `unknown` 이 들어가고
+#   E2E 가 「판정 불가」로 처리한다 — 조용히 초록이 되지 않는 것이 요점이다.
+DEPLOY_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+printf '{"commit":"%s","builtAt":"%s"}\n' \
+  "$DEPLOY_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > apps/web/dist/version.json
+echo "🏷  version.json — commit=$DEPLOY_SHA"
+
 # ── 전송 수단 — 어디서 실행하느냐만 다르다 ─────────────────────────────────────
 #
 # ★`BTS_DEPLOY_LOCAL=1` 은 **배포 대상 서버 위에서** 이 스크립트를 돌릴 때 쓴다(젠킨스).

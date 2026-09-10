@@ -66,7 +66,11 @@ pipeline {
           env.TARGET_SHA = params.DEPLOYED_SHA?.trim() ?: sh(
             script: 'git rev-parse HEAD', returnStdout: true,
           ).trim()
-          echo "검증 대상 커밋: ${env.TARGET_SHA}"
+          // 호출자가 SHA 를 넘겼을 때만 커밋 대조를 강제한다. 손으로 돌리는 실행은
+          // 「어느 커밋인지 모르는 검증」이고, 그 사실이 판정에 남는다.
+          env.TARGET_SHA_REQUIRED = params.DEPLOYED_SHA?.trim() ? 'yes' : ''
+          echo "검증 대상 커밋: ${env.TARGET_SHA}" +
+            (env.TARGET_SHA_REQUIRED ? '' : ' (호출자 미지정 — 커밋 대조 없이 돈다)')
           echo "대상 URL: ${params.BASE_URL}"
           echo "변경 도메인: ${params.CHANGED_DOMAINS ?: '(없음 — 전량만)'}"
         }
@@ -74,32 +78,47 @@ pipeline {
     }
 
     /*
-     * ★대상이 실제로 응답할 때까지 기다린다.
+     * ★「응답한다」가 아니라 **「이 커밋이 떴다」**를 기다린다.
      *
-     * `bts-deploy.sh` 는 백엔드 health 확인이 실패해도 **경고만 찍고 넘어간다**(:236) —
-     * 그 스크립트 관점에서는 옳다. 배포 행위 자체는 끝났고 기동은 수십 초 걸리기 때문이다.
-     * 인증서도 「첫 요청 때 발급된다(수십 초)」라고 그 스크립트가 적어 뒀다.
+     * 종전 초안은 `curl $BASE_URL` 이 200 이면 통과였다. 그런데 **옛 버전도 200 을 준다** —
+     * 배포가 실패해 이전 것이 그대로 떠 있어도 E2E 가 그것을 검증하고 전량 초록을 낸다.
+     * 「배포 이후에 도는가」는 맞았는데 **무엇을 검증하는가**가 틀린 자리였다(2026-09-10 적발).
      *
-     * 그래서 기다리는 몫은 여기다. 「배포가 끝났다」와 「쓸 수 있다」는 다르다 —
-     * 이 저장소가 배포키·볼륨에서 이미 두 번 만난 양식이다.
+     * `bts-deploy.sh` 가 `dist/version.json` 에 커밋을 심는다. 그것이 `DEPLOYED_SHA` 와
+     * 같아질 때까지 기다린다 — 그래야 이 잡의 결과에 「무엇을 테스트했는가」가 붙는다.
      *
-     * 안 기다리면 아직 기동 중인 서버를 때려 **전 테스트가 무의미하게 빨간불**이 되고,
-     * 원인이 「배포 실패」로 오독된다.
+     * ★기다리는 몫이 왜 여기인가. `bts-deploy.sh` 의 health 확인은 실패해도 경고만 찍고
+     *   넘어간다(:236) — 그 스크립트 관점에서는 옳다. 배포 행위는 끝났고 기동은 수십 초
+     *   걸린다. 인증서도 「첫 요청 때 발급된다(수십 초)」라고 그 스크립트가 적어 뒀다.
+     *   「배포가 끝났다」와 「쓸 수 있다」는 다르다 — 배포키·볼륨에서 이미 두 번 만난 양식이다.
+     *
+     * ★`DEPLOYED_SHA` 가 비면(손으로 이 잡을 돌리는 경우) 커밋 대조를 건너뛰고 응답만 본다.
+     *   그 실행의 결과는 「어느 커밋인지 모르는 검증」이므로 아래 판정 유효성이 그렇게 표시한다.
      */
-    stage('대상 준비 대기') {
+    stage('배포 반영 대기') {
       steps {
-        sh '''
-          set -eu
-          i=1
-          while [ "$i" -le 60 ]; do
-            if curl -fsS -o /dev/null --max-time 10 "$BASE_URL"; then
-              echo "대상 응답 확인 (${i}회차) — $BASE_URL"
-              exit 0
-            fi
-            [ "$i" -eq 60 ] && { echo "5분 안에 응답하지 않았다 — $BASE_URL"; exit 1; }
-            i=$((i + 1)); sleep 5
-          done
-        '''
+        script {
+          def deadline = System.currentTimeMillis() + (10 * 60 * 1000)
+          def served = ''
+          while (System.currentTimeMillis() < deadline) {
+            served = sh(
+              returnStdout: true,
+              script: """curl -fsS --max-time 10 "${params.BASE_URL}/version.json" 2>/dev/null \
+                         | sed -n 's/.*"commit":"\\([^"]*\\)".*/\\1/p' || true""",
+            ).trim()
+            if (!env.TARGET_SHA_REQUIRED) { break }
+            if (served == env.TARGET_SHA) { break }
+            echo "대기 — 서버=${served ?: '(응답 없음)'} · 기대=${env.TARGET_SHA}"
+            sleep(time: 10, unit: 'SECONDS')
+          }
+          env.SERVED_SHA = served
+          if (env.TARGET_SHA_REQUIRED && served != env.TARGET_SHA) {
+            error("10분 안에 배포가 반영되지 않았다.\n" +
+                  "  서버=${served ?: '(version.json 없음)'}\n  기대=${env.TARGET_SHA}\n" +
+                  'version.json 이 없다면 그 배포는 이 배선 이전 것이다 — 한 번 더 배포해야 한다.')
+          }
+          echo "배포 반영 확인 — 서버 커밋 ${served ?: '(미상)'}"
+        }
       }
     }
 
@@ -181,12 +200,23 @@ pipeline {
     stage('판정 유효성') {
       steps {
         script {
-          def now = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-          if (now != env.TARGET_SHA) {
-            unstable("판정 불가 — 도는 동안 대상이 ${env.TARGET_SHA} → ${now} 로 바뀌었다. " +
-                     '이 결과를 「전량 통과」로 인용하지 말 것.')
+          // ★워크스페이스가 아니라 **서버**를 다시 본다. 초안은 `git rev-parse HEAD` 를
+          //   봤는데 그건 젠킨스가 체크아웃한 커밋이라 배포본과 아무 관계가 없다 —
+          //   도는 동안 서버가 바뀌어도 언제나 「유효」가 나오는 공허한 검사였다.
+          def now = sh(
+            returnStdout: true,
+            script: """curl -fsS --max-time 10 "${params.BASE_URL}/version.json" 2>/dev/null \
+                       | sed -n 's/.*"commit":"\\([^"]*\\)".*/\\1/p' || true""",
+          ).trim()
+          if (!env.TARGET_SHA_REQUIRED) {
+            unstable("판정 참고용 — 호출자가 대상 커밋을 안 넘겨 무엇을 검증했는지 확정할 수 없다. " +
+                     "실행 중 서버 커밋=${now ?: '(미상)'}")
+          } else if (now != env.SERVED_SHA) {
+            unstable("판정 불가 — 도는 동안 서버가 ${env.SERVED_SHA} → ${now} 로 바뀌었다.\n" +
+                     '앞부분은 옛 배포를, 뒷부분은 새 배포를 봤다. ' +
+                     '**이 결과를 「전량 통과」로 인용하지 말 것.**')
           } else {
-            echo "판정 유효 — 대상이 ${env.TARGET_SHA} 그대로다."
+            echo "판정 유효 — 서버가 ${env.SERVED_SHA} 그대로다."
           }
         }
       }
