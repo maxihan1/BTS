@@ -38,18 +38,20 @@ function toPathname(routeId: string): string {
 /** `_shell` 하위의 실 라우트만 — 루트·로그인·pathless 자신은 활성 판정 대상이 아니다 */
 const shellRouteIds = routeIds.filter((id) => id.startsWith(`${SHELL}/`))
 
-/** 활성 탭이 될 수 있는 탭 — 편차 X9 폐기(2026-09-07) 이후 9탭 전부다 */
+/** 활성 탭이 될 수 있는 탭 — 편차 X9 폐기(2026-09-07) 이후 10탭 전부다 */
 const projectScopedTabs = PROJECT_VIEW_TABS.filter((tab) => tab.usesProjectParam)
 
 describe('PROJECT_VIEW_TABS — 정본 구성', () => {
-  it('비-공허: 탭이 9종이고 키가 중복되지 않는다', () => {
-    expect(PROJECT_VIEW_TABS).toHaveLength(9)
+  it('비-공허: 탭이 10종이고 키가 중복되지 않는다', () => {
+    expect(PROJECT_VIEW_TABS).toHaveLength(10)
     const keys = PROJECT_VIEW_TABS.map((tab) => tab.key)
     expect(new Set(keys).size).toBe(keys.length)
   })
 
-  it('Maxi 확정 순서 그대로다 (요약·타임라인·보드·백로그·캘린더·대시보드·컴포넌트·이슈·버전)', () => {
-    // 순서가 곧 계약이다 — 목업 v2 + 백로그 1건(2026-09-03 확정).
+  it('Maxi 확정 순서 그대로다 (요약·타임라인·보드·백로그·캘린더·대시보드·컴포넌트·이슈·버전·리포트)', () => {
+    // 순서가 곧 계약이다 — 목업 v2 + 백로그 1건(2026-09-03 확정) + 리포트 1건(2026-09-08).
+    // 🛑 리포트는 **맨 끝**이다. 앞에 끼우면 기존 9탭의 인덱스가 밀려 `resolveActiveTabIndex`
+    //    를 재료로 쓰는 오버플로 핀 고정의 회귀 표면이 통째로 늘어난다 (★리뷰 E-8).
     expect(PROJECT_VIEW_TABS.map((tab) => tab.key)).toEqual([
       'summary',
       'timeline',
@@ -60,7 +62,19 @@ describe('PROJECT_VIEW_TABS — 정본 구성', () => {
       'components',
       'issues',
       'versions',
+      'reports',
     ])
+  })
+
+  it('리포트 탭이 정본에 있고 착지가 개별 차트가 아니다 (JR-1·JR-2)', () => {
+    // 위 순서 단언이 이미 키를 보지만, 「무엇이 왜 필요한지」가 코드에서 사라지지 않게 못박는다.
+    const reports = PROJECT_VIEW_TABS.find((tab) => tab.key === 'reports')
+    expect(reports).toBeDefined()
+    // 🛑 `/reports/velocity` 로 두면 탭이 4종 중 하나를 임의로 고른 셈이 된다 — Jira 의 착지는
+    //    개별 차트가 아니라 목록/인사이트 화면이다(JR-2).
+    expect(reports?.to).toBe('/projects/$projectKey/reports')
+    // 🛑 `exact: true` 로 바뀌면 리포트 4화면에서 탭 강조가 꺼진다(채택 A-3).
+    expect(reports?.exact).toBe(false)
   })
 
   it('죽은 링크 0 — 모든 탭의 `to` 가 라우터에 등록된 라우트다', () => {
@@ -78,14 +92,14 @@ describe('PROJECT_VIEW_TABS — 정본 구성', () => {
     expect(exactKeys).toEqual(['summary'])
   })
 
-  it('9탭 전부가 `$projectKey` 를 받는다 (편차 X9 폐기 · J5-12)', () => {
+  it('10탭 전부가 `$projectKey` 를 받는다 (편차 X9 폐기 · J5-12)', () => {
     // 🛑 하나라도 전역 경로로 돌아가면 그 탭을 누르는 순간 헤더·탭바가 사라진다 —
     //    `ProjectViewChrome` 의 마운트 조건이 `params.projectKey` 이기 때문이다.
     const global = PROJECT_VIEW_TABS.filter((tab) => !tab.usesProjectParam).map((tab) => tab.key)
     expect(global).toEqual([])
   })
 
-  it('9탭의 `to` 가 전부 `/projects/$projectKey` 로 시작한다', () => {
+  it('10탭의 `to` 가 전부 `/projects/$projectKey` 로 시작한다', () => {
     // 위 단언은 플래그만 본다. 플래그를 true 로 둔 채 `to` 만 전역 경로로 적으면
     // `resolveTabHref` 가 치환할 것이 없어 그대로 전역으로 나가는데 플래그 검사는 통과한다.
     const escaping = PROJECT_VIEW_TABS.filter(
@@ -104,8 +118,8 @@ describe('PROJECT_VIEW_TABS — 정본 구성', () => {
 })
 
 describe('resolveTabHref — 순수 함수와 라우터의 두 층이 같은 href 를 만든다', () => {
-  it('비-공허: 대조 대상이 9건이다', () => {
-    expect(PROJECT_VIEW_TABS).toHaveLength(9)
+  it('비-공허: 대조 대상이 10건이다', () => {
+    expect(PROJECT_VIEW_TABS).toHaveLength(10)
   })
 
   it('모든 탭에서 `resolveTabHref` 와 `router.buildLocation` 의 pathname 이 일치한다', () => {
@@ -127,10 +141,14 @@ describe('isTabActive — 판정 규칙 직접 단언', () => {
   /**
    * 🛑 이 블록이 없으면 접두 분기가 **무보증**이다.
    *
-   * 실측 — `isTabActive` 의 비-exact 분기를 완전 일치로 바꿔도 아래 「실 라우트 전수」 판별식이
-   * 통과한다. 정본 9탭의 목적지가 전부 말단 경로라 `/projects/ATLAS/board/…` 같은 하위 라우트가
-   * 아직 없기 때문이다. 라우트가 없다고 규칙을 안 지키면, 하위 라우트가 생기는 날 그 화면에서
-   * 탭 강조가 통째로 꺼진다(그리고 좁은 화면에서 지금 보는 탭이 팝오버로 숨는다).
+   * 실측(2026-09-07) — `isTabActive` 의 비-exact 분기를 완전 일치로 바꿔도 아래 「실 라우트
+   * 전수」 판별식이 통과했다. 당시 정본 9탭의 목적지가 전부 말단 경로였기 때문이다.
+   *
+   * ★2026-09-08 부터는 **리포트 탭이 그 관측 표면**이다 — `/projects/$key/reports` 아래에
+   * 실 라우트 4개(`velocity`·`cfd`·`cycle-time`·`worklog`)가 있어 분기를 완전 일치로 바꾸면
+   * 아래 「리포트 하위 4화면에서 리포트 탭이 활성이다」가 red 가 된다. 그래도 이 블록은
+   * 남긴다 — 규칙 자체를 직접 재는 자리는 여기 하나이고, 리포트 라우트가 없어지는 날
+   * 다시 무보증이 되기 때문이다.
    */
   const boardTab = PROJECT_VIEW_TABS.find((tab) => tab.key === 'board')
   const summaryTab = PROJECT_VIEW_TABS.find((tab) => tab.key === 'summary')
@@ -216,9 +234,35 @@ describe('resolveActiveTabIndex — 실 라우트 전수', () => {
     expect(resolveActiveTabIndex('/projects/ATLASX/board', PROJECT_KEY)).toBe(-1)
   })
 
-  it('탭이 없는 프로젝트 화면에서는 -1 이다 (리포트·다른 설정 화면)', () => {
-    expect(resolveActiveTabIndex('/projects/ATLAS/reports/velocity', PROJECT_KEY)).toBe(-1)
+  it('탭이 없는 프로젝트 화면에서는 -1 이다 (설정 서브앱 화면)', () => {
+    // 설정 서브앱 경로는 어느 탭에도 안 걸린다 — 그리고 거기서는 `ProjectViewChrome` 이
+    // 탭바 자체를 렌더하지 않는다(편차 X-N1 · `ProjectViewChrome.test.tsx`).
     expect(resolveActiveTabIndex('/projects/ATLAS/settings/members', PROJECT_KEY)).toBe(-1)
+    expect(resolveActiveTabIndex('/projects/ATLAS/settings/automation', PROJECT_KEY)).toBe(-1)
+  })
+
+  it('리포트 하위 4화면 전수에서 리포트 탭이 활성이다 (채택 A-3 · JR-1)', () => {
+    // 🛑 여기가 `exact: false` 의 계약이다. 리포트는 «탭»이므로 자기 하위 화면에서 자기를
+    //    지우면 안 된다 — 지우면 4화면에서 「내가 어디 있나」가 사라진다.
+    //    2026-09-08 이전에는 이 경로들이 **-1** 이었다(탭이 없었다).
+    const subPaths = [
+      '/projects/ATLAS/reports/velocity',
+      '/projects/ATLAS/reports/cfd',
+      '/projects/ATLAS/reports/cycle-time',
+      '/projects/ATLAS/reports/worklog',
+    ]
+    expect(subPaths).toHaveLength(4) // 비-공허 짝 — 목록이 비면 아래 순회가 조용히 통과한다
+
+    for (const pathname of subPaths) {
+      const index = resolveActiveTabIndex(pathname, PROJECT_KEY)
+      expect(PROJECT_VIEW_TABS[index]?.key, `${pathname} 에서 리포트 탭이 활성이 아니다`).toBe(
+        'reports',
+      )
+    }
+
+    // 착지 화면 자신도 물론 활성이다.
+    const landing = resolveActiveTabIndex('/projects/ATLAS/reports', PROJECT_KEY)
+    expect(PROJECT_VIEW_TABS[landing]?.key).toBe('reports')
   })
 
   it('스코프 라우트 3종에서 각자의 탭이 활성이 된다 (편차 X9 폐기 · J5-12)', () => {
@@ -236,7 +280,7 @@ describe('resolveActiveTabIndex — 실 라우트 전수', () => {
     }
   })
 
-  it('9탭 어디서도 활성 탭이 2개 이상이 되지 않는다 (전수)', () => {
+  it('10탭 어디서도 활성 탭이 2개 이상이 되지 않는다 (전수)', () => {
     // 🛑 스코프 라우트 3종이 늘면서 접두 충돌 위험도 늘었다. 실 라우트 전수로 다시 확인한다.
     expect(shellRouteIds.length).toBeGreaterThan(50)
 

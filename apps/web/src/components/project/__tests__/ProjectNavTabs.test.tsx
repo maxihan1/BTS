@@ -1,4 +1,4 @@
-// ProjectNavTabs 계약 테스트 — nav+Link · 정본 9탭 통합 · Radix Tabs 미사용 (Jira 패리티 J5)
+// ProjectNavTabs 계약 테스트 — nav+Link · 정본 10탭 통합 · 활성 표시 2종 (Jira 패리티 J5)
 import { describe, it, expect } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import {
@@ -69,6 +69,21 @@ async function renderAndReadLinks(
     .map((link) => [link.textContent ?? '', link.getAttribute('href') ?? ''] as const)
 }
 
+/**
+ * 지금 화면에서 **시각 강조 클래스**(`active`)가 붙은 탭 링크의 텍스트 목록.
+ *
+ * `aria-current` 를 읽는 헬퍼와 **짝**이다. 둘을 따로 두는 이유는 실제 사고 때문이다 —
+ * TanStack `Link` 는 `activeProps` 를 주는 순간 기본값 `{ className: 'active' }` 를 통째로
+ * 대체하는데, `aria-current` 만 넘겨 두면 ARIA 는 맞고 **눈에 보이는 표시만 사라진다.**
+ */
+async function readVisuallyActiveLabels(): Promise<readonly string[]> {
+  const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+  return within(nav)
+    .getAllByRole('link')
+    .filter((link) => link.classList.contains('active'))
+    .map((link) => link.textContent ?? '')
+}
+
 describe('ProjectNavTabs', () => {
   it('aria-label="프로젝트 뷰 전환" nav를 렌더한다', async () => {
     renderTabs()
@@ -85,7 +100,7 @@ describe('ProjectNavTabs', () => {
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
-  it('정본 9탭을 순서대로 렌더한다 — 화면마다 다른 집합을 넘기지 않는다', async () => {
+  it('정본 10탭을 순서대로 렌더한다 — 화면마다 다른 집합을 넘기지 않는다', async () => {
     // 옛 계약(`links` prop 으로 board 2 · backlog 5)을 대체하는 자리다.
     const links = await renderAndReadLinks()
     expect(links.map(([label]) => label)).toEqual(PROJECT_VIEW_TABS.map((tab) => tab.label))
@@ -100,6 +115,9 @@ describe('ProjectNavTabs', () => {
     expect(links.get('백로그')).toBe('/projects/ATLAS/backlog')
     expect(links.get('컴포넌트')).toBe('/projects/ATLAS/settings/components')
     expect(links.get('버전')).toBe('/projects/ATLAS/settings/versions')
+    // 🛑 착지는 개별 차트가 아니라 4종 카드 목록이다(JR-2). `/reports/velocity` 로 새면
+    //    탭이 리포트 4종 중 하나를 임의로 고른 셈이 된다.
+    expect(links.get('리포트')).toBe('/projects/ATLAS/reports')
   })
 
   it('캘린더·대시보드·이슈도 프로젝트 스코프 경로로 간다 (편차 X9 폐기 · J5-12)', async () => {
@@ -113,10 +131,10 @@ describe('ProjectNavTabs', () => {
     expect(links.get('이슈')).toBe('/projects/ATLAS/issues')
   })
 
-  it('9탭 어느 것도 프로젝트 밖으로 나가지 않는다 (전수)', async () => {
+  it('10탭 어느 것도 프로젝트 밖으로 나가지 않는다 (전수)', async () => {
     // 위 두 단언은 이름을 아는 탭만 본다. 새 탭이 전역 경로로 추가되면 안 잡힌다.
     const links = await renderAndReadLinks()
-    expect(links.length).toBe(9)
+    expect(links.length).toBe(10)
 
     const escaping = links.filter(([, href]) => !href.startsWith('/projects/ATLAS'))
     expect(escaping).toEqual([])
@@ -204,6 +222,42 @@ describe('ProjectNavTabs', () => {
       expect(routerSaysActive, `${pathname} 에서 두 층의 판정이 다르다`).toEqual(pureFnSaysActive)
       unmount()
     }
+  })
+
+  it('활성 탭에 시각 강조 클래스가 함께 붙는다 — aria-current 만으로는 눈에 안 보인다', async () => {
+    // 🔴 **실제 프로덕션 결함의 재현 단언이다** (2026-09-08 브라우저 눈확인 실측).
+    //    `activeProps={{ 'aria-current': 'page' }}` 만 넘겼더니 TanStack 의 기본값
+    //    `{ className: 'active' }` 가 대체돼 `TAB_LINK_CLASS` 의 `[&.active]:` 규칙이 **한 줄도
+    //    발화하지 않았다.** `/projects/ATLAS/backlog` 에서 활성 탭의 fontWeight 가 400,
+    //    color 가 rgb(98,111,134) 로 비활성과 완전히 같았다.
+    // 🛑 그때 유닛은 **전부 초록**이었다 — `aria-current` 만 봤기 때문이다. 그래서 짝으로 둔다.
+    const scoped = PROJECT_VIEW_TABS.filter((tab) => tab.usesProjectParam)
+    expect(scoped.length).toBeGreaterThan(0)
+
+    for (const tab of scoped) {
+      const { unmount } = renderTabs({ pathname: resolveTabHref(tab, 'ATLAS') })
+
+      expect(await readVisuallyActiveLabels(), `${tab.key} 화면에서 시각 강조가 없다`).toEqual([
+        tab.label,
+      ])
+
+      unmount()
+    }
+  })
+
+  it('시각 강조와 aria-current 가 같은 탭에 붙는다 (두 표시가 갈리지 않는다)', async () => {
+    // 한쪽만 맞아도 「보는 사람」과 「듣는 사람」이 다른 화면을 갖는다.
+    renderTabs({ pathname: '/projects/ATLAS/reports/velocity' })
+
+    const nav = await screen.findByRole('navigation', { name: '프로젝트 뷰 전환' })
+    const ariaCurrent = within(nav)
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('aria-current') === 'page')
+      .map((link) => link.textContent)
+
+    // 리포트 하위 화면이라 리포트 탭이 활성이다 (exact:false · 채택 A-3).
+    expect(ariaCurrent).toEqual(['리포트'])
+    expect(await readVisuallyActiveLabels()).toEqual(['리포트'])
   })
 
   it('레이아웃이 없는 환경(jsdom)에서는 접히지 않고 「더 보기」도 남지 않는다', async () => {

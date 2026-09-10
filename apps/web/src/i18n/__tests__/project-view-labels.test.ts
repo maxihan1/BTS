@@ -202,6 +202,34 @@ describe('projectViewLabels × 본문 문구 — 한 화면 공존 쌍', () => {
     expect(scrumEmptyStateLabels.backlogLink).not.toBe(projectViewLabels.backlog)
   })
 
+  /**
+   * 리포트 화면 한정. 탭 `리포트` 와 같은 낱말이 **탭바 밖에** 둘 더 있고 둘 다 한 화면에 있다.
+   *
+   * | 공존 문구 | 관계 | 소유자 | role |
+   * |---|---|---|---|
+   * | `리포트 전환` | `리포트` ⊂ 값 | `ProjectReportsNav` 의 `aria-label` | `navigation` |
+   * | `리포트` | 값이 같다 | 리포트 착지 화면 제목 | `heading` |
+   *
+   * 🛑 두 문자열은 각자의 소스 파일이 `const` 로 소유하고 **export 하지 않는다**. 여기에
+   *    리터럴로 얼려 두는 것은 그래서다 — `ProjectReportsNav.test.tsx` 가 같은 근거로
+   *    `REPORTS_NAV_NAME` 을 리터럴로 갖고 있다. 탭 라벨 쪽을 개명하면 이 단언이 red 가 되어
+   *    「셋이 한 화면에 있다」는 사실을 다시 보게 만든다.
+   */
+  it('탭 `리포트` 는 role 이 다른 두 문구와 한 화면에 공존한다 (조회 규약 ④ 근거)', () => {
+    /** 🔒 `ProjectReportsNav.tsx` 의 `REPORTS_NAV_LABEL` */
+    const reportsNavLabel = '리포트 전환'
+    /** 🔒 `routes/projects.$projectKey.reports.index.tsx` 의 `REPORTS_INDEX_TITLE` */
+    const reportsIndexTitle = '리포트'
+
+    expect(reportsNavLabel).toContain(projectViewLabels.reports)
+    expect(reportsNavLabel).not.toBe(projectViewLabels.reports)
+    expect(reportsIndexTitle).toBe(projectViewLabels.reports)
+
+    // 관리 수단은 **role 지정**이다. 셋의 role 이 link/navigation/heading 으로 갈려 있어
+    // `getByRole('link', { name: '리포트', exact: true })` 는 탭 하나만 잡는다.
+    // 🛑 `getByText('리포트')` 처럼 role 을 안 쓰면 착지 화면에서 2건이 잡혀 strict mode 위반이다.
+  })
+
   it('그 밖의 탭 라벨은 빈 상태의 **조작 가능한** 이름과 substring 관계가 아니다', () => {
     /**
      * 대조 범위를 링크·버튼 이름으로 좁힌다.

@@ -161,7 +161,6 @@ const EXPECTED_OUT = [
   'components/dashboard/DashboardTile.tsx::P6',
   'components/dashboard/GadgetCatalogModal.tsx::P5',
   'components/issue/meta/AssigneeUserList.tsx::P5',
-  'components/layout/ProjectTree.tsx::P6',
   'components/project/ProjectLeadSelect.tsx::P5',
   'features/calendar/MonthGrid.tsx::P6',
   'routes/inbox.tsx::P4',

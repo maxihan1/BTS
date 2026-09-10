@@ -1,6 +1,6 @@
-// 전역 좌측 사이드바 — 메인 nav(이슈·대시보드·캘린더·즐겨찾기·최근 항목) + 그 아래 스페이스 트리(J2). 관리 nav 는 J9 로 상단바 허브로 이관
+// 전역 좌측 사이드바 — 메인 nav(이슈·대시보드·캘린더·즐겨찾기·최근 항목) + 그 아래 스페이스 트리(J2, 설정 서브앱에서는 설정 메뉴로 교체). 관리 nav 는 J9 로 상단바 허브로 이관
 import { type JSX } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useParams, useRouterState } from '@tanstack/react-router'
 import { CircleDot, LayoutDashboard, Calendar, UserCheck, type LucideIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useAuthUser } from '@/auth/authStore'
@@ -14,6 +14,8 @@ import {
 import { FavoritesMenu } from '@/components/favorite/FavoritesMenu'
 import { RecentIssuesMenu } from '@/components/issue/RecentIssuesMenu'
 import { navLabels } from '@/i18n/nav-labels'
+import { ProjectSettingsNav } from '@/components/project/ProjectSettingsNav'
+import { resolveProjectShellMode } from '@/components/project/project-shell-mode'
 import { ProjectTree } from './ProjectTree'
 import { SidebarResizeHandle } from './SidebarResizeHandle'
 import { Button } from '@/components/ui/button'
@@ -97,6 +99,15 @@ const ISSUES_ACTIVE_OPTIONS: Record<string, { exact: boolean } | undefined> = {
  * 옮겼고, 링크 목록의 정본은 `routes/admin.index.tsx` 의 `ADMIN_HUB_LINKS` 하나다.
  * 사이드바에 다시 넣지 마라 — 같은 7링크를 두 곳이 들고 있던 상태로 되돌아간다.
  *
+ * ### 설정 서브앱에서는 트리 자리만 바뀐다 (JS-2 · ★결정)
+ * `resolveProjectShellMode(pathname, projectKey) === 'settings'` 이면 {@link ProjectTree} 대신
+ * `ProjectSettingsNav` 가 선다. **`메인 메뉴` nav 는 그대로 남긴다** — Maxi 결정 「사이드바 전체
+ * 교체」가 가리키는 것은 «프로젝트 트리» 자리이고, 전역 링크까지 지우면 이 저장소에서는
+ * 이슈·대시보드·캘린더가 **1클릭으로 닿지 않게 된다**. Jira 는 전역 항목을 상단바가 함께
+ * 이고 있어 설정에서 사이드바를 통째로 갈아도 도달성이 유지되지만, BTS `TopBar` 는
+ * 프로젝트 스위처·검색·만들기·관리 허브·계정뿐이라 그 대체 경로가 없다. 도달성을 줄이지
+ * 않는 쪽을 골랐고, 이것은 Task 4 도달성 판별식이 지키는 성질과 같은 종류다.
+ *
  * `메인 메뉴` nav는 항상 렌더된다. 접힘 상태는 {@link useSidebarRailCollapsed}로 소비하며,
  * 각 nav 링크는 lucide 아이콘(`aria-hidden`) + 텍스트 라벨로 구성된다 — 펼침 시 아이콘·텍스트
  * 둘 다 보이고, 접힘(64px) 시 텍스트는 `sr-only`로 시각적으로만 숨겨 진짜 아이콘 레일이 되며
@@ -105,6 +116,15 @@ const ISSUES_ACTIVE_OPTIONS: Record<string, { exact: boolean } | undefined> = {
  */
 export function Sidebar(): JSX.Element {
   const user = useAuthUser()
+  // ── 셸 모드 — 트리인가 설정 서브앱인가 (JS-2) ────────────────────────────────────
+  // 🛑 **판정식을 여기 다시 쓰지 마라.** `pathname.includes('/settings/')` 같은 사본을 두면
+  //    `컴포넌트`·`버전`(편차 X-N2) 예외를 위해 분기가 하나 더 붙고, 그 분기는
+  //    `PROJECT_SETTINGS_NAV` 와 서로를 검사하지 않는 **두 번째 목록**이 된다.
+  //    사이드바와 탭바(`ProjectViewChrome`)가 `resolveProjectShellMode` **한 함수**를 공유하므로
+  //    그 함수를 뒤집으면 두 쪽 테스트가 함께 red 다 — 완료기준 A-4 가 그것을 단언한다.
+  const { projectKey } = useParams({ strict: false })
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const shellMode = resolveProjectShellMode(pathname, projectKey)
   const drawerOpen = useSidebarDrawer((state) => state.open)
   const toggle = useSidebarToggle()
   const sidebarShown = useSidebarShown()
@@ -224,8 +244,16 @@ export function Sidebar(): JSX.Element {
         {/* 🛑 스페이스 트리는 `메인 메뉴` nav **아래**다 (Jira 패리티 캠페인 PR ⑩ · J2).
             Jira 새 네비게이션은 전역 항목(내 작업·이슈·대시보드)을 먼저 두고 그 아래에
             스페이스 목록을 늘어놓는다. 트리는 프로젝트 수만큼 길어지므로 위에 두면 매일 여는
-            전역 링크가 스크롤 밖으로 밀린다 — 순서가 곧 도달 비용이다. */}
-        <ProjectTree />
+            전역 링크가 스크롤 밖으로 밀린다 — 순서가 곧 도달 비용이다.
+
+            설정 서브앱에서는 이 자리가 `ProjectSettingsNav` 로 **교체**된다 (JS-2).
+            `projectKey !== undefined` 는 판정이 아니라 **타입 좁히기**다 —
+            `resolveProjectShellMode` 가 키 부재를 이미 `'tree'` 로 떨어뜨린다(★리뷰 E-4). */}
+        {shellMode === 'settings' && projectKey !== undefined ? (
+          <ProjectSettingsNav projectKey={projectKey} />
+        ) : (
+          <ProjectTree />
+        )}
 
         {/* 🛑 `useSidebarCollapsed().toggle` 을 직접 물리지 마라 — 모바일에서 무동작 버튼이 된다.
           폭에 따른 대상 선택은 `useSidebarToggle` 한 곳이 소유한다(상단바 버튼·`[` 단축키와 동일). */}

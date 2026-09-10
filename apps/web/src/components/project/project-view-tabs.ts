@@ -1,4 +1,4 @@
-// 프로젝트 뷰 탭 정본 9종 + 활성 판정 순수 함수 (Jira 패리티 J5 · 캠페인 PR ⑤)
+// 프로젝트 뷰 탭 정본 10종 + 활성 판정 순수 함수 (Jira 패리티 J5 · JR-1)
 import { projectViewLabels } from '@/i18n/project-view-labels'
 
 /**
@@ -17,6 +17,7 @@ export type ProjectViewTabKey =
   | 'components'
   | 'issues'
   | 'versions'
+  | 'reports'
 
 /** 탭 1개의 정의 — 전부 데이터다(함수 없음). PR ⑦ 이 그대로 직렬화해 서버 설정과 대조한다 */
 export interface ProjectViewTab {
@@ -29,7 +30,7 @@ export interface ProjectViewTab {
   /**
    * `$projectKey` path param 을 받는가.
    *
-   * 편차 X9 폐기(2026-09-07) 이후 **정본 9탭은 전부 `true`** 다. 축 자체는 남긴다 — `Link` 에
+   * 편차 X9 폐기(2026-09-07) 이후 **정본 10탭은 전부 `true`** 다. 축 자체는 남긴다 — `Link` 에
    * 그 라우트가 모르는 param 을 넘기면 TanStack 이 조용히 무시하는데, 무시에 기대면 라우트가
    * 나중에 param 을 갖게 될 때 엉뚱한 값이 실린다. 전역 탭이 다시 생기는 날의 안전장치다.
    */
@@ -46,7 +47,7 @@ export interface ProjectViewTab {
 }
 
 /**
- * 기본 탭 9종 — **이 순서가 정본이다** (Maxi 확정 2026-09-03, 목업 v2 + 백로그 1건 추가).
+ * 기본 탭 10종 — **이 순서가 정본이다** (Maxi 확정 2026-09-03 목업 v2 + 백로그 · 2026-09-08 리포트).
  *
  * ### Jira 대조 (조회일 2026-09-03 · 전부 Cloud)
  * - 탭이 수평 나열이고 집합은 스페이스 유형·활성 기능에 달렸다 — "depend on your space's type
@@ -57,12 +58,21 @@ export interface ProjectViewTab {
  * - 「스프린트」라는 탭은 **없다**. 스프린트는 백로그 화면 안에서 계획된다 — "In Jira scrum
  *   spaces, sprints are planned on the Backlog screen" ([use your scrum backlog])
  *
+ * ### 리포트 탭 (JR-1·JR-3 · 조회일 2026-09-08 · Cloud)
+ * 리포트는 **스페이스 내비게이션(수평 탭)** 에서 연다 — "Select **Reports** from the space
+ * navigation" ([generate a report]). 신 내비게이션 문서의 사이드바 항목 열거에는 Reports 가
+ * 아예 없다 ([what is the new navigation in Jira]). 그래서 사이드바 트리의 리포트 그룹을
+ * 이 탭 한 행이 대신한다.
+ *
+ * [generate a report]: https://support.atlassian.com/jira-software-cloud/docs/generate-a-report/
+ * [what is the new navigation in Jira]: https://support.atlassian.com/jira-software-cloud/docs/what-is-the-new-navigation-in-jira/
+ *
  * ### 편차 X9 는 폐기됐다 (Maxi 확정 2026-09-07)
  * 한때 캘린더·대시보드·이슈 세 탭이 전역 라우트(`/calendar`·`/dashboards`·`/issues`)를 가리켰고,
  * `ProjectViewChrome` 의 마운트 조건이 `params.projectKey` 라 **누르는 순간 헤더와 탭바가
  * 통째로 사라졌다.** Jira 는 캘린더·목록도 스페이스 안의 탭이라 눌러도 스페이스 크롬이 남는다
  * (J5-12 · 실물 조회 2026-09-07). 그래서 `router.ts` 에 프로젝트 스코프 형제 라우트 3종을
- * 신설하고 **9탭 전부가 `$projectKey` 를 받는다**.
+ * 신설하고 **10탭 전부가 `$projectKey` 를 받는다**.
  *
  * ⚠️ 남은 편차는 **X-J5-13** 이다 — 프로젝트 캘린더·대시보드는 *탐색* 패리티까지고 내용은
  * 아직 프로젝트로 좁히지 않는다(백킹 API 에 프로젝트 축이 없다). 근거와 대안 기각 사유는
@@ -136,6 +146,18 @@ export const PROJECT_VIEW_TABS: readonly ProjectViewTab[] = [
     usesProjectParam: true,
     exact: false,
   },
+  {
+    // 🛑 **맨 끝이 자리다.** 위치가 오버플로에서 무엇이 접히는지를 정하는데 Jira 는 Reports 의
+    //    순서를 문서로 못박지 않는다(JR-1·JR-3 어느 쪽도 서술 없음). 끝에 두면 기존 9탭의
+    //    인덱스가 그대로라 `resolveActiveTabIndex`·핀 고정의 회귀 표면이 최소다.
+    // 🛑 `exact: false` 여야 한다 — 리포트 4화면(`/reports/velocity` 등)에서도 이 탭이 활성이고
+    //    탭바가 남아야 한다(채택 A-3). 리포트는 «탭»이므로 자기 하위에서 자기를 지우면 안 된다.
+    key: 'reports',
+    to: '/projects/$projectKey/reports',
+    label: projectViewLabels.reports,
+    usesProjectParam: true,
+    exact: false,
+  },
 ]
 
 /**
@@ -159,7 +181,7 @@ export function resolveTabHref(tab: ProjectViewTab, projectKey: string): string 
  *    지키고 규칙을 바꿔도 red 가 안 난다 — 이 저장소가 반복 적발한 「두 목록이 서로를 검사하지
  *    않는다」 양식이다.
  *
- * ⚠️ **접두 분기는 지금 실 라우트로는 관측되지 않는다.** 정본 9탭의 목적지가 전부 말단 경로라
+ * ⚠️ **접두 분기의 관측 표면은 리포트 탭 하나다.** 나머지 9탭의 목적지가 전부 말단 경로라
  *    `/projects/ATLAS/board/…` 같은 하위 라우트가 아직 없다(실측 — 이 분기를 완전 일치로 바꿔도
  *    라우트 전수 판별식이 통과했다). 그래서 이 규칙은 **직접 단위 테스트**가 지킨다
  *    (`project-view-tabs.test.ts` §isTabActive). 하위 라우트가 생기는 날을 위한 대비다.
@@ -185,7 +207,7 @@ export function isTabActive(tab: ProjectViewTab, pathname: string, projectKey: s
  *
  * @param pathname 현재 URL 의 pathname (search·hash 없음)
  * @param projectKey 지금 보고 있는 프로젝트 키
- * @param tabs 판정 대상 탭 목록. 기본값은 정본 9종
+ * @param tabs 판정 대상 탭 목록. 기본값은 정본 10종
  * @returns 활성 탭 인덱스. 어느 탭에도 안 걸리면 `-1`
  */
 export function resolveActiveTabIndex(

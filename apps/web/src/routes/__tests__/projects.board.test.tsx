@@ -1152,7 +1152,7 @@ describe('BoardPage', () => {
    *
    * 옛 단언은 보드 페이지가 인라인으로 심은 2링크(백로그·타임라인)를 봤다. 백로그 페이지는
    * 5링크였고 집합이 서로 달랐다 — 화면마다 다른 항법이 이 PR 이 없앤 결함이다.
-   * 지금은 `ShellLayout` 안의 `ProjectViewChrome` 이 정본 9탭을 소유한다.
+   * 지금은 `ShellLayout` 안의 `ProjectViewChrome` 이 정본 10탭을 소유한다.
    *
    * 페이지가 다시 심으면 nav 가 두 개가 되어 `getByRole('navigation')` 이 strict mode 로 죽는다.
    */

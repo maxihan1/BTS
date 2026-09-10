@@ -111,7 +111,9 @@ export const SURFACES = {
   },
   GUARD_CI: {
     globs: [
-      '.github/workflows/**',
+      // ★`.github/workflows/**` 를 지웠다(2026-09-09 · P4b). CI 정본이 젠킨스로 옮겨지고
+      //   워크플로우 4종을 철거해 **아무 파일도 안 무는 죽은 글로브**가 됐다.
+      //   그 자리는 아래 `Jenkinsfile` · `infra/jenkins/**` 가 잇는다.
       '.husky/**',
       'scripts/verify-*.sh',
       'scripts/verify/**',
@@ -122,9 +124,17 @@ export const SURFACES = {
       // 동일성을 판별식이 강제하는데, 없으면 그 배포 스크립트만 바꾸는 PR 이 표면 0 →
       // 기본 T1 로 떨어져 훅 쪽(T2)과 절차 강도가 갈린다.
       'infra/deploy/**',
+      // 호스트 노출면을 정하는 자리. Docker 는 publish 포트를 `INPUT` 정책 밖으로 빼므로
+      // 여기 한 줄이 방화벽 전체보다 넓게 작동한다 — `-j DROP` 을 지우는 1행 변경이
+      // 표면 0 → T1 로 통과하면 리뷰 1종·계획 0 으로 노출면이 열린다.
+      'infra/security/**',
+      // CI/CD 정의 정본. `.github/workflows/**` 가 여기 있는 것과 같은 이유다 —
+      // 파이프라인이 무엇을 돌리는지를 정하는 자리라 1행 변경이 검증 전체를 끌 수 있다.
+      'infra/jenkins/**',
+      'Jenkinsfile',
     ],
     tier: 'T2',
-    note: '강제 장치 4층 — CI · 훅 · 판별식·생성기 · 배포 게이트. 여기가 조용히 망가지면 나머지 전부가 눈이 먼다',
+    note: '강제 장치 5층 — CI · 훅 · 판별식·생성기 · 배포 게이트 · 호스트 노출면. 여기가 조용히 망가지면 나머지 전부가 눈이 먼다',
   },
   SHELL: {
     globs: ['apps/web/src/routes/__root.tsx', 'apps/web/src/routes/admin.*'],

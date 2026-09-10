@@ -31,7 +31,13 @@ const SETTINGS_PAGE_CLASS = 'p-8 space-y-6 max-w-2xl'
 
 const detailsLabels = {
   page: {
-    fallbackHeading: '프로젝트 설정',
+    /**
+     * 본문 헤딩 — **화면 이름**이지 프로젝트명이 아니다 (Jira 패리티 J5-11).
+     *
+     * 🔒 설정 메뉴의 `settings/details` 항목 라벨(`PROJECT_SETTINGS_NAV`)과 같은 값이어야
+     * 한다. 사이드바에서 고른 이름과 본문 제목이 다르면 「내가 누른 게 이 화면이 맞나」가 된다.
+     */
+    heading: '상세정보',
     description: '프로젝트 이름을 변경하고 아카이브 상태를 관리합니다.',
     loading: '로딩 중...',
     loadError: '프로젝트를 불러오지 못했습니다.',
@@ -77,7 +83,8 @@ interface ProjectDetailsSettingsPageProps {
  *   동일하게 {@link ProjectNotFoundScreen}으로 처리해 프로젝트 존재 여부를 노출하지 않는다(S6 동형).
  * - MANAGE_COMPONENTS 권한(useProjectPermissions)이 true일 때만 이름 편집·아카이브 액션이
  *   활성화된다(=PROJECT_ADMIN, fail-closed — isomorphic-clone-permission-guard-gap 재발 방지).
- * - h1은 프로젝트명(로드 완료 시) 또는 "프로젝트 설정"(로딩/폴백) — PageHeader가 단독 소유.
+ * - 본문 헤딩은 `<h2>` **화면 이름**(`상세정보`)이다. 문서 `<h1>`(=프로젝트명)은 셸의
+ *   `ProjectViewHeader` 가 단독 소유하고, 뷰는 자기 제목을 다시 쓰지 않는다(J5-11).
  *
  * 라우터 의존 없이 props로 projectKey를 받아 단위 테스트가 가능하다.
  */
@@ -120,11 +127,14 @@ export function ProjectDetailsSettingsPage({
 
   return (
     <div className={SETTINGS_PAGE_CLASS}>
-      {/* h1 문구는 한 글자도 바꾸지 않는다 — 컨테이너 정렬만 형제 탭에 맞춘다(F21 성공 조건). */}
+      {/* 🛑 여기에 프로젝트명을 다시 쓰지 마라 (J5-11 「뷰는 자기 제목을 다시 쓰지 않는다」).
+          셸 헤더가 바로 위에서 `<h1>{프로젝트명}</h1>` 을 내고 설정 서브앱에서는 그 아래
+          「프로젝트 설정」 부제까지 붙으므로, 본문이 이름을 또 쓰면 화면이 **「이름 / 프로젝트
+          설정 / 이름」**으로 읽힌다. `ProjectSummaryPage` 가 2026-09-07 에 같은 이유로 자기
+          제목을 지웠고 이 화면만 그 처방을 늦게 받았다. 컨테이너 정렬은 형제 설정 화면에
+          맞춘 그대로 둔다(F21 성공 조건). */}
       <header className="space-y-1">
-        <h2 className="text-xl font-semibold">
-          {project?.name ?? detailsLabels.page.fallbackHeading}
-        </h2>
+        <h2 className="text-xl font-semibold">{detailsLabels.page.heading}</h2>
         <p className="text-muted-foreground text-sm">{detailsLabels.page.description}</p>
       </header>
       {isLoading || project === undefined ? (

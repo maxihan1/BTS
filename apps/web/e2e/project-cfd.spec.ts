@@ -11,12 +11,12 @@
 //     (backlog-fixtures.ts / velocity-handlers.ts와 동일 projectKey='ATLAS') 별도 시드 스크립트가 불필요하다.
 //
 // 시나리오.
-//   S1. 백로그 페이지 "프로젝트 뷰 전환" nav의 "누적 흐름도" 링크 클릭 → 라우트 이동(URL) + 차트 컨테이너 표시.
+//   S1. 백로그 페이지 → 탭바 "리포트" 탭 → 착지 화면 "누적 흐름도(CFD)" 카드 클릭 → 라우트 이동(URL) + 차트 컨테이너 표시.
 //   S2. PROJECT-EMPTY 프로젝트의 CFD 페이지 직접 진입 → 빈 상태 안내 문구 표시, 차트 컨테이너 미표시.
 
 import { test, expect } from '@playwright/test'
 import { loginAsAlice } from './fixtures/issue-fixtures'
-import { openProjectReportFromSidebar, projectViewNav } from './fixtures/project-view-tabs'
+import { clickProjectViewTab, projectViewNav } from './fixtures/project-view-tabs'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수 — backlog-fixtures.ts DEFAULT_BACKLOG / cfd-handlers.ts DEFAULT_CFD와 동기화
@@ -34,21 +34,26 @@ const EMPTY_PROJECT_KEY = 'PROJECT-EMPTY'
 /** 빈 CFD 프로젝트의 CFD 페이지 URL */
 const EMPTY_CFD_URL = `/projects/${EMPTY_PROJECT_KEY}/reports/cfd`
 
+/** 정본 탭바의 리포트 탭 라벨 — `i18n/project-view-labels.ts` 의 `reports` 와 같은 값이어야 한다 */
+const REPORTS_TAB_LABEL = '리포트'
+
 /**
- * 사이드바 트리 `리포트` 그룹의 CFD 링크 라벨 (`ProjectTree.tsx` `REPORT_LINKS` 미러).
+ * 리포트 착지 카드/서브내비의 CFD 라벨
+ * (`components/project/project-report-links.ts` 의 `PROJECT_REPORT_LINKS` 미러).
  *
  * 아래 `labels.nav.cfdLink`(`누적 흐름도`)와 **다른 문자열**이다 — 옛 백로그 인라인 nav 와
- * 사이드바가 각자 이름을 갖고 있었고, 인라인 쪽이 J5 로 없어지면서 사이드바 것만 남았다.
- * 둘을 하나로 합치는 것은 이 PR 범위 밖이라 차이를 여기에 명시해 둔다.
+ * 리포트 목록이 각자 이름을 갖고 있었고, 인라인 쪽이 J5 로 없어지면서 목록 것만 남았다.
+ * 이 PR 로 그 목록의 집이 사이드바 트리에서 `project-report-links.ts` 로 옮겨졌을 뿐
+ * **문자열은 그대로**다. 둘을 하나로 합치는 것은 여전히 범위 밖이라 차이를 여기 명시해 둔다.
  */
-const SIDEBAR_CFD_LABEL = '누적 흐름도(CFD)'
+const REPORT_CARD_CFD_LABEL = '누적 흐름도(CFD)'
 
 /**
  * 화면 문구 미러.
  *
  * ★`nav.cfdLink` 의 정본이 **바뀌었다.** 옛 정본 `backlogLabels.page.cfdLink` 는 Jira 패리티
- * J5 로 백로그 인라인 nav 가 사라지며 함께 지워졌다. 사이드바 라벨은 `누적 흐름도(CFD)` 로
- * 이 값과 **다르므로** 위 `SIDEBAR_CFD_LABEL` 을 따로 둔다 — 이 값은 페이지 문구 전용이다.
+ * J5 로 백로그 인라인 nav 가 사라지며 함께 지워졌다. 리포트 목록 라벨은 `누적 흐름도(CFD)` 로
+ * 이 값과 **다르므로** 위 `REPORT_CARD_CFD_LABEL` 을 따로 둔다 — 이 값은 페이지 문구 전용이다.
  */
 const labels = {
   page: {
@@ -75,26 +80,26 @@ test.describe('FR-RP-03 D6/D7 프로젝트 누적 흐름도(CFD)', () => {
   //
   // Given  alice로 로그인, DEFAULT_BACKLOG 자동 시드(ATLAS 프로젝트)
   //        cfd-handlers.ts DEFAULT_CFD 자동 시드(동일 projectKey='ATLAS', 30일 시계열)
-  // When   /projects/ATLAS/backlog 진입 → "프로젝트 뷰 전환" nav의 "누적 흐름도" 링크 클릭
+  // When   /projects/ATLAS/backlog 진입 → 탭바 "리포트" 탭 → 착지 화면 "누적 흐름도(CFD)" 카드 클릭
   // Then   URL이 /projects/ATLAS/reports/cfd 로 이동
   //        CFD 페이지 헤더(h1) + 차트 컨테이너(role="img") 표시
   // ───────────────────────────────────────────────────────────────────────────
-  test('S1 백로그 "프로젝트 뷰 전환" nav "누적 흐름도" 클릭 → 라우트 이동 + 차트 컨테이너 표시', async ({ page }) => {
+  test('S1 백로그 → 탭바 "리포트" → 착지 화면 "누적 흐름도(CFD)" 카드 클릭 → 라우트 이동 + 차트 컨테이너 표시', async ({ page }) => {
     // Given. alice 로그인 + 백로그 페이지 진입
     await loginAsAlice(page)
     await page.goto(BACKLOG_URL)
 
-    // Given. 리포트는 **탭이 아니다** (Jira 패리티 J5). 탭바가 정본 9탭으로 통합되면서 백로그
-    //        인라인 nav 의 리포트 3링크가 사라졌고, 남은 UI 경로는 사이드바 트리의 `리포트`
-    //        그룹 하나다. 여기서는 탭바가 떠 있는 것만 확인한다 — 「탭바에 리포트 링크가
-    //        없다」는 정본 9탭 순서 단언(`project-view-tabs.test.ts`)이 더 강하게 지킨다.
+    // Given. 리포트는 **이제 탭이다** (Jira JR-1·JR-3 — "Select Reports from the space
+    //        navigation." · 신 내비게이션 사이드바 항목 열거에 Reports 부재). 종전 진입로였던
+    //        사이드바 트리 `리포트` 그룹은 이 PR 로 사라졌다. 탭바가 떠 있는 것부터 확인한다.
     await expect(projectViewNav(page)).toBeVisible()
 
-    // When. 사이드바 리포트 그룹에서 링크 클릭 (SPA 내부 이동 — goto 금지, MSW store 리셋)
-    // 🛑 사이드바 라벨은 `누적 흐름도(CFD)` 로 옛 인라인 nav 라벨(`누적 흐름도`)과 **다르다.**
-    //    두 목록이 각자 이름을 갖고 있었고, 인라인 쪽이 없어지면서 사이드바 것만 남았다.
-    const cfdLink = await openProjectReportFromSidebar(page, 'Atlas 프로젝트', SIDEBAR_CFD_LABEL)
-    await cfdLink.click()
+    // When ①. 탭바 `리포트` 탭 → 착지 화면 (SPA 내부 이동 — 🛑 goto 금지, MSW store 리셋)
+    await clickProjectViewTab(page, REPORTS_TAB_LABEL)
+
+    // When ②. 착지 화면의 CFD 카드 클릭 — 착지는 개별 차트가 아니라 목록이다(JR-2).
+    // 🛑 카드 라벨은 `누적 흐름도(CFD)` 로 옛 인라인 nav 라벨(`누적 흐름도`)과 **다르다.**
+    await page.getByRole('main').getByRole('link', { name: REPORT_CARD_CFD_LABEL }).click()
 
     // Then. URL이 CFD 라우트로 이동
     // SPA 클라이언트 라우팅(history.pushState)이라 waitForURL(glob) 기본 waitUntil='load' 이벤트가

@@ -68,8 +68,44 @@ class AutomationActionRepository(
     fun findByRuleId(ruleId: UUID): List<Action> =
         jdbc.query(SQL_FIND_BY_RULE_ID, MapSqlParameterSource(PARAM_RULE_ID, ruleId), ActionRowMapper)
 
+    /**
+     * [ruleIds] 룰들의 액션을 **한 번의 쿼리로** 조회해 룰별로 묶어 돌려준다(N+1 제거).
+     *
+     * ## 왜 배치인가 — 2코어 VM 실측이 강제했다 (2026-09-09)
+     *
+     * `AutomationRuleService.analyzeProjectConflicts` 는 규칙마다 [findByRuleId] 를 불렀다.
+     * 스펙(`docs/specs/2026-07-13-fr-at-04-conflict-analysis.md`)이 「N+1은 허용하되 100규칙 1s
+     * 임계 내」라고 **조건부 허용**했는데, 그 조건이 깨진 것이 젠킨스 이전에서 드러났다.
+     *
+     * | n | find | hydrate(N+1) | analyze(CPU) |
+     * |---|---|---|---|
+     * | 100 | 19ms | **2,331ms** | 7ms |
+     * | 200 | 17ms | **4,152ms** | 16ms |
+     *
+     * 왕복 1회당 약 11.6ms · 전체의 **98.9%**. 쿼리가 느린 게 아니라 **왕복이 많다** —
+     * 같은 100건을 `find` 는 한 번에 19ms 에 가져온다. CPU 분석은 O(n²)인데도 7ms 라
+     * 손댈 이유가 없다(추측으로 그쪽을 고쳤으면 헛수고였다).
+     *
+     * ★액션이 0건인 룰은 **키 자체가 없다**(빈 리스트가 아니다). 호출자는 `?: emptyList()` 로
+     *   받는다 — 없는 키와 빈 리스트를 둘 다 만들면 「없음」의 표현이 두 가지가 된다.
+     *
+     * @param ruleIds 대상 룰 id 목록. 비면 DB 를 치지 않고 빈 맵을 돌려준다.
+     * @return `ruleId -> position ASC 정렬된 액션 목록`. 액션이 없는 룰은 키가 없다.
+     */
+    @Transactional(readOnly = true)
+    fun findByRuleIds(ruleIds: Collection<UUID>): Map<UUID, List<Action>> {
+        if (ruleIds.isEmpty()) return emptyMap()
+        val rows =
+            jdbc.query(SQL_FIND_BY_RULE_IDS, MapSqlParameterSource(PARAM_RULE_IDS, ruleIds)) { rs, rowNum ->
+                rs.getObject(COLUMN_RULE_ID, UUID::class.java) to ActionRowMapper.mapRow(rs, rowNum)
+            }
+        return rows.groupBy({ it.first }, { it.second })
+    }
+
     private companion object {
         const val PARAM_RULE_ID = "ruleId"
+        const val PARAM_RULE_IDS = "ruleIds"
+        const val COLUMN_RULE_ID = "rule_id"
 
         const val SQL_DELETE_BY_RULE_ID = "DELETE FROM automation_actions WHERE rule_id = :ruleId"
 
@@ -83,6 +119,15 @@ class AutomationActionRepository(
             FROM automation_actions
             WHERE rule_id = :ruleId
             ORDER BY position ASC
+        """
+
+        // ★`rule_id` 를 함께 뽑는다 — 단건 조회와 달리 어느 룰 것인지 결과에서 알아야 한다.
+        //   정렬은 (rule_id, position) 이어야 룰별 묶음 안에서 position 순서가 보장된다.
+        const val SQL_FIND_BY_RULE_IDS = """
+            SELECT rule_id, action_type, action_config
+            FROM automation_actions
+            WHERE rule_id IN (:ruleIds)
+            ORDER BY rule_id, position ASC
         """
     }
 }
