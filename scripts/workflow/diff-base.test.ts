@@ -30,7 +30,7 @@
 //
 // 같은 기준 계산이 **5벌**이었다(TS 4 + Jenkinsfile 1). 다섯이 동시에 같은 방식으로
 // 틀렸고 서로를 검사하지 않았다 — 이 저장소가 이름 붙인 「두 목록」의 5중판이다.
-import { test, describe } from 'node:test';
+import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -79,6 +79,27 @@ function fixture(): { dir: string; a: string; b: string } {
 const cleanup = (dir: string) => fs.rmSync(dir, { recursive: true, force: true });
 
 describe('비교 기준 — 행동을 잰다', () => {
+  /*
+   * ★★픽스처는 환경을 상속하면 안 된다 (2026-09-10 · 젠킨스 #34 에서 red).
+   *
+   *   젠킨스는 `BTS_DIFF_BASE` 에 **직전 성공 빌드의 커밋**을 심는다. 그 SHA 는 이
+   *   임시 저장소에 존재하지 않으므로 `resolveDiffBase` 가 `null` 을 낸다 —
+   *   설계대로다(못 풀면 모르는 것이고, 호출자는 전량으로 넓힌다).
+   *
+   *   문제는 **로컬에서는 그 변수가 없어서 초록이었다**는 것이다. 같은 테스트가
+   *   기계마다 다른 답을 냈다. 「내 노트북에서는 됐는데」의 판별식판이고,
+   *   이 저장소가 이름 붙인 「가짜 초록」과 같은 방향의 고장이다.
+   */
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env['BTS_DIFF_BASE'];
+    delete process.env['BTS_DIFF_BASE'];
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env['BTS_DIFF_BASE'];
+    else process.env['BTS_DIFF_BASE'] = saved;
+  });
+
   test('★★main 위(origin/main == HEAD)에서 「변경 없음」이 아니라 직전 커밋과 비교한다', () => {
     const { dir, a, b } = fixture();
     try {
@@ -124,8 +145,8 @@ describe('비교 기준 — 행동을 잰다', () => {
   });
 
   test('★BTS_DIFF_BASE 가 있으면 그것이 이긴다 (CI 가 직전 성공 커밋을 안다)', () => {
+    // 원복은 위의 afterEach 가 한다 — 여기서 또 하면 두 곳이 같은 것을 관리하게 된다.
     const { dir, a, b } = fixture();
-    const saved = process.env['BTS_DIFF_BASE'];
     try {
       git(dir, ['update-ref', 'refs/remotes/origin/main', b]);
       git(dir, ['checkout', '-q', '--detach', b]);
@@ -133,8 +154,6 @@ describe('비교 기준 — 행동을 잰다', () => {
 
       assert.equal(resolveDiffBase(dir), a, 'BTS_DIFF_BASE 를 안 본다.');
     } finally {
-      if (saved === undefined) delete process.env['BTS_DIFF_BASE'];
-      else process.env['BTS_DIFF_BASE'] = saved;
       cleanup(dir);
     }
   });
