@@ -1,6 +1,6 @@
 // 워크플로우 목록 조회 훅 + 상태 옵션 추출 순수 함수 (FR-SR-01 Task 3)
 import { useQuery } from '@tanstack/react-query'
-import { fetchWorkflows } from '@/api/workflows'
+import { fetchWorkflows, fetchProjectWorkflows } from '@/api/workflows'
 import type { WorkflowView } from '@/api/workflows'
 
 /** 워크플로우 상태 옵션 — 필터 UI 표시용 */
@@ -34,6 +34,33 @@ export function useWorkflows() {
     queryKey: WORKFLOW_QUERY_KEY,
     queryFn: () => fetchWorkflows(),
     staleTime: STALE_TIME_MS,
+  })
+}
+
+/**
+ * 프로젝트 워크플로우 queryKey — 프로젝트마다 캐시를 가른다.
+ *
+ * ★[WORKFLOW_QUERY_KEY] 를 접두로 둔다. 관리 화면의 쓰기 훅이
+ * `invalidateQueries({ queryKey: WORKFLOW_QUERY_KEY })` 로 무효화하면 프로젝트 목록까지 함께
+ * 걷힌다 — 캐시를 따로 만들면 「편집했는데 프로젝트 화면이 안 바뀐다」가 되고 화면에서만 드러난다.
+ */
+export const projectWorkflowQueryKey = (projectKey: string) =>
+  [...WORKFLOW_QUERY_KEY, 'project', projectKey] as const
+
+/**
+ * 프로젝트가 쓸 수 있는 워크플로우 목록을 조회한다 — 전역 공유 + 그 프로젝트 전용.
+ *
+ * GET /api/v1/projects/{projectKey}/workflows → WorkflowView[]
+ *
+ * ★[useWorkflows] 를 프로젝트 화면에서 쓰지 않는다. 그쪽은 권한 게이트가 없는 전량 목록이라
+ * 남의 프로젝트 전용 워크플로우가 보인다(FR-WF-08).
+ */
+export function useProjectWorkflows(projectKey: string) {
+  return useQuery({
+    queryKey: projectWorkflowQueryKey(projectKey),
+    queryFn: () => fetchProjectWorkflows(projectKey),
+    staleTime: STALE_TIME_MS,
+    enabled: projectKey !== '',
   })
 }
 

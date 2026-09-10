@@ -67,6 +67,7 @@ describe('useWorkflowDetail', () => {
             description: '',
             states: [{ key: 'todo', name: '할 일', category: 'TODO', displayOrder: 0 }],
             transitions: [],
+                      projectId: null,
           },
         }),
       ),

@@ -13,7 +13,9 @@ package com.bts.shared.permission
  * | 권한 | 검증 엔드포인트 |
  * |------|----------------|
  * | [CREATE] | `POST /api/v1/workflows` · `POST /api/v1/workflows/{key}/duplicate` · `POST /api/v1/statuses` |
- * | [UPDATE] | `PUT /api/v1/workflows/{key}` · `PUT /api/v1/statuses/{id}` · 상태 편성 3종 · 캐시 무효화 |
+ * | [UPDATE] | `PUT /api/v1/workflows/{key}` · `PUT /api/v1/statuses/{id}` · 상태 편성 3종 · 캐시 무효화 ·
+ *   `GET /api/v1/projects/{projectKey}/workflows` (관리 목록 — 배정 후보 목록이 `ASSIGN_SCHEME` 을
+ *   요구하는 것과 같은 모양이다) |
  * | [DELETE] | `DELETE /api/v1/workflows/{key}` · `DELETE /api/v1/statuses/{id}` |
  * | [PUBLISH] | 초안 발행 (로드맵 PR 6 이 소비한다 — 지금은 선언만) |
  *

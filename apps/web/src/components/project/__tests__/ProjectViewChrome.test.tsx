@@ -175,10 +175,11 @@ describe('ProjectViewChrome — 설정 서브앱에서는 탭바를 렌더하지
     group.items.map((item) => item.to.replace('$projectKey', 'ATLAS')),
   )
 
-  it('비-공허: 훑을 설정 경로가 4그룹 10항목이다', () => {
+  it('비-공허: 훑을 설정 경로가 4그룹 11항목이다', () => {
     // 목록이 비면 아래 전수 순회가 조용히 통과한다 — 「두 빈 집합은 같다」.
     expect(PROJECT_SETTINGS_NAV).toHaveLength(4)
-    expect(settingsPaths).toHaveLength(10)
+    // 10 → 11: FR-WF-08 「워크플로우」 추가.
+    expect(settingsPaths).toHaveLength(11)
   })
 
   it('설정 경로 전수에서 `프로젝트 뷰 전환` nav 가 없다', () => {

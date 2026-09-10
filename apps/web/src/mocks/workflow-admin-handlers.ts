@@ -99,6 +99,7 @@ export const workflowAdminHandlers = [
           kind: 'INITIAL',
         },
       ],
+          projectId: null,
     })
     return HttpResponse.json({ data: { key: body.key } }, { status: 201 })
   }),

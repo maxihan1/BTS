@@ -96,6 +96,14 @@ export interface CreateWorkflowInput {
   name: string
   description: string | null
   statuses: WorkflowStatusSeedInput[]
+  /**
+   * 소유 프로젝트 키. 빠뜨리면 **전역 워크플로우**가 되고 프로젝트 관리자는 못 고친다 (FR-WF-08).
+   *
+   * 선택 필드로 두는 것은 정당하다 — 여기 `undefined` 는 「지목하지 않았다」이고 그것이
+   * 전역 생성이라는 명시적 의미다. 소유를 실제로 저장하는 자리는 백엔드
+   * `WorkflowWriteRepository.insertWorkflow` 이고 그쪽은 기본값이 없다.
+   */
+  projectKey?: string
 }
 
 /** `UpdateWorkflowRequest`. ★ `key` 가 없다 — 참조가 문자열이라 바뀌면 조용히 끊긴다. */
@@ -108,6 +116,13 @@ export interface UpdateWorkflowInput {
 export interface DuplicateWorkflowInput {
   key: string
   name: string
+  /**
+   * 사본의 소유 프로젝트 키. null/미지정이면 전역 사본이다 (FR-WF-08).
+   *
+   * ★**복제가 주 사용 경로다.** 전역 템플릿을 자기 프로젝트로 복제해 고치는 것이 Jira 가
+   * 권장하는 우회로인데, 이 필드를 안 실으면 사본도 전역이 되어 결국 못 고친다.
+   */
+  projectKey?: string
 }
 
 /** `AddWorkflowStatusRequest`. */

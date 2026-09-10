@@ -80,6 +80,8 @@ export const PROJECT_SETTINGS_NAV: readonly ProjectSettingsNavGroup[] = [
     key: 'issue',
     label: '이슈',
     items: [
+      // FR-WF-08 — 스킴보다 먼저 둔다. 워크플로우를 만들고 그것을 스킴에 매핑하는 순서다.
+      { to: '/projects/$projectKey/settings/workflows', label: '워크플로우', Icon: Workflow },
       {
         to: '/projects/$projectKey/settings/workflow-scheme',
         label: '워크플로우 스킴',

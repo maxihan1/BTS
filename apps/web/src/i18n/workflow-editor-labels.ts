@@ -55,6 +55,44 @@ export const workflowEditorLabels = {
     remove: '삭제',
   },
 
+  /** 프로젝트 설정의 워크플로우 화면 (`/projects/$projectKey/settings/workflows`) */
+  projectSettings: {
+    /** 페이지 h1 */
+    heading: '워크플로우',
+    /** 페이지 설명 */
+    description: '이 프로젝트가 쓸 수 있는 워크플로우입니다. 전역 템플릿은 복제해서 고칩니다.',
+    /** 목록 table aria-label */
+    table: '프로젝트 워크플로우 목록',
+    /** 표 헤더 — 소유 */
+    columnOwner: '소유',
+    /** 소유 배지 — 전역 공유 템플릿 */
+    ownerGlobal: '전역',
+    /** 소유 배지 — 이 프로젝트 전용 */
+    ownerProject: '이 프로젝트',
+    /** 전역 템플릿 행의 주 액션 — Jira 가 권장하는 우회로다 */
+    copyToProject: '내 프로젝트로 복제',
+    /** 복제본 이름 접미 */
+    copySuffix: '사본',
+    /** 빈 상태 제목 */
+    emptyTitle: '쓸 수 있는 워크플로우가 없습니다',
+    /** 빈 상태 설명 */
+    emptyDescription: '전역 템플릿이 하나도 없습니다. 시스템 관리자에게 문의하세요',
+    /** 403 안내 제목 */
+    forbiddenTitle: '워크플로우를 관리할 권한이 없습니다',
+    /** 403 안내 본문 */
+    forbiddenMessage: '이 프로젝트의 워크플로우는 프로젝트 관리자만 관리할 수 있습니다.',
+    /** 404 안내 제목 */
+    notFoundTitle: '프로젝트를 찾을 수 없습니다',
+    /** 404 안내 본문 */
+    notFoundMessage: '주소의 프로젝트 키를 확인하세요.',
+    /** 그 밖의 조회 실패 제목 */
+    loadErrorTitle: '워크플로우 목록을 불러오지 못했습니다',
+    /** 그 밖의 조회 실패 본문 */
+    loadErrorMessage: '잠시 후 다시 시도하세요. 문제가 계속되면 관리자에게 문의하세요.',
+    /** 편집기에서 목록으로 돌아가는 링크 */
+    backToList: '워크플로우 목록으로',
+  },
+
   /** 편집기 셸 (`/admin/workflows/$workflowKey`) */
   editor: {
     /** 탭 목록 aria-label */

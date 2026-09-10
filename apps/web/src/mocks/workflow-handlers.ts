@@ -23,10 +23,39 @@ const currentWorkflows = () => [...workflowStore.values()]
  *
  * 응답 형식: backend의 `DataResponse<T>` 래퍼 (`{ data: T }`)와 일치.
  */
+/**
+ * E2E 전용 플래그 — 프로젝트 워크플로우 목록을 403 으로 돌려준다.
+ *
+ * ★`page.route()` 를 쓰지 않는 이유. MSW Service Worker 가 먼저 응답해 Playwright 의 가로채기가
+ * 무효임이 이 저장소에서 실측돼 있다(`board-settings-estimation.spec.ts:95`). 그래서 「응답을
+ * spec 에서 덮어쓴다」는 선택지가 없고, 목 쪽에 스위치를 두는 것이 확립된 패턴이다
+ * (`E2E_IS_SYSTEM_ADMIN_KEY` 선례).
+ *
+ * 비-어드민 멤버가 프로젝트 설정에 들어왔을 때 **빈 표가 아니라 안내 카드**가 뜨는지를 재는 데 쓴다.
+ */
+export const E2E_PROJECT_WORKFLOWS_FORBIDDEN_KEY = '__bts_e2e_project_workflows_forbidden'
+
 export const workflowHandlers = [
   /** GET /api/v1/workflows — 4 표준 워크플로우 목록 */
   http.get('/api/v1/workflows', () => {
     return HttpResponse.json({ data: currentWorkflows() })
+  }),
+
+  /**
+   * GET /api/v1/projects/:projectKey/workflows — 프로젝트가 쓸 수 있는 목록 (FR-WF-08).
+   *
+   * ★목이 전량을 그대로 주면 안 된다. 실서버는 「전역 + 그 프로젝트」로 좁히므로, 목이 안 좁히면
+   * 화면 테스트가 **좁혀지지 않은 상태에서도 초록**이 된다 — 목끼리의 일치가 계약 정합으로
+   * 오인되는 자리다. 그래서 여기서도 `projectId` 로 거른다.
+   *
+   * 픽스처 프로젝트 키는 `ATLAS` 로 고정한다 — 목 워크플로우가 전부 전역이라 소유 판정에
+   * 쓸 실제 프로젝트 id 가 없다. 다른 키로 물어도 전역 목록은 같으므로 화면 검증에 충분하다.
+   */
+  http.get('/api/v1/projects/:projectKey/workflows', () => {
+    if (globalThis.localStorage?.getItem(E2E_PROJECT_WORKFLOWS_FORBIDDEN_KEY) === 'true') {
+      return HttpResponse.json({ error: { code: 'FORBIDDEN' } }, { status: 403 })
+    }
+    return HttpResponse.json({ data: currentWorkflows().filter((w) => w.projectId === null) })
   }),
 
   /** GET /api/v1/workflows/:key — 단건 조회, 없으면 404 */

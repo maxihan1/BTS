@@ -96,6 +96,8 @@ function toWorkflowView(definition: DraftDefinition): WorkflowView {
       id: nextTransitionId(),
       kind: t.kind,
     })),
+    // 초안은 소유를 다루지 않는다 — 발행이 정의를 갈아끼울 뿐 `workflows.project_id` 는 안 건드린다.
+    projectId: null,
   }
 }
 
