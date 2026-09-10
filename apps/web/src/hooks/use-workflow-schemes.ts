@@ -5,6 +5,7 @@ import {
   fetchWorkflowSchemes,
   fetchWorkflowScheme,
   fetchAssignableWorkflowSchemes,
+  fetchManagedWorkflowSchemes,
   createWorkflowScheme,
   updateWorkflowScheme,
   deleteWorkflowScheme,
@@ -47,6 +48,16 @@ export const SCHEME_KEYS = {
   assignable: (projectKey: string) => ['assignable-workflow-schemes', projectKey] as const,
   /** 전 프로젝트의 할당 가능 스킴 캐시를 한 번에 무효화하는 prefix (관리자 뮤테이션용) */
   assignableAll: ['assignable-workflow-schemes'] as const,
+  /**
+   * 프로젝트별 **스킴 관리 목록** queryKey (FR-WF-08).
+   *
+   * `list`·`detail` 밑에 두지 않는다 — `detail(schemeKey)` 와 모양이 겹쳐
+   * `['workflow-schemes', 'ATLAS']` 가 「ATLAS 스킴」인지 「ATLAS 프로젝트 목록」인지
+   * 구분되지 않는다. `assignable` 이 독립 prefix 를 쓰는 것과 같은 이유다.
+   */
+  managed: (projectKey: string) => ['managed-workflow-schemes', projectKey] as const,
+  /** 전 프로젝트의 관리 목록 캐시를 한 번에 무효화하는 prefix (뮤테이션용) */
+  managedAll: ['managed-workflow-schemes'] as const,
 } satisfies Record<string, readonly string[] | ((...args: string[]) => readonly string[])>
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,11 +68,14 @@ export const SCHEME_KEYS = {
  * 워크플로우 스킴 목록을 조회한다.
  * GET /api/v1/workflow-schemes → SchemeListItem[]
  */
-export function useWorkflowSchemes() {
+export function useWorkflowSchemes(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: SCHEME_KEYS.list,
     queryFn: fetchWorkflowSchemes,
     staleTime: 30_000,
+    // ★끌 수 있어야 한다. 이 목록은 `MANAGE_SCHEME` + `Global` 게이트라 프로젝트 관리자에게
+    //   403 이다. 프로젝트 화면이 목록을 직접 주는데도 이 요청이 나가면 콘솔이 403 으로 덮인다.
+    enabled: options?.enabled ?? true,
   })
 }
 
@@ -71,11 +85,17 @@ export function useWorkflowSchemes() {
  *
  * @param schemeKey 스킴 식별 키
  */
-export function useWorkflowSchemeDetail(schemeKey: string) {
+export function useWorkflowSchemeDetail(schemeKey: string | null) {
   return useQuery({
-    queryKey: SCHEME_KEYS.detail(schemeKey),
-    queryFn: () => fetchWorkflowScheme(schemeKey),
+    queryKey: SCHEME_KEYS.detail(schemeKey ?? ''),
+    queryFn: () => fetchWorkflowScheme(schemeKey as string),
     staleTime: 30_000,
+    // ★「아직 안 골랐다」를 훅이 받는다. 호출부가 `?? ''` 로 메우면 `/api/v1/workflow-schemes/`
+    //   로 **후행 슬래시 요청**이 나가고, 빈 세그먼트는 Spring Security 포괄 규칙으로 떨어져
+    //   로그인 상태에서도 401 이 된다(프로덕션 실측 2026-09-07).
+    //   판별식 `empty-path-segment-guard` 가 그 폴백 자체를 금지한다 — 가드가 나중에 지워져도
+    //   폴백이 남으면 다시 새기 때문이다. `useVersions` 선례와 같은 형태.
+    enabled: schemeKey !== null && schemeKey !== '',
   })
 }
 
@@ -84,6 +104,20 @@ export function useWorkflowSchemeDetail(schemeKey: string) {
  * GET /api/v1/projects/{projectKey}/assignable-workflow-schemes → AssignedScheme[]
  *
  * @param projectKey 프로젝트 식별 키
+ */
+export function useManagedWorkflowSchemes(projectKey: string) {
+  return useQuery({
+    queryKey: SCHEME_KEYS.managed(projectKey),
+    queryFn: () => fetchManagedWorkflowSchemes(projectKey),
+    staleTime: 30_000,
+    enabled: projectKey !== '',
+  })
+}
+
+/**
+ * 프로젝트에 배정 **가능한** 스킴 목록을 조회한다. 배정 select 옵션 전용.
+ *
+ * 관리 목록은 [useManagedWorkflowSchemes] 다 — 형태와 권한이 다르다.
  */
 export function useAssignableWorkflowSchemes(projectKey: string) {
   return useQuery({
@@ -113,6 +147,8 @@ export function useCreateWorkflowScheme() {
       // 새 스킴은 배정 드롭다운(assignable)에도 즉시 나타나야 한다.
       // 없으면 staleTime 30초 동안 만든 스킴이 배정 화면에 안 보인다.
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })
+      // 관리 목록도 함께 걷는다 — 안 걷으면 「만들었는데 사이드바에 안 뜬다」가 된다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.managedAll })
     },
     onError: notifySchemeError,
   })
@@ -186,6 +222,8 @@ export function useUpdateWorkflowScheme(schemeKey: string) {
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
       // 이름 수정은 배정 드롭다운의 표시 문자열을 바꾼다.
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })
+      // 관리 목록도 함께 걷는다 — 안 걷으면 「만들었는데 사이드바에 안 뜬다」가 된다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.managedAll })
     },
   })
 }
@@ -206,6 +244,8 @@ export function useDeleteWorkflowScheme() {
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.list })
       // 삭제된 스킴이 배정 드롭다운에 남아 있으면 고를 수 있고, 고르면 404 가 난다.
       await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.assignableAll })
+      // 관리 목록도 함께 걷는다 — 안 걷으면 「만들었는데 사이드바에 안 뜬다」가 된다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.managedAll })
       queryClient.removeQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
     },
     onError: notifySchemeError,

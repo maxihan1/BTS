@@ -242,9 +242,29 @@ PR ② 는 쓰기 경로(`insertWorkflow`)에만 소유를 넣고 도메인은 �
 
 PR ④ 에서 갈라 나왔다(Maxi 확정 2026-09-08). 사유는 PR ④ 「착수 실측 ③」.
 
+### 착수 실측 — 결정 3건
+
+**① Task 5-1 은 ⓑ(새 엔드포인트)로 정해졌다 — 코드가 정했다.**
+`fetchAssignableWorkflowSchemes` 소비자는 배정 화면 **한 곳**뿐인데, 백엔드에서 그 응답은
+`GET /workflow-scheme`(배정 조회)와 **같은 `SchemeResponse` 를 공유**한다. ⓐ 로 넓히면 건드릴
+이유가 없는 두 번째 엔드포인트의 계약까지 흔들리거나 DTO 를 갈라야 한다. 게다가 두 목록은 다른
+질문이다 — 「붙일 수 있는 스킴」(`ASSIGN_SCHEME`)과 「고칠 수 있는 스킴」(`MANAGE_SCHEME`).
+
+**② 관리 목록에 전역 템플릿을 넣는다 (Maxi 확정 2026-09-10).**
+지금 배정된 스킴이 대개 전역이다(EC-1 D10 자동 배정 + V201 시드 전량 전역). 빼면 프로젝트
+관리자가 **자기 프로젝트가 실제로 쓰는 스킴을 관리 화면에서 못 본다.** 「못 고치는 행이 섞인다」는
+화면이 받는다 — 전역은 읽기 전용으로 그린다. 이 저장소는 「목록에서 숨기기」가 아니라 「목록에
+두되 액션을 가르기」를 택해 왔다(표준 스킴 잠금 · `ForbiddenSchemeCard`).
+
+**③ 스킴 복제는 이 PR 범위 밖이다.**
+워크플로우에는 `duplicate` 가 있지만 **스킴에는 없다.** `createWorkflowScheme` 은 빈 스킴만
+만든다. 프론트에서 생성 + 매핑 N회로 흉내 내면 부분 실패가 조용히 남는다. 전역 템플릿은 읽기
+전용으로 보여주고, 복제 API 는 별건으로 남긴다.
+
 ### Task 5-1. 관리 형태 프로젝트 스코프 스킴 목록 API
-- `WorkflowSchemeSidebar` 는 `SchemeListItem`(`isStandard`·`mappingsCount`·`projectId`)을 먹는데, 프로젝트 스코프 창구 `listAssignableSchemes` 는 `AssignedScheme`(코어 필드만)을 준다. 형태가 달라 그대로 못 꽂는다.
-- 두 선택지 중 하나를 먼저 정한다 — ⓐ `listAssignableSchemes` 응답을 관리 형태로 넓힌다 ⓑ 관리 전용 엔드포인트를 새로 둔다. ⓐ 는 배정 화면의 계약을 건드리고, ⓑ 는 창구가 둘이 된다.
+- `GET /api/v1/projects/{projectKey}/workflow-schemes` — `MANAGE_SCHEME` + `Project` 게이트.
+- 조회는 `findAllWithCounts` 와 **같은 스칼라 서브쿼리 뼈대**를 쓰고 조건만 갈린다(`fetchCountRows`). 복사하면 카운트 정의가 바뀌는 날 한쪽만 고쳐져 두 목록이 다른 숫자를 보여 준다.
+- 두 등록부(`SchemeHandlerClassification` 정적 맵 · 런타임 매트릭스)에 함께 올린다 — 안 올리면 판별식이 red 다(실제로 red 를 봤다).
 - **verify**: 프로젝트 A 어드민에게 B 전용 스킴이 목록에 안 나온다 (PR ② 의 판정과 같은 모양)
 
 ### Task 5-2. 사이드바·매핑표·메타패널을 프로젝트 설정에 올린다
@@ -254,7 +274,8 @@ PR ④ 에서 갈라 나왔다(Maxi 확정 2026-09-08). 사유는 PR ④ 「착�
 
 ### Task 5-3. 생성이 소유를 싣는다
 - `POST /workflow-schemes` 에 `projectKey` 를 실어 프로젝트 전용 스킴을 만든다(PR ② 가 이미 받는다).
-- **verify**: 만든 스킴의 `projectId` 가 그 프로젝트다 · 그 자리에서 배정까지 된다
+- 생성 폼에 「전역으로 만들기」 선택지를 두지 않는다 — 빠뜨리면 만든 사람조차 못 고치는 전역 스킴이 생긴다.
+- **verify**: 생성 요청 바디에 `projectKey` 가 실린다 · 만든 스킴이 사이드바에 즉시 뜬다(관리 목록 캐시 무효화)
 
 ---
 

@@ -139,6 +139,25 @@ export async function fetchWorkflowSchemes(): Promise<SchemeListItem[]> {
 }
 
 /**
+ * 프로젝트의 **스킴 관리 목록**을 조회한다 — 전역 템플릿 + 그 프로젝트 전용.
+ * GET /api/v1/projects/{projectKey}/workflow-schemes → { data: SchemeListItem[] }
+ *
+ * ★[fetchWorkflowSchemes] 를 프로젝트 화면에서 쓰지 않는다. 그쪽은 `MANAGE_SCHEME` + `Global`
+ * 게이트라 프로젝트 관리자에게 403 이고, 통과하더라도 남의 프로젝트 전용 스킴이 함께 온다.
+ *
+ * [fetchAssignableWorkflowSchemes] 와도 다르다 — 그쪽은 배정 select 옵션이라 코어 필드만 준다.
+ * 사이드바·매핑표·메타패널은 카운트와 소유가 필요해 형태가 갈린다.
+ */
+export async function fetchManagedWorkflowSchemes(projectKey: string): Promise<SchemeListItem[]> {
+  const wrapped = await apiGet(
+    // 경로 파라미터가 URL 에서 그대로 온다 — 인코딩 없이 박으면 `..%2F` 로 다른 자원에 닿는다
+    `/api/v1/projects/${encodeURIComponent(projectKey)}/workflow-schemes`,
+    dataOf(z.array(schemeListItemSchema)),
+  )
+  return wrapped.data
+}
+
+/**
  * 워크플로우 스킴 단건(매핑 동봉)을 조회한다.
  * GET /api/v1/workflow-schemes/{schemeKey} → { data: SchemeDetail }
  *

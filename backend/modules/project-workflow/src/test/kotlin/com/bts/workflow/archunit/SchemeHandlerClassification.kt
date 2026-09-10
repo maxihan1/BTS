@@ -81,4 +81,8 @@ internal val HANDLER_CLASSIFICATION: Map<HandlerKey, HandlerClassification> =
             HandlerClassification(WorkflowSchemePermission.ASSIGN_SCHEME, ScopeKind.PROJECT),
         HandlerKey("ProjectWorkflowSchemeController", "listAssignableSchemes") to
             HandlerClassification(WorkflowSchemePermission.ASSIGN_SCHEME, ScopeKind.PROJECT),
+        // FR-WF-08 관리 목록 — 배정 3종과 달리 MANAGE_SCHEME 이다.
+        // 「붙일 수 있는 스킴」과 「고칠 수 있는 스킴」은 다른 질문이라 권한도 갈린다.
+        HandlerKey("ProjectWorkflowSchemeController", "listManagedSchemes") to
+            HandlerClassification(WorkflowSchemePermission.MANAGE_SCHEME, ScopeKind.PROJECT),
     )
