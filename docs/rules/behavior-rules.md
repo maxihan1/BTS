@@ -88,9 +88,11 @@ T0/T1 에서 3회에 도달하면 보고에 **「티어 재판정 제안」**을
 |---|---|---|
 | `.husky/pre-commit` — `build-doc-index.mjs --check` | 커밋 | **강등 금지.** 저장소 밖 메모리의 유일한 봉인 |
 | `.husky/pre-commit` — lint-staged | 커밋 | worktree 가 훅을 침묵 무력화한 실측이 있다 — 로컬 훅은 **보조**다 |
-| `scripts/verify-master-plan.sh` EXIT 3/4 | PR (CI 잡) | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
-| `scripts/workflow/*.test.ts` 판별식 | PR | 하네스·CI·문서 배선의 차집합 0 |
-| `frontend-ci.yml` `visual` 잡 | PR | 파일럿 기간은 `continue-on-error` — **비차단** |
+| `.husky/pre-push` — 판별식 전량 | 푸시 | **백엔드·프론트 테스트는 여기서 빠졌다**(2026-09-09 · 젠킨스 이전). 판별식만 남는다 |
+| 젠킨스 `bts-ci` — 빠른 게이트 | 푸시 후 (`pollSCM` 최대 5분) | 백엔드·프론트 검증의 새 자리. **푸시를 막지 못한다** — 깨진 커밋이 원격에 올라갈 수 있고, 그것을 잡는 자리는 게이트 2 다 |
+| `scripts/verify-master-plan.sh` EXIT 3/4 | 푸시 후 (젠킨스 `정합 게이트` stage) | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
+| `scripts/workflow/*.test.ts` 판별식 | 푸시(훅) **+** 푸시 후(젠킨스) | 하네스·CI·문서 배선의 차집합 0. **두 자리에서 같은 목록을 돈다** — 훅은 로컬 즉시, 젠킨스는 리눅스 환경 |
+| ~~시각 회귀~~ | **없음** | `frontend-ci.yml` 은 2026-09-09 에 삭제됐고 젠킨스로 **아직 옮기지 않았다**(P3). 지금 시각 회귀를 막는 기계는 0개다 |
 
 **스냅샷 baseline 갱신은 ① `apps/web/src/**` 변경을 동반하고 ② 그 변경이 의도된 시각 변경일 때만** 허용한다.
 원인 미상 상태의 갱신은 이 저장소의 가짜초록 양식 그 자체다. 판별식 ② 가 ① 을 기계로 막는다.

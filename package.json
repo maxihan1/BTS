@@ -13,6 +13,7 @@
     "lint": "pnpm -r run lint",
     "typecheck": "pnpm -r run typecheck",
     "build": "pnpm -r run build",
+    "preinstall": "node scripts/workflow/block-worktree-install.mjs",
     "prepare": "husky",
     "verify": "pnpm -r run lint && pnpm -r run typecheck && pnpm -r run test && pnpm -r run build"
   },

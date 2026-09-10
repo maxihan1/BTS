@@ -32,6 +32,24 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NGINX_CONF="$REPO_ROOT/infra/prod/nginx.conf"
 NGINX_IMAGE="nginx:1.27-alpine"
 
+# ★★DooD 에서는 마운트 경로가 다르다 (2026-09-10 · 빌드 #26 실측)
+#
+# `docker run -v <좌변>` 의 좌변은 **호스트 데몬이 보는 경로**다. 젠킨스는 컨테이너 안에서
+# 돌면서 호스트 소켓을 쓰므로(DooD), 자기 워크스페이스 경로
+# `/var/jenkins_home/workspace/bts-ci/...` 를 그대로 주면 **호스트에 그런 경로가 없다.**
+# Docker 는 없는 경로를 오류로 내지 않고 **빈 디렉터리를 만들어 마운트**한다 —
+# nginx 가 설정 파일 없이 떠서 `nginx -t` 가 실패하고, 이 스크립트는 그것을
+# 「이 설정으로 배포하면 프론트 전체가 뜨지 않는다」로 보고한다. **설정은 멀쩡하다.**
+#
+# 이 파일 머리 주석이 이미 같은 형태를 경고해 뒀다 — 데몬 부재가 5(문법 오류)로 떨어진 사고다.
+# 원인이 다르고 증상이 같다. **오진은 빨간불보다 나쁘다 — 엉뚱한 곳을 파게 만든다.**
+#
+# `BTS_HOST_WORKSPACE` 가 있으면 그것을 기준으로 좌변을 다시 쓴다. 젠킨스가 넘긴다.
+MOUNT_CONF="$NGINX_CONF"
+if [ -n "${BTS_HOST_WORKSPACE:-}" ]; then
+  MOUNT_CONF="${BTS_HOST_WORKSPACE}/infra/prod/nginx.conf"
+fi
+
 # 실제 Docker 를 끄지 않고 전제조건 분기를 검증하는 유일한 통로.
 # scripts/workflow/nginx-docker-precondition.test.ts 가 이 이음매로 데몬 부재를 주입한다.
 DOCKER="${BTS_DOCKER_BIN:-docker}"
@@ -165,7 +183,7 @@ command -v "$DOCKER" >/dev/null 2>&1 || fail "docker 가 필요하다(문법·�
 "$DOCKER" info >/dev/null 2>&1 \
     || fail "Docker 데몬이 꺼져 있다 — 설정 문제가 아니다. 데몬을 켜고 재실행할 것" 8
 
-"$DOCKER" run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" nginx -t >/dev/null 2>&1 \
+"$DOCKER" run --rm -v "$MOUNT_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" nginx -t >/dev/null 2>&1 \
     || fail "nginx 문법 검증 실패 — 이 설정으로 배포하면 프론트 전체가 뜨지 않는다 (RQ-6)" 5
 ok "RQ-6 문법 검증 (nginx -t)"
 
@@ -179,7 +197,7 @@ T_UUID="3f2504e0-4f89-11d3-9a0c-0305e82c3301"
 #    실패한다. 요청마다 wget 타임아웃(-T 2)을 걸지 않으면 proxy_read_timeout 120s 까지
 #    매달려 검증이 사실상 멈춘다. 응답이 502/504/499 중 무엇이든 **접속 로그 줄은 기록**되고,
 #    우리가 보는 판별자는 그 줄에 원문 토큰이 있느냐뿐이므로 검증 목적에는 충분하다.
-LOGS="$("$DOCKER" run --rm -v "$NGINX_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" sh -c "
+LOGS="$("$DOCKER" run --rm -v "$MOUNT_CONF:/etc/nginx/conf.d/bts.conf:ro" "$NGINX_IMAGE" sh -c "
 rm -f /etc/nginx/conf.d/default.conf
 nginx 2>/dev/null
 i=0; while [ \$i -lt 50 ]; do wget -q -T 1 -O /dev/null http://127.0.0.1/ 2>/dev/null && break; i=\$((i+1)); done

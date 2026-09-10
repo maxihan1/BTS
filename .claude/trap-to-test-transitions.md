@@ -37,7 +37,7 @@
 | 후보(메모리 slug) | 판정 | (a) 테스트 형태 | (b) 배치 | (c) 원본 메모리 |
 |---|---|---|---|---|
 | `archunit-vacuous-rule-silent-pass` | **전환 1순위** | 정적 판별식 — `allowEmptyShould(true)` 를 쓴 룰은 같은 파일에 **대상 수 ≥1 단언**을 동반해야 한다 | `scripts/workflow/archunit-nonvacuous.test.ts` (Node · 의존 0 · `pnpm test:workflow`) | 전환 후 `normal` 강등 |
-| `two-lists-never-check-each-other` | **전환 1순위** | 차집합 판별식 + **양성 대조군**(일부러 끊어 red 확인) | 룰 L 확장 — `scripts/workflow/` 기존 파일 | ★ 유지 (지배 결함 양식 · 전환 후에도 원리 설명이 필요하다) |
+| `two-lists-never-check-each-other` | **전환 1순위** | 차집합 판별식 + **양성 대조군**(일부러 끊어 red 확인) | `scripts/workflow/` 기존 차집합 판별식에 확장 (룰 L 은 실재한 적 없다 — `docs/rules/doc-index.md` 참조) | ★ 유지 (지배 결함 양식 · 전환 후에도 원리 설명이 필요하다) |
 | `permission-assert-before-existence-makes-403-lie` | 전환 | 컨트롤러 공통 계약 테스트 — 미존재 404 / 무권한 403 | 각 BC `web/` 통합 테스트 공통 베이스 (**앱 소스 → 부채 경유**) | 전환 후 강등 |
 | `shared-dev-db-preexisting-rows-fake-green` | 전환 | 시딩 검증 공통 베이스에 「선재 행 0」 선단언 | 해당 BC 테스트 베이스 (**부채 경유**) | 전환 후 강등 |
 | `enum-add-breaks-crossmodule-count-guard` | 전환 | 정적 grep — `entries.hasSize(N)` 하드코딩 금지 | `scripts/workflow/` 판별식 | 전환 후 강등 |
