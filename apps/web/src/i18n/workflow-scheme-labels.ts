@@ -189,7 +189,26 @@ export const workflowSchemeLabels = {
     /** 스킴 목록 조회 실패(403 이외) 안내 문구 — 403 전용 문구와 구분되는 별도 메시지 */
     loadErrorMessage: '스킴 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
   },
-} as const
 
-/** 라벨 const 의 추론 타입 — 호출자 타입 안전성 */
-export type WorkflowSchemeLabels = typeof workflowSchemeLabels
+  /** 프로젝트 설정의 스킴 관리 구역 (FR-WF-08 PR ⑤) */
+  projectManagement: {
+    /** 아무 스킴도 고르지 않았을 때 */
+    pickPrompt: '왼쪽에서 스킴을 고르면 매핑과 설정을 볼 수 있습니다.',
+    /** 전역 템플릿을 골랐을 때의 안내 */
+    globalReadOnlyNotice: '전역 공유 템플릿이라 이 프로젝트에서는 고칠 수 없습니다. 복제해서 쓰세요.',
+    /** 전역 템플릿을 내 프로젝트 사본으로 만드는 버튼 */
+    copyToProject: '내 프로젝트로 복제',
+    /** 복제본 이름 접미 */
+    copySuffix: '사본',
+    /** 이슈타입 지정 없이 적용되는 기본 매핑의 표시 이름 */
+    defaultMappingLabel: '기본',
+    /** 생성 폼 제목 */
+    createHeading: '새 스킴 만들기',
+    /** 생성 폼 — 키 입력 라벨 */
+    createKeyLabel: '스킴 키',
+    /** 생성 폼 — 이름 입력 라벨 */
+    createNameLabel: '스킴 이름',
+    /** 생성 폼 제출 버튼 */
+    createSubmit: '만들기',
+  },
+}

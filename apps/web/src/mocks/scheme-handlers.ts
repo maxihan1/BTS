@@ -309,4 +309,16 @@ export const schemeHandlers = [
   http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', () => {
     return HttpResponse.json({ data: allSchemeFixtures.map(toAssignableShape) })
   }),
+
+  /**
+   * GET /api/v1/projects/:projectKey/workflow-schemes — 프로젝트 **스킴 관리 목록** (FR-WF-08).
+   *
+   * ★목이 전량을 그대로 주면 안 된다. 실서버는 「전역 + 그 프로젝트」로 좁히므로, 목이 안 좁히면
+   * 화면 테스트가 **좁혀지지 않은 상태에서도 초록**이 된다 — 목끼리의 일치가 계약 정합으로
+   * 오인되는 자리다. 픽스처가 전부 전역이라 여기서는 `projectId === null` 로 거른다.
+   */
+  http.get('/api/v1/projects/:projectKey/workflow-schemes', () => {
+    const managed = allSchemeFixtures.map(toSummary).filter((scheme) => scheme.projectId === null)
+    return HttpResponse.json({ data: managed })
+  }),
 ]

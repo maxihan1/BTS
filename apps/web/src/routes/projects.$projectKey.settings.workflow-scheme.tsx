@@ -18,7 +18,18 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useGetAssignment, useUpdateAssignment } from '@/hooks/use-workflow-scheme-assignment'
-import { useAssignableWorkflowSchemes } from '@/hooks/use-workflow-schemes'
+import {
+  useAssignableWorkflowSchemes,
+  useCreateWorkflowScheme,
+  useManagedWorkflowSchemes,
+  useWorkflowSchemeDetail,
+} from '@/hooks/use-workflow-schemes'
+import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
+import { WorkflowSchemeSidebar } from '@/components/admin/WorkflowSchemeSidebar'
+import { MappingTable } from '@/components/admin/MappingTable'
+import { SchemeMetaPanel } from '@/components/admin/SchemeMetaPanel'
+import type { SchemeDetail, SchemeListItem } from '@/api/workflow-schemes'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 import { ApiError } from '@/api/client'
 import { WorkflowSchemeApiError } from '@/api/workflow-schemes'
@@ -190,6 +201,202 @@ export function ProjectWorkflowSchemeSettingsPage({
           </div>
         </CardContent>
       </Card>
+
+      {/* 스킴 관리 — 생성·매핑·메타 편집 (FR-WF-08 PR ⑤) */}
+      <ProjectSchemeManagement projectKey={projectKey} />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ProjectSchemeManagement — 사이드바 + 매핑표 + 메타패널 (FR-WF-08 PR ⑤)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 프로젝트 설정에서 스킴을 만들고 고치는 구역.
+ *
+ * ## 세 컴포넌트를 그대로 재사용한다
+ * `WorkflowSchemeSidebar` · `MappingTable` · `SchemeMetaPanel` 은 관리자 화면의 것이고
+ * **내부를 고치지 않았다.** 사이드바만 목록을 props 로 받도록 열었다 — 컴포넌트가 「어느 화면에서
+ * 열렸는지」를 알게 되면 두 화면의 동작이 서로를 검사하지 않은 채 갈리기 시작한다.
+ *
+ * ## 목록은 프로젝트 스코프 창구를 탄다
+ * `useWorkflowSchemes`(전역 관리자 목록)는 `MANAGE_SCHEME` + `Global` 게이트라 프로젝트
+ * 관리자에게 403 이고, 통과하더라도 남의 프로젝트 전용 스킴이 함께 온다.
+ */
+function ProjectSchemeManagement({ projectKey }: { projectKey: string }): JSX.Element {
+  const { data: schemes, isPending, error } = useManagedWorkflowSchemes(projectKey)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const { data: detail } = useWorkflowSchemeDetail(selectedKey)
+
+  if (error != null) {
+    return error instanceof ApiError && error.status === 403 ? <ForbiddenSchemeCard /> : <SchemeLoadErrorCard />
+  }
+
+  const list = schemes ?? []
+  const selected = list.find((scheme) => scheme.key === selectedKey) ?? null
+
+  return (
+    <section className="flex min-h-96 rounded-md border border-border">
+      <WorkflowSchemeSidebar
+        selectedSchemeKey={selectedKey ?? undefined}
+        onSelect={(key) => {
+          setCreating(false)
+          setSelectedKey(key)
+        }}
+        onAddNew={() => {
+          setSelectedKey(null)
+          setCreating(true)
+        }}
+        schemes={list}
+        isPending={isPending}
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        {creating && (
+          <ProjectSchemeCreateForm
+            projectKey={projectKey}
+            onCreated={(key) => {
+              setCreating(false)
+              setSelectedKey(key)
+            }}
+          />
+        )}
+        {!creating && selected === null && (
+          <p className="p-6 text-sm text-muted-foreground">
+            {workflowSchemeLabels.projectManagement.pickPrompt}
+          </p>
+        )}
+        {!creating && selected !== null && <ProjectSchemePane scheme={selected} detail={detail} />}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * 프로젝트 전용 스킴 생성 폼.
+ *
+ * ★**`projectKey` 를 반드시 싣는다.** 빠뜨리면 전역 공유 템플릿이 만들어지고, 그 스킴은
+ * 만든 사람조차 못 고친다(전역 편집은 SYSTEM_ADMIN 소관). 이 화면이 존재하는 이유가
+ * 그 자리에서 사라진다 — 그래서 폼에 「전역으로 만들기」 선택지를 두지 않는다.
+ */
+function ProjectSchemeCreateForm({
+  projectKey,
+  onCreated,
+}: {
+  projectKey: string
+  onCreated: (schemeKey: string) => void
+}): JSX.Element {
+  const labels = workflowSchemeLabels.projectManagement
+  const createScheme = useCreateWorkflowScheme()
+  const [key, setKey] = useState('')
+  const [name, setName] = useState('')
+
+  const canSubmit = key.trim() !== '' && name.trim() !== '' && !createScheme.isPending
+
+  return (
+    <form
+      className="flex flex-col gap-3 p-6"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (!canSubmit) return
+        createScheme.mutate(
+          { key: key.trim(), name: name.trim(), projectKey },
+          { onSuccess: (created) => onCreated(created.key) },
+        )
+      }}
+    >
+      <h3 className="text-base font-semibold">{labels.createHeading}</h3>
+      <label className="flex flex-col gap-1 text-sm">
+        {labels.createKeyLabel}
+        <Input value={key} onChange={(event) => setKey(event.target.value)} />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        {labels.createNameLabel}
+        <Input value={name} onChange={(event) => setName(event.target.value)} />
+      </label>
+      <Button type="submit" className="self-start" disabled={!canSubmit}>
+        {labels.createSubmit}
+      </Button>
+    </form>
+  )
+}
+
+/**
+ * 선택된 스킴 한 장의 편집 구역.
+ *
+ * 전역 템플릿과 이 프로젝트 전용을 **다르게 다뤄야 한다** — 전역 스킴 편집은 SYSTEM_ADMIN
+ * 소관이라(스펙 §4 D6) 프로젝트 관리자가 저장을 누르면 403 이다.
+ */
+function ProjectSchemePane({
+  scheme,
+  detail,
+}: {
+  scheme: SchemeListItem
+  detail: SchemeDetail | undefined
+}): JSX.Element {
+  // 전역 공유 템플릿은 SYSTEM_ADMIN 소관이다(스펙 §4 D6). 편집 컨트롤을 띄우면 눌러 보고
+  // 403 을 받는 자리가 남으므로, 내용만 읽기 전용으로 보여준다.
+  //
+  // ★`MappingTable` 을 그대로 쓰지 않는 이유. 그 컴포넌트는 추가·삭제 뮤테이션을 살아 있는
+  // 버튼으로 갖는다(`useAddMapping` · 삭제 확인). 「보여주기」와 「고치기」는 다른 관심사라
+  // 여기서 갈라야 하고, 컴포넌트 안에 읽기 전용 모드를 넣는 것은 계획의 금지 조항이다
+  // (컴포넌트가 어느 화면에서 열렸는지 알기 시작한다).
+  if (scheme.projectId === null) {
+    return <GlobalSchemeReadOnlyPane scheme={scheme} detail={detail} />
+  }
+
+  return (
+    <div className="flex min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {detail !== undefined && <MappingTable schemeKey={scheme.key} mappings={detail.mappings} />}
+      </div>
+      {detail !== undefined && <SchemeMetaPanel key={detail.key} scheme={detail} />}
+    </div>
+  )
+}
+
+/**
+ * 전역 공유 템플릿의 **읽기 전용** 표시.
+ *
+ * 이 프로젝트가 지금 배정받아 쓰고 있는 스킴이 대개 전역이라(EC-1 D10 자동 배정), 목록에서
+ * 빼면 자기 프로젝트가 쓰는 스킴을 관리 화면에서 못 본다. 그래서 목록에는 두고 여기서
+ * **내용만** 보여준다 — 「목록에서 숨기기」가 아니라 「목록에 두되 액션을 가르기」다.
+ *
+ * 복제는 아직 없다 — 스킴에는 워크플로우의 `duplicate` 에 해당하는 API 가 없고,
+ * 프론트에서 생성 + 매핑 N회로 흉내 내면 부분 실패가 조용히 남는다. 별건이다.
+ */
+function GlobalSchemeReadOnlyPane({
+  scheme,
+  detail,
+}: {
+  scheme: SchemeListItem
+  detail: SchemeDetail | undefined
+}): JSX.Element {
+  const labels = workflowSchemeLabels.projectManagement
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-4 p-6">
+      <header className="space-y-1">
+        <h3 className="text-base font-semibold">{scheme.name}</h3>
+        <p className="text-sm text-muted-foreground">{labels.globalReadOnlyNotice}</p>
+      </header>
+
+      {detail === undefined ? (
+        <Skeleton className="h-32 w-full" />
+      ) : (
+        <ul className="flex flex-col gap-1 text-sm">
+          {detail.mappings.map((mapping) => (
+            <li key={mapping.id} className="flex gap-2">
+              <span className="text-muted-foreground">
+                {mapping.issueTypeName ?? labels.defaultMappingLabel}
+              </span>
+              <span aria-hidden="true">→</span>
+              <span className="font-medium">{mapping.workflowName}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

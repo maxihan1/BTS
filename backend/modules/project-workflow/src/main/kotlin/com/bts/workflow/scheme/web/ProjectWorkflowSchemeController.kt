@@ -12,6 +12,7 @@ import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
+import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
 import com.bts.workflow.web.CurrentActor
 import com.bts.workflow.web.DataResponse
 import org.slf4j.LoggerFactory
@@ -30,18 +31,24 @@ import java.util.UUID
 /**
  * 프로젝트 ↔ 워크플로우 스킴 배정 REST API 컨트롤러.
  *
- * spec §4.3 Project assignment 3 endpoint.
+ * spec §4.3 Project assignment 3 endpoint + FR-WF-08 관리 목록 1.
  * - PUT  /api/v1/projects/{projectKey}/workflow-scheme — 프로젝트에 스킴 배정 (UPSERT)
  * - GET  /api/v1/projects/{projectKey}/workflow-scheme — 현재 배정된 스킴 조회
- * - GET  /api/v1/projects/{projectKey}/assignable-workflow-schemes — 배정 가능한 스킴 전체 목록 조회
+ * - GET  /api/v1/projects/{projectKey}/assignable-workflow-schemes — 배정 후보 스킴 목록 조회
+ * - GET  /api/v1/projects/{projectKey}/workflow-schemes — 스킴 **관리** 목록 (카운트·소유 포함)
  *
  * ### 트랜잭션 정책
  * 컨트롤러는 트랜잭션 경계를 담당하지 않는다.
  * 트랜잭션 개시는 [WorkflowSchemeApplicationService] 가 담당한다.
  *
  * ### 권한
- * 세 endpoint 모두 [WorkflowSchemePermission.ASSIGN_SCHEME] +
- * [WorkflowScope.Project] 범위 검증. spec §4.3 주석 참조.
+ * 배정 3종은 [WorkflowSchemePermission.ASSIGN_SCHEME] + [WorkflowScope.Project] 범위 검증
+ * (spec §4.3 주석 참조). 관리 목록만 [WorkflowSchemePermission.MANAGE_SCHEME] 이다 — 「붙일 수
+ * 있는 스킴」과 「고칠 수 있는 스킴」은 다른 질문이라 권한도 갈린다.
+ *
+ * 프로젝트 스코프에서 두 권한은 같은 `MANAGE_WORKFLOW` 매트릭스 코드로 수렴하므로 **통과 집합은
+ * 지금 같다.** 그래도 이름을 맞춰 두는 이유는, 전역 권한 부여가 들어오는 날 둘을 갈라야 할 때
+ * 코드가 이미 그 구분을 갖고 있어야 하기 때문이다.
  *
  * ### 인증 주체 actor 결선
  * 세 endpoint 모두 메서드 진입 직후 [CurrentActor.current] 로 Spring Security 인증 주체를
@@ -172,6 +179,42 @@ class ProjectWorkflowSchemeController(
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
         // 전역 템플릿 + 이 프로젝트 전용만. 남의 프로젝트 전용 스킴은 배정 후보가 아니다(FR-WF-08).
         return ResponseEntity.ok(DataResponse(data = appService.listForProject(projectId).map { it.toResponse() }))
+    }
+
+    /**
+     * 프로젝트 설정 화면이 쓰는 **스킴 관리 목록**을 조회한다.
+     *
+     * [listAssignableSchemes] 와 대상 행은 같지만 **형태와 권한이 다르다.**
+     * 그쪽은 배정 select 옵션이라 코어 필드(`SchemeResponse`)만 주고 `ASSIGN_SCHEME` 을 묻는다.
+     * 이쪽은 사이드바·매핑표·메타패널이 쓰므로 매핑 수·사용 프로젝트 수·소유를 함께 주고
+     * `MANAGE_SCHEME` 을 묻는다.
+     *
+     * ★한 엔드포인트로 합치지 않는다. 배정 후보 응답은 `GET /workflow-scheme`(배정 조회)와
+     * **같은 DTO 를 공유**하므로, 그쪽을 넓히면 건드릴 이유가 없는 엔드포인트의 계약까지 흔들린다.
+     *
+     * 가드 순서는 형제 핸들러와 같다 — 권한(403)이 프로젝트 조회(404)보다 **먼저**다.
+     *
+     * @param projectKey 관리 목록을 조회할 프로젝트 키 (예. "ATLAS").
+     * @return 200 + `{ "data": [ { id, key, name, description, isStandard, projectId, mappingsCount, ... }, ... ] }`
+     * @throws ResponseStatusException(404) [projectKey] 에 해당하는 프로젝트가 없을 때.
+     * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException actor 가 그 프로젝트의
+     *   스킴을 관리할 권한이 없을 때 (403).
+     */
+    @GetMapping("/{projectKey}/workflow-schemes")
+    fun listManagedSchemes(
+        @PathVariable projectKey: String,
+    ): ResponseEntity<DataResponse<List<WorkflowSchemeDetailResponse>>> {
+        log.info("listManagedSchemes: projectKey={}", projectKey)
+        val actor = CurrentActor.current()
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            WorkflowScope.Project(projectKey),
+        )
+        val projectId =
+            projectLookupPort.findIdByKey(ProjectKey(projectKey))
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+        return ResponseEntity.ok(DataResponse(data = appService.listWithCountsForProject(projectId)))
     }
 }
 

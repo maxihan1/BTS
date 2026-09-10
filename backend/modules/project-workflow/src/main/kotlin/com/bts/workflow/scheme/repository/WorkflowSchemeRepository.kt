@@ -6,7 +6,9 @@ package com.bts.workflow.scheme.repository
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import org.jooq.Condition
 import org.jooq.DSLContext
+import org.jooq.impl.DSL
 import org.jooq.impl.DSL.field
 import org.jooq.impl.DSL.name
 import org.jooq.impl.DSL.table
@@ -284,7 +286,54 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
      * @return [SchemeCountRow] 목록. 비어 있을 수 있음.
      */
     @Transactional(readOnly = true)
-    fun findAllWithCounts(): List<SchemeCountRow> {
+    fun findAllWithCounts(): List<SchemeCountRow> = fetchCountRows(DSL.trueCondition())
+
+    /**
+     * [projectId] 프로젝트의 **스킴 관리 목록**을 카운트와 함께 반환한다.
+     *
+     * ★ [findAllWithCounts] 는 전량을 준다. 프로젝트 설정 화면이 그걸 그대로 쓰면 남의 프로젝트
+     * 전용 스킴이 이름째 보인다(FR-WF-08). 쿼리는 같은 뼈대를 쓰고 **조건만** 다르다 — 복사하면
+     * 카운트 정의가 바뀌는 날 한쪽만 고쳐져 두 목록이 다른 숫자를 보여 준다.
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return [SchemeCountRow] 목록. 비어 있을 수 있음.
+     */
+    @Transactional(readOnly = true)
+    fun findAllWithCountsForProject(projectId: UUID): List<SchemeCountRow> {
+        // 블록 본문으로 둔다 — 식 본문이면 ktlint 가 「한 줄로 합쳐라」를, detekt 가 「120자를
+        // 넘지 마라」를 요구해 서로 배타가 된다(저장소 관례).
+        return fetchCountRows(managedByProjectCondition(projectId))
+    }
+
+    /**
+     * 「이 프로젝트의 스킴 관리 목록에 무엇이 들어가는가」를 정하는 단 하나의 조건.
+     *
+     * 소프트 삭제 필터는 [fetchCountRows] 가 이미 건다 — 여기서는 **소유**만 정한다.
+     *
+     * ## 전역 템플릿을 넣는 이유 (Maxi 확정 2026-09-10)
+     *
+     * ★**지금 배정된 스킴이 대개 전역이다.** EC-1 D10 이 신규 프로젝트에 `software-scheme` 을
+     * 자동 배정하는데 V201 시드는 전부 `project_id IS NULL` 이다. 전역을 빼면 프로젝트 관리자가
+     * **자기 프로젝트가 실제로 쓰는 스킴을 관리 화면에서 못 본다.**
+     *
+     * 「못 고치는 행이 섞인다」는 문제는 화면이 받는다 — 전역 행에는 편집 대신 복제를 준다
+     * (PR ④ 워크플로우 목록과 같은 처방). 이 저장소는 「목록에서 숨기기」가 아니라 「목록에 두되
+     * 액션을 가르기」를 택해 왔다(표준 스킴 잠금 · `ForbiddenSchemeCard`).
+     *
+     * ## 남의 프로젝트 스킴을 빼는 이유
+     *
+     * 그쪽은 권한 표현이 아니라 **정보 노출**이다. 이름만으로도 그 팀이 무슨 흐름을 쓰는지 샌다.
+     * 같은 조건 안에서 두 규칙이 갈리는 지점이 여기다 — 전역은 보이고, 남의 것은 안 보인다.
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return 목록에 포함할 행을 고르는 jOOQ 조건.
+     */
+    private fun managedByProjectCondition(projectId: UUID): Condition {
+        return WS_PROJECT_ID.isNull.or(WS_PROJECT_ID.eq(projectId))
+    }
+
+    /** [findAllWithCounts] · [findAllWithCountsForProject] 공용 조회. 조건만 갈린다. */
+    private fun fetchCountRows(condition: Condition): List<SchemeCountRow> {
         val ASSIGNMENTS = table(name("project_workflow_scheme_assignments"))
         val MAPPINGS_TABLE = table(name("workflow_scheme_issue_type_mappings"))
         val A_WORKFLOW_SCHEME_ID =
@@ -319,6 +368,7 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             )
             .from(WORKFLOW_SCHEMES)
             .where(WS_DELETED_AT.isNull)
+            .and(condition)
             .fetch()
             .map { rec -> rec.toCountRow() }
     }

@@ -32,6 +32,16 @@ export interface WorkflowSchemeSidebarProps {
   onSelect: (schemeKey: string) => void
   /** 「+ 새 스킴」 버튼 클릭 콜백 */
   onAddNew: () => void
+  /**
+   * 그릴 스킴 목록. 주면 그대로 쓰고, 없으면 전역 관리자 목록을 스스로 조회한다 (FR-WF-08).
+   *
+   * ★**컴포넌트 안에 프로젝트 분기를 넣지 않으려고 이렇게 연다.** 여기서 `projectKey` 를 받아
+   * 훅을 갈아 끼우면 이 컴포넌트가 「어느 화면에서 열렸는지」를 알게 되고, 그때부터 두 화면의
+   * 동작이 서로를 검사하지 않은 채 갈리기 시작한다. 데이터는 호출부가 정하고 컴포넌트는 그린다.
+   */
+  schemes?: SchemeListItem[]
+  /** [schemes] 를 주는 호출부가 로딩 상태도 함께 넘긴다. 자체 조회일 때는 무시된다. */
+  isPending?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -189,8 +199,13 @@ export function WorkflowSchemeSidebar({
   selectedSchemeKey,
   onSelect,
   onAddNew,
+  schemes: providedSchemes,
+  isPending: providedPending,
 }: WorkflowSchemeSidebarProps): JSX.Element {
-  const { data: schemes, isPending } = useWorkflowSchemes()
+  // 호출부가 목록을 주면 자체 조회를 끈다 — 두 요청이 겹치면 전역 목록이 403 을 던진다.
+  const selfQuery = useWorkflowSchemes({ enabled: providedSchemes === undefined })
+  const schemes = providedSchemes ?? selfQuery.data
+  const isPending = providedSchemes === undefined ? selfQuery.isPending : (providedPending ?? false)
 
   if (isPending) {
     return (

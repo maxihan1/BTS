@@ -254,6 +254,9 @@ class SchemeHandlerPermissionRuntimeMatrixTest {
                 HandlerKey("ProjectWorkflowSchemeController", "listAssignableSchemes") to {
                     get("/api/v1/projects/$PROJECT_KEY/assignable-workflow-schemes")
                 },
+                HandlerKey("ProjectWorkflowSchemeController", "listManagedSchemes") to {
+                    get("/api/v1/projects/$PROJECT_KEY/workflow-schemes")
+                },
             )
 
         /** [javaClass] 가 [WorkflowSchemeApplicationService] 를 필드 또는 생성자 파라미터로 주입받는가. */

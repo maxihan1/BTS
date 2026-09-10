@@ -162,6 +162,25 @@ class WorkflowSchemeApplicationService(
         }
 
     /**
+     * [projectId] 프로젝트의 **스킴 관리 목록**을 카운트와 함께 반환한다.
+     *
+     * ★ [listWithCounts] 는 전량을 준다. 프로젝트 설정 화면이 그걸 그대로 쓰면 남의 프로젝트
+     * 전용 스킴이 이름째 보인다(FR-WF-08). 포함 규칙의 근거는
+     * [WorkflowSchemeRepository.findAllWithCountsForProject] KDoc 에 있다.
+     *
+     * [listForProject] 와 다르다 — 그쪽은 **배정 후보**(코어 필드)이고 이쪽은 **관리 목록**
+     * (카운트·소유 포함)이다. 형태가 달라 창구를 갈랐다.
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return [WorkflowSchemeDetailResponse] 목록. 비어 있을 수 있음.
+     */
+    @Transactional(readOnly = true)
+    fun listWithCountsForProject(projectId: UUID): List<WorkflowSchemeDetailResponse> =
+        schemeRepo.findAllWithCountsForProject(projectId).map { row ->
+            toListItemResponse(row)
+        }
+
+    /**
      * 스킴의 가변 필드(name / description / isDefault) 를 변경한다.
      *
      * EC-4 D11 — 표준 스킴(isDefault=true)의 name / description / isDefault 변경은 차단한다.

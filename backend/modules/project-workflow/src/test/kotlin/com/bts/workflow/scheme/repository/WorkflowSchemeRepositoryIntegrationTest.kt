@@ -562,4 +562,42 @@ class WorkflowSchemeRepositoryIntegrationTest {
         assertThat(keys).contains("software-scheme", "scope-mine")
         assertThat(keys).doesNotContain("scope-other")
     }
+
+    @Test
+    @Order(44)
+    fun `findAllWithCountsForProject - 전역과 그 프로젝트 것만 담고 카운트를 함께 준다`() {
+        val mine = UUID.fromString("aaaaaaaa-0000-4000-8000-00000000000c")
+        val other = UUID.fromString("aaaaaaaa-0000-4000-8000-00000000000d")
+        repository.save(
+            WorkflowScheme.create(
+                key = WorkflowSchemeKey("counts-mine"),
+                name = "내 관리 스킴",
+                description = null,
+                isDefault = false,
+                projectId = mine,
+                clock = fixedClock,
+            ),
+        )
+        repository.save(
+            WorkflowScheme.create(
+                key = WorkflowSchemeKey("counts-other"),
+                name = "남의 관리 스킴",
+                description = null,
+                isDefault = false,
+                projectId = other,
+                clock = fixedClock,
+            ),
+        )
+
+        val rows = repository.findAllWithCountsForProject(mine)
+        val keys = rows.map { it.scheme.key.value }
+
+        // 전역 템플릿은 들어온다 — 지금 배정된 스킴이 대개 전역이라, 빼면 자기 프로젝트가
+        // 쓰는 스킴을 관리 화면에서 못 본다(FR-WF-08 포함 규칙).
+        assertThat(keys).contains("software-scheme", "counts-mine")
+        // 남의 프로젝트 전용은 정보 노출이라 뺀다 — 이 엔드포인트를 새로 만든 이유다.
+        assertThat(keys).doesNotContain("counts-other")
+        // 관리 형태다 — 배정 후보 목록과 달리 카운트를 함께 실어야 사이드바가 그린다.
+        assertThat(rows.map { it.mappingsCount }).isNotEmpty
+    }
 }
