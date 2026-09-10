@@ -52,7 +52,6 @@ import { fileURLToPath } from 'node:url'
 
 import { allModules, selectModules } from './select-backend-modules.ts'
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
-import { gitFixtureEnv } from './git-fixture-env.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -92,38 +91,19 @@ export const FE_WIDEN: readonly string[] = [
   'apps/web/src/mocks/',
 ]
 
-/** 비교 기준을 못 정했을 때의 마지막 후보. `push-backend-tests.ts` 와 같다. */
-export const FALLBACK_BASE = 'origin/main'
-
-function git(args: string[]): string | null {
-  const r = spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf-8', env: gitFixtureEnv() })
-  if (r.status !== 0) return null
-  return r.stdout.trim()
-}
-
 /**
  * 브랜치가 건드린 파일. 기준을 못 정하면 `null`.
  *
- * `null`(모른다)과 `[]`(없다)를 구분한다 — 뭉개면 판정 실패가 조용한 통과로 바뀐다.
+ * ★본체는 `diff-base.ts` 하나다(2026-09-10). 종전에는 이 계산이 6벌이었고
+ *   **여섯이 동시에 main 위에서 기준을 HEAD 로 잡았다** — 차집합이 항상 공집합이라
+ *   빌드 #31 이 3분 만에 초록이면서 백엔드·프론트 테스트를 0건 돌렸다.
+ *   계약. scripts/workflow/diff-base.test.ts
  */
-export function changedFiles(): string[] | null {
-  const base = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']) ?? FALLBACK_BASE
-  const merged = git(['merge-base', base, 'HEAD'])
-  if (merged === null) return null
-  // ★`--no-renames` 가 없으면 **좁게 고른다.** git 은 rename 을 감지하면 새 경로 하나로
-  //   접어서, 파일이 모듈 A → B 로 옮겨졌을 때 A 가 목록에서 통째로 빠진다. A 의 테스트가
-  //   안 돌고 그것이 초록으로 보인다 — 넓게 고르는 실수는 느릴 뿐이지만 좁게 고르는 실수는
-  //   검증 안 된 코드를 머지시킨다.
-  //
-  // ★이 플래그는 종전에 `.github/workflows/backend-ci.yml` 의 select 잡에만 있었다.
-  //   젠킨스는 YAML 대신 이 계산기가 내부에서 diff 하므로 그 배선이 통째로 사라져 있었다
-  //   (2026-09-09 · P4 포팅 중 적발). 「YAML 이 하던 일을 계산기가 물려받았다」는 이전에서
-  //   가장 놓치기 쉬운 자리다 — 옮긴 쪽에는 그 줄이 애초에 없기 때문이다.
-  //   계약. scripts/workflow/select-backend-modules.test.ts §--no-renames
-  const out = git(['diff', '--name-only', '--no-renames', merged, 'HEAD'])
-  if (out === null) return null
-  return out === '' ? [] : out.split('\n')
-}
+// ★재수출(`export … from`)이 아니라 **임포트 + 재수출**이다. 전자는 이 파일 안에서
+//   이름을 안 잡아서 본문의 `changedFiles()` 가 런타임에 ReferenceError 로 죽는다 —
+//   판별식이 소스 글자만 보므로 690건 초록인 채로 통과했다(2026-09-10 실측).
+import { changedFiles, FALLBACK_BASE } from './diff-base.ts'
+export { changedFiles, FALLBACK_BASE }
 
 export interface FrontendScope {
   /** `skip` 프론트 변경 없음 · `related` 바뀐 파일을 import 하는 테스트만 · `all` 전량 */

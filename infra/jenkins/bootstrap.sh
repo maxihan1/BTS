@@ -180,10 +180,39 @@ case "${1:-up}" in
       RC="$(curl -s -o /dev/null -w '%{http_code}' -X POST -u "$AUTH" -b "$CJ2" \
         -H "Jenkins-Crumb: $CRUMB2" "http://127.0.0.1:18081/job/$JOB/build")"
       rm -f "$CJ2"
-      if [ "$RC" = "201" ]; then
-        echo "→ $JOB 등록 빌드 트리거 (parameters·triggers 재등록)"
+      if [ "$RC" != "201" ]; then
+        echo "❌ $JOB 등록 빌드 트리거 실패 HTTP $RC" >&2
+        exit 3
+      fi
+      echo "→ $JOB 등록 빌드 트리거 — 재등록을 확인한다"
+
+      # ★★201 은 「큐에 들어갔다」일 뿐이다. **결과를 본다.**
+      #
+      #   2026-09-10 실측. 머지보다 이 `job` 적용을 먼저 돌려서 등록 빌드가
+      #   `Jenkinsfile not found` 로 죽었다. 그런데 이 스크립트는 201 만 보고
+      #   「✅ 적용 완료」라고 찍었다. 그 뒤로 잡은 **폴링도 파라미터도 없는 껍데기**였고,
+      #   증상은 빨간불이 아니라 **침묵**이었다 — 아무 빌드도 안 걸리는 것.
+      #   빨간불은 죽은 등록 빌드 하나뿐이고, 그것도 「예전 실패」로 읽힌다.
+      #
+      #   무엇을 보나. 두 파이프라인 모두 `parameters` 를 선언하므로, 젠킨스가
+      #   Jenkinsfile 을 **파싱하는 데 성공했으면** config 에 그 속성이 다시 나타난다.
+      #   트리거 HTTP 코드가 아니라 이 결과가 우리가 원하는 것이다.
+      REGISTERED=0
+      for _ in $(seq 1 60); do
+        sleep 5
+        if curl -sf -u "$AUTH" "http://127.0.0.1:18081/job/$JOB/config.xml" \
+          | grep -q 'ParametersDefinitionProperty'; then
+          REGISTERED=1; break
+        fi
+      done
+      if [ "$REGISTERED" = "1" ]; then
+        echo "→ $JOB parameters·triggers 재등록 확인 ✅"
       else
-        echo "⚠️ $JOB 등록 빌드 트리거 실패 HTTP $RC — 손으로 한 번 돌려야 파라미터가 살아난다" >&2
+        echo "❌ $JOB 등록 빌드가 파이프라인을 파싱하지 못했다 (5분 대기 후에도 미등록)." >&2
+        echo "   이 잡은 지금 폴링도 파라미터도 없는 상태다 — **조용히 아무것도 안 돈다.**" >&2
+        echo "   처방. 대상 브랜치(*/${BRANCH})에 Jenkinsfile 이 있는지부터 확인하라." >&2
+        echo "         머지보다 이 명령을 먼저 돌리면 정확히 이 상태가 된다." >&2
+        exit 3
       fi
       APPLIED=$((APPLIED + 1))
     done

@@ -30,8 +30,6 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { allModules, selectModules } from './select-backend-modules.ts'
-// @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
-import { gitFixtureEnv } from './git-fixture-env.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -42,33 +40,19 @@ export const SKIP_ENV = 'BTS_SKIP_MODULE_TEST'
 const BACKEND_PREFIX = 'backend/'
 
 /**
- * 비교 기준을 못 정했을 때의 마지막 후보.
- *
- * ★새 브랜치는 upstream 이 없다. 그때 `@{u}` 는 실패하고, 그 실패를 「변경 없음」으로 읽으면
- *   **새 브랜치의 첫 푸시가 통째로 검증을 건너뛴다** — 가장 검증이 필요한 순간이다.
- */
-const FALLBACK_BASE = 'origin/main'
-
-function git(args: string[]): string | null {
-  const r = spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf-8', env: gitFixtureEnv() })
-  if (r.status !== 0) return null
-  return r.stdout.trim()
-}
-
-/**
  * 푸시될 커밋들이 건드린 파일. 기준을 못 정하면 `null`.
  *
  * `null` 과 `[]` 를 **구분한다.** 전자는 「모른다」이고 후자는 「없다」다. 둘을 뭉개면
  * 판정 실패가 조용한 통과로 바뀐다 — 이 저장소가 반복해 물린 양식이다.
+ *
+ * ★본체는 `diff-base.ts` 하나다(2026-09-10). 종전에는 사본이 6벌이었고 여섯이 동시에
+ *   main 위에서 기준을 HEAD 로 잡았다. 계약. scripts/workflow/diff-base.test.ts
  */
-export function changedFiles(): string[] | null {
-  const base = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']) ?? FALLBACK_BASE
-  const merged = git(['merge-base', base, 'HEAD'])
-  if (merged === null) return null
-  const out = git(['diff', '--name-only', merged, 'HEAD'])
-  if (out === null) return null
-  return out === '' ? [] : out.split('\n')
-}
+// ★재수출(`export … from`)이 아니라 **임포트 + 재수출**이다. 전자는 이 파일 안에서
+//   이름을 안 잡아서 본문의 `changedFiles()` 가 런타임에 ReferenceError 로 죽는다 —
+//   판별식이 소스 글자만 보므로 690건 초록인 채로 통과했다(2026-09-10 실측).
+import { changedFiles, FALLBACK_BASE } from './diff-base.ts'
+export { changedFiles, FALLBACK_BASE }
 
 /** Docker 데몬이 살아 있는지. Testcontainers 를 쓰는 테스트가 256곳이라 없으면 전부 깨진다. */
 export function dockerAlive(): boolean {

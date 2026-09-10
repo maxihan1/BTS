@@ -10,7 +10,7 @@
 //
 // ① `BTS_CHANGED_PATHS` — 줄바꿈으로 나눈 경로 목록. CI 가 diff 스텝 산출물을 그대로 넘길 때.
 // ② `BASE_SHA` + `GITHUB_SHA` — 워크플로우가 이미 계산해 둔 두 커밋.
-// ③ 로컬 — `origin/main`(없으면 `main`)과 HEAD 의 공통 조상부터 HEAD 까지.
+// ③ 로컬 — `diff-base.ts` 가 정한 기준부터 HEAD 까지 (main 위에서는 직전 커밋).
 //
 // 셋 다 실패하면 **빈 목록을 돌려주지 않고 throw** 한다. 부재를 0건으로 바꾸면 그 순간
 // 모든 하한 검사가 공허하게 통과한다.
@@ -20,6 +20,7 @@ import { fileURLToPath } from 'node:url';
 
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs';
+import { resolveDiffBase } from './diff-base.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -50,10 +51,6 @@ const git = (args: string[]): { ok: boolean; stdout: string; stderr: string } =>
 
 /** NUL 로 나뉜 `--name-only -z` 출력을 경로 배열로 */
 const splitNul = (out: string): string[] => out.split('\0').filter((p) => p.length > 0);
-
-/** 존재하는 첫 ref. 하나도 없으면 null */
-const firstExistingRef = (refs: string[]): string | null =>
-  refs.find((ref) => git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).ok) ?? null;
 
 /**
  * 이 PR 이 바꾼 파일 목록.
@@ -86,22 +83,21 @@ export const changedPaths = (): ChangedPaths => {
     return { paths: splitNul(diff.stdout), source: `${base}..${head}` };
   }
 
-  const mainRef = firstExistingRef(['origin/main', 'main']);
-  if (mainRef === null) {
+  // ★기준은 `diff-base.ts` 에서 받는다(2026-09-10). 종전에는 여기서 직접
+  //   `merge-base(origin/main, HEAD)` 를 잡았는데, **main 위에서는 그것이 HEAD 자신**이라
+  //   검사 대상이 항상 0건이었다 — 이 파일 머리말이 경고한 바로 그 고장을 이 파일이
+  //   갖고 있었다. `resolveDiffBase` 는 그때 직전 커밋으로 물러난다.
+  const from = resolveDiffBase();
+  if (from === null) {
     throw new Error(
-      'origin/main 도 main 도 없어서 비교 기준을 못 잡았다. ' +
+      '비교 기준을 못 잡았다(origin/main·main 부재이거나 커밋이 하나뿐). ' +
         'CI 라면 BASE_SHA·GITHUB_SHA 를, 로컬이라면 BTS_CHANGED_PATHS 를 넘겨라.',
     );
   }
 
-  const mergeBase = git(['merge-base', mainRef, 'HEAD']);
-  if (!mergeBase.ok) {
-    throw new Error(`merge-base ${mainRef} HEAD 실패: ${mergeBase.stderr.trim()}`);
-  }
-  const from = mergeBase.stdout.trim();
   const diff = git(['diff', '--name-only', '-z', from, 'HEAD']);
   if (!diff.ok) {
     throw new Error(`diff ${from}..HEAD 실패: ${diff.stderr.trim()}`);
   }
-  return { paths: splitNul(diff.stdout), source: `${mainRef}...HEAD` };
+  return { paths: splitNul(diff.stdout), source: `${from.slice(0, 9)}...HEAD` };
 };

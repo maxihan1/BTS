@@ -14,31 +14,16 @@
 // ## 출력 계약
 //
 // `true` 또는 `false` 한 줄. 판정 불가(변경 목록을 못 구함)도 `true` 다 — 모르면 넓게 간다.
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { gitFixtureEnv } from './git-fixture-env.mjs';
 import { requiresFullBuild } from './select-backend-modules.ts';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-/** 비교 기준 대비 변경 파일. 기준을 못 잡으면 `null`(= 전량). */
-function changedFiles(): string[] | null {
-  const git = (args: string[]) =>
-    spawnSync('git', ['-c', 'core.quotePath=false', ...args], {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      env: gitFixtureEnv(),
-    });
-
-  // `origin/main` 이 없으면 기준을 못 잡는다 — 그때는 넓힌다.
-  const base = git(['rev-parse', '--verify', 'origin/main']);
-  if (base.status !== 0) return null;
-
-  const diff = git(['diff', '--name-only', '--no-renames', 'origin/main...HEAD']);
-  if (diff.status !== 0) return null;
-  return diff.stdout.split('\n').filter((l) => l.trim().length > 0);
-}
+// 비교 기준 대비 변경 파일 — 본체는 `diff-base.ts` 하나다(2026-09-10).
+// 종전에는 여기에 사본이 있었고, main 위에서 `origin/main...HEAD` 가 항상 공집합이라
+// **CI 설정을 바꿔도 전량으로 안 넓어졌다.** 계약. scripts/workflow/diff-base.test.ts
+import { changedFiles } from './diff-base.ts';
 
 export function main(): number {
   process.stdout.write(requiresFullBuild(changedFiles()) ? 'true' : 'false');
