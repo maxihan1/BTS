@@ -47,6 +47,7 @@ const mockWorkflows: WorkflowView[] = [
       { key: 'done', name: 'Done', category: 'DONE', displayOrder: 3 },
     ],
     transitions: [],
+      projectId: null,
   },
 ]
 
