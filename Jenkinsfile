@@ -204,6 +204,9 @@ pipeline {
           def branch = (env.BRANCH_NAME ?: env.GIT_BRANCH
             ?: sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim())
           branch = branch.replaceFirst(/^origin\//, '').trim()
+          // 뒤 stage(배포 조건·승인 문구)가 쓴다. 여기서 한 번만 계산해 둔다 —
+          // 각자 다시 구하면 세 곳이 서로 다른 답을 낼 수 있다.
+          env.GIT_BRANCH_NAME = branch
           /*
            * ★CI 설정이 바뀌면 전량이다 (2026-09-10).
            *
@@ -415,18 +418,49 @@ pipeline {
     //
     // ★`DEPLOY` 파라미터가 참일 때만 이 단계가 보인다. 기본값이 거짓이라
     //   평소 빌드는 여기까지 오지 않는다 — 실수로 배포창이 뜨는 일이 없다.
+    /*
+     * ★배포는 **main 에서만** 한다 (2026-09-10 추가).
+     *
+     * 종전 조건은 `DEPLOY && RUN_FULL` 뿐이라 **작업 브랜치를 운영에 배포할 수 있었다.**
+     * 이 잡은 검증 편의로 작업 브랜치를 보도록 걸려 있었고, 그 임시 설정이 배포 경로까지
+     * 열어 버렸다 — 검증용 설정이 운영 경로를 건드린 자리다.
+     *
+     * 「어차피 사람이 승인한다」로 넘길 수 없다. 종전 승인 화면은
+     * 「운영에 배포한다. 계속할까?」만 보여줬다 — **어느 브랜치인지 안 보인다.**
+     * 사람이 막을 수 없는 것을 사람에게 맡긴 셈이다.
+     *
+     * ★CI 는 머지하지 않는다. 머지는 GitHub 에서 사람이 한다(게이트 2). 무료 플랜이라
+     *   브랜치 보호가 403 으로 거부되므로 젠킨스는 머지를 막지도 하지도 못한다
+     *   (`docs/rules/behavior-rules.md` §4). 그래서 배포 대상은 **이미 머지된 main** 이다.
+     */
     stage('배포 승인') {
       when {
         allOf {
           expression { params.DEPLOY }
           environment name: 'RUN_FULL', value: 'true'
+          expression { env.GIT_BRANCH_NAME == 'main' }
         }
       }
       steps {
-        // 타임아웃을 둔다. 승인을 안 누르고 두면 executor 1개를 무한 점유해
-        // 2코어 머신의 CI 가 통째로 멈춘다.
-        timeout(time: 30, unit: 'MINUTES') {
-          input message: '운영(bts.maxihan.com)에 배포한다. 계속할까?', ok: '배포'
+        script {
+          def sha = (env.GIT_COMMIT ?: 'unknown').take(9)
+          def subject = sh(returnStdout: true, script: 'git log -1 --pretty=%s || true').trim()
+          // ★무엇을 배포하는지 보여준다. 「계속할까?」만 묻는 승인은 판단할 정보가 없어
+          //   반사적으로 눌리게 되고, 그때 승인 게이트는 이름만 남는다.
+          //
+          // 타임아웃을 둔다. 승인을 안 누르고 두면 executor 1개를 무한 점유해
+          // 2코어 머신의 CI 가 통째로 멈춘다.
+          timeout(time: 30, unit: 'MINUTES') {
+            input(
+              message: """운영(bts.maxihan.com)에 배포한다.
+
+  브랜치  ${env.GIT_BRANCH_NAME}
+  커밋    ${sha}  ${subject}
+
+계속할까?""",
+              ok: '배포',
+            )
+          }
         }
       }
     }
@@ -436,6 +470,9 @@ pipeline {
         allOf {
           expression { params.DEPLOY }
           environment name: 'RUN_FULL', value: 'true'
+          // ★승인 stage 와 **같은 조건**이어야 한다. 한쪽만 브랜치를 보면 승인은 건너뛰고
+          //   배포만 도는 경로가 생긴다 — 승인 없는 배포다.
+          expression { env.GIT_BRANCH_NAME == 'main' }
         }
       }
       steps {
