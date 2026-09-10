@@ -5,7 +5,7 @@ package com.bts.workflow.postaction.web
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.postaction.PostActionAdminService
 import com.bts.workflow.postaction.PostActionNotFoundException
 import com.bts.workflow.postaction.PostActionRow
@@ -77,7 +77,7 @@ class PostActionControllerTest {
         open fun manageSchemeGuard(resolver: WorkflowSchemePermissionResolver): ManageSchemeGuard =
             ManageSchemeGuard(
                 resolver,
-                mockk { every { ofWorkflow(any()) } returns WorkflowSchemeScope.Global },
+                mockk { every { ofWorkflow(any()) } returns WorkflowScope.Global },
             )
 
         @Bean
@@ -139,7 +139,7 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
         every { service.listForTransition(workflowKey, transitionKey) } returns rows
@@ -174,7 +174,7 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
         every {
@@ -214,7 +214,7 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
         every {
@@ -240,7 +240,7 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
         justRun { service.delete(workflowKey, transitionKey, postActionId) }
@@ -258,13 +258,13 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
 
         val requestBody = mapOf("type" to "CALL_WEBHOOK", "config" to emptyMap<String, Any>(), "displayOrder" to 0)
@@ -286,13 +286,13 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
 
         mockMvc.perform(get(basePath))
@@ -308,13 +308,13 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
 
         val requestBody = mapOf("type" to "CALL_WEBHOOK", "config" to emptyMap<String, Any>(), "displayOrder" to 0)
@@ -337,13 +337,13 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
 
         mockMvc.perform(delete("$basePath/$postActionId"))
@@ -361,7 +361,7 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
         every {
@@ -381,7 +381,7 @@ class PostActionControllerTest {
             permissionResolver.requirePermission(
                 any(),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }
         every {

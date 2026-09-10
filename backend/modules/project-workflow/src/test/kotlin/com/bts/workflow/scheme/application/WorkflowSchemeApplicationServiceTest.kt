@@ -7,7 +7,7 @@ import com.bts.shared.issue.IssueTypeRef
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
@@ -77,8 +77,8 @@ class WorkflowSchemeApplicationServiceTest {
                 scopeResolver,
             )
         // 이 파일의 픽스처는 전부 전역 스킴이다 — 소유별 스코프 판정은 WorkflowOwnershipScopeResolverTest 가 잰다.
-        every { scopeResolver.ofScheme(any()) } returns WorkflowSchemeScope.Global
-        every { scopeResolver.ofProjectId(any()) } returns WorkflowSchemeScope.Global
+        every { scopeResolver.ofScheme(any()) } returns WorkflowScope.Global
+        every { scopeResolver.ofProjectId(any()) } returns WorkflowScope.Global
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -490,7 +490,7 @@ class WorkflowSchemeApplicationServiceTest {
             denyingResolver.requirePermission(
                 actor.toUuid(),
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                any<WorkflowSchemeScope.Project>(),
+                any<WorkflowScope.Project>(),
             )
         } throws RuntimeException("WORKFLOW_PERMISSION_DENIED")
 
@@ -523,13 +523,13 @@ class WorkflowSchemeApplicationServiceTest {
             prodLikeResolver.requirePermission(
                 WorkflowSchemeApplicationService.SYSTEM_ACTOR_UUID,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                any<WorkflowSchemeScope.Project>(),
+                any<WorkflowScope.Project>(),
             )
         } throws
             WorkflowSchemeAccessDeniedException(
                 WorkflowSchemeApplicationService.SYSTEM_ACTOR_UUID,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project("NEW"),
+                WorkflowScope.Project("NEW"),
             )
 
         val svcWithProdResolver =

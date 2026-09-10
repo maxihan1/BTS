@@ -5,7 +5,7 @@ package com.bts.workflow.scheme.web
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
@@ -77,7 +77,7 @@ class ProjectWorkflowSchemeControllerTest {
                 override fun requirePermission(
                     actorId: UUID,
                     permission: WorkflowSchemePermission,
-                    scope: WorkflowSchemeScope,
+                    scope: WorkflowScope,
                 ) = Unit
             },
         workflowRepo = mockk(),
@@ -250,7 +250,7 @@ class ProjectWorkflowSchemeControllerTest {
 
         assertThat(config.permResolverStub.callCount).isEqualTo(1)
         assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
-        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowScope.Project("ATLAS"))
     }
 
     // ── Case 4. GET — ASSIGN_SCHEME 권한 검증 호출 확인 ──────────────────────
@@ -279,7 +279,7 @@ class ProjectWorkflowSchemeControllerTest {
 
         assertThat(config.permResolverStub.callCount).isEqualTo(1)
         assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
-        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowScope.Project("ATLAS"))
     }
 
     // ── Case 5. projectKey 에 해당하는 project 없으면 404 ─────────────────────
@@ -394,7 +394,7 @@ class ProjectWorkflowSchemeControllerTest {
     // ── Case 10. GET assignable — ASSIGN_SCHEME + Project(projectKey) 스코프 ──
     //
     // ★가장 중요한 방어선. capturedPermission == ASSIGN_SCHEME 그리고
-    // capturedScope == WorkflowSchemeScope.Project("ATLAS") 를 둘 다 단언한다.
+    // capturedScope == WorkflowScope.Project("ATLAS") 를 둘 다 단언한다.
     // 스코프를 Global 로 잘못 쓰면 프로젝트 관리자가 403 을 맞아 배정 화면이 다시 깨진다.
 
     @Test
@@ -420,7 +420,7 @@ class ProjectWorkflowSchemeControllerTest {
             .andExpect(status().isOk)
 
         assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
-        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowScope.Project("ATLAS"))
     }
 
     // ── Case 10b. GET assignable — 남의 프로젝트 전용 스킴은 후보가 아니다 ─────
@@ -468,7 +468,7 @@ class ProjectWorkflowSchemeControllerTest {
             WorkflowSchemeAccessDeniedException(
                 authActorUuid,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project("ATLAS"),
+                WorkflowScope.Project("ATLAS"),
             )
 
         mockMvc.perform(get("/api/v1/projects/ATLAS/assignable-workflow-schemes"))
@@ -501,7 +501,7 @@ class ProjectWorkflowSchemeControllerTest {
         WorkflowSchemeAccessDeniedException(
             authActorUuid,
             WorkflowSchemePermission.ASSIGN_SCHEME,
-            WorkflowSchemeScope.Project(projectKey),
+            WorkflowScope.Project(projectKey),
         )
 
     @Test

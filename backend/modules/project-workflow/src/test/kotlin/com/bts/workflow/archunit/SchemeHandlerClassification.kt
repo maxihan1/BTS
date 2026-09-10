@@ -3,7 +3,7 @@
 package com.bts.workflow.archunit
 
 import com.bts.shared.permission.WorkflowSchemePermission
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.tngtech.archunit.base.DescribedPredicate
 import com.tngtech.archunit.core.domain.JavaMethod
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -13,18 +13,18 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestMapping
 
 /**
- * 스코프 종류 — [WorkflowSchemeScope] 의 두 구현체에 대응한다.
+ * 스코프 종류 — [WorkflowScope] 의 두 구현체에 대응한다.
  *
  * 구체 인스턴스(예. `Project("ATLAS")`)가 아니라 종류만 분류한다 — 분류맵은 컴파일 시점 상수라
  * 런타임 프로젝트 키를 알 수 없기 때문이다. 런타임에 캡처한 스코프는 [toScopeKind] 로 축약해 비교한다.
  */
 internal enum class ScopeKind { GLOBAL, PROJECT }
 
-/** 런타임에 캡처한 [WorkflowSchemeScope] 를 분류맵과 비교 가능한 [ScopeKind] 로 축약한다. */
-internal fun WorkflowSchemeScope.toScopeKind(): ScopeKind =
+/** 런타임에 캡처한 [WorkflowScope] 를 분류맵과 비교 가능한 [ScopeKind] 로 축약한다. */
+internal fun WorkflowScope.toScopeKind(): ScopeKind =
     when (this) {
-        is WorkflowSchemeScope.Global -> ScopeKind.GLOBAL
-        is WorkflowSchemeScope.Project -> ScopeKind.PROJECT
+        is WorkflowScope.Global -> ScopeKind.GLOBAL
+        is WorkflowScope.Project -> ScopeKind.PROJECT
     }
 
 /** 분류맵 조회 키 — (컨트롤러 단순 클래스명, 핸들러 메서드명). */

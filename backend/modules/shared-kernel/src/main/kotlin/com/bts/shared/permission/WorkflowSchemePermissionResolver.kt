@@ -35,7 +35,7 @@ import java.util.UUID
  * - `com.atlas.bts.identity.*` 클래스를 project-workflow 에서 직접 import 하면 빌드 실패(BC 격리 룰).
  *
  * @see WorkflowSchemePermission
- * @see WorkflowSchemeScope
+ * @see WorkflowScope
  * @see WorkflowSchemeAccessDeniedException
  */
 interface WorkflowSchemePermissionResolver {
@@ -48,12 +48,12 @@ interface WorkflowSchemePermissionResolver {
      *
      * @param actorId 권한 평가 대상 행위자 UUID. nil UUID 는 호출 이전 인증 단계에서 이미 거부된다.
      * @param permission 검증할 스킴 권한. [WorkflowSchemePermission] 참조.
-     * @param scope 권한 적용 범위. [WorkflowSchemeScope.Global] 또는 [WorkflowSchemeScope.Project] 중 하나.
+     * @param scope 권한 적용 범위. [WorkflowScope.Global] 또는 [WorkflowScope.Project] 중 하나.
      * @throws WorkflowSchemeAccessDeniedException (정식 구현체) 권한이 없을 때.
      */
     fun requirePermission(
         actorId: UUID,
         permission: WorkflowSchemePermission,
-        scope: WorkflowSchemeScope,
+        scope: WorkflowScope,
     )
 }

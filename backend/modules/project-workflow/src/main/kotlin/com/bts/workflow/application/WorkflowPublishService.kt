@@ -21,6 +21,7 @@ import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublicationRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowVersionRow
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -72,6 +73,7 @@ class WorkflowPublishService(
     private val migrationInFlightPort: MigrationInFlightPort,
     private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
     private val cache: WorkflowCache,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -87,7 +89,11 @@ class WorkflowPublishService(
         actorId: UUID,
         key: String,
     ): PublishPreview {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.UPDATE)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.UPDATE,
+            scopeResolver.ofWorkflow(key),
+        )
         val workflow = requireLive(key)
         val draft = requireDraft(key, workflow.id)
         val definition = draft.definition
@@ -125,7 +131,11 @@ class WorkflowPublishService(
         key: String,
         baseVersion: Long,
     ): Int {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.PUBLISH,
+            scopeResolver.ofWorkflow(key),
+        )
         val prepared = prepareDraft(key, baseVersion)
         val workflowId = prepared.workflowId
         val definition = prepared.definition
@@ -192,7 +202,11 @@ class WorkflowPublishService(
         baseVersion: Long,
         mappings: List<StatusMigrationMapping>,
     ): UUID {
-        permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.PUBLISH)
+        permissionResolver.requirePermission(
+            actorId,
+            WorkflowDefinitionPermission.PUBLISH,
+            scopeResolver.ofWorkflow(key),
+        )
         val (workflowId, definition) = prepareDraft(key, baseVersion)
 
         // 편성 조회는 한 번만 한다 — `removed` 와 F16 의 도착지 판정이 같은 집합을 근거로 삼는다.

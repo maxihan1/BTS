@@ -8,6 +8,7 @@ import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.cache.WorkflowCache
@@ -24,6 +25,7 @@ import com.bts.workflow.domain.exception.WorkflowVersionConflictException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
+import com.bts.workflow.globalOnlyOwnershipScope
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
@@ -317,6 +319,7 @@ class WorkflowPublishServiceIntegrationTest {
             schemeAssignmentRepository = schemeAssignments,
             permissionResolver = permissions,
             cache = cache,
+            scopeResolver = globalOnlyOwnershipScope(),
         )
 
     /**
@@ -1760,9 +1763,10 @@ class SwitchableWorkflowPermissions : WorkflowDefinitionPermissionResolver {
     override fun requirePermission(
         actorId: UUID,
         permission: WorkflowDefinitionPermission,
+        scope: WorkflowScope,
     ) {
         if (!allow || permission in deny) {
-            throw WorkflowDefinitionAccessDeniedException(actorId, permission)
+            throw WorkflowDefinitionAccessDeniedException(actorId, permission, scope)
         }
     }
 }

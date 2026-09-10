@@ -4,7 +4,7 @@ package com.bts.workflow.scheme.web
 
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
@@ -41,7 +41,7 @@ import java.util.UUID
  *
  * ### 권한
  * 세 endpoint 모두 [WorkflowSchemePermission.ASSIGN_SCHEME] +
- * [WorkflowSchemeScope.Project] 범위 검증. spec §4.3 주석 참조.
+ * [WorkflowScope.Project] 범위 검증. spec §4.3 주석 참조.
  *
  * ### 인증 주체 actor 결선
  * 세 endpoint 모두 메서드 진입 직후 [CurrentActor.current] 로 Spring Security 인증 주체를
@@ -56,7 +56,7 @@ import java.util.UUID
  * 세 핸들러 모두 [WorkflowSchemePermissionResolver.requirePermission](403) 을
  * [ProjectLookupPort.findIdByKey](404) **보다 먼저** 호출한다. 순서가 반대면 인증은 됐지만 권한이 없는
  * 사용자가 응답 코드 차이(존재하는 키 403 / 없는 키 404)로 프로젝트 키의 실재를 열거할 수 있다.
- * 권한 스코프 [WorkflowSchemeScope.Project] 는 projectId 가 아니라 **키 기반**이라 조회 이전에도
+ * 권한 스코프 [WorkflowScope.Project] 는 projectId 가 아니라 **키 기반**이라 조회 이전에도
  * 평가할 수 있다.
  *
  * 프론트 계약과 무관하다 — 이 컨트롤러의 GET 핸들러는 "미배정" 을 404 로 표현하지 않는다.
@@ -97,7 +97,7 @@ class ProjectWorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
-            WorkflowSchemeScope.Project(projectKey),
+            WorkflowScope.Project(projectKey),
         )
         val key = ProjectKey(projectKey)
         val projectId =
@@ -125,7 +125,7 @@ class ProjectWorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
-            WorkflowSchemeScope.Project(projectKey),
+            WorkflowScope.Project(projectKey),
         )
         val key = ProjectKey(projectKey)
         val projectId =
@@ -164,7 +164,7 @@ class ProjectWorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.ASSIGN_SCHEME,
-            WorkflowSchemeScope.Project(projectKey),
+            WorkflowScope.Project(projectKey),
         )
         val key = ProjectKey(projectKey)
         val projectId =

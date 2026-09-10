@@ -8,7 +8,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
@@ -19,8 +19,8 @@ import java.util.UUID
  * [AlwaysAllowWorkflowSchemePermissionResolver] 단위 테스트.
  *
  * 검증 항목.
- * 1. MANAGE_SCHEME + WorkflowSchemeScope.Global — requirePermission 이 예외를 던지지 않는다.
- * 2. ASSIGN_SCHEME + WorkflowSchemeScope.Project — requirePermission 이 예외를 던지지 않는다.
+ * 1. MANAGE_SCHEME + WorkflowScope.Global — requirePermission 이 예외를 던지지 않는다.
+ * 2. ASSIGN_SCHEME + WorkflowScope.Project — requirePermission 이 예외를 던지지 않는다.
  * 3. 모든 호출에서 WARN 레벨 로그가 발생한다.
  * 4. WARN 로그 메시지에 stub 임시 구현 표시와 FR-PM-04 참조가 포함된다.
  * 5. WARN 로그 메시지에 PII 가 포함되지 않는다.
@@ -41,7 +41,7 @@ class AlwaysAllowWorkflowSchemePermissionResolverTest {
     fun `MANAGE_SCHEME 권한 + Global scope 에서 requirePermission 은 예외를 던지지 않는다`() {
         val resolver = AlwaysAllowWorkflowSchemePermissionResolver()
 
-        resolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        resolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowScope.Global)
         // 예외가 없으면 통과
     }
 
@@ -51,7 +51,7 @@ class AlwaysAllowWorkflowSchemePermissionResolverTest {
     fun `ASSIGN_SCHEME 권한 + Project scope 에서 requirePermission 은 예외를 던지지 않는다`() {
         val resolver = AlwaysAllowWorkflowSchemePermissionResolver()
 
-        resolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project("ATLAS"))
+        resolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowScope.Project("ATLAS"))
         // 예외가 없으면 통과
     }
 
@@ -66,7 +66,7 @@ class AlwaysAllowWorkflowSchemePermissionResolverTest {
         logger.addAppender(appender)
 
         try {
-            resolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            resolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowScope.Global)
 
             assertThat(appender.list)
                 .filteredOn { it.level == Level.WARN }
@@ -93,7 +93,7 @@ class AlwaysAllowWorkflowSchemePermissionResolverTest {
         logger.addAppender(appender)
 
         try {
-            resolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowSchemeScope.Project("ATLAS"))
+            resolver.requirePermission(actor, WorkflowSchemePermission.ASSIGN_SCHEME, WorkflowScope.Project("ATLAS"))
 
             val warnLogs = appender.list.filter { it.level == Level.WARN }
             assertThat(warnLogs).isNotEmpty()
@@ -129,7 +129,7 @@ class AlwaysAllowWorkflowSchemePermissionResolverTest {
         logger.addAppender(appender)
 
         try {
-            resolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            resolver.requirePermission(actor, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowScope.Global)
 
             val warnLogs = appender.list.filter { it.level == Level.WARN }
             assertThat(warnLogs).isNotEmpty()

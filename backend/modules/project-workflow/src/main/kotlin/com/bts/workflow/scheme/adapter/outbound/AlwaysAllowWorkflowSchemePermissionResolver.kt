@@ -4,7 +4,7 @@ package com.bts.workflow.scheme.adapter.outbound
 
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
@@ -55,12 +55,12 @@ class AlwaysAllowWorkflowSchemePermissionResolver : WorkflowSchemePermissionReso
      *
      * @param actorId 권한 평가 대상 행위자 UUID.
      * @param permission 검증 요청 권한. [WorkflowSchemePermission] enum 값.
-     * @param scope 권한 적용 범위. [WorkflowSchemeScope] sealed 계층.
+     * @param scope 권한 적용 범위. [WorkflowScope] sealed 계층.
      */
     override fun requirePermission(
         actorId: UUID,
         permission: WorkflowSchemePermission,
-        scope: WorkflowSchemeScope,
+        scope: WorkflowScope,
     ) {
         log.warn(
             "AlwaysAllow stub 사용 중: actor={} permission={} scope={} — 정식 RBAC 미구현. FR-PM-04 후속 PR 필요",

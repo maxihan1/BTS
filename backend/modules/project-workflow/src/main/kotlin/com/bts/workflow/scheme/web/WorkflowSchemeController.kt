@@ -4,7 +4,7 @@ package com.bts.workflow.scheme.web
 
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
@@ -128,7 +128,7 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            WorkflowScope.Global,
         )
         log.debug("WorkflowSchemeController.list")
         val schemes = applicationService.listWithCounts()

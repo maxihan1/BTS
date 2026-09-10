@@ -135,6 +135,35 @@ BC 격리(한 PR = 한 BC)와 「마이그레이션은 되돌리기 어렵다」
 
 ★티어가 T2 → **T3** 로 올라갔다. Task 3-0 이 `shared-kernel` 을 건드리기 때문이다(작업 티어표 — shared-kernel 은 T3). ADR 이 필요하고 리뷰에 ceo 가 붙는다.
 
+ADR [`2026-09-08-workflow-scope-shared-type`](../adr/2026-09-08-workflow-scope-shared-type.md).
+
+### 착수 실측 — 계획 이탈 4건
+
+**① 정의 권한 호출부는 「resolver 한 곳」이 아니라 18곳이다.** 계획은 포트 시그니처만 적었다.
+실제로는 5개 서비스(`WorkflowCommandService` `WorkflowDraftService` `WorkflowPublishService`
+`WorkflowStatusCompositionService` `StatusCommandService`) + 컨트롤러 1곳이 각자 부른다. 전부
+대상의 소유를 스코프로 옮겨 넘겨야 한다.
+
+**② 프로젝트 축 판정 절차가 복사될 뻔했다 — 공용 게이트를 신설한다(계획에 없던 항목).**
+「키 해석 → 멤버 게이트 → 매트릭스」 세 단계는 스킴 판정기의 private 함수 안에 있었다. 정의
+판정기가 같은 절차를 필요로 하므로 그대로 두면 사본이 둘이 된다. `ProjectWorkflowPermissionGate`
+로 뽑고 두 판정기가 함께 쓴다(ADR D2). Task 3-0 의 「두 타입은 서로를 검사하지 않는 두 목록이
+된다」와 같은 근거다 — 타입만 합치고 절차를 복사하면 반쪽이다.
+
+**③ 「DELETE 는 SYSTEM_ADMIN 유지」를 어디서 강제할지가 계획에 없었다.** 호출부가 DELETE 에만
+`Global` 을 넘기는 방법도 있지만, 그러면 그 규칙이 호출부 수만큼 생기고 새 삭제 경로에서 조용히
+빠진다 — 빠지는 방향이 **권한 확대**다. 판정기 안 `isProjectDelegable()` 한 곳에 두고 호출부는 늘
+사실대로의 소유를 넘긴다(ADR D3).
+
+덧붙여 계획에 없던 조항이 하나 필요했다 — **시스템 관리자는 프로젝트 소유 워크플로우도 지울 수
+있어야 한다.** 아니면 그 워크플로우를 아무도 못 지운다(프로젝트 관리자는 D6 로, 시스템 관리자는
+비멤버라 게이트로 막힌다).
+
+**④ 전역 상태 카탈로그가 같은 판정기를 탄다.** `POST/PUT/DELETE /api/v1/statuses` 3곳이
+`WorkflowDefinitionPermission` 을 쓰는데, `statuses` 에는 `project_id` 가 없고 한 상태를 여러
+프로젝트의 워크플로우가 함께 편성한다. 좁힐 대상 자체가 없으므로 `WorkflowScope.Global` 을 쓰고
+판별식 규칙 A 가 요구하는 `SCOPE-GLOBAL` 표식을 단다.
+
 ### Task 3-0. shared-kernel 공용 `WorkflowScope` 신설 (스펙 D8 확정)
 - 중립 이름의 스코프 타입 하나를 `com.bts.shared.permission` 에 둔다. `Global` · `Project(key)` 2분기.
 - `WorkflowSchemeScope` 사용처를 치환한다(1회). **`WorkflowSchemeScope` 를 일반화해 재사용하지 않는다** — 이름에 `Scheme` 이 남으면 `WorkflowDefinitionPermission` KDoc 이 경고한 개념 혼동을 그대로 일으킨다. 그 KDoc 때문에 enum 은 이미 둘로 갈라져 있다.

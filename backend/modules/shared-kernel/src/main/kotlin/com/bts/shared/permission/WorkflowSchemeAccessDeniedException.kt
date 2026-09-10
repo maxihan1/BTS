@@ -24,7 +24,7 @@ import java.util.UUID
 class WorkflowSchemeAccessDeniedException(
     actorId: UUID,
     permission: WorkflowSchemePermission,
-    scope: WorkflowSchemeScope,
+    scope: WorkflowScope,
 ) : RuntimeException(
         "Access denied: actor=$actorId, permission=${permission.name}, scope=$scope",
     ) {

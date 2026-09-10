@@ -3,7 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 이 파일이 있는 이유
 // ─────────────────────────────────────────────────────────────────────────────
-// FR-WF-08 이전에 `WorkflowSchemeScope.Global` 은 스킴 CRUD 13곳에 **하드코딩**돼 있었다.
+// FR-WF-08 이전에 전역 스코프(`WorkflowSchemeScope.Global` — PR ③ 에서 `WorkflowScope` 로
+// 이름이 바뀌기 전 이름이다)는 스킴 CRUD 13곳에 **하드코딩**돼 있었다.
 // 그래서 프로젝트 관리자는 자기 프로젝트 스킴조차 만들 수 없었고, 그 사실은 어디에도
 // red 로 나타나지 않았다 — 모든 테스트가 SYSTEM_ADMIN 픽스처였기 때문이다.
 //
@@ -14,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // 규칙 A — 전역 스코프는 **의도를 적어야** 쓴다
 // ─────────────────────────────────────────────────────────────────────────────
-// `project-workflow` 의 main 소스에서 `WorkflowSchemeScope.Global` 을 쓰려면 바로 위
+// `project-workflow` 의 main 소스에서 `WorkflowScope.Global` 을 쓰려면 바로 위
 // 여섯 줄 안에 `SCOPE-GLOBAL:` 로 시작하는 주석이 있어야 한다. 전역이 **틀렸다는** 규칙이
 // 아니다 — 전역 관리자 목록처럼 전역이 정답인 자리가 실제로 있다. 규칙은 「전역을 고른 것이
 // 판단이었는지 관성이었는지 구분할 수 있어야 한다」다.
@@ -38,7 +39,7 @@ import path from 'node:path'
 const PW_MAIN = 'backend/modules/project-workflow/src/main/kotlin'
 
 /** 전역 스코프 사용 지점 */
-const GLOBAL_USE = 'WorkflowSchemeScope.Global'
+const GLOBAL_USE = 'WorkflowScope.Global'
 
 /** 전역을 의도적으로 고를 때 붙이는 표식 */
 const GLOBAL_MARKER = 'SCOPE-GLOBAL:'
@@ -86,7 +87,7 @@ function collectKotlinFiles(dir: string): string[] {
   return out
 }
 
-/** `WorkflowSchemeScope.Global` 이 나오는 (파일, 줄번호, 표식 유무) 목록 */
+/** `WorkflowScope.Global` 이 나오는 (파일, 줄번호, 표식 유무) 목록 */
 function findGlobalUses(): { file: string; line: number; marked: boolean }[] {
   const uses: { file: string; line: number; marked: boolean }[] = []
   for (const file of collectKotlinFiles(PW_MAIN)) {

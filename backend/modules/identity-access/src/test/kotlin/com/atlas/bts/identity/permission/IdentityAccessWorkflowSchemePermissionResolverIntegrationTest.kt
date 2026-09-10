@@ -7,10 +7,13 @@ import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.atlas.bts.identity.support.SharedPostgres
+import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
+import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -130,6 +133,10 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
     @Autowired
     private lateinit var resolver: WorkflowSchemePermissionResolver
 
+    /** prod 프로파일에서 IdentityAccessWorkflowDefinitionPermissionResolver 가 주입되어야 한다. */
+    @Autowired
+    private lateinit var definitionResolver: WorkflowDefinitionPermissionResolver
+
     @Autowired
     private lateinit var jdbc: NamedParameterJdbcTemplate
 
@@ -166,7 +173,7 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
     @Test
     fun `S1 — SYSTEM_ADMIN의 MANAGE_SCHEME Global은 통과(예외 없음)`() {
         assertThatCode {
-            resolver.requirePermission(sysAdminId, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+            resolver.requirePermission(sysAdminId, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowScope.Global)
         }.doesNotThrowAnyException()
     }
 
@@ -178,7 +185,7 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
             resolver.requirePermission(
                 projectAdminId,
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
         }.isInstanceOf(WorkflowSchemeAccessDeniedException::class.java)
     }
@@ -191,7 +198,7 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
             resolver.requirePermission(
                 projectAdminId,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project(projectKey),
+                WorkflowScope.Project(projectKey),
             )
         }.doesNotThrowAnyException()
     }
@@ -204,7 +211,7 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
             resolver.requirePermission(
                 memberId,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project(projectKey),
+                WorkflowScope.Project(projectKey),
             )
         }.isInstanceOf(WorkflowSchemeAccessDeniedException::class.java)
     }
@@ -217,7 +224,7 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
             resolver.requirePermission(
                 nonMemberId,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project(projectKey),
+                WorkflowScope.Project(projectKey),
             )
         }.isInstanceOf(WorkflowSchemeAccessDeniedException::class.java)
     }
@@ -230,9 +237,64 @@ class IdentityAccessWorkflowSchemePermissionResolverIntegrationTest {
             resolver.requirePermission(
                 projectAdminId,
                 WorkflowSchemePermission.ASSIGN_SCHEME,
-                WorkflowSchemeScope.Project("NOPE"),
+                WorkflowScope.Project("NOPE"),
             )
         }.isInstanceOf(WorkflowSchemeAccessDeniedException::class.java)
+    }
+
+    // ── D6 — 워크플로우 **정의** 판정기 (FR-WF-08) ────────────────────────────
+    //
+    // ★여기 있는 이유. 정의 판정기의 프로젝트 축은 스킴 판정기와 **같은 부품**
+    // (ProjectWorkflowPermissionGate)을 탄다. 그 부품의 실 DB 판정을 재려면 위 S1~S6 이 이미
+    // 세워 둔 픽스처(시스템 역할 · 멤버십 · 매트릭스)가 그대로 필요하다. 별도 클래스로 빼면
+    // 같은 시드를 복사하게 되고, 두 시드가 갈리는 날 어느 쪽이 진실인지 알 수 없어진다.
+    //
+    // 표 자체의 전수 대조는 IdentityAccessWorkflowDefinitionPermissionResolverTest 가 맡는다.
+    // 여기서 재는 것은 「실 DB 위에서도 그 판정이 성립하는가」다.
+
+    @Test
+    fun `D6 — PROJECT_ADMIN 은 자기 프로젝트 워크플로우의 CREATE 를 통과한다`() {
+        assertThatCode {
+            definitionResolver.requirePermission(
+                projectAdminId,
+                WorkflowDefinitionPermission.CREATE,
+                WorkflowScope.Project(projectKey),
+            )
+        }.doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `D6 — PROJECT_ADMIN 도 DELETE 는 거부된다`() {
+        assertThatThrownBy {
+            definitionResolver.requirePermission(
+                projectAdminId,
+                WorkflowDefinitionPermission.DELETE,
+                WorkflowScope.Project(projectKey),
+            )
+        }.isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
+    }
+
+    @Test
+    fun `D6 — SYSTEM_ADMIN 은 프로젝트 소유 워크플로우도 지울 수 있다`() {
+        // 이 행이 없으면 프로젝트 소유 워크플로우를 **아무도** 못 지운다.
+        assertThatCode {
+            definitionResolver.requirePermission(
+                sysAdminId,
+                WorkflowDefinitionPermission.DELETE,
+                WorkflowScope.Project(projectKey),
+            )
+        }.doesNotThrowAnyException()
+    }
+
+    @Test
+    fun `D6 — 비멤버는 프로젝트 워크플로우의 UPDATE 가 거부된다`() {
+        assertThatThrownBy {
+            definitionResolver.requirePermission(
+                nonMemberId,
+                WorkflowDefinitionPermission.UPDATE,
+                WorkflowScope.Project(projectKey),
+            )
+        }.isInstanceOf(WorkflowDefinitionAccessDeniedException::class.java)
     }
 
     // ── 픽스처 헬퍼 ───────────────────────────────────────────────────────────

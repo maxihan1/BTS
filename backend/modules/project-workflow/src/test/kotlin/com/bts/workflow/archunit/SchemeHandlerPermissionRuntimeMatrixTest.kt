@@ -5,7 +5,7 @@ package com.bts.workflow.archunit
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
@@ -98,9 +98,9 @@ class SchemeHandlerPermissionRuntimeMatrixTest {
         @Bean
         open fun scopeResolver(): WorkflowOwnershipScopeResolver =
             mockk {
-                every { ofScheme(any()) } returns WorkflowSchemeScope.Global
-                every { ofProjectKey(any()) } returns WorkflowSchemeScope.Global
-                every { ofProjectId(any()) } returns WorkflowSchemeScope.Global
+                every { ofScheme(any()) } returns WorkflowScope.Global
+                every { ofProjectKey(any()) } returns WorkflowScope.Global
+                every { ofProjectId(any()) } returns WorkflowScope.Global
             }
 
         @Bean
@@ -212,7 +212,7 @@ class SchemeHandlerPermissionRuntimeMatrixTest {
             WorkflowSchemeAccessDeniedException(
                 UUID.fromString(AUTH_ACTOR_UUID_STRING),
                 WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowSchemeScope.Global,
+                WorkflowScope.Global,
             )
 
         private const val SCHEME_KEY = "software-scheme"

@@ -2,7 +2,7 @@
 
 package com.bts.workflow.scheme.application
 
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.WorkflowScheme
@@ -43,7 +43,7 @@ class WorkflowOwnershipScopeResolverTest {
         val key = WorkflowSchemeKey("software-scheme")
         every { schemeRepo.findByKey(key) } returns scheme(key, projectId = null)
 
-        assertThat(resolver.ofScheme("software-scheme")).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(resolver.ofScheme("software-scheme")).isEqualTo(WorkflowScope.Global)
     }
 
     @Test
@@ -52,7 +52,7 @@ class WorkflowOwnershipScopeResolverTest {
         every { schemeRepo.findByKey(key) } returns scheme(key, projectId = ownerId)
         every { projectLookupPort.findKeyById(ownerId) } returns ProjectKey("ATLAS")
 
-        assertThat(resolver.ofScheme("atlas-scheme")).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(resolver.ofScheme("atlas-scheme")).isEqualTo(WorkflowScope.Project("ATLAS"))
     }
 
     @Test
@@ -60,14 +60,14 @@ class WorkflowOwnershipScopeResolverTest {
         val key = WorkflowSchemeKey("ghost-scheme")
         every { schemeRepo.findByKey(key) } returns null
 
-        assertThat(resolver.ofScheme("ghost-scheme")).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(resolver.ofScheme("ghost-scheme")).isEqualTo(WorkflowScope.Global)
     }
 
     @Test
     fun `ofScheme — 키 형식이 어긋나면 저장소를 묻지 않고 Global 이다`() {
         // 예외를 던지면 권한 판정 전에 400 이 나가 순서 계약이 깨진다. schemeRepo 는 스텁이 없으므로
         // 이 판정이 저장소를 부르면 MockKException 으로 죽는다 — 「묻지 않는다」까지 재는 셈이다.
-        assertThat(resolver.ofScheme("Invalid Key!")).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(resolver.ofScheme("Invalid Key!")).isEqualTo(WorkflowScope.Global)
     }
 
     @Test
@@ -76,7 +76,7 @@ class WorkflowOwnershipScopeResolverTest {
         every { schemeRepo.findByKey(key) } returns scheme(key, projectId = ownerId)
         every { projectLookupPort.findKeyById(ownerId) } returns null
 
-        assertThat(resolver.ofScheme("orphan-scheme")).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(resolver.ofScheme("orphan-scheme")).isEqualTo(WorkflowScope.Global)
     }
 
     // ── 워크플로우 소유 ────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ class WorkflowOwnershipScopeResolverTest {
     fun `ofWorkflow — 전역 워크플로우는 Global 이다`() {
         every { workflowRepo.findProjectIdByKey("software-default") } returns null
 
-        assertThat(resolver.ofWorkflow("software-default")).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(resolver.ofWorkflow("software-default")).isEqualTo(WorkflowScope.Global)
     }
 
     @Test
@@ -93,19 +93,19 @@ class WorkflowOwnershipScopeResolverTest {
         every { workflowRepo.findProjectIdByKey("atlas-flow") } returns ownerId
         every { projectLookupPort.findKeyById(ownerId) } returns ProjectKey("ATLAS")
 
-        assertThat(resolver.ofWorkflow("atlas-flow")).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(resolver.ofWorkflow("atlas-flow")).isEqualTo(WorkflowScope.Project("ATLAS"))
     }
 
     // ── 생성 경로 ──────────────────────────────────────────────────────────────
 
     @Test
     fun `ofProjectKey — 요청이 프로젝트를 지목하면 그 스코프다`() {
-        assertThat(resolver.ofProjectKey("ATLAS")).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+        assertThat(resolver.ofProjectKey("ATLAS")).isEqualTo(WorkflowScope.Project("ATLAS"))
     }
 
     @Test
     fun `ofProjectKey — 지목이 없으면 전역 생성이다`() {
-        assertThat(resolver.ofProjectKey(null)).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(resolver.ofProjectKey(null)).isEqualTo(WorkflowScope.Global)
     }
 
     private fun scheme(

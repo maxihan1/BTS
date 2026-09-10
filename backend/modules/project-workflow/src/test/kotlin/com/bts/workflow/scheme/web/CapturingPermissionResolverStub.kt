@@ -4,7 +4,7 @@ package com.bts.workflow.scheme.web
 
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import java.util.UUID
 
 /**
@@ -23,7 +23,7 @@ import java.util.UUID
 class CapturingPermissionResolverStub : WorkflowSchemePermissionResolver {
     var capturedActorId: UUID? = null
     var capturedPermission: WorkflowSchemePermission? = null
-    var capturedScope: WorkflowSchemeScope? = null
+    var capturedScope: WorkflowScope? = null
     var callCount = 0
 
     /** 설정 시 [requirePermission] 이 캡처를 마친 뒤 이 예외를 던진다(403 거부 시나리오 재현용). */
@@ -32,7 +32,7 @@ class CapturingPermissionResolverStub : WorkflowSchemePermissionResolver {
     override fun requirePermission(
         actorId: UUID,
         permission: WorkflowSchemePermission,
-        scope: WorkflowSchemeScope,
+        scope: WorkflowScope,
     ) {
         capturedActorId = actorId
         capturedPermission = permission

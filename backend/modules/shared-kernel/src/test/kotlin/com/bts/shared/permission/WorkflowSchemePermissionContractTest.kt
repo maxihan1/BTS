@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 /**
- * [WorkflowSchemePermissionResolver] · [WorkflowSchemePermission] · [WorkflowSchemeScope] ·
+ * [WorkflowSchemePermissionResolver] · [WorkflowSchemePermission] · [WorkflowScope] ·
  * [WorkflowSchemeAccessDeniedException] 의 계약 단위 테스트.
  *
  * FR-PM-04 D2 — 포트 계약을 project-workflow → shared-kernel(`com.bts.shared.permission`)로
@@ -18,8 +18,8 @@ import java.util.UUID
  * 검증 항목.
  * - port_signature_uuid — `requirePermission(actorId: UUID, …)` 시그니처로 구현 가능하다.
  * - permission_entries — [WorkflowSchemePermission] 항목 2종(MANAGE_SCHEME, ASSIGN_SCHEME).
- * - scope_global_singleton — [WorkflowSchemeScope.Global] 은 참조 동일성이 보장된다.
- * - scope_project_equality — 같은 key 의 [WorkflowSchemeScope.Project] 는 equals true.
+ * - scope_global_singleton — [WorkflowScope.Global] 은 참조 동일성이 보장된다.
+ * - scope_project_equality — 같은 key 의 [WorkflowScope.Project] 는 equals true.
  * - exception_is_runtime_with_errorcode — 예외는 RuntimeException 이며 errorCode 상수를 보유한다.
  */
 class WorkflowSchemePermissionContractTest {
@@ -29,14 +29,14 @@ class WorkflowSchemePermissionContractTest {
     fun `port_signature_uuid — requirePermission 은 actorId UUID 시그니처를 가진다`() {
         var capturedActor: UUID? = null
         var capturedPermission: WorkflowSchemePermission? = null
-        var capturedScope: WorkflowSchemeScope? = null
+        var capturedScope: WorkflowScope? = null
 
         val resolver =
             object : WorkflowSchemePermissionResolver {
                 override fun requirePermission(
                     actorId: UUID,
                     permission: WorkflowSchemePermission,
-                    scope: WorkflowSchemeScope,
+                    scope: WorkflowScope,
                 ) {
                     capturedActor = actorId
                     capturedPermission = permission
@@ -44,11 +44,11 @@ class WorkflowSchemePermissionContractTest {
                 }
             }
 
-        resolver.requirePermission(actorId, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowSchemeScope.Global)
+        resolver.requirePermission(actorId, WorkflowSchemePermission.MANAGE_SCHEME, WorkflowScope.Global)
 
         assertThat(capturedActor).isEqualTo(actorId)
         assertThat(capturedPermission).isEqualTo(WorkflowSchemePermission.MANAGE_SCHEME)
-        assertThat(capturedScope).isEqualTo(WorkflowSchemeScope.Global)
+        assertThat(capturedScope).isEqualTo(WorkflowScope.Global)
     }
 
     @Test
@@ -61,15 +61,15 @@ class WorkflowSchemePermissionContractTest {
     }
 
     @Test
-    fun `scope_global_singleton — WorkflowSchemeScope Global 은 같은 인스턴스다`() {
-        assertThat(WorkflowSchemeScope.Global).isSameAs(WorkflowSchemeScope.Global)
-        assertThat(WorkflowSchemeScope.Global).isEqualTo(WorkflowSchemeScope.Global)
+    fun `scope_global_singleton — WorkflowScope Global 은 같은 인스턴스다`() {
+        assertThat(WorkflowScope.Global).isSameAs(WorkflowScope.Global)
+        assertThat(WorkflowScope.Global).isEqualTo(WorkflowScope.Global)
     }
 
     @Test
     fun `scope_project_equality — 같은 key 의 Project 는 equals true 다`() {
-        val a = WorkflowSchemeScope.Project("ATLAS")
-        val b = WorkflowSchemeScope.Project("ATLAS")
+        val a = WorkflowScope.Project("ATLAS")
+        val b = WorkflowScope.Project("ATLAS")
 
         assertThat(a).isEqualTo(b)
         assertThat(a.hashCode()).isEqualTo(b.hashCode())
@@ -85,7 +85,7 @@ class WorkflowSchemePermissionContractTest {
             WorkflowSchemeAccessDeniedException(
                 actorId = actorId,
                 permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowSchemeScope.Global,
+                scope = WorkflowScope.Global,
             )
 
         assertThat(ex).isInstanceOf(RuntimeException::class.java)

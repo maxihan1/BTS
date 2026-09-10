@@ -4,6 +4,7 @@ package com.bts.workflow.web
 
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.WorkflowStatusCompositionService
 import com.bts.workflow.application.WorkflowStatusReferencedByTransitionException
@@ -13,6 +14,7 @@ import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.exception.WorkflowStatusCompositionException
 import com.bts.workflow.domain.exception.WorkflowStatusInUseException
+import com.bts.workflow.globalOnlyOwnershipScope
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
@@ -102,6 +104,7 @@ class WorkflowStatusCompositionIntegrationTest {
                 override fun requirePermission(
                     actorId: UUID,
                     permission: WorkflowDefinitionPermission,
+                    scope: WorkflowScope,
                 ) = Unit
             }
 
@@ -125,6 +128,7 @@ class WorkflowStatusCompositionIntegrationTest {
                     cache,
                     allowAll,
                     mockk(relaxed = true),
+                    globalOnlyOwnershipScope(),
                 )
             service =
                 WorkflowStatusCompositionService(
@@ -136,6 +140,7 @@ class WorkflowStatusCompositionIntegrationTest {
                     ProjectWorkflowSchemeAssignmentRepository(dsl),
                     cache,
                     allowAll,
+                    globalOnlyOwnershipScope(),
                 )
         }
 

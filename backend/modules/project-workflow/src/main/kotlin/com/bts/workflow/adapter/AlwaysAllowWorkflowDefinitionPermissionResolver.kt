@@ -4,6 +4,7 @@ package com.bts.workflow.adapter
 
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
@@ -30,11 +31,13 @@ class AlwaysAllowWorkflowDefinitionPermissionResolver : WorkflowDefinitionPermis
     override fun requirePermission(
         actorId: UUID,
         permission: WorkflowDefinitionPermission,
+        scope: WorkflowScope,
     ) {
         log.warn(
-            "AlwaysAllow stub 사용 중: actor={} permission={} — 운영에서는 시스템 관리자만 허용된다",
+            "AlwaysAllow stub 사용 중: actor={} permission={} scope={} — 운영에서는 소유별로 판정된다",
             actorId,
             permission,
+            scope,
         )
     }
 }

@@ -3,7 +3,7 @@
 package com.bts.workflow.scheme.adapter.inbound
 
 import com.bts.shared.issue.IssueTypeKey
-import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.shared.permission.WorkflowScope
 import com.bts.shared.workflow.ProjectKey
 import com.bts.shared.workflow.WorkflowKeyResolver
 import com.bts.shared.workflow.WorkflowStartState
@@ -140,8 +140,8 @@ class WorkflowKeyResolverImplIntegrationTest {
                     // 이 테스트는 키 해석만 잰다 — 스코프 판정은 전역으로 고정한다.
                     scopeResolver =
                         mockk {
-                            every { ofScheme(any()) } returns WorkflowSchemeScope.Global
-                            every { ofProjectId(any()) } returns WorkflowSchemeScope.Global
+                            every { ofScheme(any()) } returns WorkflowScope.Global
+                            every { ofProjectId(any()) } returns WorkflowScope.Global
                         },
                 )
 

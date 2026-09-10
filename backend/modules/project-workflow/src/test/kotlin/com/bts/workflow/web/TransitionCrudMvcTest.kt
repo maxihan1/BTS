@@ -5,12 +5,14 @@ package com.bts.workflow.web
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
+import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.TransitionKind
+import com.bts.workflow.globalOnlyOwnershipScope
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import com.bts.workflow.testsupport.insertWorkflowStatus
@@ -98,6 +100,7 @@ class TransitionCrudMvcTest {
                     cache,
                     permissionResolver,
                     mockk(relaxed = true),
+                    globalOnlyOwnershipScope(),
                 )
         }
 
@@ -140,6 +143,7 @@ class TransitionCrudMvcTest {
                 commandService,
                 cache,
                 permissionResolver,
+                globalOnlyOwnershipScope(),
             )
         mockMvc =
             MockMvcBuilders.standaloneSetup(controller)
@@ -433,7 +437,8 @@ class SwitchablePermissionResolver : WorkflowDefinitionPermissionResolver {
     override fun requirePermission(
         actorId: UUID,
         permission: WorkflowDefinitionPermission,
+        scope: WorkflowScope,
     ) {
-        if (!allow) throw WorkflowDefinitionAccessDeniedException(actorId, permission)
+        if (!allow) throw WorkflowDefinitionAccessDeniedException(actorId, permission, scope)
     }
 }

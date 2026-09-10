@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component
  * 한쪽만 고쳐지고 다른 쪽은 조용히 옛 스코프로 남는다 — 두 컨트롤러 테스트가 각자 자기 사본만
  * 지키므로 red 도 안 난다. 가드는 한 구현이어야 한다.
  *
- * FR-WF-08 에서 그 「좁히는 날」이 왔다. 스코프를 `WorkflowSchemeScope.Global` 하드코딩에서
+ * FR-WF-08 에서 그 「좁히는 날」이 왔다. 스코프를 `WorkflowScope.Global` 하드코딩에서
  * 워크플로우의 소유 프로젝트 판정으로 바꾼다 — 전역 워크플로우는 그대로 전역, 프로젝트 전용
  * 워크플로우는 그 프로젝트 스코프다. 판정 자체는 [WorkflowOwnershipScopeResolver] 한 곳에 있다.
  *
