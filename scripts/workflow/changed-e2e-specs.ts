@@ -19,31 +19,15 @@
 // `apps/web` 기준 상대경로를 공백으로 이어 한 줄. 없으면 **빈 출력**(훅이 아무것도 안 한다).
 // 변경 목록을 못 구하면 역시 빈 출력이다 — 푸시 훅에서 3시간을 시작하지 않는다.
 // 그 경우의 안전망은 CI 와 배포 후 전량이다.
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { gitFixtureEnv } from './git-fixture-env.mjs';
 import { e2eSpecs } from './select-test-scope.ts';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-/** 푸시로 올라갈 변경 파일 목록. 기준을 못 잡으면 `null`. */
-function changedFiles(): string[] | null {
-  const git = (args: string[]) =>
-    spawnSync('git', ['-c', 'core.quotePath=false', ...args], {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      env: gitFixtureEnv(),
-    });
-
-  // 업스트림이 있으면 그것과의 차이가 곧 「올라갈 것」이다.
-  const upstream = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
-  const base = upstream.status === 0 ? '@{u}' : 'origin/main';
-
-  const diff = git(['diff', '--name-only', '--no-renames', `${base}...HEAD`]);
-  if (diff.status !== 0) return null;
-  return diff.stdout.split('\n').filter((l) => l.trim().length > 0);
-}
+// 푸시로 올라갈 변경 파일 목록 — 본체는 `diff-base.ts` 하나다(2026-09-10).
+// 계약. scripts/workflow/diff-base.test.ts
+import { changedFiles } from './diff-base.ts';
 
 export function main(): number {
   const specs = e2eSpecs(changedFiles());

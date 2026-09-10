@@ -533,12 +533,15 @@ describe('backend-ci 모듈 선별', () => {
   //   ★「YAML 이 하던 일을 스크립트가 물려받았다」는 이전에서 가장 놓치기 쉬운 자리다 —
   //   옮긴 쪽에는 그 줄이 **애초에 없어서** 지운 흔적조차 남지 않는다. 이 단언을 포팅하며
   //   비로소 드러났다.
+  //   ★2026-09-10. 그 diff 자리가 `diff-base.ts` 한 곳으로 다시 모였다(사본이 6벌이었고
+  //   여섯이 동시에 main 위에서 기준을 HEAD 로 잡았다). 대상 파일을 따라 옮긴다 —
+  //   가드가 옮겨간 코드를 안 따라가면 그 순간부터 아무것도 안 지킨다.
   test('★★계산기의 diff 명령에 `--no-renames` 가 있다 (젠킨스 배선)', () => {
-    const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/workflow/select-test-scope.ts'), 'utf8')
+    const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/workflow/diff-base.ts'), 'utf8')
     assert.match(
       src,
-      /git\(\[\s*'diff',\s*'--name-only',\s*'--no-renames'/,
-      'select-test-scope.ts 의 변경 파일 수집에 `--no-renames` 가 없다.\n' +
+      /git\(cwd,\s*\[\s*'diff',\s*'--name-only',\s*'--no-renames'/,
+      'diff-base.ts 의 변경 파일 수집에 `--no-renames` 가 없다.\n' +
         '  모듈 간 파일 이동에서 **출발 모듈의 테스트가 통째로 건너뛰어진다** — 좁아지는 방향이고,\n' +
         '  좁게 고르는 실수만이 치명적이다(검증 안 된 코드가 초록으로 머지된다).\n' +
         '  젠킨스는 이 계산기가 유일한 diff 자리다 — 워크플로우 YAML 에는 이제 아무것도 없다.',

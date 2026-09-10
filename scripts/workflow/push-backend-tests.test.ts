@@ -445,12 +445,20 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
     })
   })
 
-  test('★새 브랜치(upstream 없음)를 위한 폴백 기준이 있다', () => {
+  test('★비교 기준을 스스로 잡지 않고 diff-base.ts 에 위임한다', () => {
     // 새 브랜치의 첫 푸시가 가장 검증이 필요한 순간인데, `@{u}` 는 그때 실패한다.
+    // 그 폴백은 이제 `diff-base.ts` 한 곳에 있다.
+    //
+    // ★종전 이 단언은 「소스에 'origin/main' 이라는 **글자**가 있는가」였다. 형태만 보는
+    //   계약이라, 2026-09-10 에 그 글자를 그대로 둔 채 main 위에서 기준이 HEAD 로 잡히는
+    //   결함이 6벌 있었는데도 초록이었다. 행동을 재는 짝은 `diff-base.test.ts` 에 있고,
+    //   여기서는 **그 한 곳을 실제로 거치는지**만 본다.
     const src = read(SCRIPT)
-    assert.ok(
-      src.includes('origin/main'),
-      `${SCRIPT} 에 upstream 폴백이 없다 — 새 브랜치 첫 푸시가 통째로 검증을 건너뛴다.`,
+    assert.match(
+      src,
+      /from '\.\/diff-base\.ts'/,
+      `${SCRIPT} 가 비교 기준을 스스로 잡는다 — 사본이 늘면 다시 여섯이 동시에 틀린다.\n` +
+        '  행동 계약. scripts/workflow/diff-base.test.ts',
     )
   })
 })

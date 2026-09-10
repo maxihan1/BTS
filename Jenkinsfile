@@ -106,6 +106,13 @@ pipeline {
     //
     // ★태그는 `Jenkinsfile.e2e` 의 `PW_IMAGE` 와 같아야 한다. 그쪽이 정본이고
     //   `playwright-image-pin.test.ts` 가 lockfile 버전과 대조한다.
+    /*
+     * ★비교 기준. `HEAD~1` 폴백은 **직전 한 커밋만** 덮으므로, 빌드가 중단되거나 건너뛴
+     *   사이 머지가 여러 번 쌓이면 그 구간을 놓친다. 젠킨스는 직전 **성공** 빌드의 커밋을
+     *   알고 있으니 그것을 넘겨 구간 전체를 덮는다. 첫 빌드에는 비어 있고, 그때는
+     *   `diff-base.ts` 가 스스로 물러난다.
+     */
+    BTS_DIFF_BASE = "${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: ''}"
     PW_IMAGE = 'mcr.microsoft.com/playwright:v1.60.0-noble'
     // DooD 라 `-v` 좌변은 호스트 경로다. 컨테이너 안 경로를 주면 빈 디렉터리가 마운트되고
     // "no tests found" 가 초록으로 보인다.
@@ -147,11 +154,20 @@ pipeline {
           #
           # ★`|| true` 로 삼키지 않는다. 기준이 없으면 계산기가 전량으로 넓히므로 안전하지만,
           #   그러면 2단이 조용히 1단이 된다 — 「느려졌다」로만 보이고 원인이 안 보인다.
-          if git rev-parse --verify --quiet refs/remotes/origin/main > /dev/null; then
-            echo "origin/main 있음 ✅ — 범위 계산 가능"
-          else
-            echo "⚠️ origin/main 없음 — 계산기가 전량으로 넓힌다(안전하지만 느리다)."
-            echo "   처방. 잡 설정의 refspec 이 +refs/heads/*:refs/remotes/origin/* 인지 확인."
+          # ★종전에는 `origin/main` 이 **있는지**만 봤다. 그 가드는 main 브랜치 빌드에서
+          #   항상 초록이면서 아무것도 보장하지 않았다 — origin/main 이 곧 HEAD 라
+          #   차집합이 공집합이 되는데도 「범위 계산 가능」이라고 찍었다(빌드 #31 실측).
+          #
+          #   이제 **계산기가 실제로 고른 기준**을 찍는다. 판정은 계산기가 하고
+          #   여기서는 그 결과를 보이게만 한다 — 두 곳이 각자 판정하면 또 갈린다.
+          if node --experimental-strip-types -e '
+            import("./scripts/workflow/diff-base.ts").then((m) => {
+              const b = m.resolveDiffBase();
+              if (b === null) { console.log("⚠️ 비교 기준 없음 — 계산기가 전량으로 넓힌다"); }
+              else { console.log(`비교 기준 ${b.slice(0, 9)} ✅`); }
+            })
+          '; then :; else
+            echo "⚠️ 기준 조회 실패 — 계산기가 전량으로 넓힌다(안전하지만 느리다)."
           fi
         '''
       }
@@ -275,15 +291,22 @@ pipeline {
            *   **전량**을 돈다 — 「못 찾았으니 생략」이 아니라 「전량이 어차피 전부 본다」다.
            *   안전한 쪽으로 실패한다.
            */
-          def diffBase = sh(
-            returnStdout: true,
-            script: 'git rev-parse origin/main 2>/dev/null || git rev-parse HEAD~1',
-          ).trim()
-          def changed = sh(
-            returnStdout: true,
-            script: "git diff --name-only --no-renames ${diffBase}...HEAD || true",
-          ).trim()
-          def lines = changed.readLines()
+          /*
+           * ★기준 계산을 여기서 하지 않는다(2026-09-10).
+           *
+           *   종전에는 `git rev-parse origin/main` 으로 기준을 잡았다. main 위에서 그것은
+           *   **HEAD 자신**이라 차집합이 항상 공집합이었다 — 도메인이 늘 비었다.
+           *   같은 결함이 TS 쪽에 5벌 더 있었고 여섯이 서로를 검사하지 않았다.
+           *
+           *   이제 `changed-files.ts` 한 창구만 쓴다. 종료 코드 3 은 「기준을 모른다」이고,
+           *   그때는 도메인을 비워 `bts-e2e` 가 전량을 돌게 한다 — 안전한 쪽으로 실패한다.
+           *   계약. scripts/workflow/diff-base.test.ts
+           */
+          def probe = sh(
+            returnStatus: true,
+            script: 'node --experimental-strip-types scripts/workflow/changed-files.ts > .ci-changed.txt',
+          )
+          def lines = probe == 0 ? readFile('.ci-changed.txt').trim().readLines() : []
           // 소스 쪽 — `apps/web/src/components/<도메인>/`
           def fromSrc = lines
             .findAll { it.startsWith('apps/web/src/components/') }
