@@ -228,9 +228,31 @@ pipeline {
             script: 'node --experimental-strip-types scripts/workflow/requires-full-build.ts',
           ).trim() == 'true'
 
-          env.RUN_FULL = (params.FULL || branch == 'main' || nightly || ciChanged) ? 'true' : 'false'
+          /*
+           * ★두 판단을 나눈다 (2026-09-10).
+           *
+           *   RUN_FULL   테스트를 **전량**으로 돌 것인가
+           *   RUN_DEEP   조립 부팅·인프라 봉인·배포 **stage 를 켤 것인가**
+           *
+           * 종전에는 `RUN_FULL` 하나가 둘을 겸했고, 그래서 `main` 머지가 무조건 37분이었다.
+           *
+           * ★main 을 전량에서 뺀 근거. 전량의 원래 목적은 「PR 여러 개가 각자 좁게 통과한 뒤
+           *   main 에서 만나는 조합」을 보는 것이다. 그런데 이 저장소는 개발자 1명이라 PR 이
+           *   순차로 들어오고, 그때 「합쳐진 상태」는 곧 「그 PR 상태」다 — 조합이 생기지 않는다.
+           *   그 방어의 **전제가 성립하지 않는다.**
+           *
+           * ★조합 위험이 0 은 아니다. 마이그레이션 번호 대역처럼 모듈 그래프로 계산할 수 없는
+           *   축이 남는다(`select-backend-modules.ts` 참조). 그 몫은 **야간 전량 크론**이 받는다
+           *   (`cron('H 3 * * *')`). 매일 한 번은 조합된 main 을 전량으로 본다.
+           *
+           * ★계산기는 스스로 넓힐 줄 안다. 마이그레이션·설정·CI 변경이면 전량으로 간다 —
+           *   `select-test-scope.ts` 가 그 판단을 갖고 있고 `ciChanged` 가 그 일부다.
+           */
+          env.RUN_FULL = (params.FULL || nightly || ciChanged) ? 'true' : 'false'
+          // 배포 경로(조립 부팅·인프라 봉인·배포)는 main 과 전량 빌드에서 열린다.
+          env.RUN_DEEP = (env.RUN_FULL == 'true' || branch == 'main') ? 'true' : 'false'
           echo "브랜치=${branch} · 야간=${nightly ? 'Y' : 'N'} · FULL=${params.FULL}" +
-            " · CI설정변경=${ciChanged ? 'Y' : 'N'} → 전량=${env.RUN_FULL}"
+            " · CI설정변경=${ciChanged ? 'Y' : 'N'} → 전량=${env.RUN_FULL} · 심층=${env.RUN_DEEP}"
           if (ciChanged && !params.FULL && branch != 'main' && !nightly) {
             // 빌드 목록에서 왜 오래 걸리는지 바로 보이게 한다 — 32분을 기다린 뒤
             // 로그를 열어야 아는 상태를 만들지 않는다.
@@ -317,7 +339,7 @@ pipeline {
      * `application.yml` 이 이미 `${BTS_DB_URL:...}` 오버라이드 지점을 가져 Kotlin 변경은 0이다.
      */
     stage('DB 마련') {
-      when { environment name: 'RUN_FULL', value: 'true' }
+      when { environment name: 'RUN_DEEP', value: 'true' }
       steps {
         sh '''
           set -eu
@@ -376,7 +398,7 @@ pipeline {
     }
 
     stage('조립 부팅') {
-      when { environment name: 'RUN_FULL', value: 'true' }
+      when { environment name: 'RUN_DEEP', value: 'true' }
       steps {
         sh '''
           set -eu
@@ -385,17 +407,28 @@ pipeline {
           #   같은 테스트를 DB 없이 한 번(전량·실패) + DB 붙여 한 번(여기) 돌리고 있었다.
           [ -n "${BTS_DB_URL:-}" ] || { echo "BTS_DB_URL 이 비었다 — DB 마련 stage 를 확인하라"; exit 1; }
           cd backend
-          # ★`:modules:app:test` 를 여기서 다시 돌리지 않는다. 전량이 같은 DB 를 보고 이미 돌렸다.
+          # ★`:modules:app:test` 를 여기서 돈다 (2026-09-10 되살림).
+          #
+          #   종전에는 「전량이 같은 DB 를 보고 이미 돌렸다」고 여기서 뺐다. 그 전제가
+          #   main 머지를 계산기 범위로 바꾸면서 깨졌다 — main 에서는 전량이 안 돈다.
+          #
+          #   그리고 `app` 은 `select-backend-modules.ts` 의 `NOT_IN_MATRIX` 라 계산기가
+          #   **아예 안 고른다**(「app 변경은 조립 부팅 잡이 맡는다」는 그 파일의 설계).
+          #   그래서 여기서 안 돌리면 **아무도 안 돈다.**
+          #
+          #   전량 빌드에서는 중복이 되지만, 그 비용(2코어에서 수십 초)보다
+          #   「main 에서 조립 테스트가 0회」가 훨씬 나쁘다.
           # 별도 태스크 = 별도 JVM 이어야 한다. @ActiveProfiles 가 컨텍스트 캐시 키의 일부라
           # 같은 JVM 에 두면 9-BC 컨텍스트가 두 벌 뜨고 @Scheduled 워커가 같은 pgmq 큐를
           # 동시 폴링한다. 이 스텝을 지우면 태그로 분리된 가드가 0회 실행된다.
+          ./gradlew :modules:app:test --console=plain
           ./gradlew :modules:app:nonProdAssemblyTest --console=plain
         '''
       }
     }
 
     stage('인프라 봉인') {
-      when { environment name: 'RUN_FULL', value: 'true' }
+      when { environment name: 'RUN_DEEP', value: 'true' }
       steps {
         sh '''
           set -eu
@@ -437,7 +470,7 @@ pipeline {
       when {
         allOf {
           expression { params.DEPLOY }
-          environment name: 'RUN_FULL', value: 'true'
+          environment name: 'RUN_DEEP', value: 'true'
           expression { env.GIT_BRANCH_NAME == 'main' }
         }
       }
@@ -469,7 +502,7 @@ pipeline {
       when {
         allOf {
           expression { params.DEPLOY }
-          environment name: 'RUN_FULL', value: 'true'
+          environment name: 'RUN_DEEP', value: 'true'
           // ★승인 stage 와 **같은 조건**이어야 한다. 한쪽만 브랜치를 보면 승인은 건너뛰고
           //   배포만 도는 경로가 생긴다 — 승인 없는 배포다.
           expression { env.GIT_BRANCH_NAME == 'main' }
