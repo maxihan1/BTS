@@ -68,9 +68,11 @@ describe('resolveProjectShellMode — 셸 모드 판정', () => {
 })
 
 describe('PROJECT_SETTINGS_NAV — 정본 구성', () => {
-  it('그룹은 4개이고 항목 합이 10이다 (비-공허 하한)', () => {
+  it('그룹은 4개이고 항목 합이 11이다 (비-공허 하한)', () => {
     expect(PROJECT_SETTINGS_NAV).toHaveLength(4)
-    expect(allItems).toHaveLength(10)
+    // 10 → 11: FR-WF-08 「워크플로우」 추가. 항목을 더하면 이 하한도 함께 고친다 —
+    // 안 고치면 목록이 비거나 파서가 죽어도 순회 테스트가 무음 통과한다.
+    expect(allItems).toHaveLength(11)
 
     const groupKeys = PROJECT_SETTINGS_NAV.map((group) => group.key)
     expect(groupKeys).toEqual(['general', 'issue', 'access', 'integration'])
