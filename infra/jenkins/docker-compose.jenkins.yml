@@ -1,0 +1,93 @@
+# 젠킨스 컨트롤러 — 운영 스택과 같은 호스트에 공존시키는 구성
+#
+# ## ★`network_mode: host` 인 이유 (포트 매핑이 아니다)
+#
+# Testcontainers 는 호스트 데몬에 컨테이너를 띄우고 **`localhost:<임의포트>`** 로 붙는다.
+# 젠킨스를 브리지 네트워크에 두면 그 `localhost` 가 젠킨스 컨테이너 자신이라 못 붙고,
+# `TESTCONTAINERS_HOST_OVERRIDE` 같은 우회를 하나 더 얹어야 한다 — 그 값 역시 두 번째 목록이다.
+# 호스트 네트워크를 쓰면 그 문제가 통째로 사라진다.
+#
+# ## ★그런데 host 네트워크는 포트를 못 막는다 — 그래서 젠킨스가 스스로 루프백에 붙는다
+#
+# `network_mode: host` 에서는 `ports:` 가 무시되므로 `127.0.0.1:18081` 바인딩을 **젠킨스에게**
+# 시킨다(`--httpListenAddress`). 이것이 1차 방어다. `DOCKER-USER` DROP 규칙은 host 네트워크
+# 트래픽을 보지 않으므로(FORWARD 를 안 탄다) 여기서는 도움이 되지 않는다 —
+# `infra/security/bts-docker-user.sh` 에 기대지 말 것.
+#
+# 접근은 SSH 터널로 한다.
+#   ssh -i ~/.ssh/ncp-bts.pem -N -L 18081:127.0.0.1:18081 root@101.79.19.193
+#
+# ## 자원 — 운영과 같은 2코어 16GB 를 나눠 쓴다
+#
+# 운영 스택 `mem_limit` 합 4,992MB + 아래 6144MB = 11,136MB < 16GB. 여유 약 4.5GB 는
+# Testcontainers 가 **호스트에** 띄우는 컨테이너 몫이다 — 그것들은 이 `mem_limit` 밖이라
+# 여기서 제한되지 않는다. 늘리기 전에 반드시 그 몫을 먼저 계산할 것.
+services:
+  jenkins:
+    container_name: bts-jenkins
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # bootstrap.sh 가 `.nvmrc` 를 읽어 채운다. 손으로 적지 않는다.
+        NODE_VERSION: ${NODE_VERSION:?bootstrap.sh 로 기동하라 — NODE_VERSION 이 비었다}
+    image: bts-jenkins:local
+    restart: unless-stopped
+    network_mode: host
+
+    # DooD. 데몬은 호스트 것을 쓴다.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - jenkins-home:/var/jenkins_home
+      - ./casc.yaml:/var/jenkins_conf/casc.yaml:ro
+      # GitHub deploy key (read-only). 서버에서 `ssh-keygen` 으로 만들고 저장소에는
+      # `.gitignore` 로 올라가지 않는다 — casc.yaml 은 `${readFile:}` 로 **경로만** 참조한다.
+      - ./.deploy-key:/var/jenkins_conf/deploy-key:ro
+      # Gradle 캐시를 볼륨으로 뺀다. 컨테이너를 다시 만들어도 의존성을 다시 받지 않는다.
+      - jenkins-gradle:/var/jenkins_home/.gradle
+
+    # 호스트 docker 그룹 GID. 하드코딩하면 호스트가 바뀔 때 조용히 권한이 사라진다 —
+    # bootstrap.sh 가 `getent group docker` 로 읽어 넣는다.
+    group_add:
+      - ${DOCKER_GID:?bootstrap.sh 로 기동하라 — DOCKER_GID 가 비었다}
+
+    environment:
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:?.env 에 관리자 ID 를 넣어라}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:?.env 에 관리자 비밀번호를 넣어라}
+      JENKINS_ADMIN_EMAIL: ${JENKINS_ADMIN_EMAIL:-admin@localhost}
+      # ★루프백 바인딩. 이 한 줄이 젠킨스를 외부에서 안 보이게 하는 유일한 장치다.
+      JENKINS_OPTS: --httpListenAddress=127.0.0.1 --httpPort=18081
+      # 빌드가 호스트에 띄우는 컨테이너를 사람이 알아볼 수 있게 한다.
+      TESTCONTAINERS_RYUK_DISABLED: "false"
+
+    # ★2026-09-09 상향. 초안은 `cpus: 1.5` · `mem_limit: 6g` 로 보수적으로 잡았는데,
+    #   빌드 중 실측이 그 여유를 보여줬다.
+    #
+    #     bts-jenkins  CPU 124.97%(상한 150%에 붙음) · 메모리 1.476GiB / 6GiB
+    #     운영 6컨테이너 합  CPU **5.7%** · 메모리 1.9GiB
+    #     호스트  load 1.7~3.7 · 여유 메모리 11.3GB · 운영 응답 19~42ms(평소와 같음)
+    #
+    #   즉 젠킨스는 상한에 막혀 있고 운영은 거의 놀고 있었다. CPU 를 2코어 전부로 연다.
+    #
+    # ★메모리를 10g 로 올리는 이유는 여유가 아니라 **정본 때문**이다.
+    #   `backend/gradle.properties` 가 `org.gradle.jvmargs=-Xmx4096m` +
+    #   `kotlin.daemon.jvmargs=-Xmx3072m` 를 선언한다. 둘이 동시에 뜨면 7GB 이고,
+    #   6g 상한에서는 그 설정이 애초에 성립하지 않는다.
+    #
+    # ★상한을 없애지는 않는다. Gradle 데몬이 새면 운영을 밀어낼 수 있고,
+    #   그때 `bts.maxihan.com` 이 먼저 죽는다.
+    mem_limit: 10g
+    cpus: 2.0
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18081/login"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  jenkins-home:
+    name: bts-jenkins-home
+  jenkins-gradle:
+    name: bts-jenkins-gradle

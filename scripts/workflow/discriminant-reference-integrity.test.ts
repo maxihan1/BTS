@@ -36,7 +36,11 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  * 그 목록 자체가 또 하나의 썩는 두 번째 목록이 된다).
  */
 const LIVE_ROOTS: readonly string[] = [
-  '.github/workflows',
+  // ★CI/CD 정의 정본. 2026-09-09 P4b 에서 `.github/workflows` 를 철거하고 여기로 왔다.
+  //   순서가 중요했다 — 재조준(P4a)을 먼저 끝내고 지웠다. 반대로 했으면 그것을 읽던
+  //   판별식 7종이 red 도 안 내고 사라졌을 것이다(삭제 방향으로 발현하는 「두 목록」).
+  'Jenkinsfile',
+  'infra/jenkins',
   '.claude/skills',
   '.claude/agents',
   'docs/rules',

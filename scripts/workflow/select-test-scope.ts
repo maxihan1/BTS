@@ -52,7 +52,6 @@ import { fileURLToPath } from 'node:url'
 
 import { allModules, selectModules } from './select-backend-modules.ts'
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
-import { gitFixtureEnv } from './git-fixture-env.mjs'
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -92,28 +91,19 @@ export const FE_WIDEN: readonly string[] = [
   'apps/web/src/mocks/',
 ]
 
-/** 비교 기준을 못 정했을 때의 마지막 후보. `push-backend-tests.ts` 와 같다. */
-export const FALLBACK_BASE = 'origin/main'
-
-function git(args: string[]): string | null {
-  const r = spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf-8', env: gitFixtureEnv() })
-  if (r.status !== 0) return null
-  return r.stdout.trim()
-}
-
 /**
  * 브랜치가 건드린 파일. 기준을 못 정하면 `null`.
  *
- * `null`(모른다)과 `[]`(없다)를 구분한다 — 뭉개면 판정 실패가 조용한 통과로 바뀐다.
+ * ★본체는 `diff-base.ts` 하나다(2026-09-10). 종전에는 이 계산이 6벌이었고
+ *   **여섯이 동시에 main 위에서 기준을 HEAD 로 잡았다** — 차집합이 항상 공집합이라
+ *   빌드 #31 이 3분 만에 초록이면서 백엔드·프론트 테스트를 0건 돌렸다.
+ *   계약. scripts/workflow/diff-base.test.ts
  */
-export function changedFiles(): string[] | null {
-  const base = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']) ?? FALLBACK_BASE
-  const merged = git(['merge-base', base, 'HEAD'])
-  if (merged === null) return null
-  const out = git(['diff', '--name-only', merged, 'HEAD'])
-  if (out === null) return null
-  return out === '' ? [] : out.split('\n')
-}
+// ★재수출(`export … from`)이 아니라 **임포트 + 재수출**이다. 전자는 이 파일 안에서
+//   이름을 안 잡아서 본문의 `changedFiles()` 가 런타임에 ReferenceError 로 죽는다 —
+//   판별식이 소스 글자만 보므로 690건 초록인 채로 통과했다(2026-09-10 실측).
+import { changedFiles, FALLBACK_BASE } from './diff-base.ts'
+export { changedFiles, FALLBACK_BASE }
 
 export interface FrontendScope {
   /** `skip` 프론트 변경 없음 · `related` 바뀐 파일을 import 하는 테스트만 · `all` 전량 */
@@ -179,6 +169,32 @@ export function e2eTouched(files: string[] | null): boolean {
 }
 
 /**
+ * 바뀐 Playwright 시나리오 목록(`apps/web` 기준 상대경로). 전량을 뜻할 때는 `null`.
+ *
+ * ## 왜 「돌린다/만다」가 아니라 목록인가
+ *
+ * 종전 [e2eTouched] 는 참이면 `playwright test` 를 **인자 없이** 냈다 — 167파일 전량이다.
+ * 2코어 실측으로 그것이 **약 3시간**이다(1파일 46초 · 3파일 165초 → 파일당 약 60초,
+ * 고정 비용 거의 0).
+ *
+ * E2E 한 줄을 고쳐도 3시간이 뜨면 **아무도 안 돌린다.** 가드가 있어도 쓰이지 않으면 없는
+ * 것과 같다 — 실제로 그 명령은 훅 어디에도 배선되지 않았고, E2E 를 고쳐도 푸시 전에
+ * 아무것도 확인되지 않았다. 바뀐 파일만이면 1파일 46초라 사람이 실제로 돌린다.
+ *
+ * ★`null`(전량)과 `[]`(돌 것 없음)를 **구분한다.** 둘을 같은 값으로 만들면 「변경 목록을
+ *   못 구했다」가 조용히 「생략」이 된다 — 이 저장소가 이름 붙인 침묵 실패다.
+ *
+ * @param files 변경 파일 목록. `null` 이면 목록을 못 구한 것이라 전량을 뜻한다.
+ * @returns `apps/web` 기준 상대경로 목록. 전량이면 `null`.
+ */
+export function e2eSpecs(files: string[] | null): string[] | null {
+  if (files === null) return null
+  return files
+    .filter((f) => f.startsWith(FRONTEND_E2E) && f.endsWith('.spec.ts'))
+    .map((f) => f.slice(FRONTEND_PREFIX.length))
+}
+
+/**
  * plan 이 task 마다 적어 둔 검증 명령을 전부 뽑는다.
  *
  * 서식 정본. `.claude/skills/bts-plan/plan-format.md` 의 `**검증**:` 줄.
@@ -203,6 +219,8 @@ export interface TestScope {
   backendReason: string
   frontend: FrontendScope
   e2e: boolean
+  /** 바뀐 시나리오 목록(`apps/web` 상대경로). 전량이면 `null`, 돌 것이 없으면 `[]`. */
+  e2eSpecs: string[] | null
   planVerify: string[]
 }
 
@@ -230,11 +248,43 @@ export function computeScope(files: string[] | null, planText: string | null): T
     backendReason,
     frontend: frontendScope(files),
     e2e: e2eTouched(files),
+    e2eSpecs: e2eSpecs(files),
     planVerify: planText === null ? [] : planVerifyCommands(planText),
   }
 }
 
 /** 사람이 읽고 그대로 실행할 수 있는 명령 블록. */
+/**
+ * 환경에 맞는 Playwright 실행 명령. 로컬은 설치된 바이너리, 젠킨스는 공식 컨테이너.
+ *
+ * ## 왜 갈라지나
+ *
+ * 젠킨스 컨테이너는 uid 1000 으로 돌아 `playwright install --with-deps` 가 apt 권한 없이
+ * **종료 코드 0 으로 조용히** 넘어간다. 그래서 크롬이 `libglib-2.0.so.0` 부재로 뜨지 않는다
+ * (2026-09-10 실측 — `browserType.launch: Target page, context or browser has been closed`).
+ * 공식 이미지는 그 문제를 통째로 없앤다.
+ *
+ * 맥에서는 그냥 된다 — 개발 워크플로우를 바꾸지 않으려고 로컬 경로를 기본값으로 둔다.
+ *
+ * ★이미지 태그를 **여기 적지 않는다.** `Jenkinsfile.e2e` 의 `PW_IMAGE` 가 정본이고
+ *   `playwright-image-pin.test.ts` 가 lockfile 버전과 대조한다. 여기 또 적으면 세 번째
+ *   목록이 되고, 그 셋은 서로를 검사하지 않는다.
+ *
+ * @param specs 돌릴 시나리오(`apps/web` 상대경로). 비면 전량이다.
+ */
+function e2eCommand(specs: string[]): string {
+  const args = specs.length > 0 ? ` ${specs.join(' ')}` : ''
+  const image = process.env['PW_IMAGE']
+  if (!image) return `(cd apps/web && node_modules/.bin/playwright test${args})`
+  // DooD — `-v` 좌변은 **호스트 경로**다. 컨테이너 안 경로를 주면 빈 디렉터리가 마운트되고,
+  // 그러면 "no tests found" 가 초록으로 보인다.
+  const host = process.env['HOST_WS'] ?? '$PWD'
+  return (
+    `docker run --rm --network host -v "${host}:/w" -w /w/apps/web -e CI=1 ` +
+    `"${image}" npx playwright test${args} --project=chromium`
+  )
+}
+
 export function renderCommands(scope: TestScope): string {
   const lines: string[] = []
 
@@ -260,8 +310,17 @@ export function renderCommands(scope: TestScope): string {
   }
 
   lines.push('')
-  lines.push(scope.e2e ? '# E2E — 시나리오가 바뀌었다. 돌린다.' : '# E2E — 생략 (시나리오 변경 없음)')
-  if (scope.e2e) lines.push('apps/web/node_modules/.bin/playwright test')
+  // ★바뀐 파일만 인자로 붙인다. 인자 없는 `playwright test` 는 전량(약 3시간)이라
+  //   사람이 안 돌린다 — 안 돌리는 가드는 없는 가드다.
+  if (scope.e2eSpecs === null) {
+    lines.push('# E2E — 변경 목록을 못 구했다. 전량을 돈다(약 3시간).')
+    lines.push(e2eCommand([]))
+  } else if (scope.e2eSpecs.length > 0) {
+    lines.push(`# E2E — 바뀐 시나리오 ${scope.e2eSpecs.length}개만 돈다.`)
+    lines.push(e2eCommand(scope.e2eSpecs))
+  } else {
+    lines.push('# E2E — 생략 (시나리오 변경 없음)')
+  }
 
   if (scope.planVerify.length > 0) {
     lines.push('')

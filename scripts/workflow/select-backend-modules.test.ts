@@ -39,6 +39,8 @@ import {
   allModules,
   selectModules,
   modulesWithUnparsedRefs,
+  requiresFullBuild,
+  WIDEN_PREFIXES,
 } from './select-backend-modules.ts'
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs'
@@ -48,7 +50,16 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 /** 실측 기준선. 줄어들면 도출이 고장난 것이다. */
 const MIN_MODULES = 9
 
-const WORKFLOW = '.github/workflows/backend-ci.yml'
+/**
+ * CI 정의 정본. 2026-09-09 이전까지는 `.github/workflows/backend-ci.yml` 이었다.
+ *
+ * ★그때 이 파일이 갖던 단언 6종을 지웠다(P4b) — 「매트릭스에 먹인다」·「select 스텝의 셸이
+ *   실제로 돈다」·「라벨을 env 로 넘긴다」 같은 것들은 **GitHub Actions 의 구조 자체**에
+ *   묶여 있어 젠킨스에 옮길 자리가 없다(매트릭스도 PR 라벨도 셸 스텝도 없다).
+ *   그중 살릴 수 있는 보장은 먼저 옮겼다 — 「모듈 목록 하드코딩 금지」와
+ *   「diff 에 `--no-renames`」가 그것이고 아래에 젠킨스판으로 있다.
+ */
+const WORKFLOW = 'Jenkinsfile'
 
 describe('backend-ci 모듈 선별', () => {
   test('모듈과 그래프를 실제로 도출한다 (양성 대조군)', () => {
@@ -60,62 +71,6 @@ describe('backend-ci 모듈 선별', () => {
     const graph = moduleGraph()
     const edges = Object.values(graph).reduce((n, deps) => n + deps.length, 0)
     assert.ok(edges > 0, '의존 간선이 0건이다 — 파싱이 고장났다. 폐포가 아무 일도 안 한다.')
-  })
-
-  test('★★디스크의 모든 모듈이 매트릭스이거나 전용 잡을 갖는다 (조용한 누락 차단)', () => {
-    // 새 BC 를 추가하면 자동으로 들어와야 한다. 손으로 적는 목록이 없다는 것의 실질이다.
-    //
-    // ★매트릭스에서 빼는 것 자체는 정당할 수 있다 — `app` 은 「조립 부팅」 전용 잡이 통째로
-    //   맡는다. 위험한 것은 **빠졌는데 아무도 안 도는** 상태다. 그래서 제외 모듈은
-    //   backend-ci 안에 자기 잡이 있는지까지 확인한다.
-    const onDisk = fs
-      .readdirSync(path.join(REPO_ROOT, 'backend/modules'), { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort()
-
-    const inMatrix = new Set(allModules())
-    const excluded = onDisk.filter((m) => !inMatrix.has(m))
-
-    // 합집합이 디스크와 같아야 한다 — 어느 쪽에도 없는 모듈이 있으면 그것이 조용한 누락이다.
-    assert.deepEqual(
-      [...inMatrix, ...excluded].sort(),
-      onDisk,
-      '디스크 모듈이 매트릭스에도 제외 목록에도 없다 — 아무도 안 도는 모듈이 생겼다.',
-    )
-
-    // ★★초판은 `new RegExp(':modules:' + m)` 을 **파일 전체**에 걸었다. 그런데 이 워크플로우의
-    //   머리말 주석이 `:modules:app` 을 담고 있어(「외부 postgres (10 파일, `:modules:app` 조립
-    //   부팅)」) **assembly 잡을 통째로 지워도 초록**이었다(2026-08-14 독립 리뷰 실측).
-    //   가드가 지키겠다고 선언한 것을 주석 한 줄이 대신 만족시키고 있었다 —
-    //   `[[invariant-satisfied-by-helptext-not-logic]]`.
-    //
-    //   그래서 **실행 줄에 앵커**한다. `run:` 안의 `./gradlew … :modules:<m>:<task>` 형태만 센다.
-    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
-    const runsModule = (m: string): boolean =>
-      new RegExp(`^\\s+run: [^#\\n]*\\./gradlew[^#\\n]*:modules:${m}:`, 'm').test(workflow)
-    const orphan = excluded.filter((m) => !runsModule(m))
-    assert.deepEqual(
-      orphan,
-      [],
-      `매트릭스에서 빠졌는데 **실제로 돌리는 잡**이 없는 모듈이 있다: ${orphan.join(', ')}\n` +
-        `그 모듈은 backend-ci 에서 **한 번도 검증되지 않는다.**\n` +
-        `(주석에 이름만 있는 것으로는 통과하지 않는다 — 실행 줄에 앵커한다.)`,
-    )
-
-    // ★그리고 그 잡이 **조건부로 스킵되지 않는지**까지 본다. `if:` 가 붙으면 「잡은 있는데 안
-    //   돈다」가 되어 위 단언이 참인 채로 커버리지가 0 이 된다. 잡 블록만 잘라 검사한다.
-    for (const m of excluded) {
-      const jobStart = workflow.search(new RegExp(`^  [\\w-]+:\\s*$[\\s\\S]*?:modules:${m}:`, 'm'))
-      assert.ok(jobStart >= 0, `${m} 을 돌리는 잡을 못 찾았다 — 위 단언과 어긋난다.`)
-      const jobBlock = workflow.slice(jobStart).split(/^  [\w-]+:\s*$/m)[0]
-      assert.doesNotMatch(
-        jobBlock,
-        /^\s{4}if:/m,
-        `${m} 전용 잡에 \`if:\` 조건이 붙어 있다 — 조건이 거짓이면 그 모듈은 검증 0 이 된다.\n` +
-          `의도한 것이면 이 판정을 함께 고치고 왜 안전한지 적어라.`,
-      )
-    }
   })
 
   test('★★한 모듈만 바뀌면 그 모듈과 그것을 의존하는 것만 고른다', () => {
@@ -315,42 +270,20 @@ describe('backend-ci 모듈 선별', () => {
     }
   })
 
-  test('★★backend-ci 가 선별기를 실제로 부르고 매트릭스에 먹인다 (배선)', () => {
-    // 선별기만 있고 아무도 안 부르면 12개 잡은 그대로 돈다 — 이 저장소가 여러 번 겪은
-    // 「가드는 있는데 배선이 없다」 양식이다. 여기서는 반대로 **줄이는 도구**가 안 불리는 것이라
-    // 조용히 아무 일도 안 일어난다(빨간불조차 없다).
-    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+  test('★★Jenkinsfile 에 모듈 목록이 하드코딩되지 않았다 (두 목록 차단)', () => {
+    const jf = fs.readFileSync(path.join(REPO_ROOT, 'Jenkinsfile'), 'utf8')
+    const code = jf
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('#'))
+      .join('\n')
 
-    assert.match(
-      workflow,
-      /select-backend-modules\.ts/,
-      `${WORKFLOW} 가 선별기를 부르지 않는다 — 스크립트가 있어도 실행되지 않는다.`,
-    )
-    assert.match(
-      workflow,
-      /matrix:\s*\n\s*module:\s*\$\{\{\s*fromJSON\(needs\.select\.outputs\.modules\)\s*\}\}/,
-      `${WORKFLOW} 의 매트릭스가 선별 결과를 받지 않는다 — 골라 놓고 안 쓰는 상태다.`,
-    )
-  })
-
-  test('★★매트릭스가 고정 목록으로 되돌아가지 않았다 (두 목록 차단)', () => {
-    // 목록을 워크플로우에 다시 적으면 그 목록과 `backend/modules/` 실물이 서로를 안 보는
-    // 두 목록이 된다 — 새 BC 를 추가하고 목록에 안 적으면 그 모듈은 **한 번도 안 돈다.**
-    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
-    const matrixBlock = workflow.slice(
-      workflow.indexOf('matrix:'),
-      workflow.indexOf('steps:', workflow.indexOf('matrix:')),
-    )
-    assert.ok(matrixBlock.length > 0, '매트릭스 블록을 못 찾았다 — 아래 단언이 공허해진다.')
-
-    const hardcoded = allModules().filter((m) =>
-      new RegExp(`^\\s*-\\s*${m}\\s*$`, 'm').test(matrixBlock),
-    )
+    const hardcoded = allModules().filter((m) => m !== 'app' && new RegExp(`\\b${m}\\b`).test(code))
     assert.deepEqual(
       hardcoded,
       [],
-      `매트릭스에 모듈이 하드코딩돼 있다: ${hardcoded.join(', ')}\n` +
-        `선별 결과와 이 목록 중 무엇이 실제로 도는지가 갈리고, 새 BC 는 조용히 빠진다.`,
+      `Jenkinsfile 이 BC 모듈 이름을 직접 적고 있다: ${hardcoded.join(', ')}\n` +
+        '  무엇을 돌릴지는 select-test-scope.ts 가 정한다. 여기 목록을 두면\n' +
+        '  settings.gradle.kts 와 서로를 검사하지 않는 두 목록이 되고, 새 BC 가 조용히 빠진다.',
     )
   })
 
@@ -443,127 +376,6 @@ describe('backend-ci 모듈 선별', () => {
       else process.env.BTS_BACKEND_MODULES_ROOT = prev
     }
   })
-
-  test('★★select 스텝의 셸이 이 머신에서 실제로 돈다 (문자열 매칭이 못 보는 층)', () => {
-    // ## 왜 실행해 보는가
-    //
-    // 위 단언들은 선별기의 **판정**을 잰다. 그런데 그 판정을 부르는 것은 워크플로우 안의
-    // **인라인 셸**이고, 거기서 죽으면 매트릭스가 통째로 스킵된다 — 판정이 아무리 옳아도 소용없다.
-    //
-    // 실제로 그렇게 죽었다. 초안이 `xargs -a` 를 썼는데 그것은 **GNU 전용**이고 러너는
-    // macOS(BSD xargs)라 `invalid option -- a` 로 사망했다(2026-08-12 실측). 유닛 테스트는
-    // 전부 초록이었다 — 그 층을 아무도 안 재고 있었다.
-    //
-    // 이 저장소는 같은 교훈을 이미 적어 두었다(`runner-health.yml` 의 자원 판정 블록을 뽑아
-    // `bash -e` 로 돌리는 판별식). 「두 층의 차이는 문자열 매칭이 못 본다.」
-    const workflow = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
-
-    const stepIdx = workflow.indexOf('- name: 변경 파일 → 대상 모듈')
-    assert.ok(stepIdx >= 0, 'select 스텝을 못 찾았다 — 추출이 고장났다.')
-    const runIdx = workflow.indexOf('run: |', stepIdx)
-    assert.ok(runIdx > stepIdx, 'select 스텝에 run 블록이 없다.')
-
-    const INDENT = 10
-    const lines: string[] = []
-    for (const line of workflow.slice(runIdx).split('\n').slice(1)) {
-      if (line.trim() === '') {
-        lines.push('')
-        continue
-      }
-      if (!line.startsWith(' '.repeat(INDENT))) break
-      lines.push(line.slice(INDENT))
-    }
-    // ★비-공허 확인. 앵커가 어긋나 빈 스크립트가 나오면 `bash -e ""` 는 그냥 성공하고
-    //   아래 단언이 **공허하게 통과**한다 — 가드가 있는 척하는 최악의 상태다.
-    assert.ok(
-      lines.filter((l) => l.trim() !== '').length >= 8,
-      `추출된 스텝이 ${lines.length}줄뿐이다 — 빈 스크립트를 돌리면 단언이 공허하다.`,
-    )
-
-    // `${{ ... }}` 는 Actions 가 치환한다. 여기서는 실제 커밋으로 갈아끼워 돌린다.
-    const script = lines.join('\n').replace(/\$\{\{\s*github\.sha\s*\}\}/g, 'HEAD')
-    assert.match(script, /xargs/, '추출본에 실행부가 없다 — 엉뚱한 블록을 잘라냈다.')
-
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-select-step-'))
-    const file = path.join(dir, 'step.sh')
-    fs.writeFileSync(file, script)
-    // ★결과는 stdout 이 아니라 `$GITHUB_OUTPUT` 으로 나간다 — 스텝이 매트릭스에 넘기는 통로가
-    //   그것이기 때문이다. stdout 을 재면 「셸은 살았는데 아무것도 안 넘긴다」를 못 본다.
-    const outFile = path.join(dir, 'github_output')
-    fs.writeFileSync(outFile, '')
-
-    const r = spawnSync('bash', ['-e', file], {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      env: {
-        ...process.env,
-        BASE_SHA: 'HEAD~1',
-        GITHUB_OUTPUT: outFile,
-        GITHUB_STEP_SUMMARY: path.join(dir, 'summary.md'),
-      },
-    })
-    assert.equal(
-      r.status,
-      0,
-      `select 스텝의 셸이 이 머신에서 죽는다 (exit ${r.status}).\n` +
-        `${r.stdout ?? ''}${r.stderr ?? ''}\n` +
-        `러너는 macOS 다 — GNU 전용 옵션(xargs -a 등)을 쓰면 여기서 잡힌다.`,
-    )
-
-    const emitted = fs.readFileSync(outFile, 'utf8')
-    assert.match(
-      emitted,
-      /^modules=\[".+"\]$/m,
-      `매트릭스로 넘길 모듈 JSON 이 안 나왔다 — 셸은 살았는데 아무것도 안 넘긴다.\n` +
-        `GITHUB_OUTPUT: ${JSON.stringify(emitted)}\n${r.stdout ?? ''}${r.stderr ?? ''}`,
-    )
-
-    // ★★diff 가 실패하는 경우(얕은 클론 · base 부재)도 **같은 셸로** 확인한다.
-    //   여기가 이 스텝의 fail-safe 다. 2026-08-12 CI 실측에서 정확히 이 경로가 무너졌다 —
-    //   입력이 비면 `xargs` 가 명령을 **아예 실행하지 않아** 빈 문자열이 나왔고, 그것을
-    //   그대로 넘기면 `fromJSON('')` 이 매트릭스를 깨뜨린다. 유닛 테스트로는 못 보는 층이다.
-    const outFile2 = path.join(dir, 'github_output_2')
-    fs.writeFileSync(outFile2, '')
-    const r2 = spawnSync('bash', ['-e', file], {
-      cwd: REPO_ROOT,
-      encoding: 'utf-8',
-      env: {
-        ...process.env,
-        // 존재하지 않는 ref — diff 가 실패해 목록이 비는 경로를 강제한다.
-        BASE_SHA: '0000000000000000000000000000000000000000',
-        GITHUB_OUTPUT: outFile2,
-        GITHUB_STEP_SUMMARY: path.join(dir, 'summary2.md'),
-      },
-    })
-    assert.equal(
-      r2.status,
-      0,
-      `diff 실패 경로에서 스텝이 죽는다 (exit ${r2.status}) — fail-safe 가 성립하지 않는다.\n` +
-        `${r2.stdout ?? ''}${r2.stderr ?? ''}`,
-    )
-    const emitted2 = fs.readFileSync(outFile2, 'utf8')
-    assert.match(
-      emitted2,
-      /^modules=\[".+"\]$/m,
-      `diff 실패 시 모듈 JSON 이 비었다 — 매트릭스가 조용히 스킵된다.\n` +
-        `GITHUB_OUTPUT: ${JSON.stringify(emitted2)}\n${r2.stdout ?? ''}${r2.stderr ?? ''}`,
-    )
-    const picked2 = JSON.parse(emitted2.match(/^modules=(.+)$/m)?.[1] ?? '[]') as string[]
-    assert.deepEqual(
-      picked2.sort(),
-      allModules().sort(),
-      `diff 실패인데 전 모듈이 아니다 — 모르는 상태에서 좁혔다.\n${emitted2}`,
-    )
-  })
-
-  // ── ADR `2026-08-13-ci-domain-scoped-jobs.md` D2 — 전체를 돌려야 하는 경우 ──
-  //
-  // ★위 「모듈 밖 백엔드 변경은 전 모듈이다 (빌드 설정 · 마이그레이션)」이 **마이그레이션을
-  //   덮지 못하고 있었다.** 그 케이스가 쓴 `backend/db/migration/V999__x.sql` 은 **이 저장소에
-  //   존재하지 않는 형태**다 — 실제 마이그레이션은 전부 `backend/modules/<bc>/src/main/
-  //   resources/db/migration/<bc>/` 아래, 즉 **모듈 안**에 있다. 모듈 안 경로는 `moduleOf()` 가
-  //   그 모듈로 귀속시켜 **좁힌다.** 도달 불가 픽스처를 지키는 초록이었다
-  //   (`[[unreachable-state-fixture-is-fake-green]]`).
 
   test('★★실재하는 마이그레이션 경로 형태가 이 저장소에 있다 (비-공허 짝)', () => {
     // 아래 두 판정이 쓰는 경로가 가공이면 또 도달 불가를 지키게 된다. 실물로 고정한다.
@@ -667,35 +479,6 @@ describe('backend-ci 모듈 선별', () => {
     }
   })
 
-  test('★★backend-ci 가 라벨을 선별기에 실제로 넘긴다 (배선)', () => {
-    // 라벨 분기가 코드에만 있고 워크플로우가 안 넘기면 **영원히 발화하지 않는다** —
-    // 단위 테스트는 초록이고 실전에서는 죽은 코드다. 두 목록이 서로를 안 보는 자리라 배선을 잰다.
-    //
-    // ★★초판은 `assert.match(yml, /BTS_CI_PR_LABELS/)` 였는데 **그 줄을 주석 처리해도 초록**이었다
-    //   (2026-08-14 독립 리뷰 실측). 주석 줄이 그 문자열을 그대로 담기 때문이다 — 이 판정이
-    //   막겠다고 선언한 상태를 정확히 못 잡았다. **파일 전체 부분 문자열 매칭은 배선을 못 잰다.**
-    //   같은 파일 위쪽의 `fromJSON(needs.select.outputs.modules)` 단언과 같은 강도로 맞춘다.
-    const yml = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
-    assert.match(
-      yml,
-      /^\s+BTS_CI_PR_LABELS:\s*\$\{\{\s*toJSON\(github\.event\.pull_request\.labels\.\*\.name\)\s*\}\}\s*$/m,
-      `${WORKFLOW} 의 select 잡이 라벨을 **실제 env 로** 넘기지 않는다 — ci:full 이 실전에서 발화하지 않는다.\n` +
-        `(주석 처리·이름만 남기기·값 변경 전부 여기서 걸린다. 부분 문자열 매칭으로 되돌리지 말 것.)`,
-    )
-  })
-
-  // ── rename 붕괴 (2026-08-14 독립 리뷰 · 보안 렌즈 적발) ──────────────────────
-  //
-  // ★`git diff --name-only` 은 rename 을 감지하면 **목적지 경로 하나만** 낸다.
-  //   모듈 A → B 로 파일을 옮기면 A 가 씨앗에 안 들어가 **A 의 테스트 전량이 조용히 건너뛰어진다.**
-  //   `WIDEN_PREFIXES` 도 발화하지 않는다 — 출발 경로가 애초에 선별기에 **도달하지 않기** 때문이다.
-  //   선별기 쪽에서는 원리적으로 못 막는다. 입력을 만드는 git 명령이 고쳐져야 한다.
-  //
-  //   잔여 안전망을 정확히 적어 둔다 — `assembly` 잡의 `:modules:app:test` 가 app 의
-  //   `implementation(project(":modules:A"))` 를 통해 **main 소스셋 컴파일 깨짐은 잡는다.**
-  //   못 잡는 것은 **A 의 테스트 소스셋 컴파일과 A 자체 테스트 실행 전량**이다.
-  //   즉 「컴파일은 되지만 동작이 깨진 이동」이 초록으로 통과한다.
-
   test('★★git 이 rename 을 접는다 — `--no-renames` 가 실제로 필요하다 (비-공허 짝)', () => {
     // ★배선 문자열만 재면 「그 플래그가 왜 필요한지」가 사라지고, git 기본값이 바뀌면 판정이
     //   조용히 무의미해진다. 그래서 **git 의 실제 동작**을 임시 저장소로 잰다.
@@ -741,16 +524,27 @@ describe('backend-ci 모듈 선별', () => {
     }
   })
 
-  test('★★backend-ci 의 diff 명령에 `--no-renames` 가 있다 (배선)', () => {
-    // 위 짝이 「플래그가 필요하다」를 증명하고, 이 판정이 「실제로 붙어 있다」를 증명한다.
-    // 앵커 정규식이다 — 주석 줄이나 다른 위치의 같은 문자열로는 통과하지 않는다.
-    const yml = fs.readFileSync(path.join(REPO_ROOT, WORKFLOW), 'utf8')
+  // ★2026-09-09 P4 포팅. 이 배선이 **젠킨스 경로에서 통째로 사라져 있었다.**
+  //
+  //   Actions 시절에는 워크플로우 YAML 의 select 잡이 직접 `git diff` 를 돌렸고 거기에
+  //   `--no-renames` 가 있었다. 젠킨스는 YAML 대신 `select-test-scope.ts` 가 **내부에서**
+  //   diff 하는데, 옮기면서 그 플래그가 따라오지 않았다.
+  //
+  //   ★「YAML 이 하던 일을 스크립트가 물려받았다」는 이전에서 가장 놓치기 쉬운 자리다 —
+  //   옮긴 쪽에는 그 줄이 **애초에 없어서** 지운 흔적조차 남지 않는다. 이 단언을 포팅하며
+  //   비로소 드러났다.
+  //   ★2026-09-10. 그 diff 자리가 `diff-base.ts` 한 곳으로 다시 모였다(사본이 6벌이었고
+  //   여섯이 동시에 main 위에서 기준을 HEAD 로 잡았다). 대상 파일을 따라 옮긴다 —
+  //   가드가 옮겨간 코드를 안 따라가면 그 순간부터 아무것도 안 지킨다.
+  test('★★계산기의 diff 명령에 `--no-renames` 가 있다 (젠킨스 배선)', () => {
+    const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/workflow/diff-base.ts'), 'utf8')
     assert.match(
-      yml,
-      /^\s+if ! git -c core\.quotePath=false diff --no-renames --name-only -z \\$/m,
-      `${WORKFLOW} 의 변경 파일 수집 명령에 \`--no-renames\` 가 없다.\n` +
-        `모듈 간 파일 이동에서 **출발 모듈의 테스트가 통째로 건너뛰어진다** — 좁아지는 방향이다.\n` +
-        `러너의 전역 \`diff.renames\` 설정에 무관하게 고정되므로 \`-M0\` 보다 이 플래그를 쓴다.`,
+      src,
+      /git\(cwd,\s*\[\s*'diff',\s*'--name-only',\s*'--no-renames'/,
+      'diff-base.ts 의 변경 파일 수집에 `--no-renames` 가 없다.\n' +
+        '  모듈 간 파일 이동에서 **출발 모듈의 테스트가 통째로 건너뛰어진다** — 좁아지는 방향이고,\n' +
+        '  좁게 고르는 실수만이 치명적이다(검증 안 된 코드가 초록으로 머지된다).\n' +
+        '  젠킨스는 이 계산기가 유일한 diff 자리다 — 워크플로우 YAML 에는 이제 아무것도 없다.',
     )
   })
 
@@ -777,5 +571,63 @@ describe('backend-ci 모듈 선별', () => {
     assert.equal(narrow.all, false)
     assert.equal(wide.all, true)
     assert.ok(wide.reason.length > 0, '전 모듈로 넓힌 사유가 비어 있다 — 로그가 설명하지 못한다.')
+  })
+})
+
+/**
+ * ★CI 설정 변경은 **전량 빌드**로 다룬다 (2026-09-10).
+ *
+ * ## 왜 필요했나 — 두 판단이 서로를 모르고 있었다
+ *
+ * 젠킨스 `전량 판정` stage 는 브랜치·파라미터·야간만 보고 `RUN_FULL` 을 정했고, 그것이
+ * false 면 「빠른 게이트」로 갔다. 그런데 그 안에서 이 계산기가 [WIDEN_PREFIXES] 를 보고
+ * **전량으로 넓혔다.** 이름은 빠른 게이트인데 32.7분이 걸렸다(빌드 #21 실측).
+ *
+ * 더 나쁜 것은 **전량 stage 에만 있는 검사를 건너뛴다**는 점이다 —
+ * 「조립 부팅」(`:modules:app` 조립)과 「인프라 봉인」(nginx 로그 마스킹 · springdoc 비노출).
+ * 「영향 범위를 모르니 전부 본다」면서 정작 그 둘을 안 보는 반쪽 확대였다.
+ *
+ * ## 목록을 두 번 적지 않는다
+ *
+ * 판정 입력은 [WIDEN_PREFIXES] **하나**다. 젠킨스가 같은 목록을 따로 적으면 그 순간
+ * 두 목록이 되고, 새 CI 파일이 생길 때 한쪽만 고쳐진다.
+ */
+describe('CI 설정 변경 → 전량 빌드', () => {
+  test('★Jenkinsfile 변경은 전량이다', () => {
+    assert.equal(requiresFullBuild(['Jenkinsfile']), true)
+  })
+
+  test('★Jenkinsfile.e2e 변경도 전량이다 (접두 일치)', () => {
+    assert.equal(requiresFullBuild(['Jenkinsfile.e2e']), true)
+  })
+
+  test('★선별기 자신이 바뀌어도 전량이다', () => {
+    assert.equal(requiresFullBuild(['scripts/workflow/select-backend-modules.ts']), true)
+  })
+
+  test('평범한 프론트 변경은 전량이 아니다', () => {
+    assert.equal(requiresFullBuild(['apps/web/src/components/board/Board.tsx']), false)
+  })
+
+  test('문서 변경은 전량이 아니다', () => {
+    assert.equal(requiresFullBuild(['docs/rules/traps.md']), false)
+  })
+
+  test('★변경 목록을 못 구하면(null) 전량이다 — 모르면 넓게', () => {
+    assert.equal(requiresFullBuild(null), true)
+  })
+
+  test('★판정 입력이 WIDEN_PREFIXES 하나다 (두 목록 차단)', () => {
+    // 목록의 원소 **전부**가 전량으로 판정돼야 한다. 하나라도 빠지면 그 경로를 고친 PR 이
+    // 일부만 검증되고, 그 사실이 조용하다.
+    for (const p of WIDEN_PREFIXES) {
+      const sample = p.endsWith('/') ? `${p}x/y.kt` : p
+      assert.equal(
+        requiresFullBuild([sample]),
+        true,
+        `WIDEN_PREFIXES 의 '${p}' 가 전량 판정에 안 걸린다 — 두 판단이 갈렸다.`,
+      )
+    }
+    assert.ok(WIDEN_PREFIXES.length > 0, 'WIDEN_PREFIXES 가 비었다 — 위 루프가 공허해진다.')
   })
 })

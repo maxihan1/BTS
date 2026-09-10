@@ -126,10 +126,10 @@ const PNPM_WRAPPER_REMEDY =
 /** worktree 가 심볼릭 링크로 갖는 경로 — 끝 슬래시를 붙이면 링크를 놓친다. */
 const SYMLINKED_IGNORE_PATHS = ['node_modules', 'apps/web/node_modules', '.husky/_'] as const;
 
-/** `on:` 아래에서 입력을 걸어야 하는 트리거. 한쪽만 걸면 봉인이 절반만 닫힌다. */
-const CI_TRIGGERS = ['pull_request', 'push'] as const;
-
-const DISCRIMINANT_WORKFLOW = '.github/workflows/workflow-scripts-ci.yml';
+// ★`CI_TRIGGERS` 와 `DISCRIMINANT_WORKFLOW` 를 지웠다(2026-09-09 · P4 재조준).
+//   둘 다 **선언만 있고 참조가 0** 이었다 — GitHub Actions 시절 단언이 사라지면서 상수만
+//   남은 자리다. 죽은 상수는 「여기서 CI 트리거를 검사한다」는 인상을 주면서 아무것도 안 한다.
+//   젠킨스 이전으로 그 인상이 더 위험해지므로(Actions 는 이제 안 돈다) 함께 걷어낸다.
 
 /**
  * 훅 연결 명령이 반드시 담아야 하는 요소.

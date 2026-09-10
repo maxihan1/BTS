@@ -2,6 +2,14 @@
 
 # 에이전트 문서 인덱싱 체계 — 구현 계획
 
+> ---
+> ⚠️ **2026-09-09 부기 — 이 계획의 「룰 L」 태스크는 착지하지 않았다.**
+> Task 6 이 룰 L(생성기 `SOURCES` ⟺ CI `paths`)을 만들도록 적혀 있지만,
+> 그 테스트는 `doc-index-coverage.test.ts` 에 **존재한 적이 없다**.
+> **체크박스를 소급해 고치지 않는다** — 계획이 그렇게 세워졌던 것은 사실이다.
+> 현재 사실은 `docs/rules/doc-index.md` 를 본다.
+> ---
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended)
 > or superpowers:executing-plans to implement this plan task-by-task.
 > Steps use checkbox (`- [ ]`) syntax for tracking.

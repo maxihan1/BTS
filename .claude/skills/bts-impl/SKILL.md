@@ -146,6 +146,21 @@ echo "EXIT=$?"; tail -30 /tmp/test.log
 
 보고에는 **통과 건수와 종료 코드를 함께** 적는다. 새 문서(spec/plan/decision)를 만든 작업이면 `node scripts/build-doc-index.mjs` 로 인덱스를 먼저 재생성한다 — pre-commit `--check` 차단을 푸는 명령이다.
 
+### 4-C. 푸시 뒤 젠킨스 결과를 확인한다 (2026-09-09~)
+
+**`.husky/pre-push` 는 더 이상 백엔드·프론트 테스트를 돌리지 않는다.** 그것을 젠킨스로 옮겼고
+(P5), 그래서 **푸시가 성공했다는 것이 검증이 통과했다는 뜻이 아니다** — 푸시는 막히지 않는다.
+
+푸시 후 젠킨스가 폴링으로 잡아 돈다(실측 80~110초). 결과를 확인해 보고에 싣는다.
+
+```bash
+node --experimental-strip-types scripts/workflow/jenkins-build-status.ts
+echo "EXIT=$?"   # 0 초록 · 1 빨강 · 2 판정 불가
+```
+
+**종료 코드 2 를 통과로 읽지 않는다.** 판정 불가면 위 4-A/4-B 로컬 결과가 유일한 근거이고,
+그 사실을 그대로 보고한다 — 「젠킨스 판정 불가(사유) · 로컬 EXIT=0」 형태다.
+
 ## Step 5. 체이닝
 
 `/bts` 컨트롤러에 반환 → 컨트롤러가 `/bts-codereview` 호출.

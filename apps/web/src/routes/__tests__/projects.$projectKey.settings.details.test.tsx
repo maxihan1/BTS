@@ -154,9 +154,14 @@ describe('ProjectDetailsSettingsRouteAdapter', () => {
     mockProject(activeProject)
   })
 
+  // 🛑 전달 여부를 **헤딩 문구로** 재지 마라. 본문 헤딩은 이제 화면 이름(`상세정보`)이라
+  //    projectKey 와 무관하고(J5-11), 종전처럼 프로젝트명이었대도 `useProject` 목이 인자와
+  //    상관없이 같은 값을 돌려주므로 그 단언은 애초에 전달을 관측하지 못했다.
+  //    키가 실제로 흘러 들어간 곳(조회 훅의 인자)을 직접 본다.
   it('T6-0: RouteAdapter가 useParams projectKey를 Page에 전달한다', () => {
     renderAdapter()
-    expect(screen.getByRole('heading', { name: 'Atlas 프로젝트' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '상세정보' })).toBeInTheDocument()
+    expect(vi.mocked(useProject)).toHaveBeenCalledWith('ATLAS')
   })
 })
 
@@ -201,10 +206,19 @@ describe('ProjectDetailsSettingsPage', () => {
     expect(screen.queryByText(/접근 권한이 없습니다/)).not.toBeInTheDocument()
   })
 
-  it('T6-3: 정상 로드 시 프로젝트 이름이 h1로 표시된다', () => {
+  /**
+   * T-J5-11. 본문 헤딩은 **화면 이름**이고 프로젝트명을 다시 쓰지 않는다.
+   *
+   * 셸 헤더(`ProjectViewHeader`)가 바로 위에서 `<h1>{프로젝트명}</h1>` 을 내고 설정
+   * 서브앱에서는 그 아래 「프로젝트 설정」 부제까지 붙는다. 본문이 이름을 또 쓰면 화면이
+   * 「이름 / 프로젝트 설정 / 이름」으로 읽힌다. 부정 단언을 짝으로 두는 이유 —
+   * 「`상세정보` 가 있다」만 보면 그 옆에 이름을 **되살려도 초록**이라 회귀를 못 잡는다.
+   */
+  it('T6-3: 정상 로드 시 화면 이름이 헤딩이고 프로젝트명은 다시 쓰지 않는다 (J5-11)', () => {
     mockProject(activeProject)
     renderPage()
-    expect(screen.getByRole('heading', { name: 'Atlas 프로젝트' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '상세정보' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Atlas 프로젝트' })).not.toBeInTheDocument()
   })
 
   it('T6-4: 이름 입력 후 저장 클릭 시 updateName.mutate가 {idOrKey, name}으로 호출된다', async () => {

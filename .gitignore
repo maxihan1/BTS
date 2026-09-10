@@ -86,3 +86,7 @@ backend/.kotlin/
 
 # 로컬 수동 실행용 (JWT 키 등) — 커밋 금지
 .local-run/
+
+# 젠킨스 GitHub deploy key — 서버에서 생성. 저장소에 올리지 않는다
+infra/jenkins/.deploy-key*
+infra/jenkins/plugins.lock.txt.tmp

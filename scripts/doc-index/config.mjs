@@ -12,8 +12,15 @@ export const MEMORY_DIR = path.join(
   '.claude/projects/-Users-maxi-moff-Projects-BTS/memory',
 );
 
-// ★ SOURCES 는 CI 트리거 경로(workflow-scripts-ci.yml)와 정합해야 한다 — 룰 L 이 강제한다.
-//   저장소 안 경로만 CI 대상이다. repoRelative:false 는 검증에서 제외된다.
+// ★「룰 L 이 강제한다」는 문구를 지웠다 (2026-09-09). **그 룰은 쓰인 적이 없다** —
+//   `doc-index-coverage.test.ts` 에 참조 0 인 상수 하나만 남아 있었다.
+//   없는 가드를 「강제한다」고 적는 것이 가장 나쁘다. 읽는 쪽이 지켜진다고 믿기 때문이다.
+//
+//   그리고 이제 필요도 없다. 젠킨스는 판별식을 **조건 없이 전량** 돌리므로
+//   「CI 트리거 경로」라는 두 번째 목록이 존재하지 않는다 — 어긋날 대상이 없다.
+//   경로별 선별을 다시 도입한다면 그때 테스트를 **실제로 쓰고** 이 주석을 되살려라.
+//
+//   저장소 안 경로만 인덱싱 대상이다. repoRelative:false 는 검증에서 제외된다.
 export const SOURCES = [
   { key: 'plans', dir: 'docs/plans', repoRelative: true },
   { key: 'specs', dir: 'docs/specs', repoRelative: true },

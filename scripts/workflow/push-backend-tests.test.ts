@@ -36,17 +36,40 @@ function read(rel: string): string {
 }
 
 describe('푸시 훅 백엔드 모듈 테스트', () => {
-  test('★훅이 이 스크립트를 부른다', () => {
-    const hook = read(HOOK)
-      .split('\n')
-      .filter((l) => l.trim() !== '' && !l.trim().startsWith('#'))
-      .join('\n')
+  // ★2026-09-09 재조준. 종전 단언은 「훅이 이 스크립트를 부른다」였고, 근거는
+  //   「CI 자동 실행을 껐으므로 다른 자리가 없다」였다. **그 전제가 거짓이 됐다** —
+  //   젠킨스가 `pollSCM` 으로 푸시를 감지해 같은 검증을 돈다(실측 80초).
+  //
+  //   그래서 지키려던 것을 그대로 지키되 자리를 옮긴다. 지키려던 것은 스크립트의 호출 자리가
+  //   아니라 **「백엔드 코드가 푸시마다 자동으로 검증된다」**이다.
+  //   단언을 지우면 그 보장이 사라지므로, 삭제가 아니라 재조준이다.
+  test('★백엔드 검증이 푸시마다 자동으로 돈다 (젠킨스가 그 자리다)', () => {
+    const jf = read('Jenkinsfile')
 
+    assert.match(
+      jf,
+      /pollSCM\(/,
+      'Jenkinsfile 에 pollSCM 이 없다 — 푸시를 감지하는 자리가 사라졌다.\n' +
+        '훅에서 백엔드 테스트를 걷어낸 상태에서 이것까지 없으면 ' +
+        '**로컬도 젠킨스도 안 도는 검증 0회 구간**이 된다.',
+    )
+    assert.match(
+      jf,
+      /select-test-scope\.ts/,
+      'Jenkinsfile 이 범위 계산기를 부르지 않는다 — 무엇을 돌릴지 정하는 정본이 끊겼다.',
+    )
+  })
+
+  test('★수동 폴백이 남아 있다 (젠킨스가 죽었을 때의 자리)', () => {
+    // 젠킨스는 단일 장애점이다. 그 스크립트를 지우면 손으로 돌릴 방법이 0 이 된다.
     assert.ok(
-      hook.includes(SCRIPT),
-      `${HOOK} 가 ${SCRIPT} 를 부르지 않는다.\n` +
-        '이 스크립트가 안 불리면 백엔드 코드는 **아무 기계 검증도 받지 않는다** — ' +
-        'CI 자동 실행을 껐으므로 다른 자리가 없다.',
+      fs.existsSync(path.join(REPO_ROOT, SCRIPT)),
+      `${SCRIPT} 가 사라졌다 — 젠킨스가 죽으면 백엔드를 검증할 방법이 없다.`,
+    )
+    // 훅 주석이 그 폴백 명령을 적어 둔다. 사람이 찾을 자리가 저장소 안에 있어야 한다.
+    assert.ok(
+      read(HOOK).includes(SCRIPT),
+      `${HOOK} 가 ${SCRIPT} 를 언급하지 않는다 — 이전 사실과 폴백 명령의 기록이 사라졌다.`,
     )
   })
 
@@ -422,12 +445,20 @@ describe('푸시 훅 백엔드 모듈 테스트', () => {
     })
   })
 
-  test('★새 브랜치(upstream 없음)를 위한 폴백 기준이 있다', () => {
+  test('★비교 기준을 스스로 잡지 않고 diff-base.ts 에 위임한다', () => {
     // 새 브랜치의 첫 푸시가 가장 검증이 필요한 순간인데, `@{u}` 는 그때 실패한다.
+    // 그 폴백은 이제 `diff-base.ts` 한 곳에 있다.
+    //
+    // ★종전 이 단언은 「소스에 'origin/main' 이라는 **글자**가 있는가」였다. 형태만 보는
+    //   계약이라, 2026-09-10 에 그 글자를 그대로 둔 채 main 위에서 기준이 HEAD 로 잡히는
+    //   결함이 6벌 있었는데도 초록이었다. 행동을 재는 짝은 `diff-base.test.ts` 에 있고,
+    //   여기서는 **그 한 곳을 실제로 거치는지**만 본다.
     const src = read(SCRIPT)
-    assert.ok(
-      src.includes('origin/main'),
-      `${SCRIPT} 에 upstream 폴백이 없다 — 새 브랜치 첫 푸시가 통째로 검증을 건너뛴다.`,
+    assert.match(
+      src,
+      /from '\.\/diff-base\.ts'/,
+      `${SCRIPT} 가 비교 기준을 스스로 잡는다 — 사본이 늘면 다시 여섯이 동시에 틀린다.\n` +
+        '  행동 계약. scripts/workflow/diff-base.test.ts',
     )
   })
 })
