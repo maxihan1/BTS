@@ -13,6 +13,8 @@ const makeWorkflow = (key: string, states: WorkflowView['states']): WorkflowView
   key,
   name: `${key} 워크플로우`,
   description: '',
+  // 이 판정은 소유와 무관하다 — 전역으로 고정한다 (FR-WF-08).
+  projectId: null,
   states,
   transitions: [],
 })

@@ -27,6 +27,7 @@ const workflowA: WorkflowView = {
     { key: 'done', name: '완료', category: 'DONE', displayOrder: 3 },
   ],
   transitions: [],
+  projectId: null,
 }
 
 /** WorkflowView 픽스처 B — in_progress가 displayOrder=3(충돌), review=2(신규), done=4(충돌) */
@@ -40,6 +41,7 @@ const workflowB: WorkflowView = {
     { key: 'done', name: '완료(B)', category: 'DONE', displayOrder: 4 },
   ],
   transitions: [],
+  projectId: null,
 }
 
 /** WorkflowView 픽스처 C — displayOrder 동일한 두 상태(정렬 결정성 테스트) */
@@ -52,6 +54,7 @@ const workflowC: WorkflowView = {
     { key: 'closed', name: '닫힘', category: 'DONE', displayOrder: 1 },
   ],
   transitions: [],
+  projectId: null,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

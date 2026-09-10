@@ -46,6 +46,7 @@ const softwareDefaultWorkflow: WorkflowView = {
     { key: 't3', name: '해결 완료', fromStateKey: 'in_review', toStateKey: 'resolved', id: txId(3), kind: 'NORMAL' },
     { key: 't4', name: '닫기', fromStateKey: 'resolved', toStateKey: 'closed', id: txId(4), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** bug-tracking: 5 상태, 4 전환 (spec FR-7) */
@@ -66,6 +67,7 @@ const bugTrackingWorkflow: WorkflowView = {
     { key: 'b3', name: '수정 완료', fromStateKey: 'fixing', toStateKey: 'fixed', id: txId(7), kind: 'NORMAL' },
     { key: 'b4', name: '검증 완료', fromStateKey: 'fixed', toStateKey: 'verified', id: txId(8), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** simple: 2 상태, 2 전환 (spec FR-7 §S2) */
@@ -81,6 +83,7 @@ const simpleWorkflow: WorkflowView = {
     { key: 's1', name: '닫기', fromStateKey: 'open', toStateKey: 'closed', id: txId(9), kind: 'NORMAL' },
     { key: 's2', name: '다시 열기', fromStateKey: 'closed', toStateKey: 'open', id: txId(10), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 /** kanban-basic: 4 상태, 3 전환 (spec FR-7) */
@@ -99,6 +102,7 @@ const kanbanBasicWorkflow: WorkflowView = {
     { key: 'k2', name: '시작', fromStateKey: 'todo', toStateKey: 'doing', id: txId(12), kind: 'NORMAL' },
     { key: 'k3', name: '완료', fromStateKey: 'doing', toStateKey: 'done', id: txId(13), kind: 'NORMAL' },
   ],
+  projectId: null,
 }
 
 // --- 테스트 ---
@@ -200,6 +204,7 @@ describe('generateMermaidCode — 출발 상태가 없는 전환 (GLOBAL·INITIA
       { key: 'INITIAL__open', name: '이슈 생성', fromStateKey: null, toStateKey: 'open', id: txId(101), kind: 'INITIAL' },
       { key: 'open__done', name: '완료 처리', fromStateKey: 'open', toStateKey: 'done', id: txId(102), kind: 'NORMAL' },
     ],
+      projectId: null,
   }
 
   /** 어느 상태에서나 쓸 수 있는 전환(GLOBAL) 1건 */
@@ -215,6 +220,7 @@ describe('generateMermaidCode — 출발 상태가 없는 전환 (GLOBAL·INITIA
       { key: 'GLOBAL__closed', name: '강제 종료', fromStateKey: null, toStateKey: 'closed', id: txId(111), kind: 'GLOBAL' },
       { key: 'open__closed', name: '종료', fromStateKey: 'open', toStateKey: 'closed', id: txId(112), kind: 'NORMAL' },
     ],
+      projectId: null,
   }
 
   /**
@@ -303,6 +309,7 @@ describe('WorkflowDiagram', () => {
       description: '상태 없음',
       states: [],
       transitions: [],
+          projectId: null,
     }
 
     render(<WorkflowDiagram workflow={emptyWorkflow} />)
