@@ -18,6 +18,8 @@ import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.domain.ProjectKey
+import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -49,6 +51,7 @@ class WorkflowCommandService(
     private val workflowRepository: WorkflowRepository,
     private val workflowCache: WorkflowCache,
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
+    private val projectLookupPort: ProjectLookupPort,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -71,11 +74,13 @@ class WorkflowCommandService(
                 "워크플로우에는 상태가 하나 이상 있어야 한다 — 상태가 0개면 조회 자체가 불가능하다",
             )
         }
-        if (writeRepository.existsByKey(command.key)) {
+        val ownerId = resolveOwner(command.key, command.projectKey)
+        if (writeRepository.existsByKey(command.key, ownerId)) {
             throw WorkflowKeyConflictException(command.key)
         }
 
-        val workflowId = writeRepository.insertWorkflow(command.key, command.name, command.description)
+        val workflowId =
+            writeRepository.insertWorkflow(command.key, command.name, command.description, ownerId)
         writeRepository.attachStatuses(workflowId, command.statuses)
         workflowCache.invalidate(command.key)
         log.info("워크플로우 생성 key={} statuses={}", command.key, command.statuses.size)
@@ -135,6 +140,11 @@ class WorkflowCommandService(
     /**
      * 워크플로우를 복제한다. 상태 편성과 전환을 함께 복사하고 `origin='CUSTOM'` 으로 만든다.
      *
+     * ★ **복제가 주 사용 경로다.** 전역 템플릿을 자기 프로젝트로 복제해 고치는 것이 Jira 가 권장하는
+     * 우회로다. [targetProjectKey] 를 사본에 싣지 않으면 사본도 전역이 되어 결국 못 고친다 — 그
+     * 경로가 바로 그 자리에서 죽는다(FR-WF-08).
+     *
+     * @param targetProjectKey 사본의 소유 프로젝트 키. null = 전역 사본.
      * @return 복제본의 id
      * @throws WorkflowNotFoundException 원본이 없을 때 (404)
      * @throws WorkflowKeyConflictException 새 key 가 이미 쓰일 때 (409)
@@ -145,19 +155,21 @@ class WorkflowCommandService(
         sourceKey: String,
         newKey: String,
         newName: String,
+        targetProjectKey: String?,
     ): UUID {
         permissionResolver.requirePermission(actorId, WorkflowDefinitionPermission.CREATE)
         val sourceId = requireLiveWorkflow(sourceKey)
-        if (writeRepository.existsByKey(newKey)) {
+        val ownerId = resolveOwner(newKey, targetProjectKey)
+        if (writeRepository.existsByKey(newKey, ownerId)) {
             throw WorkflowKeyConflictException(newKey)
         }
 
         val source = workflowRepository.findByKey(sourceKey) ?: throw WorkflowNotFoundException(sourceKey)
-        val targetId = writeRepository.insertWorkflow(newKey, newName, source.description)
+        val targetId = writeRepository.insertWorkflow(newKey, newName, source.description, ownerId)
         writeRepository.copyStatusComposition(sourceId, targetId)
         writeRepository.copyLegacyStatesAndTransitions(sourceId, targetId)
         workflowCache.invalidate(newKey)
-        log.info("워크플로우 복제 source={} target={}", sourceKey, newKey)
+        log.info("워크플로우 복제 source={} target={} project={}", sourceKey, newKey, targetProjectKey)
         return targetId
     }
 
@@ -367,6 +379,26 @@ class WorkflowCommandService(
             throw WorkflowLockedException(workflowKey)
         }
         return workflowId
+    }
+
+    /**
+     * 소유 프로젝트 키를 `projects.id` 로 푼다. **권한 판정 뒤에** 부른다.
+     *
+     * @param workflowKey 예외 메시지에 실을 대상 워크플로우 키.
+     * @param projectKey 소유 프로젝트 키. null 이면 전역 소유라 해석할 것이 없다.
+     * @return 소유 프로젝트 UUID, 전역이면 null.
+     * @throws WorkflowInvalidRequestException 프로젝트 키가 형식에 안 맞거나 그런 프로젝트가 없을 때 (400)
+     */
+    private fun resolveOwner(
+        workflowKey: String,
+        projectKey: String?,
+    ): UUID? {
+        if (projectKey == null) return null
+        val parsed =
+            runCatching { ProjectKey(projectKey) }
+                .getOrElse { throw WorkflowInvalidRequestException(workflowKey, "프로젝트 키 형식이 아니다: $projectKey") }
+        return projectLookupPort.findIdByKey(parsed)
+            ?: throw WorkflowInvalidRequestException(workflowKey, "그런 프로젝트가 없다: $projectKey")
     }
 
     /** 살아 있는 워크플로우의 id 를 준다. 없으면 404 예외. */

@@ -27,6 +27,13 @@ data class CreateWorkflowCommand(
     val name: String,
     val description: String?,
     val statuses: List<WorkflowStatusSeed>,
+    /**
+     * 소유 프로젝트 키. null = 전역 공유 워크플로우 (FR-WF-08).
+     *
+     * UUID 가 아니라 키를 싣는다 — `projects` 조회는 권한 판정 **뒤에** 일어나야 해서
+     * 해석 시점을 서비스가 쥔다. 먼저 조회하면 권한 없는 사용자가 404 로 프로젝트 실재를 알아낸다.
+     */
+    val projectKey: String?,
 )
 
 /**

@@ -148,8 +148,8 @@ class ProjectWorkflowSchemeController(
      * 전체 목록"([WorkflowSchemeApplicationService.list] 이 반환하는, 삭제되지 않은 스킴 전체)을 반환한다.
      *
      * @param projectKey 배정 후보를 조회할 프로젝트 키 (예. "ATLAS"). 이 컨트롤러가 프로젝트 스코프로
-     * 권한을 평가하고 존재 여부를 404 로 검증하는 데 쓰인다 — 목록 조회 자체는 프로젝트에 한정되지
-     * 않는 전역 활성 스킴 목록이다.
+     * 권한을 평가하고 존재 여부를 404 로 검증하며, 목록을 그 프로젝트가 쓸 수 있는 것으로 좁히는 데
+     * 쓰인다 — 전역 공유 템플릿과 이 프로젝트 전용 스킴만 나온다(FR-WF-08).
      * @return 200 + `{ "data": [ { id, key, name, description, isStandard }, ... ] }`
      * @throws ResponseStatusException(404) [projectKey] 에 해당하는 프로젝트가 없을 때.
      * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException actor 가 [projectKey] 에 대해
@@ -167,9 +167,11 @@ class ProjectWorkflowSchemeController(
             WorkflowSchemeScope.Project(projectKey),
         )
         val key = ProjectKey(projectKey)
-        projectLookupPort.findIdByKey(key)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
-        return ResponseEntity.ok(DataResponse(data = appService.list().map { it.toResponse() }))
+        val projectId =
+            projectLookupPort.findIdByKey(key)
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
+        // 전역 템플릿 + 이 프로젝트 전용만. 남의 프로젝트 전용 스킴은 배정 후보가 아니다(FR-WF-08).
+        return ResponseEntity.ok(DataResponse(data = appService.listForProject(projectId).map { it.toResponse() }))
     }
 }
 

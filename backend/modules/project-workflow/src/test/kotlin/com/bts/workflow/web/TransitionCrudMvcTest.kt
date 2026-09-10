@@ -92,7 +92,13 @@ class TransitionCrudMvcTest {
             repository = WorkflowRepository(dsl)
             cache = WorkflowCache(repository, dsl)
             commandService =
-                WorkflowCommandService(WorkflowWriteRepository(dsl), repository, cache, permissionResolver)
+                WorkflowCommandService(
+                    WorkflowWriteRepository(dsl),
+                    repository,
+                    cache,
+                    permissionResolver,
+                    mockk(relaxed = true),
+                )
         }
 
         private fun migrate(target: String?) {
@@ -328,6 +334,7 @@ class TransitionCrudMvcTest {
                     statusKeys.mapIndexed { index, statusKey ->
                         WorkflowStatusSeed(statusKey, statusKey.uppercase(), "TODO", index)
                     },
+                projectKey = null,
             ),
         )
     }

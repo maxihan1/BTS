@@ -57,6 +57,7 @@ class WorkflowSchemeApplicationServiceTest {
     private val permissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
     private val workflowRepo: WorkflowRepository = mockk()
     private val issueTypeLookupPort: IssueTypeLookupPort = mockk()
+    private val scopeResolver: WorkflowOwnershipScopeResolver = mockk()
 
     private lateinit var service: WorkflowSchemeApplicationService
 
@@ -73,7 +74,11 @@ class WorkflowSchemeApplicationServiceTest {
                 permissionResolver,
                 workflowRepo,
                 issueTypeLookupPort,
+                scopeResolver,
             )
+        // 이 파일의 픽스처는 전부 전역 스킴이다 — 소유별 스코프 판정은 WorkflowOwnershipScopeResolverTest 가 잰다.
+        every { scopeResolver.ofScheme(any()) } returns WorkflowSchemeScope.Global
+        every { scopeResolver.ofProjectId(any()) } returns WorkflowSchemeScope.Global
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -84,7 +89,7 @@ class WorkflowSchemeApplicationServiceTest {
         val expected = buildScheme(key, isDefault = false)
         every { schemeRepo.save(any()) } returns expected
 
-        val result = service.create(actor, key, "Software Scheme", null, isDefault = false)
+        val result = service.create(actor, key, "Software Scheme", null, isDefault = false, projectId = null)
 
         assertThat(result.key).isEqualTo(key)
         verify(exactly = 1) { schemeRepo.save(any()) }
@@ -343,11 +348,29 @@ class WorkflowSchemeApplicationServiceTest {
 
     @Test
     fun `deleteMapping — 정상 호출 시 mappingRepo deleteMapping 이 호출된다`() {
+        val schemeKey = WorkflowSchemeKey("software-scheme")
+        every { schemeRepo.findByKey(schemeKey) } returns buildScheme(schemeKey, isDefault = false)
+        every { mappingRepo.findBySchemeId(any()) } returns listOf(buildMapping(99L))
         justRun { mappingRepo.deleteMapping(any()) }
 
-        service.deleteMapping(actor, mappingId = 99L)
+        service.deleteMapping(actor, schemeKey, mappingId = 99L)
 
         verify(exactly = 1) { mappingRepo.deleteMapping(99L) }
+    }
+
+    @Test
+    fun `deleteMapping — 다른 스킴의 매핑 id 는 지우지 않는다`() {
+        // ★ 소유가 갈리기 전에는 무해했다 — 모두 SYSTEM_ADMIN 이라 어느 스킴이든 지울 수 있었다.
+        // 소유가 갈린 뒤로는 A 스킴 권한만 가진 사람이 `/workflow-schemes/A/mappings/{B의 id}` 로
+        // B 스킴의 매핑을 지우는 교차 프로젝트 구멍이 된다(FR-WF-08).
+        val schemeKey = WorkflowSchemeKey("software-scheme")
+        every { schemeRepo.findByKey(schemeKey) } returns buildScheme(schemeKey, isDefault = false)
+        every { mappingRepo.findBySchemeId(any()) } returns listOf(buildMapping(11L))
+        justRun { mappingRepo.deleteMapping(any()) }
+
+        service.deleteMapping(actor, schemeKey, mappingId = 99L)
+
+        verify(exactly = 0) { mappingRepo.deleteMapping(any()) }
     }
 
     // ── assignToProject ───────────────────────────────────────────────────────
@@ -383,6 +406,34 @@ class WorkflowSchemeApplicationServiceTest {
         assertThatThrownBy {
             service.assignToProject(actor, UUID.randomUUID(), "PROJ", schemeKey)
         }.isInstanceOf(WorkflowSchemeNotFoundException::class.java)
+    }
+
+    @Test
+    fun `assignToProject — 다른 프로젝트 전용 스킴은 배정되지 않는다`() {
+        val schemeKey = WorkflowSchemeKey("other-project-scheme")
+        val myProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
+        val otherProjectId = UUID.fromString("00000000-0000-0000-0000-0000000000b2")
+        every { schemeRepo.findByKey(schemeKey) } returns buildScheme(schemeKey, projectId = otherProjectId)
+
+        // 403 이 아니라 404 다 — 403 은 「그 키의 스킴은 있다」를 응답으로 흘린다(존재 probe).
+        assertThatThrownBy {
+            service.assignToProject(actor, myProjectId, "ATLAS", schemeKey)
+        }.isInstanceOf(WorkflowSchemeNotFoundException::class.java)
+
+        verify(exactly = 0) { assignmentRepo.saveAssignment(any()) }
+    }
+
+    @Test
+    fun `assignToProject — 그 프로젝트 소유 스킴은 그대로 배정된다`() {
+        val schemeKey = WorkflowSchemeKey("my-project-scheme")
+        val projectId = UUID.fromString("00000000-0000-0000-0000-0000000000a1")
+        every { schemeRepo.findByKey(schemeKey) } returns buildScheme(schemeKey, projectId = projectId)
+        justRun { assignmentRepo.saveAssignment(any()) }
+        justRun { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+
+        service.assignToProject(actor, projectId, "ATLAS", schemeKey)
+
+        verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
     }
 
     @Test
@@ -452,6 +503,7 @@ class WorkflowSchemeApplicationServiceTest {
                 denyingResolver,
                 workflowRepo,
                 issueTypeLookupPort,
+                scopeResolver,
             )
 
         assertThatThrownBy {
@@ -489,6 +541,7 @@ class WorkflowSchemeApplicationServiceTest {
                 prodLikeResolver,
                 workflowRepo,
                 issueTypeLookupPort,
+                scopeResolver,
             )
 
         val softwareSchemeKey = WorkflowSchemeApplicationService.SOFTWARE_SCHEME_KEY
@@ -537,11 +590,22 @@ class WorkflowSchemeApplicationServiceTest {
             createdAt = Instant.now(),
         )
 
+    /** 소속 확인용 매핑 픽스처. `deleteMapping` 이 「그 스킴 것인가」를 묻기 시작해서 필요해졌다. */
+    private fun buildMapping(id: Long): SchemeIssueTypeMapping =
+        SchemeIssueTypeMapping(
+            id = id,
+            schemeId = WorkflowSchemeId(1L),
+            issueTypeId = null,
+            workflowId = UUID.randomUUID(),
+            createdAt = Instant.now(),
+        )
+
     private fun buildScheme(
         key: WorkflowSchemeKey,
         name: String = key.value,
         isDefault: Boolean = false,
         id: WorkflowSchemeId = WorkflowSchemeId(1L),
+        projectId: UUID? = null,
     ): WorkflowScheme {
         val now = Instant.now()
         return WorkflowScheme.reconstruct(
@@ -553,6 +617,7 @@ class WorkflowSchemeApplicationServiceTest {
             createdAt = now,
             updatedAt = now,
             deletedAt = null,
+            projectId = projectId,
         )
     }
 }

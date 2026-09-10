@@ -82,6 +82,7 @@ class ProjectWorkflowSchemeControllerTest {
             },
         workflowRepo = mockk(),
         issueTypeLookupPort = mockk(),
+        scopeResolver = mockk(relaxed = true),
     ) {
         var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
         var findAssignedSchemeResponse: WorkflowScheme? = null
@@ -89,6 +90,14 @@ class ProjectWorkflowSchemeControllerTest {
         var listResponse: List<WorkflowScheme> = emptyList()
 
         override fun list(): List<WorkflowScheme> = listResponse
+
+        // 배정 후보 목록은 프로젝트 스코프 경로를 탄다 — 컨트롤러가 이쪽을 부르는지가 판정 대상이다.
+        var listForProjectCalledWith: UUID? = null
+
+        override fun listForProject(projectId: UUID): List<WorkflowScheme> {
+            listForProjectCalledWith = projectId
+            return listResponse
+        }
 
         override fun assignToProject(
             actor: ActorId,
@@ -202,6 +211,7 @@ class ProjectWorkflowSchemeControllerTest {
                 createdAt = Instant.parse("2026-01-01T00:00:00Z"),
                 updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
                 deletedAt = null,
+                projectId = null,
             )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
@@ -258,6 +268,7 @@ class ProjectWorkflowSchemeControllerTest {
                 createdAt = Instant.now(),
                 updatedAt = Instant.now(),
                 deletedAt = null,
+                projectId = null,
             )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
@@ -368,6 +379,7 @@ class ProjectWorkflowSchemeControllerTest {
                 createdAt = Instant.parse("2026-01-01T00:00:00Z"),
                 updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
                 deletedAt = null,
+                projectId = null,
             )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
@@ -398,6 +410,7 @@ class ProjectWorkflowSchemeControllerTest {
                 createdAt = Instant.now(),
                 updatedAt = Instant.now(),
                 deletedAt = null,
+                projectId = null,
             )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
@@ -408,6 +421,25 @@ class ProjectWorkflowSchemeControllerTest {
 
         assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.ASSIGN_SCHEME)
         assertThat(config.permResolverStub.capturedScope).isEqualTo(WorkflowSchemeScope.Project("ATLAS"))
+    }
+
+    // ── Case 10b. GET assignable — 남의 프로젝트 전용 스킴은 후보가 아니다 ─────
+    //
+    // ★판별자는 「200 이 났다」가 아니라 **어느 목록 메서드를 탔는가**다. 전량을 주는 list() 를
+    // 그대로 쓰면 남의 프로젝트 전용 스킴이 배정 후보로 뜨고, 이름만으로도 그 팀이 무슨
+    // 워크플로우를 쓰는지 샌다. listForProject(그 프로젝트) 를 타야 소유로 좁혀진다(FR-WF-08).
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — 전량이 아니라 그 프로젝트로 좁힌 목록을 탄다`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+        config.appServiceStub.listResponse = emptyList()
+        config.appServiceStub.listForProjectCalledWith = null
+
+        mockMvc.perform(get("/api/v1/projects/ATLAS/assignable-workflow-schemes"))
+            .andExpect(status().isOk)
+
+        assertThat(config.appServiceStub.listForProjectCalledWith).isEqualTo(projectId)
     }
 
     // ── Case 11. GET assignable — 권한 거부 시 403 + 본문에 스킴 key 0건 ───────
@@ -427,6 +459,7 @@ class ProjectWorkflowSchemeControllerTest {
                 createdAt = Instant.now(),
                 updatedAt = Instant.now(),
                 deletedAt = null,
+                projectId = null,
             )
 
         every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId

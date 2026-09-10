@@ -1,14 +1,13 @@
-// 워크플로우 전환 validator CRUD REST 컨트롤러 — MANAGE_SCHEME+Global Guard 선행
+// 워크플로우 전환 validator CRUD REST 컨트롤러 — MANAGE_SCHEME 가드 선행 (스코프는 워크플로우 소유)
 
 package com.bts.workflow.validator.web
 
-import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.scheme.web.DataEnvelope
 import com.bts.workflow.validator.ValidatorAdminService
 import com.bts.workflow.validator.ValidatorRow
 import com.bts.workflow.validator.isEditable
-import com.bts.workflow.web.requireManageScheme
+import com.bts.workflow.web.ManageSchemeGuard
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -33,7 +32,7 @@ import java.util.UUID
  * 종전 `fromStateKey__toStateKey` 합성 키이며, 해석은 [ValidatorAdminService] 가 맡는다.
  *
  * ### 권한 Guard 가 리소스 조회보다 먼저다
- * 모든 엔드포인트(**GET 포함**) 는 진입 직후 공용 [requireManageScheme] 로 MANAGE_SCHEME + Global 을
+ * 모든 엔드포인트(**GET 포함**) 는 진입 직후 공용 [ManageSchemeGuard] 로 MANAGE_SCHEME 을
  * 검증한다. 순서가 뒤집히면 403 이 거짓말을 한다 — 없는 워크플로우에는 404, 있는 워크플로우에는
  * 403 이 나가서 권한 없는 사용자가 전환의 실재 여부를 응답만으로 알아낸다(존재 probe).
  * (메모리 permission-assert-before-existence-makes-403-lie · auth-extraction-before-resource-lookup)
@@ -58,14 +57,14 @@ import java.util.UUID
  * 응답이 이 값을 실어야 소비자(화면) 쪽에도 같은 표가 생기지 않는다.
  *
  * @param service validator 관리 서비스.
- * @param permissionResolver MANAGE_SCHEME 권한 평가 outbound port.
+ * @param manageSchemeGuard 워크플로우 소유 스코프로 MANAGE_SCHEME 을 요구하는 공용 가드.
  * @param validatorFactory validator 인스턴스 팩토리. `phase` 의 진실 출처다.
  */
 @RestController
 @RequestMapping("/api/v1/workflows/{workflowKey}/transitions/{transitionKey}/validators")
 class ValidatorController(
     private val service: ValidatorAdminService,
-    private val permissionResolver: WorkflowSchemePermissionResolver,
+    private val manageSchemeGuard: ManageSchemeGuard,
     private val validatorFactory: WorkflowValidatorFactory,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -84,7 +83,7 @@ class ValidatorController(
         @PathVariable workflowKey: String,
         @PathVariable transitionKey: String,
     ): ResponseEntity<DataEnvelope<List<ValidatorResponse>>> {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.debug("ValidatorController.list workflowKey={} transitionKey={}", workflowKey, transitionKey)
         val rows = service.listForTransition(workflowKey, transitionKey)
         return ResponseEntity.ok(DataEnvelope(rows.map { toResponse(it) }))
@@ -104,7 +103,7 @@ class ValidatorController(
         @PathVariable transitionKey: String,
         @RequestBody request: ValidatorRequest,
     ): ResponseEntity<DataEnvelope<ValidatorResponse>> {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.info(
             "ValidatorController.create workflowKey={} transitionKey={} type={}",
             workflowKey,
@@ -131,7 +130,7 @@ class ValidatorController(
         @PathVariable id: UUID,
         @RequestBody request: ValidatorRequest,
     ): ResponseEntity<DataEnvelope<ValidatorResponse>> {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.info(
             "ValidatorController.update workflowKey={} transitionKey={} id={} type={}",
             workflowKey,
@@ -157,7 +156,7 @@ class ValidatorController(
         @PathVariable transitionKey: String,
         @PathVariable id: UUID,
     ) {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.info(
             "ValidatorController.delete workflowKey={} transitionKey={} id={}",
             workflowKey,

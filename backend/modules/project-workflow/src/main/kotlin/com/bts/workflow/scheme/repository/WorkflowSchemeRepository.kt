@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import java.util.UUID
 
 /**
  * 워크플로우 스킴에 대한 프로젝트 수 + 매핑 수 카운트를 담은 결과 행.
@@ -49,7 +50,9 @@ data class SchemeCountRow(
  */
 @Repository
 // jOOQ 필드 상수 — SQL 컬럼명 매칭 (UPPER_SNAKE_CASE). codegen 도입 시 typed table 로 교체 예정.
-@Suppress("PropertyName", "VariableNaming")
+// TooManyFunctions — 스킴 CRUD 6 + 카운트 2 + 소유 스코프 조회 1 + 변환 2. 한 테이블의 접근 경로라
+// 쪼개면 트랜잭션 경계와 컬럼 참조 상수가 두 곳으로 갈린다.
+@Suppress("PropertyName", "VariableNaming", "TooManyFunctions")
 class WorkflowSchemeRepository(private val dsl: DSLContext) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -62,9 +65,24 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
     private val NAME = field(name("name"), String::class.java)
     private val DESCRIPTION = field(name("description"), String::class.java)
     private val IS_DEFAULT = field(name("is_default"), Boolean::class.java)
+
+    // FR-WF-08 소유 프로젝트 — NULL = 전역 템플릿. V209.
+    private val PROJECT_ID = field(name("project_id"), UUID::class.java)
     private val CREATED_AT = field(name("created_at"), OffsetDateTime::class.java)
     private val UPDATED_AT = field(name("updated_at"), OffsetDateTime::class.java)
     private val DELETED_AT = field(name("deleted_at"), OffsetDateTime::class.java)
+
+    // 테이블명으로 한정한 컬럼 참조 — findAllWithCounts 가 JOIN·서브쿼리를 함께 쓰므로 필요하다.
+    // toCountRow 가 같은 참조를 봐야 해서 메서드 지역이 아니라 클래스 수준에 둔다.
+    private val WS_ID = field(name("workflow_schemes", "id"), Long::class.java)
+    private val WS_KEY = field(name("workflow_schemes", "key"), String::class.java)
+    private val WS_NAME = field(name("workflow_schemes", "name"), String::class.java)
+    private val WS_DESCRIPTION = field(name("workflow_schemes", "description"), String::class.java)
+    private val WS_IS_DEFAULT = field(name("workflow_schemes", "is_default"), Boolean::class.java)
+    private val WS_PROJECT_ID = field(name("workflow_schemes", "project_id"), UUID::class.java)
+    private val WS_CREATED_AT = field(name("workflow_schemes", "created_at"), OffsetDateTime::class.java)
+    private val WS_UPDATED_AT = field(name("workflow_schemes", "updated_at"), OffsetDateTime::class.java)
+    private val WS_DELETED_AT = field(name("workflow_schemes", "deleted_at"), OffsetDateTime::class.java)
 
     /**
      * WorkflowScheme 을 INSERT 하고 DB 생성 id 가 할당된 새 인스턴스를 반환한다.
@@ -81,17 +99,18 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
         val record =
             dsl
                 .insertInto(WORKFLOW_SCHEMES)
-                .columns(KEY, NAME, DESCRIPTION, IS_DEFAULT, CREATED_AT, UPDATED_AT, DELETED_AT)
+                .columns(KEY, NAME, DESCRIPTION, IS_DEFAULT, PROJECT_ID, CREATED_AT, UPDATED_AT, DELETED_AT)
                 .values(
                     scheme.key.value,
                     scheme.name,
                     scheme.description,
                     scheme.isDefault,
+                    scheme.projectId,
                     scheme.createdAt.toOffsetDateTime(),
                     scheme.updatedAt.toOffsetDateTime(),
                     scheme.deletedAt?.toOffsetDateTime(),
                 )
-                .returning(ID, KEY, NAME, DESCRIPTION, IS_DEFAULT, CREATED_AT, UPDATED_AT, DELETED_AT)
+                .returning(ID, KEY, NAME, DESCRIPTION, IS_DEFAULT, PROJECT_ID, CREATED_AT, UPDATED_AT, DELETED_AT)
                 .fetchOne() ?: error("workflow_schemes INSERT 후 RETURNING 결과 없음 — key=${scheme.key.value}")
 
         return record.toWorkflowScheme()
@@ -152,6 +171,23 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             .map { it.toWorkflowScheme() }
 
     /**
+     * [projectId] 프로젝트가 쓸 수 있는 활성 스킴 목록을 반환한다 — 전역 템플릿 + 그 프로젝트 전용.
+     *
+     * 남의 프로젝트 전용 스킴은 제외한다. 프로젝트 설정 화면과 배정 후보 목록이 이 경로를 탄다.
+     * 전역 관리자 목록([findAll])과 달리 스코프가 프로젝트 하나로 좁혀져 있다(FR-WF-08).
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return 전역 + 해당 프로젝트 소유 활성 스킴. 비어 있을 수 있음.
+     */
+    @Transactional(readOnly = true)
+    fun findAllForProject(projectId: UUID): List<WorkflowScheme> =
+        dsl
+            .selectFrom(WORKFLOW_SCHEMES)
+            .where(DELETED_AT.isNull.and(PROJECT_ID.isNull.or(PROJECT_ID.eq(projectId))))
+            .fetch()
+            .map { it.toWorkflowScheme() }
+
+    /**
      * 스킴 필드를 UPDATE 한다.
      *
      * `UPDATE workflow_schemes SET name=?, description=?, is_default=?, updated_at=NOW() WHERE id=?` 실행.
@@ -181,6 +217,7 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             name = scheme.name,
             description = scheme.description,
             isDefault = scheme.isDefault,
+            projectId = scheme.projectId,
             createdAt = scheme.createdAt,
             updatedAt = now.toInstant(),
             deletedAt = scheme.deletedAt,
@@ -253,14 +290,6 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
         val A_WORKFLOW_SCHEME_ID =
             field(name("project_workflow_scheme_assignments", "workflow_scheme_id"), Long::class.java)
         val M_SCHEME_ID = field(name("workflow_scheme_issue_type_mappings", "scheme_id"), Long::class.java)
-        val WS_ID = field(name("workflow_schemes", "id"), Long::class.java)
-        val WS_KEY = field(name("workflow_schemes", "key"), String::class.java)
-        val WS_NAME = field(name("workflow_schemes", "name"), String::class.java)
-        val WS_DESCRIPTION = field(name("workflow_schemes", "description"), String::class.java)
-        val WS_IS_DEFAULT = field(name("workflow_schemes", "is_default"), Boolean::class.java)
-        val WS_CREATED_AT = field(name("workflow_schemes", "created_at"), OffsetDateTime::class.java)
-        val WS_UPDATED_AT = field(name("workflow_schemes", "updated_at"), OffsetDateTime::class.java)
-        val WS_DELETED_AT = field(name("workflow_schemes", "deleted_at"), OffsetDateTime::class.java)
 
         // 스칼라 서브쿼리 — LEFT JOIN cartesian product 없이 독립 카운트 계산
         val projectCount =
@@ -281,6 +310,7 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
                 WS_NAME,
                 WS_DESCRIPTION,
                 WS_IS_DEFAULT,
+                WS_PROJECT_ID,
                 WS_CREATED_AT,
                 WS_UPDATED_AT,
                 WS_DELETED_AT,
@@ -290,24 +320,32 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             .from(WORKFLOW_SCHEMES)
             .where(WS_DELETED_AT.isNull)
             .fetch()
-            .map { rec ->
-                val scheme =
-                    WorkflowScheme.reconstruct(
-                        id = WorkflowSchemeId(rec[WS_ID] ?: error("workflow_schemes.id NOT NULL")),
-                        key = WorkflowSchemeKey(rec[WS_KEY] ?: error("workflow_schemes.key NOT NULL")),
-                        name = rec[WS_NAME] ?: error("workflow_schemes.name NOT NULL"),
-                        description = rec[WS_DESCRIPTION],
-                        isDefault = rec[WS_IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL"),
-                        createdAt = (rec[WS_CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL")).toInstant(),
-                        updatedAt = (rec[WS_UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL")).toInstant(),
-                        deletedAt = rec[WS_DELETED_AT]?.toInstant(),
-                    )
-                SchemeCountRow(
-                    scheme = scheme,
-                    usedByProjectsCount = rec.get("project_count", Long::class.java) ?: 0L,
-                    mappingsCount = rec.get("mapping_count", Long::class.java) ?: 0L,
-                )
-            }
+            .map { rec -> rec.toCountRow() }
+    }
+
+    /**
+     * [findAllWithCounts] 결과 행을 [SchemeCountRow] 로 옮긴다.
+     *
+     * 컬럼 참조가 `workflow_schemes.` 로 한정된 별도 필드라 [toWorkflowScheme] 을 재사용할 수 없다.
+     */
+    private fun org.jooq.Record.toCountRow(): SchemeCountRow {
+        val scheme =
+            WorkflowScheme.reconstruct(
+                id = WorkflowSchemeId(this[WS_ID] ?: error("workflow_schemes.id NOT NULL")),
+                key = WorkflowSchemeKey(this[WS_KEY] ?: error("workflow_schemes.key NOT NULL")),
+                name = this[WS_NAME] ?: error("workflow_schemes.name NOT NULL"),
+                description = this[WS_DESCRIPTION],
+                isDefault = this[WS_IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL"),
+                projectId = this[WS_PROJECT_ID],
+                createdAt = (this[WS_CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL")).toInstant(),
+                updatedAt = (this[WS_UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL")).toInstant(),
+                deletedAt = this[WS_DELETED_AT]?.toInstant(),
+            )
+        return SchemeCountRow(
+            scheme = scheme,
+            usedByProjectsCount = this.get("project_count", Long::class.java) ?: 0L,
+            mappingsCount = this.get("mapping_count", Long::class.java) ?: 0L,
+        )
     }
 
     // ── 내부 변환 ──────────────────────────────────────────────────────────────
@@ -325,6 +363,7 @@ class WorkflowSchemeRepository(private val dsl: DSLContext) {
             name = this[NAME] ?: error("workflow_schemes.name NOT NULL constraint violated: row $this"),
             description = this[DESCRIPTION],
             isDefault = this[IS_DEFAULT] ?: error("workflow_schemes.is_default NOT NULL"),
+            projectId = this[PROJECT_ID],
             createdAt = (this[CREATED_AT] ?: error("workflow_schemes.created_at NOT NULL")).toInstant(),
             updatedAt = (this[UPDATED_AT] ?: error("workflow_schemes.updated_at NOT NULL")).toInstant(),
             deletedAt = this[DELETED_AT]?.toInstant(),

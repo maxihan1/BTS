@@ -6,6 +6,7 @@ import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.web.CapturingPermissionResolverStub
@@ -15,6 +16,7 @@ import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.core.importer.ImportOption
+import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -94,10 +96,22 @@ class SchemeHandlerPermissionRuntimeMatrixTest {
         open fun projectLookupPort(): ProjectLookupPort = mockk(relaxed = true)
 
         @Bean
+        open fun scopeResolver(): WorkflowOwnershipScopeResolver =
+            mockk {
+                every { ofScheme(any()) } returns WorkflowSchemeScope.Global
+                every { ofProjectKey(any()) } returns WorkflowSchemeScope.Global
+                every { ofProjectId(any()) } returns WorkflowSchemeScope.Global
+            }
+
+        @Bean
         open fun workflowSchemeController(
             appService: WorkflowSchemeApplicationService,
             permissionResolver: WorkflowSchemePermissionResolver,
-        ): WorkflowSchemeController = WorkflowSchemeController(appService, permissionResolver)
+            scopeResolver: WorkflowOwnershipScopeResolver,
+            projectLookupPort: ProjectLookupPort,
+        ): WorkflowSchemeController {
+            return WorkflowSchemeController(appService, permissionResolver, scopeResolver, projectLookupPort)
+        }
 
         @Bean
         open fun projectWorkflowSchemeController(

@@ -40,6 +40,8 @@ export const makeScheme = (overrides: Partial<SchemeListItem>): SchemeListItem =
   name: '기본 스킴 이름',
   description: '',
   isStandard: false,
+  // 목 스킴은 전부 전역 템플릿이다 — 소유별 판정은 백엔드 테스트가 잰다 (FR-WF-08).
+  projectId: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   usedByProjectsCount: 0,
@@ -53,10 +55,12 @@ export const makeScheme = (overrides: Partial<SchemeListItem>): SchemeListItem =
  * mappingsCount는 mappings 배열 길이에서 자동 계산하여 drift를 방지한다.
  */
 export const makeSchemeDetail = (
-  base: Omit<SchemeListItem, 'mappingsCount' | 'mappings'>,
+  base: Omit<SchemeListItem, 'mappingsCount' | 'mappings' | 'projectId'> & Partial<Pick<SchemeListItem, 'projectId'>>,
   mappings: MappingDetail[],
 ): SchemeDetail => ({
   ...base,
+  // 목 스킴은 기본이 전역 템플릿이다. 소유를 재는 픽스처만 명시로 덮는다 (FR-WF-08).
+  projectId: base.projectId ?? null,
   mappingsCount: mappings.length,
   mappings,
 })
@@ -88,6 +92,7 @@ export const makeSchemeMutationResult = (overrides: Partial<SchemeMutationResult
   name: '기본 스킴 이름',
   description: '',
   isStandard: false,
+  projectId: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
   ...overrides,

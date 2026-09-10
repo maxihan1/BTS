@@ -1,11 +1,10 @@
-// 워크플로우 전환 post-action CRUD REST 컨트롤러 — MANAGE_SCHEME+Global Guard
+// 워크플로우 전환 post-action CRUD REST 컨트롤러 — MANAGE_SCHEME 가드 (스코프는 워크플로우 소유)
 
 package com.bts.workflow.postaction.web
 
-import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.workflow.postaction.PostActionAdminService
 import com.bts.workflow.scheme.web.DataEnvelope
-import com.bts.workflow.web.requireManageScheme
+import com.bts.workflow.web.ManageSchemeGuard
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -31,8 +30,8 @@ import java.util.UUID
  * 해석은 [PostActionAdminService] 가 맡는다.
  *
  * ### 권한 Guard
- * 모든 엔드포인트(GET 포함) 는 컨트롤러 진입 직후 공용 [requireManageScheme] 로 MANAGE_SCHEME +
- * Global 권한을 검증한다. 리소스 조회 이전에 호출해 존재 probe 를 방지한다.
+ * 모든 엔드포인트(GET 포함) 는 컨트롤러 진입 직후 공용 [ManageSchemeGuard] 로 MANAGE_SCHEME
+ * 권한을 검증한다. 스코프는 대상 워크플로우의 소유를 따른다. 리소스 조회 이전에 호출해 존재 probe 를 방지한다.
  * (메모리 auth-extraction-before-resource-lookup 준수)
  *
  * 가드 구현은 형제 `ValidatorController` 와 **한 벌을 공유한다** — 사본이면 스코프를 좁히는 날
@@ -44,13 +43,13 @@ import java.util.UUID
  * 내부 식별자가 누출되지 않도록 한다 (메모리 fr-pm-04-guard-exception-message-http-leak).
  *
  * @param service post-action 관리 서비스.
- * @param permissionResolver MANAGE_SCHEME 권한 평가 outbound port.
+ * @param manageSchemeGuard 워크플로우 소유 스코프로 MANAGE_SCHEME 을 요구하는 공용 가드.
  */
 @RestController
 @RequestMapping("/api/v1/workflows/{workflowKey}/transitions/{transitionKey}/post-actions")
 class PostActionController(
     private val service: PostActionAdminService,
-    private val permissionResolver: WorkflowSchemePermissionResolver,
+    private val manageSchemeGuard: ManageSchemeGuard,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -66,7 +65,7 @@ class PostActionController(
         @PathVariable workflowKey: String,
         @PathVariable transitionKey: String,
     ): ResponseEntity<DataEnvelope<List<PostActionResponse>>> {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.debug("PostActionController.list workflowKey={} transitionKey={}", workflowKey, transitionKey)
         val rows = service.listForTransition(workflowKey, transitionKey)
         return ResponseEntity.ok(DataEnvelope(rows.map { PostActionResponse.from(it) }))
@@ -86,7 +85,7 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.info(
             "PostActionController.create workflowKey={} transitionKey={} type={}",
             workflowKey,
@@ -113,7 +112,7 @@ class PostActionController(
         @PathVariable id: UUID,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.info(
             "PostActionController.update workflowKey={} transitionKey={} id={} type={}",
             workflowKey,
@@ -139,7 +138,7 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @PathVariable id: UUID,
     ) {
-        permissionResolver.requireManageScheme()
+        manageSchemeGuard.requireForWorkflow(workflowKey)
         log.info(
             "PostActionController.delete workflowKey={} transitionKey={} id={}",
             workflowKey,

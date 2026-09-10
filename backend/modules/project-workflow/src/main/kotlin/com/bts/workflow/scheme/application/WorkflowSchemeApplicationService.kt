@@ -57,6 +57,7 @@ import java.util.UUID
  * @param permissionResolver 스킴 권한 평가 outbound port.
  * @param workflowRepo 워크플로우 조회 Repository.
  * @param issueTypeLookupPort 이슈타입 정보 조회 outbound port (issue-tracking BC SPI).
+ * @param scopeResolver 소유 프로젝트 → 권한 스코프 변환의 단일 결정 지점 (FR-WF-08).
  *
  * @suppress TooManyFunctions — Scheme CRUD(create/find/findDetail/listWithCounts/update/softDelete/list) 7 +
  * Mapping 관리(addMapping/addMappingByKeys/deleteMapping) 3 + Assignment(assignToProject/findAssignedScheme) 2
@@ -74,6 +75,7 @@ class WorkflowSchemeApplicationService(
     private val permissionResolver: WorkflowSchemePermissionResolver,
     private val workflowRepo: WorkflowRepository,
     private val issueTypeLookupPort: IssueTypeLookupPort,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -85,6 +87,7 @@ class WorkflowSchemeApplicationService(
      * @param name 스킴 이름. 빈 문자열 불허.
      * @param description 스킴 설명. null 허용.
      * @param isDefault 표준 스킴 여부. 기본값 false.
+     * @param projectId 소유 프로젝트. null = 전역 템플릿. 기본값을 두지 않는다(FR-WF-08).
      * @return 저장된 스킴 (DB 생성 id 포함).
      */
     fun create(
@@ -93,14 +96,22 @@ class WorkflowSchemeApplicationService(
         name: String,
         description: String?,
         isDefault: Boolean = false,
+        projectId: UUID?,
     ): WorkflowScheme {
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofProjectId(projectId),
         )
-        log.info("create scheme: actor={} key={}", actor.raw, key.value)
-        val scheme = WorkflowScheme.create(key = key, name = name, description = description, isDefault = isDefault)
+        log.info("create scheme: actor={} key={} projectId={}", actor.raw, key.value, projectId)
+        val scheme =
+            WorkflowScheme.create(
+                key = key,
+                name = name,
+                description = description,
+                isDefault = isDefault,
+                projectId = projectId,
+            )
         return schemeRepo.save(scheme)
     }
 
@@ -175,7 +186,7 @@ class WorkflowSchemeApplicationService(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(key.value),
         )
         val existing = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
@@ -191,6 +202,8 @@ class WorkflowSchemeApplicationService(
                 name = newName,
                 description = newDescription,
                 isDefault = newIsDefault,
+                // 소유 프로젝트는 수정 대상이 아니다 — key 와 같이 불변으로 옮긴다(FR-WF-08).
+                projectId = existing.projectId,
                 createdAt = existing.createdAt,
                 updatedAt = existing.updatedAt,
                 deletedAt = existing.deletedAt,
@@ -217,7 +230,7 @@ class WorkflowSchemeApplicationService(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(key.value),
         )
         val scheme = schemeRepo.findByKey(key) ?: throw WorkflowSchemeNotFoundException(key.value)
 
@@ -244,6 +257,18 @@ class WorkflowSchemeApplicationService(
      */
     @Transactional(readOnly = true)
     fun list(): List<WorkflowScheme> = schemeRepo.findAll()
+
+    /**
+     * [projectId] 프로젝트가 쓸 수 있는 활성 스킴 목록을 반환한다 — 전역 템플릿 + 그 프로젝트 전용.
+     *
+     * ★ [list] 는 전량을 준다. 프로젝트 화면이 그걸 그대로 쓰면 **남의 프로젝트 전용 스킴이 보인다**
+     * — 이름만으로도 그 팀이 무슨 워크플로우를 쓰는지 새는 셈이다. 프로젝트 스코프 경로는 이쪽을 탄다.
+     *
+     * @param projectId 대상 프로젝트 `projects.id`.
+     * @return 전역 + 해당 프로젝트 소유 활성 스킴.
+     */
+    @Transactional(readOnly = true)
+    fun listForProject(projectId: UUID): List<WorkflowScheme> = schemeRepo.findAllForProject(projectId)
 
     /**
      * 스킴에 이슈타입-워크플로우 매핑을 추가한다.
@@ -281,7 +306,7 @@ class WorkflowSchemeApplicationService(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey.value),
         )
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
@@ -342,19 +367,32 @@ class WorkflowSchemeApplicationService(
      *
      * 존재하지 않는 [mappingId] 에 대해서는 no-op 으로 처리된다 (Repository 동작 일치).
      *
+     * ★ **[mappingId] 가 [schemeKey] 의 매핑인지 확인한다.** 확인하지 않으면 A 스킴 권한만 가진
+     * 사용자가 `/workflow-schemes/A/mappings/{B의 매핑 id}` 로 B 스킴의 매핑을 지운다. 스코프가
+     * 전역 하나뿐이던 시절엔 어차피 모두 SYSTEM_ADMIN 이라 무해했지만, 소유가 갈린 뒤로는
+     * 교차 프로젝트 구멍이다(FR-WF-08).
+     *
      * @param actor 작업 수행 행위자. MANAGE_SCHEME 권한이 필요하다.
+     * @param schemeKey 매핑이 속한 스킴 키. 권한 스코프와 소속 확인의 근거다.
      * @param mappingId 삭제할 매핑 PK.
      */
     fun deleteMapping(
         actor: ActorId,
+        schemeKey: WorkflowSchemeKey,
         mappingId: Long,
     ) {
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey.value),
         )
-        log.info("deleteMapping: actor={} mappingId={}", actor.raw, mappingId)
+        val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+        if (mappingRepo.findBySchemeId(schemeId).none { it.id == mappingId }) {
+            log.info("deleteMapping no-op: 매핑 {} 은 스킴 {} 것이 아니다", mappingId, schemeKey.value)
+            return
+        }
+        log.info("deleteMapping: actor={} schemeKey={} mappingId={}", actor.raw, schemeKey.value, mappingId)
         mappingRepo.deleteMapping(mappingId)
     }
 
@@ -403,9 +441,10 @@ class WorkflowSchemeApplicationService(
      *   [SYSTEM_ACTOR](EC-1 D10 auto-assign)는 권한 검사를 우회한다.
      * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
-     * @param schemeKey 배정할 스킴 키.
+     * @param schemeKey 배정할 스킴 키. 전역 템플릿이거나 [projectId] 소유여야 한다([requireAssignableTo]).
      * @return 저장된 [ProjectWorkflowSchemeAssignment].
-     * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없을 때.
+     * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없거나,
+     *   그 스킴이 **다른 프로젝트 소유**일 때 (FR-WF-08).
      */
     fun assignToProject(
         actor: ActorId,
@@ -425,6 +464,7 @@ class WorkflowSchemeApplicationService(
             )
         }
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        requireAssignableTo(scheme, projectId)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
 
         val now = Instant.now()
@@ -446,6 +486,31 @@ class WorkflowSchemeApplicationService(
             ),
         )
         return assignment
+    }
+
+    /**
+     * [scheme] 이 [projectId] 프로젝트에 배정 가능한지 확인한다. 전역 템플릿이거나 그 프로젝트 소유여야 한다.
+     *
+     * ★ **읽기만 좁히면 쓰기가 구멍이 된다.** FR-WF-08 이 배정 후보 목록을
+     * 「전역 + 이 프로젝트」로 좁혔지만([listForProject]), 배정 자체가 같이 좁혀지지 않으면 A 프로젝트
+     * 관리자가 키만 알면 B 전용 스킴을 자기 프로젝트에 배정할 수 있다. 배정되는 순간 B 팀의 이슈타입
+     * 편성과 워크플로우가 A 에서 읽힌다. 목록과 쓰기가 서로를 검사하지 않는 자리다.
+     *
+     * 403 이 아니라 404 로 떨어뜨린다 — 403 은 「그 키의 스킴은 존재한다」를 응답으로 흘려서
+     * 남의 프로젝트 스킴 키를 열거하는 probe 가 된다.
+     *
+     * @param scheme 배정 대상 스킴.
+     * @param projectId 배정받을 프로젝트 `projects.id`.
+     * @throws WorkflowSchemeNotFoundException 스킴이 다른 프로젝트 소유일 때.
+     */
+    private fun requireAssignableTo(
+        scheme: WorkflowScheme,
+        projectId: UUID,
+    ) {
+        val owner = scheme.projectId ?: return
+        if (owner == projectId) return
+        log.warn("assignToProject 거부: 스킴 {} 은 다른 프로젝트 소유다", scheme.key.value)
+        throw WorkflowSchemeNotFoundException(scheme.key.value)
     }
 
     /**
@@ -523,6 +588,7 @@ class WorkflowSchemeApplicationService(
             description = row.scheme.description,
             // 뷰 어휘는 isStandard, 도메인은 isDefault 그대로다(ADR D2 — 뷰 레이어 한정 정렬).
             isStandard = row.scheme.isDefault,
+            projectId = row.scheme.projectId,
             createdAt = row.scheme.createdAt.toString(),
             updatedAt = row.scheme.updatedAt.toString(),
             usedByProjectsCount = row.usedByProjectsCount,

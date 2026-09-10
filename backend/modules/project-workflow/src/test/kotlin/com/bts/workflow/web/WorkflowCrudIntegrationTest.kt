@@ -16,6 +16,8 @@ import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
+import com.bts.workflow.scheme.domain.ProjectKey
+import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
@@ -64,6 +66,21 @@ class WorkflowCrudIntegrationTest {
         lateinit var cache: WorkflowCache
         lateinit var service: WorkflowCommandService
 
+        /** 소유 프로젝트 UUID — V209 는 FK 가 없으므로(cross-BC) `projects` 행 없이도 실린다. */
+        val ATLAS_ID: UUID = UUID.fromString("aaaaaaaa-0000-4000-8000-0000000000a1")
+
+        /** `ATLAS` 하나만 아는 프로젝트 조회 스텁. 나머지 키는 없는 프로젝트로 취급한다. */
+        private val projectLookup =
+            object : ProjectLookupPort {
+                override fun findIdByKey(projectKey: ProjectKey): UUID? {
+                    return if (projectKey.value == "ATLAS") ATLAS_ID else null
+                }
+
+                override fun findKeyById(projectId: UUID): ProjectKey? {
+                    return if (projectId == ATLAS_ID) ProjectKey("ATLAS") else null
+                }
+            }
+
         /** 모든 권한을 허용하는 판정기. 권한 거부 경로는 어댑터 단위 테스트가 덮는다. */
         private val allowAll =
             object : WorkflowDefinitionPermissionResolver {
@@ -85,7 +102,8 @@ class WorkflowCrudIntegrationTest {
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             repository = WorkflowRepository(dsl)
             cache = WorkflowCache(repository, dsl)
-            service = WorkflowCommandService(WorkflowWriteRepository(dsl), repository, cache, allowAll)
+            service =
+                WorkflowCommandService(WorkflowWriteRepository(dsl), repository, cache, allowAll, projectLookup)
         }
 
         private fun migrateTo(target: String) {
@@ -133,7 +151,16 @@ class WorkflowCrudIntegrationTest {
         key: String,
         name: String = key,
         statuses: List<WorkflowStatusSeed> = seeds("open", "done"),
-    ) = service.create(actor, CreateWorkflowCommand(key = key, name = name, description = null, statuses = statuses))
+    ) = service.create(
+        actor,
+        CreateWorkflowCommand(
+            key = key,
+            name = name,
+            description = null,
+            statuses = statuses,
+            projectKey = null,
+        ),
+    )
 
     // ── red-first 1. 이름 수정이 조회에 반영된다 ────────────────────────────────
 
@@ -243,7 +270,7 @@ class WorkflowCrudIntegrationTest {
     fun `복제는 상태 편성을 함께 복사하고 origin 을 CUSTOM 으로 둔다`() {
         create("origin-flow", statuses = seeds("alpha", "beta", "gamma"))
 
-        service.duplicate(actor, "origin-flow", newKey = "copied-flow", newName = "복사본")
+        service.duplicate(actor, "origin-flow", newKey = "copied-flow", newName = "복사본", targetProjectKey = null)
 
         val copy = repository.findByKey("copied-flow")
         assertThat(copy).isNotNull()
@@ -251,13 +278,60 @@ class WorkflowCrudIntegrationTest {
         assertThat(originOf("copied-flow")).isEqualTo("CUSTOM")
     }
 
+    // ── FR-WF-08 소유 프로젝트 ────────────────────────────────────────────────
+    // ★ 복제가 주 사용 경로다. 사본이 소유를 못 실으면 전역 사본이 되어 프로젝트 관리자가 결국
+    // 못 고친다 — Jira 가 권장 우회로로 명시하는 그 경로가 그 자리에서 죽는다.
+
+    @Test
+    fun `복제 사본은 지목한 프로젝트를 소유로 싣는다`() {
+        create("owned-src")
+
+        service.duplicate(actor, "owned-src", newKey = "owned-copy", newName = "사본", targetProjectKey = "ATLAS")
+
+        assertThat(projectIdOf("owned-copy")).isEqualTo(ATLAS_ID)
+        // 원본은 전역 그대로다 — 복제가 원본 소유를 옮기면 안 된다.
+        assertThat(projectIdOf("owned-src")).isNull()
+    }
+
+    @Test
+    fun `프로젝트를 지목하지 않은 복제는 전역 사본이다`() {
+        create("global-src")
+
+        service.duplicate(actor, "global-src", newKey = "global-copy", newName = "사본", targetProjectKey = null)
+
+        assertThat(projectIdOf("global-copy")).isNull()
+    }
+
+    @Test
+    fun `전역에 같은 key 가 있어도 프로젝트 사본은 만들어진다`() {
+        // V209 가 key 유일성을 소유별로 갈랐다. 소유를 무시하고 물으면 전역에 있다는 이유로
+        // 프로젝트 사본이 409 로 막힌다 — 「전역 템플릿을 같은 이름으로 내 프로젝트에」가 안 된다.
+        create("shared-key")
+
+        service.duplicate(actor, "shared-key", newKey = "shared-key", newName = "내 사본", targetProjectKey = "ATLAS")
+
+        assertThat(projectIdOf("shared-key")).isNull()
+        assertThat(countRows("SELECT COUNT(*) FROM workflows WHERE key = 'shared-key' AND deleted_at IS NULL"))
+            .isEqualTo(2)
+    }
+
+    @Test
+    fun `없는 프로젝트로 복제하면 거부된다`() {
+        create("nowhere-src")
+
+        assertThatThrownBy {
+            service.duplicate(actor, "nowhere-src", newKey = "nowhere-copy", newName = "x", targetProjectKey = "GHOST")
+        }.isInstanceOf(WorkflowInvalidRequestException::class.java)
+    }
+
     @Test
     fun `이미 있는 key 로 복제하면 거부된다`() {
         create("src-flow")
         create("taken-flow")
 
-        assertThatThrownBy { service.duplicate(actor, "src-flow", newKey = "taken-flow", newName = "x") }
-            .isInstanceOf(WorkflowKeyConflictException::class.java)
+        assertThatThrownBy {
+            service.duplicate(actor, "src-flow", newKey = "taken-flow", newName = "x", targetProjectKey = null)
+        }.isInstanceOf(WorkflowKeyConflictException::class.java)
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
@@ -295,6 +369,20 @@ class WorkflowCrudIntegrationTest {
             }
         }
     }
+
+    /** 소유 프로젝트를 DB 에서 직접 읽는다 — 도메인을 거치면 매핑 누락이 가려진다. */
+    private fun projectIdOf(key: String): UUID? =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT project_id FROM workflows WHERE key = ? AND deleted_at IS NULL ORDER BY project_id NULLS FIRST",
+            ).use { stmt ->
+                stmt.setString(1, key)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1) as UUID?
+                }
+            }
+        }
 
     private fun originOf(key: String): String =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->

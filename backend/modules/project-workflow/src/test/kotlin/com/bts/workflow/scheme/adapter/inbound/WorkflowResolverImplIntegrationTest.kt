@@ -3,6 +3,7 @@
 package com.bts.workflow.scheme.adapter.inbound
 
 import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
@@ -19,6 +20,7 @@ import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -126,6 +128,12 @@ class WorkflowResolverImplIntegrationTest {
                     permissionResolver,
                     workflowRepo,
                     issueTypeLookupPort = mockk(relaxed = true),
+                    // 이 테스트는 키 해석만 잰다 — 스코프 판정은 전역으로 고정한다.
+                    scopeResolver =
+                        mockk {
+                            every { ofScheme(any()) } returns WorkflowSchemeScope.Global
+                            every { ofProjectId(any()) } returns WorkflowSchemeScope.Global
+                        },
                 )
 
             resolver =

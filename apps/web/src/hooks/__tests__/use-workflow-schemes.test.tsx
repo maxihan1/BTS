@@ -34,6 +34,7 @@ describe('useWorkflowSchemes', () => {
         name: '소프트웨어 개발 기본 스킴',
         description: '',
         isStandard: true,
+        projectId: null,
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
         usedByProjectsCount: 3,
@@ -81,6 +82,7 @@ describe('useWorkflowSchemeDetail', () => {
       name: '소프트웨어 개발 기본 스킴',
       description: '설명',
       isStandard: true,
+      projectId: null,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 1,
@@ -146,6 +148,7 @@ describe('useCreateWorkflowScheme', () => {
         name: '새 스킴',
         description: '',
         isStandard: false,
+        projectId: null,
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
       }
@@ -216,7 +219,8 @@ describe('스킴 뮤테이션의 assignable 캐시 무효화', () => {
   it('생성 성공 시 assignable 캐시를 무효화한다', async () => {
     const created: SchemeMutationResult = {
       id: 1, key: 'new-scheme', name: '새 스킴', description: '',
-      isStandard: false, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+      isStandard: false,
+      projectId: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
     }
     server.use(
       http.post('/api/v1/workflow-schemes', () => HttpResponse.json({ data: created }, { status: 201 })),
@@ -236,7 +240,8 @@ describe('스킴 뮤테이션의 assignable 캐시 무효화', () => {
   it('수정 성공 시 assignable 캐시를 무효화한다', async () => {
     const updated: SchemeMutationResult = {
       id: 1, key: 'alpha', name: '바뀐 이름', description: '',
-      isStandard: false, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z',
+      isStandard: false,
+      projectId: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-02T00:00:00Z',
     }
     server.use(
       http.put('/api/v1/workflow-schemes/alpha', () => HttpResponse.json({ data: updated })),
@@ -279,6 +284,7 @@ describe('useUpdateWorkflowScheme', () => {
         name: '수정된 스킴 이름',
         description: '수정된 설명',
         isStandard: false,
+        projectId: null,
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
       }
@@ -355,6 +361,7 @@ describe('useAddMapping', () => {
       name: '파일럿',
       description: '',
       isStandard: false,
+      projectId: null,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 0,
@@ -416,6 +423,7 @@ describe('useAddMapping', () => {
       name: '소프트웨어',
       description: '',
       isStandard: true,
+      projectId: null,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 3,
@@ -484,6 +492,7 @@ describe('useAddMapping', () => {
       name: '파일럿',
       description: '',
       isStandard: false,
+      projectId: null,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 0,
@@ -552,6 +561,7 @@ describe('useRemoveMapping', () => {
       name: '소프트웨어',
       description: '',
       isStandard: true,
+      projectId: null,
       createdAt: '2026-01-01T00:00:00Z',
       updatedAt: '2026-01-01T00:00:00Z',
       usedByProjectsCount: 3,

@@ -21,6 +21,7 @@ import java.sql.DriverManager
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.UUID
 
 /**
  * WorkflowSchemeRepository 통합 테스트.
@@ -184,6 +185,7 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 description = "통합 테스트용 스킴",
                 isDefault = false,
                 clock = fixedClock,
+                projectId = null,
             )
 
         val saved = repository.save(scheme)
@@ -207,6 +209,7 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 description = null,
                 isDefault = true,
                 clock = fixedClock,
+                projectId = null,
             )
 
         val saved = repository.save(scheme)
@@ -278,6 +281,7 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 description = null,
                 isDefault = false,
                 clock = fixedClock,
+                projectId = null,
             )
         val saved = repository.save(scheme)
         val schemeId = saved.id!!
@@ -303,6 +307,7 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 description = null,
                 isDefault = false,
                 clock = fixedClock,
+                projectId = null,
             )
         val saved = repository.save(scheme)
         val schemeId = saved.id!!
@@ -346,6 +351,7 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 description = null,
                 isDefault = false,
                 clock = fixedClock,
+                projectId = null,
             )
         val saved = repository.save(scheme)
         val schemeId = saved.id!!.value
@@ -480,6 +486,7 @@ class WorkflowSchemeRepositoryIntegrationTest {
                 description = null,
                 isDefault = false,
                 clock = fixedClock,
+                projectId = null,
             )
         val saved = repository.save(scheme)
 
@@ -489,5 +496,70 @@ class WorkflowSchemeRepositoryIntegrationTest {
         val schemes = repository.findAll()
         val keys = schemes.map { it.key.value }
         assertThat(keys).doesNotContain("findall-deleted-scheme")
+    }
+
+    // ── FR-WF-08 소유 프로젝트 ────────────────────────────────────────────────
+    // V209 가 넣은 project_id 를 저장소가 실제로 싣고 되돌려 주는지 잰다.
+    // 「컬럼이 있다」가 아니라 「왕복한다」를 재야 한다 — 저장 때 흘리면 조용히 전역이 된다.
+
+    @Test
+    @Order(12)
+    fun `save - 프로젝트 소유 스킴은 projectId 를 그대로 싣는다`() {
+        val owner = UUID.fromString("aaaaaaaa-0000-4000-8000-000000000001")
+        val scheme =
+            WorkflowScheme.create(
+                key = WorkflowSchemeKey("owned-scheme"),
+                name = "프로젝트 전용 스킴",
+                description = null,
+                isDefault = false,
+                projectId = owner,
+                clock = fixedClock,
+            )
+
+        val saved = repository.save(scheme)
+
+        assertThat(saved.projectId).isEqualTo(owner)
+        assertThat(repository.findByKey(WorkflowSchemeKey("owned-scheme"))!!.projectId).isEqualTo(owner)
+    }
+
+    @Test
+    @Order(26)
+    fun `findByKey - 전역 seed 스킴의 projectId 는 null 이다`() {
+        val scheme = repository.findByKey(WorkflowSchemeKey("software-scheme"))
+
+        assertThat(scheme).isNotNull
+        assertThat(scheme!!.projectId).isNull()
+    }
+
+    @Test
+    @Order(43)
+    fun `findAllForProject - 전역 스킴과 그 프로젝트 스킴만 반환한다`() {
+        val mine = UUID.fromString("aaaaaaaa-0000-4000-8000-00000000000a")
+        val other = UUID.fromString("aaaaaaaa-0000-4000-8000-00000000000b")
+        repository.save(
+            WorkflowScheme.create(
+                key = WorkflowSchemeKey("scope-mine"),
+                name = "내 프로젝트 스킴",
+                description = null,
+                isDefault = false,
+                projectId = mine,
+                clock = fixedClock,
+            ),
+        )
+        repository.save(
+            WorkflowScheme.create(
+                key = WorkflowSchemeKey("scope-other"),
+                name = "남의 프로젝트 스킴",
+                description = null,
+                isDefault = false,
+                projectId = other,
+                clock = fixedClock,
+            ),
+        )
+
+        val keys = repository.findAllForProject(mine).map { it.key.value }
+
+        assertThat(keys).contains("software-scheme", "scope-mine")
+        assertThat(keys).doesNotContain("scope-other")
     }
 }

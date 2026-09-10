@@ -3,6 +3,7 @@
 
 package com.bts.issue.cfd
 
+import com.bts.issue.GlobalOnlyProjectLookup
 import com.bts.issue.adapter.outbound.velocity.IsolatedWorkflowStateLookup
 import com.bts.issue.cfd.application.CfdService
 import com.bts.issue.cfd.web.CfdController
@@ -24,6 +25,7 @@ import com.bts.workflow.scheme.adapter.inbound.WorkflowStateCatalogImpl
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.JdbcProjectLookupAdapter
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
@@ -300,6 +302,9 @@ class CfdIntegrationTest {
                 permissionResolver = permissionResolver,
                 workflowRepo = workflowRepo,
                 issueTypeLookupPort = issueTypeLookupPort,
+                // 이 테스트는 이슈 전환을 잰다 — 소유는 전역으로 고정한다 (FR-WF-08).
+                scopeResolver =
+                    WorkflowOwnershipScopeResolver(schemeRepo, workflowRepo, GlobalOnlyProjectLookup),
             )
 
         @Bean

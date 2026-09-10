@@ -6,8 +6,11 @@ import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowSchemeScope
 import com.bts.workflow.port.outbound.toUuid
+import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
+import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
+import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.web.dto.CreateWorkflowSchemeRequest
 import com.bts.workflow.scheme.web.dto.MappingRequestDto
 import com.bts.workflow.scheme.web.dto.MappingResponse
@@ -27,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 
 /**
  * 워크플로우 스킴 CRUD + Mapping CRUD REST 컨트롤러.
@@ -59,12 +63,16 @@ import org.springframework.web.bind.annotation.RestController
  *
  * @param applicationService 스킴 유스케이스 서비스.
  * @param permissionResolver 스킴 권한 평가 outbound port.
+ * @param scopeResolver 소유 프로젝트 → 권한 스코프 변환의 단일 결정 지점 (FR-WF-08).
+ * @param projectLookupPort 프로젝트 키 → UUID 변환. 생성 요청이 지목한 소유를 푼다.
  */
 @RestController
 @RequestMapping("/api/v1/workflow-schemes")
 class WorkflowSchemeController(
     private val applicationService: WorkflowSchemeApplicationService,
     private val permissionResolver: WorkflowSchemePermissionResolver,
+    private val scopeResolver: WorkflowOwnershipScopeResolver,
+    private val projectLookupPort: ProjectLookupPort,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -79,18 +87,27 @@ class WorkflowSchemeController(
         @RequestBody request: CreateWorkflowSchemeRequest,
     ): ResponseEntity<DataEnvelope<WorkflowSchemeResponse>> {
         val actor = CurrentActor.current()
+        // 아직 저장되지 않은 스킴이라 소유를 DB 에서 되짚을 수 없다 — 요청이 지목한 프로젝트가 근거다.
+        // 프로젝트 실재 확인보다 **먼저** 판정한다. 뒤집으면 없는 프로젝트엔 404, 있는 프로젝트엔
+        // 403 이 나가서 권한 없는 사용자가 프로젝트 실재를 알아낸다(존재 probe).
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofProjectKey(request.projectKey),
         )
-        log.info("WorkflowSchemeController.create key={}", request.key)
+        val projectId =
+            request.projectKey?.let { key ->
+                projectLookupPort.findIdByKey(ProjectKey(key))
+                    ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $key")
+            }
+        log.info("WorkflowSchemeController.create key={} projectKey={}", request.key, request.projectKey)
         val scheme =
             applicationService.create(
                 actor = actor,
                 key = WorkflowSchemeKey(request.key),
                 name = request.name,
                 description = request.description,
+                projectId = projectId,
             )
         return ResponseEntity.status(HttpStatus.CREATED).body(DataEnvelope(WorkflowSchemeResponse.from(scheme)))
     }
@@ -106,6 +123,8 @@ class WorkflowSchemeController(
     @GetMapping
     fun list(): ResponseEntity<DataEnvelope<List<WorkflowSchemeDetailResponse>>> {
         val actor = CurrentActor.current()
+        // SCOPE-GLOBAL: 전역 관리자 목록이다. 프로젝트 관리자는 자기 프로젝트 화면이 쓰는
+        // ProjectWorkflowSchemeController.listAssignableSchemes 를 타고, 그쪽이 소유로 좁힌다(FR-WF-08).
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
@@ -134,7 +153,7 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey),
         )
         log.debug("WorkflowSchemeController.get schemeKey={}", schemeKey)
         val detail = applicationService.findDetail(WorkflowSchemeKey(schemeKey))
@@ -160,7 +179,7 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey),
         )
         log.info("WorkflowSchemeController.update schemeKey={}", schemeKey)
         val scheme =
@@ -191,7 +210,7 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey),
         )
         log.info("WorkflowSchemeController.delete schemeKey={}", schemeKey)
         applicationService.softDelete(actor, WorkflowSchemeKey(schemeKey))
@@ -217,7 +236,7 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey),
         )
         log.info(
             "WorkflowSchemeController.addMapping schemeKey={} issueTypeKey={} workflowKey={}",
@@ -255,10 +274,10 @@ class WorkflowSchemeController(
         permissionResolver.requirePermission(
             actor.toUuid(),
             WorkflowSchemePermission.MANAGE_SCHEME,
-            WorkflowSchemeScope.Global,
+            scopeResolver.ofScheme(schemeKey),
         )
         log.info("WorkflowSchemeController.deleteMapping schemeKey={} mappingId={}", schemeKey, mappingId)
-        applicationService.deleteMapping(actor, mappingId)
+        applicationService.deleteMapping(actor, WorkflowSchemeKey(schemeKey), mappingId)
     }
 }
 
