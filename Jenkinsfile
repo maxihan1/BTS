@@ -192,6 +192,38 @@ pipeline {
           branch = branch.replaceFirst(/^origin\//, '').trim()
           env.RUN_FULL = (params.FULL || branch == 'main' || nightly) ? 'true' : 'false'
           echo "브랜치=${branch} · 야간=${nightly ? 'Y' : 'N'} · FULL=${params.FULL} → 전량=${env.RUN_FULL}"
+
+          /*
+           * ★배포 후 E2E 가 쓸 「변경 도메인」을 여기서 계산한다.
+           *
+           * 매핑표를 만들지 않는다 — 표를 만들면 그것이 두 번째 목록이 되고, 새 화면이
+           * 생길 때 표를 안 고치면 그 E2E 가 조용히 0회 실행된다. 대신 저장소가 이미 가진
+           * 규칙을 쓴다. `apps/web/src/components/<도메인>/` 과 `apps/web/e2e/<도메인>-*.spec.ts`
+           * 의 **이름이 같다** — 프론트 폴더명이 곧 E2E 파일 접두다.
+           *
+           * ★여기에 도메인 이름을 예시로도 적지 않는다. `select-backend-modules.test.ts` 가
+           *   Jenkinsfile 의 BC 이름 하드코딩을 차단하는데, 주석의 예시도 그 대조에 걸린다 —
+           *   그리고 그게 옳다. 예시로 적은 이름은 시간이 지나면 목록처럼 읽힌다.
+           *
+           * ★비어도 검증이 사라지지 않는다. `bts-e2e` 는 도메인이 비면 1단을 건너뛰고
+           *   **전량**을 돈다 — 「못 찾았으니 생략」이 아니라 「전량이 어차피 전부 본다」다.
+           *   안전한 쪽으로 실패한다.
+           */
+          def diffBase = sh(
+            returnStdout: true,
+            script: 'git rev-parse origin/main 2>/dev/null || git rev-parse HEAD~1',
+          ).trim()
+          def changed = sh(
+            returnStdout: true,
+            script: "git diff --name-only --no-renames ${diffBase}...HEAD || true",
+          ).trim()
+          def domains = changed.readLines()
+            .findAll { it.startsWith('apps/web/src/components/') }
+            .collect { it.split('/')[4] }
+            .unique()
+            .sort()
+          env.E2E_DOMAINS = domains.join(' ')
+          echo "E2E 변경 도메인=${env.E2E_DOMAINS ?: '(없음 — 전량이 받는다)'}"
         }
       }
     }
@@ -364,6 +396,29 @@ pipeline {
           set -eu
           BTS_DEPLOY_LOCAL=1 bash infra/deploy/bts-deploy.sh
         '''
+        /*
+         * ★배포가 끝나면 `bts-e2e` 를 띄운다 — **기다리지 않는다**(`wait: false`).
+         *
+         * E2E 전량이 약 3시간이라 기다리면 이 잡의 executor 1개를 그동안 점유한다.
+         * 2코어에 executor 가 1개뿐이라 그 사이 **모든 푸시 검증이 멈춘다.**
+         *
+         * 그리고 별도 잡이어야 하는 이유가 여기서 다시 성립한다 — 이 파이프라인은
+         * `abortPrevious: true` 라, E2E 를 stage 로 넣으면 다음 푸시 하나가 도는 E2E 를
+         * 죽이고 그 푸시는 `params.DEPLOY` 가 false 라 E2E 를 다시 돌리지도 않는다.
+         * **배포된 것이 미검증으로 남는다.**
+         *
+         * `bts-e2e` 자신도 `abortPrevious` 라, 새 배포가 나면 낡은 E2E 는 취소되고
+         * 새 배포의 E2E 가 이어 돈다 — 중단되고 끝나는 자리가 생기지 않는다.
+         */
+        build(
+          job: 'bts-e2e',
+          wait: false,
+          parameters: [
+            string(name: 'DEPLOYED_SHA', value: env.GIT_COMMIT ?: ''),
+            string(name: 'CHANGED_DOMAINS', value: env.E2E_DOMAINS ?: ''),
+            string(name: 'BASE_URL', value: 'https://bts.maxihan.com'),
+          ],
+        )
       }
     }
   }
