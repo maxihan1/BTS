@@ -57,6 +57,18 @@ pipeline {
     // DooD 라 `docker run -v` 의 좌변은 **호스트 경로**다. 젠킨스 컨테이너 안 경로를 그대로
     // 주면 빈 디렉터리가 마운트되고, 그러면 "no tests found" 가 초록으로 보인다.
     HOST_WS = '/var/lib/docker/volumes/bts-jenkins-home/_data/workspace/bts-e2e'
+
+    // ★파라미터를 셸에서 쓰려면 여기로 올려야 한다.
+    //
+    //   `params.X` 는 **Groovy 값이지 셸 환경변수가 아니다.** `sh` 블록에서 `$X` 로 쓰면
+    //   `set -eu` 아래에서 `parameter not set` 으로 죽는다 — bts-e2e #1 이 그렇게 실패했다
+    //   (2026-09-10). `environment` 블록의 값만 셸에 주입된다.
+    //
+    //   ★기본값을 여기서 준다. 잡을 처음 적용한 직후에는 파라미터가 **아직 등록되지 않아**
+    //     `params.BASE_URL` 이 null 이다(그 등록 빌드가 곧 등록한다). 기본값이 없으면 첫
+    //     빌드가 항상 죽는다 — 잡 XML 주석이 경고한 그 자리다.
+    RUN_BASE_URL = "${params.BASE_URL ?: 'https://bts.maxihan.com'}"
+    RUN_DOMAINS = "${params.CHANGED_DOMAINS ?: ''}"
   }
 
   stages {
@@ -71,8 +83,8 @@ pipeline {
           env.TARGET_SHA_REQUIRED = params.DEPLOYED_SHA?.trim() ? 'yes' : ''
           echo "검증 대상 커밋: ${env.TARGET_SHA}" +
             (env.TARGET_SHA_REQUIRED ? '' : ' (호출자 미지정 — 커밋 대조 없이 돈다)')
-          echo "대상 URL: ${params.BASE_URL}"
-          echo "변경 도메인: ${params.CHANGED_DOMAINS ?: '(없음 — 전량만)'}"
+          echo "대상 URL: ${env.RUN_BASE_URL}"
+          echo "변경 도메인: ${env.RUN_DOMAINS ?: '(없음 — 전량만)'}"
         }
       }
     }
@@ -103,7 +115,7 @@ pipeline {
           while (System.currentTimeMillis() < deadline) {
             served = sh(
               returnStdout: true,
-              script: """curl -fsS --max-time 10 "${params.BASE_URL}/version.json" 2>/dev/null \
+              script: """curl -fsS --max-time 10 "${env.RUN_BASE_URL}/version.json" 2>/dev/null \
                          | sed -n 's/.*"commit":"\\([^"]*\\)".*/\\1/p' || true""",
             ).trim()
             if (!env.TARGET_SHA_REQUIRED) { break }
@@ -143,12 +155,12 @@ pipeline {
      *   안 넘겼으니 2단(전량)이 어차피 전부 본다」는 뜻이다 — 검증이 사라지지 않는다.
      */
     stage('E2E — 변경 도메인') {
-      when { expression { params.CHANGED_DOMAINS?.trim() } }
+      when { expression { env.RUN_DOMAINS?.trim() } }
       steps {
         sh '''
           set -eu
           SPECS=""
-          for d in $CHANGED_DOMAINS; do
+          for d in $RUN_DOMAINS; do
             # 접두가 도메인이다. 매칭이 0건이면 그 도메인은 E2E 가 없다는 뜻이라 넘어간다.
             for f in apps/web/e2e/${d}-*.spec.ts; do
               [ -e "$f" ] && SPECS="$SPECS ${f#apps/web/}"
@@ -161,7 +173,7 @@ pipeline {
           echo "대상 spec:$SPECS"
           docker run --rm --network host \\
             -v "$HOST_WS:/w" -w /w/apps/web \\
-            -e CI=1 -e PLAYWRIGHT_BASE_URL="$BASE_URL" \\
+            -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
             "$PW_IMAGE" \\
             npx playwright test $SPECS --project=chromium
         '''
@@ -180,7 +192,7 @@ pipeline {
           set -eu
           docker run --rm --network host \\
             -v "$HOST_WS:/w" -w /w/apps/web \\
-            -e CI=1 -e PLAYWRIGHT_BASE_URL="$BASE_URL" \\
+            -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
             "$PW_IMAGE" \\
             npx playwright test --project=chromium
         '''
@@ -205,7 +217,7 @@ pipeline {
           //   도는 동안 서버가 바뀌어도 언제나 「유효」가 나오는 공허한 검사였다.
           def now = sh(
             returnStdout: true,
-            script: """curl -fsS --max-time 10 "${params.BASE_URL}/version.json" 2>/dev/null \
+            script: """curl -fsS --max-time 10 "${env.RUN_BASE_URL}/version.json" 2>/dev/null \
                        | sed -n 's/.*"commit":"\\([^"]*\\)".*/\\1/p' || true""",
           ).trim()
           if (!env.TARGET_SHA_REQUIRED) {
