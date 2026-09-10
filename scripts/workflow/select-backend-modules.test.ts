@@ -39,6 +39,8 @@ import {
   allModules,
   selectModules,
   modulesWithUnparsedRefs,
+  requiresFullBuild,
+  WIDEN_PREFIXES,
 } from './select-backend-modules.ts'
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs'
@@ -566,5 +568,63 @@ describe('backend-ci 모듈 선별', () => {
     assert.equal(narrow.all, false)
     assert.equal(wide.all, true)
     assert.ok(wide.reason.length > 0, '전 모듈로 넓힌 사유가 비어 있다 — 로그가 설명하지 못한다.')
+  })
+})
+
+/**
+ * ★CI 설정 변경은 **전량 빌드**로 다룬다 (2026-09-10).
+ *
+ * ## 왜 필요했나 — 두 판단이 서로를 모르고 있었다
+ *
+ * 젠킨스 `전량 판정` stage 는 브랜치·파라미터·야간만 보고 `RUN_FULL` 을 정했고, 그것이
+ * false 면 「빠른 게이트」로 갔다. 그런데 그 안에서 이 계산기가 [WIDEN_PREFIXES] 를 보고
+ * **전량으로 넓혔다.** 이름은 빠른 게이트인데 32.7분이 걸렸다(빌드 #21 실측).
+ *
+ * 더 나쁜 것은 **전량 stage 에만 있는 검사를 건너뛴다**는 점이다 —
+ * 「조립 부팅」(`:modules:app` 조립)과 「인프라 봉인」(nginx 로그 마스킹 · springdoc 비노출).
+ * 「영향 범위를 모르니 전부 본다」면서 정작 그 둘을 안 보는 반쪽 확대였다.
+ *
+ * ## 목록을 두 번 적지 않는다
+ *
+ * 판정 입력은 [WIDEN_PREFIXES] **하나**다. 젠킨스가 같은 목록을 따로 적으면 그 순간
+ * 두 목록이 되고, 새 CI 파일이 생길 때 한쪽만 고쳐진다.
+ */
+describe('CI 설정 변경 → 전량 빌드', () => {
+  test('★Jenkinsfile 변경은 전량이다', () => {
+    assert.equal(requiresFullBuild(['Jenkinsfile']), true)
+  })
+
+  test('★Jenkinsfile.e2e 변경도 전량이다 (접두 일치)', () => {
+    assert.equal(requiresFullBuild(['Jenkinsfile.e2e']), true)
+  })
+
+  test('★선별기 자신이 바뀌어도 전량이다', () => {
+    assert.equal(requiresFullBuild(['scripts/workflow/select-backend-modules.ts']), true)
+  })
+
+  test('평범한 프론트 변경은 전량이 아니다', () => {
+    assert.equal(requiresFullBuild(['apps/web/src/components/board/Board.tsx']), false)
+  })
+
+  test('문서 변경은 전량이 아니다', () => {
+    assert.equal(requiresFullBuild(['docs/rules/traps.md']), false)
+  })
+
+  test('★변경 목록을 못 구하면(null) 전량이다 — 모르면 넓게', () => {
+    assert.equal(requiresFullBuild(null), true)
+  })
+
+  test('★판정 입력이 WIDEN_PREFIXES 하나다 (두 목록 차단)', () => {
+    // 목록의 원소 **전부**가 전량으로 판정돼야 한다. 하나라도 빠지면 그 경로를 고친 PR 이
+    // 일부만 검증되고, 그 사실이 조용하다.
+    for (const p of WIDEN_PREFIXES) {
+      const sample = p.endsWith('/') ? `${p}x/y.kt` : p
+      assert.equal(
+        requiresFullBuild([sample]),
+        true,
+        `WIDEN_PREFIXES 의 '${p}' 가 전량 판정에 안 걸린다 — 두 판단이 갈렸다.`,
+      )
+    }
+    assert.ok(WIDEN_PREFIXES.length > 0, 'WIDEN_PREFIXES 가 비었다 — 위 루프가 공허해진다.')
   })
 })

@@ -204,8 +204,35 @@ pipeline {
           def branch = (env.BRANCH_NAME ?: env.GIT_BRANCH
             ?: sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim())
           branch = branch.replaceFirst(/^origin\//, '').trim()
-          env.RUN_FULL = (params.FULL || branch == 'main' || nightly) ? 'true' : 'false'
-          echo "브랜치=${branch} · 야간=${nightly ? 'Y' : 'N'} · FULL=${params.FULL} → 전량=${env.RUN_FULL}"
+          /*
+           * ★CI 설정이 바뀌면 전량이다 (2026-09-10).
+           *
+           * 종전에는 브랜치·파라미터·야간만 봤다. 그래서 `Jenkinsfile` 을 고친 푸시가
+           * 「빠른 게이트」로 갔는데, 그 안에서 `select-test-scope.ts` 가 스스로 전량으로
+           * 넓혀 **32.7분**이 걸렸다(빌드 #21 실측). 이름과 실상이 갈렸다.
+           *
+           * 더 나쁜 것은 **전량 stage 에만 있는 검사를 건너뛴다**는 점이었다 —
+           * 「조립 부팅」(`:modules:app` 조립)과 「인프라 봉인」(nginx 로그 마스킹 ·
+           * springdoc 비노출). 「영향 범위를 모르니 전부 본다」면서 정작 그 둘을 안 보는
+           * **반쪽 확대**였다.
+           *
+           * ★판정 목록을 여기 적지 않는다. `WIDEN_PREFIXES`(select-backend-modules.ts)가
+           *   정본이고 `requires-full-build.ts` 가 그것을 읽는다 — Groovy 로 다시 적으면
+           *   두 목록이 되고, 새 CI 파일이 생길 때 한쪽만 고쳐진다.
+           */
+          def ciChanged = sh(
+            returnStdout: true,
+            script: 'node --experimental-strip-types scripts/workflow/requires-full-build.ts',
+          ).trim() == 'true'
+
+          env.RUN_FULL = (params.FULL || branch == 'main' || nightly || ciChanged) ? 'true' : 'false'
+          echo "브랜치=${branch} · 야간=${nightly ? 'Y' : 'N'} · FULL=${params.FULL}" +
+            " · CI설정변경=${ciChanged ? 'Y' : 'N'} → 전량=${env.RUN_FULL}"
+          if (ciChanged && !params.FULL && branch != 'main' && !nightly) {
+            // 빌드 목록에서 왜 오래 걸리는지 바로 보이게 한다 — 32분을 기다린 뒤
+            // 로그를 열어야 아는 상태를 만들지 않는다.
+            currentBuild.displayName = "#${env.BUILD_NUMBER} · CI설정변경 → 전량"
+          }
 
           /*
            * ★배포 후 E2E 가 쓸 「변경 도메인」을 여기서 계산한다.
