@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  bts-e2e 잡 정의 — 배포 후 E2E 전용. 저장소가 정본이다.
+
+  ★왜 bts-ci 와 별개 잡인가.
+    `bts-ci` 는 `disableConcurrentBuilds(abortPrevious: true)` 다. E2E 를 그 안의 stage 로
+    두면 **일반 푸시 하나가 도는 E2E 를 죽인다.** 그런데 그 푸시 빌드는 `params.DEPLOY` 가
+    false 라 배포도 E2E 도 하지 않으므로 **배포된 것이 미검증으로 남는다** — 중단만 되고
+    재개가 없다(2026-09-10 설계 검토에서 적발).
+
+    두 일은 성격이 다르다.
+      · bts-ci  「이 커밋이 괜찮은가」  최신만 보면 되므로 낡은 것을 버리는 게 옳다
+      · bts-e2e 「지금 서버에 떠 있는 것이 괜찮은가」  푸시와 무관하다
+
+  ★그럼에도 이 잡도 abortPrevious 다(정본은 `Jenkinsfile.e2e` 의 options).
+    새 배포가 나면 낡은 배포의 E2E 결과는 어차피 의미가 없고, 새 배포가 곧바로 자기 E2E 를
+    띄우므로 「중단되고 끝」이 되지 않는다.
+
+  ★파이프라인 내용은 여기 없다. 정본은 저장소 루트 `Jenkinsfile.e2e` 이고 이 파일은
+    **어디서 그것을 가져올지**만 정한다. 스테이지를 여기 적으면 그 순간 두 번째 목록이 된다.
+
+  ★`refspec` 이 필수인 이유는 `job-bts-ci.xml` 과 같다 — 그 파일 머리 주석을 볼 것.
+
+  ★★이 파일을 적용하면 `parameters` 가 지워진다. `job-bts-ci.xml` 과 같은 함정이고
+    처방도 같다 — 파라미터 없이 한 번 돌리면 젠킨스가 `Jenkinsfile.e2e` 를 읽어 다시 등록한다.
+      curl -X POST .../job/bts-e2e/build      ← buildWithParameters 가 아니다
+    `bootstrap.sh job` 이 그 재등록까지 자동으로 한다.
+
+  적용. ./bootstrap.sh job [브랜치]   (기본 main)
+-->
+<flow-definition plugin="workflow-job">
+  <description>BTS 배포 후 E2E — 파이프라인 정본은 저장소 루트 Jenkinsfile.e2e. 이 잡 설정은 껍데기다. 정의 정본은 infra/jenkins/job-bts-e2e.xml.</description>
+  <keepDependencies>false</keepDependencies>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git">
+      <configVersion>2</configVersion>
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+          <url>git@github.com:maxihan1/BTS.git</url>
+          <refspec>+refs/heads/*:refs/remotes/origin/*</refspec>
+          <credentialsId>bts-deploy-key</credentialsId>
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>@BRANCH@</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+      <extensions/>
+    </scm>
+    <scriptPath>Jenkinsfile.e2e</scriptPath>
+    <lightweight>false</lightweight>
+  </definition>
+  <disabled>false</disabled>
+</flow-definition>

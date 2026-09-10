@@ -7,7 +7,7 @@
 // 크롬은 `libglib-2.0.so.0` 부재로 안 뜬다. 2026-09-10 실측).
 //
 // 그 이미지의 태그와 저장소가 설치하는 `@playwright/test` 버전은 **두 개의 목록**이다.
-// 갈리면 이미지에 든 브라우저 리비전과 라이브러리가 기대하는 리비전이 어긋나
+// 갈리면 이미지에 든 브라우저 리비전과 라이브러리가 기대하는 값이 어긋나
 //   Executable doesn't exist at /ms-playwright/chromium-XXXX/chrome-linux/chrome
 // 로 죽거나, 더 나쁘게는 **일부만 어긋나 특정 테스트만** 실패한다.
 //
@@ -15,8 +15,8 @@
 //
 // ## 왜 lockfile 을 정본으로 삼나
 //
-// `package.json` 은 `^1.60.0` 같은 범위라 **실제 설치 버전이 아니다.** 컨테이너 안에서 도는
-// 것은 lockfile 이 고정한 그 버전이므로 대조 대상도 그것이어야 한다.
+// `package.json` 은 `^1.60.0` 같은 범위라 **실제 설치본이 아니다.** 컨테이너 안에서 도는
+// 것은 lockfile 이 고정한 값이므로 대조 대상도 그것이어야 한다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -58,10 +58,10 @@ test('★Playwright 이미지 태그가 lockfile 버전과 정확히 같다', ()
   assert.equal(
     image,
     locked,
-    `Playwright 버전이 갈렸다.\n` +
+    `Playwright 판이 갈렸다.\n` +
       `  lockfile        ${locked}  (컨테이너 안에서 실제로 도는 것)\n` +
       `  Jenkinsfile.e2e ${image}  (이미지에 든 브라우저)\n\n` +
-      `둘이 다르면 브라우저 리비전이 어긋나 "Executable doesn't exist" 로 죽거나,\n` +
+      `둘이 다르면 브라우저 리비전 값이 어긋나 "Executable doesn't exist" 로 죽거나,\n` +
       `더 나쁘게는 일부 테스트만 조용히 실패한다.\n` +
       `\`pnpm up\` 으로 lockfile 만 올리면 이렇게 된다 — Jenkinsfile.e2e 의 PW_IMAGE 도 함께 고쳐라.`,
   );
