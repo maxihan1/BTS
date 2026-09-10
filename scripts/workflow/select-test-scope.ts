@@ -274,6 +274,37 @@ export function computeScope(files: string[] | null, planText: string | null): T
 }
 
 /** 사람이 읽고 그대로 실행할 수 있는 명령 블록. */
+/**
+ * 환경에 맞는 Playwright 실행 명령. 로컬은 설치된 바이너리, 젠킨스는 공식 컨테이너.
+ *
+ * ## 왜 갈라지나
+ *
+ * 젠킨스 컨테이너는 uid 1000 으로 돌아 `playwright install --with-deps` 가 apt 권한 없이
+ * **종료 코드 0 으로 조용히** 넘어간다. 그래서 크롬이 `libglib-2.0.so.0` 부재로 뜨지 않는다
+ * (2026-09-10 실측 — `browserType.launch: Target page, context or browser has been closed`).
+ * 공식 이미지는 그 문제를 통째로 없앤다.
+ *
+ * 맥에서는 그냥 된다 — 개발 워크플로우를 바꾸지 않으려고 로컬 경로를 기본값으로 둔다.
+ *
+ * ★이미지 태그를 **여기 적지 않는다.** `Jenkinsfile.e2e` 의 `PW_IMAGE` 가 정본이고
+ *   `playwright-image-pin.test.ts` 가 lockfile 버전과 대조한다. 여기 또 적으면 세 번째
+ *   목록이 되고, 그 셋은 서로를 검사하지 않는다.
+ *
+ * @param specs 돌릴 시나리오(`apps/web` 상대경로). 비면 전량이다.
+ */
+function e2eCommand(specs: string[]): string {
+  const args = specs.length > 0 ? ` ${specs.join(' ')}` : ''
+  const image = process.env['PW_IMAGE']
+  if (!image) return `(cd apps/web && node_modules/.bin/playwright test${args})`
+  // DooD — `-v` 좌변은 **호스트 경로**다. 컨테이너 안 경로를 주면 빈 디렉터리가 마운트되고,
+  // 그러면 "no tests found" 가 초록으로 보인다.
+  const host = process.env['HOST_WS'] ?? '$PWD'
+  return (
+    `docker run --rm --network host -v "${host}:/w" -w /w/apps/web -e CI=1 ` +
+    `"${image}" npx playwright test${args} --project=chromium`
+  )
+}
+
 export function renderCommands(scope: TestScope): string {
   const lines: string[] = []
 
@@ -303,10 +334,10 @@ export function renderCommands(scope: TestScope): string {
   //   사람이 안 돌린다 — 안 돌리는 가드는 없는 가드다.
   if (scope.e2eSpecs === null) {
     lines.push('# E2E — 변경 목록을 못 구했다. 전량을 돈다(약 3시간).')
-    lines.push('(cd apps/web && node_modules/.bin/playwright test)')
+    lines.push(e2eCommand([]))
   } else if (scope.e2eSpecs.length > 0) {
     lines.push(`# E2E — 바뀐 시나리오 ${scope.e2eSpecs.length}개만 돈다.`)
-    lines.push(`(cd apps/web && node_modules/.bin/playwright test ${scope.e2eSpecs.join(' ')})`)
+    lines.push(e2eCommand(scope.e2eSpecs))
   } else {
     lines.push('# E2E — 생략 (시나리오 변경 없음)')
   }

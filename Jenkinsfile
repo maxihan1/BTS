@@ -96,6 +96,20 @@ pipeline {
     // assembly 잡이 「러너를 늘리면 이 조건이 성립한다」고 경고한 바로 그 상태가
     // 젠킨스에서는 기본값이다.
     CI_PG_CONTAINER = "bts-ci-pg-${env.BUILD_NUMBER}"
+
+    // ★E2E 는 공식 Playwright 컨테이너에서 돈다(DooD). 젠킨스 컨테이너는 uid 1000 이라
+    //   `playwright install --with-deps` 가 apt 권한 없이 **종료 코드 0 으로 조용히** 넘어가고
+    //   크롬이 `libglib-2.0.so.0` 부재로 뜨지 않는다(2026-09-10 실측).
+    //
+    //   `select-test-scope.ts` 가 이 두 값을 보고 실행 명령을 고른다 — 없으면 로컬 바이너리,
+    //   있으면 컨테이너다. 그래서 맥의 개발 워크플로우는 아무것도 안 바뀐다.
+    //
+    // ★태그는 `Jenkinsfile.e2e` 의 `PW_IMAGE` 와 같아야 한다. 그쪽이 정본이고
+    //   `playwright-image-pin.test.ts` 가 lockfile 버전과 대조한다.
+    PW_IMAGE = 'mcr.microsoft.com/playwright:v1.60.0-noble'
+    // DooD 라 `-v` 좌변은 호스트 경로다. 컨테이너 안 경로를 주면 빈 디렉터리가 마운트되고
+    // "no tests found" 가 초록으로 보인다.
+    HOST_WS = '/var/lib/docker/volumes/bts-jenkins-home/_data/workspace/bts-ci'
   }
 
   stages {
@@ -217,13 +231,23 @@ pipeline {
             returnStdout: true,
             script: "git diff --name-only --no-renames ${diffBase}...HEAD || true",
           ).trim()
-          def domains = changed.readLines()
+          def lines = changed.readLines()
+          // 소스 쪽 — `apps/web/src/components/<도메인>/`
+          def fromSrc = lines
             .findAll { it.startsWith('apps/web/src/components/') }
             .collect { it.split('/')[4] }
-            .unique()
-            .sort()
+          // ★E2E 쪽 — `apps/web/e2e/<도메인>-*.spec.ts`
+          //
+          //   초안은 소스만 봤다. 그러면 **E2E 파일만 고쳤을 때 도메인이 비어** 그 시나리오가
+          //   CI 에서 한 번도 안 돈다 — 「썼는데 실행 안 된 테스트」가 된다. 있다고 믿게 만드니
+          //   없는 것보다 나쁘다. 기능과 E2E 는 함께 고치는 것이 규칙이므로 둘 다 입력이다.
+          def fromE2e = lines
+            .findAll { it.startsWith('apps/web/e2e/') && it.endsWith('.spec.ts') }
+            .collect { it.substring('apps/web/e2e/'.length()).replaceFirst(/-.*$/, '') }
+          def domains = (fromSrc + fromE2e).unique().sort()
           env.E2E_DOMAINS = domains.join(' ')
-          echo "E2E 변경 도메인=${env.E2E_DOMAINS ?: '(없음 — 전량이 받는다)'}"
+          echo "E2E 변경 도메인=${env.E2E_DOMAINS ?: '(없음 — 전량이 받는다)'}" +
+            " [소스 ${fromSrc.unique().size()} · E2E ${fromE2e.unique().size()}]"
         }
       }
     }

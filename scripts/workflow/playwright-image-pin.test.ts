@@ -26,6 +26,10 @@ import { dirname, resolve, join } from 'node:path';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const LOCKFILE = join(ROOT, 'pnpm-lock.yaml');
 const JENKINSFILE = join(ROOT, 'Jenkinsfile.e2e');
+// ★`bts-ci` 도 같은 이미지를 쓴다(빠른 게이트의 변경 도메인 E2E). 태그가 세 곳
+//   (lockfile · Jenkinsfile.e2e · Jenkinsfile)에 있으므로 전부 대조한다 — 두 곳만 보면
+//   나머지 하나가 조용히 낡는다.
+const CI_JENKINSFILE = join(ROOT, 'Jenkinsfile');
 
 /** lockfile 이 고정한 `@playwright/test` 실제 버전. */
 function lockedVersion(): string {
@@ -64,6 +68,18 @@ test('★Playwright 이미지 태그가 lockfile 버전과 정확히 같다', ()
       `둘이 다르면 브라우저 리비전 값이 어긋나 "Executable doesn't exist" 로 죽거나,\n` +
       `더 나쁘게는 일부 테스트만 조용히 실패한다.\n` +
       `\`pnpm up\` 으로 lockfile 만 올리면 이렇게 된다 — Jenkinsfile.e2e 의 PW_IMAGE 도 함께 고쳐라.`,
+  );
+});
+
+test('★bts-ci 의 PW_IMAGE 도 같은 태그다 (세 목록 전부 대조)', () => {
+  const ci = readFileSync(CI_JENKINSFILE, 'utf-8');
+  const m = ci.match(/PW_IMAGE\s*=\s*'mcr\.microsoft\.com\/playwright:v([\d.]+)-[a-z]+'/);
+  assert.ok(m, "Jenkinsfile 에서 PW_IMAGE 를 못 찾았다 — 빠른 게이트가 로컬 바이너리로 떨어진다.");
+  assert.equal(
+    m[1],
+    lockedVersion(),
+    `bts-ci 의 Playwright 이미지가 lockfile 과 갈렸다.\n` +
+      `  lockfile   ${lockedVersion()}\n  Jenkinsfile ${m[1]}`,
   );
 });
 
