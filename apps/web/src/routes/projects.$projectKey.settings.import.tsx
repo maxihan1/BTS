@@ -159,9 +159,12 @@ export function ProjectImportSettingsPage({
    *   `components/issue/create/use-issue-create-permission-gate.ts` KDoc — 미지(로딩·조회실패)를
    *   거부로 읽으면 CREATE 를 실제로 가진 사용자를 영구 차단한다.
    *
-   * ★사이드바 네비 링크(`layout/ProjectTree.tsx:107` `SETTINGS_LINKS`)는 **일부러 안 건드린다.**
-   *   링크를 숨기면 「가져오기 메뉴가 왜 없지」가 되고, 들어와서 사유를 읽는 편이 낫다.
-   *   그 배열은 정적이라 프로젝트별 권한을 알지도 못한다.
+   * ★설정 사이드바의 네비 링크(`components/project/project-shell-mode.ts` 의
+   *   `PROJECT_SETTINGS_NAV`)는 **일부러 안 건드린다.** 링크를 숨기면 「가져오기 메뉴가 왜
+   *   없지」가 되고, 들어와서 사유를 읽는 편이 낫다. 그 배열은 정적이라 프로젝트별 권한을
+   *   알지도 못한다.
+   *   (종전에 가리키던 `layout/ProjectTree.tsx` 의 `SETTINGS_LINKS` 는 Jira JS-1·JS-2 로
+   *   설정 중첩그룹이 사라지며 함께 삭제됐다. **판단은 그대로고 자리만 옮겼다.**)
    */
   const isCreateExplicitlyDenied = useIssueCreatePermissionGate(projectKey)
 

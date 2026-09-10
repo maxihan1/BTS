@@ -1,0 +1,262 @@
+// 배포 후 E2E 전용 파이프라인 — 변경 도메인 먼저, 이어서 전량. bts-ci 와 별개 잡이다.
+//
+// ## ★왜 `bts-ci` 안의 stage 가 아니라 별도 잡인가
+//
+// `bts-ci` 는 `disableConcurrentBuilds(abortPrevious: true)` 다. E2E 를 그 안에 넣으면
+// **일반 푸시 하나가 도는 E2E 를 죽인다.** 그런데 그 푸시 빌드는 `params.DEPLOY` 가 false 라
+// 배포도 E2E 도 하지 않으므로, **배포된 것이 검증 안 된 채로 남는다** — 중단만 되고 재개가 없다.
+//
+// 두 일은 성격이 다르다.
+//   · `bts-ci`  — 「이 커밋이 괜찮은가」. 최신만 보면 되므로 낡은 것을 버리는 게 옳다.
+//   · `bts-e2e` — 「지금 서버에 떠 있는 것이 괜찮은가」. 푸시와 무관하다.
+//
+// ## ★그럼에도 이 잡도 `abortPrevious` 다
+//
+// 새 배포가 나면 낡은 배포의 E2E 결과는 **어차피 의미가 없다.** 그때의 취소는 정상이고,
+// 새 배포가 곧바로 자기 E2E 를 띄우므로 「중단되고 끝」이 되지 않는다.
+//
+// ## ★Playwright 는 공식 컨테이너에서 돈다 (DooD)
+//
+// 젠킨스 이미지에 크롬 의존 라이브러리를 넣지 않는다. 컨테이너가 uid 1000 으로 돌아
+// `playwright install --with-deps` 가 apt 권한이 없어 **종료 코드 0 으로 조용히** 넘어갔고,
+// 크롬은 `libglib-2.0.so.0` 부재로 뜨지 않았다(2026-09-10 실측). 공식 이미지가 그것을 없앤다.
+/**
+ * 배포본이 스스로 말하는 커밋. 못 읽으면 빈 문자열.
+ *
+ * ★`curl` 성공만으로 판정하지 않는다. nginx 가 없는 경로를 전부 `index.html` 로
+ *   돌려주므로(SPA fallback) `version.json` 이 **없어도 HTTP 200 + HTML** 이 온다.
+ *   2026-09-10 실측 — `/aaa-does-not-exist-xyz` 도 `200 text/html` 이다.
+ *   그래서 **내용에서 커밋을 뽑아냈는지**로 판정한다.
+ *
+ * 같은 함정을 `bts-deploy.sh` 가 이미 경고해 뒀다 — 「nginx 가 /actuator 를 프록시하지
+ * 않는다(SPA fallback 가짜그린 방지)」. 정적 파일도 그 사정은 같다.
+ */
+def servedCommit(String baseUrl) {
+  return sh(
+    returnStdout: true,
+    script: """curl -fsS --max-time 10 "${baseUrl}/version.json" 2>/dev/null \
+               | sed -n 's/.*"commit":"\\([^"]*\\)".*/\\1/p' | head -1 || true""",
+  ).trim()
+}
+
+pipeline {
+  agent any
+
+  options {
+    // 낡은 배포의 E2E 는 새 배포가 나면 의미가 없다 — 취소하고 새것을 돌린다.
+    disableConcurrentBuilds(abortPrevious: true)
+    timestamps()
+    // 전량이 약 3시간이다(2코어 실측 외삽). 여유를 두되 무한 점유는 막는다.
+    timeout(time: 5, unit: 'HOURS')
+  }
+
+  parameters {
+    string(
+      name: 'DEPLOYED_SHA',
+      defaultValue: '',
+      description: '검증 대상 커밋. bts-ci 의 배포 stage 가 넘긴다. 비면 현재 HEAD 를 쓴다.',
+    )
+    string(
+      name: 'CHANGED_DOMAINS',
+      defaultValue: '',
+      description: '변경 도메인(공백 구분 · 예 "board issue"). 비면 1단을 건너뛰고 전량만 돈다.',
+    )
+    string(
+      name: 'BASE_URL',
+      defaultValue: 'http://localhost:5173',
+      description: '대상. 실서버 검증은 https://bts.maxihan.com 을 넘긴다.',
+    )
+  }
+
+  environment {
+    // ★이미지 태그는 `pnpm-lock.yaml` 의 `@playwright/test` 버전과 **정확히** 같아야 한다.
+    //   어긋나면 브라우저 리비전 불일치로 조용히 실패한다 —
+    //   `scripts/workflow/playwright-image-pin.test.ts` 가 그 차집합을 막는다.
+    PW_IMAGE = 'mcr.microsoft.com/playwright:v1.60.0-noble'
+    // DooD 라 `docker run -v` 의 좌변은 **호스트 경로**다. 젠킨스 컨테이너 안 경로를 그대로
+    // 주면 빈 디렉터리가 마운트되고, 그러면 "no tests found" 가 초록으로 보인다.
+    HOST_WS = '/var/lib/docker/volumes/bts-jenkins-home/_data/workspace/bts-e2e'
+
+    // ★파라미터를 셸에서 쓰려면 여기로 올려야 한다.
+    //
+    //   `params.X` 는 **Groovy 값이지 셸 환경변수가 아니다.** `sh` 블록에서 `$X` 로 쓰면
+    //   `set -eu` 아래에서 `parameter not set` 으로 죽는다 — bts-e2e #1 이 그렇게 실패했다
+    //   (2026-09-10). `environment` 블록의 값만 셸에 주입된다.
+    //
+    //   ★기본값을 여기서 준다. 잡을 처음 적용한 직후에는 파라미터가 **아직 등록되지 않아**
+    //     `params.BASE_URL` 이 null 이다(그 등록 빌드가 곧 등록한다). 기본값이 없으면 첫
+    //     빌드가 항상 죽는다 — 잡 XML 주석이 경고한 그 자리다.
+    RUN_BASE_URL = "${params.BASE_URL ?: 'https://bts.maxihan.com'}"
+    RUN_DOMAINS = "${params.CHANGED_DOMAINS ?: ''}"
+  }
+
+  stages {
+    stage('대상 확인') {
+      steps {
+        script {
+          env.TARGET_SHA = params.DEPLOYED_SHA?.trim() ?: sh(
+            script: 'git rev-parse HEAD', returnStdout: true,
+          ).trim()
+          // 호출자가 SHA 를 넘겼을 때만 커밋 대조를 강제한다. 손으로 돌리는 실행은
+          // 「어느 커밋인지 모르는 검증」이고, 그 사실이 판정에 남는다.
+          env.TARGET_SHA_REQUIRED = params.DEPLOYED_SHA?.trim() ? 'yes' : ''
+          echo "검증 대상 커밋: ${env.TARGET_SHA}" +
+            (env.TARGET_SHA_REQUIRED ? '' : ' (호출자 미지정 — 커밋 대조 없이 돈다)')
+          echo "대상 URL: ${env.RUN_BASE_URL}"
+          echo "변경 도메인: ${env.RUN_DOMAINS ?: '(없음 — 전량만)'}"
+        }
+      }
+    }
+
+    /*
+     * ★「응답한다」가 아니라 **「이 커밋이 떴다」**를 기다린다.
+     *
+     * 종전 초안은 `curl $BASE_URL` 이 200 이면 통과였다. 그런데 **옛 버전도 200 을 준다** —
+     * 배포가 실패해 이전 것이 그대로 떠 있어도 E2E 가 그것을 검증하고 전량 초록을 낸다.
+     * 「배포 이후에 도는가」는 맞았는데 **무엇을 검증하는가**가 틀린 자리였다(2026-09-10 적발).
+     *
+     * `bts-deploy.sh` 가 `dist/version.json` 에 커밋을 심는다. 그것이 `DEPLOYED_SHA` 와
+     * 같아질 때까지 기다린다 — 그래야 이 잡의 결과에 「무엇을 테스트했는가」가 붙는다.
+     *
+     * ★기다리는 몫이 왜 여기인가. `bts-deploy.sh` 의 health 확인은 실패해도 경고만 찍고
+     *   넘어간다(:236) — 그 스크립트 관점에서는 옳다. 배포 행위는 끝났고 기동은 수십 초
+     *   걸린다. 인증서도 「첫 요청 때 발급된다(수십 초)」라고 그 스크립트가 적어 뒀다.
+     *   「배포가 끝났다」와 「쓸 수 있다」는 다르다 — 배포키·볼륨에서 이미 두 번 만난 양식이다.
+     *
+     * ★`DEPLOYED_SHA` 가 비면(손으로 이 잡을 돌리는 경우) 커밋 대조를 건너뛰고 응답만 본다.
+     *   그 실행의 결과는 「어느 커밋인지 모르는 검증」이므로 아래 판정 유효성이 그렇게 표시한다.
+     */
+    stage('배포 반영 대기') {
+      steps {
+        script {
+          def deadline = System.currentTimeMillis() + (10 * 60 * 1000)
+          def served = ''
+          while (System.currentTimeMillis() < deadline) {
+            served = servedCommit(env.RUN_BASE_URL)
+            if (!env.TARGET_SHA_REQUIRED) { break }
+            if (served == env.TARGET_SHA) { break }
+            echo "대기 — 서버=${served ?: '(응답 없음)'} · 기대=${env.TARGET_SHA}"
+            sleep(time: 10, unit: 'SECONDS')
+          }
+          env.SERVED_SHA = served
+          if (env.TARGET_SHA_REQUIRED && served != env.TARGET_SHA) {
+            error("10분 안에 배포가 반영되지 않았다.\n" +
+                  "  서버=${served ?: '(version.json 을 못 읽었다)'}\n  기대=${env.TARGET_SHA}\n\n" +
+                  '★서버 값이 비었다면 그 배포에 `dist/version.json` 이 없다는 뜻이다.\n' +
+                  '  nginx 가 없는 경로를 `index.html` 로 돌려주므로(SPA fallback) 요청은\n' +
+                  '  **HTTP 200 + HTML** 로 성공한다 — 파일이 없어도 실패로 안 보인다.\n' +
+                  '  그 배포는 `bts-deploy.sh` 에 version.json 을 넣기 전 것이다. 다시 배포하면 된다.')
+          }
+          echo "배포 반영 확인 — 서버 커밋 ${served ?: '(미상)'}"
+        }
+      }
+    }
+
+    stage('의존성') {
+      steps {
+        sh '''
+          set -eu
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+        '''
+      }
+    }
+
+    /*
+     * 1단. 변경 도메인만 — 빠른 판정.
+     *
+     * E2E 파일명 접두가 이미 도메인이다(`issue-*` 45 · `workflow-*` 11 · `board-*` 10 …).
+     * 그래서 매핑표를 따로 만들지 않는다 — 표를 만들면 그것이 두 번째 목록이 되고,
+     * 새 화면이 생길 때 표를 안 고치면 그 E2E 가 조용히 0회 실행된다.
+     *
+     * ★도메인이 비면 이 단을 건너뛴다. 「매핑을 못 찾았으니 생략」이 아니라 「호출자가
+     *   안 넘겼으니 2단(전량)이 어차피 전부 본다」는 뜻이다 — 검증이 사라지지 않는다.
+     */
+    stage('E2E — 변경 도메인') {
+      when { expression { env.RUN_DOMAINS?.trim() } }
+      steps {
+        sh '''
+          set -eu
+          SPECS=""
+          for d in $RUN_DOMAINS; do
+            # 접두가 도메인이다. 매칭이 0건이면 그 도메인은 E2E 가 없다는 뜻이라 넘어간다.
+            for f in apps/web/e2e/${d}-*.spec.ts; do
+              [ -e "$f" ] && SPECS="$SPECS ${f#apps/web/}"
+            done
+          done
+          if [ -z "$SPECS" ]; then
+            echo "변경 도메인에 해당하는 E2E 가 없다 — 전량이 받는다."
+            exit 0
+          fi
+          echo "대상 spec:$SPECS"
+          docker run --rm --network host \\
+            -v "$HOST_WS:/w" -w /w/apps/web \\
+            -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
+            "$PW_IMAGE" \\
+            npx playwright test $SPECS --project=chromium
+        '''
+      }
+    }
+
+    /*
+     * 2단. 전량 — 변경 도메인이 통과한 직후 이어서 돈다.
+     *
+     * 2코어 실측 외삽으로 약 3시간이다. 워커를 늘리지 않는다 — Playwright 기본값이
+     * `코어수 ÷ 2` 라 2코어면 1개이고, 억지로 늘리면 서로 자원을 뺏어 오히려 느려진다.
+     */
+    stage('E2E — 전량') {
+      steps {
+        sh '''
+          set -eu
+          docker run --rm --network host \\
+            -v "$HOST_WS:/w" -w /w/apps/web \\
+            -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
+            "$PW_IMAGE" \\
+            npx playwright test --project=chromium
+        '''
+      }
+    }
+
+    /*
+     * ★판정 유효성 — 도는 동안 배포가 바뀌었으면 이 결과는 「판정 불가」다.
+     *
+     * `abortPrevious` 가 대부분을 막지만, 이 잡 밖에서(손으로 배포 스크립트를 돌리는 등)
+     * 바뀌는 경로가 남는다. 그때 결과는 **A 도 B 도 전량 검증되지 않았는데 초록**이 된다 —
+     * 이 저장소가 「가짜 초록」이라 부르는 것 그대로다.
+     *
+     * 막는 대신 검출한다. `jenkins-build-status.ts` 가 종료 코드 2(판정 불가)를 따로 두는
+     * 것과 같은 원리다.
+     */
+    stage('판정 유효성') {
+      steps {
+        script {
+          // ★워크스페이스가 아니라 **서버**를 다시 본다. 초안은 `git rev-parse HEAD` 를
+          //   봤는데 그건 젠킨스가 체크아웃한 커밋이라 배포본과 아무 관계가 없다 —
+          //   도는 동안 서버가 바뀌어도 언제나 「유효」가 나오는 공허한 검사였다.
+          def now = servedCommit(env.RUN_BASE_URL)
+          if (!env.TARGET_SHA_REQUIRED) {
+            unstable("판정 참고용 — 호출자가 대상 커밋을 안 넘겨 무엇을 검증했는지 확정할 수 없다. " +
+                     "실행 중 서버 커밋=${now ?: '(미상)'}")
+          } else if (now != env.SERVED_SHA) {
+            unstable("판정 불가 — 도는 동안 서버가 ${env.SERVED_SHA} → ${now} 로 바뀌었다.\n" +
+                     '앞부분은 옛 배포를, 뒷부분은 새 배포를 봤다. ' +
+                     '**이 결과를 「전량 통과」로 인용하지 말 것.**')
+          } else {
+            echo "판정 유효 — 서버가 ${env.SERVED_SHA} 그대로다."
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      // ★젠킨스가 읽는 형식. 테스트별 성공/실패가 빌드 화면에 표로 뜬다.
+      junit allowEmptyResults: true, testResults: 'apps/web/test-results/junit.xml'
+      // 실패 증거 — 재현 화면·클릭 기록·네트워크 로그. E2E 는 로그로 원인이 안 보인다.
+      archiveArtifacts artifacts: 'apps/web/playwright-report/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'apps/web/test-results/**', allowEmptyArchive: true
+      cleanWs(deleteDirs: true, notFailBuild: true)
+    }
+  }
+}

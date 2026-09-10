@@ -442,6 +442,25 @@ class ProjectWorkflowSchemeControllerTest {
         assertThat(config.appServiceStub.listForProjectCalledWith).isEqualTo(projectId)
     }
 
+    // ── Case 10b. GET assignable — 남의 프로젝트 전용 스킴은 후보가 아니다 ─────
+    //
+    // ★판별자는 「200 이 났다」가 아니라 **어느 목록 메서드를 탔는가**다. 전량을 주는 list() 를
+    // 그대로 쓰면 남의 프로젝트 전용 스킴이 배정 후보로 뜨고, 이름만으로도 그 팀이 무슨
+    // 워크플로우를 쓰는지 샌다. listForProject(그 프로젝트) 를 타야 소유로 좁혀진다(FR-WF-08).
+
+    @Test
+    @WithMockUser(username = AUTH_ACTOR_UUID_STRING)
+    fun `GET assignable — 전량이 아니라 그 프로젝트로 좁힌 목록을 탄다`() {
+        every { projectLookupPort.findIdByKey(ProjectKey("ATLAS")) } returns projectId
+        config.appServiceStub.listResponse = emptyList()
+        config.appServiceStub.listForProjectCalledWith = null
+
+        mockMvc.perform(get("/api/v1/projects/ATLAS/assignable-workflow-schemes"))
+            .andExpect(status().isOk)
+
+        assertThat(config.appServiceStub.listForProjectCalledWith).isEqualTo(projectId)
+    }
+
     // ── Case 11. GET assignable — 권한 거부 시 403 + 본문에 스킴 key 0건 ───────
     //
     // 판별자는 상태코드가 아니라 응답 본문에 스킴 key 문자열이 없다는 것. "여전히 403" 은 vacuous.

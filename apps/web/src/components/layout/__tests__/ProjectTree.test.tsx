@@ -1,4 +1,4 @@
-// ProjectTree 컴포넌트 테스트 — 2단 그룹 아코디언, 활성 자동펼침, 접힘레일, 빈/에러 상태 (FR-UX-06 PR12 Task 2). "모든 프로젝트"·"일반" 링크는 FR-PJ PR-5 Task 7
+// ProjectTree 컴포넌트 테스트 — 프로젝트 아코디언, 활성 자동펼침, 접힘레일, 빈/에러 상태 (FR-UX-06 PR12 Task 2). "모든 프로젝트" 링크는 FR-PJ PR-5 Task 7
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -23,39 +23,23 @@ import { boardLabels } from '@/i18n/board-labels'
 import { ProjectTree } from '../ProjectTree'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 서브링크 실경로 계약 (router.ts 실측, S3 죽은 링크 0 방지) — ATLAS 프로젝트 기준
+// 서브링크 실경로 계약 (router.ts 실측) — ATLAS 프로젝트 기준
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 직접 링크 2종. **「보드」가 여기 없다** — 캠페인 PR ⑩(J2)이 그 한 줄을 보드 **목록**으로
- * 갈랐다. 나머지 14개(백로그·타임라인·리포트 4·설정 12)는 그 화면들의 유일한 진입로라
- * 그대로 남는다. 이 배열에 「보드」를 되돌리면 같은 목적지가 두 줄이 된다.
+ * 펼친 프로젝트 하위에 남는 직접 링크 **전부**다.
+ *
+ * **「보드」가 여기 없다** — 캠페인 PR ⑩(J2)이 그 한 줄을 보드 **목록**으로 갈랐다.
+ * 이 배열에 「보드」를 되돌리면 같은 목적지가 두 줄이 된다.
+ *
+ * 🛑 한때 옆에 있던 `REPORT_LINK_CONTRACT`(4) · `SETTINGS_LINK_CONTRACT`(12)는 **지웠다.**
+ * 두 중첩그룹이 사라졌기 때문이고(JR-1·JR-3·JS-1·JS-2), 그 16경로의 「죽은 링크 0」 계약은
+ * `scripts/workflow/project-nav-reachability.test.ts` 가 **차집합으로 승계**했다 —
+ * 이 파일이 지키던 것을 없앤 것이 아니라 더 강한 자리로 옮긴 것이다.
  */
 const DIRECT_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
   ['백로그', '/projects/ATLAS/backlog'],
   ['타임라인', '/projects/ATLAS/timeline'],
-]
-
-const REPORT_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
-  ['벨로시티', '/projects/ATLAS/reports/velocity'],
-  ['누적 흐름도(CFD)', '/projects/ATLAS/reports/cfd'],
-  ['사이클/리드 타임', '/projects/ATLAS/reports/cycle-time'],
-  ['작업 로그', '/projects/ATLAS/reports/worklog'],
-]
-
-const SETTINGS_LINK_CONTRACT: ReadonlyArray<readonly [string, string]> = [
-  ['일반', '/projects/ATLAS/settings/details'],
-  ['워크플로우 스킴', '/projects/ATLAS/settings/workflow-scheme'],
-  ['멤버', '/projects/ATLAS/settings/members'],
-  ['컴포넌트', '/projects/ATLAS/settings/components'],
-  ['버전', '/projects/ATLAS/settings/versions'],
-  ['커스텀 필드', '/projects/ATLAS/settings/custom-fields'],
-  ['이슈 템플릿', '/projects/ATLAS/settings/issue-templates'],
-  ['필드 권한', '/projects/ATLAS/settings/field-permissions'],
-  ['자동화', '/projects/ATLAS/settings/automation'],
-  ['Slack 채널', '/projects/ATLAS/settings/slack-channels'],
-  ['프로젝트 리드', '/projects/ATLAS/settings/project-lead'],
-  ['가져오기', '/projects/ATLAS/settings/import'],
 ]
 
 /** fixture를 name 오름차순 정렬 — MSW 핸들러(project-list-handlers.ts)와 동일 정렬 재현 */
@@ -248,7 +232,10 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ProjectTree', () => {
-  it('<nav aria-label="프로젝트">(exact)가 존재한다 (FR1)', async () => {
+  // 🔒 즉사 계약 C-1. 중첩그룹 2개를 지워도 이 nav 와 그 `aria-label` 은 **글자 단위로**
+  //    남는다 — e2e 6 spec 이 `getByRole('navigation', { name: '프로젝트', exact: true })`
+  //    으로 사이드바를 찾는다. 트리 내용이 줄었다고 nav 를 없애면 그 전부가 즉사한다.
+  it('<nav aria-label="프로젝트">(exact)가 존재한다 (FR1 · 즉사 계약 C-1)', async () => {
     renderProjectTree()
 
     const nav = await findProjectNav()
@@ -290,36 +277,42 @@ describe('ProjectTree', () => {
     }
   })
 
-  it('디스클로저 클릭 시 직접링크 2 + 리포트(4)·설정(12) 그룹이 펼쳐진다 — 죽은 링크 0 (FR4)', async () => {
+  // ★ 이 테스트는 「직접링크 2 + 리포트(4)·설정(12) 그룹이 펼쳐진다」의 **재작성**이다.
+  //   머지된 초록을 `skip` 으로 끈 것이 아니라, 그 테스트가 보던 대상(중첩그룹 2개)이
+  //   화면에서 사라져 같은 자리를 새 사실로 다시 쓴 것이다. 종전 단언이 지키던
+  //   「리포트4+설정12 죽은 링크 0」은 `scripts/workflow/project-nav-reachability.test.ts`
+  //   가 승계했다 — 계약을 버린 게 아니라 옮겼다.
+  it('디스클로저 클릭 시 보드 목록 + 백로그·타임라인만 펼쳐진다 — 리포트·설정 토글 0개 (A-1 · S1)', async () => {
     const user = userEvent.setup()
+    stubBoards({ ATLAS: [scrumBoard] })
     renderProjectTree()
 
     const nav = await findProjectNav()
-    const atlasToggle = await within(nav).findByRole('button', {
-      name: `${atlasFixture.name} 하위 메뉴`,
-    })
+    const atlasToggle = await findAtlasToggle(nav)
     await user.click(atlasToggle)
     expect(atlasToggle).toHaveAttribute('aria-expanded', 'true')
 
+    // 남는 것 — 보드 목록 + 직접 링크 2
+    expect(await within(nav).findByRole('link', { name: scrumBoard.name })).toBeInTheDocument()
     for (const [label, href] of DIRECT_LINK_CONTRACT) {
       expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('href', href)
     }
 
-    const reportsToggle = within(nav).getByRole('button', { name: '리포트' })
-    expect(reportsToggle).toHaveAttribute('aria-expanded', 'false')
-    await user.click(reportsToggle)
-    expect(reportsToggle).toHaveAttribute('aria-expanded', 'true')
-    for (const [label, href] of REPORT_LINK_CONTRACT) {
-      expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('href', href)
-    }
+    // ★ A-1 — 리포트·설정 디스클로저 버튼이 0개다. 하나라도 되살아나면 여기서 잡힌다.
+    expect(within(nav).queryByRole('button', { name: '리포트' })).not.toBeInTheDocument()
+    expect(within(nav).queryByRole('button', { name: '프로젝트 설정' })).not.toBeInTheDocument()
 
-    const settingsToggle = within(nav).getByRole('button', { name: '프로젝트 설정' })
-    expect(settingsToggle).toHaveAttribute('aria-expanded', 'false')
-    await user.click(settingsToggle)
-    expect(settingsToggle).toHaveAttribute('aria-expanded', 'true')
-    for (const [label, href] of SETTINGS_LINK_CONTRACT) {
-      expect(within(nav).getByRole('link', { name: label })).toHaveAttribute('href', href)
-    }
+    // ★ S1 — 「만」을 개수가 아니라 **전수 열거**로 잰다. 부정 단언 2개만으로는 다른 이름의
+    //   그룹이 새로 끼어드는 것을 못 본다.
+    const atlasRow = atlasToggle.closest('li')
+    expect(atlasRow).not.toBeNull()
+    if (atlasRow === null) return
+    expect(within(atlasRow).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      atlasFixture.name,
+      scrumBoard.name,
+      '백로그',
+      '타임라인',
+    ])
   })
 
   it('활성 프로젝트($projectKey 일치)는 자동 펼침 + aria-current="page" (FR5)', async () => {
@@ -626,7 +619,10 @@ describe('ProjectTree', () => {
       expect(trigger).toBeInTheDocument()
     })
 
-    it('스페이스 `⋯` 에 별표 토글과 프로젝트 설정이 있다', async () => {
+    // 🛑 중첩그룹을 지운 뒤 **트리에서 설정으로 가는 유일한 길**이 이 항목이다(Jira JS-1 —
+    //    "Next to the name of your space in the sidebar, select More actions (•••), then
+    //    Space settings."). 함께 지우면 설정 서브앱이 사이드바에서 통째로 고아가 된다.
+    it('스페이스 `⋯` 에 별표 토글과 프로젝트 설정이 있다 — 트리의 유일한 설정 진입로 (JS-1)', async () => {
       const user = userEvent.setup()
       renderProjectTree()
 

@@ -64,8 +64,16 @@ test.describe('프로젝트 멤버 관리 (FR-PM-01)', () => {
     await expect(page.getByText('관리자').first()).toBeVisible()
 
     // 밥 행 — 이름 + 멤버 배지
+    //
+    // 🛑 `page.getByText('멤버').first()` 로 쓰지 마라. 설정 서브앱 사이드바(`설정 메뉴`)에
+    //    `멤버` 링크가 있고 그것이 **DOM 상 본문보다 먼저** 온다 — `.first()` 는 그 링크를
+    //    집는데 `toBeVisible()` 이라 **red 가 나지 않는다.** 계약이 「밥 행에 멤버 배지가
+    //    떴다」에서 「어딘가에 '멤버'라는 글자가 있다」로 조용히 내려앉고 아무도 알려 주지
+    //    않는다. 그래서 조회를 **밥의 행 + 배지 span** 으로 좁힌다 — 행까지만 좁히면 역할
+    //    Select 의 값 span 과 배지 span 이 둘 다 걸려 strict mode 로 죽는다(S3 와 같은 관례).
     await expect(page.getByText('밥')).toBeVisible()
-    await expect(page.getByText('멤버').first()).toBeVisible()
+    const bobRow = page.getByText('밥').locator('xpath=ancestor::li[1]')
+    await expect(bobRow.locator('span.rounded-full')).toHaveText('멤버')
 
     // UUID 가 화면에 노출되지 않음 (auth-fixtures userId v4 형식과 일치 — 옛 all-zeros는 vacuous)
     await expect(page.getByText('00000000-0000-4000-8000-000000000001')).toHaveCount(0)

@@ -183,7 +183,7 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
 <aside class="sidebar">
     <div class="sidebar-head">
       <div class="logo">🏢 BTS Dashboard</div>
-      <div class="updated">2026-09-07 갱신</div>
+      <div class="updated">2026-09-08 갱신</div>
     </div>
     <nav>
       <ul class="nav-top">
@@ -205,18 +205,18 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <svg viewBox="0 0 260 260" class="donut">
     <circle cx="130" cy="130" r="116" fill="none" stroke="#e5e7eb" stroke-width="28" />
     <circle cx="130" cy="130" r="116" fill="none" stroke="#22c55e" stroke-width="28"
-      stroke-dasharray="728.849495632832" stroke-dashoffset="0"
+      stroke-dasharray="728.849495632832" stroke-dashoffset="7.288494956328327"
       transform="rotate(-90 130 130)" stroke-linecap="round" />
-    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">100%</text>
+    <text x="130" y="130" text-anchor="middle" dominant-baseline="central" class="donut-text">99%</text>
   </svg>
       <div class="overview-numbers">
-        <div class="big-num">145 / 145</div>
+        <div class="big-num">145 / 146</div>
         <div class="big-label">세부 기능 완료</div>
         <div class="status-grid">
           <div><span class="dot dot-done"></span> 완료 <b>145</b></div>
           <div><span class="dot dot-prog"></span> 진행중 <b>0</b></div>
           <div><span class="dot dot-block"></span> 차단 <b>0</b></div>
-          <div><span class="dot dot-wait"></span> 대기 <b>0</b></div>
+          <div><span class="dot dot-wait"></span> 대기 <b>1</b></div>
         </div>
       </div>
     </div>
@@ -228,9 +228,9 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
       <div class="bc-card-pct">100%</div>
     </div><div class="bc-card" data-nav="bc-project-workflow">
       <div class="bc-card-head">🔄 워크플로우</div>
-      <div class="bc-card-stats">7 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:100%"></div></div>
-      <div class="bc-card-pct">100%</div>
+      <div class="bc-card-stats">7 / 8 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:88%"></div></div>
+      <div class="bc-card-pct">88%</div>
     </div><div class="bc-card" data-nav="bc-automation">
       <div class="bc-card-head">🤖 자동화 규칙</div>
       <div class="bc-card-stats">7 / 7 완료</div>
@@ -784,17 +784,17 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
     <h1>🔄 워크플로우</h1>
     <p class="bc-desc">이슈가 어떤 상태를 거쳐 가는지 규칙을 정하는 영역.</p>
     <div class="bc-detail-stats">
-      <div class="big-pct">100%</div>
-      <div>7 / 7 완료</div>
-      <div class="bar"><div class="bar-fill" style="width:100%"></div></div>
+      <div class="big-pct">88%</div>
+      <div>7 / 8 완료</div>
+      <div class="bar"><div class="bar-fill" style="width:88%"></div></div>
       <div class="status-grid">
         <div>✅ 완료 7</div>
         <div>🔄 진행중 0</div>
         <div>⛔ 차단 0</div>
-        <div>⬜ 대기 0</div>
+        <div>⬜ 대기 1</div>
       </div>
     </div>
-    <h2>세부 기능 (7개)</h2>
+    <h2>세부 기능 (8개)</h2>
     <div class="fr-list"><details class="fr-item fr-완료">
       <summary>
         <span class="fr-status">✅</span>
@@ -844,6 +844,13 @@ h2 { font-size: 20px; margin: 32px 0 16px; color: #374151; }
         <span class="fr-desc"><span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 초안·발행 + 상태 이관 마법사</span>
       </summary>
       <ol class="step-list"><li><span class="step-icon">✅</span> D1 — 도메인 — 초안 표현(<span class="term" data-def="&quot;자유형 수납장 / 만물 창고&quot; 모양이 불규칙한 복잡한 데이터나 크기가 큰 파일(이미지 등)을 형태 그대로 유연하게 쑤셔 넣을 수 있는 저장 공간입니다.">JSONB</span>) · 발행 이력 append-only · 기본값 복원의 의미</li><li><span class="step-icon">✅</span> D2 — 명세 — 낙관적 락(base_<span class="term" data-def="릴리스 단위. fix/affects 관계로 이슈에 연결">version</span>) 충돌 409 · 이관 대상 산출 규칙 · cross-<span class="term" data-def="&quot;관련 업무 부서&quot; 시스템을 &#39;로그인 부서&#39;, &#39;알림 부서&#39;처럼 책임 범위별로 깔끔하게 나눈 구역입니다.">BC</span> 포트 계약</li><li><span class="step-icon">✅</span> D3 — 마이그레이션 — V208 `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>_dra<span class="term" data-def="Full-Text Search. PostgreSQL tsvector 기반">fts</span>` · `workflow_publications`</li><li><span class="step-icon">✅</span> D4 — 백엔드 — 초안 CRUD · 발행 · 기본값 복원 · 이관 포트(읽기 `<span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">Issue</span>StatusUsagePort` = <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">project</span>-<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span> 로컬 · 쓰기 `IssueStatusMigrationPort` = shared-kernel)</li><li><span class="step-icon">✅</span> D5 — 백엔드 테스트 — 발행 전 런타임 불변 · 동시 발행 409 · 이관 후 <span class="term" data-def="작업 단위. 고유 키(`PROJ-123`)는 영구 보존">이슈</span> 상태 전량 이동</li><li><span class="step-icon">✅</span> D6 — 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원</li><li><span class="step-icon">✅</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다</li></ol>
+    </details><details class="fr-item fr-미진행">
+      <summary>
+        <span class="fr-status">⬜</span>
+        <span class="fr-id">FR-WF-08</span>
+        <span class="fr-desc"><span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span> 정의·스킴 소유 스코프</span>
+      </summary>
+      <ol class="step-list"><li><span class="step-icon">⬜</span> D1 — 도메인 — 소유(`<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>Id: U<span class="term" data-def="&quot;레고 블록 디자인 도구&quot; 개발자가 화면을 예쁘게 꾸밀 때 CSS 코드를 복잡하게 짜지 않고, 미리 만들어진 예쁜 블록들을 가져다 조립하는 도구입니다.">UI</span>D?`)의 의미 · 전역(NULL)=공유 템플릿 · <span class="term" data-def="Standard Scheme. 시스템이 시드한 4개 [[워크플로우 스킴]](`software-scheme`/`bug-tracking-scheme`/`simple-scheme`/`kanban-scheme`). `key`·`name`·`description`·표준여부 4필드 변경 불가 + 삭제 차단이며, 매핑은 admin 이 변경 가능(D11). 코드 정본은 `isStandard` — IssueType·Resolution 의 `isStandard` 규약과 동일. DB 컬럼은 역사적으로 `is_default` 이고(주석은 이미 &quot;시스템 표준 스킴&quot;이라 적혀 있었다) 도메인·컬럼 rename 은 이연 (FR-WF-02-07)">표준 스킴</span> 보호 불변</li><li><span class="step-icon">⬜</span> D2 — 명세 — 스코프 결정 규칙(소유 유무 → Global/<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">Pr</span>oject</span>) · 권한 매트릭스(CREATE·UPDATE·PUBLISH 허용, DELETE 불허) · 복제가 소유를 싣는 계약</li><li><span class="step-icon">⬜</span> D3 — 마이그레이션 — `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">workflow</span>s`·`workflow_schemes` 에 `<span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자"><span class="term" data-def="&quot;코드 결재 요청서&quot; &quot;내가 이렇게 고쳤으니 확인하고 원본에 합쳐주세요&quot;라고 동료에게 검토를 요청하는 것입니다.">pr</span>oject</span>_id` + 부분 유니크 재편</li><li><span class="step-icon">⬜</span> D4 — 백엔드 — 스코프 결정 · CRUD 판정 <span class="term" data-def="Transition. 상태 → 상태로 가는 액션. 2026-08-18 표기 확정(구 표기 「전이」 — Jira 한국어 화면에 맞춤)">전환</span> · 목록 필터 · `duplicate` 가 소유를 싣는다</li><li><span class="step-icon">⬜</span> D5 — 백엔드 테스트 — 자기 <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 200 · 남의 프로젝트 403 · 전역 403 · 복제본 소유 확인</li><li><span class="step-icon">⬜</span> D6 — 프론트 — <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 설정에 <span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">워크플로우</span>·스킴 편집 (기존 `<span class="term" data-def="이슈의 상태 전환 FSM. 정본은 DB(2026-08-18 ADR) — YAML 은 최초 부트스트랩과 기본값 복원의 기준">Workflow</span>EditorPage` 재사용, 신규 편집기 금지)</li><li><span class="step-icon">⬜</span> D7 — <span class="term" data-def="&quot;사용자 체험 테스트&quot; 실제 사용자가 앱을 켜서 버튼을 누르는 것과 똑같은 흐름으로 처음부터 끝까지 통째로 확인하는 테스트입니다.">E2E</span> — <span class="term" data-def="이슈를 담는 컨테이너. 프로젝트 키는 영문 대문자 + 숫자">프로젝트</span> 관리자가 만들고 고쳐 발행하고, 비-관리자 멤버는 403 안내를 본다</li></ol>
     </details></div>
   </section><section id="bc-automation" class="page">
     <h1>🤖 자동화 규칙</h1>

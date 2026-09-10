@@ -49,6 +49,27 @@ class AutomationConditionRepository(
     }
 
     /**
+     * [ruleIds] 룰들의 조건을 **한 번의 쿼리로** 조회해 룰별로 묶어 돌려준다(N+1 제거).
+     *
+     * 근거 수치는 [AutomationActionRepository.findByRuleIds] 주석에 있다 — 두 리포지토리를
+     * 규칙마다 한 번씩 부르는 것이 합쳐 분석 시간의 98.9% 였다.
+     *
+     * ★조건이 없는 룰은 **키 자체가 없다**. `automation_conditions` 는 룰당 0..1 행이라
+     *   `Condition?` 를 값으로 두면 「행이 없음」과 「null 조건」이 섞인다 — 키 부재로 통일한다.
+     *
+     * @param ruleIds 대상 룰 id 목록. 비면 DB 를 치지 않고 빈 맵을 돌려준다.
+     * @return `ruleId -> Condition`. 조건이 없는 룰은 키가 없다.
+     */
+    @Transactional(readOnly = true)
+    fun findByRuleIds(ruleIds: Collection<UUID>): Map<UUID, Condition> {
+        if (ruleIds.isEmpty()) return emptyMap()
+        return jdbc
+            .query(SQL_FIND_BY_RULE_IDS, MapSqlParameterSource(PARAM_RULE_IDS, ruleIds)) { rs, _ ->
+                rs.getObject(COLUMN_RULE_ID, UUID::class.java) to Condition.fromJson(rs.getString(COLUMN_EXPRESSION))
+            }.toMap()
+    }
+
+    /**
      * [ruleId] 룰의 조건을 [condition] 으로 교체한다(룰당 0..1 행).
      *
      * [condition] 이 있으면 upsert(존재 시 UPDATE, 없으면 INSERT)하고, `null` 이면 기존 조건을 삭제한다.
@@ -74,11 +95,18 @@ class AutomationConditionRepository(
 
     private companion object {
         const val PARAM_RULE_ID = "ruleId"
+        const val PARAM_RULE_IDS = "ruleIds"
         const val PARAM_EXPRESSION = "expression"
         const val COLUMN_EXPRESSION = "expression"
+        const val COLUMN_RULE_ID = "rule_id"
 
         const val SQL_FIND_BY_RULE_ID =
             "SELECT expression FROM automation_conditions WHERE rule_id = :ruleId"
+
+        // ★`rule_id` 를 함께 뽑는다 — 단건과 달리 어느 룰 것인지 결과에서 알아야 한다.
+        //   룰당 0..1 행이라 정렬은 필요 없다.
+        const val SQL_FIND_BY_RULE_IDS =
+            "SELECT rule_id, expression FROM automation_conditions WHERE rule_id IN (:ruleIds)"
 
         const val SQL_DELETE_BY_RULE_ID =
             "DELETE FROM automation_conditions WHERE rule_id = :ruleId"

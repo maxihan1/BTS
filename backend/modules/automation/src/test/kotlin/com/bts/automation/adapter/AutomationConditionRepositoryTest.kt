@@ -190,6 +190,40 @@ class AutomationConditionRepositoryTest {
 
     // ── findByRuleId — 미존재 ────────────────────────────────────────────────────
 
+    /**
+     * ★N+1 을 없애는 배치 조회 (FR-AT-04 성능 · 2026-09-09).
+     *
+     * `analyzeProjectConflicts` 가 규칙마다 이 리포지토리를 한 번씩 불렀다. 2코어 VM 실측에서
+     * 액션 조회와 합쳐 왕복 200회 = 2,331ms 로, 분석 전체 시간의 98.9% 였다(CPU 분석은 7ms).
+     * 자세한 수치는 [AutomationActionRepositoryTest] 의 같은 이름 테스트 주석에 있다.
+     */
+    @Test
+    fun `findByRuleIds — 여러 룰의 조건을 한 번에 룰별로 묶어 돌려준다`() {
+        val withCondition = savedRule()
+        val without = savedRule()
+        conditionRepository.replace(withCondition.id, sampleCondition())
+
+        val byRule = conditionRepository.findByRuleIds(listOf(withCondition.id, without.id))
+
+        assertThat(byRule[withCondition.id]).isEqualTo(sampleCondition())
+        // 조건 없는 룰은 키 자체가 없다 — 「조건 없음」과 「조회 안 함」을 호출자가 구분할 필요가 없다.
+        assertThat(byRule[without.id]).isNull()
+    }
+
+    @Test
+    fun `findByRuleIds — 단건 조회와 같은 값을 준다`() {
+        val rule = savedRule()
+        conditionRepository.replace(rule.id, sampleCondition())
+
+        assertThat(conditionRepository.findByRuleIds(listOf(rule.id))[rule.id])
+            .isEqualTo(conditionRepository.findByRuleId(rule.id))
+    }
+
+    @Test
+    fun `findByRuleIds — 빈 입력은 DB 를 치지 않고 빈 맵이다`() {
+        assertThat(conditionRepository.findByRuleIds(emptyList())).isEmpty()
+    }
+
     @Test
     fun `findByRuleId — 조건이 없는 룰은 null 을 반환한다`() {
         val rule = savedRule()

@@ -256,8 +256,10 @@ const INPUTS = {
   version: { file: VERSION_FILE, coveredBy: '.nvmrc' },
   /** 판별식 실행 명령의 정본. */
   pkg: { file: 'package.json', coveredBy: 'package.json' },
-  /** 축 B 의 검사 대상. */
-  ci: { file: '.github/workflows/workflow-scripts-ci.yml', coveredBy: '.github/workflows/**' },
+  /** 축 B 의 검사 대상. CI 정본이 젠킨스로 옮겨졌다(2026-09-09 · P4b). */
+  ci: { file: 'Jenkinsfile', coveredBy: 'Jenkinsfile' },
+  /** 축 B 가 함께 보는 자리 — 이미지에 버전 리터럴이 박히지 않게. */
+  image: { file: 'infra/jenkins/Dockerfile', coveredBy: 'infra/jenkins/**' },
   /** 축 A 가 지키는 호출문이 사는 곳. */
   start: { file: '.claude/skills/bts-start/SKILL.md', coveredBy: '.claude/skills/**' },
   /** 판별식 자신. 이 파일을 고치는 PR 에서도 CI 가 돌아야 한다. */
@@ -792,133 +794,15 @@ describe('node 로 .ts 를 부르는 호출문 — 타입 스트리핑 플래그
 
 describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴다 (축 B)', () => {
   /**
-   * 비-공허 짝.
-   *
-   * `setup-node` 스텝을 0건 뽑으면 아래 배선 단언이 전부 공허하게 통과한다.
-   * 파서가 YAML 구조 변화에 깨지는 경로가 실재하므로 하한을 못박는다.
-   */
-  test('setup-node 스텝을 실제로 찾았다 (비-공허 짝)', () => {
-    const steps = allSetupNodeSteps()
-    assert.ok(
-      steps.length > 0,
-      `.github/workflows 에서 '${SETUP_NODE_ACTION}' 스텝을 0건 뽑았다.\n` +
-        `파서가 고장났거나 워크플로우 형식이 바뀌었다. 0 이면 아래 단언이 검사할 것 없이 통과한다.`,
-    )
-
-    // 본문을 못 자르면(빈 문자열) 키 검사가 통째로 무의미해진다.
-    const empty = steps.filter((s) => s.body.trim().length === 0).map((s) => `${s.file}:${s.line}`)
-    assert.deepEqual(empty, [], `본문을 못 자른 스텝이 있다: ${empty.join(', ')}`)
-
-    // ★파서가 **일부만** 잡는 것을 막는다. `> 0` 만 보면 5곳 중 1곳만 잡혀도 통과하고,
-    //   나머지 4곳이 정본을 안 읽어도 초록이 된다. 원시 문자열 수를 **다른 로직으로** 세어
-    //   대조한다 — 한쪽이 깨지면 어긋난다.
-    const rawCount = workflowFiles().reduce((n, f) => {
-      const hits = fs
-        .readFileSync(path.join(REPO_ROOT, f), 'utf8')
-        .split('\n')
-        .filter((l) => !/^\s*#/.test(l))
-        .filter((l) => new RegExp(`uses:\\s*${SETUP_NODE_ACTION}`).test(l))
-      return n + hits.length
-    }, 0)
-
-    assert.equal(
-      steps.length,
-      rawCount,
-      `스텝 파서가 ${steps.length}건을 뽑았는데 원시 매칭은 ${rawCount}건이다.\n\n` +
-        `두 수가 어긋나면 파서가 일부를 놓쳤거나(→ 놓친 스텝은 검사되지 않는다) ` +
-        `주석을 스텝으로 오인한 것이다. 둘 다 봉인이 조용히 좁아지는 경로다.`,
-    )
-  })
-
-  /**
-   * ★★C3 — 스텝을 통째로 지우면 위 단언들은 검사할 것이 없어 전부 통과한다.
-   *
-   * 그 잡은 러너 PATH 의 시스템 node 로 떨어지고, 그 버전은 아무도 재지 않는다 —
-   * 이 판별식이 닫으려던 결함 그 자체다. 개수 하한(`>= 5`)으로도 막히지만 그 숫자가
-   * **세 번째 목록**이 되어 또 갈린다. 「node 를 쓰면 setup-node 를 갖는다」로 숫자를 없앤다.
-   */
-  test('★★setup-node 보유 집합이 선언과 일치한다 (스텝 삭제 봉인)', () => {
-    const declared = Object.keys(NODE_WORKFLOWS).sort()
-    const declaredFree = Object.keys(NODE_FREE_WORKFLOWS).sort()
-
-    // ① 저장소의 워크플로우가 두 선언 중 정확히 한쪽에 있다 — 미분류를 만들지 않는다.
-    const actual = workflowFiles().map((f) => path.basename(f)).sort()
-    const unclassified = actual.filter(
-      (f) => !(f in NODE_WORKFLOWS) && !(f in NODE_FREE_WORKFLOWS),
-    )
-    assert.deepEqual(
-      unclassified,
-      [],
-      `어느 집합에도 없는 워크플로우가 있다: ${unclassified.join(', ')}\n\n` +
-        `node 를 쓰면 NODE_WORKFLOWS 에, 안 쓰면 사유와 함께 NODE_FREE_WORKFLOWS 에 등재하라.\n` +
-        `미분류를 허용하면 새 워크플로우가 버전 정본을 무시해도 아무도 안 본다.`,
-    )
-
-    const stale = [...declared, ...declaredFree].filter((f) => !actual.includes(f))
-    assert.deepEqual(stale, [], `선언에만 있고 실재하지 않는 워크플로우: ${stale.join(', ')}`)
-
-    // ② 가져야 하는 곳이 실제로 갖고 있다 — 스텝을 통째로 지우면 여기서 잡힌다.
-    const withStep = new Set(allSetupNodeSteps().map((s) => path.basename(s.file)))
-    const missing = declared.filter((f) => !withStep.has(f))
-    assert.deepEqual(
-      missing,
-      [],
-      `setup-node 를 가져야 하는데 없는 워크플로우: ${missing.join(', ')}\n` +
-        missing.map((f) => `  ${f} — ${NODE_WORKFLOWS[f]}`).join('\n') +
-        `\n\n스텝이 사라지면 그 잡은 러너 PATH 의 시스템 node 로 떨어진다. 그 버전은\n` +
-        `'${VERSION_FILE}' 와 무관하게 움직이고 아무도 재지 않는다 — 이 판별식이 닫으려던 결함이다.`,
-    )
-
-    // ③ 갖지 않아야 하는 곳에 들어오지 않았다. runner-health 는 들어오는 순간 무력화된다.
-    const intruded = declaredFree.filter((f) => withStep.has(f))
-    assert.deepEqual(
-      intruded,
-      [],
-      `setup-node 가 없어야 하는 워크플로우에 들어왔다: ${intruded.join(', ')}\n` +
-        intruded.map((f) => `  ${f} — ${NODE_FREE_WORKFLOWS[f]}`).join('\n'),
-    )
-  })
-
-  /**
-   * ★★ 축 B 의 본체 — **존재 기준**.
-   *
-   * 「`node-version:` 하드코딩 금지」로 적으면 버전 키를 **아예 안 적은** 스텝이 통과한다.
-   * 그 스텝은 러너의 시스템 node 를 쓰고, 그 버전은 아무도 재지 않으므로
-   * **이번 결함(로컬↔CI 불일치)이 그대로 재발한다.** 없는 것을 금지하지 말고 있어야 할 것을
-   * 요구한다 — 2026-08-14 eng review 교정(R4-a).
-   */
-  test('★★모든 setup-node 스텝이 버전 정본 파일을 읽는다', () => {
-    const offending = allSetupNodeSteps()
-      .filter((s) => {
-        const body = executableBody(s)
-        // 주석을 걷은 본문에서만 본다. 그리고 하드코딩 키가 **함께 있으면** 그것도 위반이다 —
-        // setup-node 는 두 키가 공존하면 `node-version` 을 우선해 정본을 무시한다.
-        const readsFile = new RegExp(`${VERSION_FILE_KEY}\\s*:`).test(body)
-        const pinsInline = /^\s*node-version\s*:/m.test(body)
-        return !readsFile || pinsInline
-      })
-      .map((s) => {
-        const pinned = executableBody(s).match(/^\s*node-version\s*:\s*\S+/m)
-        return `${s.file}:${s.line}${pinned ? `  (지금. ${pinned[0].trim()})` : '  (버전 키 자체가 없다)'}`
-      })
-
-    assert.deepEqual(
-      offending,
-      [],
-      `버전 정본을 읽지 않는 setup-node 스텝이 있다.\n${offending.join('\n')}\n\n` +
-        `'node-version: 22' 는 최신 22.x 로 **부유**한다. 로컬이 22.14 인데 CI 가 22.23 이면\n` +
-        `타입 스트리핑 기본 활성 여부가 갈려 같은 명령이 두 환경에서 다른 것을 실행한다 —\n` +
-        `2026-08-14 실측으로 로컬 62/20 · CI 초록이 구조적으로 고정돼 있었다(부채 매핑 27).\n` +
-        `처방. 'node-version:' 을 지우고 '${VERSION_FILE_KEY}: ${VERSION_FILE}' 를 쓴다.`,
-    )
-  })
-
-  /**
-   * ★ 값 자체를 잰다.
-   *
-   * 파일이 있고 워크플로우가 그것을 읽어도, 값이 22.18 미만이면 전부 깨진다.
-   * 형식만 봉인하고 값을 안 재면 그 봉인은 장식이다.
-   */
+  // ★2026-09-09 P4b — `setup-node` 단언 3종을 지웠다.
+  //
+  //   「스텝을 실제로 찾았다(비-공허 짝)」·「보유 집합이 선언과 일치한다」·
+  //   「모든 스텝이 버전 정본 파일을 읽는다」 셋은 `.github/workflows/**` 를 훑었고,
+  //   그 워크플로우 4종을 철거하면서 **훑을 입력이 0** 이 됐다.
+  //
+  //   지키려던 보장(「node 버전 리터럴을 두 곳에 두지 않는다」)은 아래
+  //   「젠킨스도 node 버전을 정본에서만 읽는다」가 이어받았다 — bootstrap.sh · Dockerfile ·
+  //   Jenkinsfile 세 자리를 함께 본다. 지운 것이 아니라 옮긴 것이다.
   test('★버전 정본이 실재하고 타입 스트리핑 하한을 넘는다', () => {
     const full = path.join(REPO_ROOT, VERSION_FILE)
     assert.ok(
@@ -989,6 +873,67 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
       atLeast(pinned, floor),
       `${VERSION_FILE}(${pinned.major}.${pinned.minor})가 engines.node('${range}')를 만족하지 않는다.\n` +
         `두 버전 선언이 정면으로 모순이다 — 어느 쪽을 믿어야 하는지 알 수 없다.`,
+    )
+  })
+
+  // ── 축 B 젠킨스 포팅 (2026-09-09 · P4) ──────────────────────────────────
+  //
+  // ★지키려던 것은 `setup-node` 스텝이 아니라 **「node 버전 리터럴을 두 곳에 두지 않는다」**다.
+  //   정본은 `.nvmrc` 하나이고, 그것이 갈리면 타입 스트리핑 기본 활성 여부가 달라져
+  //   판별식이 조용히 0줄 실행된다(로컬 22.14 · 러너 22.23 — 이 파일 머리말의 그 사고).
+  //
+  // 젠킨스에서 그 보장을 지키는 자리는 셋이다. 하나라도 빠지면 리터럴이 두 벌이 된다.
+  //   ① `bootstrap.sh`  `.nvmrc` 를 읽어 이미지 빌드 ARG 로 주입한다
+  //   ② `Dockerfile`    버전 리터럴이 없다 (ARG 로만 받는다)
+  //   ③ `Jenkinsfile`   이미지의 node 와 `.nvmrc` 가 어긋나면 빌드를 죽인다
+  //
+  // ★③ 이 필요한 이유. 이미지는 한번 구우면 굳는다. `.nvmrc` 가 나중에 바뀌어도 이미지는
+  //   따라오지 않으므로, ①②만으로는 **빌드 시점의 정합**만 보장된다. 실행 시점 drift 는
+  //   ③ 이 잡는다 — Dockerfile 이 「여기서 막을 수 없다」고 적어 둔 그 몫이다.
+  test('★★젠킨스도 node 버전을 정본에서만 읽는다 (리터럴 두 벌 금지)', () => {
+    const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8')
+    const boot = read('infra/jenkins/bootstrap.sh')
+    const dockerfile = read('infra/jenkins/Dockerfile')
+    const jenkinsfile = read('Jenkinsfile')
+
+    // ① 정본을 읽어 주입한다
+    assert.match(
+      boot,
+      new RegExp(`${VERSION_FILE.replace('.', '\\.')}`),
+      `bootstrap.sh 가 ${VERSION_FILE} 를 읽지 않는다 — 버전을 손으로 넘기게 되고 그것이 두 번째 목록이다.`,
+    )
+    assert.match(boot, /NODE_VERSION/, 'bootstrap.sh 가 NODE_VERSION 을 주입하지 않는다')
+
+    // ② 이미지에 리터럴이 없다. `22.23.2` 같은 숫자가 박히면 정본이 둘이 된다.
+    assert.match(dockerfile, /ARG NODE_VERSION/, 'Dockerfile 이 NODE_VERSION 을 ARG 로 받지 않는다')
+    const literal = dockerfile.match(/^\s*(?:ENV|ARG)\s+NODE_VERSION\s*=\s*["']?\d+\.\d+/m)
+    assert.equal(
+      literal,
+      null,
+      `Dockerfile 에 node 버전 리터럴이 박혀 있다: ${literal?.[0]?.trim()}\n` +
+        `  정본은 ${VERSION_FILE} 하나다. bootstrap.sh 가 읽어 넘긴다.`,
+    )
+
+    // ③ 실행 시점 drift 를 죽인다
+    assert.match(
+      jenkinsfile,
+      new RegExp(`${VERSION_FILE.replace('.', '\\.')}`),
+      `Jenkinsfile 이 ${VERSION_FILE} 를 읽지 않는다 — 이미지가 굳어도 아무도 모른다.`,
+    )
+    assert.match(
+      jenkinsfile,
+      /node -v/,
+      'Jenkinsfile 이 실제 node 버전을 재지 않는다 — 정본과 대조할 값이 없다.',
+    )
+  })
+
+  test('★판정기가 리터럴 박힌 Dockerfile 을 실제로 잡는다 (합성 뮤테이션)', () => {
+    // 위 단언이 스쳐도 통과하는 형태가 아닌지 본다.
+    const bad = 'FROM jenkins/jenkins:lts-jdk21\nARG NODE_VERSION=22.23.2\nRUN echo hi\n'
+    assert.match(
+      bad,
+      /^\s*(?:ENV|ARG)\s+NODE_VERSION\s*=\s*["']?\d+\.\d+/m,
+      '리터럴 기본값이 박힌 형태를 못 잡는다 — 정본이 둘인 상태가 초록이 된다',
     )
   })
 
