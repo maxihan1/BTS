@@ -165,6 +165,51 @@ class AutomationActionRepositoryTest {
         assertThat(actionRepository.findByRuleId(rule.id)).isEmpty()
     }
 
+    /**
+     * ★N+1 을 없애는 배치 조회 (FR-AT-04 성능 · 2026-09-09).
+     *
+     * 종전 `analyzeProjectConflicts` 는 규칙마다 [AutomationActionRepository.findByRuleId] 를 불렀다.
+     * 스펙(`2026-07-13-fr-at-04-conflict-analysis.md:73`)이 「N+1은 허용하되 100규칙 1s 임계 내」라고
+     * **조건부 허용**했는데, 2코어 VM 실측에서 그 조건이 깨졌다 —
+     *
+     *   n=100  find 19ms · hydrate(N+1) **2,331ms** · analyze(CPU) 7ms
+     *   n=200  find 17ms · hydrate(N+1) **4,152ms** · analyze(CPU) 16ms
+     *
+     * 왕복 1회당 약 11.6ms 이고 **전체의 98.9%** 가 여기다. 쿼리가 느린 게 아니라 왕복이 많다.
+     * 배치 1회로 바꾸면 같은 일이 `find` 와 같은 자릿수(수십 ms)로 떨어진다.
+     */
+    @Test
+    fun `findByRuleIds — 여러 룰의 액션을 한 번에 룰별로 묶어 돌려준다`() {
+        val ruleA = savedRule()
+        val ruleB = savedRule()
+        val ruleC = savedRule()
+        actionRepository.replaceForRule(ruleA.id, fourActionsOneOfEach())
+        actionRepository.replaceForRule(ruleB.id, listOf(Action.AddCommentAction(body = "B 코멘트")))
+        // ruleC 는 액션 0건 — 키가 아예 없는지(빈 리스트가 아니라) 호출자 계약을 고정한다.
+
+        val byRule = actionRepository.findByRuleIds(listOf(ruleA.id, ruleB.id, ruleC.id))
+
+        assertThat(byRule[ruleA.id]).hasSize(fourActionsOneOfEach().size)
+        assertThat(byRule[ruleB.id]).containsExactly(Action.AddCommentAction(body = "B 코멘트"))
+        assertThat(byRule[ruleC.id]).isNull()
+    }
+
+    @Test
+    fun `findByRuleIds — position 순서가 findByRuleId 와 같다`() {
+        val rule = savedRule()
+        val actions = fourActionsOneOfEach()
+        actionRepository.replaceForRule(rule.id, actions)
+
+        val batch = actionRepository.findByRuleIds(listOf(rule.id))[rule.id]
+
+        assertThat(batch).isEqualTo(actionRepository.findByRuleId(rule.id))
+    }
+
+    @Test
+    fun `findByRuleIds — 빈 입력은 DB 를 치지 않고 빈 맵이다`() {
+        assertThat(actionRepository.findByRuleIds(emptyList())).isEmpty()
+    }
+
     @Test
     fun `findByRuleId — 액션이 없는 룰은 빈 리스트를 반환한다`() {
         val rule = savedRule()

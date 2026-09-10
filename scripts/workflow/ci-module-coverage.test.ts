@@ -28,7 +28,12 @@ import { allModules } from './select-backend-modules.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const SETTINGS = path.join(REPO_ROOT, 'backend/settings.gradle.kts');
-const BACKEND_CI = path.join(REPO_ROOT, '.github/workflows/backend-ci.yml');
+// ★2026-09-09 P4 재조준. 종전에는 `.github/workflows/backend-ci.yml` 을 읽었다.
+//   CI 정본이 젠킨스로 옮겨졌으므로(Jenkinsfile) 조립 부팅 배선도 그쪽에서 본다.
+//   지키려던 것은 파일이 아니라 **「조립 부팅과 비-prod 가드가 어딘가에서 실제로 돈다」**이고,
+//   그 자리가 바뀌었을 뿐이다. Actions 철거(P4b) 전에 옮겨 두지 않으면 파일이 사라지는
+//   순간 이 단언이 red 도 안 내고 함께 사라진다.
+const PIPELINE = path.join(REPO_ROOT, 'Jenkinsfile');
 
 /** `include(":modules:xxx")` 에서 모듈명을 뽑는다 */
 function gradleModules(): Set<string> {
@@ -90,8 +95,8 @@ describe('backend-ci 매트릭스 ↔ Gradle 모듈 정합', () => {
     );
   });
 
-  test('조립 부팅(app)은 별도 잡으로 실행된다', () => {
-    const src = fs.readFileSync(BACKEND_CI, 'utf8');
+  test('조립 부팅(app)은 별도 스테이지로 실행된다', () => {
+    const src = fs.readFileSync(PIPELINE, 'utf8');
 
     // app 은 Testcontainers 를 관리하지 않고 외부 5433 postgres 를 쓰므로 서비스 컨테이너가 필요하다.
     assert.match(src, /:modules:app:test/, 'app 조립 부팅 잡이 없다 — 9 BC 를 한 컨텍스트에 올리는 검증이 빠진다.');
@@ -107,6 +112,26 @@ describe('backend-ci 매트릭스 ↔ Gradle 모듈 정합', () => {
       /pg16-pgmq/,
       'postgres 서비스 이미지가 pgmq 판이 아니다 — 일반 postgres:16 은 마이그레이션에서 실패한다.',
     );
-    assert.match(src, /5433:5432/, 'postgres 포트가 5433 이 아니다 — application.yml 기본값과 어긋나 못 붙는다.');
+    // ★단언을 **뒤집었다**(2026-09-09). Actions 시절에는 「포트가 55433 로 고정돼 있을 것」이
+    //   요구였다. 러너가 1대라 고정이 안전했기 때문이다.
+    //   젠킨스는 그 전제가 깨진다 — 두 빌드가 겹치면 뒤 빌드의 `docker rm -f` 가 앞 빌드
+    //   DB 를 테스트 도중에 죽인다. `backend-ci.yml` assembly 잡 주석이 「러너를 늘리면 이
+    //   조건이 성립한다」고 경고한 그 상태가 젠킨스에서는 **기본값**이다.
+    //   그래서 이제는 **고정 포트가 결함**이고, 커널이 고르게 한 뒤 조회해야 한다.
+    assert.match(
+      src,
+      /-p 0:5432/,
+      'postgres 를 고정 포트로 띄운다 — 젠킨스는 빌드가 겹칠 수 있어 고정 포트가 서로의 DB 를 죽인다.',
+    );
+    assert.match(
+      src,
+      /docker port .*5432/,
+      '동적 포트를 조회하지 않는다 — `-p 0:5432` 로 띄우고 실제 포트를 안 읽으면 붙을 수 없다.',
+    );
+    assert.doesNotMatch(
+      src,
+      /5433:5432|55433:5432/,
+      '고정 포트 매핑이 남아 있다. 러너 1대 전제에서만 안전했던 설계다.',
+    );
   });
 });

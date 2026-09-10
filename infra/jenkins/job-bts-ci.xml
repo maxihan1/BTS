@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  bts-ci 잡 정의 — 저장소가 정본이다.
+
+  ★왜 이 파일이 있나. 초기에 이 잡을 젠킨스 API 로만 만들었더니 정의가 저장소 밖에만 존재했다.
+    컨트롤러를 잃으면 무엇이 걸려 있었는지 아무도 모른다 — `casc.yaml` 이 UI 설정을 거부하는
+    이유와 정확히 같은 문제를 잡 쪽에서 되풀이한 것이다.
+
+  ★파이프라인 내용은 여기 없다. 정본은 저장소 루트 `Jenkinsfile` 이고 이 파일은 **어디서 그것을
+    가져올지**만 정한다. 스테이지를 여기 적으면 그 순간 두 번째 목록이 된다.
+
+  ★`refspec` 이 필수다. 없으면 젠킨스가 대상 브랜치 하나만 받아 와서 `origin/main` 이 로컬에
+    없고, 그러면 `select-test-scope.ts` 가 비교 기준을 못 찾아 **전량으로 넓힌다** —
+    안전한 방향이지만 2단이 조용히 1단이 된다. 스테이지 안에서 `git fetch` 로 때우려 하면
+    셸의 git 에는 자격증명이 없어 `Permission denied (publickey)` 다(2026-09-09 실측).
+    받아 오는 일은 자격증명을 가진 SCM 단계가 해야 한다.
+
+  ★★이 파일을 적용하면 `parameters` 와 `triggers` 가 **지워진다.** 놀라지 말 것.
+    둘의 정본은 `Jenkinsfile` 이고, 젠킨스는 빌드를 한 번 돌면서 그것을 **학습해** 잡 설정에
+    저장한다. 여기에는 그 블록이 없으므로 덮어쓰는 순간 사라지고, `buildWithParameters` 가
+    HTTP 400 을 낸다(2026-09-09 실측 — 「FULL 이 갑자기 없는 파라미터가 됐다」).
+
+    처방은 되돌리는 것이 아니라 **파라미터 없이 한 번 돌리는 것**이다.
+      curl -X POST …/job/bts-ci/build      ← buildWithParameters 가 아니다
+    그 빌드가 Jenkinsfile 을 읽고 파라미터·트리거를 다시 등록한다.
+
+    여기에 `<properties>` 로 파라미터를 적어 두면 그 순간 두 목록이 된다 — Jenkinsfile 의
+    `parameters` 블록과 갈리고, 서로를 검사하지 않는다. 그래서 일부러 비워 둔다.
+
+  적용. ./bootstrap.sh job [브랜치]   (기본 main)
+-->
+<flow-definition plugin="workflow-job">
+  <description>BTS CI — 파이프라인 정본은 저장소 루트 Jenkinsfile. 이 잡 설정은 껍데기다. 정의 정본은 infra/jenkins/job-bts-ci.xml.</description>
+  <keepDependencies>false</keepDependencies>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition" plugin="workflow-cps">
+    <scm class="hudson.plugins.git.GitSCM" plugin="git">
+      <configVersion>2</configVersion>
+      <userRemoteConfigs>
+        <hudson.plugins.git.UserRemoteConfig>
+          <url>git@github.com:maxihan1/BTS.git</url>
+          <refspec>+refs/heads/*:refs/remotes/origin/*</refspec>
+          <credentialsId>bts-deploy-key</credentialsId>
+        </hudson.plugins.git.UserRemoteConfig>
+      </userRemoteConfigs>
+      <branches>
+        <hudson.plugins.git.BranchSpec>
+          <name>@BRANCH@</name>
+        </hudson.plugins.git.BranchSpec>
+      </branches>
+      <extensions/>
+    </scm>
+    <scriptPath>Jenkinsfile</scriptPath>
+    <lightweight>false</lightweight>
+  </definition>
+  <disabled>false</disabled>
+</flow-definition>

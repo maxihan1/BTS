@@ -90,6 +90,50 @@ describe('넓힘의 방향 — 모르면 전량', () => {
     assert.equal(e2eTouched(null), true)
   })
 
+  /**
+   * ★E2E 범위를 「전량이냐 아니냐」에서 **「바뀐 파일만」**으로 좁힌다 (2026-09-10).
+   *
+   * 종전 `computeScope` 는 `e2e: boolean` 이었고 참이면 이렇게 냈다.
+   *   apps/web/node_modules/.bin/playwright test        ← 167파일 전량
+   *
+   * 2코어 실측으로 전량이 **약 3시간**이다(1파일 46초 · 3파일 165초 → 파일당 약 60초,
+   * 고정 비용 거의 0). E2E 한 줄을 고쳐도 3시간이 뜨면 **아무도 안 돌린다** —
+   * 가드가 있어도 쓰이지 않으면 없는 것과 같다. 실제로 이 명령이 훅 어디에도 배선되지
+   * 않았고, E2E 를 고쳐도 푸시 전에 아무것도 확인되지 않았다.
+   *
+   * 바뀐 파일만 돌리면 1파일 46초다 — 그 정도면 사람이 실제로 돌린다.
+   */
+  test('e2eSpecs — 바뀐 E2E 파일만 돌린다 (전량이 아니다)', () => {
+    const scope = computeScope(
+      ['apps/web/e2e/board-manage.spec.ts', 'apps/web/src/components/board/Board.tsx'],
+      null,
+    )
+    assert.deepEqual(scope.e2eSpecs, ['e2e/board-manage.spec.ts'])
+  })
+
+  test('e2eSpecs — E2E 변경이 없으면 빈 배열이다', () => {
+    const scope = computeScope(['apps/web/src/components/board/Board.tsx'], null)
+    assert.deepEqual(scope.e2eSpecs, [])
+  })
+
+  test('e2eSpecs — 변경 목록을 못 구하면(null) 전량을 뜻하는 null 이다', () => {
+    // 「비었다(돌 것 없음)」와 「모른다(전부 돌아야)」를 구분한다. 둘을 같은 값으로 만들면
+    // 판정 불가가 조용히 「생략」이 된다 — 이 저장소가 이름 붙인 침묵 실패다.
+    assert.equal(computeScope(null, null).e2eSpecs, null)
+  })
+
+  test('★렌더 — 바뀐 파일만 인자로 붙는다', () => {
+    const out = renderCommands(
+      computeScope(['apps/web/e2e/board-manage.spec.ts'], null),
+    )
+    assert.match(out, /playwright test e2e\/board-manage\.spec\.ts/)
+    assert.doesNotMatch(
+      out,
+      /playwright test\s*$/m,
+      '인자 없는 `playwright test` 는 전량이다 — 그러면 아무도 안 돌린다.',
+    )
+  })
+
   test('백엔드만 바뀌면 프론트 명령이 렌더에 없다', () => {
     const out = renderCommands(computeScope(['backend/modules/notification/src/main/kotlin/A.kt'], null))
     assert.doesNotMatch(out, /vitest run/, '프론트 전량 명령이 새어 나왔다')
