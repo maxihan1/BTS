@@ -130,6 +130,72 @@ case "${1:-up}" in
           exit 2
         fi
         echo "✅ 18081 루프백 전용 확인"
+
+        # ── 배포 대상 디렉터리에 **쓸 수 있는지** ──────────────────────────────
+        #
+        # ★★마운트했다고 쓸 수 있는 것이 아니다 (2026-09-11 빌드 #47 실측).
+        #
+        #   compose 가 `/opt/bts:/opt/bts` 를 마운트했는데 그 트리는 `501:20 drwxr-xr-x`
+        #   였고 컨테이너는 uid 1000 으로 돈다. 첫 배포의 `rsync -avz --delete` 가
+        #   **한 파일도 못 쓰고** 128MB 를 보낸 뒤 `exit 23` 으로 죽었다.
+        #
+        #   사전 점검 47개 에이전트가 「/opt/bts 마운트 없음」은 잡고 이것은 놓쳤다.
+        #   compose 를 **읽으면** 마운트가 보이고 충분해 보인다 — `touch` 를 **해봐야**
+        #   보인다. 그래서 아래는 소스 검사가 아니라 컨테이너 안에서의 실제 쓰기다.
+        #
+        # ★왜 chown 이고 chmod 가 아닌가. `rsync -a` 의 `-p` 가 소스 퍼미션을 복사한다 —
+        #   `chmod -R g+w` 로 풀어 두면 **첫 배포가 그 비트를 지우고** 두 번째부터 실패한다
+        #   (성공 1회 뒤 침묵하는 최악의 양식). 소유자는 mode 와 무관하게 쓸 수 있고,
+        #   `-o`(owner)는 root 만 쓸 수 있어 jenkins 가 소유권을 되돌리지 못한다.
+        #   그래서 chown 만이 배포마다 유지된다.
+        if docker exec bts-jenkins sh -c 'touch /opt/bts/.write-probe' 2>/dev/null; then
+          docker exec bts-jenkins rm -f /opt/bts/.write-probe 2>/dev/null || true
+          echo "✅ /opt/bts 쓰기 가능 — 소유권 교정 불필요"
+        else
+          JUID="$(docker exec bts-jenkins id -u)"
+          JGID="$(docker exec bts-jenkins id -g)"
+          echo "→ /opt/bts 에 못 쓴다. 소유권을 ${JUID}:${JGID} 로 교정한다"
+          chown -R "${JUID}:${JGID}" /opt/bts
+
+          # ★자격증명은 되돌린다. 파이프라인(= 저장소 코드)이 읽으면 안 되는 것들이다 —
+          #   젠킨스 관리자 비밀번호와 GitHub 개인키가 여기 산다. chown 이 그것까지
+          #   uid 1000 에 넘기면 **아무 Jenkinsfile 이나 그것을 읽을 수 있게 된다.**
+          #
+          # ★목록도 파싱도 여기 적지 않는다. 정본은 `../deploy/read-protected-paths.sh` 하나다 —
+          #   `bts-deploy.sh` 의 rsync 제외 목록과 **같은 스크립트**를 부른다. 목록만 나누고
+          #   파싱을 복제하면 주석·공백 처리가 갈리는 순간 다시 두 벌이 된다.
+          #   계약. scripts/workflow/deploy-protected-paths-single-source.test.ts
+          READER="$SCRIPT_DIR/../deploy/read-protected-paths.sh"
+          if [ ! -x "$READER" ]; then
+            echo "🚨 $READER 를 실행할 수 없다 — 무엇을 root 로 되돌려야 하는지 모른다." >&2
+            echo "   방금 /opt/bts 전체를 uid ${JUID} 로 넘겼다. 자격증명이 노출된 상태다." >&2
+            exit 2
+          fi
+          REVERTED=0
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            [ -e "/opt/bts/$p" ] || continue
+            chown -R root:root "/opt/bts/$p"
+            REVERTED=$((REVERTED + 1))
+          done < <("$READER")
+          # ★0건은 「보호할 것이 없다」가 아니다. 프로세스 치환은 실패해도 while 을 멈추지
+          #   않으므로 **개수로 판정한다.** 여기서 멈추지 않으면 자격증명이 uid 1000 소유로
+          #   남고, 그 뒤로는 아무 Jenkinsfile 이나 관리자 비밀번호를 읽을 수 있다.
+          if [ "$REVERTED" = "0" ]; then
+            echo "🚨 root 로 되돌린 경로가 0건이다 — 읽기가 깨졌다. 자격증명이 노출된 상태다." >&2
+            exit 2
+          fi
+          echo "→ 운영 자격증명 ${REVERTED}건 root 소유로 복구"
+
+          # ★★교정했다고 끝이 아니다. **다시 해본다.** 「chown 했다」와 「쓸 수 있다」는 다르다.
+          if ! docker exec bts-jenkins sh -c 'touch /opt/bts/.write-probe' 2>/dev/null; then
+            echo "🚨 소유권 교정 후에도 /opt/bts 에 못 쓴다 — 배포는 실패한다." >&2
+            ls -ld /opt/bts >&2
+            exit 2
+          fi
+          docker exec bts-jenkins rm -f /opt/bts/.write-probe 2>/dev/null || true
+          echo "✅ /opt/bts 쓰기 가능 확인"
+        fi
         exit 0
       fi
       sleep 5

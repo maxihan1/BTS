@@ -1,0 +1,21 @@
+# 배포 대상(`/opt/bts`)에 사는, **저장소가 모르는 운영 상태**.
+#
+# 이 파일이 정본이다. 두 곳이 읽는다.
+#   infra/deploy/bts-deploy.sh   rsync `--delete` 에서 제외한다 (지우면 안 된다)
+#   infra/jenkins/bootstrap.sh   chown 후 root 소유로 되돌린다 (파이프라인이 읽으면 안 된다)
+#
+# ★목록을 어느 한쪽 스크립트에 직접 적지 마라. 두 벌이 되면 한쪽만 고쳐지고,
+#   그 순간 「지워질 것」과 「읽힐 것」이 조용히 늘어난다 — 이 저장소의 지배 결함 양식이다.
+#   계약. scripts/workflow/deploy-protected-paths-single-source.test.ts
+#
+# 형식. 한 줄에 경로 하나. `/opt/bts` 기준 상대경로. `#` 주석과 빈 줄은 무시된다.
+#
+# 2026-09-11 실측 — 배포 0회 상태에서 대상에 실재하던 것들. 앞의 셋은 제외 목록에
+# **없었고**, 첫 배포가 전부 지울 예정이었다. 백업이 사라진 직후에 백업을 뜨는
+# 순서라 복구 수단이 먼저 증발한다.
+
+backups                     # DB 덤프. 이것이 사라지면 되돌릴 수단이 없다
+infra/jenkins/.env          # 젠킨스 관리자 자격증명
+infra/jenkins/.deploy-key   # GitHub 배포키(개인키)
+infra/prod/.env             # 운영 환경변수
+infra/secrets               # JWT 서명키 등

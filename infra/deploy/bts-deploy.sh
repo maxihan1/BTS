@@ -231,18 +231,20 @@ fi
 #   앞의 셋은 제외 목록에 **없었다.** 첫 배포가 그것을 전부 지울 예정이었다 —
 #   백업이 사라진 직후에 백업을 뜨는 순서라(4단계), 복구 수단이 먼저 증발한다.
 #
-# ★목록은 아래 `PROTECTED` 하나가 정본이다. 여기 직접 적지 않는다 —
-#   두 벌이 되면 한쪽만 고쳐지고, 그 순간 지워질 것이 조용히 늘어난다.
-#   계약. scripts/workflow/deploy-protects-operational-state.test.ts
+# ★목록은 `protected-paths.txt` 하나가 정본이고, 읽는 것도 `read-protected-paths.sh`
+#   한 벌이다. 여기 직접 적지 않는다 — 두 벌이 되면 한쪽만 고쳐지고, 그 순간 지워질 것이
+#   조용히 늘어난다. 읽는 쪽이 둘이다(여기와 `infra/jenkins/bootstrap.sh` 의 chown).
+#   계약. scripts/workflow/deploy-path-viability.test.ts
+#         scripts/workflow/deploy-protected-paths-single-source.test.ts
 
 # 저장소가 모르는 **운영 상태** — 배포가 절대 지우면 안 되는 것.
-PROTECTED=(
-  'backups'                     # DB 덤프. 이것이 사라지면 되돌릴 수단이 없다
-  'infra/jenkins/.env'          # 젠킨스 관리자 자격증명
-  'infra/jenkins/.deploy-key'   # GitHub 배포키(개인키)
-  'infra/prod/.env'             # 운영 환경변수
-  'infra/secrets'               # JWT 서명키 등
-)
+PROTECTED=()
+while IFS= read -r p; do
+  [ -n "$p" ] && PROTECTED+=("$p")
+done < <("$SCRIPT_DIR/read-protected-paths.sh")
+# ★프로세스 치환은 실패해도 while 을 멈추지 않는다 — 읽어낸 **개수**로 판정한다.
+#   0건을 빈 제외 목록으로 받아 `--delete` 를 돌리면 백업과 자격증명이 지워진다.
+[ "${#PROTECTED[@]}" -gt 0 ] || { echo "❌ 보호 경로를 0건 읽었다 — 빈 제외 목록으로 --delete 를 돌릴 수 없다" >&2; exit 1; }
 
 # 저장소가 관리하는 것 중 전송에서 뺄 것 — 지워져도 되는 파생물.
 DERIVED=(
@@ -255,6 +257,29 @@ DERIVED=(
 
 RSYNC_EXCLUDES=()
 for p in "${PROTECTED[@]}" "${DERIVED[@]}"; do RSYNC_EXCLUDES+=(--exclude="$p"); done
+
+# ★★쓸 수 있는지 **먼저 해본다.** 마운트됐다고 쓸 수 있는 것이 아니다.
+#
+#   2026-09-11 실측(빌드 #47). compose 가 `/opt/bts:/opt/bts` 를 마운트했지만 그 트리는
+#   `501:20 drwxr-xr-x` 였고 컨테이너는 uid 1000(jenkins)로 돈다. rsync 가 **한 파일도**
+#   못 쓰고 128MB 를 보낸 뒤 `exit 23` 으로 죽었다 — 5분과 로그 3천 줄을 쓰고 나서.
+#
+#   사전 점검이 이것을 놓친 이유가 중요하다. compose 를 **읽으면** 마운트가 보이고 그것으로
+#   충분해 보인다. `touch` 를 **해봐야** 보인다. 그래서 이 검사는 텍스트가 아니라 실제 쓰기다.
+#
+#   처방의 정본은 `infra/jenkins/bootstrap.sh up` 의 소유권 교정이다. 여기는 그것이
+#   안 돌았을 때 **싸게 실패**시키는 자리다.
+if [ "${BTS_DEPLOY_LOCAL:-}" = "1" ]; then
+  PROBE="${REMOTE_DIR}/.deploy-write-probe"
+  if ! : > "$PROBE" 2>/dev/null; then
+    echo "❌ ${REMOTE_DIR} 에 쓸 수 없다 (uid $(id -u), gid $(id -g))." >&2
+    echo "   마운트는 됐는데 소유권이 안 맞는 상태다. rsync 를 돌려도 한 파일도 못 쓴다." >&2
+    echo "   처방. 호스트에서 \`cd /opt/bts/infra/jenkins && ./bootstrap.sh up\` — 소유권을 교정한다." >&2
+    exit 1
+  fi
+  rm -f "$PROBE"
+  echo "✅ ${REMOTE_DIR} 쓰기 가능 (uid $(id -u))"
+fi
 
 echo "📤 산출물 반영 (보호 ${#PROTECTED[@]}건 · 파생 제외 ${#DERIVED[@]}건)"
 rsync -avz --delete \
