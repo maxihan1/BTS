@@ -17,6 +17,11 @@
  *   덮어쓰는 사고가 2026-07-17 에 있었다). 의존성을 늘리지 않는 쪽이 그 제약과도 맞는다.
  *
  * 가변 축 범위(45~920)는 Pretendard Variable 의 wght 축 정의 그대로다.
+ *
+ * ★이 변경이 화면 렌더를 바꾸므로 `e2e/visual/__screenshots__/` 기준 4장을 **같이** 갱신했다.
+ *   `snapshot-baseline-guard` 가 「화면 소스 변경 없이 기준만 바뀌는 것」을 막는다 —
+ *   기준이 슬그머니 따라오면 시각 회귀가 아무것도 못 잡기 때문이다. 기준은 러너가 만든
+ *   actual 을 썼고(맥에서 만들면 리눅스에서 영구 red), diff 4장을 눈으로 확인했다.
  */
 @font-face {
   font-family: 'Pretendard Variable';
