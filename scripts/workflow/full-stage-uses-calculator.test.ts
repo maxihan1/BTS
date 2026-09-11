@@ -180,3 +180,50 @@ describe('③ FE_WIDEN 은 단독으로 도달 가능하다', () => {
     assert.equal(s.mode, 'skip', `프론트 무관 변경이 mode=${s.mode} 다 — 넓힘이 과하다.`);
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// ★★「반쪽 확대」가 재발할 수 없는지 (2026-09-11)
+//
+// `requiresFullBuild` 를 CI 정의 변경으로 좁히면서 한 가지 위험이 제기됐다 —
+// 모듈 안 마이그레이션 같은 변경이 이제 `빠른 게이트` 로 가고, 그 안에서 계산기가
+// `widenOnMigration` 으로 전 모듈을 돈다. **이름은 빠른 게이트인데 전량이 도는** 상태다.
+//
+// 빌드 #21(2026-09-10)이 정확히 그랬고, 그때 진짜 문제는 시간이 아니라
+// **전량 stage 에만 있던 검사를 건너뛴다**는 것이었다 — 조립 부팅·인프라 봉인.
+//
+// 지금 구조에서는 재발하지 않는다. 그 둘이 `RUN_FULL` 이 아니라 **`RUN_DEEP`** 이고,
+// `RUN_DEEP` 은 `main` 이면 무조건 참이기 때문이다. 그리고 젠킨스 잡은 main 만 본다.
+//
+// 그 사실이 **우연히 성립하는 것이 아니라 계약**임을 여기서 못 박는다. 누군가
+// 그 셋을 `RUN_FULL` 로 되돌리면 빌드 #21 의 고장이 그대로 돌아온다.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('④ 전량에만 있는 검사가 빠지지 않는다', () => {
+  test('★★조립 부팅·인프라 봉인이 RUN_DEEP 이다 (RUN_FULL 아님)', () => {
+    const src = readFileSync(JENKINSFILE, 'utf-8');
+    for (const stage of ['DB 마련', '조립 부팅', '인프라 봉인']) {
+      const head = src.slice(src.indexOf(`stage('${stage}')`), src.indexOf(`stage('${stage}')`) + 200);
+      assert.match(
+        head,
+        /RUN_DEEP',\s*value:\s*'true'/,
+        `stage('${stage}') 가 RUN_DEEP 이 아니다.\n` +
+          '★`RUN_FULL` 로 되돌리면 「이름은 빠른 게이트인데 전량이 도는」 빌드에서\n' +
+          '  이 검사가 **통째로 빠진다** — 빌드 #21 의 고장이 그대로 돌아온다.\n' +
+          '  `RUN_DEEP` 은 main 이면 무조건 참이라 그 구멍이 생기지 않는다.',
+      );
+    }
+  });
+
+  test('★★RUN_DEEP 이 main 을 포함한다 (위 보장의 전제)', () => {
+    const src = readFileSync(JENKINSFILE, 'utf-8');
+    const line = src.split('\n').find((l) => /env\.RUN_DEEP\s*=/.test(l));
+    assert.ok(line, 'env.RUN_DEEP 대입을 못 찾았다.');
+    assert.match(
+      line,
+      /branch\s*==\s*'main'/,
+      'RUN_DEEP 이 main 을 안 본다 — 위 stage 들이 main 머지에서 안 돌게 된다.\n' +
+        '  그러면 조립 부팅·인프라 봉인이 전량 빌드에서만 돌고, 그것이 곧 반쪽 확대다.',
+    );
+  });
+});
