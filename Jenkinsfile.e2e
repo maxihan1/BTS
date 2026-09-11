@@ -91,9 +91,38 @@ pipeline {
   }
 
   stages {
+    /*
+     * ★★파라미터가 아직 등록되지 않은 실행을 가려낸다 (2026-09-11).
+     *
+     * 젠킨스는 **Jenkinsfile 을 파싱해야** `parameters` 를 등록한다. 그래서 잡을 처음
+     * 적용한 직후의 실행은 `params.*` 가 전부 null 이다. 그 상태에서 호출자가 넘긴
+     * 파라미터는 SECURITY-170 이후 **조용히 폐기된다** — 에러가 아니라 무음이다.
+     *
+     * 그러면 이 잡은 이렇게 돈다.
+     *   DEPLOYED_SHA 없음     → 커밋 대조 생략(무엇을 검증하는지 모른다)
+     *   CHANGED_DOMAINS 없음  → 1단 건너뛰고 **2단 전량**
+     *   BASE_URL 없음         → 기본값이 **실서버**
+     * 즉 「무엇을 검증하는지 모르는 실서버 전량 3시간」이 시작된다. executor 가 1개라
+     * 그동안 `bts-ci` 가 통째로 멈춘다 — 푸시 검증이 3시간 정지한다.
+     *
+     * ★새 파라미터를 만들어 판별하지 않는다. 그것도 똑같이 미등록이라 null 이다.
+     *   **기존 파라미터가 null 인지**가 곧 「아직 등록 전」이라는 신호다.
+     *
+     * ★이 창은 등록 빌드 **한 번뿐**이다. `infra/jenkins/bootstrap.sh` 가 잡 적용 후
+     *   `ParametersDefinitionProperty` 가 실제로 나타날 때까지 기다린 뒤에야 성공을
+     *   선언하므로(같은 날 신설), 그 명령이 끝난 시점에는 등록이 보장된다.
+     */
     stage('대상 확인') {
       steps {
         script {
+          if (params.BASE_URL == null) {
+            env.REGISTRATION_ONLY = 'yes'
+            echo('파라미터 등록 실행 — 파이프라인을 파싱해 parameters 를 등록하고 끝낸다.\n' +
+                 '검증은 하지 않는다. 지금 넘어온 파라미터는 젠킨스가 이미 폐기했으므로\n' +
+                 '여기서 무엇을 돌려도 「무엇을 검증했는지 모르는 결과」가 된다.\n' +
+                 '다음 실행부터 정상 동작한다.')
+            return
+          }
           env.TARGET_SHA = params.DEPLOYED_SHA?.trim() ?: sh(
             script: 'git rev-parse HEAD', returnStdout: true,
           ).trim()
@@ -127,6 +156,7 @@ pipeline {
      *   그 실행의 결과는 「어느 커밋인지 모르는 검증」이므로 아래 판정 유효성이 그렇게 표시한다.
      */
     stage('배포 반영 대기') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         script {
           def deadline = System.currentTimeMillis() + (10 * 60 * 1000)
@@ -153,6 +183,7 @@ pipeline {
     }
 
     stage('의존성') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         sh '''
           set -eu
@@ -173,7 +204,12 @@ pipeline {
      *   안 넘겼으니 2단(전량)이 어차피 전부 본다」는 뜻이다 — 검증이 사라지지 않는다.
      */
     stage('E2E — 변경 도메인') {
-      when { expression { env.RUN_DOMAINS?.trim() } }
+      when {
+        allOf {
+          not { environment name: 'REGISTRATION_ONLY', value: 'yes' }
+          expression { env.RUN_DOMAINS?.trim() }
+        }
+      }
       steps {
         sh '''
           set -eu
@@ -205,6 +241,7 @@ pipeline {
      * `코어수 ÷ 2` 라 2코어면 1개이고, 억지로 늘리면 서로 자원을 뺏어 오히려 느려진다.
      */
     stage('E2E — 전량') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         sh '''
           set -eu
@@ -228,6 +265,7 @@ pipeline {
      * 것과 같은 원리다.
      */
     stage('판정 유효성') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         script {
           // ★워크스페이스가 아니라 **서버**를 다시 본다. 초안은 `git rev-parse HEAD` 를
