@@ -197,6 +197,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # ★한글 폰트를 깐다. ubuntu-latest 에는 CJK 폰트가 없어 한국어가 두부(□)로 그려지고,
+      #   폭·줄수를 실측해 단언하는 스펙이 macOS 기준과 어긋난다.
+      #   `index.css` 의 `--font-sans` 한글 명시와 **짝**이다 — 둘 중 하나만 하면 효과가 없다.
+      - name: 한글 폰트
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
       - name: playwright 브라우저
         run: pnpm --filter @bts/web exec playwright install --with-deps chromium
       - name: E2E 샤드 ${{ matrix.shard }}/8
@@ -227,6 +232,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # ★한글 폰트를 깐다. ubuntu-latest 에는 CJK 폰트가 없어 한국어가 두부(□)로 그려지고,
+      #   폭·줄수를 실측해 단언하는 스펙이 macOS 기준과 어긋난다.
+      #   `index.css` 의 `--font-sans` 한글 명시와 **짝**이다 — 둘 중 하나만 하면 효과가 없다.
+      - name: 한글 폰트
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
       - name: playwright 브라우저
         run: pnpm --filter @bts/web exec playwright install --with-deps chromium
       - name: 시각 회귀

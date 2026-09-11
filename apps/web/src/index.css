@@ -14,7 +14,23 @@
 
   --font-heading: var(--font-sans);
 
-  --font-sans: 'Geist Variable', sans-serif;
+  /*
+    ★한글 폰트를 명시한다 (2026-09-11 · Maxi 확정).
+
+    종전 `'Geist Variable', sans-serif` 는 **한글 글리프가 없다** —
+    `@fontsource-variable/geist/metadata.json` 의 subsets 가 cyrillic·latin·vietnamese 뿐이다.
+    그래서 한국어는 전부 호스트 기본 sans-serif 로 폴백했고, macOS(Apple SD Gothic Neo)와
+    리눅스 러너에서 **글자 폭이 달라진다.** 폭·줄수를 실측해 단언하는 E2E 가 여기 걸렸다.
+
+    바로 아래 `--font-mono` 는 이미 CJK 를 명시해 두었다. 같은 형태로 sans 도 채운다 —
+    한쪽만 고쳐진 상태였고, macOS 한 대에서만 검증하면 폴백이 멀쩡해 영원히 안 보인다.
+
+    ★CSS 만으로는 리눅스 러너에서 부족하다. 러너에 한글 폰트가 아예 없으면 이름을 적어도
+      폴백할 대상이 없다 — `.github/workflows/verify.yml` 의 E2E·시각회귀 잡이
+      `fonts-noto-cjk` 를 설치하는 것과 **짝**이다. 둘 중 하나만 하면 효과가 없다.
+  */
+  --font-sans: 'Geist Variable', 'Pretendard Variable', 'Pretendard',
+               'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
 
   /* AQL syntax highlight 전용 mono 폰트 — overlay↔textarea 정렬 정본 */
   --font-mono: 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
