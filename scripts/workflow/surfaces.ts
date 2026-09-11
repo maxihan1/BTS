@@ -131,7 +131,19 @@ export const SURFACES = {
       // CI/CD 정의 정본. `.github/workflows/**` 가 여기 있는 것과 같은 이유다 —
       // 파이프라인이 무엇을 돌리는지를 정하는 자리라 1행 변경이 검증 전체를 끌 수 있다.
       'infra/jenkins/**',
-      'Jenkinsfile',
+      // ★`Jenkinsfile` 이 아니라 `Jenkinsfile*` 이다 (2026-09-11).
+      //
+      //   종전에는 정확히 `Jenkinsfile` 이었고, 그래서 **`Jenkinsfile.e2e` 가 안 걸렸다.**
+      //   실측. detect-tier.ts Jenkinsfile     → T2 · GUARD_CI
+      //         detect-tier.ts Jenkinsfile.e2e → T1 · UNMAPPED
+      //
+      //   프로덕션 실서버를 상대로 무엇을 검증할지 정하는 파일이 CI 정의보다 **낮은 티어**로
+      //   떨어져 있었다. 한 줄만 고쳐도 배포 후 E2E 전체를 끌 수 있는 자리인데 계획 0 · 리뷰 1 이다.
+      //
+      //   이름을 열거하지 않는다. 열거하면 「파이프라인 파일 목록」과 「글로브 목록」이라는
+      //   두 목록이 생기고, 파이프라인을 하나 더 만들 때 뒤쪽이 조용히 낡는다.
+      //   계약. scripts/workflow/jenkinsfile-surface-coverage.test.ts
+      'Jenkinsfile*',
     ],
     tier: 'T2',
     note: '강제 장치 5층 — CI · 훅 · 판별식·생성기 · 배포 게이트 · 호스트 노출면. 여기가 조용히 망가지면 나머지 전부가 눈이 먼다',
