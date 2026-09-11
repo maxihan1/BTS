@@ -37,6 +37,7 @@ cp .env.example .env && vi .env     # JENKINS_ADMIN_PASSWORD 를 사람이 채�
 ./bootstrap.sh logs
 ./bootstrap.sh down
 ./bootstrap.sh lock                 # 설치된 플러그인 실제 버전 고정
+./bootstrap.sh job [브랜치]         # 잡 정의 적용 (기본 main) + 재등록 확인까지 대기
 ```
 
 두 값이 저장소 정본에서 나와야 해서 래퍼가 있다 — `NODE_VERSION` ← `.nvmrc`,
@@ -133,7 +134,9 @@ UI 변경은 컨테이너 재생성 시 없어진다 — 저장소를 고쳐라.
 
 **남은 것**
 
-- **E2E·시각 회귀 미이전** (P3). 선행 조건 3개는 폐지된 `frontend-ci.yml` visual 잡 자리
+- **시각 회귀 미이전** (P3). 기준 이미지 0장이고 `visual` 프로젝트를 돌리는 파이프라인이
+  없다(`chromium` 프로젝트가 `testIgnore: '**/e2e/visual/**'` 이다). 선행 조건 3개는
+  폐지된 `frontend-ci.yml` visual 잡 자리
   주석에 있었다 — 그 파일은 지웠으므로 git 이력에서 꺼내 쓴다.
   ① 백엔드 기동 또는 MSW 전량 목킹 ② 그 위에서 기준 이미지 생성 ③ 20회 무변경 flaky 측정.
 

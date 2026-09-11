@@ -21,7 +21,7 @@
 // 사용. node --experimental-strip-types scripts/workflow/jenkins-build-status.ts [브랜치]
 //       브랜치 생략 시 현재 브랜치.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,6 +82,16 @@ function readConfig(): { server: string; key: string; user: string } {
  *   스크립트는 자식 후보가 아니라 import 만이 길인데, 가드가 없으면 import 하는 순간
  *   SSH 가 나간다. 저장소 관용과 같은 형태다(`classify-task.ts`).
  */
+/** 저장소에서 git 을 돌린다. 실패하면 null — 「모른다」를 「없다」로 뭉개지 않는다. */
+function git(args: string[]): string | null {
+  const r = spawnSync('git', args, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: gitFixtureEnv(),
+  });
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
 export function main(): void {
 const branch =
   process.argv[2] ??
@@ -143,7 +153,27 @@ const built =
   '';
 const sameBranch = built === branch;
 
-console.log(`젠킨스 빌드 #${d.number ?? '?'} · 브랜치 ${built || '알 수 없음'} · ${d.url ?? ''}`);
+/*
+ * ★★빌드된 **커밋**까지 본다 (2026-09-11 추가).
+ *
+ * 종전에는 브랜치 이름만 봤다. 그래서 이런 일이 생긴다 — main 에 푸시한 직후
+ * `pollSCM('H/5 * * * *')` 이 아직 안 돌았으면 `lastBuild` 는 **직전 커밋**의 SUCCESS 이고
+ * `building` 도 false 다. 브랜치가 같으니 판정은 「✅ 초록」이 된다.
+ * **방금 올린 커밋은 빌드된 적이 없는데 게이트 2 가 통과한다.**
+ *
+ * 「다른 브랜치의 초록을 이 브랜치의 초록으로 읽지 않는다」와 정확히 같은 근거가
+ * 「다른 커밋의 초록」에도 적용된다. 그래서 같은 종료 코드 2(판정 불가)로 떨어뜨린다.
+ *
+ * git 플러그인은 `actions[].lastBuiltRevision.SHA1` 에 빌드한 커밋을 남긴다.
+ */
+const builtSha = JSON.stringify(d).match(/"SHA1":"([0-9a-f]{40})"/)?.[1] ?? '';
+const headSha = git(['rev-parse', 'HEAD']);
+const sameCommit = builtSha !== '' && headSha !== null && builtSha === headSha;
+
+console.log(
+  `젠킨스 빌드 #${d.number ?? '?'} · 브랜치 ${built || '알 수 없음'}` +
+    ` · 커밋 ${builtSha ? builtSha.slice(0, 9) : '알 수 없음'} · ${d.url ?? ''}`,
+);
 
 if (d.building) {
   console.log('⚠️ 판정 불가 — 아직 도는 중이다. 끝난 뒤 다시 본다.');
@@ -154,8 +184,17 @@ if (!sameBranch) {
   console.log('   ★다른 브랜치의 초록을 이 브랜치의 초록으로 읽지 않는다.');
   process.exit(2);
 }
+if (!sameCommit) {
+  console.log(
+    `⚠️ 판정 불가 — 빌드한 커밋이 HEAD 와 다르다.\n` +
+      `   빌드 ${builtSha ? builtSha.slice(0, 9) : '(못 읽음)'} · HEAD ${headSha?.slice(0, 9) ?? '(못 읽음)'}`,
+  );
+  console.log('   ★「이 브랜치가 초록」이 아니라 **「이 커밋이 초록」**이어야 한다.');
+  console.log('   폴링(H/5)이 아직 안 돌았을 수 있다. 빌드가 걸린 뒤 다시 본다.');
+  process.exit(2);
+}
 if (d.result === 'SUCCESS') {
-  console.log('✅ 초록 — 이 브랜치의 최근 빌드가 통과했다.');
+  console.log('✅ 초록 — 이 커밋의 빌드가 통과했다.');
   process.exit(0);
 }
 if (d.result === null || d.result === undefined) {

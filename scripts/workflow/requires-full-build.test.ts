@@ -16,18 +16,42 @@ import { dirname, resolve, join } from 'node:path';
 // ★`main` 을 임포트한다 — `git-fixture-isolation.test.ts` 의 자식 판정에 실리려면
 //   spawn 만으로는 부족하고 임포트가 필요하다.
 import { main } from './requires-full-build.ts';
-import { requiresFullBuild, WIDEN_PREFIXES } from './select-backend-modules.ts';
+import { requiresFullBuild, CI_DEFINITION_PREFIXES } from './select-backend-modules.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const JENKINSFILE = join(ROOT, 'Jenkinsfile');
 const SCRIPT = 'scripts/workflow/requires-full-build.ts';
 
-test('★WIDEN_PREFIXES 원소가 전부 전량으로 걸린다 (판정 정본 하나)', () => {
-  assert.ok(WIDEN_PREFIXES.length > 0, 'WIDEN_PREFIXES 가 비었다 — 아래 루프가 공허해진다.');
-  for (const p of WIDEN_PREFIXES) {
-    const sample = p.endsWith('/') ? `${p}x/y.kt` : p;
+// ★2026-09-11. 정본이 `WIDEN_PREFIXES` → `CI_DEFINITION_PREFIXES` 로 갈렸다.
+//
+//   종전에는 [requiresFullBuild] 가 `WIDEN_PREFIXES` 를 봤는데, 그 목록에는 `'backend/'` 가
+//   있고 이 함수에는 `moduleOf()` 게이트가 없다 — 백엔드 파일 하나만 고쳐도 전량이 됐다.
+//   그러면 빠른 게이트가 통째로 꺼지고, 그것이 E2E 를 내는 유일한 자리다.
+//
+//   두 목록은 이제 각자의 일을 한다.
+//     WIDEN_PREFIXES         모듈 선별에서 「모듈에 안 걸리는 파일」을 전 모듈로 넓힌다
+//     CI_DEFINITION_PREFIXES 「무엇을 돌릴지」를 정하는 파일 — 여기가 바뀌면 전량 빌드
+//
+//   가드가 옮겨간 코드를 안 따라가면 그 순간부터 아무것도 안 지킨다.
+test('★CI_DEFINITION_PREFIXES 원소가 전부 전량으로 걸린다 (판정 정본 하나)', () => {
+  assert.ok(
+    CI_DEFINITION_PREFIXES.length > 0,
+    'CI_DEFINITION_PREFIXES 가 비었다 — 아래 루프가 공허해진다.',
+  );
+  for (const p of CI_DEFINITION_PREFIXES) {
+    const sample = p.endsWith('/') ? `${p}x/y.sh` : p;
     assert.equal(requiresFullBuild([sample]), true, `'${p}' 가 전량 판정에 안 걸린다.`);
   }
+});
+
+test('★★백엔드 모듈 소스는 전량이 아니다 (비-공허 짝)', () => {
+  // 이 짝이 없으면 위 루프는 `requiresFullBuild` 를 「항상 true」로 만들어도 통과한다.
+  // 그리고 그 「항상 true」가 정확히 2026-09-11 이전 상태였다.
+  assert.equal(
+    requiresFullBuild(['backend/modules/notification/src/main/kotlin/Foo.kt']),
+    false,
+    '백엔드 모듈 소스 변경이 전량을 요구한다 — 빠른 게이트가 영구히 꺼진다.',
+  );
 });
 
 test('평범한 변경은 전량이 아니다', () => {
@@ -60,11 +84,11 @@ test('★Jenkinsfile 이 판정 목록을 Groovy 로 다시 적지 않는다 (�
     .split('\n')
     .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
     .join('\n');
-  // `WIDEN_PREFIXES` 라는 이름이 파이프라인 코드에 나오면 목록을 옮겨 적었다는 뜻이다.
+  // 목록 이름이 파이프라인 코드에 나오면 목록을 옮겨 적었다는 뜻이다.
   assert.doesNotMatch(
     code,
-    /WIDEN_PREFIXES/,
-    'Jenkinsfile 이 WIDEN_PREFIXES 를 직접 참조한다 — 목록이 두 벌이 된다.\n' +
+    /WIDEN_PREFIXES|CI_DEFINITION_PREFIXES/,
+    'Jenkinsfile 이 판정 목록을 직접 참조한다 — 목록이 두 벌이 된다.\n' +
       '판정은 requires-full-build.ts 를 통해서만 한다.',
   );
 });

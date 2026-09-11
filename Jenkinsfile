@@ -401,6 +401,25 @@ pipeline {
       }
     }
 
+    /*
+     * ★★명령을 여기 다시 적지 않는다 (2026-09-11 수정).
+     *
+     * 종전에는 이 stage 가 실행할 명령 목록을 **손으로** 갖고 있었다. 그래서
+     * 「계산기가 내는 블록」과 「전량 stage 의 블록」이라는 두 목록이 생겼고,
+     * **실제로 갈려 있었다** — 계산기 블록에는 E2E 줄이 있는데 여기에는 없었다.
+     *
+     * 결과. `RUN_FULL` 로 넓히는 순간 `빠른 게이트`(E2E 를 내는 유일한 자리)가 skip 되고,
+     * 이 stage 에는 E2E 가 없어 **E2E 가 0회**가 됐다. 넓힐수록 검증이 줄었다.
+     * 조합 위험을 받는다고 선언한 **야간 크론**도 그 경로다.
+     *
+     * 같은 파일 87~89행이 「영향 범위를 모르니 전부 본다면서 정작 그 둘을 안 보는
+     * 반쪽 확대」라고 적어 조립 부팅·인프라 봉인은 고쳤는데, E2E 가 같은 자리에 남아 있었다.
+     *
+     * ★`BTS_FORCE_FULL=1` 이 계산기에게 「백엔드·프론트는 전량」을 시킨다.
+     *   E2E 는 넓히지 않는다 — 전량 E2E(약 3시간)는 정책상 **배포 이후**의 몫이고,
+     *   여기서는 2층의 약속대로 **변경 도메인**만 돈다.
+     *   계약. scripts/workflow/full-stage-uses-calculator.test.ts
+     */
     stage('전량') {
       when { environment name: 'RUN_FULL', value: 'true' }
       steps {
@@ -410,12 +429,11 @@ pipeline {
           #   조용히 떨어지고, 그건 이 머신에 없다 — 실패가 컨텍스트 로드 오류 60건으로 나타나
           #   원인이 안 보인다(빌드 #17).
           [ -n "${BTS_DB_URL:-}" ] || { echo "BTS_DB_URL 이 비었다 — DB 마련 stage 를 확인하라"; exit 1; }
-          node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
-          pnpm --filter @bts/web test
-          cd backend
-          ./gradlew test --console=plain
-          # `--rerun-tasks` 로 캐시 거짓 초록을 막는다.
-          ./gradlew ktlintCheck detekt --rerun-tasks --console=plain
+          BTS_FORCE_FULL=1 node --experimental-strip-types scripts/workflow/select-test-scope.ts > .ci-scope.sh
+          echo "───── 실행할 범위 (전량) ─────"
+          cat .ci-scope.sh
+          echo "──────────────────────"
+          sh -e .ci-scope.sh
         '''
       }
     }
@@ -540,9 +558,20 @@ pipeline {
         // ★`BTS_DEPLOY_LOCAL=1` — 젠킨스는 **배포 대상 위에** 있다. 그 모드는 전송 수단만
         //   바꾸고(rsync 원격→로컬 · ssh→bash) 본문은 스크립트 한 벌 그대로 쓴다.
         //
-        // ★`BTS_SKIP_DEPLOY_TEST` 를 넘기지 않는다. 그 값이 서면 이 배포는 전수 검증 0회다.
         sh '''
           set -eu
+          # ★★`BTS_SKIP_DEPLOY_TEST` 를 **코드로** 막는다 (2026-09-11).
+          #
+          #   종전에는 「넘기지 않는다」는 **주석만** 있었다. 젠킨스 전역 환경변수나
+          #   노드 설정으로 그 값이 서면 `bts-deploy.sh:92` 가 전량 테스트를 건너뛰고
+          #   배포한다 — 그 배포는 **전수 검증 0회**인데 파이프라인은 초록이다.
+          #   주석은 그것을 막지 못한다. 실제로 같은 저장소가 「주석으로는 못 막는다」를
+          #   잡 등록 함정에서 이미 실증했다(bootstrap.sh).
+          if [ -n "${BTS_SKIP_DEPLOY_TEST:-}" ]; then
+            echo "❌ BTS_SKIP_DEPLOY_TEST 가 설정돼 있다 — 젠킨스 배포 경로에서는 금지다." >&2
+            echo "   그 값이 서면 이 배포는 전수 검증 0회다." >&2
+            exit 1
+          fi
           BTS_DEPLOY_LOCAL=1 bash infra/deploy/bts-deploy.sh
         '''
         /*
@@ -581,8 +610,27 @@ pipeline {
       //   stage post 는 skip 된 stage 에서 돌지 않는다 — 컨테이너가 그대로 남는다.
       //   self-hosted 는 머신이 살아남으므로 그렇게 쌓인다.
       //   정리는 **DB 를 쓰는 모든 stage 를 덮는 자리**에 있어야 한다.
-      sh 'docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true'
+      // ★`-v` 로 익명 볼륨까지 지운다. 없으면 컨테이너만 사라지고 볼륨이 남아
+      //   RUN_DEEP 빌드마다 디스크가 샌다 — self-hosted 는 머신이 살아남는다.
+      sh 'docker rm -f -v "$CI_PG_CONTAINER" 2>/dev/null || true'
       junit allowEmptyResults: true, testResults: 'backend/modules/*/build/test-results/**/*.xml'
+      /*
+       * ★★E2E 결과도 남긴다 (2026-09-11 추가).
+       *
+       * 종전에는 백엔드 XML 하나만 수집하고 `cleanWs` 로 워크스페이스를 지웠다.
+       * 그래서 빠른 게이트·전량이 돌린 Playwright 의 결과가 **아무 데도 안 남았다** —
+       * 정책 §1 의 마지막 줄(「E2E 결과를 젠킨스에서 볼 수 있어야 한다」)이 `bts-e2e`
+       * 에서만 지켜지고 `bts-ci` 에서는 지켜지지 않았다.
+       *
+       * 실패 원인을 로그에서 찾으려면 수만 줄을 뒤져야 하고, 트레이스·스크린샷은
+       * `cleanWs` 가 지운 뒤였다. 「증거를 남기는 설정」(playwright.config.ts 의
+       * `retain-on-failure`)이 있는데 **수집하는 쪽이 없어** 그 설정이 공허했다.
+       *
+       * ★`cleanWs` 보다 **앞**이어야 한다. 뒤면 지워진 것을 수집한다.
+       */
+      junit allowEmptyResults: true, testResults: 'apps/web/test-results/junit.xml'
+      archiveArtifacts artifacts: 'apps/web/playwright-report/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'apps/web/test-results/**', allowEmptyArchive: true
       // 잔재성 거짓 초록을 막는다 — `actions/checkout@v4` 의 `clean: true` 가 하던 일이다.
       cleanWs(deleteDirs: true, notFailBuild: true)
     }

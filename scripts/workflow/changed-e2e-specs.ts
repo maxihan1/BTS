@@ -31,8 +31,25 @@ import { changedFiles } from './diff-base.ts';
 
 export function main(): number {
   const specs = e2eSpecs(changedFiles());
-  // `null`(전량)도 빈 출력으로 떨어뜨린다 — 푸시 훅에서 3시간을 시작하지 않는다.
-  if (specs && specs.length > 0) process.stdout.write(` ${specs.join(' ')}`);
+  /*
+   * ★★`null`(모른다)과 `[]`(변경 없음)을 **화면에서** 구분한다 (2026-09-11).
+   *
+   * 3시간짜리 전량을 시작하지 않는다는 거래는 유지한다 — 그것이 이 스크립트의 존재
+   * 이유다. 그러나 종전에는 두 상태의 **출력도 종료 코드도 같아서**, 훅이 아무것도
+   * 안 찍고 지나갔다. 사람은 「E2E 를 안 고쳤나 보다」로 읽는데 실제로는
+   * 「기준을 몰라서 아무것도 못 골랐다」다. 구별할 방법이 없었다.
+   *
+   * 형제 스크립트(`push-backend-tests.ts`)는 같은 상황에서 크게 말한다. 여기도 맞춘다.
+   */
+  if (specs === null) {
+    process.stderr.write(
+      '⚠️  비교 기준을 못 정했다 — 바뀐 E2E 를 **0회** 돌렸다.\n' +
+        '   origin/main 이 없거나 얕은 클론일 수 있다. `git fetch origin main` 후 다시 푸시하라.\n' +
+        '   ★이것은 「E2E 변경 없음」이 아니다.\n',
+    );
+    return 0;
+  }
+  if (specs.length > 0) process.stdout.write(` ${specs.join(' ')}`);
   return 0;
 }
 

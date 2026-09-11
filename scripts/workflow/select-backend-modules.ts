@@ -95,8 +95,51 @@ export const WIDEN_PREFIXES = [
  */
 export function requiresFullBuild(files: string[] | null): boolean {
   if (files === null) return true
-  return files.some((f) => WIDEN_PREFIXES.some((p) => f === p || f.startsWith(p)))
+  return files.some((f) => CI_DEFINITION_PREFIXES.some((p) => f === p || f.startsWith(p)))
 }
+
+/**
+ * 「무엇을 돌릴지」를 정하는 파일들 — 여기가 바뀌면 계산기의 답을 믿을 수 없다.
+ *
+ * ## ★왜 `WIDEN_PREFIXES` 와 따로 두나 (2026-09-11)
+ *
+ * 종전에는 [requiresFullBuild] 가 [WIDEN_PREFIXES] 를 그대로 봤다. 그런데 그 목록에는
+ * `'backend/'` 가 들어 있고, [requiresFullBuild] 에는 **`moduleOf()` 게이트가 없다.**
+ * (같은 파일의 `selectModules` 는 모듈에 귀속된 파일을 `continue` 로 빼낸 **뒤에야**
+ * 그 목록을 본다. 두 곳의 전제가 달랐다.)
+ *
+ * 그래서 이렇게 됐다.
+ *
+ *     requiresFullBuild(['backend/modules/notification/src/main/kotlin/Foo.kt']) → true
+ *
+ * 백엔드 파일 하나만 고쳐도 `RUN_FULL='true'` 가 되어 **빠른 게이트가 통째로 꺼졌다.**
+ * 「main 머지도 계산기가 정한 범위로 돈다」가 백엔드 PR 에서는 한 번도 성립하지 않았고,
+ * 로그는 `CI설정변경=Y` 라고 찍어 원인을 오독하게 만들었다.
+ *
+ * 더 나쁜 것은 그 상태에서 `selectModules` 의 역의존 폐포 결과가 젠킨스에서 **한 번도
+ * 쓰이지 않는다**는 점이다 — 백엔드 변경이 있으면 항상 전량으로 가므로, 이 파일 전체의
+ * 존재 이유가 CI 에서 무효화돼 있었다.
+ *
+ * ## 무엇이 들어가나
+ *
+ * 「범위를 계산하는 코드」와 「그 계산을 실행하는 정의」다. 백엔드·프론트 소스는 아니다 —
+ * 그쪽은 계산기가 스스로 폐포를 닫는다.
+ *
+ * ★목록이 낡는 것을 `requires-full-build-coverage.test.ts` 가 막는다. 그 판별식은
+ *   `requires-full-build.ts` 가 **실제로 import 하는 로컬 모듈 전량**이 이 목록에 덮이는지
+ *   차집합으로 본다 — 계산기에 파일을 하나 더 끼우면 red 가 된다.
+ */
+export const CI_DEFINITION_PREFIXES = [
+  // 파이프라인 정의 — `Jenkinsfile` 과 `Jenkinsfile.e2e` 를 함께 문다.
+  'Jenkinsfile',
+  // 젠킨스 잡·컨트롤러 정의.
+  'infra/jenkins/',
+  // 범위 계산기 자신.
+  'scripts/workflow/select-backend-modules.ts',
+  'scripts/workflow/select-test-scope.ts',
+  'scripts/workflow/diff-base.ts',
+  'scripts/workflow/requires-full-build.ts',
+]
 
 /**
  * 마이그레이션 파일. **모듈 역산보다 앞서** 판정해 전 모듈로 넓힌다.

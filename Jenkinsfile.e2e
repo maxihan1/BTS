@@ -88,12 +88,58 @@ pipeline {
     //     빌드가 항상 죽는다 — 잡 XML 주석이 경고한 그 자리다.
     RUN_BASE_URL = "${params.BASE_URL ?: 'https://bts.maxihan.com'}"
     RUN_DOMAINS = "${params.CHANGED_DOMAINS ?: ''}"
+
+    /*
+     * ★★실서버 대상이면 `@prod` 태그가 붙은 스펙만 돈다 (2026-09-11).
+     *
+     * 스펙 168개 중 146개가 `alice` 로 로그인한다 — dev 시드 계정이고, MSW 는
+     * `import.meta.env.DEV` 에서만 뜬다(`apps/web/src/main.tsx`). 배포본은 `vite build`
+     * 라 DEV=false 이고, 실서버에는 그 계정이 없다(`ProdDevSeedAbsenceBootTest` 가
+     * 부재를 단언한다). 즉 전량을 그대로 돌리면 **구조적으로 전부 red** 이고,
+     * 그 3시간 동안 executor 1개를 점유해 `bts-ci` 가 멈춘다.
+     *
+     * 「배포가 잘못됐다」로 보이지만 실제로는 「스펙이 이 대상에서 돌 수 없다」다.
+     * 대상이 로컬 dev 서버면(MSW 가 뜬다) 필터를 걸지 않는다.
+     *
+     * ★실서버 검증 범위를 넓히려면 스펙 제목에 `@prod` 를 붙이되, `loginAsAlice` 와
+     *   `src/mocks` 를 쓰지 않아야 한다. `e2e-prod-target.test.ts` 가 그것을 강제한다.
+     */
+    GREP_ARG = "${params.BASE_URL?.startsWith('http://localhost') ? '' : '--grep @prod'}"
   }
 
   stages {
+    /*
+     * ★★파라미터가 아직 등록되지 않은 실행을 가려낸다 (2026-09-11).
+     *
+     * 젠킨스는 **Jenkinsfile 을 파싱해야** `parameters` 를 등록한다. 그래서 잡을 처음
+     * 적용한 직후의 실행은 `params.*` 가 전부 null 이다. 그 상태에서 호출자가 넘긴
+     * 파라미터는 SECURITY-170 이후 **조용히 폐기된다** — 에러가 아니라 무음이다.
+     *
+     * 그러면 이 잡은 이렇게 돈다.
+     *   DEPLOYED_SHA 없음     → 커밋 대조 생략(무엇을 검증하는지 모른다)
+     *   CHANGED_DOMAINS 없음  → 1단 건너뛰고 **2단 전량**
+     *   BASE_URL 없음         → 기본값이 **실서버**
+     * 즉 「무엇을 검증하는지 모르는 실서버 전량 3시간」이 시작된다. executor 가 1개라
+     * 그동안 `bts-ci` 가 통째로 멈춘다 — 푸시 검증이 3시간 정지한다.
+     *
+     * ★새 파라미터를 만들어 판별하지 않는다. 그것도 똑같이 미등록이라 null 이다.
+     *   **기존 파라미터가 null 인지**가 곧 「아직 등록 전」이라는 신호다.
+     *
+     * ★이 창은 등록 빌드 **한 번뿐**이다. `infra/jenkins/bootstrap.sh` 가 잡 적용 후
+     *   `ParametersDefinitionProperty` 가 실제로 나타날 때까지 기다린 뒤에야 성공을
+     *   선언하므로(같은 날 신설), 그 명령이 끝난 시점에는 등록이 보장된다.
+     */
     stage('대상 확인') {
       steps {
         script {
+          if (params.BASE_URL == null) {
+            env.REGISTRATION_ONLY = 'yes'
+            echo('파라미터 등록 실행 — 파이프라인을 파싱해 parameters 를 등록하고 끝낸다.\n' +
+                 '검증은 하지 않는다. 지금 넘어온 파라미터는 젠킨스가 이미 폐기했으므로\n' +
+                 '여기서 무엇을 돌려도 「무엇을 검증했는지 모르는 결과」가 된다.\n' +
+                 '다음 실행부터 정상 동작한다.')
+            return
+          }
           env.TARGET_SHA = params.DEPLOYED_SHA?.trim() ?: sh(
             script: 'git rev-parse HEAD', returnStdout: true,
           ).trim()
@@ -127,6 +173,7 @@ pipeline {
      *   그 실행의 결과는 「어느 커밋인지 모르는 검증」이므로 아래 판정 유효성이 그렇게 표시한다.
      */
     stage('배포 반영 대기') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         script {
           def deadline = System.currentTimeMillis() + (10 * 60 * 1000)
@@ -153,6 +200,7 @@ pipeline {
     }
 
     stage('의존성') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         sh '''
           set -eu
@@ -173,17 +221,20 @@ pipeline {
      *   안 넘겼으니 2단(전량)이 어차피 전부 본다」는 뜻이다 — 검증이 사라지지 않는다.
      */
     stage('E2E — 변경 도메인') {
-      when { expression { env.RUN_DOMAINS?.trim() } }
+      when {
+        allOf {
+          not { environment name: 'REGISTRATION_ONLY', value: 'yes' }
+          expression { env.RUN_DOMAINS?.trim() }
+        }
+      }
       steps {
         sh '''
           set -eu
-          SPECS=""
-          for d in $RUN_DOMAINS; do
-            # 접두가 도메인이다. 매칭이 0건이면 그 도메인은 E2E 가 없다는 뜻이라 넘어간다.
-            for f in apps/web/e2e/${d}-*.spec.ts; do
-              [ -e "$f" ] && SPECS="$SPECS ${f#apps/web/}"
-            done
-          done
+          # ★셸 글로브로 고르지 않는다. 종전 `${d}-*.spec.ts` 하나는 `backlog.spec.ts`
+          #   처럼 **하이픈 없는 이름**을 통째로 놓쳤다 — 실측으로 도메인 12개가 1단에서
+          #   빠져 있었다. 그리고 파이프라인 안의 글로브는 어느 판별식도 읽지 못한다.
+          #   계약. scripts/workflow/e2e-select.ts · e2e-domain-mapping.test.ts
+          SPECS="$(node --experimental-strip-types scripts/workflow/e2e-select.ts $RUN_DOMAINS | tr '\\n' ' ')"
           if [ -z "$SPECS" ]; then
             echo "변경 도메인에 해당하는 E2E 가 없다 — 전량이 받는다."
             exit 0
@@ -193,7 +244,7 @@ pipeline {
             -v "$HOST_WS:/w" -w /w/apps/web \\
             -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
             "$PW_IMAGE" \\
-            npx playwright test $SPECS --project=chromium
+            npx playwright test $SPECS --project=chromium $GREP_ARG
         '''
       }
     }
@@ -205,6 +256,7 @@ pipeline {
      * `코어수 ÷ 2` 라 2코어면 1개이고, 억지로 늘리면 서로 자원을 뺏어 오히려 느려진다.
      */
     stage('E2E — 전량') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         sh '''
           set -eu
@@ -212,7 +264,7 @@ pipeline {
             -v "$HOST_WS:/w" -w /w/apps/web \\
             -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
             "$PW_IMAGE" \\
-            npx playwright test --project=chromium
+            npx playwright test --project=chromium $GREP_ARG
         '''
       }
     }
@@ -228,6 +280,7 @@ pipeline {
      * 것과 같은 원리다.
      */
     stage('판정 유효성') {
+      when { not { environment name: 'REGISTRATION_ONLY', value: 'yes' } }
       steps {
         script {
           // ★워크스페이스가 아니라 **서버**를 다시 본다. 초안은 `git rev-parse HEAD` 를

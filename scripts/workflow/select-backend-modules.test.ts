@@ -41,6 +41,7 @@ import {
   modulesWithUnparsedRefs,
   requiresFullBuild,
   WIDEN_PREFIXES,
+  CI_DEFINITION_PREFIXES,
 } from './select-backend-modules.ts'
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs'
@@ -617,17 +618,23 @@ describe('CI 설정 변경 → 전량 빌드', () => {
     assert.equal(requiresFullBuild(null), true)
   })
 
-  test('★판정 입력이 WIDEN_PREFIXES 하나다 (두 목록 차단)', () => {
+  // ★2026-09-11. 전량 판정의 정본이 `CI_DEFINITION_PREFIXES` 로 갈렸다.
+  //   `WIDEN_PREFIXES` 는 모듈 선별에서 「모듈에 안 걸리는 파일」을 넓히는 일만 한다.
+  //   두 목록을 겸하게 두면 백엔드 파일 하나가 전량 빌드를 부른다 — 빠른 게이트가 꺼진다.
+  test('★판정 입력이 CI_DEFINITION_PREFIXES 하나다 (두 목록 차단)', () => {
     // 목록의 원소 **전부**가 전량으로 판정돼야 한다. 하나라도 빠지면 그 경로를 고친 PR 이
     // 일부만 검증되고, 그 사실이 조용하다.
-    for (const p of WIDEN_PREFIXES) {
-      const sample = p.endsWith('/') ? `${p}x/y.kt` : p
+    for (const p of CI_DEFINITION_PREFIXES) {
+      const sample = p.endsWith('/') ? `${p}x/y.sh` : p
       assert.equal(
         requiresFullBuild([sample]),
         true,
-        `WIDEN_PREFIXES 의 '${p}' 가 전량 판정에 안 걸린다 — 두 판단이 갈렸다.`,
+        `CI_DEFINITION_PREFIXES 의 '${p}' 가 전량 판정에 안 걸린다 — 두 판단이 갈렸다.`,
       )
     }
-    assert.ok(WIDEN_PREFIXES.length > 0, 'WIDEN_PREFIXES 가 비었다 — 위 루프가 공허해진다.')
+    assert.ok(
+      CI_DEFINITION_PREFIXES.length > 0,
+      'CI_DEFINITION_PREFIXES 가 비었다 — 위 루프가 공허해진다.',
+    )
   })
 })
