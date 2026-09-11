@@ -41,6 +41,10 @@ const LIVE_ROOTS: readonly string[] = [
   //   판별식 7종이 red 도 안 내고 사라졌을 것이다(삭제 방향으로 발현하는 「두 목록」).
   'Jenkinsfile',
   'infra/jenkins',
+  // ★배포 스크립트도 정본이다 (2026-09-11). `bts-deploy.sh` 가 「계약. scripts/workflow/…」로
+  //   판별식을 가리키는데 이 목록에 없어 훑지 않았고, 그 참조 하나가 **실재하지 않는
+  //   판별식**을 가리킨 채로 통과했다(`deploy-protects-operational-state.test.ts`).
+  'infra/deploy',
   '.claude/skills',
   '.claude/agents',
   'docs/rules',
@@ -105,10 +109,17 @@ describe('판별식 참조 정합 — 없는 장치를 「막는다」고 적지
      //   목록에 이름이 있는 것과 실제로 훑는 것은 다르다.
      //   그 파일들이 판별식을 `계약. scripts/workflow/...` 로 가리키는데, 그 참조가
      //   깨져도 아무도 몰랐다.
+     //
+     // ★★같은 결함이 `.sh` 로 재발했다 (2026-09-11). `infra/deploy/bts-deploy.sh` 와
+     //   `infra/jenkins/bootstrap.sh` 도 「계약. scripts/workflow/…」로 판별식을 가리킨다.
+     //   그 확장자가 여기 없어 `deploy-protects-operational-state.test.ts` — **한 번도
+     //   존재한 적 없는 파일** — 을 가리키는 주석이 통과했다.
+     //   교훈은 종전과 같다. 목록에 이름이 있는 것과 실제로 훑는 것은 다르다.
      (f) =>
       f.endsWith('.md') ||
       f.endsWith('.yml') ||
       f.endsWith('.yaml') ||
+      f.endsWith('.sh') ||
       f.startsWith('.husky/') ||
       f === 'Jenkinsfile' ||
       f.startsWith('Jenkinsfile.'),

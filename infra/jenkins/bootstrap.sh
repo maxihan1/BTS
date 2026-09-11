@@ -130,6 +130,95 @@ case "${1:-up}" in
           exit 2
         fi
         echo "✅ 18081 루프백 전용 확인"
+
+        # ── 배포 대상 디렉터리에 **쓸 수 있는지** ──────────────────────────────
+        #
+        # ★★마운트했다고 쓸 수 있는 것이 아니다 (2026-09-11 빌드 #47 실측).
+        #
+        #   compose 가 `/opt/bts:/opt/bts` 를 마운트했는데 그 트리는 `501:20 drwxr-xr-x`
+        #   였고 컨테이너는 uid 1000 으로 돈다. 첫 배포의 `rsync -avz --delete` 가
+        #   **한 파일도 못 쓰고** 128MB 를 보낸 뒤 `exit 23` 으로 죽었다.
+        #
+        #   사전 점검 47개 에이전트가 「/opt/bts 마운트 없음」은 잡고 이것은 놓쳤다.
+        #   compose 를 **읽으면** 마운트가 보이고 충분해 보인다 — `touch` 를 **해봐야**
+        #   보인다. 그래서 아래는 소스 검사가 아니라 컨테이너 안에서의 실제 쓰기다.
+        #
+        # ★왜 chown 이고 chmod 가 아닌가. `rsync -a` 의 `-p` 가 소스 퍼미션을 복사한다 —
+        #   `chmod -R g+w` 로 풀어 두면 **첫 배포가 그 비트를 지우고** 두 번째부터 실패한다
+        #   (성공 1회 뒤 침묵하는 최악의 양식). 소유자는 mode 와 무관하게 쓸 수 있고,
+        #   `-o`(owner)는 root 만 쓸 수 있어 jenkins 가 소유권을 되돌리지 못한다.
+        #   그래서 chown 만이 배포마다 유지된다.
+        if docker exec bts-jenkins sh -c 'touch /opt/bts/.write-probe' 2>/dev/null; then
+          docker exec bts-jenkins rm -f /opt/bts/.write-probe 2>/dev/null || true
+          echo "✅ /opt/bts 쓰기 가능 — 소유권 교정 불필요"
+        else
+          JUID="$(docker exec bts-jenkins id -u)"
+          JGID="$(docker exec bts-jenkins id -g)"
+          # ★자격증명은 되돌린다. 파이프라인(= 저장소 코드)이 읽으면 안 되는 것들이다 —
+          #   젠킨스 관리자 비밀번호와 GitHub 개인키가 여기 산다. chown 이 그것까지
+          #   uid ${JUID} 에 넘기면 **아무 Jenkinsfile 이나 그것을 읽을 수 있게 된다.**
+          #
+          # ★★목록이 `secret` 이지 `protected` 가 아니다. 둘은 의미가 다르다 —
+          #   `backups/` 는 지워지면 안 되지만 **배포가 거기에 DB 덤프를 쓴다.** 그것까지
+          #   root 로 잠그면 배포 5단계가 쓰기 불가로 죽는다(2026-09-11 실측으로 적발).
+          #   지우면 안 되는 것 ⊋ 읽히면 안 되는 것.
+          #
+          # ★★무엇을 되돌릴지 **chown 앞에서** 읽는다. 뒤에 확인하면 늦다.
+          #
+          #   2026-09-11 실측. 종전 판본은 `chown -R` 을 먼저 하고 그다음 이 파일을 찾았다.
+          #   그 파일이 아직 서버에 없어서 「자격증명이 노출된 상태다」를 정확히 찍고 죽었는데,
+          #   **그 진단이 맞았다** — 관리자 비밀번호와 배포 개인키가 2분간 uid ${JUID} 소유였다.
+          #   위험한 일을 먼저 하고 그 안전장치를 나중에 찾는 순서였다. 가드의 문구가 맞아도
+          #   위치가 틀리면 사고를 설명할 뿐 막지는 못한다.
+          #
+          # ★목록도 파싱도 여기 적지 않는다. 정본은 `../deploy/read-protected-paths.sh` 하나다 —
+          #   `bts-deploy.sh` 의 rsync 제외 목록과 **같은 스크립트**를 부른다. 목록만 나누고
+          #   파싱을 복제하면 주석·공백 처리가 갈리는 순간 다시 두 벌이 된다.
+          #   계약. scripts/workflow/deploy-protected-paths-single-source.test.ts
+          READER="$SCRIPT_DIR/../deploy/read-protected-paths.sh"
+          if [ ! -f "$READER" ]; then
+            echo "🚨 $READER 가 없다 — 무엇을 root 로 되돌려야 하는지 모른다." >&2
+            echo "   **chown 을 하지 않았다.** 소유권은 그대로이고 배포는 실패한다 —" >&2
+            echo "   자격증명이 노출되는 것보다 배포가 실패하는 쪽이 낫다." >&2
+            echo "   처방. 저장소의 infra/deploy/ 를 서버로 동기화한 뒤 다시 돌려라." >&2
+            exit 2
+          fi
+          if ! SECRET_LIST="$(bash "$READER" secret)" || [ -z "$SECRET_LIST" ]; then
+            echo "🚨 비밀 경로를 읽지 못했다. **chown 을 하지 않았다.**" >&2
+            exit 2
+          fi
+
+          echo "→ /opt/bts 에 못 쓴다. 소유권을 ${JUID}:${JGID} 로 교정한다"
+          chown -R "${JUID}:${JGID}" /opt/bts
+
+          # ★chown 앞에서 이미 읽어 둔 목록을 쓴다. 여기서 다시 읽지 않는다 —
+          #   읽기가 그사이 실패하면 되돌릴 것이 0건이 되고, 그 0건이 「보호할 것이 없다」로
+          #   읽힌다. 위험을 만든 뒤에 다시 물어보는 구조를 없앤다.
+          REVERTED=0
+          while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            [ -e "/opt/bts/$p" ] || continue
+            chown -R root:root "/opt/bts/$p"
+            REVERTED=$((REVERTED + 1))
+          done <<< "$SECRET_LIST"
+          # 목록은 비어 있지 않다고 위에서 확인했다. 그런데도 0건이면 대상이 하나도 실재하지
+          # 않는다는 뜻이고, 그것은 경로가 틀렸다는 신호다 — 통과시키면 노출이 남는다.
+          if [ "$REVERTED" = "0" ]; then
+            echo "🚨 root 로 되돌린 경로가 0건이다 — 경로가 대상에 하나도 없다." >&2
+            echo "   /opt/bts 전체가 uid ${JUID} 소유로 남았다. 자격증명이 노출된 상태다." >&2
+            exit 2
+          fi
+          echo "→ 운영 자격증명 ${REVERTED}건 root 소유로 복구"
+
+          # ★★교정했다고 끝이 아니다. **다시 해본다.** 「chown 했다」와 「쓸 수 있다」는 다르다.
+          if ! docker exec bts-jenkins sh -c 'touch /opt/bts/.write-probe' 2>/dev/null; then
+            echo "🚨 소유권 교정 후에도 /opt/bts 에 못 쓴다 — 배포는 실패한다." >&2
+            ls -ld /opt/bts >&2
+            exit 2
+          fi
+          docker exec bts-jenkins rm -f /opt/bts/.write-probe 2>/dev/null || true
+          echo "✅ /opt/bts 쓰기 가능 확인"
+        fi
         exit 0
       fi
       sleep 5

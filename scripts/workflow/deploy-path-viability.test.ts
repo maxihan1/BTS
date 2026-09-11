@@ -32,6 +32,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -66,15 +67,28 @@ describe('① rsync --delete 가 운영 상태를 지우지 않는다', () => {
       '보호 목록이 없다 — 제외 항목을 rsync 호출부에 직접 적으면 두 벌이 되고,\n' +
         '  한쪽만 고쳐지는 순간 지워질 것이 조용히 늘어난다.',
     );
-    for (const p of MUST_PROTECT) {
-      assert.match(
-        code,
-        new RegExp(`'${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`),
-        `보호 목록에 '${p}' 가 없다.\n` +
-          '★2026-09-11 실측으로 이 경로들이 대상에 실재했다. 제외에 없으면 배포가 지운다.\n' +
-          '  `backups/` 는 **유일한 DB 덤프**이고, 그것이 사라지면 되돌릴 수단이 없다.',
-      );
-    }
+
+    // ★★재조준 (2026-09-11). 종전은 `bts-deploy.sh` **소스에서** `'backups'` 같은 리터럴을
+    //   찾았다. 그 목록이 `infra/deploy/protected-paths.txt` 로 빠지면서 — 읽는 쪽이
+    //   `bootstrap.sh` 의 chown 까지 둘이 됐다 — 소스에서 사라져 red 가 났다.
+    //
+    //   표면이 옮겨졌으므로 **판별식도 따라간다.** 그리고 이왕 옮기는 김에 더 강하게 본다.
+    //   소스에 그 문자열이 있는지가 아니라 읽기 스크립트를 **실제로 돌려** 무엇이 나오는지.
+    //   「소스에 적혀 있다」와 「실행하면 그것이 나온다」는 다르다.
+    const r = spawnSync('bash', [join(ROOT, 'infra/deploy/read-protected-paths.sh')], {
+      encoding: 'utf-8',
+    });
+    assert.equal(r.status, 0, `read-protected-paths.sh 가 exit ${r.status} 로 죽었다\n${r.stderr}`);
+    const actual = (r.stdout ?? '').split('\n').filter((l) => l.trim() !== '');
+    const missing = MUST_PROTECT.filter((p) => !actual.includes(p));
+    assert.deepEqual(
+      missing,
+      [],
+      `보호 목록을 실제로 읽었더니 ${missing.join(', ')} 가 없다.\n` +
+        '★2026-09-11 실측으로 이 경로들이 대상에 실재했다. 제외에 없으면 배포가 지운다.\n' +
+        '  `backups/` 는 **유일한 DB 덤프**이고, 그것이 사라지면 되돌릴 수단이 없다.\n' +
+        `  실제로 읽힌 목록: ${actual.join(', ') || '(비었다)'}`,
+    );
   });
 
   test('★★rsync 가 그 목록을 실제로 쓴다 (선언만 하고 안 쓰면 공허)', () => {
