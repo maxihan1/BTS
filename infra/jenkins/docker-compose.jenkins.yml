@@ -46,6 +46,21 @@ services:
       # Gradle 캐시를 볼륨으로 뺀다. 컨테이너를 다시 만들어도 의존성을 다시 받지 않는다.
       - jenkins-gradle:/var/jenkins_home/.gradle
 
+      # ★★배포 대상 디렉터리. 이것이 없으면 `BTS_DEPLOY_LOCAL=1` 의 전제가 거짓이 된다 —
+      #   배포 스크립트가 **컨테이너 안에** 새 /opt/bts 를 만들어 거기에 산출물을 넣고,
+      #   `docker compose` 는 DooD 라 **호스트에서** 돌아 옛 파일을 본다.
+      #   배포가 「성공」하고 아무것도 안 바뀐다(2026-09-11 사전 점검에서 적발).
+      #
+      # ★노출면을 늘리지 않는다. 이 컨테이너는 이미 `/var/run/docker.sock` 을 갖고 있고,
+      #   그것은 **호스트 root 와 동등**하다(`docker run -v /:/host --privileged`).
+      #   그 위에 /opt/bts 를 더해도 할 수 있는 일이 늘지 않는다.
+      #
+      # ★이것이 `config.sh` 문제도 같이 푼다. 그 파일은 `.gitignore` 라 저장소 체크아웃에
+      #   없고 젠킨스는 매 빌드 `cleanWs` 로 워크스페이스를 지운다 — 그래서 배포 스크립트가
+      #   12번째 줄에서 「config.sh 없음」으로 죽었다. 이제 호스트 실물을
+      #   `/opt/bts/infra/deploy/config.sh` 로 읽을 수 있다(`BTS_DEPLOY_CONFIG`).
+      - /opt/bts:/opt/bts
+
     # 호스트 docker 그룹 GID. 하드코딩하면 호스트가 바뀔 때 조용히 권한이 사라진다 —
     # bootstrap.sh 가 `getent group docker` 로 읽어 넣는다.
     group_add:

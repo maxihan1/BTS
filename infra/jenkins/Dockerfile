@@ -20,6 +20,27 @@ RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-${
  && rm -rf /tmp/docker /tmp/docker.tgz \
  && docker --version
 
+# ── docker compose plugin ───────────────────────────────────────────────────
+# ★compose v2 는 `docker` 바이너리의 일부가 **아니다.** 별도 cli-plugin 바이너리라
+#   위 정적 docker CLI 만 넣으면 `docker: 'compose' is not a docker command` 다.
+#   배포 스크립트 4단계가 전부 compose 이므로 이것이 없으면 배포가 성립하지 않는다
+#   (2026-09-11 사전 점검에서 적발 — 배포 0회라 드러난 적이 없었다).
+ARG DOCKER_COMPOSE_VERSION=2.29.7
+RUN mkdir -p /usr/local/lib/docker/cli-plugins \
+ && curl -fsSL "https://github.com/docker/compose/releases/download/v${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+      -o /usr/local/lib/docker/cli-plugins/docker-compose \
+ && chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose \
+ && docker compose version
+
+# ── rsync ───────────────────────────────────────────────────────────────────
+# ★배포 스크립트 3단계가 `rsync -avz --delete` 다. 베이스 이미지에 없다(실측).
+#   apt 를 쓰지만 데몬 패키지를 끌고 오지 않는 단일 패키지라 위 docker CLI 의
+#   「정적 바이너리를 쓴다」 근거가 여기엔 적용되지 않는다.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends rsync \
+ && rm -rf /var/lib/apt/lists/* \
+ && rsync --version | head -1
+
 # ── node ────────────────────────────────────────────────────────────────────
 # ★버전 리터럴을 이 파일에 적지 않는다. 정본은 저장소 `.nvmrc` 하나이고 로컬(nvm/mise)도
 #   같은 파일을 읽는다. 여기 숫자를 적으면 그 순간 두 목록이 되고, 서로를 검사하지 않는다 —
