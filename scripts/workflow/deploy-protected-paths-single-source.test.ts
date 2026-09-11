@@ -14,6 +14,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import os from 'node:os'
 import { spawnSync } from 'node:child_process'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
@@ -117,7 +118,12 @@ describe('보호 경로 목록 — 정본 하나 · 읽기 한 벌', () => {
   test('★목록이 빈 채로 통과하지 않는다 — 0건은 실패다', () => {
     // 빈 목록을 받으면 rsync 제외가 0건이 되고 `--delete` 가 백업을 지운다.
     // 그 상황에서 읽기 스크립트가 **침묵하지 않고 죽는지** 실제로 확인한다.
-    const tmp = fs.mkdtempSync(path.join(REPO_ROOT, '.bts-cache/protected-'))
+    //
+    // ★임시 디렉터리는 `os.tmpdir()` 다. 저장소 안(`.bts-cache/`)에 만들지 않는다 —
+    //   그 디렉터리는 gitignore 라 CI 워크스페이스에 **없고**, 로컬에서 손으로 mkdir 한 것이
+    //   초록의 이유였다(2026-09-11 빌드 #49 에서 ENOENT 로 적발). 로컬 초록이 CI 빨강이 되는
+    //   전형이고, 원인은 「내가 초록을 만들려고 한 행동이 CI 에는 없다」는 것이다.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-protected-'))
     try {
       fs.mkdirSync(path.join(tmp, 'infra/deploy'), { recursive: true })
       fs.copyFileSync(path.join(REPO_ROOT, READER), path.join(tmp, READER))
@@ -131,7 +137,7 @@ describe('보호 경로 목록 — 정본 하나 · 읽기 한 벌', () => {
   })
 
   test('★목록 파일이 사라지면 침묵하지 않는다', () => {
-    const tmp = fs.mkdtempSync(path.join(REPO_ROOT, '.bts-cache/protected-'))
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bts-protected-'))
     try {
       fs.mkdirSync(path.join(tmp, 'infra/deploy'), { recursive: true })
       fs.copyFileSync(path.join(REPO_ROOT, READER), path.join(tmp, READER))
