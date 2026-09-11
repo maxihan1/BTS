@@ -476,6 +476,26 @@ export function renderCommands(scope: TestScope): string {
   return lines.join('\n')
 }
 
+/**
+ * GitHub Actions `route` 잡이 읽는 판정. `renderCommands` 와 **같은 `TestScope`** 를 받는다.
+ *
+ * ★렌더러가 둘인 것이지 판정이 둘인 것이 아니다. 젠킨스는 직렬 셸 한 덩어리를 `sh -e` 로
+ *   돌리면 되지만 Actions 는 9 BC 를 매트릭스로 펼쳐야 하고, 셸 블록은 잡으로 쪼개지지 않는다.
+ *   그렇다고 YAML 에 판정을 다시 적으면 `Jenkinsfile:255` 가 예고한 「두 목록」이 된다 —
+ *   **새 CI 파일이 생길 때 한쪽만 고쳐진다**. 그래서 같은 계산을 형식만 바꿔 낸다.
+ *
+ *   두 렌더가 갈리지 않는 것은 `ci-route-json-parity.test.ts` 가 차집합으로 대조한다.
+ */
+export function routeJson(scope: TestScope): string {
+  return JSON.stringify({
+    modules: scope.backendModules,
+    frontend: scope.frontend.mode,
+    e2e: scope.e2e,
+    e2eSpecs: scope.e2eSpecs,
+    planVerify: scope.planVerify,
+  })
+}
+
 function main(argv: string[]): number {
   const planIdx = argv.indexOf('--plan')
   let planText: string | null = null
@@ -505,7 +525,8 @@ function main(argv: string[]): number {
    */
   const forceFull = (process.env['BTS_FORCE_FULL'] ?? '') !== ''
   const scope = computeScope(changedFiles(), planText, { forceFull })
-  process.stdout.write(renderCommands(scope) + '\n')
+  // `--json` 은 GitHub Actions `route` 잡 전용이다. 기본은 셸 렌더 — 젠킨스와 로컬 훅이 쓴다.
+  process.stdout.write((argv.includes('--json') ? routeJson(scope) : renderCommands(scope)) + '\n')
   return 0
 }
 
