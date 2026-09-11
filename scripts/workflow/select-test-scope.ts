@@ -333,6 +333,69 @@ export function computeScope(
  *
  * @param specs 돌릴 시나리오(`apps/web` 상대경로). 비면 전량이다.
  */
+/** 기준 이미지가 실재하나. IO 는 여기 한 줄뿐이라 아래 판정은 순수하다. */
+export function hasVisualBaseline(
+  dir: string = path.join(REPO_ROOT, 'apps/web/e2e/visual/__screenshots__'),
+): boolean {
+  return fs.existsSync(dir) && fs.readdirSync(dir).some((f) => f.endsWith('.png'))
+}
+
+/** 시각 회귀를 돌 것인가, 못 돈다면 왜인가. */
+export type VisualDecision = 'run' | 'no-baseline' | 'no-frontend'
+
+/**
+ * 시각 회귀 판정.
+ *
+ * ★IO 에서 분리한다. 기준 이미지가 0장인 동안에는 「돈다」 갈래를 **디스크로는 잴 수
+ *   없어서**, 판별식이 그 분기를 지운 뮤테이션도 통과했다(2026-09-11 실측).
+ *   판정을 순수 함수로 두면 도입 전에도 세 갈래를 전부 잰다.
+ */
+export function visualDecision(
+  hasBaseline: boolean,
+  frontendMode: FrontendScope['mode'],
+): VisualDecision {
+  if (!hasBaseline) return 'no-baseline'
+  if (frontendMode === 'skip') return 'no-frontend'
+  return 'run'
+}
+
+/** 판정에 따른 실행 블록 줄. */
+export function visualLines(
+  hasBaseline: boolean,
+  frontendMode: FrontendScope['mode'],
+): string[] {
+  switch (visualDecision(hasBaseline, frontendMode)) {
+    case 'no-baseline':
+      return [
+        '# 시각 회귀 — 생략 (기준 이미지 0장 · P3 미도입)',
+        '#   기준 생성. 젠킨스 bts-ci 를 UPDATE_VISUAL_BASELINE=true 로 돌리고',
+        '#   아티팩트의 PNG 를 받아 커밋한다. 커밋되는 순간 이 줄이 명령으로 바뀐다.',
+      ]
+    case 'no-frontend':
+      return ['# 시각 회귀 — 생략 (프론트 변경 없음)']
+    default:
+      return ['# 시각 회귀 — 기준 이미지와 대조한다.', visualCommand()]
+  }
+}
+
+/**
+ * 시각 회귀 실행 명령. `e2eCommand` 와 같은 갈림(로컬 바이너리 ↔ 젠킨스 컨테이너)을 쓴다.
+ *
+ * ★`--project=visual` 이다. `chromium` 은 `e2e/visual/**` 를 `testIgnore` 하므로
+ *   그 프로젝트로는 이 스펙이 **절대** 안 돈다.
+ */
+function visualCommand(): string {
+  const image = process.env['PW_IMAGE']
+  if (image === undefined || image === '') {
+    return '(cd apps/web && node_modules/.bin/playwright test --project=visual)'
+  }
+  const hostWs = process.env['HOST_WS'] ?? '$PWD'
+  return (
+    `docker run --rm --network host -v "${hostWs}:/w" -w /w/apps/web -e CI=1 ` +
+    `"${image}" npx playwright test --project=visual`
+  )
+}
+
 function e2eCommand(specs: string[]): string {
   const args = specs.length > 0 ? ` ${specs.join(' ')}` : ''
   const image = process.env['PW_IMAGE']
@@ -382,6 +445,23 @@ export function renderCommands(scope: TestScope): string {
   } else {
     lines.push('# E2E — 생략 (시나리오 변경 없음)')
   }
+
+  /*
+   * ★★시각 회귀 (P3). **기준 이미지가 실재할 때만** 돈다.
+   *
+   * `visual` 프로젝트는 `chromium` 의 `testIgnore` 밖이라 위 E2E 줄로는 절대 안 돈다.
+   * 2026-09-11 실측에서 그 프로젝트를 돌리는 곳이 **저장소 어디에도 없었다** —
+   * 스펙 4건이 작성돼 있는데 고아였다.
+   *
+   * ★조건의 입력이 「기준 이미지 디렉터리」 하나뿐이라 두 목록이 생기지 않는다.
+   *   기준이 0장인 동안은 돌려 봐야 전부 실패하고(비교 대상이 없다), 그 빨간불은
+   *   회귀가 아니라 「아직 도입 안 됨」이라 읽는 법을 가르친다 — 거짓 빨강이다.
+   *   기준이 커밋되는 순간 자동으로 켜진다.
+   *
+   * ★프론트가 안 바뀌었으면 안 돈다. 화면 픽셀은 프론트 소스에서만 바뀐다.
+   */
+  lines.push('')
+  lines.push(...visualLines(hasVisualBaseline(), scope.frontend.mode))
 
   if (scope.planVerify.length > 0) {
     lines.push('')
