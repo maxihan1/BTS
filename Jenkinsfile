@@ -610,7 +610,9 @@ pipeline {
       //   stage post 는 skip 된 stage 에서 돌지 않는다 — 컨테이너가 그대로 남는다.
       //   self-hosted 는 머신이 살아남으므로 그렇게 쌓인다.
       //   정리는 **DB 를 쓰는 모든 stage 를 덮는 자리**에 있어야 한다.
-      sh 'docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true'
+      // ★`-v` 로 익명 볼륨까지 지운다. 없으면 컨테이너만 사라지고 볼륨이 남아
+      //   RUN_DEEP 빌드마다 디스크가 샌다 — self-hosted 는 머신이 살아남는다.
+      sh 'docker rm -f -v "$CI_PG_CONTAINER" 2>/dev/null || true'
       junit allowEmptyResults: true, testResults: 'backend/modules/*/build/test-results/**/*.xml'
       /*
        * ★★E2E 결과도 남긴다 (2026-09-11 추가).

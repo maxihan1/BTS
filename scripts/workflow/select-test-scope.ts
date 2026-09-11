@@ -46,6 +46,7 @@
 // 사용. node --experimental-strip-types scripts/workflow/select-test-scope.ts [--plan <경로>]
 // 판별식. scripts/workflow/select-test-scope.test.ts
 
+import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -207,6 +208,25 @@ export function e2eSpecs(files: string[] | null): string[] | null {
   if (files === null) return null
   return files
     .filter((f) => f.startsWith(FRONTEND_E2E) && f.endsWith('.spec.ts'))
+    /*
+     * ★★`--project=chromium` 이 못 도는 것을 넘기지 않는다 (2026-09-11).
+     *
+     * 두 경우가 **거짓 빨강**을 만든다. 둘 다 playwright 가 `No tests found` 로 exit 1 이다.
+     *
+     *   ① `e2e/visual/` — `playwright.config.ts` 의 chromium 프로젝트가
+     *      `testIgnore: '**‍/e2e/visual/**'` 다. 그 스펙은 `--project=visual` 전용이다.
+     *   ② **삭제된 스펙** — `diff-base.ts` 가 `--no-renames` 라 개명하면 옛 경로가
+     *      반드시 삭제로 목록에 들어온다. 그 파일은 디스크에 없다.
+     *
+     * 실측. `board-kanban.spec.ts` → `board-board.spec.ts` 로 개명하고 푸시하면
+     * 훅이 exit 1 로 막는다. 에러 문구는 「정규식 인자를 확인하라」라 원인이 안 보인다.
+     *
+     * ★여기서 사람이 배우는 처방은 `git push --no-verify` 이고, 그 순간 **판별식 전량**
+     *   (유일한 기계 강제 지점)까지 함께 꺼진다. 훅 주석이 스스로 경고한 그 상태다.
+     *   거짓 빨강은 가드를 무력화하는 가장 흔한 경로다.
+     */
+    .filter((f) => !f.startsWith(`${FRONTEND_E2E}visual/`))
+    .filter((f) => fs.existsSync(path.resolve(REPO_ROOT, f)))
     .map((f) => f.slice(FRONTEND_PREFIX.length))
 }
 
