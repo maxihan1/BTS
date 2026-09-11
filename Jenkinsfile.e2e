@@ -88,6 +88,23 @@ pipeline {
     //     빌드가 항상 죽는다 — 잡 XML 주석이 경고한 그 자리다.
     RUN_BASE_URL = "${params.BASE_URL ?: 'https://bts.maxihan.com'}"
     RUN_DOMAINS = "${params.CHANGED_DOMAINS ?: ''}"
+
+    /*
+     * ★★실서버 대상이면 `@prod` 태그가 붙은 스펙만 돈다 (2026-09-11).
+     *
+     * 스펙 168개 중 146개가 `alice` 로 로그인한다 — dev 시드 계정이고, MSW 는
+     * `import.meta.env.DEV` 에서만 뜬다(`apps/web/src/main.tsx`). 배포본은 `vite build`
+     * 라 DEV=false 이고, 실서버에는 그 계정이 없다(`ProdDevSeedAbsenceBootTest` 가
+     * 부재를 단언한다). 즉 전량을 그대로 돌리면 **구조적으로 전부 red** 이고,
+     * 그 3시간 동안 executor 1개를 점유해 `bts-ci` 가 멈춘다.
+     *
+     * 「배포가 잘못됐다」로 보이지만 실제로는 「스펙이 이 대상에서 돌 수 없다」다.
+     * 대상이 로컬 dev 서버면(MSW 가 뜬다) 필터를 걸지 않는다.
+     *
+     * ★실서버 검증 범위를 넓히려면 스펙 제목에 `@prod` 를 붙이되, `loginAsAlice` 와
+     *   `src/mocks` 를 쓰지 않아야 한다. `e2e-prod-target.test.ts` 가 그것을 강제한다.
+     */
+    GREP_ARG = "${params.BASE_URL?.startsWith('http://localhost') ? '' : '--grep @prod'}"
   }
 
   stages {
@@ -213,13 +230,11 @@ pipeline {
       steps {
         sh '''
           set -eu
-          SPECS=""
-          for d in $RUN_DOMAINS; do
-            # 접두가 도메인이다. 매칭이 0건이면 그 도메인은 E2E 가 없다는 뜻이라 넘어간다.
-            for f in apps/web/e2e/${d}-*.spec.ts; do
-              [ -e "$f" ] && SPECS="$SPECS ${f#apps/web/}"
-            done
-          done
+          # ★셸 글로브로 고르지 않는다. 종전 `${d}-*.spec.ts` 하나는 `backlog.spec.ts`
+          #   처럼 **하이픈 없는 이름**을 통째로 놓쳤다 — 실측으로 도메인 12개가 1단에서
+          #   빠져 있었다. 그리고 파이프라인 안의 글로브는 어느 판별식도 읽지 못한다.
+          #   계약. scripts/workflow/e2e-select.ts · e2e-domain-mapping.test.ts
+          SPECS="$(node --experimental-strip-types scripts/workflow/e2e-select.ts $RUN_DOMAINS | tr '\\n' ' ')"
           if [ -z "$SPECS" ]; then
             echo "변경 도메인에 해당하는 E2E 가 없다 — 전량이 받는다."
             exit 0
@@ -229,7 +244,7 @@ pipeline {
             -v "$HOST_WS:/w" -w /w/apps/web \\
             -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
             "$PW_IMAGE" \\
-            npx playwright test $SPECS --project=chromium
+            npx playwright test $SPECS --project=chromium $GREP_ARG
         '''
       }
     }
@@ -249,7 +264,7 @@ pipeline {
             -v "$HOST_WS:/w" -w /w/apps/web \\
             -e CI=1 -e PLAYWRIGHT_BASE_URL="$RUN_BASE_URL" \\
             "$PW_IMAGE" \\
-            npx playwright test --project=chromium
+            npx playwright test --project=chromium $GREP_ARG
         '''
       }
     }
