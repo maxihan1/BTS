@@ -97,6 +97,22 @@ jobs:
             echo "deep=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # 정합 게이트 — SDD ↔ docs/plan ↔ CLAUDE.md 의 FR 카운트 drift 를 본다.
+  # 티어와 무관하게 항상 돈다. 범위 계산의 대상이 아니고 초 단위다.
+  #
+  # ★`build-doc-index.mjs --check` 를 여기 두지 않는다. 그 생성기는 저장소 **밖**
+  #   `~/.claude/projects/<프로젝트>/memory/MEMORY.md` 를 읽어서 CI 머신에서는 `ENOENT` 로
+  #   죽는다(젠킨스 빌드 #1 실측). `.husky/pre-commit` 에만 걸려 있는 것이 정답이고
+  #   `behavior-rules.md §4` 가 그것을 「저장소 밖 메모리의 유일한 봉인」이라고 적는다.
+  #   젠킨스 초안이 모르고 옮겨 왔다가 되돌렸다. **다시 넣지 말 것** — 이 경고를 함께 옮긴다.
+  consistency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: 정본 정합
+        run: bash scripts/verify-master-plan.sh
+
   # ★조건을 걸지 않는다. `discriminant-hook-wiring` 의 무조건성 봉인과 같은 취지다 —
   #   판별식은 CI 설정 자체를 검사하므로 「경로가 안 바뀌었으니 생략」이 곧 사각이 된다.
   #   비용도 그럴 만하다. GHA 실측 43초.
@@ -305,3 +321,11 @@ jobs:
         env:
           BTS_DB_URL: jdbc:postgresql://localhost:5433/bts
         run: ./gradlew :modules:app:test --console=plain
+      # ★비-운영 프로파일 조립. `Jenkinsfile:525` 가 **저장소에서 유일한 실행 배선**이라
+      #   그것을 지우면 이 태스크가 어디서도 0회가 된다 — 젠킨스 철거보다 먼저 옮긴다.
+      #   (`build.gradle.kts:131` 이 정의하고 `:114` 가 운영 프로파일과 갈라 둔다.)
+      - name: 비-운영 조립
+        working-directory: backend
+        env:
+          BTS_DB_URL: jdbc:postgresql://localhost:5433/bts
+        run: ./gradlew :modules:app:nonProdAssemblyTest --console=plain
