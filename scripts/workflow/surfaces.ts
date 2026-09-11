@@ -114,6 +114,12 @@ export const SURFACES = {
       // ★`.github/workflows/**` 를 지웠다(2026-09-09 · P4b). CI 정본이 젠킨스로 옮겨지고
       //   워크플로우 4종을 철거해 **아무 파일도 안 무는 죽은 글로브**가 됐다.
       //   그 자리는 아래 `Jenkinsfile` · `infra/jenkins/**` 가 잇는다.
+      //
+      // ★★2026-09-11 에 **되돌렸다.** 검증 정본이 GHA 로 돌아왔는데 이 글로브를 안 되살려서
+      //   `detect-tier.ts .github/workflows/verify.yml` 이 **T1 · UNMAPPED** 였다(실측).
+      //   CI 정의를 고치는 작업이 보안 표면보다 낮은 티어로 내려가면 리뷰·게이트가 얕아진다 —
+      //   바로 아래 `Jenkinsfile.e2e` 가 같은 이유로 T1 이던 것을 고친 기록이 남아 있다.
+      '.github/workflows/**',
       '.husky/**',
       'scripts/verify-*.sh',
       'scripts/verify/**',
