@@ -99,7 +99,19 @@ export function referencedDiscriminants(source: string): string[] {
 describe('판별식 참조 정합 — 없는 장치를 「막는다」고 적지 않는다', () => {
   const existing = existingDiscriminants()
   const files = LIVE_ROOTS.flatMap((r) => walk(r)).filter(
-    (f) => f.endsWith('.md') || f.endsWith('.yml') || f.endsWith('.yaml') || f.startsWith('.husky/'),
+    // ★파이프라인 정의도 훑는다 (2026-09-11). 종전 확장자 필터가 `.md/.yml/.yaml/.husky`
+     //   뿐이라 `Jenkinsfile`·`Jenkinsfile.e2e` 가 **통째로 빠져** 있었다. LIVE_ROOTS 에
+     //   `'Jenkinsfile'` 이 적혀 있었지만 그 필터가 다시 걸러내 무효였다 —
+     //   목록에 이름이 있는 것과 실제로 훑는 것은 다르다.
+     //   그 파일들이 판별식을 `계약. scripts/workflow/...` 로 가리키는데, 그 참조가
+     //   깨져도 아무도 몰랐다.
+     (f) =>
+      f.endsWith('.md') ||
+      f.endsWith('.yml') ||
+      f.endsWith('.yaml') ||
+      f.startsWith('.husky/') ||
+      f === 'Jenkinsfile' ||
+      f.startsWith('Jenkinsfile.'),
   )
 
   test('★양성 대조군 — 훑기가 비어 있지 않다', () => {

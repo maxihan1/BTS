@@ -26,9 +26,9 @@ github-branch-source:1983.vfa_27ed961853
 gson-api:2.14.0-201.v8eefe5515533
 instance-identity:203.v15e81a_1b_7a_38
 ionicons-api:94.vcc3065403257
+jackson-annotations2-api:2.22-19.v10a_a_582ea_26e
 jackson2-api:2.22.2-445.vdc613f1d8012
 jackson3-api:3.2.2-96.v599957900a_1a_
-jackson-annotations2-api:2.22-19.v10a_a_582ea_26e
 jakarta-activation-api:2.1.4-1
 jakarta-mail-api:2.1.5-1
 jakarta-xml-bind-api:4.0.9-19.v2b_a_5b_44d9a_1c
@@ -48,6 +48,7 @@ mina-sshd-api-core:2.19.0-192.v2b_a_7b_2c1dc71
 okhttp-api:5.3.2-200.vedb_720a_cf1f8
 pipeline-build-step:601.v6d4c6d1a_9dc7
 pipeline-graph-analysis:254.v0f63a_a_447dca_
+pipeline-graph-view:1013.v9f83fd83c063
 pipeline-groovy-lib:805.va_fc79344957d
 pipeline-input-step:560.v56198a_642157
 pipeline-milestone-step:152.v6e22b_8cfc66c
