@@ -123,14 +123,30 @@ export function frontendScope(files: string[] | null): FrontendScope {
     return { mode: 'all', files: [], reason: '비교 기준을 못 정했다 — 전량으로 넓힌다' }
   }
 
-  const fe = files.filter((f) => f.startsWith(FRONTEND_PREFIX))
-  if (fe.length === 0) {
-    return { mode: 'skip', files: [], reason: '프론트 변경 없음' }
-  }
-
+  /*
+   * ★★넓힘 판정이 **프론트 경로 필터보다 먼저**다 (2026-09-11 수정).
+   *
+   * 종전에는 `files.filter(f => f.startsWith('apps/web/'))` 가 비면 즉시 `skip` 이었다.
+   * 그런데 `FE_WIDEN` 12항목 중 넷(`package.json` `pnpm-lock.yaml` `pnpm-workspace.yaml`
+   * `.nvmrc`)은 **저장소 루트**라 절대 `apps/web/` 로 시작하지 않는다. 그래서 그 넷은
+   * `apps/web/**` 파일이 **함께** 바뀐 경우에만 발화했다 — 단독이면 도달 불가였다.
+   *
+   * 실측(2026-09-11). `pnpm-lock.yaml` 단독 → `mode=skip · 프론트 변경 없음`.
+   * 의존성 업그레이드 PR(package.json + lock 만)이 **프론트 테스트 0건**으로 초록이었다.
+   * react·zod·msw 메이저 업그레이드가 그 문으로 들어온다.
+   *
+   * ★판별식도 이 구멍을 못 봤다. `select-test-scope.test.ts` 가 넓힘 항목을 넣을 때
+   *   `apps/web/src/routes/a.tsx` 를 **항상 끼워** 불렀다 — 단독 케이스를 한 번도 안 쟀다.
+   *   짝 파일이 가드를 대신 발화시키고 있었다(가짜 초록).
+   */
   const widen = files.filter((f) => FE_WIDEN.some((w) => (w.endsWith('/') ? f.startsWith(w) : f === w)))
   if (widen.length > 0) {
     return { mode: 'all', files: [], reason: `모듈 그래프 밖 변경 — ${widen.join(' · ')}` }
+  }
+
+  const fe = files.filter((f) => f.startsWith(FRONTEND_PREFIX))
+  if (fe.length === 0) {
+    return { mode: 'skip', files: [], reason: '프론트 변경 없음' }
   }
 
   // e2e 는 vitest 대상이 아니다. src 밖의 프론트 변경(스크립트·정적파일)은 그래프로 못 닫으므로 전량.
@@ -224,7 +240,23 @@ export interface TestScope {
   planVerify: string[]
 }
 
-export function computeScope(files: string[] | null, planText: string | null): TestScope {
+/**
+ * 범위 계산 옵션.
+ *
+ * `forceFull` — 백엔드·프론트를 **전량**으로 넓힌다(`전량` stage 가 쓴다).
+ *   ★E2E 는 넓히지 않는다. 정책상 전량 E2E(약 3시간)는 **배포 이후**의 몫이고,
+ *     CI 의 전량 빌드는 「이 커밋이 괜찮은가」를 보는 자리다. E2E 는 여기서도
+ *     **변경 도메인**만 돈다 — 그것이 2층의 약속이다.
+ */
+export interface ScopeOptions {
+  forceFull?: boolean
+}
+
+export function computeScope(
+  files: string[] | null,
+  planText: string | null,
+  opts: ScopeOptions = {},
+): TestScope {
   const backend = files === null ? null : files.filter((f) => f.startsWith(BACKEND_PREFIX))
 
   let backendModules: string[]
@@ -243,10 +275,19 @@ export function computeScope(files: string[] | null, planText: string | null): T
     backendReason = picked.reason
   }
 
+  if (opts.forceFull === true) {
+    backendModules = allModules()
+    backendReason = '전량 빌드 — 영향 범위를 계산하지 않고 전 모듈을 돈다'
+  }
+
   return {
     backendModules,
     backendReason,
-    frontend: frontendScope(files),
+    // ★전량이어도 E2E 는 변경 도메인만이다. 위 ScopeOptions 주석 참조.
+    frontend:
+      opts.forceFull === true
+        ? { mode: 'all', files: [], reason: '전량 빌드' }
+        : frontendScope(files),
     e2e: e2eTouched(files),
     e2eSpecs: e2eSpecs(files),
     planVerify: planText === null ? [] : planVerifyCommands(planText),
@@ -353,7 +394,17 @@ function main(argv: string[]): number {
     planText = r.stdout
   }
 
-  const scope = computeScope(changedFiles(), planText)
+  /*
+   * ★`BTS_FORCE_FULL=1` 이면 전량이다 — `Jenkinsfile` 의 `전량` stage 가 쓴다.
+   *
+   *   종전에는 그 stage 가 명령 목록을 **손으로 다시 적었다.** 그러면 두 목록이 되고,
+   *   실제로 갈려 있었다 — 계산기 블록에는 E2E 가 있는데 전량 stage 에는 없었다.
+   *   즉 **넓힐수록 검증이 줄었다.** 야간 크론(조합 위험을 받는 자리)도 그 경로다.
+   *
+   *   이제 두 stage 가 같은 계산기를 부르고, 다른 것은 이 플래그 하나다.
+   */
+  const forceFull = (process.env['BTS_FORCE_FULL'] ?? '') !== ''
+  const scope = computeScope(changedFiles(), planText, { forceFull })
   process.stdout.write(renderCommands(scope) + '\n')
   return 0
 }

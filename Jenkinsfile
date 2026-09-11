@@ -401,6 +401,25 @@ pipeline {
       }
     }
 
+    /*
+     * ★★명령을 여기 다시 적지 않는다 (2026-09-11 수정).
+     *
+     * 종전에는 이 stage 가 실행할 명령 목록을 **손으로** 갖고 있었다. 그래서
+     * 「계산기가 내는 블록」과 「전량 stage 의 블록」이라는 두 목록이 생겼고,
+     * **실제로 갈려 있었다** — 계산기 블록에는 E2E 줄이 있는데 여기에는 없었다.
+     *
+     * 결과. `RUN_FULL` 로 넓히는 순간 `빠른 게이트`(E2E 를 내는 유일한 자리)가 skip 되고,
+     * 이 stage 에는 E2E 가 없어 **E2E 가 0회**가 됐다. 넓힐수록 검증이 줄었다.
+     * 조합 위험을 받는다고 선언한 **야간 크론**도 그 경로다.
+     *
+     * 같은 파일 87~89행이 「영향 범위를 모르니 전부 본다면서 정작 그 둘을 안 보는
+     * 반쪽 확대」라고 적어 조립 부팅·인프라 봉인은 고쳤는데, E2E 가 같은 자리에 남아 있었다.
+     *
+     * ★`BTS_FORCE_FULL=1` 이 계산기에게 「백엔드·프론트는 전량」을 시킨다.
+     *   E2E 는 넓히지 않는다 — 전량 E2E(약 3시간)는 정책상 **배포 이후**의 몫이고,
+     *   여기서는 2층의 약속대로 **변경 도메인**만 돈다.
+     *   계약. scripts/workflow/full-stage-uses-calculator.test.ts
+     */
     stage('전량') {
       when { environment name: 'RUN_FULL', value: 'true' }
       steps {
@@ -410,12 +429,11 @@ pipeline {
           #   조용히 떨어지고, 그건 이 머신에 없다 — 실패가 컨텍스트 로드 오류 60건으로 나타나
           #   원인이 안 보인다(빌드 #17).
           [ -n "${BTS_DB_URL:-}" ] || { echo "BTS_DB_URL 이 비었다 — DB 마련 stage 를 확인하라"; exit 1; }
-          node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
-          pnpm --filter @bts/web test
-          cd backend
-          ./gradlew test --console=plain
-          # `--rerun-tasks` 로 캐시 거짓 초록을 막는다.
-          ./gradlew ktlintCheck detekt --rerun-tasks --console=plain
+          BTS_FORCE_FULL=1 node --experimental-strip-types scripts/workflow/select-test-scope.ts > .ci-scope.sh
+          echo "───── 실행할 범위 (전량) ─────"
+          cat .ci-scope.sh
+          echo "──────────────────────"
+          sh -e .ci-scope.sh
         '''
       }
     }
