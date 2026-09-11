@@ -26,8 +26,13 @@
 //    이 짝이 없으면 「차집합을 계산했는데 늘 빈 집합」인 공허한 가드가 된다.
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { computeScope, renderCommands, routeJson } from './select-test-scope.ts'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { computeScope, renderCommands, routeJson, sectionCommands, SECTIONS } from './select-test-scope.ts'
 import type { TestScope } from './select-test-scope.ts'
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 
 /** 셸 렌더에서 `:modules:<bc>:test` 태스크의 BC 이름을 뽑는다. */
 function modulesInShell(shell: string): string[] {
@@ -105,6 +110,55 @@ describe('route JSON ⟺ 셸 렌더 — 같은 계산에서 나온다', () => {
       fromShell,
       fromJson,
       '★비-공허 확인 실패 — 판정을 오염시켰는데도 차집합이 0이다. ②는 아무것도 지키지 않는다.',
+    )
+  })
+
+  // ⑥ 섹션 렌더가 실제로 내용을 낸다. `renderCommands` 는 이 섹션들의 **조합**이므로
+  //   「조합 == 전체」는 정의상 참이라 단언할 가치가 없다 — 그 자리에 두면 공허한 가드다.
+  //   지킬 값어치가 있는 것은 섹션이 빈 껍데기가 아니라는 것뿐이다.
+  test('★⑥ 각 섹션이 실제 내용을 낸다 — 빈 껍데기가 아니다', () => {
+    const scope = computeScope(['backend/modules/issue-tracking/src/main/kotlin/A.kt', 'apps/web/src/x.ts'], null)
+    for (const s of SECTIONS) {
+      if (s === 'plan') continue // plan 은 지정이 없으면 비는 것이 정상이다
+      assert.ok(
+        sectionCommands(scope, s).trim().length > 0,
+        `섹션 '${s}' 이 빈 문자열이다 — GHA 잡이 아무 명령도 못 받는다`,
+      )
+    }
+    assert.equal(sectionCommands(scope, 'plan'), '', 'plan 지정이 없으면 빈 문자열이어야 한다')
+  })
+
+  // ⑦ ★진짜 지켜야 할 것 — YAML 이 판정을 **다시 적지 않는가**.
+  //   `Jenkinsfile:255` 가 예고한 자리다. 명령을 YAML 에 리터럴로 박으면 계산기와 갈리고,
+  //   갈린 것은 「새 CI 파일이 생길 때 한쪽만 고쳐진다」로 나타난다.
+  test('★★⑦ verify.yml 이 테스트 명령을 리터럴로 적지 않는다', () => {
+    const p = path.resolve(REPO_ROOT, '.github/workflows/verify.yml')
+    // ★파일이 없으면 통과가 아니라 실패다. 「검사 대상이 없어서 초록」은 침묵 실패다.
+    assert.ok(fs.existsSync(p), `verify.yml 이 없다: ${p}`)
+    const src = fs.readFileSync(p, 'utf-8')
+
+    // 주석(#)을 뺀 실행 줄만 본다 — 설명문에 명령이 인용되는 것은 막을 이유가 없다.
+    const exec = src
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('#'))
+      .join('\n')
+
+    const BANNED: ReadonlyArray<[RegExp, string]> = [
+      [/vitest\s+(run|related)/, 'vitest 실행을 YAML 이 직접 적었다'],
+      [/playwright\s+test/, 'playwright 실행을 YAML 이 직접 적었다'],
+    ]
+    for (const [re, why] of BANNED) {
+      assert.ok(
+        !re.test(exec),
+        `${why} — 계산기(sectionCommands)를 통해 받아야 한다.\n` +
+          '★YAML 에 적으면 계산기와 두 목록이 되고, 형식이 바뀌어도 한쪽만 고쳐진다.',
+      )
+    }
+
+    // 비-공허 짝. 위 정규식이 실제로 무는지 가짜 입력으로 확인한다.
+    assert.ok(
+      BANNED[0]![0].test('run: pnpm exec vitest run'),
+      '★비-공허 확인 실패 — 금지 정규식이 명령을 물지 못한다. ⑦은 아무것도 지키지 않는다.',
     )
   })
 

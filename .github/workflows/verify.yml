@@ -1,0 +1,181 @@
+# 검증 정본 — 무엇을 돌릴지는 계산기가 정하고 이 파일은 그 판정을 실행만 한다
+#
+# ## ★`paths:` 를 쓰지 않는다 — 실측 근거
+#
+# 「티어별 최소 CI」의 순진한 구현은 `on.push.paths:` 필터다. 이 저장소에서는 틀린 답이다.
+# `surfaces.ts` 의 60 글로브로 생성하면 다음이 **매칭 0건**이다.
+#
+#     apps/web/playwright.config.ts   apps/web/vite.config.ts   apps/web/vitest.config.ts
+#     apps/web/tsconfig.app.json      backend/modules/<bc>/build.gradle.kts
+#     infra/docker-compose.dev.yml
+#
+# `playwright.config.ts` 의 `testIgnore` 한 줄이 E2E 819건을 끈다. 그 파일을 고치면
+# 워크플로우가 **아예 안 뜬다** — 빨간불이 아니라 부재다. 그리고 `paths:` 로 걸러진
+# 워크플로우를 브랜치 보호의 필수 체크로 걸면 PR 이 영구 pending 이 된다.
+#
+# 범주 오류였다. `surfaces.ts` 는 「어떤 절차를 밟을까」의 분류기이지
+# 「무엇이 바뀌면 무엇을 돌릴까」의 목록이 아니다. 후자의 정본은 이미 따로 있다.
+#
+# ## 그래서 — 워크플로우는 항상 뜨고, 잡이 조건을 진다
+#
+# `route` 잡이 `select-test-scope.ts --json` 을 **1회** 실행해 판정을 내고,
+# 나머지 잡이 `needs.route.outputs.*` 를 `if:` 로 읽는다. 티어별 최소는 잡 수준에서 실현된다.
+#
+# ★YAML 에 판정을 다시 적지 않는다. `Jenkinsfile:255` 가 이 순간을 예고했다 —
+#   「Groovy 로 다시 적으면 두 목록이 되고 **새 CI 파일이 생길 때 한쪽만 고쳐진다**」.
+#   계약. scripts/workflow/ci-route-json-parity.test.ts
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 판정 1회. 여기서 나온 값이 아래 모든 잡의 조건이 된다.
+  route:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      modules: ${{ steps.scope.outputs.modules }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+      e2e: ${{ steps.scope.outputs.e2e }}
+      deep: ${{ steps.scope.outputs.deep }}
+    steps:
+      # ★fetch-depth: 0 이 필수다. 얕은 클론이면 `merge-base` 가 실패하고
+      #   계산기가 「비교 기준을 못 정했다 — 전 모듈로 넓힌다」로 폴백한다.
+      #   그러면 매번 전량이 돌아 이 파일의 목적이 통째로 사라진다.
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - id: scope
+        name: 범위 판정 — 계산기 1회
+        env:
+          # `diff-base.ts` 는 `BTS_DIFF_BASE` 를 1순위로 읽는다(젠킨스의
+          # GIT_PREVIOUS_SUCCESSFUL_COMMIT 자리). 없으면 origin/main 분기점으로 폴백한다.
+          BTS_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          scope="$(node --experimental-strip-types scripts/workflow/select-test-scope.ts --json)"
+          echo "판정: $scope"
+          echo "modules=$(echo "$scope" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.stringify(JSON.parse(s).modules)))')" >> "$GITHUB_OUTPUT"
+          echo "frontend=$(echo "$scope" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).frontend))')" >> "$GITHUB_OUTPUT"
+          echo "e2e=$(echo "$scope" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).e2e))')" >> "$GITHUB_OUTPUT"
+          # main 푸시는 조립 부팅까지 본다 — 젠킨스 RUN_DEEP 과 같은 자리다.
+          echo "deep=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}" >> "$GITHUB_OUTPUT"
+
+  # ★조건을 걸지 않는다. `discriminant-hook-wiring` 의 무조건성 봉인과 같은 취지다 —
+  #   판별식은 CI 설정 자체를 검사하므로 「경로가 안 바뀌었으니 생략」이 곧 사각이 된다.
+  #   비용도 그럴 만하다. GHA 실측 43초.
+  discriminants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: 판별식 전량
+        run: node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'
+
+  frontend:
+    needs: route
+    if: needs.route.outputs.frontend != 'skip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @bts/web typecheck
+      - run: pnpm --filter @bts/web lint
+      # 계산기가 `all` 인지 `related` 인지 이미 정했다. 여기서 다시 판정하지 않는다.
+      # ★`--section` 으로 블록을 통째로 받는다. YAML 이 명령을 리터럴로 적으면
+      #   계산기와 두 목록이 된다 — `ci-route-json-parity.test.ts` ⑦이 그것을 막는다.
+      - name: vitest — 계산기가 낸 블록을 그대로 돈다
+        env:
+          BTS_DIFF_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -eu
+          node --experimental-strip-types scripts/workflow/select-test-scope.ts --section frontend > .ci-frontend.sh
+          cat .ci-frontend.sh
+          sh -e .ci-frontend.sh
+
+  backend:
+    needs: route
+    if: needs.route.outputs.modules != '[]'
+    runs-on: ubuntu-latest
+    # ★timeout 은 실측으로 정한다. runner-smoke(run 34602622965)가
+    #   최장 모듈 issue-tracking 의 콜드 벽시계를 재고 있다. 맥 8코어 웜이 9분 13초였다.
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.route.outputs.modules) }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6.3.0
+      - name: ${{ matrix.module }} 테스트
+        working-directory: backend
+        run: ./gradlew :modules:${{ matrix.module }}:test --console=plain
+      - name: ${{ matrix.module }} 린트
+        working-directory: backend
+        run: ./gradlew :modules:${{ matrix.module }}:ktlintCheck :modules:${{ matrix.module }}:detekt --rerun-tasks --console=plain
+
+  # 조립 부팅. main 푸시에서만 — 젠킨스 RUN_DEEP 과 같은 자리다.
+  # ★순정 postgres 로 통과하는 것을 실측으로 확인했다 (runner-smoke assemble · 7분 57초).
+  #   ProdAssemblyHttpTestBase.kt:33 이 「손수 시드된 dev DB」를 전제로 적고 있어
+  #   설계 단계에서는 실패가 예상됐으나, pgmq 이미지 + BTS_DB_URL 만으로 충분했다.
+  assemble:
+    needs: route
+    if: needs.route.outputs.deep == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # ★일반 postgres:16 은 마이그레이션에서 죽는다 — pgmq 확장이 필요하다 (ADR 2026-05-22).
+        image: quay.io/tembo/pg16-pgmq:latest
+        env:
+          POSTGRES_DB: bts
+          POSTGRES_USER: bts
+          POSTGRES_PASSWORD: bts
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U bts"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6.3.0
+      - name: 조립 부팅
+        working-directory: backend
+        env:
+          BTS_DB_URL: jdbc:postgresql://localhost:5433/bts
+        run: ./gradlew :modules:app:test --console=plain
