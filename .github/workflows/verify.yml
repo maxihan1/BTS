@@ -170,6 +170,69 @@ jobs:
         working-directory: backend
         run: ./gradlew :modules:${{ matrix.module }}:ktlintCheck :modules:${{ matrix.module }}:detekt --rerun-tasks --console=plain
 
+  # ★E2E 전량. Maxi 확정(2026-09-11) — 종전에는 「바뀐 스펙만」이라 169파일 819건이
+  #   파이프라인 어디에서도 안 돌았다. 전량이므로 **판정할 것이 없다** — 계산기를 거치지 않고
+  #   YAML 이 직접 적어도 두 목록이 생기지 않는다(`ci-route-json-parity` ⑦의 경계).
+  #   대신 지켜야 할 것은 「샤드가 전체를 빠짐없이 덮는가」이고 그것은 판별식의 몫이다.
+  #   계약. scripts/workflow/e2e-shard-coverage.test.ts
+  e2e:
+    needs: route
+    if: needs.route.outputs.frontend != 'skip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: playwright 브라우저
+        run: pnpm --filter @bts/web exec playwright install --with-deps chromium
+      - name: E2E 샤드 ${{ matrix.shard }}/8
+        working-directory: apps/web
+        run: pnpm exec playwright test --project=chromium --shard=${{ matrix.shard }}/8
+      - uses: actions/upload-artifact@v7.0.1
+        if: failure()
+        with:
+          name: e2e-shard-${{ matrix.shard }}
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+
+  # 시각 회귀. ★소유자는 **이 잡 하나**다 — 두 곳에서 돌면 같은 기준 PNG 4장을 놓고
+  #   두 번 비교하게 되고, 한쪽 러너가 다르면 그 차이가 회귀로 보인다.
+  #   기준은 #492 에서 리눅스 러너로 생성됐다. GHA 러너와 픽셀 일치를 실측으로 확인했다
+  #   (runner-smoke run 34602622965 visual · 2분 3초 · success).
+  visual:
+    needs: route
+    if: needs.route.outputs.frontend != 'skip'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: playwright 브라우저
+        run: pnpm --filter @bts/web exec playwright install --with-deps chromium
+      - name: 시각 회귀
+        working-directory: apps/web
+        run: pnpm exec playwright test --project=visual
+      - uses: actions/upload-artifact@v7.0.1
+        if: failure()
+        with:
+          name: visual-diff
+          path: apps/web/test-results/
+
   # 조립 부팅. main 푸시에서만 — 젠킨스 RUN_DEEP 과 같은 자리다.
   # ★순정 postgres 로 통과하는 것을 실측으로 확인했다 (runner-smoke assemble · 7분 57초).
   #   ProdAssemblyHttpTestBase.kt:33 이 「손수 시드된 dev DB」를 전제로 적고 있어

@@ -143,9 +143,19 @@ describe('route JSON ⟺ 셸 렌더 — 같은 계산에서 나온다', () => {
       .filter((l) => !l.trim().startsWith('#'))
       .join('\n')
 
+    /*
+     * ★`playwright test` 는 금지 대상이 **아니다** (2026-09-11 · 경계를 바로잡는다).
+     *
+     * 이 판별식이 막는 것은 「판정을 두 곳에 적는 것」이지 「명령을 적는 것」이 아니다.
+     * vitest 는 계산기가 `all` 인지 `related` 인지를 **정해서** 인자가 달라지므로,
+     * YAML 이 직접 적으면 그 판정이 두 벌이 된다.
+     *
+     * E2E 는 다르다. Maxi 확정으로 **전량**이라 판정할 것이 없다 — 조건이 없으면
+     * 갈릴 목록도 없다. 대신 지켜야 할 것은 「샤드가 전체를 빠짐없이 덮는가」이고
+     * 그것은 `e2e-shard-coverage.test.ts` 의 몫이다.
+     */
     const BANNED: ReadonlyArray<[RegExp, string]> = [
       [/vitest\s+(run|related)/, 'vitest 실행을 YAML 이 직접 적었다'],
-      [/playwright\s+test/, 'playwright 실행을 YAML 이 직접 적었다'],
     ]
     for (const [re, why] of BANNED) {
       assert.ok(
