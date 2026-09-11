@@ -1,0 +1,164 @@
+# GitHub-hosted 러너에서 이 저장소가 실제로 도는지 재는 일회성 실측 — 6값을 재고 폐기한다
+#
+# 왜 있나. 설계 벽시계 추정이 실측과 어긋난다. 맥 8코어 웜 상태에서
+# `:modules:issue-tracking:test` 가 9분 13초다. 4 vCPU 리눅스 콜드면 이 한 모듈이
+# 20~30분일 수 있고, 그 위에 세운 timeout 은 동전던지기다.
+#
+# 재는 것 (스펙 docs/specs/2026-09-11-cicd-gha-migration.md §착수 전 실측 필수)
+#   ① 최장 모듈 벽시계 (콜드 캐시)      ② generateJooq 콜드 비용
+#   ③ 시드 없는 순정 postgres 에서 :modules:app:test 가 통과하는가
+#   ④ 판별식 792건이 GHA 에서 몇 건 실패하는가
+#   ⑤ 시각 회귀 기준 PNG 4장이 GHA 러너와 픽셀 일치하는가
+#   ⑥ -Xmx4096m + kotlin daemon 3GB(합 7GB) 선언이 러너 사양에서 성립하는가
+#
+# ★전 잡이 continue-on-error 다. 목적이 판정이 아니라 **측정**이기 때문이다 —
+#   실패해도 그 실패가 데이터다. 이 파일은 6값을 얻은 뒤 삭제한다.
+name: runner-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['worktree-cicd-diet-gha']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ⑥ 러너 사양 — 나머지 다섯 값을 해석하는 기준이다
+  specs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 러너 사양
+        run: |
+          echo "::group::CPU"
+          nproc; lscpu | grep -E 'Model name|^CPU\(s\)'
+          echo "::endgroup::"
+          echo "::group::메모리"
+          free -g
+          echo "선언 요구 = org.gradle.jvmargs 4096m + kotlin.daemon 3072m = 7GB"
+          echo "::endgroup::"
+          echo "::group::디스크"
+          df -h /
+          echo "::endgroup::"
+          echo "::group::docker"
+          docker version --format '{{.Server.Version}}'
+          echo "::endgroup::"
+
+  # ④ 판별식 — 맥 실측 792건 · 29.2초. scripts/ 는 외부 import 0건이라 install 불필요
+  discriminants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: 판별식 전량
+        run: |
+          start=$(date +%s)
+          node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs' \
+            2>&1 | tee smoke-discriminants.txt || true
+          echo "벽시계=$(( $(date +%s) - start ))초"
+          grep -E '^# (tests|pass|fail)' smoke-discriminants.txt || true
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: smoke-discriminants
+          path: smoke-discriminants.txt
+
+  # ①② 최장 모듈 + generateJooq 콜드 비용
+  backend-longest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6.3.0
+      - name: generateJooq 콜드 — jOOQ 산출물은 .gitignore 라 잡마다 재생성된다
+        working-directory: backend
+        run: |
+          start=$(date +%s)
+          ./gradlew :modules:issue-tracking:generateJooq --no-daemon 2>&1 | tail -20
+          echo "JOOQ_COLD=$(( $(date +%s) - start ))초"
+      - name: 최장 모듈 테스트 — 맥 8코어 웜 실측 9분 13초가 하한
+        working-directory: backend
+        run: |
+          start=$(date +%s)
+          ./gradlew :modules:issue-tracking:test --no-daemon 2>&1 | tail -40
+          echo "MODULE_WALL=$(( $(date +%s) - start ))초"
+
+  # ③ 시드 없는 순정 postgres 에서 조립 부팅이 통과하는가
+  #   ProdAssemblyHttpTestBase.kt:33 이 손수 시드된 dev DB 를 전제로 적는다.
+  #   젠킨스는 quay.io/tembo/pg16-pgmq 를 쓴다 — 일반 postgres:16 은 마이그레이션에서 죽는다.
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    services:
+      postgres:
+        image: quay.io/tembo/pg16-pgmq:latest
+        env:
+          POSTGRES_DB: bts
+          POSTGRES_USER: bts
+          POSTGRES_PASSWORD: bts
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U bts"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6.3.0
+      - name: 조립 부팅 — 시드 없이 통과하는가
+        working-directory: backend
+        env:
+          BTS_DB_URL: jdbc:postgresql://localhost:5433/bts
+        run: |
+          start=$(date +%s)
+          ./gradlew :modules:app:test --no-daemon 2>&1 | tail -60
+          echo "ASSEMBLE_WALL=$(( $(date +%s) - start ))초"
+
+  # ⑤ 시각 회귀 기준 PNG 4장이 GHA 러너와 픽셀 일치하는가
+  #   기준은 #492 에서 리눅스 러너로 생성됐다. 맥에서 재생성하면 영구 red 다.
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: playwright 브라우저
+        run: pnpm --filter @bts/web exec playwright install --with-deps chromium
+      - name: 시각 회귀
+        working-directory: apps/web
+        run: |
+          start=$(date +%s)
+          pnpm exec playwright test --project=visual 2>&1 | tail -40
+          echo "VISUAL_WALL=$(( $(date +%s) - start ))초"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: smoke-visual-diff
+          path: apps/web/test-results/
