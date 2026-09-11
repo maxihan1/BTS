@@ -9,18 +9,57 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-if [ ! -f "$SCRIPT_DIR/config.sh" ]; then
-  echo "❌ $SCRIPT_DIR/config.sh 없음. config.sh.example 복사 후 값 기입."
+# ★설정을 두 곳에서 찾는다 (2026-09-11).
+#
+#   `config.sh` 는 `.gitignore` 라 **저장소 체크아웃에 없다.** 그런데 젠킨스는 매 빌드
+#   `cleanWs` 로 워크스페이스를 지우므로, 젠킨스 배포는 **구조적으로** 이 파일을 가질 수
+#   없었다 — 배포 스크립트 12번째 줄에서 죽었고 REMOTE_DIR 은 정의조차 안 됐다.
+#   (2026-09-11 사전 점검에서 적발. 배포 0회라 드러난 적이 없었다.)
+#
+#   순서. ① 스크립트 옆(사람이 자기 체크아웃에서 돌릴 때)
+#         ② `BTS_DEPLOY_CONFIG`(젠킨스가 호스트 실물 경로를 준다)
+DEPLOY_CONFIG=""
+if [ -f "$SCRIPT_DIR/config.sh" ]; then
+  DEPLOY_CONFIG="$SCRIPT_DIR/config.sh"
+elif [ -n "${BTS_DEPLOY_CONFIG:-}" ] && [ -f "$BTS_DEPLOY_CONFIG" ]; then
+  DEPLOY_CONFIG="$BTS_DEPLOY_CONFIG"
+fi
+if [ -z "$DEPLOY_CONFIG" ]; then
+  echo "❌ 배포 설정을 못 찾았다."
+  echo "   ① $SCRIPT_DIR/config.sh (config.sh.example 복사 후 값 기입)"
+  echo "   ② 환경변수 BTS_DEPLOY_CONFIG 가 가리키는 파일"
   exit 1
 fi
-source "$SCRIPT_DIR/config.sh"
+echo "⚙️  배포 설정 $DEPLOY_CONFIG"
+source "$DEPLOY_CONFIG"
 cd "$REPO_ROOT"
 
 echo "🚀 BTS 배포 시작 (서버 ${SERVER})"
 
 # 1. 배포 브랜치 확인
-CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-[ "$CURRENT_BRANCH" = "$DEPLOY_BRANCH" ] || { echo "⚠️ 현재 브랜치($CURRENT_BRANCH) != 배포 브랜치($DEPLOY_BRANCH). 중단."; exit 1; }
+#
+# ★★이름이 아니라 **커밋**을 본다 (2026-09-11 수정).
+#
+#   종전은 `git rev-parse --abbrev-ref HEAD` 하나였다. 그런데 젠킨스는 **detached HEAD**
+#   로 체크아웃하므로 그 명령이 `HEAD` 를 돌려준다 — main 을 체크아웃했는데도
+#   「HEAD != main」으로 무조건 중단이다. 배포가 0회인 이유 중 하나가 이것이다.
+#   같은 함정을 `Jenkinsfile` 은 이미 고쳐 뒀는데(세 곳을 순서대로 본다) 이 스크립트는
+#   안 고쳤다 — 두 자리가 서로를 검사하지 않았다.
+#
+#   물어야 할 것은 「브랜치 이름이 무엇인가」가 아니라 **「이 커밋이 배포 브랜치인가」**다.
+HEAD_SHA=$(git rev-parse HEAD)
+BRANCH_SHA=$(git rev-parse "refs/remotes/origin/${DEPLOY_BRANCH}" 2>/dev/null \
+  || git rev-parse "refs/heads/${DEPLOY_BRANCH}" 2>/dev/null || true)
+if [ -z "$BRANCH_SHA" ]; then
+  echo "⚠️ 배포 브랜치 ${DEPLOY_BRANCH} 를 못 찾았다(로컬·원격 모두). 중단."
+  exit 1
+fi
+if [ "$HEAD_SHA" != "$BRANCH_SHA" ]; then
+  echo "⚠️ HEAD($(echo "$HEAD_SHA" | cut -c1-9)) != ${DEPLOY_BRANCH}($(echo "$BRANCH_SHA" | cut -c1-9)). 중단."
+  echo "   배포는 ${DEPLOY_BRANCH} 의 **최신 커밋**에서만 한다."
+  exit 1
+fi
+echo "🔖 배포 대상 커밋 $(echo "$HEAD_SHA" | cut -c1-9) (${DEPLOY_BRANCH})"
 
 # ★GIT_* 네임스페이스를 지운다 — 아래 전량 검증이 판별식을 돌리기 전에.
 #
@@ -178,18 +217,51 @@ else
 fi
 
 # 3. 대상으로 전송 (빌드 산출물 포함, 소스/의존성 제외)
-echo "📤 산출물 반영"
+#
+# ★★`--delete` 는 **저장소에 없는 대상 파일을 지운다.** 그 대상 디렉터리에는 저장소가
+#   모르는 **운영 상태**가 같이 산다 — 그것이 제외 목록에 없으면 배포가 지운다.
+#
+#   2026-09-11 실측. 배포 0회 상태에서 대상에 실재하던 것들.
+#     backups/                      588K · **유일한 DB 덤프**
+#     infra/jenkins/.env            젠킨스 관리자 비밀번호
+#     infra/jenkins/.deploy-key     GitHub 배포키 (개인키)
+#     infra/prod/.env               (이미 제외돼 있었다)
+#     infra/secrets                 (이미 제외돼 있었다)
+#
+#   앞의 셋은 제외 목록에 **없었다.** 첫 배포가 그것을 전부 지울 예정이었다 —
+#   백업이 사라진 직후에 백업을 뜨는 순서라(4단계), 복구 수단이 먼저 증발한다.
+#
+# ★목록은 아래 `PROTECTED` 하나가 정본이다. 여기 직접 적지 않는다 —
+#   두 벌이 되면 한쪽만 고쳐지고, 그 순간 지워질 것이 조용히 늘어난다.
+#   계약. scripts/workflow/deploy-protects-operational-state.test.ts
+
+# 저장소가 모르는 **운영 상태** — 배포가 절대 지우면 안 되는 것.
+PROTECTED=(
+  'backups'                     # DB 덤프. 이것이 사라지면 되돌릴 수단이 없다
+  'infra/jenkins/.env'          # 젠킨스 관리자 자격증명
+  'infra/jenkins/.deploy-key'   # GitHub 배포키(개인키)
+  'infra/prod/.env'             # 운영 환경변수
+  'infra/secrets'               # JWT 서명키 등
+)
+
+# 저장소가 관리하는 것 중 전송에서 뺄 것 — 지워져도 되는 파생물.
+DERIVED=(
+  'backend/**/build/'
+  '**/node_modules'
+  '.git'
+  '.worktrees'
+  '*.log'
+)
+
+RSYNC_EXCLUDES=()
+for p in "${PROTECTED[@]}" "${DERIVED[@]}"; do RSYNC_EXCLUDES+=(--exclude="$p"); done
+
+echo "📤 산출물 반영 (보호 ${#PROTECTED[@]}건 · 파생 제외 ${#DERIVED[@]}건)"
 rsync -avz --delete \
   --include='backend/modules/app/build/' \
   --include='backend/modules/app/build/libs/' \
   --include='backend/modules/app/build/libs/bts-app.jar' \
-  --exclude='backend/**/build/' \
-  --exclude='**/node_modules' \
-  --exclude='.git' \
-  --exclude='.worktrees' \
-  --exclude='infra/prod/.env' \
-  --exclude='infra/secrets' \
-  --exclude='*.log' \
+  "${RSYNC_EXCLUDES[@]}" \
   "${RSYNC_TRANSPORT[@]}" \
   ./ "$RSYNC_DEST"
 
@@ -242,18 +314,40 @@ fi
 
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env build
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
-sleep 10
+# ★★기동을 **기다리고**, 안 뜨면 **죽는다** (2026-09-11 수정).
+#
+#   종전은 `sleep 10` 뒤 `cmd && echo ✅ || echo ⚠️` 였다. 두 가지가 문제였다.
+#     ① 10초는 스프링 부팅보다 짧다 — 정상 배포도 ⚠️ 가 뜬다
+#     ② `|| echo` 는 **종료 코드를 0 으로 만든다** — 스택이 죽어도 배포가 초록이다
+#
+#   ②가 치명적이다. 마이그레이션이 실패하든 컨테이너가 크래시 루프를 돌든
+#   `✅ 배포 명령 완료` 가 찍힌다. **롤백을 시작할 신호 자체가 안 뜬다** —
+#   이 저장소가 이름 붙인 「실패가 아니라 침묵」 그대로다.
+#
+#   ★Caddy 인증서만 비-치명으로 남긴다. 첫 요청 때 발급되므로 여기서 없는 것이 정상이다.
+# ★\$ 를 전부 이스케이프한다. 이 블록은 `run_on_target <<REMOTE` 안이고 delimiter 에
+#   따옴표가 없어, 안 하면 **로컬 셸이 먼저 풀어** 대상에 빈 값이 간다.
+#   같은 이유로 기존 코드도 `STAMP=\$(date ...)` 처럼 적혀 있다.
+wait_for() {
+  local what="\$1" probe="\$2"
+  local deadline=\$(( SECONDS + 180 ))
+  while [ "\$SECONDS" -lt "\$deadline" ]; do
+    if eval "\$probe" > /dev/null 2>&1; then
+      echo "✅ \${what} 확인 (\${SECONDS}초)"
+      return 0
+    fi
+    sleep 5
+  done
+  echo "❌ \${what} 가 180초 안에 안 떴다 — 배포 실패로 판정한다." >&2
+  return 1
+}
+
 # 호스트 포트로 확인하지 않는다. 앞단 bts-caddy 는 도메인(SNI)으로만 사이트를 매칭하므로
 # localhost 요청은 사이트에 닿지 않는다 — 그 결과를 프론트 장애로 오독하게 된다.
-# 각 컨테이너 내부에서 직접 묻고, 도메인 경유 https 는 배포 후 외부에서 확인한다.
-docker exec bts-web wget -qO- http://127.0.0.1/ >/dev/null 2>&1 \
-  && echo "✅ 프론트(nginx) 응답" \
-  || echo "⚠️ 프론트 미응답 — 'docker logs bts-web' 확인"
+wait_for "프론트(nginx) 응답" 'docker exec bts-web wget -qO- http://127.0.0.1/'
 # 백엔드 health 는 nginx 가 /actuator 를 프록시하지 않으므로(SPA fallback 가짜그린 방지)
 # 백엔드 컨테이너 내부에서 직접 확인한다.
-docker exec bts-backend curl -fsS http://localhost:8080/actuator/health >/dev/null \
-  && echo "✅ 백엔드 health UP" \
-  || echo "⚠️ 백엔드 health 대기 필요(기동 수십 초 소요) — 'docker compose ... ps'로 healthy 확인"
+wait_for "백엔드 health UP" 'docker exec bts-backend curl -fsS http://localhost:8080/actuator/health'
 # 인증서는 첫 요청 때 발급된다(수십 초). 여기서 실패해도 배포 실패가 아니다.
 docker logs bts-caddy 2>&1 | grep -qE "certificate obtained|certificate.*renew|serving initial configuration" \
   && echo "✅ Caddy 기동 (인증서 발급 로그 확인)" \

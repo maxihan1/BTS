@@ -631,6 +631,9 @@ pipeline {
             echo "   그 값이 서면 이 배포는 전수 검증 0회다." >&2
             exit 1
           fi
+          # ★`config.sh` 는 gitignored 라 워크스페이스에 없다. 호스트 실물을 가리킨다 —
+          #   compose 가 `/opt/bts` 를 이 컨테이너에 물려 주므로 그 경로로 읽힌다.
+          BTS_DEPLOY_CONFIG=/opt/bts/infra/deploy/config.sh \
           BTS_DEPLOY_LOCAL=1 bash infra/deploy/bts-deploy.sh
         '''
         /*
