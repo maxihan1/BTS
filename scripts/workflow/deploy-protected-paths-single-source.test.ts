@@ -40,6 +40,16 @@ export function codeLines(source: string): string[] {
 
 const read = (rel: string): string => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8')
 
+/**
+ * 패턴에 처음 걸리는 **코드** 줄의 번호 (0-기반). 없으면 -1.
+ *
+ * ★주석 줄을 건너뛴다. 안 그러면 「chown 을 앞에서 설명하는 주석」이 chown 자신보다
+ *   앞 줄로 잡혀 순서 판정이 뒤집힌다 — 설명이 많을수록 잘 속는 검사가 된다.
+ */
+export function lineOf(lines: string[], pattern: RegExp): number {
+  return lines.findIndex((l) => !/^\s*#/.test(l) && pattern.test(l))
+}
+
 describe('보호 경로 목록 — 정본 하나 · 읽기 한 벌', () => {
   test('★양성 대조군 — 읽기 스크립트가 실제로 돌고 경로를 낸다', () => {
     const { paths, status, stderr } = runReader()
@@ -126,5 +136,58 @@ describe('보호 경로 목록 — 정본 하나 · 읽기 한 벌', () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true })
     }
+  })
+})
+
+describe('② 위험한 일보다 안전장치가 먼저다 — 순서', () => {
+  // ★★가드의 문구가 맞아도 **위치**가 틀리면 사고를 설명할 뿐 막지는 못한다.
+  //
+  //   2026-09-11 실측. `bootstrap.sh` 가 `chown -R 1000:1000 /opt/bts` 를 먼저 하고
+  //   그다음에 「무엇을 root 로 되돌릴지」 읽는 스크립트를 찾았다. 그 파일이 서버에 아직
+  //   없어서 「자격증명이 노출된 상태다」를 정확히 찍고 죽었는데 — **그 진단이 맞았다.**
+  //   젠킨스 관리자 비밀번호와 GitHub 배포 개인키가 2분간 uid 1000 소유로 있었다.
+  //
+  //   메시지는 완벽했고 순서가 틀렸다. 그래서 이 판별식은 문구가 아니라 **줄 순서**를 본다.
+
+  const bootstrap = (): string[] => read('infra/jenkins/bootstrap.sh').split('\n')
+
+  test('★양성 대조군 — 두 지점이 모두 실재한다', () => {
+    const lines = bootstrap()
+    assert.ok(lineOf(lines, /chown -R "\$\{JUID\}/) >= 0, 'chown 교정이 없다 — 이 검사가 공허하다')
+    assert.ok(lineOf(lines, /read-protected-paths\.sh/) >= 0, '읽기 스크립트 호출이 없다')
+  })
+
+  test('★★보호 목록을 읽는 것이 chown 보다 먼저다', () => {
+    const lines = bootstrap()
+    const readAt = lineOf(lines, /READER=.*read-protected-paths\.sh/)
+    const guardAt = lineOf(lines, /PROTECT_LIST=/)
+    const chownAt = lineOf(lines, /chown -R "\$\{JUID\}:\$\{JGID\}" \/opt\/bts/)
+    assert.ok(readAt >= 0 && guardAt >= 0 && chownAt >= 0, `세 지점을 다 못 찾았다: read=${readAt} guard=${guardAt} chown=${chownAt}`)
+    assert.ok(
+      readAt < chownAt && guardAt < chownAt,
+      `안전장치가 chown 뒤에 있다 (읽기 ${readAt + 1}행 · 판정 ${guardAt + 1}행 · chown ${chownAt + 1}행).\n` +
+        '  위험한 일을 먼저 하고 그 안전장치를 나중에 찾으면, 그사이 자격증명이 노출된다.\n' +
+        '  2026-09-11 에 실제로 2분간 노출됐다.',
+    )
+  })
+
+  test('★★목록을 못 읽으면 chown 을 하지 않는다고 말한다', () => {
+    // 실패 메시지가 「노출됐다」가 아니라 「하지 않았다」여야 한다 —
+    // 전자는 사후 보고, 후자는 사전 차단이다. 문구가 사후 보고로 돌아갔다면 순서도
+    // 같이 뒤집혔을 가능성이 높다.
+    //
+    // ★창을 **줄 번호**로 연다. 첫 판본은 `indexOf('chown -R "${JUID}')` 로 잘랐는데,
+    //   그 문자열이 주석에도 나타나서 주석 한 줄만 심으면 창이 빈 문자열이 됐다 —
+    //   검사가 통째로 무효가 되는데 red 는 엉뚱한 이유로 난다(2026-09-11 프로브에서 적발).
+    const lines = bootstrap()
+    const readAt = lineOf(lines, /READER=.*read-protected-paths\.sh/)
+    const chownAt = lineOf(lines, /chown -R "\$\{JUID\}:\$\{JGID\}" \/opt\/bts/)
+    assert.ok(readAt >= 0 && chownAt > readAt, `창을 못 열었다: read=${readAt} chown=${chownAt}`)
+    const guardBlock = lines.slice(readAt, chownAt).join('\n')
+    assert.match(
+      guardBlock,
+      /chown 을 하지 않았다/,
+      'READER 를 못 찾았을 때의 메시지가 「하지 않았다」를 말하지 않는다 — 순서가 다시 뒤집혔을 수 있다',
+    )
   })
 })

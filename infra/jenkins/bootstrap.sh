@@ -154,35 +154,53 @@ case "${1:-up}" in
         else
           JUID="$(docker exec bts-jenkins id -u)"
           JGID="$(docker exec bts-jenkins id -g)"
-          echo "→ /opt/bts 에 못 쓴다. 소유권을 ${JUID}:${JGID} 로 교정한다"
-          chown -R "${JUID}:${JGID}" /opt/bts
-
           # ★자격증명은 되돌린다. 파이프라인(= 저장소 코드)이 읽으면 안 되는 것들이다 —
           #   젠킨스 관리자 비밀번호와 GitHub 개인키가 여기 산다. chown 이 그것까지
-          #   uid 1000 에 넘기면 **아무 Jenkinsfile 이나 그것을 읽을 수 있게 된다.**
+          #   uid ${JUID} 에 넘기면 **아무 Jenkinsfile 이나 그것을 읽을 수 있게 된다.**
+          #
+          # ★★무엇을 되돌릴지 **chown 앞에서** 읽는다. 뒤에 확인하면 늦다.
+          #
+          #   2026-09-11 실측. 종전 판본은 `chown -R` 을 먼저 하고 그다음 이 파일을 찾았다.
+          #   그 파일이 아직 서버에 없어서 「자격증명이 노출된 상태다」를 정확히 찍고 죽었는데,
+          #   **그 진단이 맞았다** — 관리자 비밀번호와 배포 개인키가 2분간 uid ${JUID} 소유였다.
+          #   위험한 일을 먼저 하고 그 안전장치를 나중에 찾는 순서였다. 가드의 문구가 맞아도
+          #   위치가 틀리면 사고를 설명할 뿐 막지는 못한다.
           #
           # ★목록도 파싱도 여기 적지 않는다. 정본은 `../deploy/read-protected-paths.sh` 하나다 —
           #   `bts-deploy.sh` 의 rsync 제외 목록과 **같은 스크립트**를 부른다. 목록만 나누고
           #   파싱을 복제하면 주석·공백 처리가 갈리는 순간 다시 두 벌이 된다.
           #   계약. scripts/workflow/deploy-protected-paths-single-source.test.ts
           READER="$SCRIPT_DIR/../deploy/read-protected-paths.sh"
-          if [ ! -x "$READER" ]; then
-            echo "🚨 $READER 를 실행할 수 없다 — 무엇을 root 로 되돌려야 하는지 모른다." >&2
-            echo "   방금 /opt/bts 전체를 uid ${JUID} 로 넘겼다. 자격증명이 노출된 상태다." >&2
+          if [ ! -f "$READER" ]; then
+            echo "🚨 $READER 가 없다 — 무엇을 root 로 되돌려야 하는지 모른다." >&2
+            echo "   **chown 을 하지 않았다.** 소유권은 그대로이고 배포는 실패한다 —" >&2
+            echo "   자격증명이 노출되는 것보다 배포가 실패하는 쪽이 낫다." >&2
+            echo "   처방. 저장소의 infra/deploy/ 를 서버로 동기화한 뒤 다시 돌려라." >&2
             exit 2
           fi
+          if ! PROTECT_LIST="$(bash "$READER")" || [ -z "$PROTECT_LIST" ]; then
+            echo "🚨 보호 경로를 읽지 못했다. **chown 을 하지 않았다.**" >&2
+            exit 2
+          fi
+
+          echo "→ /opt/bts 에 못 쓴다. 소유권을 ${JUID}:${JGID} 로 교정한다"
+          chown -R "${JUID}:${JGID}" /opt/bts
+
+          # ★chown 앞에서 이미 읽어 둔 목록을 쓴다. 여기서 다시 읽지 않는다 —
+          #   읽기가 그사이 실패하면 되돌릴 것이 0건이 되고, 그 0건이 「보호할 것이 없다」로
+          #   읽힌다. 위험을 만든 뒤에 다시 물어보는 구조를 없앤다.
           REVERTED=0
           while IFS= read -r p; do
             [ -n "$p" ] || continue
             [ -e "/opt/bts/$p" ] || continue
             chown -R root:root "/opt/bts/$p"
             REVERTED=$((REVERTED + 1))
-          done < <("$READER")
-          # ★0건은 「보호할 것이 없다」가 아니다. 프로세스 치환은 실패해도 while 을 멈추지
-          #   않으므로 **개수로 판정한다.** 여기서 멈추지 않으면 자격증명이 uid 1000 소유로
-          #   남고, 그 뒤로는 아무 Jenkinsfile 이나 관리자 비밀번호를 읽을 수 있다.
+          done <<< "$PROTECT_LIST"
+          # 목록은 비어 있지 않다고 위에서 확인했다. 그런데도 0건이면 대상이 하나도 실재하지
+          # 않는다는 뜻이고, 그것은 경로가 틀렸다는 신호다 — 통과시키면 노출이 남는다.
           if [ "$REVERTED" = "0" ]; then
-            echo "🚨 root 로 되돌린 경로가 0건이다 — 읽기가 깨졌다. 자격증명이 노출된 상태다." >&2
+            echo "🚨 root 로 되돌린 경로가 0건이다 — 경로가 대상에 하나도 없다." >&2
+            echo "   /opt/bts 전체가 uid ${JUID} 소유로 남았다. 자격증명이 노출된 상태다." >&2
             exit 2
           fi
           echo "→ 운영 자격증명 ${REVERTED}건 root 소유로 복구"
