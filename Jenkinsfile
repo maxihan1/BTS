@@ -60,6 +60,23 @@ pipeline {
       defaultValue: false,
       description: '운영(bts.maxihan.com) 배포까지 간다. 전량 검증을 통과한 뒤 사람이 승인해야 실행된다.'
     )
+    /*
+     * ★시각 회귀 기준 이미지를 **이 러너에서** 만든다 (P3).
+     *
+     * 기준 PNG 는 OS·아키텍처·폰트 렌더가 같은 기계에서만 유효하다. 맥에서 만든 것을
+     * 리눅스 러너가 비교하면 전량 diff 다. 그래서 생성도 여기서 해야 한다.
+     *
+     * ★**커밋하지 않는다.** 생성한 PNG 를 빌드 아티팩트로 남기고, 사람이 내려받아
+     *   커밋한다. 파이프라인이 스스로 기준을 갱신하면 그것이 곧 「회귀를 승인하는
+     *   재생성」이고, `snapshot-baseline-guard.test.ts` 가 막으려는 바로 그 고장이다.
+     *
+     * ★기본값 거짓이다. 체크해야만 도는 일회성 작업이다.
+     */
+    booleanParam(
+      name: 'UPDATE_VISUAL_BASELINE',
+      defaultValue: false,
+      description: '시각 회귀 기준 이미지를 이 러너에서 생성해 아티팩트로 남긴다 (커밋은 사람이 한다).'
+    )
   }
 
   triggers {
@@ -435,6 +452,48 @@ pipeline {
           echo "──────────────────────"
           sh -e .ci-scope.sh
         '''
+      }
+    }
+
+    /*
+     * ★★P3 시각 회귀 — 기준 이미지 생성 (일회성)
+     *
+     * ## 왜 별도 stage 인가
+     *
+     * 기준 PNG 는 **같은 기계·같은 컨테이너**에서 만들어야 유효하다. 맥에서 만든 것을
+     * 리눅스 러너가 비교하면 폰트 렌더 차이로 전량 diff 다. 그래서 CI 가 쓰는 바로 그
+     * Playwright 이미지 안에서 만든다.
+     *
+     * ## ★커밋하지 않는다
+     *
+     * 생성한 PNG 를 **아티팩트로만** 남긴다. 파이프라인이 스스로 기준을 갱신하면
+     * 그것이 「회귀를 승인하는 재생성」이고, `snapshot-baseline-guard.test.ts` 가 막으려는
+     * 고장 그 자체다. 사람이 내려받아 확인하고 커밋한다.
+     *
+     * ## ★MSW 가 필요하다
+     *
+     * 시각 스펙은 `loginAsAlice` 와 목 픽스처를 쓴다 — dev 서버에서만 동작한다.
+     * `PLAYWRIGHT_BASE_URL` 을 주지 않으면 playwright 가 스스로 vite 를 띄운다.
+     * 그래서 실서버가 아니라 **컨테이너 안 로컬**을 본다.
+     */
+    stage('시각 기준 이미지 생성') {
+      when { expression { params.UPDATE_VISUAL_BASELINE } }
+      steps {
+        sh '''
+          set -eu
+          docker run --rm --network host \
+            -v "$HOST_WS:/w" -w /w/apps/web \
+            -e CI=1 \
+            "$PW_IMAGE" \
+            npx playwright test --project=visual --update-snapshots
+        '''
+      }
+      post {
+        always {
+          // ★사람이 내려받아 확인하고 커밋하는 자리. 파이프라인은 여기까지만 한다.
+          archiveArtifacts artifacts: 'apps/web/e2e/visual/__screenshots__/**',
+                           allowEmptyArchive: true
+        }
       }
     }
 
