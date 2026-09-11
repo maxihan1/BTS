@@ -41,8 +41,18 @@ test('E2E-5 S9 — ATLAS 스킴 변경 PUT UPSERT → 현재 적용 카드 갱�
   // 적용 버튼 클릭
   await page.getByRole('button', { name: labels.applyButton }).click()
 
-  // PUT 응답 후 현재 적용 카드가 새 스킴명으로 갱신되어야 함
-  await expect(page.getByText('소프트웨어 개발 기본 스킴')).toBeVisible()
+  /*
+   * PUT 응답 후 현재 적용 카드가 새 스킴명으로 갱신되어야 함.
+   *
+   * ★`.first()` 가 필요하다 (2026-09-11 수정). #483 이 프로젝트 설정에 스킴 목록을
+   *   추가하면서 같은 이름이 **세 곳**(현재 적용 카드 · select 값 · 목록)에 뜬다.
+   *   한정 없이 `getByText` 를 쓰면 Playwright strict mode 위반으로 죽는다 —
+   *   앞선 단언들(:30 · :39)이 이미 `.first()` 를 쓰는 것과 같은 이유다.
+   *
+   * ★그리고 이 단언은 목이 **stateful 해야** 의미가 있다. 낙관적 갱신만으로도 잠깐
+   *   통과하므로, `scheme-handlers.ts` 의 PUT 이 배정을 실제로 바꾸는 것과 짝이다.
+   */
+  await expect(page.getByText('소프트웨어 개발 기본 스킴').first()).toBeVisible()
   await expect(page.getByText(labels.currentSchemeBadge)).toBeVisible()
 })
 

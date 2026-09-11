@@ -409,71 +409,103 @@ function e2eCommand(specs: string[]): string {
   )
 }
 
-export function renderCommands(scope: TestScope): string {
+/**
+ * 렌더 섹션 이름. GitHub Actions 는 잡을 나누므로 블록 **하나만** 뽑아 쓸 수 있어야 한다.
+ *
+ * ★YAML 에서 `sed` 로 뽑는 길도 있지만 그것은 형식이 바뀌는 순간 조용히 빈 명령이 된다 —
+ *   「no tests found」가 초록이 되는 자리다. 그래서 계산기가 직접 섹션을 낸다.
+ *   `renderCommands` 는 이 섹션들을 **조합**해서 만들어진다. 두 경로가 갈릴 수 없다.
+ */
+export const SECTIONS = ['backend', 'frontend', 'e2e', 'visual', 'plan', 'discriminants'] as const
+export type Section = (typeof SECTIONS)[number]
+
+/** 섹션 하나의 명령 블록. 돌 것이 없으면 빈 문자열이 아니라 「생략」 주석을 낸다. */
+export function sectionCommands(scope: TestScope, section: Section): string {
   const lines: string[] = []
-
-  if (scope.backendModules.length === 0) {
-    lines.push('# 백엔드 — 생략 (변경 없음)')
-  } else {
-    const tasks = scope.backendModules.map((m) => `:modules:${m}:test`).join(' ')
-    const lint = scope.backendModules.map((m) => `:modules:${m}:ktlintCheck :modules:${m}:detekt`).join(' ')
-    lines.push(`# 백엔드 ${scope.backendModules.length}/${allModules().length} — ${scope.backendReason}`)
-    lines.push(`(cd backend && ./gradlew ${tasks} --console=plain)`)
-    lines.push(`(cd backend && ./gradlew ${lint} --rerun-tasks --console=plain)`)
+  switch (section) {
+    case 'backend':
+      if (scope.backendModules.length === 0) {
+        lines.push('# 백엔드 — 생략 (변경 없음)')
+      } else {
+        const tasks = scope.backendModules.map((m) => `:modules:${m}:test`).join(' ')
+        const lint = scope.backendModules
+          .map((m) => `:modules:${m}:ktlintCheck :modules:${m}:detekt`)
+          .join(' ')
+        lines.push(`# 백엔드 ${scope.backendModules.length}/${allModules().length} — ${scope.backendReason}`)
+        lines.push(`(cd backend && ./gradlew ${tasks} --console=plain)`)
+        lines.push(`(cd backend && ./gradlew ${lint} --rerun-tasks --console=plain)`)
+      }
+      break
+    case 'frontend':
+      if (scope.frontend.mode === 'skip') {
+        lines.push(`# 프론트 — 생략 (${scope.frontend.reason})`)
+      } else if (scope.frontend.mode === 'all') {
+        lines.push(`# 프론트 전량 — ${scope.frontend.reason}`)
+        lines.push('(cd apps/web && node_modules/.bin/vitest run)')
+      } else {
+        lines.push(`# 프론트 — ${scope.frontend.reason}`)
+        lines.push(
+          `(cd apps/web && node_modules/.bin/vitest related --run ${vitestArgs(scope.frontend).join(' ')})`,
+        )
+      }
+      break
+    case 'e2e':
+      // ★바뀐 파일만 인자로 붙인다. 인자 없는 `playwright test` 는 전량(약 3시간)이라
+      //   사람이 안 돌린다 — 안 돌리는 가드는 없는 가드다.
+      if (scope.e2eSpecs === null) {
+        lines.push('# E2E — 변경 목록을 못 구했다. 전량을 돈다(약 3시간).')
+        lines.push(e2eCommand([]))
+      } else if (scope.e2eSpecs.length > 0) {
+        lines.push(`# E2E — 바뀐 시나리오 ${scope.e2eSpecs.length}개만 돈다.`)
+        lines.push(e2eCommand(scope.e2eSpecs))
+      } else {
+        lines.push('# E2E — 생략 (시나리오 변경 없음)')
+      }
+      break
+    case 'visual':
+      lines.push(...visualLines(hasVisualBaseline(), scope.frontend.mode))
+      break
+    case 'plan':
+      if (scope.planVerify.length > 0) {
+        lines.push(`# plan 이 지정한 검증 ${scope.planVerify.length}건 — 위 범위와 별개로 반드시 돈다`)
+        for (const c of scope.planVerify) lines.push(c)
+      }
+      break
+    case 'discriminants':
+      lines.push('# 판별식 — ★조건 없이 전량. 경로별 선별은 두 목록이 서로를 안 보게 만든다.')
+      lines.push("node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'")
+      break
   }
-
-  lines.push('')
-  if (scope.frontend.mode === 'skip') {
-    lines.push(`# 프론트 — 생략 (${scope.frontend.reason})`)
-  } else if (scope.frontend.mode === 'all') {
-    lines.push(`# 프론트 전량 — ${scope.frontend.reason}`)
-    lines.push('(cd apps/web && node_modules/.bin/vitest run)')
-  } else {
-    lines.push(`# 프론트 — ${scope.frontend.reason}`)
-    lines.push(`(cd apps/web && node_modules/.bin/vitest related --run ${vitestArgs(scope.frontend).join(' ')})`)
-  }
-
-  lines.push('')
-  // ★바뀐 파일만 인자로 붙인다. 인자 없는 `playwright test` 는 전량(약 3시간)이라
-  //   사람이 안 돌린다 — 안 돌리는 가드는 없는 가드다.
-  if (scope.e2eSpecs === null) {
-    lines.push('# E2E — 변경 목록을 못 구했다. 전량을 돈다(약 3시간).')
-    lines.push(e2eCommand([]))
-  } else if (scope.e2eSpecs.length > 0) {
-    lines.push(`# E2E — 바뀐 시나리오 ${scope.e2eSpecs.length}개만 돈다.`)
-    lines.push(e2eCommand(scope.e2eSpecs))
-  } else {
-    lines.push('# E2E — 생략 (시나리오 변경 없음)')
-  }
-
-  /*
-   * ★★시각 회귀 (P3). **기준 이미지가 실재할 때만** 돈다.
-   *
-   * `visual` 프로젝트는 `chromium` 의 `testIgnore` 밖이라 위 E2E 줄로는 절대 안 돈다.
-   * 2026-09-11 실측에서 그 프로젝트를 돌리는 곳이 **저장소 어디에도 없었다** —
-   * 스펙 4건이 작성돼 있는데 고아였다.
-   *
-   * ★조건의 입력이 「기준 이미지 디렉터리」 하나뿐이라 두 목록이 생기지 않는다.
-   *   기준이 0장인 동안은 돌려 봐야 전부 실패하고(비교 대상이 없다), 그 빨간불은
-   *   회귀가 아니라 「아직 도입 안 됨」이라 읽는 법을 가르친다 — 거짓 빨강이다.
-   *   기준이 커밋되는 순간 자동으로 켜진다.
-   *
-   * ★프론트가 안 바뀌었으면 안 돈다. 화면 픽셀은 프론트 소스에서만 바뀐다.
-   */
-  lines.push('')
-  lines.push(...visualLines(hasVisualBaseline(), scope.frontend.mode))
-
-  if (scope.planVerify.length > 0) {
-    lines.push('')
-    lines.push(`# plan 이 지정한 검증 ${scope.planVerify.length}건 — 위 범위와 별개로 반드시 돈다`)
-    for (const c of scope.planVerify) lines.push(c)
-  }
-
-  lines.push('')
-  lines.push('# 판별식 — ★조건 없이 전량. 경로별 선별은 두 목록이 서로를 안 보게 만든다.')
-  lines.push("node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'")
-
   return lines.join('\n')
+}
+
+export function renderCommands(scope: TestScope): string {
+  // ★섹션 조합으로 만든다. 전체 렌더와 섹션 렌더가 **정의상** 같아진다 —
+  //   차집합 판별식으로 지키는 것보다 애초에 갈릴 수 없게 만드는 쪽이 낫다.
+  //   빈 섹션(`plan` 이 0건인 경우)은 빠진다 — 종전 출력과 바이트 단위로 같다.
+  return SECTIONS.map((s) => sectionCommands(scope, s))
+    .filter((s) => s !== '')
+    .join('\n\n')
+}
+
+/**
+ * GitHub Actions `route` 잡이 읽는 판정. `renderCommands` 와 **같은 `TestScope`** 를 받는다.
+ *
+ * ★렌더러가 둘인 것이지 판정이 둘인 것이 아니다. 젠킨스는 직렬 셸 한 덩어리를 `sh -e` 로
+ *   돌리면 되지만 Actions 는 9 BC 를 매트릭스로 펼쳐야 하고, 셸 블록은 잡으로 쪼개지지 않는다.
+ *   그렇다고 YAML 에 판정을 다시 적으면 `Jenkinsfile:255` 가 예고한 「두 목록」이 된다 —
+ *   **새 CI 파일이 생길 때 한쪽만 고쳐진다**. 그래서 같은 계산을 형식만 바꿔 낸다.
+ *
+ *   두 렌더가 갈리지 않는 것은 `ci-route-json-parity.test.ts` 가 차집합으로 대조한다.
+ */
+export function routeJson(scope: TestScope): string {
+  return JSON.stringify({
+    modules: scope.backendModules,
+    frontend: scope.frontend.mode,
+    e2e: scope.e2e,
+    e2eSpecs: scope.e2eSpecs,
+    planVerify: scope.planVerify,
+  })
 }
 
 function main(argv: string[]): number {
@@ -505,6 +537,26 @@ function main(argv: string[]): number {
    */
   const forceFull = (process.env['BTS_FORCE_FULL'] ?? '') !== ''
   const scope = computeScope(changedFiles(), planText, { forceFull })
+  // `--json` 은 GitHub Actions `route` 잡 전용이다. 기본은 셸 렌더 — 젠킨스와 로컬 훅이 쓴다.
+  if (argv.includes('--json')) {
+    process.stdout.write(routeJson(scope) + '\n')
+    return 0
+  }
+
+  // `--section <이름>` 은 GHA 가 잡 하나에 필요한 블록만 받을 때 쓴다.
+  // ★YAML 에서 `sed` 로 뽑는 길을 막기 위한 것이다 — 렌더 형식이 바뀌면 그 추출은
+  //   조용히 빈 명령이 되고, 빈 명령은 「돌 것이 없었다」와 구분되지 않는다.
+  const secIdx = argv.indexOf('--section')
+  if (secIdx !== -1) {
+    const name = argv[secIdx + 1]
+    if (name === undefined || !(SECTIONS as readonly string[]).includes(name)) {
+      process.stderr.write(`--section 뒤에 ${SECTIONS.join('|')} 중 하나가 필요하다.\n`)
+      return 2
+    }
+    process.stdout.write(sectionCommands(scope, name as Section) + '\n')
+    return 0
+  }
+
   process.stdout.write(renderCommands(scope) + '\n')
   return 0
 }

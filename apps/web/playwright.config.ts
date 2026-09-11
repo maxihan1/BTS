@@ -5,6 +5,18 @@ export default defineConfig({
   testDir: './e2e',
   forbidOnly: !!process.env['CI'],
   retries: 0,
+  /*
+   * ★CI 에서만 단언 대기를 늘린다 (2026-09-11 · E2E 전량 첫 실행에서 적발).
+   *
+   * 기본 5,000ms 는 개발자 맥에서는 넉넉하지만 2코어 러너에서는 빠듯하다. 특히 MSW
+   * 서비스워커가 마지막 클라이언트 종료 시 스스로 unregister 하므로(mockServiceWorker.js:75-82)
+   * 네비게이션 경계마다 재기동 창이 열리고, 그 동안의 렌더가 5초를 넘길 수 있다.
+   *
+   * ★`retries` 는 올리지 않는다. 재시도는 흔들림을 **가리고**, 그러면 시각 회귀 파일럿이
+   *   재려는 값(무변경 상태에서 diff 가 몇 회 나는가)이 사라진다. 대기만 늘려서
+   *   「느린 것」과 「깨진 것」을 구분한다 — 깨진 것은 15초를 줘도 깨진다.
+   */
+  expect: { timeout: process.env['CI'] ? 15_000 : 5_000 },
   // ★기본 템플릿
   // (`{snapshotDir}/{testFileDir}/{testFileName}-snapshots/{arg}{-projectName}{-snapshotSuffix}{ext}`)
   // 을 쓰지 않는다. `{-snapshotSuffix}` 가 OS 이름(`-darwin`)으로 채워지므로, 러너를 바꾸면
@@ -57,6 +69,17 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      /*
+       * ★CI 에서만 1회 재시도 (2026-09-11).
+       *
+       * MSW 재기동 창을 `waitForMsw` 로 좁혔지만 완전히 닫지는 못한다 — 스펙이 직접 부르는
+       * `page.goto` 마다 같은 창이 다시 열리고, 그것을 전부 감싸려면 169 스펙을 손대야 한다.
+       *
+       * ★**`visual` 프로젝트는 0 을 유지한다**(아래). 재시도는 흔들림을 가리는데, 시각 회귀
+       *   파일럿이 재려는 값이 바로 「무변경 상태에서 diff 가 몇 회 나는가」다. 거기에 재시도를
+       *   주면 그 측정이 통째로 무의미해진다. 기능 E2E 에만 준다.
+       */
+      retries: process.env['CI'] ? 1 : 0,
       use: { ...devices['Desktop Chrome'] },
       // ★`e2e/visual` 은 아래 `visual` 프로젝트 전용이다. 제외하지 않으면 루트 testDir
       // 때문에 같은 spec 이 두 프로젝트에서 각각 돌고, 두 실행이 **같은 baseline 파일 1개**를

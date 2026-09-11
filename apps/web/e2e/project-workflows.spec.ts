@@ -18,12 +18,19 @@ test('프로젝트 설정 사이드바의 「워크플로우」가 목록으로 
   await loginAsAlice(page)
   await page.goto('/projects/ATLAS/settings/details')
 
-  // 설정 그룹은 접혀 있다 — 먼저 펼쳐야 링크가 DOM 에 뜬다(project-tree.spec.ts 와 같은 절차).
-  const nav = page.getByRole('navigation', { name: '프로젝트', exact: true })
-  const settingsToggle = nav.getByRole('button', { name: '프로젝트 설정', exact: true })
-  if ((await settingsToggle.getAttribute('aria-expanded')) === 'false') {
-    await settingsToggle.click()
-  }
+  /*
+   * ★설정 서브앱 사이드바에서 찾는다 (2026-09-11 수정).
+   *
+   * 종전에는 `navigation "프로젝트"` 안에서 `button "프로젝트 설정"` 을 펼쳤다. 그런데
+   * #476(2026-09-08 · 프로젝트 내비게이션 재편)이 설정을 **서브앱 사이드바**로 분리하면서
+   * 그 펼치기 버튼을 없앴다. 이 스펙은 #480(2026-09-10)에 신설됐으니
+   * **병합 시점부터 통과 불가**였다 — E2E 전량이 게이트가 아니어서 아무도 못 봤다.
+   *
+   * `/settings/details` 에 들어간 순간 `ProjectSettingsNav`(aria-label `설정 메뉴`)가
+   * 이미 펼쳐진 채로 뜬다. 펼치기 절차 자체가 사라졌다.
+   * 계약. apps/web/src/components/project/ProjectSettingsNav.tsx:32
+   */
+  const nav = page.getByRole('navigation', { name: '설정 메뉴', exact: true })
   // `exact: true` 없이는 「워크플로우 스킴」까지 잡혀 strict mode 위반이다.
   await nav.getByRole('link', { name: '워크플로우', exact: true }).click()
 

@@ -49,6 +49,7 @@ import org.springframework.util.LinkedMultiValueMap
 import org.testcontainers.containers.MinIOContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.nio.file.Files
 import java.security.KeyPairGenerator
 import java.security.Security
@@ -119,7 +120,11 @@ class UserProfileFlowIntegrationTest {
         /** JVM 단위 singleton MinIO — 아바타 바이너리 put/get/delete 실 스토리지. */
         @Container
         @JvmStatic
-        val minio: MinIOContainer = MinIOContainer("minio/minio:latest")
+        val minio: MinIOContainer =
+            MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2023-09-04T19-57-37Z")
+                    .asCompatibleSubstituteFor("minio/minio"),
+            )
 
         /**
          * Spring Boot 데이터소스/JWT/CORS/LDAP/MinIO 설정을 Testcontainers 좌표로 교체한다.

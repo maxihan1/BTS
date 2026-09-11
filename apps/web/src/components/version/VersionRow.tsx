@@ -193,8 +193,19 @@ export function VersionRow({
 
   return (
     <li className="flex flex-col gap-3 rounded-md border px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
-      {/* 이름 + 설명 + 상태 뱃지 */}
-      <div className="min-w-0 flex-1">
+      {/*
+        이름 + 설명 + 상태 뱃지
+
+        ★`min-w-24` 가 필요하다 (2026-09-11 · E2E 전량 첫 실행에서 적발).
+        종전 `min-w-0` 은 flex 자식이 **0 까지** 줄어드는 것을 허용한다. 그것이
+        `truncate` 가 동작하기 위한 표준 패턴이라 관례대로 적혀 있었지만, 이 행에서는
+        형제(상태 뱃지 + 전환 버튼들)가 공간을 먼저 가져가고 이름 칸이 그대로 0 에 눌린다.
+        실패 스크린샷을 픽셀로 재니 **부족분이 79px** 였다 — 사용자에게도 이름이 안 보인다.
+
+        E2E `version-management.spec.ts` S4·S5 가 이것을 잡았다. 그 스펙은 병합 이후
+        한 번도 파이프라인에서 돌지 않아 아무도 못 봤다.
+      */}
+      <div className="min-w-24 flex-1">
         <div className="flex items-center gap-2">
           <span className="block truncate text-sm font-medium">{version.name}</span>
           <span className={STATUS_BADGE_CLASS[version.status]}>
