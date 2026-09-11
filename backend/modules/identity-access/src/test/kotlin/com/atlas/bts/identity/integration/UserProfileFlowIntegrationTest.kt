@@ -120,7 +120,8 @@ class UserProfileFlowIntegrationTest {
         /** JVM 단위 singleton MinIO — 아바타 바이너리 put/get/delete 실 스토리지. */
         @Container
         @JvmStatic
-        val minio: MinIOContainer = MinIOContainer(
+        val minio: MinIOContainer =
+            MinIOContainer(
                 DockerImageName.parse("quay.io/minio/minio:RELEASE.2023-09-04T19-57-37Z")
                     .asCompatibleSubstituteFor("minio/minio"),
             )
