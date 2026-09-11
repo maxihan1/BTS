@@ -158,6 +158,11 @@ case "${1:-up}" in
           #   젠킨스 관리자 비밀번호와 GitHub 개인키가 여기 산다. chown 이 그것까지
           #   uid ${JUID} 에 넘기면 **아무 Jenkinsfile 이나 그것을 읽을 수 있게 된다.**
           #
+          # ★★목록이 `secret` 이지 `protected` 가 아니다. 둘은 의미가 다르다 —
+          #   `backups/` 는 지워지면 안 되지만 **배포가 거기에 DB 덤프를 쓴다.** 그것까지
+          #   root 로 잠그면 배포 5단계가 쓰기 불가로 죽는다(2026-09-11 실측으로 적발).
+          #   지우면 안 되는 것 ⊋ 읽히면 안 되는 것.
+          #
           # ★★무엇을 되돌릴지 **chown 앞에서** 읽는다. 뒤에 확인하면 늦다.
           #
           #   2026-09-11 실측. 종전 판본은 `chown -R` 을 먼저 하고 그다음 이 파일을 찾았다.
@@ -178,8 +183,8 @@ case "${1:-up}" in
             echo "   처방. 저장소의 infra/deploy/ 를 서버로 동기화한 뒤 다시 돌려라." >&2
             exit 2
           fi
-          if ! PROTECT_LIST="$(bash "$READER")" || [ -z "$PROTECT_LIST" ]; then
-            echo "🚨 보호 경로를 읽지 못했다. **chown 을 하지 않았다.**" >&2
+          if ! SECRET_LIST="$(bash "$READER" secret)" || [ -z "$SECRET_LIST" ]; then
+            echo "🚨 비밀 경로를 읽지 못했다. **chown 을 하지 않았다.**" >&2
             exit 2
           fi
 
@@ -195,7 +200,7 @@ case "${1:-up}" in
             [ -e "/opt/bts/$p" ] || continue
             chown -R root:root "/opt/bts/$p"
             REVERTED=$((REVERTED + 1))
-          done <<< "$PROTECT_LIST"
+          done <<< "$SECRET_LIST"
           # 목록은 비어 있지 않다고 위에서 확인했다. 그런데도 0건이면 대상이 하나도 실재하지
           # 않는다는 뜻이고, 그것은 경로가 틀렸다는 신호다 — 통과시키면 노출이 남는다.
           if [ "$REVERTED" = "0" ]; then

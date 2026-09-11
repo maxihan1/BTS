@@ -19,10 +19,14 @@ import { spawnSync } from 'node:child_process'
 const REPO_ROOT = path.resolve(import.meta.dirname, '../..')
 const READER = 'infra/deploy/read-protected-paths.sh'
 const LIST = 'infra/deploy/protected-paths.txt'
+const SECRETS = 'infra/deploy/secret-paths.txt'
 
-/** 읽기 스크립트를 실제로 실행해 보호 경로를 얻는다. */
-export function runReader(cwd: string = REPO_ROOT): { paths: string[]; status: number; stderr: string } {
-  const r = spawnSync('bash', [path.join(cwd, READER)], { encoding: 'utf-8' })
+/** 읽기 스크립트를 실제로 실행해 경로 목록을 얻는다. kind 는 protected | secret. */
+export function runReader(
+  kind: 'protected' | 'secret' = 'protected',
+  cwd: string = REPO_ROOT,
+): { paths: string[]; status: number; stderr: string } {
+  const r = spawnSync('bash', [path.join(cwd, READER), kind], { encoding: 'utf-8' })
   return {
     paths: (r.stdout ?? '').split('\n').filter((l) => l.trim() !== ''),
     status: r.status ?? -1,
@@ -88,7 +92,7 @@ describe('보호 경로 목록 — 정본 하나 · 읽기 한 벌', () => {
       // 목록 파일을 **직접** 읽으면 파싱이 두 벌이 된다. 읽기 스크립트 안에서만 허용된다.
       assert.doesNotMatch(
         code,
-        /protected-paths\.txt/,
+        /(protected|secret)-paths\.txt/,
         `${consumer} 가 목록 파일을 직접 읽는다 — 파싱이 두 벌이 됐다`,
       )
     }
@@ -160,7 +164,7 @@ describe('② 위험한 일보다 안전장치가 먼저다 — 순서', () => {
   test('★★보호 목록을 읽는 것이 chown 보다 먼저다', () => {
     const lines = bootstrap()
     const readAt = lineOf(lines, /READER=.*read-protected-paths\.sh/)
-    const guardAt = lineOf(lines, /PROTECT_LIST=/)
+    const guardAt = lineOf(lines, /SECRET_LIST=/)
     const chownAt = lineOf(lines, /chown -R "\$\{JUID\}:\$\{JGID\}" \/opt\/bts/)
     assert.ok(readAt >= 0 && guardAt >= 0 && chownAt >= 0, `세 지점을 다 못 찾았다: read=${readAt} guard=${guardAt} chown=${chownAt}`)
     assert.ok(
@@ -189,5 +193,78 @@ describe('② 위험한 일보다 안전장치가 먼저다 — 순서', () => {
       /chown 을 하지 않았다/,
       'READER 를 못 찾았을 때의 메시지가 「하지 않았다」를 말하지 않는다 — 순서가 다시 뒤집혔을 수 있다',
     )
+  })
+})
+
+describe('③ 지우면 안 되는 것 ⊋ 읽히면 안 되는 것', () => {
+  // ★★의미가 다른 둘을 한 목록에 누르면 한쪽이 다른 쪽을 망가뜨린다.
+  //
+  //   2026-09-11 실측. 처음에는 목록이 하나였고 `bootstrap.sh` 가 그것 전부를 root 로
+  //   되돌렸다. 그래서 `backups/` 까지 root 로 잠겼는데 — **배포 5단계가 거기에 DB 덤프를
+  //   쓴다.** 쓰기 불가로 죽을 상태였다. 「지워지면 안 된다」와 「읽히면 안 된다」가
+  //   겹치지만 같지 않다는 것을 목록 하나가 감추고 있었다.
+  //
+  //   그래서 둘로 나눴고, 이 판별식이 **포함 관계**를 지킨다. 읽히면 안 되는 것은 당연히
+  //   지워져도 안 되므로 secret ⊆ protected 다. 반대는 성립하지 않는다.
+
+  test('★양성 대조군 — 두 목록이 모두 실제로 읽힌다', () => {
+    for (const kind of ['protected', 'secret'] as const) {
+      const { paths, status, stderr } = runReader(kind)
+      assert.equal(status, 0, `${kind} 목록이 exit ${status} 로 죽었다\n${stderr}`)
+      assert.ok(paths.length > 0, `${kind} 목록이 비었다`)
+    }
+  })
+
+  test('★★secret 은 protected 의 부분집합이다', () => {
+    const protectedPaths = runReader('protected').paths
+    const secretPaths = runReader('secret').paths
+    const orphans = secretPaths.filter((p) => !protectedPaths.includes(p))
+    assert.deepEqual(
+      orphans,
+      [],
+      `읽히면 안 되는데 지워져도 되는 경로가 있다: ${orphans.join(', ')}\n` +
+        '  자격증명을 배포가 지워 버리면 젠킨스가 다음 빌드부터 안 뜬다.',
+    )
+  })
+
+  test('★★backups 는 protected 이되 secret 이 아니다', () => {
+    // 이 한 건이 두 목록을 나눈 이유 자체다. 되돌아가면 배포가 DB 덤프를 못 쓴다.
+    const protectedPaths = runReader('protected').paths
+    const secretPaths = runReader('secret').paths
+    assert.ok(protectedPaths.includes('backups'), 'backups 가 protected 에 없다 — 배포가 지운다')
+    assert.ok(
+      !secretPaths.includes('backups'),
+      'backups 가 secret 에 있다 — chown 복구가 root 로 잠그고,\n' +
+        '  배포 5단계 `pg_dump > backups/...` 가 쓰기 불가로 죽는다.',
+    )
+  })
+
+  test('★★bootstrap 은 secret 목록을 쓴다 (protected 를 쓰면 backups 가 잠긴다)', () => {
+    const code = codeLines(read('infra/jenkins/bootstrap.sh')).join('\n')
+    assert.match(
+      code,
+      // 호출이 변수를 거칠 수 있다(`bash "$READER" secret`). 둘 다 본다.
+      /(read-protected-paths\.sh|\$READER)"?\s+secret/,
+      'bootstrap 이 secret 목록을 지정하지 않는다 — 기본값 protected 로 backups 까지 잠근다',
+    )
+  })
+
+  test('★★bts-deploy 는 protected 목록을 쓴다 (secret 만 쓰면 backups 가 지워진다)', () => {
+    const code = codeLines(read('infra/deploy/bts-deploy.sh')).join('\n')
+    assert.doesNotMatch(
+      code,
+      /(read-protected-paths\.sh|\$READER)"?\s+secret/,
+      'bts-deploy 가 secret 목록을 쓴다 — backups 가 제외에서 빠져 `--delete` 가 지운다',
+    )
+    assert.match(code, /read-protected-paths\.sh/, 'bts-deploy 가 읽기 스크립트를 안 부른다')
+  })
+
+  test('★알 수 없는 종류를 조용히 통과시키지 않는다', () => {
+    const r = spawnSync('bash', [path.join(REPO_ROOT, READER), 'nope'], { encoding: 'utf-8' })
+    assert.notEqual(r.status, 0, '모르는 종류인데 exit 0 이다 — 빈 목록으로 흘러간다')
+  })
+
+  test('★secret 목록 파일이 실재한다', () => {
+    assert.ok(fs.existsSync(path.join(REPO_ROOT, SECRETS)), `${SECRETS} 이 없다`)
   })
 })
