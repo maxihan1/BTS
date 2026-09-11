@@ -367,7 +367,10 @@ class ImportUserMappingFlowIntegrationTest {
             /** JVM 단위 singleton MinIO container — 다른 Import 통합테스트와 동일 pinned 버전. */
             @JvmStatic
             val minio: MinIOContainer =
-                MinIOContainer("minio/minio:RELEASE.2023-09-04T19-57-37Z")
+                MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2023-09-04T19-57-37Z")
+                    .asCompatibleSubstituteFor("minio/minio"),
+            )
                     .apply { start() }
 
             /** 이 테스트 전용 버킷 — 다른 Import 통합테스트의 버킷과 물리적으로 분리한다. */
