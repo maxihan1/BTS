@@ -86,3 +86,51 @@ test('브랜치 이름은 한 곳에서 계산한다 (세 곳이 서로 다른 �
       '여러 곳에서 계산하면 detached HEAD·BRANCH_NAME 부재 같은 상황에서 서로 다른 답이 나온다.',
   );
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// ★★결합자까지 본다 (2026-09-11 감사 적발)
+//
+// 위 두 단언은 조건의 **존재**만 본다. 그래서 이렇게 바꿔도 통과한다.
+//
+//     when { anyOf { expression { params.DEPLOY }
+//                    expression { env.GIT_BRANCH_NAME == 'main' } } }
+//
+// `anyOf` 면 `params.DEPLOY` 하나만 참이어도 열린다 — **작업 브랜치가 운영에 배포된다.**
+// 문자열은 그대로 있으니 판별식은 초록이다. 저장소 전량 grep 으로 확인했는데
+// `allOf|anyOf` 를 보는 판별식이 **0건**이었다.
+//
+// 「공허한 가드」의 교과서적 형태다 — 지키려던 것을 정확히 반대로 뒤집어도 통과한다.
+// ─────────────────────────────────────────────────────────────────────────
+
+/** `when` 블록의 최상위 결합자. 없으면 단일 조건이다. */
+function combinator(when: string): string | null {
+  const m = /when\s*\{\s*(allOf|anyOf|not)\b/.exec(when);
+  return m === null ? null : (m[1] as string);
+}
+
+for (const stage of ['배포 승인', '배포']) {
+  test(`★★stage('${stage}') 의 조건들이 AND 로 묶인다`, () => {
+    const jf = readFileSync(JENKINSFILE, 'utf-8');
+    const when = whenBlock(jf, stage);
+    // 조건이 둘 이상이면 반드시 allOf 여야 한다.
+    const conds = (when.match(/expression\s*\{|environment\s+name:/g) ?? []).length;
+    assert.ok(
+      conds >= 2,
+      `stage('${stage}') 의 조건이 ${conds}개다 — 배포 게이트는 최소 둘(승인 파라미터·브랜치)이다.`,
+    );
+    assert.equal(
+      combinator(when),
+      'allOf',
+      `stage('${stage}') 의 결합자가 allOf 가 아니다 (${combinator(when) ?? '없음'}).\n` +
+        '★`anyOf` 면 params.DEPLOY 하나만 참이어도 열린다 — **작업 브랜치가 운영에 배포된다.**\n' +
+        '  브랜치 조건 문자열은 그대로 있으니 「존재」만 보는 단언은 초록이다.',
+    );
+  });
+}
+
+test('★판정기가 anyOf 를 실제로 구분한다 (비-공허 짝)', () => {
+  assert.equal(combinator('when {\n  allOf {\n    expression { a }\n  }'), 'allOf');
+  assert.equal(combinator('when {\n  anyOf {\n    expression { a }\n  }'), 'anyOf');
+  assert.equal(combinator('when { expression { a } }'), null);
+});

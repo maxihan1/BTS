@@ -558,9 +558,20 @@ pipeline {
         // ★`BTS_DEPLOY_LOCAL=1` — 젠킨스는 **배포 대상 위에** 있다. 그 모드는 전송 수단만
         //   바꾸고(rsync 원격→로컬 · ssh→bash) 본문은 스크립트 한 벌 그대로 쓴다.
         //
-        // ★`BTS_SKIP_DEPLOY_TEST` 를 넘기지 않는다. 그 값이 서면 이 배포는 전수 검증 0회다.
         sh '''
           set -eu
+          # ★★`BTS_SKIP_DEPLOY_TEST` 를 **코드로** 막는다 (2026-09-11).
+          #
+          #   종전에는 「넘기지 않는다」는 **주석만** 있었다. 젠킨스 전역 환경변수나
+          #   노드 설정으로 그 값이 서면 `bts-deploy.sh:92` 가 전량 테스트를 건너뛰고
+          #   배포한다 — 그 배포는 **전수 검증 0회**인데 파이프라인은 초록이다.
+          #   주석은 그것을 막지 못한다. 실제로 같은 저장소가 「주석으로는 못 막는다」를
+          #   잡 등록 함정에서 이미 실증했다(bootstrap.sh).
+          if [ -n "${BTS_SKIP_DEPLOY_TEST:-}" ]; then
+            echo "❌ BTS_SKIP_DEPLOY_TEST 가 설정돼 있다 — 젠킨스 배포 경로에서는 금지다." >&2
+            echo "   그 값이 서면 이 배포는 전수 검증 0회다." >&2
+            exit 1
+          fi
           BTS_DEPLOY_LOCAL=1 bash infra/deploy/bts-deploy.sh
         '''
         /*
@@ -601,6 +612,23 @@ pipeline {
       //   정리는 **DB 를 쓰는 모든 stage 를 덮는 자리**에 있어야 한다.
       sh 'docker rm -f "$CI_PG_CONTAINER" 2>/dev/null || true'
       junit allowEmptyResults: true, testResults: 'backend/modules/*/build/test-results/**/*.xml'
+      /*
+       * ★★E2E 결과도 남긴다 (2026-09-11 추가).
+       *
+       * 종전에는 백엔드 XML 하나만 수집하고 `cleanWs` 로 워크스페이스를 지웠다.
+       * 그래서 빠른 게이트·전량이 돌린 Playwright 의 결과가 **아무 데도 안 남았다** —
+       * 정책 §1 의 마지막 줄(「E2E 결과를 젠킨스에서 볼 수 있어야 한다」)이 `bts-e2e`
+       * 에서만 지켜지고 `bts-ci` 에서는 지켜지지 않았다.
+       *
+       * 실패 원인을 로그에서 찾으려면 수만 줄을 뒤져야 하고, 트레이스·스크린샷은
+       * `cleanWs` 가 지운 뒤였다. 「증거를 남기는 설정」(playwright.config.ts 의
+       * `retain-on-failure`)이 있는데 **수집하는 쪽이 없어** 그 설정이 공허했다.
+       *
+       * ★`cleanWs` 보다 **앞**이어야 한다. 뒤면 지워진 것을 수집한다.
+       */
+      junit allowEmptyResults: true, testResults: 'apps/web/test-results/junit.xml'
+      archiveArtifacts artifacts: 'apps/web/playwright-report/**', allowEmptyArchive: true
+      archiveArtifacts artifacts: 'apps/web/test-results/**', allowEmptyArchive: true
       // 잔재성 거짓 초록을 막는다 — `actions/checkout@v4` 의 `clean: true` 가 하던 일이다.
       cleanWs(deleteDirs: true, notFailBuild: true)
     }
