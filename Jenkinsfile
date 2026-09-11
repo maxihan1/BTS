@@ -609,6 +609,22 @@ pipeline {
         }
       }
       steps {
+        /*
+         * ★★배포에 **들어갔다는 사실**을 남긴다 (2026-09-11).
+         *
+         * 이 잡은 `abortPrevious: true` 다. 배포가 도는 중에 main 으로 푸시가 하나 들어오면
+         * 폴링이 새 빌드를 걸고, 이 빌드는 **그 자리에서 죽는다.** 어디서 죽었느냐에 따라
+         * 운영이 반쯤 갈린 채 남는다 — `compose up` 중이었다면 특히 그렇다.
+         *
+         * 실측(빌드 #48). `DEPLOY=true` 로 건 빌드가 폴링 빌드에 abort 됐고 결과는
+         * `Finished: NOT_BUILT` 였다. **빨간불이 아니라 침묵이다.** 「배포했는데 안 됐다」를
+         * 아무도 모르는 자리가 여기다.
+         *
+         * abort 자체는 막지 못한다(interrupt 는 강제다). 그러나 **침묵은 막는다** —
+         * 아래 `post { aborted }` 가 이 표시를 보고 운영 상태를 찍는다.
+         */
+        script { env.DEPLOY_ENTERED = 'true' }
+
         // ★`bts-deploy.sh` 를 **호출한다. 다시 쓰지 않는다.**
         //   그 안에 배포 전 전량 게이트 · `require_web_module` · DB 덤프(실패 시 중단) ·
         //   pnpm 폴백 같은 사고 방어가 들어 있고, Jenkinsfile 에 옮겨 적으면 두 벌이 되어
@@ -659,6 +675,8 @@ pipeline {
             string(name: 'BASE_URL', value: 'https://bts.maxihan.com'),
           ],
         )
+        // 여기까지 왔으면 배포와 후속 E2E 트리거가 모두 끝났다. 중간에 죽지 않았다는 표시다.
+        script { env.DEPLOY_COMPLETED = 'true' }
       }
     }
   }
@@ -695,6 +713,44 @@ pipeline {
       archiveArtifacts artifacts: 'apps/web/test-results/**', allowEmptyArchive: true
       // 잔재성 거짓 초록을 막는다 — `actions/checkout@v4` 의 `clean: true` 가 하던 일이다.
       cleanWs(deleteDirs: true, notFailBuild: true)
+    }
+
+    /*
+     * ★★배포 도중에 죽었으면 **침묵하지 않는다** (2026-09-11 추가).
+     *
+     * 이 잡은 `abortPrevious: true` 라, 배포가 도는 중 main 으로 푸시 하나가 들어오면
+     * 폴링이 새 빌드를 걸고 이 빌드는 그 자리에서 죽는다. abort 는 interrupt 라 막지
+     * 못한다 — 그러나 **어디서 죽었는지는 말할 수 있다.**
+     *
+     * 실측(빌드 #48). `DEPLOY=true` 빌드가 abort 됐고 결과가 `Finished: NOT_BUILT` 였다.
+     * 빨간불이 아니라 침묵이라 「배포를 걸었는데 안 됐다」를 확인해야만 알 수 있었다.
+     *
+     * 무엇이 위험한가. 배포 스크립트는 rsync → DB 덤프 → compose build → up → health
+     * 순으로 돈다. `compose up` 중에 끊기면 컨테이너가 반쯤 갈린 채 남는다.
+     * 그래서 그 경우에만 운영 헬스를 직접 찍어 **지금 무엇이 서비스 중인지** 남긴다.
+     */
+    aborted {
+      script {
+        if (env.DEPLOY_ENTERED == 'true' && env.DEPLOY_COMPLETED != 'true') {
+          echo '🚨 배포 도중에 중단됐다 — 운영이 반쯤 갈렸을 수 있다.'
+          echo '   원인은 대개 abortPrevious 다. 배포 중 main 으로 푸시가 들어오면 이 빌드가 죽는다.'
+          sh '''
+            set +e
+            echo "--- 지금 무엇이 서비스 중인가 ---"
+            curl -sS -o /dev/null -w '  루트    HTTP %{http_code} · %{time_total}s\n' \
+              --max-time 15 https://bts.maxihan.com/
+            echo -n "  버전    "
+            curl -sS --max-time 10 https://bts.maxihan.com/version.json | head -c 200
+            echo
+            echo "--- 운영 컨테이너 ---"
+            docker ps --filter name=bts- --format '  {{.Names}} {{.Status}}' 2>/dev/null
+            echo "--- 되돌릴 수단 ---"
+            ls -1t /opt/bts/backups/*.dump 2>/dev/null | head -3 | sed 's/^/  /'
+            docker images --filter 'reference=bts-*:rollback-*' --format '  {{.Repository}}:{{.Tag}}' 2>/dev/null | head -4
+          '''
+          echo '   판단이 필요하면 docs/runbooks/jenkins.md §배포 중단 복구 를 보라.'
+        }
+      }
     }
   }
 }
