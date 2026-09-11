@@ -117,7 +117,10 @@ jobs:
     needs: route
     if: needs.route.outputs.frontend != 'skip'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # ★실측 22분 33초 (run 34604473695 · 전량 vitest). **이 잡이 전체 벽시계를 정한다** —
+    #   백엔드 9모듈은 병렬이라 최장 17분 27초이고 프론트가 그보다 길다.
+    #   조사 실측으로 이 시간의 73% 가 vitest 준비 비용이다. 다음 다이어트 표적이 여기다.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -149,9 +152,11 @@ jobs:
     needs: route
     if: needs.route.outputs.modules != '[]'
     runs-on: ubuntu-latest
-    # ★timeout 은 실측으로 정한다. runner-smoke(run 34602622965)가
-    #   최장 모듈 issue-tracking 의 콜드 벽시계를 재고 있다. 맥 8코어 웜이 9분 13초였다.
-    timeout-minutes: 45
+    # ★실측으로 정했다 (run 34604473695 · 전량 모드 9모듈).
+    #   최장 issue-tracking 17분 27초 · identity-access 13분 3초 · 최단 shared-kernel 3분 5초.
+    #   맥 8코어 웜 실측(9분 13초)의 약 1.9배다. 여유를 2배 가까이 둔다 —
+    #   콜드 캐시·러너 편차·generateJooq 재생성이 겹치면 늘어난다.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -241,7 +246,8 @@ jobs:
     needs: route
     if: needs.route.outputs.deep == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # ★실측 7분 19초 (run 34604473695).
+    timeout-minutes: 20
     services:
       postgres:
         # ★일반 postgres:16 은 마이그레이션에서 죽는다 — pgmq 확장이 필요하다 (ADR 2026-05-22).
