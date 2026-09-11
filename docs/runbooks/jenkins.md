@@ -37,6 +37,7 @@ cp .env.example .env && vi .env     # JENKINS_ADMIN_PASSWORD 를 사람이 채�
 ./bootstrap.sh logs
 ./bootstrap.sh down
 ./bootstrap.sh lock                 # 설치된 플러그인 실제 버전 고정
+./bootstrap.sh job [브랜치]         # 잡 정의 적용 (기본 main) + 재등록 확인까지 대기
 ```
 
 두 값이 저장소 정본에서 나와야 해서 래퍼가 있다 — `NODE_VERSION` ← `.nvmrc`,
