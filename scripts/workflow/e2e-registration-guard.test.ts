@@ -120,3 +120,94 @@ describe('bts-e2e — 파라미터 미등록 실행 차단', () => {
     );
   });
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────
+// ★★대상 커밋의 스펙으로 검증한다 (2026-09-11 감사 적발)
+//
+// 이 잡의 SCM 은 main 브랜치 지정이라 워크스페이스는 **빌드가 시작된 순간의 main HEAD** 다.
+// 검증 대상은 `DEPLOYED_SHA`(배포된 커밋)이고, 둘은 다를 수 있다.
+//
+//   배포가 A 로 끝나고 `DEPLOYED_SHA=A` 로 이 잡이 뜬다.
+//   그 사이 main 에 B(스펙 수정 포함)가 들어오면 → **B 의 스펙**으로 **A 의 서버**를 때린다.
+//
+// 그리고 아무 경보도 없다. `배포 반영 대기` 는 서버=A 로 통과하고 `판정 유효성` 도
+// 서버가 A 그대로라 「판정 유효」를 찍는다. 새 배포가 아니라 `abortPrevious` 도 안 걸린다.
+// 결과는 「A 를 검증했다」로 인용되는데 실제로 돈 것은 B 의 스펙이다.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('대상 커밋 고정', () => {
+  test('★★DEPLOYED_SHA 가 있으면 워크스페이스를 그 커밋으로 맞춘다', () => {
+    const src = readFileSync(E2E, 'utf-8');
+    const code = src
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n');
+    assert.match(
+      code,
+      /git checkout[^\n]*TARGET_SHA/,
+      '대상 커밋으로 체크아웃하지 않는다.\n' +
+        '★서버 커밋만 대조하면 「무엇으로 검증했는가」가 안 고정된다 —\n' +
+        '  다른 커밋의 스펙으로 그 서버를 때리고 「판정 유효」가 찍힌다.',
+    );
+  });
+
+  test('★★체크아웃 실패를 조용히 넘기지 않는다', () => {
+    const src = readFileSync(E2E, 'utf-8');
+    const at = src.indexOf('git checkout');
+    assert.ok(at >= 0, 'git checkout 을 못 찾았다.');
+    // ★`returnStatus: true` 는 `git checkout` 보다 **앞줄**에 온다(sh 의 인자 순서).
+    //   창을 앞으로도 열어야 한다 — 뒤만 보면 멀쩡한 코드가 red 가 된다(초안에서 실측).
+    const after = src.slice(Math.max(0, at - 300), at + 1200);
+    /*
+     * ★**종료 코드를 실제로 보는지**를 요구한다. `error(` 가 있는 것만으로는 부족하다 —
+     *   `if (false) { error(...) }` 로 바꿔도 그 문자열은 남는다(초안 뮤테이션 ②가
+     *   그렇게 통과했다). 같은 실수를 `BTS_SKIP_DEPLOY_TEST` 단언에서도 했다.
+     */
+    assert.match(
+      after,
+      /returnStatus:\s*true/,
+      '체크아웃의 종료 코드를 안 받는다 — 실패를 알 방법이 없다.',
+    );
+    assert.match(
+      after,
+      /\brc\s*!=\s*0[\s\S]{0,200}error\(/,
+      '체크아웃 실패를 **조건으로** 보고 죽이지 않는다 — 그러면 낡은 스펙으로 그대로 검증한다.',
+    );
+    assert.match(
+      after,
+      /rev-parse HEAD[\s\S]{0,300}!=\s*env\.TARGET_SHA/,
+      '체크아웃 뒤 HEAD 가 대상과 같은지 확인하지 않는다 — 성공 코드만 믿는 셈이다.',
+    );
+  });
+
+  test('★★파이프라인 블록 주석이 안 끊긴다', () => {
+    // ★브랜치 글로브 표기(`*` + `/main`)의 닫는 표식이 블록 주석을 끊는다.
+    //   실제로 한 번 끊겨 젠킨스 린터가 `unexpected char` 로 죽었다. 그때는 린터가
+    //   잡아 줬지만, 끊긴 자리가 **문자열 안**이면 파싱은 통과하고 동작만 달라진다.
+    for (const file of [E2E, CI]) {
+      const src = readFileSync(file, 'utf-8');
+      let inBlock = false;
+      const broken: string[] = [];
+      src.split('\n').forEach((raw, i) => {
+        const t = raw.trim();
+        if (!inBlock) {
+          if (t.startsWith('/*')) inBlock = !t.includes('*/');
+          return;
+        }
+        // 주석 본문 줄인데 `*/` 가 **줄 끝이 아닌** 곳에 있으면 의도치 않은 종료다.
+        const idx = t.indexOf('*/');
+        if (idx >= 0) {
+          if (idx + 2 !== t.length) broken.push(`${i + 1}: ${t.slice(0, 70)}`);
+          inBlock = false;
+        }
+      });
+      assert.deepEqual(
+        broken,
+        [],
+        `${file.split('/').pop()} 의 블록 주석이 줄 중간에서 끊긴다: ${broken.join(' · ')}\n` +
+          '★대개 브랜치 글로브 표기가 원인이다. 그 표기를 블록 주석 안에 적지 마라.',
+      );
+    }
+  });
+});

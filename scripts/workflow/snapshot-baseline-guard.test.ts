@@ -14,6 +14,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -40,12 +41,44 @@ const SOURCE_GLOB = 'apps/web/src/**';
  *
  * @returns 위반 사유. 위반이 아니면 null
  */
-export const baselineOnlyViolation = (paths: readonly string[]): string | null => {
+export const baselineOnlyViolation = (
+  paths: readonly string[],
+  /**
+   * 「이 경로가 **이미 있었나**」를 판정하는 함수. 테스트에서 주입한다.
+   *
+   * 기본값은 디스크를 본다 — 작업 트리에 없으면 이번에 새로 만든 것이다.
+   */
+  existedBefore: (p: string) => boolean = defaultExistedBefore,
+): string | null => {
   const baselines = paths.filter((p) => matchesGlob(BASELINE_GLOB, p));
   if (baselines.length === 0) return null;
   if (paths.some((p) => matchesGlob(SOURCE_GLOB, p))) return null;
-  return `기준 이미지 ${baselines.length}건이 바뀌었는데 ${SOURCE_GLOB} 변경이 하나도 없다: ${baselines.join(', ')}`;
+
+  /*
+   * ★★「최초 생성」과 「무단 갱신」을 구분한다 (2026-09-11).
+   *
+   * 이 판별식이 막으려는 것은 **회귀를 승인하는 재생성**이다 — 시각 테스트가 실패했을 때
+   * 가장 쉬운 해결책이 기준 이미지를 새로 찍는 것이고, 그러면 무엇이 달라졌는지 아무도
+   * 안 본 채 초록이 된다.
+   *
+   * 그런데 **아직 없던 기준을 처음 만드는 것**은 그 고장이 원리적으로 불가능하다 —
+   * 덮어쓸 기준이 없으므로 승인할 회귀도 없다. 종전 규칙은 둘을 구분하지 않아,
+   * P3(시각 회귀 파일럿)의 최초 기준선 커밋이 **영원히 막혀** 있었다.
+   * 그래서 계획 문서가 「커밋 해시로 일회성 예외를 열고 같은 PR 에서 닫는다」는
+   * 위험한 우회를 적어 두고 있었다 — 열어 둔 채 머지하면 그날부터 이 판별식이 공허해진다.
+   *
+   * 우회 대신 규칙을 정확하게 만든다. 삭제도 「바뀜」이라 여전히 걸리므로,
+   * 「지우고 다시 만들기」로 빠져나갈 수도 없다(그 커밋의 삭제가 먼저 잡힌다).
+   */
+  const updated = baselines.filter((p) => existedBefore(p));
+  if (updated.length === 0) return null;
+
+  return `기준 이미지 ${updated.length}건이 **갱신**됐는데 ${SOURCE_GLOB} 변경이 하나도 없다: ${updated.join(', ')}`;
 };
+
+/** 기본 판정 — 작업 트리에 그 파일이 있으면 「이미 있던 것」이다. */
+const defaultExistedBefore = (p: string): boolean =>
+  fs.existsSync(path.join(REPO_ROOT, p));
 
 /** 저장소가 추적 중인 파일 전량 */
 const trackedFiles = (): string[] => {
@@ -62,15 +95,27 @@ const trackedFiles = (): string[] => {
 describe('스냅샷 baseline 무단 갱신 차단', () => {
   test('기준만 바뀌면 위반 · 소스가 함께 바뀌면 통과 (오탐 대조)', () => {
     const baseline = 'apps/web/e2e/visual/__screenshots__/issue-list-light.png';
+    // ★합성 경로라 디스크에 없다. 「이미 있던 것」을 명시해 **갱신** 시나리오를 만든다 —
+    //   기본 판정기(디스크 존재)를 그대로 쓰면 이 케이스가 「최초 생성」으로 읽힌다.
+    const existed = () => true;
 
-    const violation = baselineOnlyViolation([baseline]);
+    const violation = baselineOnlyViolation([baseline], existed);
     assert.ok(violation, '기준 이미지만 바꾼 변경을 통과시켰다 — 이 판별식의 존재 이유가 사라진다.');
     assert.match(violation, /apps\/web\/src/);
 
     assert.equal(
-      baselineOnlyViolation([baseline, 'apps/web/src/features/issue/IssueList.tsx']),
+      baselineOnlyViolation([baseline, 'apps/web/src/features/issue/IssueList.tsx'], existed),
       null,
       '소스를 함께 고친 정상 갱신을 위반으로 읽으면 아무도 이 판별식을 안 믿는다.',
+    );
+
+    // ★★최초 생성은 막지 않는다. 덮어쓸 기준이 없으므로 승인할 회귀도 없다.
+    //   종전 규칙은 둘을 구분하지 않아 P3 의 최초 기준선 커밋이 영원히 막혀 있었고,
+    //   계획 문서가 「커밋 해시로 일회성 예외를 연다」는 위험한 우회를 적어 두고 있었다.
+    assert.equal(
+      baselineOnlyViolation([baseline], () => false),
+      null,
+      '아직 없던 기준을 **처음 만드는** 것을 막는다 — 그러면 시각 회귀를 영영 도입할 수 없다.',
     );
     assert.equal(
       baselineOnlyViolation(['apps/web/e2e/visual/visual-regression.spec.ts']),
