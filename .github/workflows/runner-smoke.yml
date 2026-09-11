@@ -15,10 +15,11 @@
 #   실패해도 그 실패가 데이터다. 이 파일은 6값을 얻은 뒤 삭제한다.
 name: runner-smoke
 
+# ★수동 실행만. push 트리거를 달았더니 다음 커밋이 곧바로 새 run 을 띄웠고,
+#   아래 `cancel-in-progress` 가 **30분째 돌던 최장 모듈 측정을 취소할 뻔했다**.
+#   측정용 워크플로우에 자동 트리거와 자동 취소를 함께 다는 것은 서로 어긋난다.
 on:
   workflow_dispatch:
-  push:
-    branches: ['worktree-cicd-diet-gha']
 
 permissions:
   contents: read
