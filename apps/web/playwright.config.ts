@@ -69,6 +69,17 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      /*
+       * ★CI 에서만 1회 재시도 (2026-09-11).
+       *
+       * MSW 재기동 창을 `waitForMsw` 로 좁혔지만 완전히 닫지는 못한다 — 스펙이 직접 부르는
+       * `page.goto` 마다 같은 창이 다시 열리고, 그것을 전부 감싸려면 169 스펙을 손대야 한다.
+       *
+       * ★**`visual` 프로젝트는 0 을 유지한다**(아래). 재시도는 흔들림을 가리는데, 시각 회귀
+       *   파일럿이 재려는 값이 바로 「무변경 상태에서 diff 가 몇 회 나는가」다. 거기에 재시도를
+       *   주면 그 측정이 통째로 무의미해진다. 기능 E2E 에만 준다.
+       */
+      retries: process.env['CI'] ? 1 : 0,
       use: { ...devices['Desktop Chrome'] },
       // ★`e2e/visual` 은 아래 `visual` 프로젝트 전용이다. 제외하지 않으면 루트 testDir
       // 때문에 같은 spec 이 두 프로젝트에서 각각 돌고, 두 실행이 **같은 baseline 파일 1개**를
