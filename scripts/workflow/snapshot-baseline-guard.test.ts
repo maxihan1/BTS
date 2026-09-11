@@ -20,6 +20,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { matchesGlob } from './detect-tier.ts';
 import { changedPaths } from './changed-paths.ts';
+import { resolveDiffBase } from './diff-base.ts';
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs';
 
@@ -76,9 +77,27 @@ export const baselineOnlyViolation = (
   return `기준 이미지 ${updated.length}건이 **갱신**됐는데 ${SOURCE_GLOB} 변경이 하나도 없다: ${updated.join(', ')}`;
 };
 
-/** 기본 판정 — 작업 트리에 그 파일이 있으면 「이미 있던 것」이다. */
-const defaultExistedBefore = (p: string): boolean =>
-  fs.existsSync(path.join(REPO_ROOT, p));
+/**
+ * 기본 판정 — **비교 기준 커밋에** 그 파일이 있었나.
+ *
+ * ★작업 트리를 보면 안 된다. 새로 만든 기준 이미지를 **커밋한 직후**에는 디스크에
+ *   당연히 있으므로, 「생성」을 「갱신」으로 읽어 자기 커밋을 자기가 막는다
+ *   (2026-09-11 실측 — 기준 이미지 4장 최초 커밋이 이 경로로 red 였다).
+ *   물어야 할 것은 「지금 있나」가 아니라 **「원래 있었나」**다.
+ *
+ * ★기준을 못 정하면 **「있던 것」으로 본다.** 막는 쪽이 안전하다 — 잘못 막으면
+ *   소스를 함께 담거나 설명하면 되지만, 잘못 통과시키면 회귀가 조용히 승인된다.
+ */
+const defaultExistedBefore = (p: string): boolean => {
+  const base = resolveDiffBase();
+  if (base === null) return true;
+  const r = spawnSync('git', ['cat-file', '-e', `${base}:${p}`], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+    env: gitFixtureEnv(),
+  });
+  return r.status === 0;
+};
 
 /** 저장소가 추적 중인 파일 전량 */
 const trackedFiles = (): string[] => {
