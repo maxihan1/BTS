@@ -102,6 +102,57 @@ Docker 는 **이미지에 없는 경로**에 named volume 을 붙이면 그 디�
 최초 실행 마법사를 껐고(`runSetupWizard=false`) 설정 정본은 `casc.yaml` 이다.
 UI 변경은 컨테이너 재생성 시 없어진다 — 저장소를 고쳐라.
 
+### 4-7. `/opt/bts` 마운트는 됐는데 **쓸 수는 없었다**
+
+첫 배포(빌드 #47)가 `rsync ... Permission denied (13)` · `exit 23` 으로 죽었다.
+
+```
+젠킨스 컨테이너   uid 1000(jenkins)
+/opt/bts          501:20  drwxr-xr-x   ← others 는 읽기만
+```
+
+compose 에 `- /opt/bts:/opt/bts` 가 있으면 **읽을 때는** 충분해 보인다. `touch` 를 해봐야 보인다. `bootstrap.sh up` 이 컨테이너 안에서 실제로 써 보고, 못 쓰면 소유권을 교정한 뒤 **다시 써 본다.**
+
+`chmod` 가 아니라 `chown` 인 이유. `rsync -a` 의 `-p` 가 소스 퍼미션을 복사하므로 `chmod -R g+w` 로 풀면 **첫 배포가 그 비트를 지우고 두 번째부터 실패한다.** 소유자는 mode 와 무관하게 쓸 수 있고 `-o`(owner)는 root 만 쓸 수 있어, chown 만이 배포마다 유지된다.
+
+**목록이 둘이다.** 의미가 다르기 때문이다.
+
+| 파일 | 뜻 | `backups` |
+|---|---|---|
+| `infra/deploy/protected-paths.txt` | 배포가 **지우면** 안 되는 것 (rsync `--delete` 제외) | 포함 |
+| `infra/deploy/secret-paths.txt` | 파이프라인이 **읽으면** 안 되는 것 (chown 뒤 root 복구) | **제외** |
+
+`backups/` 는 지워지면 안 되지만 배포 5단계가 **거기에 DB 덤프를 쓴다**. 한 목록으로 다루면 그것까지 root 로 잠겨 배포가 죽는다. 읽기는 `read-protected-paths.sh [protected｜secret]` 한 벌이다.
+
+> ⚠️ 호스트의 uid 1000 은 `nbpmon`(네이버클라우드 모니터링)이고 젠킨스 uid 와 겹친다. 자격증명·JWT 서명키는 root 600/755 로 보호되지만 `/opt/bts` 소스 트리는 그 계정과 공유된다. docker.sock 이 이미 호스트-root 등가를 주므로 공격면이 늘지는 않는다.
+
+### 4-8. 배포 중단 복구 — `abortPrevious` 가 배포도 죽인다
+
+`bts-ci` 는 `disableConcurrentBuilds(abortPrevious: true)` 다. **배포가 도는 중 main 으로 푸시 하나가 들어오면 폴링이 새 빌드를 걸고 이 빌드는 그 자리에서 죽는다.**
+
+실측(빌드 #48). `DEPLOY=true` 로 건 빌드가 폴링 빌드에 abort 됐고 결과가 `Finished: NOT_BUILT` 였다 — 빨간불이 아니라 **침묵**이다.
+
+abort 는 interrupt 라 막지 못한다. 대신 `post { aborted }` 가 배포 진입 여부를 보고 **운영 헬스·컨테이너·되돌릴 수단**을 로그에 찍는다. 계약은 `scripts/workflow/deploy-abort-not-silent.test.ts`.
+
+**배포를 걸 때는 그동안 main 에 푸시하지 않는다.** 겹칠 것 같으면 폴링 빌드가 끝난 뒤에 건다.
+
+중단됐다면 어디서 죽었는지에 따라 다르다.
+
+| 죽은 지점 | 운영 상태 | 처방 |
+|---|---|---|
+| 전량 검증 중 | 무사 | 다시 걸면 된다 |
+| rsync 중 | 무사 (이미지가 서비스한다) | 다시 걸면 rsync 가 맞춘다 |
+| `compose build` 중 | 무사 | 다시 걸면 된다 |
+| `compose up` 중 | **반쯤 갈렸을 수 있다** | 아래 롤백 |
+
+```bash
+# 롤백 — <STAMP> 는 배포 로그의 predeploy 덤프 이름에서
+docker exec -i bts-postgres pg_restore -U bts -d bts -c < /opt/bts/backups/predeploy-<STAMP>.dump
+docker tag bts-backend:rollback-<STAMP> bts-backend:local
+docker tag bts-web:rollback-<STAMP> bts-web:local
+docker compose -f /opt/bts/infra/docker-compose.prod.yml --env-file /opt/bts/infra/prod/.env up -d
+```
+
 ## 5. 플러그인 버전
 
 `plugins.txt` 는 **무엇이 필요한가**만 갖고 버전을 적지 않는다. 지금 적는 숫자는
@@ -118,6 +169,8 @@ UI 변경은 컨테이너 재생성 시 없어진다 — 저장소를 고쳐라.
 | `18081` 이 `0.0.0.0` | `ss -tlnp \| grep 18081` | **즉시 down.** `JENKINS_OPTS` 확인 |
 | Testcontainers 가 DB 에 못 붙음 | `docker ps` | host 네트워크가 풀렸는지 — compose 의 `network_mode` |
 | 운영 응답 지연 | `uptime` · `docker stats` | `cpus` 를 낮춘다. 전량 빌드는 야간으로 |
+| 배포가 `Permission denied (13)` · `exit 23` | `docker exec bts-jenkins touch /opt/bts/.p` | `./bootstrap.sh up` — 소유권을 교정한다 (§4-7) |
+| 배포 빌드가 `NOT_BUILT` 로 끝남 | 빌드 로그 맨 끝 | abortPrevious 다 (§4-8). 배포 중이었으면 로그에 운영 상태가 찍혀 있다 |
 
 ## 7. 끝난 것 · 남은 것
 
