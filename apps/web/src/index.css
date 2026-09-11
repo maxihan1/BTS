@@ -4,6 +4,28 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/*
+ * ★한글 폰트를 **파일로 번들한다** (2026-09-11 · Maxi 확정).
+ *
+ * 폰트 **이름**만 스택에 적는 방식은 환경마다 실제 파일이 달라 폭이 갈린다 —
+ * macOS 는 Apple SD Gothic Neo, ubuntu 러너는 Noto Sans CJK KR 을 쓰고, 그 폭 차이가
+ * 「어느 폭에서도 2줄」 같은 UI 계약을 깬다(320px 에서 403 문구가 3줄 · 실측).
+ * 파일을 앱에 실으면 개발자 맥·CI 러너·사용자 브라우저가 **전부 같은 글리프**를 쓴다.
+ *
+ * ★`@fontsource-variable/geist` 처럼 패키지로 받지 않고 `public/fonts/` 에 직접 둔 이유 —
+ *   worktree 에서 `pnpm install` 이 preinstall 가드로 막혀 있다(main 의 node_modules 를
+ *   덮어쓰는 사고가 2026-07-17 에 있었다). 의존성을 늘리지 않는 쪽이 그 제약과도 맞는다.
+ *
+ * 가변 축 범위(45~920)는 Pretendard Variable 의 wght 축 정의 그대로다.
+ */
+@font-face {
+  font-family: 'Pretendard Variable';
+  src: url('/fonts/PretendardVariable.woff2') format('woff2-variations');
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
@@ -30,15 +52,18 @@
       `fonts-noto-cjk` 를 설치하는 것과 **짝**이다. 둘 중 하나만 하면 효과가 없다.
   */
   /*
-   * ★★리눅스 폰트 이름은 `Noto Sans CJK KR` 이다 — `Noto Sans KR` 이 아니다 (2026-09-11 실측).
+   * 한글은 위에서 `@font-face` 로 **번들한** Pretendard Variable 이 그린다. 라틴은 Geist 다.
    *
-   *   `fonts-noto-cjk` 패키지가 까는 패밀리명이 그것이고, 이름이 한 글자라도 다르면
-   *   CSS 는 그 폰트를 **못 찾고 조용히 폴백한다.** 처음에 `'Noto Sans KR'` 만 적었더니
-   *   러너에서 한글 렌더가 한 픽셀도 안 바뀌었다(시각 회귀 actual 로 확인 — 달라진 것은
-   *   마스킹된 이슈 키 영역뿐이었다).
+   * 뒤의 시스템 폰트들은 woff2 로딩이 실패했을 때의 폴백일 뿐이고, 정상 경로에서는 안 쓰인다.
    *
-   *   바로 아래 `--font-mono` 가 `'Noto Sans Mono CJK KR'` 이라고 **정확히** 적어 둔 이유가
-   *   이것이다. 그 선례를 따르지 않고 짐작으로 이름을 적은 것이 실수였다.
+   * ★이름만 적는 방식으로 두 번 실패한 기록을 남긴다 (2026-09-11).
+   *   ① `'Noto Sans KR'` 로 적었더니 러너에서 렌더가 **한 픽셀도 안 바뀌었다** —
+   *      `fonts-noto-cjk` 가 까는 패밀리명은 `Noto Sans CJK KR` 이라 이름이 안 맞았고,
+   *      CSS 는 없는 폰트를 **조용히 건너뛴다.** 아래 `--font-mono` 가
+   *      `'Noto Sans Mono CJK KR'` 이라고 정확히 적어 둔 이유가 그것이었다.
+   *   ② 이름을 고쳐 렌더가 바뀌자 이번엔 **폭 계약이 깨졌다** — macOS(Apple SD Gothic Neo)와
+   *      리눅스(Noto)가 서로 다른 폰트라 320px 에서 403 문구가 3줄이 됐다.
+   *   이름을 맞추는 것으로는 끝나지 않는다. **같은 파일**을 써야 폭이 같다.
    */
   --font-sans: 'Geist Variable', 'Pretendard Variable', 'Pretendard',
                'Apple SD Gothic Neo', 'Noto Sans CJK KR', 'Noto Sans KR', sans-serif;
