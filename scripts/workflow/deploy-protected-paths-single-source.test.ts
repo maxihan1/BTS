@@ -270,6 +270,48 @@ describe('③ 지우면 안 되는 것 ⊋ 읽히면 안 되는 것', () => {
     assert.notEqual(r.status, 0, '모르는 종류인데 exit 0 이다 — 빈 목록으로 흘러간다')
   })
 
+  test('★★배포 스크립트가 secret 경로를 건드리지 않는다', () => {
+    // ★★2026-09-14 실측(빌드 #55). 첫 배포가 `compose build` 직전 마지막 한 줄에서 죽었다.
+    //
+    //     open /opt/bts/infra/prod/.env: permission denied
+    //
+    //   `infra/prod/.env` 가 secret 목록에 있어 `bootstrap.sh` 가 root 600 으로 되돌리는데,
+    //   `bts-deploy.sh` 의 `docker compose --env-file infra/prod/.env` 가 **바로 그 파일을
+    //   읽는다.** 「읽으면 안 된다」와 「읽어야 한다」가 한 경로에 동시에 걸려 있었고
+    //   그 모순을 보는 판별식이 없었다. rsync·DB 덤프까지 다 끝난 뒤에 죽는다.
+    //
+    //   ★위의 하드코딩 검사가 왜 못 잡았나. 그것은 `'경로'` · `"경로"` 처럼 **따옴표에 감싼**
+    //     등장만 찾는다. `--env-file infra/prod/.env` 는 맨몸이라 빠져나갔다.
+    //     이 검사는 따옴표 유무를 보지 않는다.
+    //
+    //   ★목록을 여기 적지 않는다. `read-protected-paths.sh secret` 이 내는 것을 그대로 쓴다 —
+    //     적는 순간 그것이 세 번째 목록이 된다.
+    const secretPaths = runReader('secret').paths
+    assert.ok(secretPaths.length > 0, 'secret 목록이 비었다 — 이 검사가 공허하다')
+    const lines = codeLines(read('infra/deploy/bts-deploy.sh'))
+    // ★비-공허 짝. secret 이 **아닌** 경로는 실제로 찾아낸다는 것을 먼저 보인다.
+    //   이게 없으면 탐색이 통째로 고장나도 「offender 0건」으로 조용히 초록이다.
+    assert.ok(
+      lines.some((l) => l.includes('infra/docker-compose.prod.yml')),
+      '배포 스크립트에서 compose 파일 경로를 못 찾았다 — 이 검사의 탐색이 공허하다',
+    )
+    const offenders: string[] = []
+    for (const line of lines) {
+      for (const p of secretPaths) {
+        if (line.includes(p)) offenders.push(`${p}  ←  ${line.trim()}`)
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      '배포 스크립트가 secret 목록의 경로를 건드린다:\n  ' +
+        offenders.join('\n  ') +
+        '\n  그 경로는 bootstrap.sh 가 root 600 으로 되돌린다 — 젠킨스(uid 1000)는 못 읽고\n' +
+        '  배포가 `permission denied` 로 죽는다 (2026-09-14 빌드 #55 실측).\n' +
+        '  읽어야 하는 파일이라면 secret 에서 빼라. protected 에는 남겨야 한다.',
+    )
+  })
+
   test('★secret 목록 파일이 실재한다', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, SECRETS)), `${SECRETS} 이 없다`)
   })
