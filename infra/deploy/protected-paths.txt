@@ -13,8 +13,18 @@
 # 2026-09-11 실측 — 배포 0회 상태에서 대상에 실재하던 것들. 앞의 셋은 제외 목록에
 # **없었고**, 첫 배포가 전부 지울 예정이었다. 백업이 사라진 직후에 백업을 뜨는
 # 순서라 복구 수단이 먼저 증발한다.
+#
+# ★★2026-09-14 실측. 위의 「전수 조사」가 `infra/deploy/config.sh` 를 빠뜨렸고,
+#   빌드 #55 의 rsync 가 그것을 지웠다. 그리고 **#56 이 죽었다** —
+#   「배포 설정을 못 찾았다」. 지우는 것은 3단계(rsync)이고 읽는 것은 1단계라
+#   고장이 한 박자 늦게 온다. 그 배포는 살아남고 다음 배포가 죽는다.
+#
+#   사람이 한 번 훑은 목록은 그 시점의 스냅샷이다. 이제 계약이 지킨다 —
+#   `deploy-protected-paths-single-source.test.ts` 의 「배포가 읽는 설정 파일을
+#   배포가 지우지 않는다」가 Jenkinsfile 의 `BTS_DEPLOY_CONFIG` 와 이 목록을 대조한다.
 
 backups                     # DB 덤프. 이것이 사라지면 되돌릴 수단이 없다
+infra/deploy/config.sh      # 배포 자신의 설정(SERVER·REMOTE_DIR). gitignored 라 rsync 소스에 없다
 infra/jenkins/.env          # 젠킨스 관리자 자격증명
 infra/jenkins/.deploy-key   # GitHub 배포키(개인키)
 infra/prod/.env             # 운영 환경변수
