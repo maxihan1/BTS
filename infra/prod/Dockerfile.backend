@@ -7,9 +7,19 @@
 FROM eclipse-temurin:21-jre-jammy
 
 # 헬스체크용 curl + 비루트 사용자
+#
+# ★★uid·gid 를 **고정한다** (2026-09-14). 종전에는 `useradd -r` 로 자동 할당받았고,
+#   999 는 그때 베이스 이미지에 남아 있던 번호였을 뿐이다. 그런데 호스트의
+#   `/opt/bts/infra/secrets/bts-jwt.pem` 소유자를 이 uid 에 맞춰야 백엔드가 JWT
+#   서명키를 읽을 수 있다 — 마운트된 파일의 소유권은 **숫자**로만 대조된다.
+#
+#   고정하지 않으면 베이스 이미지가 바뀌는 날 uid 가 조용히 달라지고, 그날 배포부터
+#   백엔드가 기동에서 죽는다 — `PEM 파일 파싱 실패 ... (Permission denied) (EC-19)`.
+#   계약. scripts/workflow/deploy-protected-paths-single-source.test.ts 가 이 숫자와
+#   `infra/deploy/secret-paths.txt` 의 소유자를 대조한다.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd -r bts && useradd -r -g bts -d /app bts
+    && groupadd -r -g 999 bts && useradd -r -u 999 -g bts -d /app bts
 
 WORKDIR /app
 COPY backend/modules/app/build/libs/bts-app.jar app.jar
