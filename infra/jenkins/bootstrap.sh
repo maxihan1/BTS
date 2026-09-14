@@ -183,7 +183,15 @@ case "${1:-up}" in
             echo "   처방. 저장소의 infra/deploy/ 를 서버로 동기화한 뒤 다시 돌려라." >&2
             exit 2
           fi
-          if ! SECRET_LIST="$(bash "$READER" secret)" || [ -z "$SECRET_LIST" ]; then
+          # ★★`secret` 이 아니라 `secret-owners` 다 (2026-09-14).
+          #
+          #   종전에는 경로만 읽어 전부 `root:root` 로 되돌렸다. 그런데 `infra/secrets` 의
+          #   JWT 서명키는 **백엔드 컨테이너(uid 999)가 읽어야 한다.** root 400 이 되자
+          #   운영 백엔드가 기동에서 죽었다 — `PEM 파일 파싱 실패 ... (EC-19)`.
+          #
+          #   목록의 뜻은 「젠킨스가 읽으면 안 된다」인데 구현은 「root 말고 아무도 못 읽는다」
+          #   였다. 의도보다 범위가 넓었다. 이제 목록이 소유자까지 말하고 여기서 그대로 쓴다.
+          if ! SECRET_LIST="$(bash "$READER" secret-owners)" || [ -z "$SECRET_LIST" ]; then
             echo "🚨 비밀 경로를 읽지 못했다. **chown 을 하지 않았다.**" >&2
             exit 2
           fi
@@ -194,21 +202,28 @@ case "${1:-up}" in
           # ★chown 앞에서 이미 읽어 둔 목록을 쓴다. 여기서 다시 읽지 않는다 —
           #   읽기가 그사이 실패하면 되돌릴 것이 0건이 되고, 그 0건이 「보호할 것이 없다」로
           #   읽힌다. 위험을 만든 뒤에 다시 물어보는 구조를 없앤다.
+          # ★소유자를 목록에서 받는다. 여기에 기본값을 두지 않는다 —
+          #   기본 root 를 두면 목록에 소유자를 안 적은 줄이 종전 고장으로 되돌아간다.
+          #   읽기 스크립트가 그런 줄에서 이미 죽는다.
           REVERTED=0
-          while IFS= read -r p; do
+          while IFS=$'\t' read -r p owner; do
             [ -n "$p" ] || continue
+            [ -n "$owner" ] || {
+              echo "🚨 '$p' 에 소유자 uid 가 없다 — 되돌릴 대상을 모른다." >&2
+              exit 2
+            }
             [ -e "/opt/bts/$p" ] || continue
-            chown -R root:root "/opt/bts/$p"
+            chown -R "${owner}:${owner}" "/opt/bts/$p"
             REVERTED=$((REVERTED + 1))
           done <<< "$SECRET_LIST"
           # 목록은 비어 있지 않다고 위에서 확인했다. 그런데도 0건이면 대상이 하나도 실재하지
           # 않는다는 뜻이고, 그것은 경로가 틀렸다는 신호다 — 통과시키면 노출이 남는다.
           if [ "$REVERTED" = "0" ]; then
-            echo "🚨 root 로 되돌린 경로가 0건이다 — 경로가 대상에 하나도 없다." >&2
+            echo "🚨 소유자를 되돌린 경로가 0건이다 — 경로가 대상에 하나도 없다." >&2
             echo "   /opt/bts 전체가 uid ${JUID} 소유로 남았다. 자격증명이 노출된 상태다." >&2
             exit 2
           fi
-          echo "→ 운영 자격증명 ${REVERTED}건 root 소유로 복구"
+          echo "→ 운영 자격증명 ${REVERTED}건 지정 소유자로 복구 (목록의 uid 그대로)"
 
           # ★★교정했다고 끝이 아니다. **다시 해본다.** 「chown 했다」와 「쓸 수 있다」는 다르다.
           if ! docker exec bts-jenkins sh -c 'touch /opt/bts/.write-probe' 2>/dev/null; then
