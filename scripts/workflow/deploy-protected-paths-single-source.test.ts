@@ -315,4 +315,40 @@ describe('③ 지우면 안 되는 것 ⊋ 읽히면 안 되는 것', () => {
   test('★secret 목록 파일이 실재한다', () => {
     assert.ok(fs.existsSync(path.join(REPO_ROOT, SECRETS)), `${SECRETS} 이 없다`)
   })
+
+  test('★★배포가 읽는 설정 파일을 배포가 지우지 않는다', () => {
+    // ★★2026-09-14 실측(빌드 #56). 배포가 시작 1초 만에 죽었다.
+    //
+    //     ❌ 배포 설정을 못 찾았다.
+    //        ② 환경변수 BTS_DEPLOY_CONFIG 가 가리키는 파일
+    //
+    //   직전 빌드 #55 의 `rsync --delete` 가 `/opt/bts/infra/deploy/config.sh` 를 지웠다.
+    //   그 파일은 gitignored 라 rsync **소스에 없고**, protected 목록에도 없었으므로
+    //   대상에서 지워졌다. 즉 **배포가 자기 설정 파일을 지운다.**
+    //
+    //   ★고장이 한 박자 늦게 온다는 것이 이 결함의 핵심이다. 지우는 것은 3단계(rsync)이고
+    //     읽는 것은 1단계다. 그래서 **그 배포는 죽지 않고 다음 배포가 죽는다.**
+    //     원인과 증상이 다른 빌드에 있어 로그를 나란히 놓기 전에는 안 보인다.
+    //
+    //   ★protected-paths.txt 의 머리주석은 「2026-09-11 실측 — 대상에 실재하던 것들」을
+    //     전수 조사했다고 적는다. 그 조사가 이 파일을 빠뜨렸다. 사람이 한 번 훑은 목록은
+    //     그 시점의 스냅샷이고, 이 판별식이 그것을 계약으로 바꾼다.
+    const jf = read('Jenkinsfile')
+    const m = jf.match(/BTS_DEPLOY_CONFIG=(\S+)/)
+    // ★비-공허 짝. Jenkinsfile 에서 그 변수를 실제로 찾아냈는지 먼저 보인다 —
+    //   못 찾으면 아래 검사가 통째로 건너뛰어지고 조용히 초록이 된다.
+    assert.ok(m, 'Jenkinsfile 이 BTS_DEPLOY_CONFIG 를 주지 않는다 — 이 검사가 공허하다')
+    const abs = m[1]
+    assert.match(abs, /^\//, `BTS_DEPLOY_CONFIG 가 절대경로가 아니다: ${abs}`)
+    const rel = abs.replace(/^\/opt\/bts\//, '')
+    assert.notEqual(rel, abs, `배포 대상 접두사를 못 떼었다 — 경로가 바뀌었나: ${abs}`)
+    const protectedPaths = runReader('protected').paths
+    assert.ok(
+      protectedPaths.includes(rel),
+      `배포가 읽는 설정 \`${rel}\` 이 protected 목록에 없다.\n` +
+        '  그 파일은 gitignored 라 rsync 소스에 없다. 제외 목록에도 없으면 `--delete` 가\n' +
+        '  대상에서 지우고, **다음** 배포가 「배포 설정을 못 찾았다」로 죽는다\n' +
+        '  (2026-09-14 빌드 #55 가 지우고 #56 이 죽었다).',
+    )
+  })
 })
