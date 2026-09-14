@@ -352,3 +352,124 @@ describe('③ 지우면 안 되는 것 ⊋ 읽히면 안 되는 것', () => {
     )
   })
 })
+
+describe('④ 「읽으면 안 된다」는 누구에게인가 — secret 복구는 소유자를 지정한다', () => {
+  /*
+   * ★★2026-09-14 실측. 배포는 성공했는데 **운영 백엔드가 크래시루프**에 빠졌다.
+   *
+   *     java.io.FileNotFoundException: /secrets/bts-jwt.pem (Permission denied)
+   *     PEM 파일 파싱 실패 (EC-19) → Spring 기동 실패
+   *
+   *   `bootstrap.sh` 가 secret 목록을 **`chown -R root:root` 로 일괄** 되돌린다.
+   *   `infra/secrets` 가 그 목록에 있고, 그 안의 JWT 서명키를 **백엔드 컨테이너
+   *   (uid 999)가 읽어야 한다.** root 400 이 되면 못 읽는다.
+   *
+   *   ★잠복이 이 결함의 본체다. 잠긴 시각은 9/11 16:27(ctime 실측)인데 증상은 9/14
+   *     컨테이너가 재생성될 때 나왔다. 이미 떠 있던 백엔드는 기동 때 읽은 키를 메모리에
+   *     들고 있었다. 사흘 동안 「운영 정상」이면서 **재시작하면 죽는** 상태였다.
+   *
+   *   ★원인은 의도와 구현의 **범위 차이**다. 목록의 뜻은 「젠킨스가 읽으면 안 된다」인데
+   *     구현은 「root 말고 아무도 못 읽는다」였다. 젠킨스만 막으려다 백엔드까지 막았다.
+   *
+   *   ★처방은 권한을 푸는 것이 아니라 **소유자를 정확히 지정하는 것**이다.
+   *     JWT 키를 uid 999 소유로 두면 백엔드는 읽고 젠킨스(uid 1000)는 못 읽는다 —
+   *     목록의 원래 의도가 그제서야 정확히 구현된다.
+   */
+
+  test('★양성 대조군 — secret 목록을 실제로 읽어냈다', () => {
+    const { paths, status, stderr } = runReader('secret')
+    assert.equal(status, 0, `secret 목록이 exit ${status} 로 죽었다\n${stderr}`)
+    assert.ok(paths.length > 0, 'secret 목록이 비었다 — 이 검사가 공허하다')
+  })
+
+  test('★★secret 의 모든 경로에 소유자 uid 가 붙어 있다', () => {
+    // 소유자를 안 적으면 「누가 읽어야 하는가」를 아무도 모르고, 구현은 root 로
+    // 되돌아간다 — 그것이 이 결함의 시작이었다.
+    const r = spawnSync('bash', [path.join(REPO_ROOT, READER), 'secret-owners'], {
+      encoding: 'utf-8',
+    })
+    assert.equal(
+      r.status,
+      0,
+      `읽기 스크립트가 secret-owners 종류를 모른다 — 소유자를 지정할 방법이 없다\n${r.stderr}`,
+    )
+    const rows = (r.stdout ?? '').split('\n').filter((l) => l.trim() !== '')
+    assert.ok(rows.length > 0, 'secret-owners 가 0건이다')
+    const orphans = rows.filter((l) => !/^\S+\t\d+$/.test(l))
+    assert.deepEqual(
+      orphans,
+      [],
+      `소유자 uid 가 없거나 숫자가 아닌 줄이 있다: ${orphans.join(' / ')}`,
+    )
+    // ★비-공허 짝. 경로만 내는 기존 종류와 **건수가 같아야** 한다 —
+    //   한쪽이 조용히 줄면 되돌리지 않는 경로가 생긴다.
+    assert.equal(
+      rows.length,
+      runReader('secret').paths.length,
+      'secret 과 secret-owners 의 건수가 다르다 — 한쪽이 경로를 빠뜨린다',
+    )
+  })
+
+  test('★★bootstrap 이 소유자를 목록에서 읽는다 — root 로 일괄 잠그지 않는다', () => {
+    const code = codeLines(read('infra/jenkins/bootstrap.sh')).join('\n')
+    // ★이것이 실제 고장의 재현이다. `chown -R root:root` 리터럴이 살아 있으면
+    //   목록에 무엇을 적든 전부 root 로 잠긴다 — 목록이 장식이 된다.
+    assert.doesNotMatch(
+      code,
+      /chown\s+-R\s+root:root/,
+      'bootstrap 이 secret 을 root 로 일괄 되돌린다.\n' +
+        '  그러면 백엔드 컨테이너(uid 999)가 읽어야 하는 JWT 서명키까지 잠기고,\n' +
+        '  운영 백엔드가 다음 재생성에서 크래시루프에 빠진다 (2026-09-14 실측).',
+    )
+    assert.match(
+      code,
+      /secret-owners/,
+      'bootstrap 이 secret-owners 를 읽지 않는다 — 소유자를 알 방법이 없다',
+    )
+  })
+
+  test('★알 수 없는 종류는 여전히 조용히 통과하지 않는다', () => {
+    // 종류를 하나 늘렸다고 오타가 빈 목록으로 흘러가서는 안 된다.
+    const r = spawnSync('bash', [path.join(REPO_ROOT, READER), 'secret-owner'], {
+      encoding: 'utf-8',
+    })
+    assert.notEqual(r.status, 0, '오타(secret-owner)인데 exit 0 이다')
+  })
+
+  test('★★JWT 키 소유자가 백엔드 이미지의 uid 와 같다', () => {
+    /*
+     * ★★목록에 숫자를 적는 순간 그것은 **두 번째 목록**이다. 정본은 이미지의 uid 이고,
+     *   목록은 그 사본이다 — 둘이 갈리면 파일은 아무도 못 읽는 소유자에게 잠긴다.
+     *
+     * ★그래서 이미지 쪽에 uid 를 **고정**해야 이 대조가 성립한다. 종전 Dockerfile 은
+     *   `useradd -r` 로 uid 를 **자동 할당**받았다 — 999 는 그때 시스템에 남아 있던
+     *   번호였을 뿐이고, 베이스 이미지가 바뀌면 조용히 달라진다. 그 상태에서 목록에
+     *   999 를 적으면 「오늘은 맞는」 숫자가 된다.
+     */
+    const dockerfile = read('infra/prod/Dockerfile.backend')
+    const m = dockerfile.match(/useradd[^\n]*?-u\s+(\d+)/)
+    assert.ok(
+      m,
+      'Dockerfile.backend 가 uid 를 고정하지 않는다 (`useradd -r -u <uid>`).\n' +
+        '  `useradd -r` 만 쓰면 uid 를 자동 할당받아 이미지마다 달라질 수 있고,\n' +
+        '  그러면 secret 목록의 소유자 숫자와 조용히 갈린다.',
+    )
+    const imageUid = m[1]
+    const r = spawnSync('bash', [path.join(REPO_ROOT, READER), 'secret-owners'], {
+      encoding: 'utf-8',
+    })
+    assert.equal(r.status, 0, `secret-owners 를 못 읽었다\n${r.stderr}`)
+    const row = (r.stdout ?? '')
+      .split('\n')
+      .find((l) => l.startsWith('infra/secrets\t'))
+    assert.ok(row, 'secret 목록에 infra/secrets 가 없다 — JWT 서명키가 노출된다')
+    const listedUid = row.split('\t')[1]
+    assert.equal(
+      listedUid,
+      imageUid,
+      `JWT 키 소유자로 적힌 uid(${listedUid})가 백엔드 이미지의 uid(${imageUid})와 다르다.\n` +
+        '  그 소유자로 chown 하면 백엔드가 키를 못 읽고 기동에서 죽는다\n' +
+        '  — `PEM 파일 파싱 실패 ... (Permission denied) (EC-19)` (2026-09-14 실측).',
+    )
+  })
+})
