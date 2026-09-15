@@ -186,10 +186,33 @@ export function ProjectWorkflowsSettingsPage({
  * key 는 원본과 같게 둔다. V209 가 key 유일성을 소유별로 갈라, 전역에 같은 key 가 있어도
  * 프로젝트 사본이 만들어진다 — 사용자가 이름을 다시 짓지 않아도 된다.
  */
+/**
+ * 복제 요청 바디를 만든다.
+ *
+ * ★★2026-09-14 운영 실측. 종전 판본은 `key: workflow.key` 로 **사본 key 를 원본과
+ *   똑같이** 보냈다. V209 가 key 유일성을 소유별로 갈라 두어 생성은 성공하지만
+ *   (전역 1 + 프로젝트 1), 조회는 아직 key 만 본다 — `findLiveIdByKey` 가 `fetchOne`
+ *   이라 2행에서 `TooManyRowsException` 으로 죽는다. 그 순간부터 그 key 의
+ *   **수정·삭제·복제·전환 CRUD 가 전부 500** 이 됐다.
+ *
+ *   서버가 아니라 여기서 막는 이유. 백엔드는 소유별 중복을 **정당하게 허용**한다 —
+ *   「전역 템플릿을 같은 이름으로 내 프로젝트에」가 Jira 권장 우회로이고 그 계약이
+ *   `WorkflowCrudIntegrationTest` 에 못 박혀 있다. 생성이 잘못된 것이 아니라,
+ *   이 화면이 **사용자 의도 없이** 그 상태를 만든 것이 잘못이다.
+ */
 function copyInput(workflow: WorkflowView, projectKey: string) {
+  // ★`-copy` 접미사를 고른 근거.
+  //
+  //   · **읽힌다.** key 는 URL 에 그대로 들어간다(/projects/{p}/settings/workflows/{key}).
+  //     난수나 타임스탬프를 섞으면 충돌은 사라지지만 주소창이 읽을 수 없게 된다.
+  //   · **URL 안전이 공짜다.** 원본 key 가 이미 안전하므로 접미사만 붙이면 그대로 안전하다.
+  //   · **두 번 복제하면 409 다.** 조용히 다른 것을 만들지 않고 백엔드가 거부하며,
+  //     사용자는 그것을 화면에서 본다. 예측 가능한 key 의 대가로 받아들인다 —
+  //     조용히 맞는 것보다 시끄럽게 틀리는 쪽이 낫다.
+  const copyKey = `${workflow.key}-copy`
   return {
     sourceKey: workflow.key,
-    key: workflow.key,
+    key: copyKey,
     name: `${workflow.name} (${labels.copySuffix})`,
     projectKey,
   }
