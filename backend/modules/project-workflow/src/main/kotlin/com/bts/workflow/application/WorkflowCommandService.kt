@@ -105,13 +105,14 @@ class WorkflowCommandService(
         actorId: UUID,
         key: String,
         command: UpdateWorkflowCommand,
+        projectKey: String? = null,
     ) {
         permissionResolver.requirePermission(
             actorId,
             WorkflowDefinitionPermission.UPDATE,
             scopeResolver.ofWorkflow(key),
         )
-        val workflowId = requireLiveWorkflow(key)
+        val workflowId = requireLiveWorkflow(key, projectKey)
         if (writeRepository.isLocked(workflowId)) {
             throw WorkflowLockedException(key)
         }
@@ -132,6 +133,7 @@ class WorkflowCommandService(
     fun delete(
         actorId: UUID,
         key: String,
+        projectKey: String? = null,
     ) {
         // 소유를 사실대로 넘긴다. 「삭제는 시스템 관리자만」은 판정기가 D6 대로 정한다 —
         // 호출부가 Global 로 눌러 쓰면 그 규칙이 두 곳에 생기고 한쪽만 바뀐다.
@@ -140,7 +142,7 @@ class WorkflowCommandService(
             WorkflowDefinitionPermission.DELETE,
             scopeResolver.ofWorkflow(key),
         )
-        val workflowId = requireLiveWorkflow(key)
+        val workflowId = requireLiveWorkflow(key, projectKey)
         if (writeRepository.isLocked(workflowId)) {
             throw WorkflowLockedException(key)
         }
@@ -181,7 +183,9 @@ class WorkflowCommandService(
             WorkflowDefinitionPermission.CREATE,
             scopeResolver.ofProjectKey(targetProjectKey),
         )
-        val sourceId = requireLiveWorkflow(sourceKey)
+        // ★원본도 지목한 프로젝트 맥락에서 찾는다. 「전역 템플릿을 내 프로젝트로」가 주 경로이지만
+        //   「내 프로젝트 사본을 한 벌 더」도 같은 버튼이다 — 후자에서 전역만 보면 엉뚱한 것을 벤다.
+        val sourceId = requireLiveWorkflow(sourceKey, targetProjectKey)
         val ownerId = resolveOwner(newKey, targetProjectKey)
         if (writeRepository.existsByKey(newKey, ownerId)) {
             throw WorkflowKeyConflictException(newKey)
@@ -395,13 +399,14 @@ class WorkflowCommandService(
     private fun requireEditable(
         actorId: UUID,
         workflowKey: String,
+        projectKey: String? = null,
     ): UUID {
         permissionResolver.requirePermission(
             actorId,
             WorkflowDefinitionPermission.UPDATE,
             scopeResolver.ofWorkflow(workflowKey),
         )
-        val workflowId = requireLiveWorkflow(workflowKey)
+        val workflowId = requireLiveWorkflow(workflowKey, projectKey)
         if (writeRepository.isLocked(workflowId)) {
             throw WorkflowLockedException(workflowKey)
         }
@@ -428,11 +433,23 @@ class WorkflowCommandService(
             ?: throw WorkflowInvalidRequestException(workflowKey, "그런 프로젝트가 없다: $projectKey")
     }
 
-    /** 살아 있는 워크플로우의 id 를 준다. 없으면 404 예외. */
-    private fun requireLiveWorkflow(key: String): UUID {
+    /**
+     * 살아 있는 워크플로우의 id 를 소유 맥락 안에서 준다. 없으면 404 예외.
+     *
+     * ★★`projectKey` 를 받는 이유 (2026-09-14 운영 사고). 종전에는 key 만 넘겨
+     *   `fetchOne` 이 2행에서 죽었다 — V209 가 전역 1 + 프로젝트 1 을 정상으로 만들어
+     *   두었는데 이 조회가 그것을 몰랐다. 조회 규칙은 `findLiveIdByKey` 주석에 있다.
+     *
+     * @param projectKey 요청이 선 프로젝트 키. null = 전역 맥락.
+     */
+    private fun requireLiveWorkflow(
+        key: String,
+        projectKey: String?,
+    ): UUID {
         // 블록 본문으로 둔다 — 식 본문이면 ktlint 가 「한 줄로 합쳐라」를, detekt 가 「120자를 넘지 마라」를
         // 동시에 요구해 교착이 된다. 두 도구의 기준이 다른 지점이다.
-        return writeRepository.findLiveIdByKey(key) ?: throw WorkflowNotFoundException(key)
+        val ownerId = resolveOwner(key, projectKey)
+        return writeRepository.findLiveIdByKey(key, ownerId) ?: throw WorkflowNotFoundException(key)
     }
 }
 

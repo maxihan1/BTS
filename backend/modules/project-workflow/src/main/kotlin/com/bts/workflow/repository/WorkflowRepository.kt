@@ -89,6 +89,19 @@ class WorkflowRepository(private val dsl: DSLContext) {
      *
      * @param key 워크플로우 식별 키.
      * @return 소유 프로젝트 UUID, 전역이거나 부재 시 null.
+     *
+     * ★★2026-09-14 운영 실측. 종전 판본은 `fetchOne` 이었고, V209 가 정상으로 만들어 둔
+     *   「전역 1 + 프로젝트 1」에서 `TooManyRowsException` 으로 죽었다. 권한 판정이
+     *   대상 조회보다 **먼저** 도므로, 그 key 를 건드리는 모든 요청이 500 이 됐다.
+     *
+     * ★중복일 때 **전역을 고른다**. 근거는 fail-closed 다 —
+     *   `ofProjectId` 가 되짚기에 실패했을 때 `WorkflowScope.Global` 로 떨어지는 것과
+     *   같은 방향이고, 전역 스코프가 프로젝트 스코프보다 **엄격한** 권한을 요구한다
+     *   (「전역 워크플로우는 시스템 관리자만」). 모호할 때 느슨한 쪽을 고르면
+     *   프로젝트 관리자가 전역 템플릿을 고칠 수 있게 된다.
+     *
+     * ★그래서 이것은 **죽지 않게 만든 것**이지 모호함을 푼 것이 아니다. 어느 소유를
+     *   뜻했는지는 호출자만 안다 — 스코프 해석에 맥락을 태우는 것은 FR-WF-08 의 남은 몫이다.
      */
     fun findProjectIdByKey(key: String): UUID? =
         dsl
@@ -96,6 +109,9 @@ class WorkflowRepository(private val dsl: DSLContext) {
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(key))
             .and(WORKFLOWS.DELETED_AT.isNull)
+            // NULL(전역)을 앞으로 — 모호하면 더 엄격한 스코프를 고른다.
+            .orderBy(WORKFLOWS.PROJECT_ID.asc().nullsFirst())
+            .limit(1)
             .fetchOne()
             ?.get(WORKFLOWS.PROJECT_ID)
 
