@@ -53,13 +53,70 @@ class WorkflowWriteRepository(
                 .and(WORKFLOWS.PROJECT_ID.isNotDistinctFrom(projectId)),
         )
 
-    /** 살아 있는 워크플로우의 id. 없으면 null. */
+    /**
+     * 살아 있는 워크플로우의 id 를 소유 맥락 안에서 찾는다. 없으면 null.
+     *
+     * ★★2026-09-14 운영 실측. 종전 판본은 `key` 만 보고 `fetchOne` 했다. V209 가 key
+     *   유일성을 소유별로 갈라 두어 전역 1 + 프로젝트 1 이 **정상 상태**인데, 그 상태에서
+     *   `fetchOne` 은 `TooManyRowsException` 으로 죽는다. 사본을 만든 다음 요청부터
+     *   그 key 의 수정·삭제·복제·전환 CRUD 가 전부 500 이었다.
+     *
+     *   쓰기(생성)는 소유를 아는데 읽기(조회)가 몰랐다 — 같은 FR 안에서 한쪽만 V209 를
+     *   따라갔고, 그 사이에 만들어진 상태가 스스로를 못 읽는 자리가 됐다.
+     *
+     * ★조회 규칙.
+     *   · `projectId` 를 주면 **전역과 그 프로젝트 것만** 본다. 남의 프로젝트 소유는
+     *     아예 보이지 않는다 — 키를 안다는 이유로 남의 것을 건드리지 못한다.
+     *   · 그중 **프로젝트 소유를 먼저** 고른다. 프로젝트가 자기 사본을 가지면 그것이 답이고,
+     *     없으면 전역으로 떨어진다. 프로젝트 설정 화면이 전역 템플릿도 함께 보여 주므로
+     *     (`findAllForProject`) 그 fallback 이 없으면 화면이 자기 목록을 못 연다.
+     *   · `projectId` 가 null 이면 전역만 본다. 소유를 지목하지 않은 요청이 프로젝트
+     *     소유본을 집어 가면 「죽지는 않지만 엉뚱한 것을 고치는」 더 나쁜 상태가 된다.
+     *
+     * @param key 워크플로우 key.
+     * @param projectId 요청이 선 프로젝트의 `projects.id`. null = 전역 맥락.
+     */
+    fun findLiveIdByKey(
+        key: String,
+        projectId: UUID?,
+    ): UUID? {
+        val ownerScope =
+            if (projectId == null) {
+                WORKFLOWS.PROJECT_ID.isNull
+            } else {
+                WORKFLOWS.PROJECT_ID.isNull.or(WORKFLOWS.PROJECT_ID.eq(projectId))
+            }
+        return dsl
+            .select(WORKFLOWS.ID)
+            .from(WORKFLOWS)
+            .where(WORKFLOWS.KEY.eq(key))
+            .and(WORKFLOWS.DELETED_AT.isNull)
+            .and(ownerScope)
+            // NULL(전역)을 뒤로 보낸다 = 프로젝트 소유가 먼저다.
+            .orderBy(WORKFLOWS.PROJECT_ID.asc().nullsLast())
+            // ★`fetchOne` 이 아니라 `limit(1)` 이다. 위 범위에서 최대 2행(전역+프로젝트)이
+            //   나올 수 있고 그것이 정상이다 — 순서가 답을 고르고, 개수는 사고가 아니다.
+            .limit(1)
+            .fetchOne(WORKFLOWS.ID)
+    }
+
+    /**
+     * 소유 맥락이 **없는** 경로가 쓴다 (상태 편성 등 아직 projectKey 를 안 받는 API).
+     *
+     * ★전역을 먼저 고른다. 중복이 있어도 죽지 않는다는 것이 이 오버로드의 전부이고,
+     *   「어느 소유를 뜻했는가」는 여전히 못 푼다 — 프로젝트 소유본을 지목하려면
+     *   `projectId` 를 받는 쪽을 써야 한다. 그 API 들에 맥락을 태우는 것은 FR-WF-08 의
+     *   남은 몫이다. 여기서 `fetchOne` 으로 되돌리지 마라 — 2행이 정상인 스키마다.
+     */
     fun findLiveIdByKey(key: String): UUID? =
         dsl
             .select(WORKFLOWS.ID)
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(key))
             .and(WORKFLOWS.DELETED_AT.isNull)
+            // NULL(전역)을 앞으로 — 맥락이 없으면 전역이 기본이다.
+            .orderBy(WORKFLOWS.PROJECT_ID.asc().nullsFirst())
+            .limit(1)
             .fetchOne(WORKFLOWS.ID)
 
     /** 편집 잠금 여부. 대상이 없으면 false. */
