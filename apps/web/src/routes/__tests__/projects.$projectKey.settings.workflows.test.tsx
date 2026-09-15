@@ -132,6 +132,47 @@ describe('프로젝트 워크플로우 목록', () => {
     expect(body).toMatchObject({ projectKey: 'ATLAS' })
   })
 
+  it('★★사본 key 는 원본과 다르다 — 같으면 그 워크플로우가 통째로 죽는다', async () => {
+    /*
+     * ★★2026-09-14 운영 실측. 이 버튼이 사본 key 를 **원본과 똑같이** 보냈다.
+     *
+     *   V209 가 key 유일성을 소유별로 갈라 두어 생성은 성공한다(전역 1 + 프로젝트 1).
+     *   그런데 조회는 아직 key 만 본다 — `findLiveIdByKey` 가 `fetchOne` 이라
+     *   2행에서 `TooManyRowsException` 으로 죽는다. 그 순간부터 그 key 의
+     *   **수정·삭제·복제·전환 CRUD 가 전부 500** 이 됐다.
+     *
+     *   ★위 테스트가 왜 못 잡았나. `projectKey` 만 검증하고 `key` 는 안 봤다.
+     *     사본이 소유를 싣는지는 확인하면서, 사본이 **식별될 수 있는지**는 묻지 않았다.
+     *
+     *   ★서버가 아니라 여기서 막는 이유. 백엔드는 소유별 중복을 **정당하게 허용**한다
+     *     (「전역 템플릿을 같은 이름으로 내 프로젝트에」가 Jira 권장 우회로다).
+     *     생성이 잘못된 것이 아니라, 이 화면이 사용자 의도 없이 그 상태를 만든 것이다.
+     */
+    // 원본 key 는 경로로(`/workflows/{sourceKey}/duplicate`), 사본 key 는 바디로 간다.
+    let sourceFromPath: string | undefined
+    let body: { key?: string } | null = null
+    server.use(
+      http.get('*/api/v1/projects/:projectKey/workflows', () => HttpResponse.json(listBody())),
+      http.post('*/api/v1/workflows/:key/duplicate', async ({ request, params }) => {
+        sourceFromPath = params.key as string
+        body = (await request.json()) as { key?: string }
+        return HttpResponse.json({ data: { key: body.key } }, { status: 201 })
+      }),
+    )
+    renderPage()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: `${labels.copyToProject} 기본 소프트웨어` }),
+    )
+
+    await waitFor(() => expect(body).not.toBeNull())
+    // 원본은 그대로 지목한다 — 무엇을 베끼는지가 바뀌면 안 된다.
+    expect(sourceFromPath).toBe('software-default')
+    // ★비-공허 짝. 사본 key 가 비어 있어도 「원본과 다르다」는 참이 되어 검사가 공허해진다.
+    expect(body!.key).toBeTruthy()
+    expect(body!.key).not.toBe(sourceFromPath)
+  })
+
   it('403 이면 빈 표가 아니라 권한 안내를 낸다', async () => {
     server.use(
       http.get('*/api/v1/projects/:projectKey/workflows', () =>
