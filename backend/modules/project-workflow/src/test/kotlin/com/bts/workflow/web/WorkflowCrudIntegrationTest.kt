@@ -330,6 +330,71 @@ class WorkflowCrudIntegrationTest {
             .isEqualTo(2)
     }
 
+    // ── 소유를 지목한 조회 (2026-09-14 운영 사고) ──────────────────────────────
+    //
+    // ★★위 「전역에 같은 key 가 있어도 프로젝트 사본은 만들어진다」가 만드는 상태를
+    //   **만든 뒤에 쓸 수 있는지**는 아무도 묻지 않았다. 운영에서 그 사본을 만든 다음
+    //   요청부터 전부 500 이었다 —
+    //
+    //     org.jooq.exception.TooManyRowsException: Cursor returned more than one result
+    //       at WorkflowCommandService.requireLiveWorkflow(WorkflowCommandService.kt:435)
+    //
+    //   쓰기(생성)는 소유를 아는데 읽기(조회)는 모른다. 같은 FR 안에서 한쪽만 V209 를
+    //   따라갔고, 그 사이에 만들어진 상태가 스스로를 못 읽는 자리가 됐다.
+
+    @Test
+    fun `전역과 프로젝트에 같은 key 가 있어도 프로젝트 사본을 수정할 수 있다`() {
+        // ★key 는 이 클래스 안에서 고유해야 한다. 테스트들이 한 DB 를 공유하고 정리하지
+        //   않으므로, 다른 테스트가 쓰는 이름을 고르면 `create` 가 409 로 죽는다.
+        create("owned-edit", name = "전역 원본")
+        service.duplicate(actor, "owned-edit", newKey = "owned-edit", newName = "내 사본", targetProjectKey = "ATLAS")
+
+        service.update(
+            actor,
+            "owned-edit",
+            UpdateWorkflowCommand(name = "고친 이름", description = null),
+            projectKey = "ATLAS",
+        )
+
+        // 지목한 프로젝트 것이 바뀐다.
+        assertThat(nameOf("owned-edit", ATLAS_ID)).isEqualTo("고친 이름")
+        // ★비-공허 짝. 전역 원본은 그대로여야 한다 — 소유를 무시하고 아무거나 고치면
+        //   「죽지는 않지만 엉뚱한 것을 고치는」 더 나쁜 상태가 된다.
+        assertThat(nameOf("owned-edit", null)).isEqualTo("전역 원본")
+    }
+
+    @Test
+    fun `프로젝트를 지목하지 않으면 전역 것을 고친다`() {
+        create("dup-global", name = "전역 원본")
+        service.duplicate(actor, "dup-global", newKey = "dup-global", newName = "내 사본", targetProjectKey = "ATLAS")
+
+        service.update(
+            actor,
+            "dup-global",
+            UpdateWorkflowCommand(name = "전역만 고침", description = null),
+            projectKey = null,
+        )
+
+        assertThat(nameOf("dup-global", null)).isEqualTo("전역만 고침")
+        assertThat(nameOf("dup-global", ATLAS_ID)).isEqualTo("내 사본")
+    }
+
+    @Test
+    fun `프로젝트에 사본이 없으면 전역으로 떨어진다`() {
+        // 프로젝트 설정 화면은 전역 템플릿도 목록에 함께 보여 준다(`findAllForProject`).
+        // 그 목록에서 전역 항목을 열었을 때 404 가 되면 화면이 자기 목록을 못 연다.
+        create("only-global", name = "전역만 있다")
+
+        service.update(
+            actor,
+            "only-global",
+            UpdateWorkflowCommand(name = "전역 수정", description = null),
+            projectKey = "ATLAS",
+        )
+
+        assertThat(nameOf("only-global", null)).isEqualTo("전역 수정")
+    }
+
     @Test
     fun `프로젝트 목록은 전역과 그 프로젝트 것만 담는다`() {
         create("list-global")
@@ -430,6 +495,31 @@ class WorkflowCrudIntegrationTest {
                 stmt.setObject(1, projectId)
                 stmt.setString(2, key)
                 stmt.executeUpdate()
+            }
+        }
+    }
+
+    /**
+     * `key` + 소유로 이름을 DB 에서 직접 읽는다.
+     *
+     * ★소유까지 지목해야 하는 이유. 같은 key 가 전역과 프로젝트에 하나씩 있을 수 있어
+     *   (V209), key 만으로 읽으면 어느 쪽을 읽었는지 모른 채 초록이 된다 — 「엉뚱한 것을
+     *   고쳤다」가 그대로 통과하는 자리다. `IS NOT DISTINCT FROM` 이라야 NULL(전역)끼리도
+     *   같다고 본다.
+     */
+    private fun nameOf(
+        key: String,
+        projectId: UUID?,
+    ): String? {
+        val sql =
+            "SELECT name FROM workflows " +
+                "WHERE key = ? AND deleted_at IS NULL AND project_id IS NOT DISTINCT FROM ?"
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, key)
+                stmt.setObject(2, projectId)
+                val rs = stmt.executeQuery()
+                return if (rs.next()) rs.getString(1) else null
             }
         }
     }
