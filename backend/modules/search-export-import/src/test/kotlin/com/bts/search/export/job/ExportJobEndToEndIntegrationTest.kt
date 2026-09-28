@@ -31,6 +31,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.slf4j.LoggerFactory
 import org.testcontainers.containers.MinIOContainer
+import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
@@ -72,7 +73,10 @@ class ExportJobEndToEndIntegrationTest : SearchPersistenceTestBase() {
         /** JVM-singleton MinIO 컨테이너. start() 는 class 로드 시 1회만 실행된다. */
         @JvmStatic
         val minio: MinIOContainer =
-            MinIOContainer("minio/minio:RELEASE.2023-09-04T19-57-37Z")
+            MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2023-09-04T19-57-37Z")
+                    .asCompatibleSubstituteFor("minio/minio"),
+            )
                 .apply { start() }
 
         private const val TEST_BUCKET = "bts-exports"

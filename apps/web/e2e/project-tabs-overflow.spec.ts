@@ -118,7 +118,11 @@ test.describe('Jira 패리티 J5 — 프로젝트 뷰 탭바', () => {
     //    지금은 탭과 트리거를 함께 담는 래퍼를 재므로 폭이 트리거 유무와 무관하다.
     //
     // 폭 3개는 **실측으로 고른 값**이다(2026-09-08 · Chromium · 사이드바 펼침 · 정본 10탭).
-    // 960 → 전량 · 900 → 접힘 · 960 되돌림 → 다시 전량.
+    // 1200 → 전량 · 900 → 접힘 · 1200 되돌림 → 다시 전량.
+    // ★2026-09-11 에 960 → 1200 으로 올렸다. 한글 폰트를 Pretendard 로 번들하면서 라벨이
+    //   넓어져 960 에서 **8개만** 남았다(실측 `expected 10, received 8`). 바로 아래 주석이
+    //   예고한 그대로다 — 「라벨·폰트가 바뀌어 더는 안 접히면 먼저 red 가 되어 폭을 다시
+    //   고르라고 알린다」. 조용히 통과하지 않았고, 그래서 다시 골랐다.
     // ★탭이 9종이던 2026-09-04 에는 880/860/880 이었다. 리포트 탭이 붙자 880 에서 7개만 남아
     //   **첫 단언이 먼저 red 가 됐고**(실측 `expected 10, received 7`) 그래서 폭을 다시 골랐다.
     //   임계는 900↔940 사이다(900 → 8+트리거 · 940 → 10). 960 은 그 위로 여유를 둔 값이다.
@@ -133,7 +137,7 @@ test.describe('Jira 패리티 J5 — 프로젝트 뷰 탭바', () => {
     const nav = projectViewNav(page)
     await expect(nav).toBeVisible()
 
-    await page.setViewportSize({ width: 960, height: 720 })
+    await page.setViewportSize({ width: 1200, height: 720 })
     await expect(nav.getByRole('link')).toHaveCount(TAB_LABELS.length)
 
     // 좁혀서 접히게 만든다 — 접혔다는 것 자체를 먼저 확인해야 왕복이 의미를 갖는다.
@@ -142,7 +146,7 @@ test.describe('Jira 패리티 J5 — 프로젝트 뷰 탭바', () => {
     await expect(nav.getByRole('link')).not.toHaveCount(TAB_LABELS.length)
 
     // 되돌린다 — 원래 폭에서 보이던 것이 그대로 돌아와야 한다. **결함 시점에는 6탭에 고정됐다.**
-    await page.setViewportSize({ width: 960, height: 720 })
+    await page.setViewportSize({ width: 1200, height: 720 })
     await expect(nav.getByRole('link')).toHaveCount(TAB_LABELS.length)
     await expect(nav.getByRole('button', { name: '더 보기', exact: true })).toHaveCount(0)
   })

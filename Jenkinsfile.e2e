@@ -280,7 +280,7 @@ pipeline {
           # ★셸 글로브로 고르지 않는다. 종전 `${d}-*.spec.ts` 하나는 `backlog.spec.ts`
           #   처럼 **하이픈 없는 이름**을 통째로 놓쳤다 — 실측으로 도메인 12개가 1단에서
           #   빠져 있었다. 그리고 파이프라인 안의 글로브는 어느 판별식도 읽지 못한다.
-          #   계약. scripts/workflow/e2e-select.ts · e2e-domain-mapping.test.ts
+          #   계약. scripts/workflow/e2e-select.ts · e2e-prod-target.test.ts
           SPECS="$(node --experimental-strip-types scripts/workflow/e2e-select.ts $RUN_DOMAINS | tr '\\n' ' ')"
           if [ -z "$SPECS" ]; then
             echo "변경 도메인에 해당하는 E2E 가 없다 — 전량이 받는다."

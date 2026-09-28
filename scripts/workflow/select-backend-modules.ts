@@ -69,6 +69,12 @@ export const WIDEN_PREFIXES = [
   //   `.github/workflows/backend-ci.yml` 이었고, CI 정본이 젠킨스로 옮겨지며 그 파일을
   //   철거했다(P4b). 경로만 바꾸면 되는 자리이되, **빠뜨리면 파이프라인을 고친 PR 이
   //   일부 모듈로만 검증된다** — 그 변경 자체를 검증하지 못하는 상태다.
+  //
+  // ★★2026-09-11 에 `.github/workflows/` 를 **되돌렸다.** 검증 정본이 GHA 로 돌아왔는데
+  //   이 줄을 빠뜨려서, 실측으로 `requiresFullBuild(['.github/workflows/verify.yml'])` 가
+  //   **false** 였다 — 위 주석이 예고한 상태가 그대로 재현됐다. 경고를 적어 둔 것만으로는
+  //   막지 못한다는 증거라, 이제 판별식이 두 경로를 함께 단언한다.
+  '.github/workflows/',
   'Jenkinsfile',
   // ★선별기 자신이 바뀌면 전 모듈이다. 이 파일이 「무엇을 돌릴지」를 정하므로, 그 변경을
   //   일부 모듈로만 검증하면 **좁히는 실수를 그 PR 안에서 못 잡는다.**
@@ -130,7 +136,10 @@ export function requiresFullBuild(files: string[] | null): boolean {
  *   차집합으로 본다 — 계산기에 파일을 하나 더 끼우면 red 가 된다.
  */
 export const CI_DEFINITION_PREFIXES = [
-  // 파이프라인 정의 — `Jenkinsfile` 과 `Jenkinsfile.e2e` 를 함께 문다.
+  // ★검증 정본 (2026-09-11~). `verify.yml` 이 무엇을 돌릴지 정하므로 여기가 바뀌면
+  //   계산기의 답을 믿을 수 없다. 디렉터리째 문다 — 새 워크플로우가 생겨도 자동으로 걸린다.
+  '.github/workflows/',
+  // 파이프라인 정의 — `Jenkinsfile` 과 `Jenkinsfile.e2e` 를 함께 문다. 배포 정본이다.
   'Jenkinsfile',
   // 젠킨스 잡·컨트롤러 정의.
   'infra/jenkins/',

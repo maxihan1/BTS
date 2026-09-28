@@ -4,6 +4,7 @@ package com.bts.issue.attachment
 
 import org.junit.jupiter.api.TestInstance
 import org.testcontainers.containers.MinIOContainer
+import org.testcontainers.utility.DockerImageName
 
 /**
  * MinIO Testcontainers singleton 기반 클래스.
@@ -28,7 +29,10 @@ abstract class AttachmentMinioTestcontainersBase {
          */
         @JvmStatic
         val minioContainer: MinIOContainer =
-            MinIOContainer("minio/minio:latest")
+            MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2023-09-04T19-57-37Z")
+                    .asCompatibleSubstituteFor("minio/minio"),
+            )
                 .apply { start() }
     }
 }

@@ -40,6 +40,11 @@ const LIVE_ROOTS: readonly string[] = [
   //   순서가 중요했다 — 재조준(P4a)을 먼저 끝내고 지웠다. 반대로 했으면 그것을 읽던
   //   판별식 7종이 red 도 안 내고 사라졌을 것이다(삭제 방향으로 발현하는 「두 목록」).
   'Jenkinsfile',
+  // ★`Jenkinsfile.e2e` 를 목록에 적는다 (2026-09-11). 아래 확장자 필터에는
+  //   `f.startsWith('Jenkinsfile.')` 가 있었지만 `walk('Jenkinsfile')` 은 그 이름의 파일
+  //   **하나만** 낸다 — 목록에 없는 파일은 필터에 닿지도 않았다. 조건이 도달 불가였다.
+  //   「도달 불가 조합을 지키는 테스트 = 가짜 그린」의 같은 양식이다.
+  'Jenkinsfile.e2e',
   'infra/jenkins',
   // ★배포 스크립트도 정본이다 (2026-09-11). `bts-deploy.sh` 가 「계약. scripts/workflow/…」로
   //   판별식을 가리키는데 이 목록에 없어 훑지 않았고, 그 참조 하나가 **실재하지 않는

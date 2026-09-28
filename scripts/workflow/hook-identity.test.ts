@@ -52,8 +52,23 @@ describe('실행될 훅 ⟺ 이 체크아웃의 훅', () => {
   test('★★worktree 에서 실행될 pre-push 가 이 체크아웃의 것이다', (t) => {
     const hp = hooksPath();
     if (hp === null) {
-      // CI 는 푸시를 안 하고 husky 도 안 건다. 검사 대상이 없다.
-      t.skip('core.hooksPath 가 없다 — 훅을 쓰지 않는 환경(CI 등)이다.');
+      /*
+       * ★★건너뛰지 않는다 (2026-09-11 · GHA 실측). CI 는 푸시를 안 하고 husky 도 안 걸어
+       *   비교 대상이 없는 것은 맞지만, 「검사 안 함」과 「검사했고 해당 없음」은 다르다.
+       *
+       *   전자로 두면 이 파일의 판정이 **전부 SKIP**(tests 2 · pass 0 · skipped 2)이 되고,
+       *   `git-fixture-isolation.test.ts` 가 이 파일을 자식으로 태울 때 「선 판정이 하나도
+       *   없다」로 무손상 단언의 전제가 깨진다 — CI 에서만 red 가 나고 고칠 자리는 없다.
+       *   실측 — run 34603847967 에서 판별식 799건 중 이 경로 하나로 1건이 red 였다.
+       *
+       *   훅을 안 쓰는 환경에서도 확인할 값어치가 있는 것이 남는다. **저장소에 훅 파일이
+       *   실재하는가** — 그것이 사라지면 훅을 쓰는 환경에서 위 대조가 통째로 공허해진다.
+       */
+      assert.ok(
+        existsSync(join(ROOT, '.husky/pre-push')),
+        '훅을 쓰지 않는 환경이지만 저장소에 `.husky/pre-push` 자체가 없다 —\n' +
+          '훅을 쓰는 환경에서 위 대조가 검사할 대상이 사라진다.',
+      );
       return;
     }
 
@@ -88,7 +103,10 @@ describe('실행될 훅 ⟺ 이 체크아웃의 훅', () => {
   test('★비-공허 확인 — 비교 대상 두 경로를 실제로 구했다', (t) => {
     const hp = hooksPath();
     if (hp === null) {
-      t.skip('core.hooksPath 가 없다.');
+      // 위와 같은 이유로 건너뛰지 않는다. 훅이 없는 환경에서도 경로 계산기는 성립해야 한다 —
+      // 가짜 설정값을 물려 계산이 실제로 돌아가는지 본다. 이것이 이 짝의 몫이다.
+      const probe = resolve(resolve(ROOT, '.husky/_'), '..', 'pre-push');
+      assert.match(probe, /pre-push$/, `경로 계산이 깨졌다: ${probe}`);
       return;
     }
     const shimDir = isAbsolute(hp) ? hp : resolve(ROOT, hp);

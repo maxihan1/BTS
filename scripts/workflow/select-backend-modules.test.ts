@@ -598,6 +598,20 @@ describe('CI 설정 변경 → 전량 빌드', () => {
     assert.equal(requiresFullBuild(['Jenkinsfile']), true)
   })
 
+  test('★★GitHub Actions 워크플로우 변경은 전량이다', () => {
+    /*
+     * 검증 정본이 GHA 로 돌아왔다(2026-09-11). `verify.yml` 이 「무엇을 돌릴지」를 정하므로
+     * 그것을 고친 PR 은 전 모듈로 검증돼야 한다.
+     *
+     * ★이 단언이 없던 동안 `.github/workflows/verify.yml` 단독 변경이 **false** 였다 —
+     *   즉 CI 를 통째로 바꾼 PR 이 한 모듈로만 검증될 수 있었다. `WIDEN_PREFIXES` 주석이
+     *   그 위험을 미리 적어 두었는데(「빠뜨리면 파이프라인을 고친 PR 이 일부 모듈로만
+     *   검증된다」) 경로를 되돌리는 것을 잊었다.
+     */
+    assert.equal(requiresFullBuild(['.github/workflows/verify.yml']), true)
+    assert.equal(requiresFullBuild(['.github/workflows/runner-smoke.yml']), true)
+  })
+
   test('★Jenkinsfile.e2e 변경도 전량이다 (접두 일치)', () => {
     assert.equal(requiresFullBuild(['Jenkinsfile.e2e']), true)
   })

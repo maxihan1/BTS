@@ -1,0 +1,55 @@
+# 시각 회귀 기준 이미지를 러너와 **같은 환경**에서 재생성한다 — 수동 실행 전용
+#
+# ## 왜 워크플로우인가
+#
+# 기준 PNG 는 비교 대상과 **같은 환경**에서 만들어야 한다. 맥에서 만들면 리눅스 러너에서
+# 영구 red 다(#492 실측 — ratio 0.02). 그래서 사람이 로컬에서 `--update-snapshots` 를
+# 돌리는 길은 원천적으로 막혀 있고, 재생성도 러너에서 해야 한다.
+#
+# ## 언제 돌리나
+#
+# 화면이 의도적으로 바뀌었을 때만. 2026-09-11 에는 `--font-sans` 에 한글 폰트를 넣으면서
+# 1,286픽셀(ratio 0.01)이 달라져 돌렸다.
+#
+# ## 어떻게 쓰나
+#
+#   1. Actions 탭에서 이 워크플로우를 수동 실행한다.
+#   2. `visual-baseline` 아티팩트를 내려받는다.
+#   3. `apps/web/e2e/visual/__screenshots__/` 에 덮어쓰고 **눈으로 확인한 뒤** 커밋한다.
+#
+# ★자동 커밋하지 않는다. 기준 이미지를 기계가 갱신하면 회귀와 의도된 변경이 구분되지 않는다 —
+#   「기준이 스스로 따라오는」 시각 회귀는 아무것도 막지 못한다.
+name: visual-baseline
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # ★verify.yml 의 visual 잡과 **같은 폰트 환경**이어야 한다. 여기서 빠뜨리면
+      #   기준이 두부(□)로 그려지고 그 상태가 정답으로 굳는다.
+      - name: 한글 폰트
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-noto-cjk
+      - name: playwright 브라우저
+        run: pnpm --filter @bts/web exec playwright install --with-deps chromium
+      - name: 기준 재생성
+        working-directory: apps/web
+        run: pnpm exec playwright test --project=visual --update-snapshots
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: visual-baseline
+          path: apps/web/e2e/visual/__screenshots__/

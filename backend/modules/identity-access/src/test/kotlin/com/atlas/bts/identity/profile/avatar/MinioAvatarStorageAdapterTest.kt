@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.testcontainers.containers.MinIOContainer
+import org.testcontainers.utility.DockerImageName
 
 /**
  * [MinioAvatarStorageAdapter] Testcontainers 통합 테스트.
@@ -86,7 +87,10 @@ class MinioAvatarStorageAdapterTest {
          */
         @JvmStatic
         val minioContainer: MinIOContainer =
-            MinIOContainer("minio/minio:latest")
+            MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2023-09-04T19-57-37Z")
+                    .asCompatibleSubstituteFor("minio/minio"),
+            )
                 .apply { start() }
     }
 }

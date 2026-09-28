@@ -290,6 +290,31 @@ export const schemeHandlers = [
       return HttpResponse.json({ errorCode: 'SCHEME_NOT_FOUND', message: '워크플로우 스킴을 찾을 수 없습니다' }, { status: 404 })
     }
 
+    /*
+     * ★★배정을 실제로 **바꾼다** (2026-09-11 · E2E 전량 첫 실행에서 적발).
+     *
+     * 종전에는 응답만 만들고 `assignmentFixtures` 를 손대지 않았다. 그래서 PUT 직후의
+     * GET(:268)이 **옛 스킴**을 그대로 돌려주고, 「현재 적용 카드」가 갱신되지 않는다.
+     * 화면은 낙관적 갱신으로 잠깐 새 이름을 보여 주다가 refetch 에서 되돌아간다 —
+     * 목이 상태를 안 가지면 「쓰기가 반영되는가」를 E2E 가 원리적으로 못 잰다.
+     *
+     * `workflow-scheme-assignment.spec.ts:21`(E2E-5 S9)이 정확히 그것을 재고 있었고,
+     * 그 스펙은 파이프라인에서 한 번도 돌지 않아 아무도 못 봤다.
+     */
+    const assignedIndex = assignmentFixtures.findIndex((a) => a.projectKey === projectKey)
+    if (assignedIndex !== -1) {
+      assignmentFixtures[assignedIndex] = {
+        projectKey,
+        scheme: {
+          id: targetScheme.id,
+          key: targetScheme.key,
+          name: targetScheme.name,
+          description: targetScheme.description,
+          isStandard: targetScheme.isStandard,
+        },
+      }
+    }
+
     // 백엔드 PUT 응답은 배정 "이력"(AssignmentResponse)이다 — GET 의 스킴 객체와 형태가 다르다.
     const assignmentRecord = {
       projectId: `00000000-0000-4000-8000-${projectKey.padEnd(12, '0').slice(0, 12)}`,
