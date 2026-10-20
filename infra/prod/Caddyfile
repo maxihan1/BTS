@@ -24,3 +24,10 @@ bts.maxihan.com {
 	# WebSocket(/ws STOMP) 업그레이드도 별도 설정 없이 통과시킨다.
 	reverse_proxy bts-web:80
 }
+
+# Auth_platform — 같은 VM 의 /opt/auth 에서 뜨는 auth-server 컨테이너가 bts-net 에 붙는다
+# (Auth_platform `infra/prod/README.md`). 사전 조건은 위와 같다 — auth.maxihan.com A 레코드가 이 서버.
+auth.maxihan.com {
+	encode gzip zstd
+	reverse_proxy auth-server:9000
+}
