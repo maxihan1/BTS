@@ -1,139 +1,148 @@
 ---
 name: bts
-description: Use when user gives a natural-language coding request for BTS — feature add, bug fix, refactor, new module. Skip for read-only questions, code explanation, or continuing existing work that doesn't start a new branch.
+description: BTS 의 모든 코드 작업 진입점. 자연어로 하고 싶은 일을 주면 티어를 재고 네 단계(시작 → 구현 → 끝 리뷰 → 병합)를 끝까지 돈다. "멘션 알림 만들어줘", "로그아웃 버그 고쳐줘", "보드 버튼 위치 바꿔줘" 처럼 무언가를 만들거나 고치라고 할 때 쓴다. 읽기만 하는 질문 · 코드 설명에는 쓰지 않는다.
 ---
 
 # /bts
 
-BTS 모든 코드 작업의 **단일 진입점**. 티어를 판정하고 7단계 체인을 컨트롤한다.
-**하위 7종은 이 컨트롤러만 호출한다.** 각 단계 응답을 받은 뒤 명시적으로 다음 `Skill()` 을 부른다 — 「자동으로 호출된 셈」 가정 금지.
-
-## 체인 7단계
+네 단계를 끝까지 돈다. **사람에게 묻는 것은 T2+ 시작 질문 한 번뿐이다** (2026-10-20 Maxi — 시작 1회 + 자동 merge).
+예외는 셋 — 실측 티어가 선언보다 높을 때 · 고칠 수 없는 BLOCKER · 같은 문제 3회 실패.
 
 ```
-[1] bts-start        헬스체크 · classify · worktree+훅 · plan 스텁(T2+) · Draft PR
-[2] bts-spec         BC 식별 + 스펙 9섹션 + sanity check          (T2+)
-[3] bts-plan         TDD task 분해 + 메타 계약                     (T2+)
-[4] bts-review-plan  리뷰 렌즈 라우팅 (한 응답 병렬 발행)          (T2+)
-🛑 게이트 1 — Maxi 검토 (T2/T3 만)
-[5] bts-impl         wave dispatch + TDD 강제
-[6] bts-codereview   독립 리뷰 (T0/T1 1종 · T2/T3 2종)
-🛑 게이트 2 — Maxi 검토 (**전 티어 필수 · 어떤 티어도 생략하지 않는다**)
-[7] bts-merge        verify → merge → worktree 정리 → dashboard → Obsidian
+1. 시작     분류 · worktree + 훅 · (T2+) plan 파일 · Draft PR · (T2+) 시작 질문
+2. 구현     코드 + 테스트 · push 전 범위 테스트
+3. 끝 리뷰  push · 실측 티어 · 리뷰 한 번 · 로컬 테스트 EXIT=0
+4. 병합     merge · 정리 · Obsidian · 보고
 ```
 
-## A-0. 활성 작업 감지 (모든 입력 형태에 선행, 필수)
+티어 요약은 `CLAUDE.md`, 표면 글로브는 `scripts/workflow/surfaces.ts` 가 정본이다. 절차는 이 파일만 소유한다.
 
-이전 세션이 중단된 채 남긴 worktree / draft PR 을 감지. 발견되면 사용자 확인 없이 진행 금지.
-
-```bash
-# ★git 에게 묻는다. 디렉터리 훑기는 위치를 놓친다 —
-#   `ls -d .worktrees/*/` 만 보던 종전 판정은 하네스가 만든 `.claude/worktrees/` 아래를
-#   전혀 못 봤다. 2026-09-04 실측으로 **중단된 작업방 3개가 있는데 0건**을 냈다.
-#   위치를 목록으로 유지하면 그 목록이 또 하나의 썩는 두 번째 목록이 된다.
-MAIN_TREE=$(dirname "$(git rev-parse --git-common-dir)")
-ACTIVE_WORKTREES=$(git worktree list --porcelain | awk '/^worktree /{print $2}' \
-  | grep -vx "$MAIN_TREE" | grep -vx "$(git rev-parse --show-toplevel)")
-ACTIVE_DRAFT_PRS=$(gh pr list --draft --author @me --json number,title,headRefName 2>/dev/null)
-```
-
-둘 중 하나라도 비어있지 않으면 `AskUserQuestion` — ① 이어가기 ② 새 작업 추가 ③ 이전 폐기(worktree 삭제 + draft PR close).
-**「이어가기」의 재개 지점은 추정하지 않는다.** `.claude/STATE.md` 의 마지막 기록을 읽어 그 단계로 복귀한다. STATE 가 없거나 `⚠ STALE` 배너가 있으면 `AskUserQuestion` 으로 재개 지점을 묻는다.
-
-**★STATE.md 를 쓰는 것도 이 컨트롤러의 일이다.** 각 단계 응답을 받은 직후 한 줄을 덧쓴다.
-
-```bash
-printf '%s\n' "$(date -u +%FT%TZ) [<N>/7] <스킬명> <결과 한 줄> · slug=<slug> · tier=<T?>" >> .claude/STATE.md
-```
-
-2026-09-04 진단 — 읽으라는 지시만 있고 **쓰라는 곳이 0곳**이었다. 그래서 재개 시
-STATE 는 항상 비어 있었고 「추정하지 않는다」가 지킬 대상을 갖지 못했다.
-활성 작업이 없고 입력이 모호하면(30자 미만 + 동사만) `AskUserQuestion` 으로 3 옵션, 빈 입력이면 `gh pr list --state open` 후 "어떤 PR 이어서 작업?".
-
-## 티어 판정 5문 (착수 시점 — 선언)
-
-티어 **요약**(4행표)은 `CLAUDE.md`, **표면 이름↔티어**는 `docs/rules/behavior-rules.md` §1,
-**글로브**는 `scripts/workflow/surfaces.ts` 가 정본이다. 이 파일은 **절차**만 소유한다 — 사본을 두지 않는다.
-정본 분담표는 `docs/rules/behavior-rules.md` 머리말.
-
-① 혼합이면 **최고 티어**(max)를 쓴다 — 티어는 절차 강도이므로 가장 위험한 표면이 지배한다.
-② 기본값은 **T1**. Maxi 가 티어를 지정하면 그것이 항상 우선한다.
-③ 어느 표면에도 안 걸리는 경로는 T1 로 두되 `UNMAPPED: <경로>` 를 **게이트 2 요약에 그대로 싣는다** — 미분류를 조용히 통과시키지 않는다.
-④ **테스트만 바뀌면 티어를 올리지 않는다.** 소스가 함께 바뀌면 소스 표면이 기준.
-⑤ **임의 승격 금지.** 머지 전 실측 티어가 선언보다 높으면 자동 승격하지 않고 **게이트 2 에서 정지해 사람이 결정**한다. 선언 티어와 실측 티어를 게이트 2 요약에 나란히 적는다.
-
-## 티어별 절차 (이 표가 정본)
-
-| | **T0 즉시** | **T1 경량** | **T2 표준** | **T3 중량** |
+| | T0 | T1 | T2 | T3 |
 |---|---|---|---|---|
-| 대표 표면 | `DOC` `STYLE_COPY` | `FE_SRC` `HARNESS` `TEST` `SHELL` | `SEC_*` `API` `BE_MAIN` `DEPS` `GUARD_CI` | `MIGRATION` `SHARED_KERNEL` `TOPOLOGY` |
-| 사전 계획 · `docs/plans` | 없음 · **0파일** | 없음(1줄 요약은 게이트 2 요약에) · **0파일** | 변경 계획→승인 · **1파일**(spec 흡수) | 설계 문서(ADR)→승인 · spec+plan(+ADR) |
-| 영향 범위 제시 | — | — | 필수 | 필수 |
-| 테스트 | lint+타입체크 · 시각 변경이면 눈확인 1회(덮는 E2E 로 대체 가능) | 재현 테스트 1개 먼저 | 정식 TDD red-first + 이벤트 계약 | 정식 TDD + 마이그레이션 검증(`DATA.md` 정본) |
-| 독립 리뷰 종수 | **1종**(하한) | 1종 | 2종 | 2종 + ceo |
-| 보안 렌즈 | — | — | 보안 표면 포함 시 생략 불가 | 생략 불가 |
-| 도는 단계 | [1] 축약 · **[5] 인라인** · [6] · [7] | 〃 | [1]~[7] 전량 | [1]~[7] 전량 + ADR |
-| 게이트 · 목표 호출/정지 | 2만 · 3/1 | 2만 · 3/1 | 1+2 · 7/2 | 1+2 · 7/2 |
+| plan 파일 | 없음 | 없음 | 1파일(짧게) | 1파일 + ADR |
+| 테스트 | lint+타입 · 시각이면 눈확인 | 재현 테스트 먼저 | TDD red-first (`test:` → `feat:`) | TDD + 마이그레이션 검증(`DATA.md`) |
+| 시작 질문 | — | — | 1회 | 1회 |
+| 끝 리뷰 | `code-reviewer` | `code-reviewer` | + `/review` | + `/review` + `plan-ceo-review` |
 
-- **T0/T1 의 「[5] 인라인」** — `bts-impl` 을 호출하지 않고 이 컨트롤러가 직접 편집한다. 규율은 위 표의 「테스트」 행 그대로. 호출 3회(=[1]·[6]·[7])가 이 티어의 목표치다.
-- **독립 리뷰는 인라인하지 않는다.** `bts-codereview` 는 전 티어 호출이다 — 자기 구현을 자기가 리뷰하면 「독립」이 아니고, T0 의 1종은 하한이라 0종으로 내려갈 자리가 없다.
-- **`bts-start` 와 `bts-merge` 도 전 티어 호출**한다. 두 스킬 본문에 사고 방어 절차와 내용 계약이 걸려 있어 축약·복사가 곧 회귀다.
-- CI 범위는 변경 경로가 정한다 — `scripts/workflow/diff-base.ts` 가 정한 비교 기준 위에서
-  `select-test-scope.ts` 가 계산한다. 이 표는 그것을 재기술하지 않는다.
-  (서버 CI 는 2026-10-20 철거됐고 새 CI/CD 는 아직 없다 — 지금은 로컬 실행이 유일한 검증이다.)
+- 혼합이면 최고 티어. 기본 T1. Maxi 가 지정하면 그것이 우선.
+- 테스트만 바뀌면 티어를 올리지 않는다. 보안 표면은 T2 미만 불가, 마이그레이션은 T3.
 
-## 게이트
-
-**★두 게이트 모두 `AskUserQuestion` 으로 낸다. 산문 3지선다 금지.**
-본문에 「1. 승인 2. 수정 3. 보류」를 적고 숫자를 타이핑하게 하지 않는다 —
-2026-08-23 · 08-24 · 09-02 세 세션 연속 같은 지적이 나왔고 **세 번 다 원인이 달랐다**
-(거부 기록 오독 / 요약을 내면 질문 단계가 증발 / 한 번 썼으니 됐다는 감각).
-산문 지시로는 안 막힌다는 것이 이미 실증됐으므로 여기에 도구를 못 박는다.
-
-**기계적 판정** — 답을 사람이 골라야 하는 문장(「~할까요」「~아니면」「어느 쪽」)을
-쓰려는 순간, 그 문장을 쓰지 말고 도구를 부른다. 보고서 마지막 줄에 질문을 붙이지 않는다.
-
-**★게이트를 내기 직전에 세션 라벨을 갱신한다.** 선택창을 띄우기 전에 부른다.
+## 0. 이어가기 감지
 
 ```bash
-node --experimental-strip-types scripts/workflow/session-label.ts --step "게이트 1"
+git worktree list
+gh pr list --draft --author @me --json number,title,headRefName
 ```
 
-병렬로 여러 작업을 돌리면 **승인 화면만 보고는 어느 작업의 승인인지 알 수 없다.**
-탭 제목이 `T2 feature · mention-notify — 게이트 1` 이 되어 그 자리에서 구분된다.
-게이트 2 도 `--step "게이트 2"` 로 같게 한다. 라벨 값의 정본은 `classify.json` 이다.
+메인 체크아웃 말고 worktree 나 draft PR 이 있으면 `AskUserQuestion` — 이어가기 / 새 작업 / 이전 폐기.
+이어가기의 재개 지점은 그 PR 의 커밋 목록과 plan 파일 「할 일」 체크로 읽는다. 추정하지 않는다.
 
-| 게이트 | 대상 | 도구 | 선택지 (`AskUserQuestion` options) |
-|---|---|---|---|
-| 🛑 1 (plan 산출물 요약) | T2/T3 | **`AskUserQuestion` 필수** | `승인`→[5] 호출 / `수정 요청`→**어느 섹션인지도 같은 질문의 두 번째 항목으로 묻는다** → [2] [3] 중 재호출 후 재진입 / `중단`→worktree·draft PR 유지 |
-| 🛑 2 (PR diff + 리뷰 결과) | **전 티어** | **`AskUserQuestion` 필수** | `승인`→[7] 호출 / `수정 후 재리뷰`→concerns 첨부해 [5] 재호출→[6] 재호출 / `보류`→A-0 복원 경로로 재진입 |
+## 1. 시작
 
-게이트 1 요약에는 **티어 · task 수 · 영향 파일 · 리뷰 렌즈 결과 · BLOCKER 유무**를 싣는다.
-게이트 2 요약에는 **선언 티어 · 실측 티어 · `UNMAPPED` 줄 · 건너뛴 단계**를 반드시 싣는다. 우회 사실을 Maxi 가 보고 승인하게 하는 것이 이 요약의 목적이다.
+1. **분류** — 결과는 `.bts-cache/classify.json` 에 남고 세션 라벨이 그것을 읽는다.
+   ```bash
+   node --experimental-strip-types scripts/workflow/classify-task.ts --title "<사용자 입력>" --cache
+   node --experimental-strip-types scripts/workflow/session-label.ts
+   ```
+   애매하면 높은 티어. 바꿀 경로를 이미 알면 `detect-tier.ts` 로 확인한다.
+2. **worktree** — 배경 세션은 `EnterWorktree`, 아니면 `git worktree add .worktrees/<slug> -b <type>/<slug> origin/main`.
+   **만든 직후 훅을 연결한다.** git 은 훅을 못 찾으면 실패가 아니라 침묵으로 건너뛴다. `WT` 는 방금 만든 worktree 경로다.
+   ```bash
+   ln -s "$(pwd)/.husky/_" "${WT}/.husky/_"
+   ln -s "$(pwd)/node_modules" "${WT}/node_modules"
+   ln -s "$(pwd)/apps/web/node_modules" "${WT}/apps/web/node_modules"
+   ```
+   worktree 안에서 `pnpm install` 을 돌리지 않는다 — main 의 `node_modules` 를 덮어쓴다.
+3. **plan 파일 (T2+)** — `docs/plans/<YYYY-MM-DD>-<slug>.md`. 이것뿐이다.
+   ```markdown
+   # <제목>
 
-**요약을 다 쓴 것이 질문을 낸 것이 아니다.** 요약은 질문의 재료다 — 요약 뒤에 반드시 도구 호출이 온다.
+   티어: T2
+   타입: <classify type>
 
-**T0/T1 에서 UI 를 건드렸으면 `Jira 대응 3줄`도 같이 싣는다** — `Jira 대응`(화면 + 출처 URL + 조회일) ·
-`채택` · `편차`. T1 은 plan 파일이 0개라 이 3줄이 Jira 패리티 판단의 **유일한 기록**이고,
-저장소에 안 남으므로 판별식이 못 잡는다. 절차는 `docs/design/jira-parity-contract.md` §1 「T1 UI 경량 경로」.
+   <무엇을 왜 — 한 문단. FR ID 가 있으면 여기에>
 
-## 선행 읽기
+   ## Jira 대조
+   <Jira Cloud 실물 조회 근거 — 출처 URL 이 든 대응 표. 대응이 없으면 「대응 없음 — ADS <패턴> 준용」과 사유>
 
-- `/Users/maxi.moff/Maxi_wiki/BTS/_index.md` · 같은 폴더 `history.md` 마지막 50줄을 Read.
-- **`learnings.md` 전량 Read 금지.** `grep -n '^### '` 로 헤딩 인덱스만 뽑아 이번 작업 키워드·BC·타입 관련 항목 + 최근 5건만 부분 Read 한다. 여기서 고른 발췌가 체인 전체(및 `bts-codereview` 주입)의 learnings 컨텍스트다.
+   ## 할 일
+   - [ ] <할 일 — 고칠 파일. 3–7개>
+     - **검증**: `<명령>`
+   ```
+   `**검증**:` 은 줄 머리에 둔다 — `select-test-scope.ts --plan` 이 그 꼴만 읽는다.
+   `## Jira 대조` 는 타입과 무관하게 쓴다. 절차는 `docs/design/jira-parity-contract.md` §1.
+   T3 는 `docs/decisions/<YYYY-MM-DD>-<slug>.md` ADR 을 더한다. 새 문서는 `node scripts/build-doc-index.mjs` 로 인덱스를 갱신한다.
+4. **Draft PR** — 빈 커밋(`chore: <slug> 시작`) → `git push -u origin <브랜치>` → `gh pr create --draft --title "[<type>] <제목>" --body "<본문>"`.
+   본문은 「무엇을 · 왜」 한 문단 · 「확인 방법」(누를 화면이나 명령) · 티어.
+   T0/T1 에서 UI 를 건드리면 plan 파일이 없으므로 본문에 `Jira 대응`(화면 + 출처 URL + 조회일) · `채택` · `편차` 3줄을 적는다.
+5. **시작 질문 (T2+ 만)** — `session-label.ts --step "시작 질문"` 다음 `AskUserQuestion` 하나.
+   질문 칸에 하려는 것 한 문장 · 영향 범위(BC · 파일) · 제가 정해 둔 것 · 화면이 바뀌면 글자 그림. 선택지는 진행 / 중단.
+   Maxi 는 질문 창만 보고 답한다 — 배경을 질문 밖에만 쓰지 않는다.
 
-## 진행 출력
+**읽을 것은 이번 일에 걸리는 절만.** 늘 `DEVELOPMENT.md` §1 과 `docs/rules/code-checklists.md` 의 영역 절(백엔드 · 프론트 · 보안 · DB · E2E).
+DB 면 `DATA.md` §1. UI 면 `docs/design/jira-parity-contract.md` §1.
+과거 교훈은 `/Users/maxi.moff/Maxi_wiki/BTS/learnings.md` 를 `grep -n '^### '` 로 헤딩만 뽑아 이번 BC · 키워드 항목만 연다 — 전량 Read 금지.
+명세는 `grep -n '^#'` 로 절을 찾아 그 범위만 연다.
 
-각 단계마다 1줄 출력해 black box 를 피한다(`🔄 [1/7] 분류 중… → type=feature, tier=T2, tasks=4`).
-**보고 서식 정본은 [`docs/rules/output-format.md`](../../../docs/rules/output-format.md)** — 다음 행동부터, 여러 단계는 번호, 서두·요약·마무리 인사 없음. T0/T1 은 바꾼 파일과 확인 방법 각 1줄. T2/T3 은 무엇을 왜 · 확인 방법 · 남은 위험 · 다음 할 일 각 1줄.
+## 2. 구현
 
-## 실패 / 엣지 케이스
+- 한 PR = 한 BC. 다른 BC 는 pgmq 이벤트로만.
+- T1 버그는 재현 테스트를 먼저 쓰고 red 를 본다. T2+ 는 `test:` 커밋이 첫 `feat:` 보다 앞선다.
+  UI 시각 변경은 red-first 면제 — 기존 E2E 동반 실행 + 브라우저 눈확인. 로직이 섞인 부분만 TDD.
+- **기본은 직접 한다.** 할 일이 셋 이상이고 서로 독립일 때만 `bts-implementer` 한두 명에 묶어 맡긴다 — 에이전트 하나가 시작만으로 수만 토큰을 쓴다.
+  프롬프트에 할 일 · 고칠 파일 · 검증 명령 · BC · `DEVELOPMENT.md` §1 발췌를 싣는다. 보안 · 마이그레이션 할 일은 `model: "opus"`.
+  같은 worktree 를 함께 쓰면 고칠 파일이 겹치지 않게 나누고, 커밋은 `git commit -- <경로들>` 로 자기 파일만 한다.
+- FR 추가 · 삭제 · 범위 변경이면 같은 PR 에서 `docs/rules/fr-sync-checklist.md` 전 항목을 맞춘다.
+- push 전 — 계산기가 이번 브랜치가 돌릴 명령을 낸다. 그대로 실행한다.
+  ```bash
+  node --experimental-strip-types scripts/workflow/select-test-scope.ts [--plan docs/plans/<plan 파일>]
+  ```
+  worktree 에서는 `pnpm` 래퍼 대신 `node_modules/.bin/*` 를 직접 부른다. **판정은 종료 코드로** — 건수로 하지 않는다.
+  출력이 길면 `> "$CLAUDE_JOB_DIR/tmp/test.log" 2>&1; echo "EXIT=$?"` (파이프는 종료 코드를 바꾼다).
 
-- **worktree 충돌**. 동일 slug 가 이미 있으면 `-2` 접미사 자동
-- **plan 리뷰 BLOCKER**. 중단 후 수정안 제시, 승인 후 리뷰 재실행
-- **verifier BLOCKER**. implementer 재dispatch. **3회 실패하면 중단**하고 Maxi 에게 보고 — T0/T1 에서 3회에 도달하면 보고에 「티어 재판정 제안」을 포함한다
-- **머지 충돌**. `git pull --rebase origin main` 자동, 충돌 시 Maxi 개입
+## 3. 끝 리뷰 — 한 번
 
-## 관련 스킬
+1. `git push`.
+2. **실측 티어**
+   ```bash
+   git diff --name-only origin/main...HEAD \
+     | node --experimental-strip-types scripts/workflow/detect-tier.ts --declared <선언 티어>
+   ```
+   `PROMOTION_NEEDED` 면 자동 승격하지 않고 멈춰 `AskUserQuestion` — 구현이 끝난 뒤에 계획 승인을 받는 꼴이 되므로 사람이 정한다.
+   `UNMAPPED` 경로는 PR 본문에 그대로 적는다.
+3. **리뷰 한 번** — 티어 표의 렌즈를 한 응답에서 병렬로 낸다.
+   - `code-reviewer` 에이전트 — 프롬프트에 diff 범위 `origin/main...HEAD` · worktree 절대경로 · plan 파일 · `DEVELOPMENT.md` §1 · DB 면 `DATA.md` §1.
+   - T2+ `Skill("review")` — args 에 worktree 경로와 base `origin/main`. BTS 체크리스트는 `.claude/skills/review/checklist.md`.
+   - T3 또는 type `auth` · `migration` — `Skill("plan-ceo-review")` 에 plan 파일과 diff.
+4. 지적은 고치고 push 한다. **고친 뒤 리뷰를 다시 부르지 않는다.** 고칠 수 없는 BLOCKER 나 사람이 정할 문제일 때만 멈추고 묻는다.
+5. **merge 근거는 로컬 테스트 하나다** — CI 가 없다. 리뷰 수정까지 끝난 상태에서 2단계의 `select-test-scope` 명령을 다시 돌려
+   전부 `EXIT=0` 일 때만 4. 병합으로 간다. 아니면 고치고 다시 돈다. 결과(명령 · `EXIT=`)를 PR 본문에 한 줄 적는다.
 
-[bts-start](../bts-start/SKILL.md) · [bts-spec](../bts-spec/SKILL.md) · [bts-plan](../bts-plan/SKILL.md) · [bts-review-plan](../bts-review-plan/SKILL.md) · [bts-impl](../bts-impl/SKILL.md) · [bts-codereview](../bts-codereview/SKILL.md) · [bts-merge](../bts-merge/SKILL.md)
+## 4. 병합
+
+1. worktree 에서 `git status --porcelain` 이 비고 `git log origin/<브랜치>..HEAD` 가 0 인지 본다. 남았으면 커밋 · push 먼저.
+2. **스펙 정합** — FR · 스펙 문서가 바뀌었으면 `bash scripts/verify-master-plan.sh` — exit 0 이 아니면 같은 PR 에서 맞춘다.
+3. `gh pr ready <번호>` → `gh pr edit <번호> --title "<최종 제목>" --body "<한 일 · 확인 방법 · 리뷰 · 테스트 결과 한 줄씩>"`.
+4. `gh pr view <번호> --json headRefOid -q .headRefOid` → `gh pr merge <번호> --squash --delete-branch --match-head-commit <헤드>` →
+   `gh pr view <번호> --json state -q .state` 가 `MERGED` 인지 본다. `--delete-branch` 가 「main is already used by worktree」로 실패해도 merge 는 된 것이다.
+5. **`MERGED` 확인 뒤에만 정리한다.** 배경 세션은 먼저 `ExitWorktree`(`keep`)로 루트에 나온다.
+   ```bash
+   node --experimental-strip-types scripts/workflow/safe-worktree-remove.ts <worktree 경로>
+   git worktree prune
+   git push origin --delete <브랜치>
+   git checkout main && git pull --ff-only origin main
+   lsof -ti:5173 | xargs kill -9 2>/dev/null || true   # worktree 에서 띄운 Vite 가 남는다
+   node -e 'const fs=require("fs");fs.rmSync(".bts-cache",{recursive:true,force:true});fs.mkdirSync(".bts-cache")'
+   git status
+   ```
+   `safe-worktree-remove` 가 종료 코드 2 면 미커밋 · 미푸시가 남은 것이다 — 지우지 말고 보고한다.
+   `git status` 에 `needs merge` 나 stage 1/2/3 이 보이면 공유 `.git` 오염이다 — 손대지 말고 보고한다.
+6. 대시보드는 main 의 post-merge 훅이 `[chore] dashboard regen` 으로 올린다. 그 커밋이 안 보일 때만 `node scripts/build-dashboard.mjs`.
+7. Obsidian — `/Users/maxi.moff/Maxi_wiki/BTS/history.md` 에 `- YYYY-MM-DD #<PR> [<type>/<slug>] <제목>` 한 줄. 새 ADR 은 `decisions/` 로 복사.
+8. 보고 — 첫 줄에 무엇이 반영됐고 Maxi 가 어디서 확인하는지. 이어서 PR · 티어(선언/실측) · 리뷰 · 테스트 각 한 줄.
+
+## 막혔을 때
+
+같은 문제를 3번 시도해서 안 되면 멈추고 보고한다 — 무엇을 했나 · 어디서 막혔나 · 다음 후보 하나.
+검사가 빨간데 내 변경 때문이 아닌 것 같으면 `git diff origin/main...HEAD` 로 실제 바뀐 것부터 본다.
+머지 충돌은 `git pull --rebase origin main` — 충돌 파일이 남으면 멈추고 보고한다.
