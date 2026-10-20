@@ -32,7 +32,7 @@ async function mountApp(root: HTMLElement) {
     })
   } else {
     // SSO 착지 — 라우터 가드보다 먼저 refresh cookie 로 세션을 되살린다.
-    // ponytail: DEV 는 건너뛴다. MSW refresh 가 늘 alice 로 성공해 미인증 e2e 가 깨진다. MSW 가 cookie 를 흉내 내면 DEV 도 켠다
+    // DEV(MSW)는 건너뛴다 — MSW refresh 가 늘 alice 로 성공해 미인증 e2e 가 깨진다. MSW 가 cookie 를 흉내 내면 DEV 도 켠다
     await restoreSession()
   }
 

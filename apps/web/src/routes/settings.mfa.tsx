@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { MfaSettings } from '@/components/auth/MfaSettings'
 import { ExternalAccountNotice } from '@/components/auth/ExternalAccountNotice'
 import { externalAccountStrings, mfaStrings } from '@/i18n/ko'
+import { useAuthStore } from '@/auth/authStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
@@ -30,6 +31,7 @@ import { externalAccountStrings, mfaStrings } from '@/i18n/ko'
  * @see requireAuth 라우트 가드 함수 (auth/routeGuard)
  */
 export function MfaSettingsPage(): JSX.Element {
+  const mfaEnrollmentRequired = useAuthStore((s) => s.user?.mfaEnrollmentRequired === true)
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6">
@@ -41,6 +43,7 @@ export function MfaSettingsPage(): JSX.Element {
       <ExternalAccountNotice
         message={externalAccountStrings.mfaNotice}
         hint={externalAccountStrings.mfaReloginHint}
+        keepForm={mfaEnrollmentRequired}
       >
         <MfaSettings />
       </ExternalAccountNotice>

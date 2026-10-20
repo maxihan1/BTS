@@ -722,13 +722,13 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     [isProvidersError, providers],
   )
 
-  const { data: samlIdps } = useQuery<SamlIdp[]>({
+  const { data: samlIdps, isLoading: isSamlLoading } = useQuery<SamlIdp[]>({
     queryKey: ['saml', 'idps'],
     queryFn: fetchSamlIdps,
     staleTime: 60_000,
   })
 
-  const { data: oidcProviders } = useQuery<OidcProvider[]>({
+  const { data: oidcProviders, isLoading: isOidcLoading } = useQuery<OidcProvider[]>({
     queryKey: ['oidc', 'providers'],
     queryFn: fetchOidcProviders,
     staleTime: 60_000,
@@ -758,8 +758,10 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
 
   // 비밀번호 로그인 방식이 하나도 없다(EC-06-03 — SSO 로 옮겨 LOCAL 을 끈 설치) — SSO 버튼만 보인다
   if (!isProvidersLoading && effectiveProviders.length === 0) {
+    const noSso = !isSamlLoading && !isOidcLoading && !samlIdps?.length && !oidcProviders?.length
     return (
       <div className="space-y-4">
+        {noSso && <p role="alert" className="text-sm text-muted-foreground">{loginStrings.noLoginMethod}</p>}
         <SamlIdpButtons idps={samlIdps ?? []} />
         <OidcIdpButtons providers={oidcProviders ?? []} />
       </div>

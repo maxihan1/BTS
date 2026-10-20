@@ -34,6 +34,8 @@ export const loginStrings = {
   /** OIDC SSO 버튼 */
   oidcLoginButtonLabel: (displayName: string) => `${displayName} 로 로그인`,
   oidcDividerText: '또는',
+  /** 비밀번호 방식도 SSO 도 하나 없을 때 (설정 누락) */
+  noLoginMethod: '사용할 수 있는 로그인 방식이 없습니다. 관리자에게 문의하세요.',
 } as const
 
 /** /login 페이지 헤딩 */
@@ -615,13 +617,13 @@ export const mfaStrings = {
 /** 비밀번호 · MFA 를 사내 통합 로그인(Auth_platform)이 맡을 때 설정 화면 대신 보이는 안내 (VITE_AUTH_ACCOUNT_URL) */
 export const externalAccountStrings = {
   /** 비밀번호 화면 안내 */
-  passwordNotice: '비밀번호는 maxihan 계정에서 바꿉니다.',
+  passwordNotice: '비밀번호는 통합 계정에서 바꿉니다.',
   /** 2단계 인증 화면 안내 */
-  mfaNotice: '2단계 인증은 maxihan 계정에서 켜고 끕니다.',
-  /** MFA 는 SSO 로그인 때 반영된다 */
-  mfaReloginHint: '켠 뒤에는 BTS 에서 로그아웃하고 다시 로그인하면 반영됩니다.',
+  mfaNotice: '2단계 인증은 통합 계정에서 켜고 끕니다.',
+  /** MFA 는 SSO 로그인 때 반영된다 — 통합 계정 세션이 남아 있으면 MFA 없이 이어지므로 둘 다 로그아웃 */
+  mfaReloginHint: '켠 뒤에는 BTS 와 통합 계정에서 모두 로그아웃하고 다시 로그인하면 반영됩니다.',
   /** 계정 화면 링크 */
-  openAccount: 'maxihan 계정 열기',
+  openAccount: '통합 계정 열기',
 } as const
 
 /**

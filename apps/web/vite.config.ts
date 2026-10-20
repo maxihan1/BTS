@@ -20,13 +20,22 @@ const BACKEND_PROXY = {
     ws: true,
     changeOrigin: true,
   },
-  // SSO 진입(/oauth2/authorization/{id}) · 콜백(/login/oauth2/code/{id}) — 운영 nginx.conf 의 같은 경로.
+  // SSO 진입 · 콜백(OIDC /oauth2 · /login/oauth2, SAML /saml2 · /login/saml2) — 운영 nginx.conf 의 같은 경로.
   // Host 를 지켜야(changeOrigin:false) 백엔드의 {baseUrl} 이 5173 이 되어 콜백 · /dashboard 가 SPA 로 돌아온다.
+  // 실 백엔드 왕복은 preview 에서만 의미가 있다 (dev 는 MSW).
   '/oauth2': {
     target: 'http://localhost:8080',
     changeOrigin: false,
   },
   '/login/oauth2': {
+    target: 'http://localhost:8080',
+    changeOrigin: false,
+  },
+  '/saml2': {
+    target: 'http://localhost:8080',
+    changeOrigin: false,
+  },
+  '/login/saml2': {
     target: 'http://localhost:8080',
     changeOrigin: false,
   },
