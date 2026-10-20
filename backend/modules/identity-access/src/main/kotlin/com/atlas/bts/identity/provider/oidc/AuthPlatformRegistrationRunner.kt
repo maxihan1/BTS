@@ -56,7 +56,8 @@ class AuthPlatformRegistrationRunner(
         log.info("Auth_platform OIDC 등록 — registrationId={}, issuer={}", REGISTRATION_ID, issuerUri)
     }
 
-    private companion object {
+    internal companion object {
+        /** 이 provider 만 preferred_username 을 BTS username 으로 믿는다 ([OidcAuthenticationSuccessHandler]) */
         const val REGISTRATION_ID = "auth"
         const val DISPLAY_NAME = "maxihan 계정"
 

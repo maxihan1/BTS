@@ -150,6 +150,7 @@ class OidcSuccessHandlerTest {
     private fun oidcAuthentication(
         preferredUsername: String? = email,
         amr: List<String>? = null,
+        registrationId: String = this.registrationId,
     ): OAuth2AuthenticationToken {
         val principal = mockk<OidcUser>()
         every { principal.subject } returns sub
@@ -189,10 +190,15 @@ class OidcSuccessHandlerTest {
     }
 
     @Test
-    fun `username 은 preferred_username 을 쓴다 (Auth_platform 의 sub 는 UUID 라 사람이 못 읽는다)`() {
+    fun `Auth_platform(auth) 은 username 에 preferred_username 을 쓴다 (sub 가 UUID 라 사람이 못 읽는다)`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
 
-        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(preferredUsername = "maxi"))
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(preferredUsername = "maxi", registrationId = "auth"),
+        )
 
         val attrsSlot = slot<LdapProvisionAttrs>()
         verify(exactly = 1) { autoProvisionService.provision(providerId, capture(attrsSlot)) }
@@ -202,15 +208,27 @@ class OidcSuccessHandlerTest {
     }
 
     @Test
-    fun `preferred_username 이 없거나 비면 sub 를 username 으로 쓴다`() {
+    fun `Auth_platform 도 preferred_username 이 없거나 비면 sub 를 username 으로 쓴다`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
 
-        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(preferredUsername = null))
-        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(preferredUsername = " "))
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(null, registrationId = "auth"))
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(" ", registrationId = "auth"))
 
         val captured = mutableListOf<LdapProvisionAttrs>()
         verify(exactly = 2) { autoProvisionService.provision(providerId, capture(captured)) }
         assertThat(captured.map { it.username }).containsExactly(sub, sub)
+    }
+
+    @Test
+    fun `다른 IdP 는 preferred_username 이 있어도 sub 를 username 으로 쓴다 (이름을 고를 수 있는 IdP 로 기존 계정 탈취 차단)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(preferredUsername = "admin"))
+
+        val attrsSlot = slot<LdapProvisionAttrs>()
+        verify(exactly = 1) { autoProvisionService.provision(providerId, capture(attrsSlot)) }
+        assertThat(attrsSlot.captured.username).isEqualTo(sub)
     }
 
     @Test

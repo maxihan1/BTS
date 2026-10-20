@@ -13,7 +13,7 @@ BTS 를 사내 통합 로그인 Auth_platform(`auth.maxihan.com`, Spring Authori
 대응 없음 — 백엔드 계정 매핑 · 세션 속성만 바꾸고 화면은 한 픽셀도 바뀌지 않는다. ADS 준용 대상 화면 없음.
 
 ## 할 일
-- [x] JIT username = `preferred_username` (없으면 `sub`) — `provider/oidc/OidcAuthenticationSuccessHandler.kt` `toProvisionAttrs`
+- [x] JIT username = `preferred_username` (없으면 `sub`) — Auth_platform(`auth`) 등록만. 다른 IdP 는 `sub` 그대로 (이름을 고를 수 있는 IdP 로 기존 계정 탈취 차단) — `provider/oidc/OidcAuthenticationSuccessHandler.kt` `toProvisionAttrs`
 **검증**: `cd backend && ./gradlew :modules:identity-access:test --tests '*OidcSuccessHandlerTest'`
 - [x] `amr` 에 `mfa` → `sessionService.create(mfaVerified=true)` · `JwtIssuer` 의 `mfa_enrollment_required = !mfaVerified && policy` — `OidcAuthenticationSuccessHandler.kt` · `jwt/JwtIssuer.kt`
 **검증**: `cd backend && ./gradlew :modules:identity-access:test --tests '*JwtIssuerTest' --tests '*Mfa*'`
