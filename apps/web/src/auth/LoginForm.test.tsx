@@ -466,10 +466,40 @@ describe('LoginForm — 폼 로그인', () => {
     expect(screen.queryByRole('button', { name: '로그인' })).toBeNull()
   })
 
-  it('providers 요청이 실패하면 LOCAL 기본값으로 비밀번호 칸을 보인다 (EC-06-06)', async () => {
-    server.use(http.get('/api/v1/auth/providers', () => HttpResponse.json({}, { status: 500 })))
+  it('비밀번호 방식도 SSO 도 없으면 빈 화면 대신 안내를 보인다', async () => {
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/oidc/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/saml/idps', () => HttpResponse.json([])),
+    )
 
     renderLoginForm()
+
+    expect(await screen.findByText(/사용할 수 있는 로그인 방식이 없습니다/)).toBeInTheDocument()
+  })
+
+  it('providers 요청이 실패하면 LOCAL 기본값으로 비밀번호 칸을 보이고 로그인 제출이 동작한다 (EC-06-06)', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({}, { status: 500 })),
+      http.post('/api/v1/auth/login', () =>
+        HttpResponse.json({ access_token: 'test-token', token_type: 'Bearer', expires_in: 3600 }),
+      ),
+      http.get('/api/v1/users/me/whoami', () =>
+        HttpResponse.json({
+          username: 'alice',
+          email: 'alice@bts.local',
+          authMethod: 'local',
+          userId: '00000000-0000-4000-8000-000000000001',
+          mustChangePassword: false,
+          isSystemAdmin: false,
+          mfaEnrollmentRequired: false,
+        }),
+      ),
+    )
+
+    const onSuccess = vi.fn()
+    renderLoginForm(onSuccess)
 
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
@@ -479,6 +509,12 @@ describe('LoginForm — 폼 로그인', () => {
       expect(options).toContain('Local')
     })
     expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('사용자명'), 'alice')
+    await user.type(screen.getByLabelText('비밀번호'), 'password')
+    await user.click(screen.getByRole('button', { name: '로그인' }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 
   it('login mfa_required 응답 후 MFA step에서 "다시 로그인" 클릭 시 자격 증명 폼으로 복귀한다', async () => {

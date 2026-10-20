@@ -10,7 +10,7 @@ const { restoreSession } = await import('./restoreSession')
 describe('restoreSession', () => {
   beforeEach(() => {
     refreshSession.mockReset()
-    useAuthStore.setState({ accessToken: null })
+    useAuthStore.setState({ accessToken: null, user: null })
   })
 
   it('access token 이 없으면 refreshSession 을 한 번 부른다 (SSO 콜백은 refresh cookie 만 굽는다)', async () => {
@@ -25,6 +25,17 @@ describe('restoreSession', () => {
     refreshSession.mockRejectedValue(new Error('401'))
 
     await expect(restoreSession()).resolves.toBeUndefined()
+  })
+
+  it('refresh 는 됐는데 whoami 가 실패하면 token 만 남은 반쪽 세션을 지운다', async () => {
+    refreshSession.mockImplementation(async () => {
+      useAuthStore.setState({ accessToken: 'fresh-token' })
+      throw new Error('whoami 503')
+    })
+
+    await restoreSession()
+
+    expect(useAuthStore.getState().accessToken).toBeNull()
   })
 
   it('access token 이 있으면 부르지 않는다', async () => {
