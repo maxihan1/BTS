@@ -125,7 +125,9 @@ class OidcAuthenticationSuccessHandler(
                 attrs = toProvisionAttrs(sub, principal),
             )
 
-        issueTokens(request, response, account.userId)
+        // IdP 가 MFA 를 거쳤다고 서명한 것(RFC 8176 amr)을 BTS 세션의 MFA 로 인정한다 — SSO 사용자에게 BTS TOTP 등록을 또 강제하지 않는다
+        val mfaVerified = principal.idToken?.getClaimAsStringList("amr")?.contains("mfa") == true
+        issueTokens(request, response, account.userId, mfaVerified)
         // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록(C-3) — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다.
         // best-effort(B-1) — 감사 INSERT 실패가 로그인 가용성을 인질로 잡지 않도록 recordAuditBestEffort 로 감싼다.
         // providerId="oidc", ip/userAgent 는 요청에서 캡처(PII 는 로그 미출력).
@@ -231,7 +233,9 @@ class OidcAuthenticationSuccessHandler(
      * OIDC principal 을 [LdapProvisionAttrs] 로 매핑한다 (공통 프로비저닝 VO 재사용).
      *
      * sub 를 [LdapProvisionAttrs.externalSubject] 로, displayName 은 name → preferred_username →
-     * sub 순으로 fallback 한다. username 은 sub 를 사용한다 (외부 IdP 고유 식별자).
+     * sub 순으로 fallback 한다. username 은 preferred_username(없거나 비면 sub) — Auth_platform 처럼 sub 가
+     * UUID 인 IdP 에서도 사람이 읽는 이름으로 같은 BTS 사용자에 이어진다. 등록은 SQL/env 로 관리자만 하므로
+     * (관리 API 없음) 등록된 IdP 의 preferred_username 을 믿는다. 연결 키(externalSubject)는 그대로 sub.
      */
     private fun toProvisionAttrs(
         sub: String,
@@ -239,7 +243,7 @@ class OidcAuthenticationSuccessHandler(
     ): LdapProvisionAttrs {
         val displayName = principal.fullName ?: principal.preferredUsername ?: sub
         return LdapProvisionAttrs(
-            username = sub,
+            username = principal.preferredUsername?.takeIf { it.isNotBlank() } ?: sub,
             email = principal.email,
             displayName = displayName,
             externalSubject = sub,
@@ -256,6 +260,7 @@ class OidcAuthenticationSuccessHandler(
         request: HttpServletRequest,
         response: HttpServletResponse,
         userId: UUID,
+        mfaVerified: Boolean,
     ) {
         val session =
             sessionService.create(
@@ -263,6 +268,7 @@ class OidcAuthenticationSuccessHandler(
                 providerId = PROVIDER_ID,
                 ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
                 userAgent = request.getHeader(HttpHeaders.USER_AGENT),
+                mfaVerified = mfaVerified,
             )
 
         val rawToken = generateRawToken()

@@ -106,7 +106,8 @@ class JwtIssuer(
                 .claim(CLAIM_SID, sessionId.toString())
                 .claim(CLAIM_MFA_VERIFIED, mfaVerified)
                 // MFA 강제 등록 필요 여부 — 발급 chokepoint. false 여도 명시(부재=false 해석과 일관). FR-MF-04.
-                .claim(CLAIM_MFA_ENROLLMENT_REQUIRED, mfaEnforcementPolicy.evaluate(userId))
+                // 이 세션이 이미 MFA 를 거쳤으면(SSO amr · BTS MFA 검증) 등록을 강제하지 않는다.
+                .claim(CLAIM_MFA_ENROLLMENT_REQUIRED, !mfaVerified && mfaEnforcementPolicy.evaluate(userId))
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
                 // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
