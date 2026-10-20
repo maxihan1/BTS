@@ -122,10 +122,15 @@ class OidcAuthenticationSuccessHandler(
         val account =
             autoProvisionService.provision(
                 providerId = providerId,
-                attrs = toProvisionAttrs(sub, principal),
+                attrs = toProvisionAttrs(sub, principal, registrationId),
             )
 
-        issueTokens(request, response, account.userId)
+        // 사내 Auth_platform 이 MFA 를 거쳤다고 서명한 것(RFC 8176 amr)을 BTS 세션의 MFA 로 인정한다 — BTS TOTP 등록을 또 강제하지 않는다.
+        // 다른 IdP 의 amr 은 뜻이 IdP 마다 달라 믿지 않는다.
+        val mfaVerified =
+            registrationId == AuthPlatformRegistrationRunner.REGISTRATION_ID &&
+                principal.idToken?.getClaimAsStringList("amr")?.contains("mfa") == true
+        issueTokens(request, response, account.userId, mfaVerified)
         // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록(C-3) — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다.
         // best-effort(B-1) — 감사 INSERT 실패가 로그인 가용성을 인질로 잡지 않도록 recordAuditBestEffort 로 감싼다.
         // providerId="oidc", ip/userAgent 는 요청에서 캡처(PII 는 로그 미출력).
@@ -231,15 +236,22 @@ class OidcAuthenticationSuccessHandler(
      * OIDC principal 을 [LdapProvisionAttrs] 로 매핑한다 (공통 프로비저닝 VO 재사용).
      *
      * sub 를 [LdapProvisionAttrs.externalSubject] 로, displayName 은 name → preferred_username →
-     * sub 순으로 fallback 한다. username 은 sub 를 사용한다 (외부 IdP 고유 식별자).
+     * sub 순으로 fallback 한다. username 은 sub — 단 사내 Auth_platform([AuthPlatformRegistrationRunner.REGISTRATION_ID])
+     * 은 sub 가 UUID 라 preferred_username(없거나 비면 sub)을 쓴다. users 는 username 으로 UPSERT 되므로 사용자가
+     * 이름을 고를 수 있는 IdP 의 preferred_username 을 믿으면 같은 이름의 기존 계정(관리자 포함)에 붙는다 — 그래서
+     * 관리자가 계정을 만드는 Auth_platform 만 믿는다. 연결 키(externalSubject)는 어느 쪽이든 sub.
      */
     private fun toProvisionAttrs(
         sub: String,
         principal: OidcUser,
+        registrationId: String,
     ): LdapProvisionAttrs {
         val displayName = principal.fullName ?: principal.preferredUsername ?: sub
         return LdapProvisionAttrs(
-            username = sub,
+            username =
+                principal.preferredUsername
+                    ?.takeIf { registrationId == AuthPlatformRegistrationRunner.REGISTRATION_ID && it.isNotBlank() }
+                    ?: sub,
             email = principal.email,
             displayName = displayName,
             externalSubject = sub,
@@ -256,6 +268,7 @@ class OidcAuthenticationSuccessHandler(
         request: HttpServletRequest,
         response: HttpServletResponse,
         userId: UUID,
+        mfaVerified: Boolean,
     ) {
         val session =
             sessionService.create(
@@ -263,6 +276,7 @@ class OidcAuthenticationSuccessHandler(
                 providerId = PROVIDER_ID,
                 ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
                 userAgent = request.getHeader(HttpHeaders.USER_AGENT),
+                mfaVerified = mfaVerified,
             )
 
         val rawToken = generateRawToken()

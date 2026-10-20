@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken
+import org.springframework.security.oauth2.core.oidc.OidcIdToken
 import org.springframework.security.oauth2.core.oidc.user.OidcUser
 import java.time.Clock
 import java.time.Instant
@@ -127,7 +128,7 @@ class OidcSuccessHandlerTest {
         // 연결 모드 enabled 재해소(B1/EC16) — 기본은 활성. 비활성 테스트가 개별로 override 한다.
         every { configRepo.findEnabledByRegistrationId(registrationId) } returns oidcConfig
         every { autoProvisionService.provision(providerId, any()) } returns provisionedAccount
-        every { sessionService.create(userId, any(), any(), any()) } returns session
+        every { sessionService.create(userId, any(), any(), any(), any()) } returns session
         every {
             jwtIssuer.issue(userId, sessionId, any(), any())
         } returns accessTokenValue
@@ -146,13 +147,19 @@ class OidcSuccessHandlerTest {
             )
     }
 
-    private fun oidcAuthentication(): OAuth2AuthenticationToken {
+    private fun oidcAuthentication(
+        preferredUsername: String? = email,
+        amr: List<String>? = null,
+        registrationId: String = this.registrationId,
+    ): OAuth2AuthenticationToken {
         val principal = mockk<OidcUser>()
         every { principal.subject } returns sub
         every { principal.email } returns email
         every { principal.fullName } returns displayName
-        every { principal.preferredUsername } returns email
+        every { principal.preferredUsername } returns preferredUsername
         every { principal.name } returns sub
+        every { principal.idToken } returns
+            OidcIdToken.withTokenValue("id-token").subject(sub).also { b -> amr?.let { b.claim("amr", it) } }.build()
         val token = mockk<OAuth2AuthenticationToken>()
         every { token.principal } returns principal
         every { token.authorizedClientRegistrationId } returns registrationId
@@ -180,6 +187,81 @@ class OidcSuccessHandlerTest {
         assertThat(attrsSlot.captured.externalSubject).isEqualTo(sub)
         assertThat(attrsSlot.captured.email).isEqualTo(email)
         assertThat(attrsSlot.captured.displayName).isEqualTo(displayName)
+    }
+
+    @Test
+    fun `Auth_platform(auth) 은 username 에 preferred_username 을 쓴다 (sub 가 UUID 라 사람이 못 읽는다)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
+
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(preferredUsername = "maxi", registrationId = "auth"),
+        )
+
+        val attrsSlot = slot<LdapProvisionAttrs>()
+        verify(exactly = 1) { autoProvisionService.provision(providerId, capture(attrsSlot)) }
+        assertThat(attrsSlot.captured.username).isEqualTo("maxi")
+        // 연결 키는 그대로 sub
+        assertThat(attrsSlot.captured.externalSubject).isEqualTo(sub)
+    }
+
+    @Test
+    fun `Auth_platform 도 preferred_username 이 없거나 비면 sub 를 username 으로 쓴다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(null, registrationId = "auth"))
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(" ", registrationId = "auth"))
+
+        val captured = mutableListOf<LdapProvisionAttrs>()
+        verify(exactly = 2) { autoProvisionService.provision(providerId, capture(captured)) }
+        assertThat(captured.map { it.username }).containsExactly(sub, sub)
+    }
+
+    @Test
+    fun `다른 IdP 는 preferred_username 이 있어도 sub 를 username 으로 쓴다 (이름을 고를 수 있는 IdP 로 기존 계정 탈취 차단)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(preferredUsername = "admin"))
+
+        val attrsSlot = slot<LdapProvisionAttrs>()
+        verify(exactly = 1) { autoProvisionService.provision(providerId, capture(attrsSlot)) }
+        assertThat(attrsSlot.captured.username).isEqualTo(sub)
+    }
+
+    @Test
+    fun `Auth_platform(auth) id token amr 에 mfa 가 있으면 MFA 를 거친 세션으로 만든다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
+
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(amr = listOf("pwd", "mfa", "otp"), registrationId = "auth"),
+        )
+
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), true) }
+    }
+
+    @Test
+    fun `다른 IdP 의 amr mfa 는 믿지 않는다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(amr = listOf("pwd", "mfa")))
+
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), false) }
+    }
+
+    @Test
+    fun `amr 에 mfa 가 없거나 amr 이 없으면 MFA 를 거치지 않은 세션이다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(amr = listOf("pwd")))
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(amr = null))
+
+        verify(exactly = 2) { sessionService.create(userId, any(), any(), any(), false) }
     }
 
     @Test

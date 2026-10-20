@@ -1,11 +1,12 @@
 <!-- 자동 생성 — 직접 수정 금지. 원본을 고치고 `node scripts/build-doc-index.mjs` 재실행 -->
 
-# 시간 축 인덱스 (529건, 최신순)
+# 시간 축 인덱스 (530건, 최신순)
 
 > 라우터. [INDEX.md](INDEX.md)
 
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
+| 2026-10-20 | auth-platform-sso-backend | — | ✔ | — | — | FR-AU-04 |
 | 2026-10-20 | auth-platform-sso-web | — | ✔ | — | — | FR-AU-04 |
 | 2026-10-20 | harness-diet | — | ✔ | — | — | — |
 | 2026-10-20 | workflow-jira-parity-gap | ✔ | — | — | — | FR-NT-05 FR-WF-01 FR-WF-02 FR-WF-03 FR-WF-04 FR-WF-05 FR-WF-06 FR-WF-07 FR-WF-08 |
