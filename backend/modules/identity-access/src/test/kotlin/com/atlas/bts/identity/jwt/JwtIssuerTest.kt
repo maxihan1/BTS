@@ -186,6 +186,25 @@ class JwtIssuerTest {
     }
 
     @Test
+    fun `mfa_enrollment_required claim 은 이 세션이 MFA 를 거쳤으면 정책이 true 여도 false 다 (SSO amr)`() {
+        // IdP 에서 MFA 를 거친 SSO 세션(amr mfa)에 BTS TOTP 등록을 또 강제하지 않는다
+        setMfaEnrollmentRequired(true)
+
+        val claims = parseClaims(jwtIssuer.issue(userId, sessionId, "oidc", scopes, mfaVerified = true))
+
+        assertThat(claims.getBooleanClaim("mfa_enrollment_required")).isFalse()
+    }
+
+    @Test
+    fun `mfa_enrollment_required claim 은 SSO 가 아닌 세션이면 mfaVerified 여도 정책 그대로다 (WebAuthn 만 등록 · refresh 재평가 유지)`() {
+        setMfaEnrollmentRequired(true)
+
+        val claims = parseClaims(jwtIssuer.issue(userId, sessionId, "local", scopes, mfaVerified = true))
+
+        assertThat(claims.getBooleanClaim("mfa_enrollment_required")).isTrue()
+    }
+
+    @Test
     fun `mfa_enrollment_required claim 은 sub(userId)로 정책을 평가한다 (FR-MF-04)`() {
         // 클레임 출처 = sub 사용자의 강제 여부. evaluate 가 userId 로 호출됨을 토큰 결과로 고정.
         every { mfaEnforcementPolicy.evaluate(userId) } returns true
