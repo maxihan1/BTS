@@ -233,9 +233,7 @@ export function e2eSpecs(files: string[] | null): string[] | null {
 /**
  * plan 이 task 마다 적어 둔 검증 명령을 전부 뽑는다.
  *
- * 서식 정본. `.claude/skills/bts-plan/plan-format.md` 의 `**검증**:` 줄.
- * 그 파일의 템플릿과 이 추출기가 서로를 검사한다 — `select-test-scope.test.ts` 참조.
- * 한쪽만 바뀌면 조용히 썩는 「두 목록」 양식을 막기 위한 짝이다.
+ * 서식 정본. `.claude/skills/bts/SKILL.md` 1단계 plan 템플릿의 `**검증**:` 줄.
  */
 export function planVerifyCommands(planText: string): string[] {
   const out: string[] = []
@@ -468,10 +466,6 @@ export function renderCommands(scope: TestScope): string {
     lines.push(`# plan 이 지정한 검증 ${scope.planVerify.length}건 — 위 범위와 별개로 반드시 돈다`)
     for (const c of scope.planVerify) lines.push(c)
   }
-
-  lines.push('')
-  lines.push('# 판별식 — ★조건 없이 전량. 경로별 선별은 두 목록이 서로를 안 보게 만든다.')
-  lines.push("node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'")
 
   return lines.join('\n')
 }

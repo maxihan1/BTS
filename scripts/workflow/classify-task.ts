@@ -1,11 +1,10 @@
-// BTS 작업 분류기 — 자연어 입력을 type/agent/primary_bc/slug로 분해.
-// /bts-start가 호출, 결과를 .bts-cache/classify.json에 저장해 후속 스킬이 재사용.
+// BTS 작업 분류기 — 자연어 입력을 type/primary_bc/slug로 분해.
+// /bts 1단계가 호출, 결과를 .bts-cache/classify.json에 저장해 후속 스킬이 재사용.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DEFAULT_TIER, TIER_ORDER } from './detect-tier.ts';
 import type {
   TaskType,
-  AgentName,
   BoundedContext,
   ClassifyResult,
   ClassifyInput,
@@ -454,7 +453,7 @@ const hasPathPattern = (raw: string, patterns: RegExp[]): boolean =>
  * ```
  *
  * **★⑧ 을 ⑥⑦ 뒤로 내린 근거는 오류 비용의 비대칭이다.** `qa-engineer` 는 구현 코드 수정이
- * 금지돼 있어(`.claude/agents/qa-engineer.md`) 잘못 가면 **복구 불가**다 — 그 에이전트는 일을
+ * 금지돼 있었어(2026-10-20 에이전트 통합 전) 잘못 가면 **복구 불가**다 — 그 에이전트는 일을
  * 시작조차 못 한다. 반대로 `frontend-engineer` 가 E2E 를 쓰는 것은 금지돼 있지 않아 **복구 가능**하다.
  * 그래서 신호가 애매하면 복구 가능한 쪽으로 기운다.
  *
@@ -511,32 +510,6 @@ const detectType = (raw: string): TaskType => {
 };
 
 // ─────────────────────────────────────────────────────────
-// agent 매핑
-// ─────────────────────────────────────────────────────────
-
-const detectAgent = (type: TaskType): AgentName => {
-  switch (type) {
-    case 'auth':
-      return 'security-engineer';
-    case 'migration':
-      return 'db-engineer';
-    case 'ui':
-    // design 은 별도 에이전트가 아니다 — 새 UI 는 디자인 스펙 작성부터 TSX 구현까지
-    // frontend-engineer 가 이어서 한다. 스펙만 쓰고 끊으면 넘기는 왕복이 그대로 비용이 됐다.
-    case 'design':
-      return 'frontend-engineer';
-    case 'qa':
-      return 'qa-engineer';
-    case 'backend':
-    case 'api':
-    case 'feature':
-    case 'bugfix':
-    case 'chore':
-      return 'backend-engineer';
-  }
-};
-
-// ─────────────────────────────────────────────────────────
 // BC 매핑
 // ─────────────────────────────────────────────────────────
 
@@ -574,7 +547,6 @@ const detectBoundedContext = (raw: string, type: TaskType): BoundedContext | nul
 export const classify = (input: ClassifyInput): ClassifyResult => {
   const title = input.title.trim();
   const type = detectType(title);
-  const agent = detectAgent(type);
   const primary_bc = detectBoundedContext(title, type);
   const slug = toSlug(title);
   // 착수 시점엔 diff 가 없어 표면으로 티어를 잴 수 없다. 기본 T1 이고 사용자 지정이 우선한다
@@ -585,7 +557,6 @@ export const classify = (input: ClassifyInput): ClassifyResult => {
     title,
     slug,
     type,
-    agent,
     tier,
     primary_bc,
     task_count: 0,

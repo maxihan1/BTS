@@ -1,7 +1,7 @@
 # DATA.md
 
 > **BTS 개발 헌법 §3 — 데이터 / DB / 마이그레이션 규칙.**
-> 위반 시 데이터 무결성 손상 가능. `/bts-codereview`가 `migration`/`auth`/이슈키 영향 PR에 인라인 가이드로 첨부.
+> 위반 시 데이터 무결성 손상 가능. `/bts` 끝 리뷰가 `migration`/`auth`/이슈키 영향 PR의 리뷰어 프롬프트에 첨부.
 > 자세한 스키마. `docs/sdd/05-data-model.md`. 정책 결정. `Maxi_wiki/BTS/decisions/`.
 
 **목차.** [§1 절대 원칙 5개](#1-절대-원칙-bts-데이터-무결성-5원칙) · [§2 이슈 키 영속성](#2-이슈-키-영속성-11-상세) ·
@@ -123,7 +123,7 @@ project-workflow 가 issue-tracking 을 cross-BC import 하면서 처음 충돌�
 4. **타임존**. `TIMESTAMPTZ` 강제. `TIMESTAMP` (without time zone) 금지
 5. **테스트**. Testcontainers Postgres 기동 → 전체 마이그레이션 체인 적용 → 검증
 
-### `db-engineer` 에이전트 책임
+### 마이그레이션 작성자 책임
 
 - 새 마이그레이션 파일 작성
 - 기존 데이터 보존 검증 (테스트로)

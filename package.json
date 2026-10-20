@@ -7,7 +7,6 @@
   "packageManager": "pnpm@11.1.3",
   "scripts": {
     "classify": "node --experimental-strip-types scripts/workflow/classify-task.ts",
-    "test:workflow": "node --experimental-strip-types --test 'scripts/**/*.test.ts' 'scripts/**/*.test.mjs'",
     "dev": "pnpm -r run dev",
     "test": "pnpm -r run test",
     "lint": "pnpm -r run lint",

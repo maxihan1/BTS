@@ -252,7 +252,7 @@ if (isMain) {
         // ★자동 승격하지 않는다. 구현이 끝난 뒤 계획 승인을 받는 절차 역전을 만들기 때문이다.
         // 종료 코드도 올리지 않는다 — 이 줄을 게이트 2 요약에 실어 **사람이** 결정한다.
         console.log(
-          `PROMOTION_NEEDED: 선언 ${parsed.declared} < 실측 ${verdict.tier} — 게이트 2 에서 사람이 결정한다.`,
+          `PROMOTION_NEEDED: 선언 ${parsed.declared} < 실측 ${verdict.tier} — 자동 merge 를 멈추고 사람이 결정한다.`,
         );
       }
     }
