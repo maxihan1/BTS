@@ -5,6 +5,7 @@ package com.atlas.bts.identity.provider.oidc
 import com.atlas.bts.identity.support.SharedPostgres
 import com.bts.shared.crypto.SecretEncryptor
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -67,7 +68,7 @@ class AuthPlatformRegistrationRunnerTest {
     }
 
     @Test
-    fun `다시 돌면 같은 행을 새 값으로 갱신하고 꺼져 있던 행도 켠다`() {
+    fun `다시 돌면 같은 행을 새 값으로 갱신하되 관리자가 끈 행은 그대로 꺼 둔다 (kill switch)`() {
         run("http://localhost:9000", secret = "old")
         jdbc.update("UPDATE oidc_provider_configs SET enabled = false", emptyMap<String, Any>())
 
@@ -79,7 +80,13 @@ class AuthPlatformRegistrationRunnerTest {
         val row = repo.findByRegistrationId("auth")!!
         assertThat(row.issuerUri).isEqualTo("https://auth.maxihan.com")
         assertThat(encryptor.decrypt(row.clientSecretEncrypted)).isEqualTo("new")
-        assertThat(row.enabled).isTrue()
+        assertThat(row.enabled).isFalse()
+    }
+
+    @Test
+    fun `issuer 는 있는데 secret 이 비면 기동을 멈춘다 (로그인 때 invalid_client 로 늦게 알게 되지 않게)`() {
+        assertThatThrownBy { run("http://localhost:9000", secret = "") }
+            .hasMessageContaining("BTS_AUTH_PLATFORM_CLIENT_SECRET")
     }
 
     @Test

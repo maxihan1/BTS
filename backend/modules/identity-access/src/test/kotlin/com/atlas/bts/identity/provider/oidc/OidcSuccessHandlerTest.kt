@@ -232,12 +232,26 @@ class OidcSuccessHandlerTest {
     }
 
     @Test
-    fun `IdP id token amr 에 mfa 가 있으면 MFA 를 거친 세션으로 만든다`() {
+    fun `Auth_platform(auth) id token amr 에 mfa 가 있으면 MFA 를 거친 세션으로 만든다`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
 
-        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(amr = listOf("pwd", "mfa", "otp")))
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(amr = listOf("pwd", "mfa", "otp"), registrationId = "auth"),
+        )
 
         verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), true) }
+    }
+
+    @Test
+    fun `다른 IdP 의 amr mfa 는 믿지 않는다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(amr = listOf("pwd", "mfa")))
+
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), false) }
     }
 
     @Test

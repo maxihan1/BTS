@@ -83,6 +83,20 @@ class AutoProvisionServiceTest {
         externalAccountRepo = mockk(relaxed = true)
         auditLog = mockk(relaxed = true)
         service = AutoProvisionService(userRepo, externalAccountRepo, auditLog)
+        every { externalAccountRepo.findByProviderIdAndExternalSubject(any(), any()) } returns null
+    }
+
+    @Test
+    fun `이미 연결된 subject 는 IdP 이름이 바뀌어도 연결된 사용자 username 으로 UPSERT 한다 (ghost · 남의 행 덮어쓰기 차단)`() {
+        every { externalAccountRepo.findByProviderIdAndExternalSubject(providerId, ldapAttrs.externalSubject) } returns
+            sampleAccount
+        every { userRepo.findById(userId) } returns sampleUser.copy(username = "bob-old")
+        every { userRepo.provisionFromExternal(any(), any(), any()) } returns existingProvisionResult
+        every { externalAccountRepo.provisionUser(any(), any(), any(), any()) } returns sampleAccount
+
+        service.provision(providerId, ldapAttrs.copy(username = "bob-renamed"))
+
+        verify { userRepo.provisionFromExternal("bob-old", "bob@example.org", "Bob") }
     }
 
     // ── US-04: 첫 로그인 — user 미존재 → 신규 INSERT ─────────────────────────
