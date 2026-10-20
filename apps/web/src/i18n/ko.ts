@@ -612,6 +612,18 @@ export const mfaStrings = {
   trustedDevicesLoadError: '기기 목록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.',
 } as const
 
+/** 비밀번호 · MFA 를 사내 통합 로그인(Auth_platform)이 맡을 때 설정 화면 대신 보이는 안내 (VITE_AUTH_ACCOUNT_URL) */
+export const externalAccountStrings = {
+  /** 비밀번호 화면 안내 */
+  passwordNotice: '비밀번호는 maxihan 계정에서 바꿉니다.',
+  /** 2단계 인증 화면 안내 */
+  mfaNotice: '2단계 인증은 maxihan 계정에서 켜고 끕니다.',
+  /** MFA 는 SSO 로그인 때 반영된다 */
+  mfaReloginHint: '켠 뒤에는 BTS 에서 로그아웃하고 다시 로그인하면 반영됩니다.',
+  /** 계정 화면 링크 */
+  openAccount: 'maxihan 계정 열기',
+} as const
+
 /**
  * MFA 관련 백엔드 에러 코드를 사용자 노출 메시지로 변환한다.
  * ProblemDetail detail 필드는 직접 노출하지 않으며 이 함수가 단일 출처다.
