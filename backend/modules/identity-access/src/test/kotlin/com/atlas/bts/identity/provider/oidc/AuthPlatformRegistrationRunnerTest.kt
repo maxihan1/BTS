@@ -73,7 +73,8 @@ class AuthPlatformRegistrationRunnerTest {
 
         run("https://auth.maxihan.com", secret = "new")
 
-        val count = jdbc.queryForObject("SELECT count(*) FROM oidc_provider_configs", emptyMap<String, Any>(), Int::class.java)
+        val count =
+            jdbc.queryForObject("SELECT count(*) FROM oidc_provider_configs", emptyMap<String, Any>(), Int::class.java)
         assertThat(count).isEqualTo(1)
         val row = repo.findByRegistrationId("auth")!!
         assertThat(row.issuerUri).isEqualTo("https://auth.maxihan.com")
