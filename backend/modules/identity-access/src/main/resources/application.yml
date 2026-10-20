@@ -73,6 +73,13 @@ bts:
     # 이미 SYSTEM_ADMIN 보유자가 있으면 멱등 skip 하므로 재기동마다 재부여하지 않는다.
     # prod: BTS_BOOTSTRAP_ADMIN_USERNAME 환경변수로 주입 (Spring relaxed binding).
     admin-username: ${BTS_BOOTSTRAP_ADMIN_USERNAME:}
+  auth-platform:
+    # 사내 통합 로그인 Auth_platform OIDC 등록 (AuthPlatformRegistrationRunner). issuer 가 비면 등록하지 않는다.
+    # 콜백 {baseUrl}/login/oauth2/code/auth 를 Auth_platform client bts 의 redirect URI 로 넣는다.
+    # secret 암호화에 BTS_OIDC_ENCRYPTION_KEY · BTS_OIDC_ENCRYPTION_SALT 가 필요하다.
+    issuer-uri: ${BTS_AUTH_PLATFORM_ISSUER_URI:}
+    client-id: ${BTS_AUTH_PLATFORM_CLIENT_ID:bts}
+    client-secret: ${BTS_AUTH_PLATFORM_CLIENT_SECRET:}
   webauthn:
     # WebAuthn(패스키/보안키) Relying Party 설정 (FR-MF-03).
     # rp-id: RP 식별 도메인(포트/스킴 미포함). origin: 허용 origin(스킴+호스트+포트).
