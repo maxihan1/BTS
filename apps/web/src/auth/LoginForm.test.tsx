@@ -450,17 +450,40 @@ describe('LoginForm — 폼 로그인', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 
-  it('providers 빈 배열 응답 시 LOCAL fallback 항목이 드롭다운에 표시되고 로그인 제출이 동작한다', async () => {
-    const user = userEvent.setup({ delay: null })
-
+  it('providers 빈 배열(관리자가 LOCAL 을 끔)이면 비밀번호 칸 없이 SSO 버튼만 보인다', async () => {
     server.use(
       http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/oidc/providers', () =>
+        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'maxihan 계정' }] }),
+      ),
+    )
+
+    renderLoginForm()
+
+    await screen.findByRole('button', { name: 'maxihan 계정 로 로그인' })
+    expect(screen.queryByLabelText('비밀번호')).toBeNull()
+    expect(screen.queryByLabelText('사용자명')).toBeNull()
+    expect(screen.queryByRole('button', { name: '로그인' })).toBeNull()
+  })
+
+  it('비밀번호 방식도 SSO 도 없으면 빈 화면 대신 안내를 보인다', async () => {
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/oidc/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/saml/idps', () => HttpResponse.json([])),
+    )
+
+    renderLoginForm()
+
+    expect(await screen.findByText(/사용할 수 있는 로그인 방식이 없습니다/)).toBeInTheDocument()
+  })
+
+  it('providers 요청이 실패하면 LOCAL 기본값으로 비밀번호 칸을 보이고 로그인 제출이 동작한다 (EC-06-06)', async () => {
+    const user = userEvent.setup({ delay: null })
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({}, { status: 500 })),
       http.post('/api/v1/auth/login', () =>
-        HttpResponse.json({
-          access_token: 'test-token',
-          token_type: 'Bearer',
-          expires_in: 3600,
-        }),
+        HttpResponse.json({ access_token: 'test-token', token_type: 'Bearer', expires_in: 3600 }),
       ),
       http.get('/api/v1/users/me/whoami', () =>
         HttpResponse.json({
@@ -478,8 +501,6 @@ describe('LoginForm — 폼 로그인', () => {
     const onSuccess = vi.fn()
     renderLoginForm(onSuccess)
 
-    await fillIdentifier(user)
-
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
       const options = Array.from(nativeSelect?.querySelectorAll('option') ?? []).map(
@@ -487,8 +508,8 @@ describe('LoginForm — 폼 로그인', () => {
       )
       expect(options).toContain('Local')
     })
+    expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
 
-    await user.clear(screen.getByLabelText('사용자명'))
     await user.type(screen.getByLabelText('사용자명'), 'alice')
     await user.type(screen.getByLabelText('비밀번호'), 'password')
     await user.click(screen.getByRole('button', { name: '로그인' }))

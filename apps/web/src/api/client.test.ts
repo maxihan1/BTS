@@ -459,3 +459,31 @@ describe('apiFetch — 401 재시도와 취소 신호', () => {
     expect((caught as Error | undefined)?.name).toBe('AbortError')
   })
 })
+
+describe('refresh — 탭 사이 경합 (Web Locks)', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, 'locks')
+    useAuthStore.setState({ accessToken: null })
+  })
+
+  it('refresh 호출을 bts-auth-refresh lock 안에서 한다 — 두 탭이 같은 refresh token 을 동시에 쓰면 백엔드가 세션을 revoke 한다', async () => {
+    const request = vi.fn((_name: string, cb: () => Promise<unknown>) => cb())
+    Object.defineProperty(navigator, 'locks', { value: { request }, configurable: true })
+    useAuthStore.setState({ accessToken: 'expired' })
+    let calls = 0
+    server.use(
+      http.get('/api/test-lock', () => {
+        calls += 1
+        return calls === 1 ? HttpResponse.json({}, { status: 401 }) : HttpResponse.json({ ok: true })
+      }),
+      http.post('/api/v1/auth/refresh', () =>
+        HttpResponse.json({ access_token: 'rotated', token_type: 'Bearer', expires_in: 900 }),
+      ),
+    )
+
+    await apiFetch('/api/test-lock')
+
+    expect(request).toHaveBeenCalledWith('bts-auth-refresh', expect.any(Function))
+    expect(useAuthStore.getState().accessToken).toBe('rotated')
+  })
+})

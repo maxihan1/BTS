@@ -1,7 +1,9 @@
 // 2단계 인증(TOTP) 설정 페이지 — /settings/mfa, TanStack Router code-based 패턴
 import type { JSX } from 'react'
 import { MfaSettings } from '@/components/auth/MfaSettings'
-import { mfaStrings } from '@/i18n/ko'
+import { ExternalAccountNotice } from '@/components/auth/ExternalAccountNotice'
+import { externalAccountStrings, mfaStrings } from '@/i18n/ko'
+import { useAuthStore } from '@/auth/authStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
@@ -29,6 +31,7 @@ import { mfaStrings } from '@/i18n/ko'
  * @see requireAuth 라우트 가드 함수 (auth/routeGuard)
  */
 export function MfaSettingsPage(): JSX.Element {
+  const mfaEnrollmentRequired = useAuthStore((s) => s.user?.mfaEnrollmentRequired === true)
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6">
@@ -37,7 +40,13 @@ export function MfaSettingsPage(): JSX.Element {
           {mfaStrings.settingsDescription}
         </p>
       </div>
-      <MfaSettings />
+      <ExternalAccountNotice
+        message={externalAccountStrings.mfaNotice}
+        hint={externalAccountStrings.mfaReloginHint}
+        keepForm={mfaEnrollmentRequired}
+      >
+        <MfaSettings />
+      </ExternalAccountNotice>
     </div>
   )
 }

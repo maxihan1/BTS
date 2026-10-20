@@ -103,6 +103,7 @@
 - **EC-06-01** 같은 username이 LDAP·Local 양쪽 존재. → **명시 선택이므로 각자 자기 Provider로만 인증** → 타계정 로그인 위험 0. (자동 fallback 폐기로 본질 해소)
 - **EC-06-02** provider="ldap"인데 LDAP DB row가 enabled=false. → 401 `invalid_credentials`(구성 누출 금지).
 - **EC-06-03** username/password 계열 활성 Provider 0개(이론상). → providers 응답 빈 배열. 최소 LOCAL은 코드 Bean 항상 존재 + DB row 없으면 기본 활성이므로 실무상 LOCAL은 항상 노출.
+  - **2026-10-21 갱신** — Auth_platform SSO 전환으로 관리자가 LOCAL 을 끄면(`authn_providers` LOCAL `enabled=false`) 실제로 0개가 된다. 로그인 화면은 비밀번호 칸 없이 SSO 버튼만 보인다 (빈 배열은 실패가 아니므로 EC-06-06 LOCAL fallback 을 쓰지 않는다).
 - **EC-06-04** provider 값이 비 username/password 계열(예 "saml"/"oidc"/"pat") 또는 알 수 없는 문자열. → 401 `invalid_credentials`(SSO/PAT는 이 엔드포인트로 인증하지 않음).
 - **EC-06-05** 선택한 LDAP unavailable. → 503(fallback 없음).
 - **EC-06-06** 프론트 providers fetch 실패. → 드롭다운을 안전 기본값으로 렌더(예: LOCAL 단일) 또는 에러 표시. 로그인 화면이 완전히 깨지지 않게.

@@ -60,15 +60,20 @@ export function isRefreshing(): boolean {
  * 성공하면 authStore에 토큰을 저장하고 새 토큰을 반환.
  * 실패하면 authStore를 초기화하고 에러를 throw.
  * 이미 진행 중인 refresh가 있으면 그 Promise를 공유해 중복 호출을 방지한다 (race lock).
+ * 탭 사이는 Web Locks(`bts-auth-refresh`)로 줄 세운다 — 두 탭이 같은 refresh token 을 동시에 쓰면
+ * 백엔드가 재사용으로 보고 세션 전체를 revoke 한다. 뒤 탭은 앞 탭이 회전시킨 cookie 를 보낸다.
  */
 function doRefresh(): Promise<string> {
   if (refreshPromise === null) {
     refreshPromise = (async () => {
       try {
-        const res = await fetch(`${getBaseUrl()}/api/v1/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-        })
+        const send = () =>
+          fetch(`${getBaseUrl()}/api/v1/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+          })
+        // Web Locks 가 없는 환경(jsdom · 아주 오래된 브라우저)은 탭 안 lock 만 쓴다
+        const res = navigator.locks ? await navigator.locks.request('bts-auth-refresh', send) : await send()
         if (!res.ok) {
           // 세션이 실제로 있던 요청만 재로그인 모달을 띄운다.
           // dashboards/shared/$token 같은 미인증 공개 라우트(staticData:{requireAuth:false})의

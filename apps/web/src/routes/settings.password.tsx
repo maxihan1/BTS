@@ -1,6 +1,9 @@
 // 비밀번호 변경 설정 페이지 — /settings/password, TanStack Router code-based 패턴
 import type { JSX } from 'react'
 import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm'
+import { ExternalAccountNotice } from '@/components/auth/ExternalAccountNotice'
+import { externalAccountStrings } from '@/i18n/ko'
+import { useAuthStore } from '@/auth/authStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 페이지 컴포넌트
@@ -29,6 +32,7 @@ import { ChangePasswordForm } from '@/components/auth/ChangePasswordForm'
  * @see requireAuth 라우트 가드 함수 (auth/routeGuard)
  */
 export function PasswordSettingsPage(): JSX.Element {
+  const mustChangePassword = useAuthStore((s) => s.user?.mustChangePassword === true)
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6">
@@ -37,7 +41,9 @@ export function PasswordSettingsPage(): JSX.Element {
           현재 비밀번호를 확인한 후 새 비밀번호로 변경하세요.
         </p>
       </div>
-      <ChangePasswordForm />
+      <ExternalAccountNotice message={externalAccountStrings.passwordNotice} keepForm={mustChangePassword}>
+        <ChangePasswordForm />
+      </ExternalAccountNotice>
     </div>
   )
 }

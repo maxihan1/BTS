@@ -7,6 +7,7 @@ import { router } from './router'
 import { Toaster } from './components/ui/sonner'
 import { TooltipProvider } from './components/ui/tooltip'
 import { PreferencesProvider } from './components/preferences/PreferencesProvider'
+import { restoreSession } from './auth/restoreSession'
 import './index.css'
 
 const rootElement = document.getElementById('root')
@@ -29,6 +30,10 @@ async function mountApp(root: HTMLElement) {
     await worker.start({
       onUnhandledRequest: 'bypass', // API 외 정적 자산 요청은 그대로 통과
     })
+  } else {
+    // SSO 착지 — 라우터 가드보다 먼저 refresh cookie 로 세션을 되살린다.
+    // DEV(MSW)는 건너뛴다 — MSW refresh 가 늘 alice 로 성공해 미인증 e2e 가 깨진다. MSW 가 cookie 를 흉내 내면 DEV 도 켠다
+    await restoreSession()
   }
 
   createRoot(root).render(

@@ -75,8 +75,9 @@ function resolveLoginErrorMessage(error: unknown): string {
 }
 
 /**
- * providers API 실패 또는 빈 배열 응답 시 사용하는 LOCAL 안전 기본값.
+ * providers API 실패 시 사용하는 LOCAL 안전 기본값.
  * spec EC-06-06: "LOCAL fallback — 최소 Local 로그인은 항상 가능".
+ * 빈 배열은 실패가 아니다 — 관리자가 LOCAL(·LDAP)을 끈 것이라 비밀번호 칸을 숨긴다 (EC-06-03).
  */
 const LOCAL_FALLBACK: readonly ProviderEntry[] = [
   { id: 'local', type: 'LOCAL', displayName: 'Local', priority: 0, available: true },
@@ -717,19 +718,17 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
 
   const effectiveProviders = useMemo<readonly ProviderEntry[]>(
     () =>
-      isProvidersError || (providers !== undefined && providers.length === 0)
-        ? LOCAL_FALLBACK
-        : (providers ?? []),
+      isProvidersError ? LOCAL_FALLBACK : (providers ?? []),
     [isProvidersError, providers],
   )
 
-  const { data: samlIdps } = useQuery<SamlIdp[]>({
+  const { data: samlIdps, isLoading: isSamlLoading } = useQuery<SamlIdp[]>({
     queryKey: ['saml', 'idps'],
     queryFn: fetchSamlIdps,
     staleTime: 60_000,
   })
 
-  const { data: oidcProviders } = useQuery<OidcProvider[]>({
+  const { data: oidcProviders, isLoading: isOidcLoading } = useQuery<OidcProvider[]>({
     queryKey: ['oidc', 'providers'],
     queryFn: fetchOidcProviders,
     staleTime: 60_000,
@@ -754,6 +753,18 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
         onSuccess={onSuccess}
         onBackToLogin={handleBackToLogin}
       />
+    )
+  }
+
+  // 비밀번호 로그인 방식이 하나도 없다(EC-06-03 — SSO 로 옮겨 LOCAL 을 끈 설치) — SSO 버튼만 보인다
+  if (!isProvidersLoading && effectiveProviders.length === 0) {
+    const noSso = !isSamlLoading && !isOidcLoading && !samlIdps?.length && !oidcProviders?.length
+    return (
+      <div className="space-y-4">
+        {noSso && <p role="alert" className="text-sm text-muted-foreground">{loginStrings.noLoginMethod}</p>}
+        <SamlIdpButtons idps={samlIdps ?? []} />
+        <OidcIdpButtons providers={oidcProviders ?? []} />
+      </div>
     )
   }
 
