@@ -20,6 +20,16 @@ const BACKEND_PROXY = {
     ws: true,
     changeOrigin: true,
   },
+  // SSO 진입(/oauth2/authorization/{id}) · 콜백(/login/oauth2/code/{id}) — 운영 nginx.conf 의 같은 경로.
+  // Host 를 지켜야(changeOrigin:false) 백엔드의 {baseUrl} 이 5173 이 되어 콜백 · /dashboard 가 SPA 로 돌아온다.
+  '/oauth2': {
+    target: 'http://localhost:8080',
+    changeOrigin: false,
+  },
+  '/login/oauth2': {
+    target: 'http://localhost:8080',
+    changeOrigin: false,
+  },
 } as const
 
 export default defineConfig({
