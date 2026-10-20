@@ -450,35 +450,26 @@ describe('LoginForm — 폼 로그인', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
   })
 
-  it('providers 빈 배열 응답 시 LOCAL fallback 항목이 드롭다운에 표시되고 로그인 제출이 동작한다', async () => {
-    const user = userEvent.setup({ delay: null })
-
+  it('providers 빈 배열(관리자가 LOCAL 을 끔)이면 비밀번호 칸 없이 SSO 버튼만 보인다', async () => {
     server.use(
       http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
-      http.post('/api/v1/auth/login', () =>
-        HttpResponse.json({
-          access_token: 'test-token',
-          token_type: 'Bearer',
-          expires_in: 3600,
-        }),
-      ),
-      http.get('/api/v1/users/me/whoami', () =>
-        HttpResponse.json({
-          username: 'alice',
-          email: 'alice@bts.local',
-          authMethod: 'local',
-          userId: '00000000-0000-4000-8000-000000000001',
-          mustChangePassword: false,
-          isSystemAdmin: false,
-          mfaEnrollmentRequired: false,
-        }),
+      http.get('/api/v1/auth/oidc/providers', () =>
+        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'maxihan 계정' }] }),
       ),
     )
 
-    const onSuccess = vi.fn()
-    renderLoginForm(onSuccess)
+    renderLoginForm()
 
-    await fillIdentifier(user)
+    await screen.findByRole('button', { name: 'maxihan 계정 로 로그인' })
+    expect(screen.queryByLabelText('비밀번호')).toBeNull()
+    expect(screen.queryByLabelText('사용자명')).toBeNull()
+    expect(screen.queryByRole('button', { name: '로그인' })).toBeNull()
+  })
+
+  it('providers 요청이 실패하면 LOCAL 기본값으로 비밀번호 칸을 보인다 (EC-06-06)', async () => {
+    server.use(http.get('/api/v1/auth/providers', () => HttpResponse.json({}, { status: 500 })))
+
+    renderLoginForm()
 
     await waitFor(() => {
       const nativeSelect = document.querySelector('select[aria-hidden="true"]')
@@ -487,13 +478,7 @@ describe('LoginForm — 폼 로그인', () => {
       )
       expect(options).toContain('Local')
     })
-
-    await user.clear(screen.getByLabelText('사용자명'))
-    await user.type(screen.getByLabelText('사용자명'), 'alice')
-    await user.type(screen.getByLabelText('비밀번호'), 'password')
-    await user.click(screen.getByRole('button', { name: '로그인' }))
-
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce())
+    expect(screen.getByLabelText('비밀번호')).toBeInTheDocument()
   })
 
   it('login mfa_required 응답 후 MFA step에서 "다시 로그인" 클릭 시 자격 증명 폼으로 복귀한다', async () => {
