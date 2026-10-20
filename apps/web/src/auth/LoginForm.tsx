@@ -187,16 +187,6 @@ const LoginCredentialsForm = ({
 
   const serverError = form.formState.errors.root?.message ?? null
 
-  // 비밀번호 로그인 방식이 하나도 없다(EC-06-03 — SSO 로 옮겨 LOCAL 을 끈 설치) — SSO 버튼만 보인다
-  if (!isProvidersLoading && providers.length === 0) {
-    return (
-      <div className="space-y-4">
-        <SamlIdpButtons idps={samlIdps} />
-        <OidcIdpButtons providers={oidcProviders} />
-      </div>
-    )
-  }
-
   function onSubmit(values: LoginFormValues) {
     form.clearErrors('root')
     mutation.mutate(values, {
@@ -763,6 +753,16 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
         onSuccess={onSuccess}
         onBackToLogin={handleBackToLogin}
       />
+    )
+  }
+
+  // 비밀번호 로그인 방식이 하나도 없다(EC-06-03 — SSO 로 옮겨 LOCAL 을 끈 설치) — SSO 버튼만 보인다
+  if (!isProvidersLoading && effectiveProviders.length === 0) {
+    return (
+      <div className="space-y-4">
+        <SamlIdpButtons idps={samlIdps ?? []} />
+        <OidcIdpButtons providers={oidcProviders ?? []} />
+      </div>
     )
   }
 
