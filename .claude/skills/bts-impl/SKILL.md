@@ -146,20 +146,17 @@ echo "EXIT=$?"; tail -30 /tmp/test.log
 
 보고에는 **통과 건수와 종료 코드를 함께** 적는다. 새 문서(spec/plan/decision)를 만든 작업이면 `node scripts/build-doc-index.mjs` 로 인덱스를 먼저 재생성한다 — pre-commit `--check` 차단을 푸는 명령이다.
 
-### 4-C. 푸시 뒤 젠킨스 결과를 확인한다 (2026-09-09~)
+### 4-C. 푸시 전에 로컬 전량을 돌린다 (2026-10-20~)
 
-**`.husky/pre-push` 는 더 이상 백엔드·프론트 테스트를 돌리지 않는다.** 그것을 젠킨스로 옮겼고
-(P5), 그래서 **푸시가 성공했다는 것이 검증이 통과했다는 뜻이 아니다** — 푸시는 막히지 않는다.
-
-푸시 후 젠킨스가 폴링으로 잡아 돈다(실측 80~110초). 결과를 확인해 보고에 싣는다.
+**서버 CI 가 없다** — 2026-10-20 철거했고 새 CI/CD 는 아직 없다. `.husky/pre-push` 도
+백엔드·프론트 테스트를 돌리지 않으므로 **푸시가 성공했다는 것이 검증이 통과했다는 뜻이 아니다.**
 
 ```bash
-node --experimental-strip-types scripts/workflow/jenkins-build-status.ts
-echo "EXIT=$?"   # 0 초록 · 1 빨강 · 2 판정 불가
+node --experimental-strip-types scripts/workflow/push-backend-tests.ts > /tmp/be.log 2>&1; echo "EXIT=$?"
+node --experimental-strip-types scripts/workflow/push-frontend-tests.ts > /tmp/fe.log 2>&1; echo "EXIT=$?"
 ```
 
-**종료 코드 2 를 통과로 읽지 않는다.** 판정 불가면 위 4-A/4-B 로컬 결과가 유일한 근거이고,
-그 사실을 그대로 보고한다 — 「젠킨스 판정 불가(사유) · 로컬 EXIT=0」 형태다.
+두 종료 코드를 보고에 싣는다. `/bts-codereview` 가 게이트 2 요약에, `/bts-merge` 가 머지 판정에 쓴다.
 
 ## Step 5. 체이닝
 

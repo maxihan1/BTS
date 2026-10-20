@@ -260,23 +260,7 @@ export interface TestScope {
   planVerify: string[]
 }
 
-/**
- * 범위 계산 옵션.
- *
- * `forceFull` — 백엔드·프론트를 **전량**으로 넓힌다(`전량` stage 가 쓴다).
- *   ★E2E 는 넓히지 않는다. 정책상 전량 E2E(약 3시간)는 **배포 이후**의 몫이고,
- *     CI 의 전량 빌드는 「이 커밋이 괜찮은가」를 보는 자리다. E2E 는 여기서도
- *     **변경 도메인**만 돈다 — 그것이 2층의 약속이다.
- */
-export interface ScopeOptions {
-  forceFull?: boolean
-}
-
-export function computeScope(
-  files: string[] | null,
-  planText: string | null,
-  opts: ScopeOptions = {},
-): TestScope {
+export function computeScope(files: string[] | null, planText: string | null): TestScope {
   const backend = files === null ? null : files.filter((f) => f.startsWith(BACKEND_PREFIX))
 
   let backendModules: string[]
@@ -295,44 +279,16 @@ export function computeScope(
     backendReason = picked.reason
   }
 
-  if (opts.forceFull === true) {
-    backendModules = allModules()
-    backendReason = '전량 빌드 — 영향 범위를 계산하지 않고 전 모듈을 돈다'
-  }
-
   return {
     backendModules,
     backendReason,
-    // ★전량이어도 E2E 는 변경 도메인만이다. 위 ScopeOptions 주석 참조.
-    frontend:
-      opts.forceFull === true
-        ? { mode: 'all', files: [], reason: '전량 빌드' }
-        : frontendScope(files),
+    frontend: frontendScope(files),
     e2e: e2eTouched(files),
     e2eSpecs: e2eSpecs(files),
     planVerify: planText === null ? [] : planVerifyCommands(planText),
   }
 }
 
-/** 사람이 읽고 그대로 실행할 수 있는 명령 블록. */
-/**
- * 환경에 맞는 Playwright 실행 명령. 로컬은 설치된 바이너리, 젠킨스는 공식 컨테이너.
- *
- * ## 왜 갈라지나
- *
- * 젠킨스 컨테이너는 uid 1000 으로 돌아 `playwright install --with-deps` 가 apt 권한 없이
- * **종료 코드 0 으로 조용히** 넘어간다. 그래서 크롬이 `libglib-2.0.so.0` 부재로 뜨지 않는다
- * (2026-09-10 실측 — `browserType.launch: Target page, context or browser has been closed`).
- * 공식 이미지는 그 문제를 통째로 없앤다.
- *
- * 맥에서는 그냥 된다 — 개발 워크플로우를 바꾸지 않으려고 로컬 경로를 기본값으로 둔다.
- *
- * ★이미지 태그를 **여기 적지 않는다.** `Jenkinsfile.e2e` 의 `PW_IMAGE` 가 정본이고
- *   `playwright-image-pin.test.ts` 가 lockfile 버전과 대조한다. 여기 또 적으면 세 번째
- *   목록이 되고, 그 셋은 서로를 검사하지 않는다.
- *
- * @param specs 돌릴 시나리오(`apps/web` 상대경로). 비면 전량이다.
- */
 /** 기준 이미지가 실재하나. IO 는 여기 한 줄뿐이라 아래 판정은 순수하다. */
 export function hasVisualBaseline(
   dir: string = path.join(REPO_ROOT, 'apps/web/e2e/visual/__screenshots__'),
@@ -368,8 +324,8 @@ export function visualLines(
     case 'no-baseline':
       return [
         '# 시각 회귀 — 생략 (기준 이미지 0장 · P3 미도입)',
-        '#   기준 생성. 젠킨스 bts-ci 를 UPDATE_VISUAL_BASELINE=true 로 돌리고',
-        '#   아티팩트의 PNG 를 받아 커밋한다. 커밋되는 순간 이 줄이 명령으로 바뀐다.',
+        '#   기준 생성. (cd apps/web && node_modules/.bin/playwright test --project=visual --update-snapshots)',
+        '#   생성한 PNG 를 눈으로 확인해 커밋한다. 커밋되는 순간 이 줄이 명령으로 바뀐다.',
       ]
     case 'no-frontend':
       return ['# 시각 회귀 — 생략 (프론트 변경 없음)']
@@ -379,36 +335,26 @@ export function visualLines(
 }
 
 /**
- * 시각 회귀 실행 명령. `e2eCommand` 와 같은 갈림(로컬 바이너리 ↔ 젠킨스 컨테이너)을 쓴다.
+ * 시각 회귀 실행 명령.
  *
  * ★`--project=visual` 이다. `chromium` 은 `e2e/visual/**` 를 `testIgnore` 하므로
  *   그 프로젝트로는 이 스펙이 **절대** 안 돈다.
  */
 function visualCommand(): string {
-  const image = process.env['PW_IMAGE']
-  if (image === undefined || image === '') {
-    return '(cd apps/web && node_modules/.bin/playwright test --project=visual)'
-  }
-  const hostWs = process.env['HOST_WS'] ?? '$PWD'
-  return (
-    `docker run --rm --network host -v "${hostWs}:/w" -w /w/apps/web -e CI=1 ` +
-    `"${image}" npx playwright test --project=visual`
-  )
+  return '(cd apps/web && node_modules/.bin/playwright test --project=visual)'
 }
 
+/**
+ * Playwright 실행 명령.
+ *
+ * @param specs 돌릴 시나리오(`apps/web` 상대경로). 비면 전량이다.
+ */
 function e2eCommand(specs: string[]): string {
   const args = specs.length > 0 ? ` ${specs.join(' ')}` : ''
-  const image = process.env['PW_IMAGE']
-  if (!image) return `(cd apps/web && node_modules/.bin/playwright test${args})`
-  // DooD — `-v` 좌변은 **호스트 경로**다. 컨테이너 안 경로를 주면 빈 디렉터리가 마운트되고,
-  // 그러면 "no tests found" 가 초록으로 보인다.
-  const host = process.env['HOST_WS'] ?? '$PWD'
-  return (
-    `docker run --rm --network host -v "${host}:/w" -w /w/apps/web -e CI=1 ` +
-    `"${image}" npx playwright test${args} --project=chromium`
-  )
+  return `(cd apps/web && node_modules/.bin/playwright test${args})`
 }
 
+/** 사람이 읽고 그대로 실행할 수 있는 명령 블록. */
 export function renderCommands(scope: TestScope): string {
   const lines: string[] = []
 
@@ -494,17 +440,7 @@ function main(argv: string[]): number {
     planText = r.stdout
   }
 
-  /*
-   * ★`BTS_FORCE_FULL=1` 이면 전량이다 — `Jenkinsfile` 의 `전량` stage 가 쓴다.
-   *
-   *   종전에는 그 stage 가 명령 목록을 **손으로 다시 적었다.** 그러면 두 목록이 되고,
-   *   실제로 갈려 있었다 — 계산기 블록에는 E2E 가 있는데 전량 stage 에는 없었다.
-   *   즉 **넓힐수록 검증이 줄었다.** 야간 크론(조합 위험을 받는 자리)도 그 경로다.
-   *
-   *   이제 두 stage 가 같은 계산기를 부르고, 다른 것은 이 플래그 하나다.
-   */
-  const forceFull = (process.env['BTS_FORCE_FULL'] ?? '') !== ''
-  const scope = computeScope(changedFiles(), planText, { forceFull })
+  const scope = computeScope(changedFiles(), planText)
   process.stdout.write(renderCommands(scope) + '\n')
   return 0
 }

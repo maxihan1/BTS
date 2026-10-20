@@ -30,7 +30,6 @@ import { fileURLToPath } from 'node:url';
 import { hasVisualBaseline, visualDecision, visualLines } from './select-test-scope.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const JENKINSFILE = join(ROOT, 'Jenkinsfile');
 const PW_CONFIG = join(ROOT, 'apps/web/playwright.config.ts');
 const BASELINE_DIR = join(ROOT, 'apps/web/e2e/visual/__screenshots__');
 
@@ -85,7 +84,7 @@ describe('시각 회귀 배선', () => {
     );
     assert.match(
       block,
-      /UPDATE_VISUAL_BASELINE/,
+      /--project=visual --update-snapshots/,
       '켜는 방법이 안 적혀 있다 — 「생략」만 보이면 영영 도입되지 않는다.',
     );
     assert.doesNotMatch(block, /--project=visual\b(?!.*update)/, '기준이 없는데 돌리려 든다.');
@@ -107,36 +106,5 @@ describe('시각 회귀 배선', () => {
       false,
       '없는 디렉터리를 있다고 한다.',
     );
-  });
-
-  test('★★기준 이미지를 만드는 경로가 파이프라인에 있다', () => {
-    const jf = readFileSync(JENKINSFILE, 'utf-8');
-    assert.match(
-      jf,
-      /UPDATE_VISUAL_BASELINE/,
-      '기준 이미지를 이 러너에서 만드는 경로가 없다.\n' +
-        '★기준 PNG 는 OS·아키텍처·폰트 렌더가 같은 기계에서만 유효하다.\n' +
-        '  맥에서 만든 것을 리눅스 러너가 비교하면 전량 diff 다.',
-    );
-    assert.match(
-      jf,
-      /--project=visual --update-snapshots/,
-      '기준 생성 명령이 없다.',
-    );
-  });
-
-  test('★★파이프라인이 기준 이미지를 스스로 커밋하지 않는다', () => {
-    const jf = readFileSync(JENKINSFILE, 'utf-8');
-    const at = jf.indexOf("stage('시각 기준 이미지 생성')");
-    assert.ok(at >= 0, '기준 생성 stage 를 못 찾았다.');
-    const body = jf.slice(at, jf.indexOf("stage('", at + 10));
-    assert.doesNotMatch(
-      body,
-      /git (commit|push|add)/,
-      '파이프라인이 기준 이미지를 스스로 커밋한다.\n' +
-        '★그것이 곧 「회귀를 승인하는 재생성」이고, `snapshot-baseline-guard.test.ts` 가\n' +
-        '  막으려는 고장 그 자체다. 아티팩트로만 남기고 사람이 확인해 커밋한다.',
-    );
-    assert.match(body, /archiveArtifacts/, '생성한 기준을 아티팩트로 안 남긴다 — 받을 방법이 없다.');
   });
 });

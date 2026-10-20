@@ -4,7 +4,7 @@
 //
 // 2026-09-10 이전에는 이 계산이 **5벌**이었다.
 //   `select-test-scope.ts` · `push-backend-tests.ts` · `requires-full-build.ts` ·
-//   `changed-e2e-specs.ts` · `Jenkinsfile`(inline groovy)
+//   `changed-e2e-specs.ts` · CI 파이프라인 정의(inline groovy)
 //
 // 다섯이 전부 「`@{u}` 아니면 `origin/main`」이라고 적었고, **다섯이 동시에 같은 방식으로
 // 틀렸다.** main 위에서는 `origin/main` 이 곧 HEAD 라 차집합이 항상 공집합이 된다.
@@ -40,7 +40,7 @@ const FALLBACK_REFS = ['origin/main', 'main'] as const;
  *
  * 이것이 있으면 최우선이다. `HEAD~1` 폴백은 **직전 한 커밋만** 덮으므로,
  * CI 가 몇 번 건너뛰거나 빌드가 중단된 사이 여러 머지가 쌓이면 놓치는 구간이 생긴다.
- * 젠킨스는 `GIT_PREVIOUS_SUCCESSFUL_COMMIT` 로 그 구간을 알려줄 수 있다.
+ * CI 는 직전 성공 커밋으로 그 구간을 알려줄 수 있다.
  */
 export const BASE_ENV = 'BTS_DIFF_BASE';
 
@@ -59,7 +59,7 @@ function git(cwd: string, args: string[]): string | null {
  * 순서.
  *   ① `BTS_DIFF_BASE` — CI 가 직전 성공 커밋을 안다
  *   ② 업스트림(`@{u}`) 과의 분기점 — 흔한 작업 브랜치
- *   ③ `origin/main` 과의 분기점 — 업스트림이 없을 때(젠킨스는 detached HEAD 다)
+ *   ③ `origin/main` 과의 분기점 — 업스트림이 없을 때(detached HEAD 체크아웃 등)
  *   ④ 분기점이 HEAD 자신이면 `HEAD~1` — **우리가 곧 main 인 경우**
  *
  * @param cwd 저장소 경로. 기본값은 이 저장소 루트

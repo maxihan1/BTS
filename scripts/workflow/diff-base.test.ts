@@ -2,7 +2,7 @@
 //
 // ## 무엇을 막는가 — 2026-09-10 실측 사고
 //
-// 젠킨스 빌드 #31(main · SUCCESS · 3.0분)이 **백엔드·프론트 테스트를 한 건도 안 돌렸다.**
+// 서버 CI 빌드 #31(main · SUCCESS · 3.0분)이 **백엔드·프론트 테스트를 한 건도 안 돌렸다.**
 //
 //     # 백엔드 — 생략 (변경 없음)
 //     # 프론트 — 생략 (프론트 변경 없음)
@@ -23,12 +23,12 @@
 // main 을 계산기 범위로 바꾼 순간(2026-09-10) 드러났다. **가드를 좁힌 변경이 가드가
 // 기대던 다른 가드를 무너뜨린 것**이라, 좁히는 변경마다 이 짝을 확인해야 한다.
 //
-// 게다가 젠킨스 잡이 `*/main` 전용이라 **이것이 유일한 CI 다** — 작업 브랜치는 빌드되지
-// 않는다. 즉 저장소 전체에서 기계 검증이 0 이었다.
+// 게다가 그 CI 잡이 `*/main` 전용이라 **이것이 유일한 CI 였다** — 작업 브랜치는 빌드되지
+// 않았다. 즉 저장소 전체에서 기계 검증이 0 이었다.
 //
 // ## 왜 사본을 금지하나
 //
-// 같은 기준 계산이 **5벌**이었다(TS 4 + Jenkinsfile 1). 다섯이 동시에 같은 방식으로
+// 같은 기준 계산이 **5벌**이었다(TS 4 + CI 파이프라인 정의 1). 다섯이 동시에 같은 방식으로
 // 틀렸고 서로를 검사하지 않았다 — 이 저장소가 이름 붙인 「두 목록」의 5중판이다.
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -80,9 +80,9 @@ const cleanup = (dir: string) => fs.rmSync(dir, { recursive: true, force: true }
 
 describe('비교 기준 — 행동을 잰다', () => {
   /*
-   * ★★픽스처는 환경을 상속하면 안 된다 (2026-09-10 · 젠킨스 #34 에서 red).
+   * ★★픽스처는 환경을 상속하면 안 된다 (2026-09-10 · 서버 CI #34 에서 red).
    *
-   *   젠킨스는 `BTS_DIFF_BASE` 에 **직전 성공 빌드의 커밋**을 심는다. 그 SHA 는 이
+   *   CI 는 `BTS_DIFF_BASE` 에 **직전 성공 빌드의 커밋**을 심을 수 있다. 그 SHA 는 이
    *   임시 저장소에 존재하지 않으므로 `resolveDiffBase` 가 `null` 을 낸다 —
    *   설계대로다(못 풀면 모르는 것이고, 호출자는 전량으로 넓힌다).
    *
@@ -103,7 +103,7 @@ describe('비교 기준 — 행동을 잰다', () => {
   test('★★main 위(origin/main == HEAD)에서 「변경 없음」이 아니라 직전 커밋과 비교한다', () => {
     const { dir, a, b } = fixture();
     try {
-      // 젠킨스가 main 을 체크아웃한 상태를 그대로 만든다 — detached HEAD + origin/main == HEAD
+      // CI 가 main 을 체크아웃한 상태를 그대로 만든다 — detached HEAD + origin/main == HEAD
       git(dir, ['update-ref', 'refs/remotes/origin/main', b]);
       git(dir, ['checkout', '-q', '--detach', b]);
 
@@ -235,21 +235,16 @@ describe('★사본 금지 — 여섯이 동시에 틀렸다', () => {
      *
      * ★`push-backend-tests.ts` 는 여기서 안 돌린다 — main 이 gradle 을 부른다.
      */
-    const CALCULATORS = [
-      'select-test-scope.ts',
-      'requires-full-build.ts',
-      'changed-e2e-specs.ts',
-      'changed-files.ts',
-    ];
+    const CALCULATORS = ['select-test-scope.ts', 'changed-e2e-specs.ts'];
     for (const script of CALCULATORS) {
       const r = spawnSync(
         process.execPath,
         ['--experimental-strip-types', `scripts/workflow/${script}`],
         { cwd: ROOT, encoding: 'utf-8', env: gitFixtureEnv() },
       );
-      // `changed-files.ts` 는 「기준을 모른다」를 3 으로 알린다. 그 외는 0 이어야 한다.
-      assert.ok(
-        r.status === 0 || (script === 'changed-files.ts' && r.status === 3),
+      assert.equal(
+        r.status,
+        0,
         `${script} 가 실행에서 죽는다 (exit ${r.status}).\n${r.stderr}\n` +
           '★소스를 읽는 단언은 이 고장을 못 본다 — 한 번은 돌려야 한다.',
       );
@@ -265,22 +260,6 @@ describe('★사본 금지 — 여섯이 동시에 틀렸다', () => {
         '★그 파일 머리말이 「입력 계산은 한 벌만 둔다」고 적어 놓고 자기가 두 번째 벌이었다.\n' +
         '  main 위에서 merge-base(origin/main, HEAD) = HEAD 라 검사 대상이 0건이 된다 —\n' +
         '  그 머리말이 경고한 바로 그 고장이다.',
-    );
-  });
-
-  test('Jenkinsfile 이 자체적으로 diff 기준을 계산하지 않는다', () => {
-    const jf = fs.readFileSync(path.join(ROOT, 'Jenkinsfile'), 'utf-8');
-    const bad = jf
-      .split('\n')
-      .filter((l) => !/^\s*(\/\/|\*|#)/.test(l))
-      .filter((l) => /git\s+diff\s+--name-only/.test(l));
-
-    assert.deepEqual(
-      bad,
-      [],
-      'Jenkinsfile 이 `git diff --name-only` 로 직접 기준을 잡는다.\n' +
-        '★그 줄이 2026-09-10 사고의 다섯 번째 사본이었다(E2E 도메인 계산).\n' +
-        '  계산기 스크립트를 부르고 결과만 읽어라.',
     );
   });
 });

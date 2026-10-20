@@ -33,35 +33,10 @@ function read(rel: string): string {
 }
 
 describe('푸시 훅 프론트 테스트', () => {
-  // ★2026-09-09 재조준. 백엔드 쪽과 같은 이유다 — 종전 단언의 근거였던
-  //   「훅 말고 다른 자리가 없다」가 젠킨스 도입으로 거짓이 됐다.
-  //   지키려던 것은 호출 자리가 아니라 **「프론트가 푸시마다 자동으로 검증된다」**이다.
-  test('★프론트 검증이 푸시마다 자동으로 돈다 (젠킨스가 그 자리다)', () => {
-    const jf = read('Jenkinsfile')
-
-    assert.match(jf, /pollSCM\(/, 'Jenkinsfile 에 pollSCM 이 없다 — 푸시를 감지하는 자리가 없다')
-    assert.match(
-      jf,
-      /select-test-scope\.ts/,
-      'Jenkinsfile 이 범위 계산기를 부르지 않는다 — 프론트 검증 구멍이 다시 열렸다',
-    )
-  })
-
-  test('★젠킨스의 그 호출에 조건이 걸려 있지 않다', () => {
-    // 종전에 훅에 대해 걸던 단언과 **같은 것**을 새 자리에 건다.
-    // `if` 안에 넣으면 「어떤 경우엔 안 돈다」가 되고, 그 조건이 조용히 썩는다.
-    // 범위 좁힘은 계산기 안에서 한다 — 부르는 자리는 무조건이다.
-    const line = read('Jenkinsfile')
-      .split('\n')
-      .find((l) => l.includes('select-test-scope.ts') && !l.trim().startsWith('//'))
-    assert.ok(line !== undefined, 'Jenkinsfile 에서 실행 줄을 못 찾았다(주석만 있다)')
-    assert.doesNotMatch(line!, /^\s*(if|case|\[|test)\b/, `조건부 실행이다:\n    ${line}`)
-  })
-
-  test('★수동 폴백이 남아 있다 (젠킨스가 죽었을 때의 자리)', () => {
+  test('★수동 폴백이 남아 있다 (서버 CI 가 없을 때의 자리)', () => {
     assert.ok(
       fs.existsSync(path.join(REPO_ROOT, SCRIPT)),
-      `${SCRIPT} 가 사라졌다 — 젠킨스가 죽으면 프론트를 검증할 방법이 없다.`,
+      `${SCRIPT} 가 사라졌다 — 프론트를 범위대로 검증할 방법이 없다.`,
     )
     assert.ok(
       read(HOOK).includes(SCRIPT),

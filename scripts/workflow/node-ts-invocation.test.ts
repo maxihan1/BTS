@@ -256,10 +256,6 @@ const INPUTS = {
   version: { file: VERSION_FILE, coveredBy: '.nvmrc' },
   /** 판별식 실행 명령의 정본. */
   pkg: { file: 'package.json', coveredBy: 'package.json' },
-  /** 축 B 의 검사 대상. CI 정본이 젠킨스로 옮겨졌다(2026-09-09 · P4b). */
-  ci: { file: 'Jenkinsfile', coveredBy: 'Jenkinsfile' },
-  /** 축 B 가 함께 보는 자리 — 이미지에 버전 리터럴이 박히지 않게. */
-  image: { file: 'infra/jenkins/Dockerfile', coveredBy: 'infra/jenkins/**' },
   /** 축 A 가 지키는 호출문이 사는 곳. */
   start: { file: '.claude/skills/bts-start/SKILL.md', coveredBy: '.claude/skills/**' },
   /** 판별식 자신. 이 파일을 고치는 PR 에서도 CI 가 돌아야 한다. */
@@ -799,9 +795,9 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
   //   「모든 스텝이 버전 정본 파일을 읽는다」 셋은 `.github/workflows/**` 를 훑었고,
   //   그 워크플로우 4종을 철거하면서 **훑을 입력이 0** 이 됐다.
   //
-  //   지키려던 보장(「node 버전 리터럴을 두 곳에 두지 않는다」)은 아래
-  //   「젠킨스도 node 버전을 정본에서만 읽는다」가 이어받았다 — bootstrap.sh · Dockerfile ·
-  //   Jenkinsfile 세 자리를 함께 본다. 지운 것이 아니라 옮긴 것이다.
+  //   지키려던 보장(「node 버전 리터럴을 두 곳에 두지 않는다」)을 이어받았던 서버 CI
+  //   단언도 2026-10-20 CI 철거와 함께 지웠다. 지금 node 를 고르는 자리는 로컬(nvm/mise)
+  //   뿐이라 정본은 `.nvmrc` 하나다.
   test('★버전 정본이 실재하고 타입 스트리핑 하한을 넘는다', () => {
     const full = path.join(REPO_ROOT, VERSION_FILE)
     assert.ok(
@@ -872,67 +868,6 @@ describe('node 버전 정본 단일화 — 로컬과 CI 가 같은 node 를 쓴�
       atLeast(pinned, floor),
       `${VERSION_FILE}(${pinned.major}.${pinned.minor})가 engines.node('${range}')를 만족하지 않는다.\n` +
         `두 버전 선언이 정면으로 모순이다 — 어느 쪽을 믿어야 하는지 알 수 없다.`,
-    )
-  })
-
-  // ── 축 B 젠킨스 포팅 (2026-09-09 · P4) ──────────────────────────────────
-  //
-  // ★지키려던 것은 `setup-node` 스텝이 아니라 **「node 버전 리터럴을 두 곳에 두지 않는다」**다.
-  //   정본은 `.nvmrc` 하나이고, 그것이 갈리면 타입 스트리핑 기본 활성 여부가 달라져
-  //   판별식이 조용히 0줄 실행된다(로컬 22.14 · 러너 22.23 — 이 파일 머리말의 그 사고).
-  //
-  // 젠킨스에서 그 보장을 지키는 자리는 셋이다. 하나라도 빠지면 리터럴이 두 벌이 된다.
-  //   ① `bootstrap.sh`  `.nvmrc` 를 읽어 이미지 빌드 ARG 로 주입한다
-  //   ② `Dockerfile`    버전 리터럴이 없다 (ARG 로만 받는다)
-  //   ③ `Jenkinsfile`   이미지의 node 와 `.nvmrc` 가 어긋나면 빌드를 죽인다
-  //
-  // ★③ 이 필요한 이유. 이미지는 한번 구우면 굳는다. `.nvmrc` 가 나중에 바뀌어도 이미지는
-  //   따라오지 않으므로, ①②만으로는 **빌드 시점의 정합**만 보장된다. 실행 시점 drift 는
-  //   ③ 이 잡는다 — Dockerfile 이 「여기서 막을 수 없다」고 적어 둔 그 몫이다.
-  test('★★젠킨스도 node 버전을 정본에서만 읽는다 (리터럴 두 벌 금지)', () => {
-    const read = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf-8')
-    const boot = read('infra/jenkins/bootstrap.sh')
-    const dockerfile = read('infra/jenkins/Dockerfile')
-    const jenkinsfile = read('Jenkinsfile')
-
-    // ① 정본을 읽어 주입한다
-    assert.match(
-      boot,
-      new RegExp(`${VERSION_FILE.replace('.', '\\.')}`),
-      `bootstrap.sh 가 ${VERSION_FILE} 를 읽지 않는다 — 버전을 손으로 넘기게 되고 그것이 두 번째 목록이다.`,
-    )
-    assert.match(boot, /NODE_VERSION/, 'bootstrap.sh 가 NODE_VERSION 을 주입하지 않는다')
-
-    // ② 이미지에 리터럴이 없다. `22.23.2` 같은 숫자가 박히면 정본이 둘이 된다.
-    assert.match(dockerfile, /ARG NODE_VERSION/, 'Dockerfile 이 NODE_VERSION 을 ARG 로 받지 않는다')
-    const literal = dockerfile.match(/^\s*(?:ENV|ARG)\s+NODE_VERSION\s*=\s*["']?\d+\.\d+/m)
-    assert.equal(
-      literal,
-      null,
-      `Dockerfile 에 node 버전 리터럴이 박혀 있다: ${literal?.[0]?.trim()}\n` +
-        `  정본은 ${VERSION_FILE} 하나다. bootstrap.sh 가 읽어 넘긴다.`,
-    )
-
-    // ③ 실행 시점 drift 를 죽인다
-    assert.match(
-      jenkinsfile,
-      new RegExp(`${VERSION_FILE.replace('.', '\\.')}`),
-      `Jenkinsfile 이 ${VERSION_FILE} 를 읽지 않는다 — 이미지가 굳어도 아무도 모른다.`,
-    )
-    assert.match(
-      jenkinsfile,
-      /node -v/,
-      'Jenkinsfile 이 실제 node 버전을 재지 않는다 — 정본과 대조할 값이 없다.',
-    )
-  })
-
-  test('★판정기가 리터럴 박힌 Dockerfile 을 실제로 잡는다 (합성 뮤테이션)', () => {
-    // 위 단언이 스쳐도 통과하는 형태가 아닌지 본다.
-    const bad = 'FROM jenkins/jenkins:lts-jdk21\nARG NODE_VERSION=22.23.2\nRUN echo hi\n'
-    assert.match(
-      bad,
-      /^\s*(?:ENV|ARG)\s+NODE_VERSION\s*=\s*["']?\d+\.\d+/m,
-      '리터럴 기본값이 박힌 형태를 못 잡는다 — 정본이 둘인 상태가 초록이 된다',
     )
   })
 

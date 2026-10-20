@@ -1,4 +1,4 @@
-// 판별식이 「존재하는데 안 도는」 상태가 아닌지, 머지 게이트가 커밋을 보는지 대조
+// 판별식이 「존재하는데 안 도는」 상태가 아닌지 대조
 //
 // ## ① 주석에 삼켜진 테스트 — 2026-09-11 적발
 //
@@ -13,13 +13,6 @@
 //
 // ★이 결함은 **빨간불을 안 낸다.** 테스트가 줄어드는 것은 초록이다. 「실패가 아니라 침묵」이라
 //   전량 실행 로그를 봐도 안 보인다 — 건수를 세는 쪽이 없으면 아무도 모른다.
-//
-// ## ② 머지 게이트가 커밋을 안 봤다
-//
-// `jenkins-build-status.ts` 가 **브랜치 이름만** 대조했다. main 에 푸시한 직후
-// `pollSCM('H/5 * * * *')` 이 아직 안 돌았으면 `lastBuild` 는 직전 커밋의 SUCCESS 이고
-// `building` 도 false 다 — 브랜치가 같으니 「✅ 초록」이 된다.
-// **방금 올린 커밋은 빌드된 적이 없는데 게이트 2 가 통과한다.**
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -86,36 +79,5 @@ describe('① 판별식이 주석에 삼켜지지 않는다', () => {
     assert.deepEqual(swallowedDeclarations(healthy), [], '멀쩡한 파일을 잡는다(오탐).');
     const jsdocExample = "/**\n * 예시. test('x', () => {})\n */\ntest('a', () => {})\n";
     assert.deepEqual(swallowedDeclarations(jsdocExample), [], 'JSDoc 예시를 고장으로 읽는다.');
-  });
-});
-
-describe('② 머지 게이트는 커밋을 본다', () => {
-  const SRC = join(WF, 'jenkins-build-status.ts');
-
-  test('★★빌드한 커밋과 HEAD 를 대조한다', () => {
-    const src = readFileSync(SRC, 'utf-8');
-    assert.match(
-      src,
-      /SHA1/,
-      '빌드 응답에서 커밋(SHA1)을 안 읽는다.\n' +
-        '★브랜치만 보면 폴링 전의 **직전 커밋 초록**을 현재 커밋의 초록으로 읽는다.\n' +
-        '  「다른 브랜치의 초록을 읽지 않는다」와 같은 근거가 「다른 커밋」에도 적용된다.',
-    );
-    assert.match(src, /rev-parse['"\s,\]]+.*HEAD|'HEAD'/, 'HEAD 커밋을 안 구한다.');
-  });
-
-  test('★★커밋이 다르면 판정 불가(2)로 떨어진다 — 초록이 아니다', () => {
-    const src = readFileSync(SRC, 'utf-8');
-    const at = src.indexOf('sameCommit');
-    assert.ok(at >= 0, 'sameCommit 판정이 없다.');
-    // `!sameCommit` 블록이 exit 0 이 아니라 exit 2 로 가는지 본다.
-    const block = src.slice(src.indexOf('if (!sameCommit)'), src.indexOf('if (d.result ==='));
-    assert.match(
-      block,
-      /process\.exit\(2\)/,
-      '커밋 불일치가 종료 코드 2 로 안 떨어진다.\n' +
-        '★「빌드 없음」과 같은 부류다 — 빨간불이 아니라고 통과로 읽으면 검증 없는 머지가 된다.',
-    );
-    assert.doesNotMatch(block, /process\.exit\(0\)/, '커밋 불일치가 초록으로 나간다.');
   });
 });

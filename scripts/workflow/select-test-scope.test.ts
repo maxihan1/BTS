@@ -26,6 +26,7 @@ import {
   BACKEND_PREFIX,
   FE_WIDEN,
   FRONTEND_E2E,
+  FRONTEND_PREFIX,
   FRONTEND_SRC,
   computeScope,
   e2eTouched,
@@ -277,5 +278,44 @@ describe('배선 — 만들어 두고 안 쓰는 상태로 돌아가지 않는�
         `전역 셋업 ${rel} 이 FE_WIDEN 에 없다 — 이 파일이 바뀌어도 전량으로 안 넓혀진다`,
       )
     }
+  })
+})
+
+/*
+ * ★FE_WIDEN 의 저장소 루트 항목이 도달 불가였다 (2026-09-11 감사).
+ *
+ * `frontendScope` 가 `apps/web/` 필터를 넓힘 판정보다 **먼저** 걸었다. `FE_WIDEN` 의
+ * `package.json` `pnpm-lock.yaml` `pnpm-workspace.yaml` `.nvmrc` 넷은 저장소 루트라
+ * 그 필터를 통과하지 못한다 — 단독 변경이면 영원히 발화하지 않았다.
+ *
+ *     frontendScope(['pnpm-lock.yaml']) → mode='skip' · '프론트 변경 없음'
+ *
+ * 의존성 업그레이드 PR 이 **프론트 테스트 0건**으로 초록이었다.
+ * 기존 판별식은 넓힘 항목에 `apps/web/src/routes/a.tsx` 를 **항상 끼워** 불러서
+ * 단독 케이스를 한 번도 재지 않았다 — 짝 파일이 가드를 대신 발화시킨 가짜 초록이다.
+ */
+describe('FE_WIDEN 은 단독으로 도달 가능하다', () => {
+  test('★★저장소 루트 넓힘 항목이 단독 변경으로 발화한다', () => {
+    const rootItems = FE_WIDEN.filter((w: string) => !w.startsWith(FRONTEND_PREFIX))
+    assert.ok(
+      rootItems.length > 0,
+      'FE_WIDEN 에 저장소 루트 항목이 없다 — 아래 대조가 공허해진다(비-공허 짝).',
+    )
+    for (const item of rootItems) {
+      const s = frontendScope([item])
+      assert.equal(
+        s.mode,
+        'all',
+        `${item} 단독 변경이 프론트 전량으로 안 넓어진다 (mode=${s.mode} · ${s.reason}).\n` +
+          '★넓힘 판정이 `apps/web/` 필터보다 뒤에 있으면 저장소 루트 항목은 영원히 도달 불가다.\n' +
+          '  의존성 업그레이드 PR 이 프론트 테스트 0건으로 초록이 된다.',
+      )
+    }
+  })
+
+  test('★프론트와 무관한 변경은 여전히 생략된다 (비-공허 짝)', () => {
+    // ★이 짝이 없으면 위 단언은 `frontendScope` 를 「항상 all」로 만들어도 통과한다.
+    const s = frontendScope(['backend/modules/notification/src/main/kotlin/Foo.kt'])
+    assert.equal(s.mode, 'skip', `프론트 무관 변경이 mode=${s.mode} 다 — 넓힘이 과하다.`)
   })
 })

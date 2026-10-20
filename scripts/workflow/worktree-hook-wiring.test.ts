@@ -129,7 +129,7 @@ const SYMLINKED_IGNORE_PATHS = ['node_modules', 'apps/web/node_modules', '.husky
 // ★`CI_TRIGGERS` 와 `DISCRIMINANT_WORKFLOW` 를 지웠다(2026-09-09 · P4 재조준).
 //   둘 다 **선언만 있고 참조가 0** 이었다 — GitHub Actions 시절 단언이 사라지면서 상수만
 //   남은 자리다. 죽은 상수는 「여기서 CI 트리거를 검사한다」는 인상을 주면서 아무것도 안 한다.
-//   젠킨스 이전으로 그 인상이 더 위험해지므로(Actions 는 이제 안 돈다) 함께 걷어낸다.
+//   Actions 는 이제 안 돌아 그 인상이 더 위험하므로 함께 걷어낸다.
 
 /**
  * 훅 연결 명령이 반드시 담아야 하는 요소.

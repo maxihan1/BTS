@@ -56,89 +56,12 @@ function modulesRoot(): string {
 /** 매트릭스 대상이 아닌 모듈. `app` 은 별도 「조립 부팅」 잡이 통째로 맡는다. */
 const NOT_IN_MATRIX = new Set(['app'])
 
-/**
- * 이 경로가 바뀌면 영향 범위를 알 수 없다 — 전 모듈로 간다.
- *
- * ★`export` 한다. 젠킨스 `전량 판정` stage 가 [requiresFullBuild] 를 통해 **같은 목록**을
- *   본다 — 파이프라인이 목록을 따로 적으면 그 순간 두 목록이 되고, 새 CI 파일이 생길 때
- *   한쪽만 고쳐진다.
- */
+/** 이 경로가 바뀌면 영향 범위를 알 수 없다 — 전 모듈로 간다. */
 export const WIDEN_PREFIXES = [
   'backend/',
-  // ★CI 정의가 바뀌면 전 모듈이다. 2026-09-09 이전까지는
-  //   `.github/workflows/backend-ci.yml` 이었고, CI 정본이 젠킨스로 옮겨지며 그 파일을
-  //   철거했다(P4b). 경로만 바꾸면 되는 자리이되, **빠뜨리면 파이프라인을 고친 PR 이
-  //   일부 모듈로만 검증된다** — 그 변경 자체를 검증하지 못하는 상태다.
-  'Jenkinsfile',
   // ★선별기 자신이 바뀌면 전 모듈이다. 이 파일이 「무엇을 돌릴지」를 정하므로, 그 변경을
   //   일부 모듈로만 검증하면 **좁히는 실수를 그 PR 안에서 못 잡는다.**
   'scripts/workflow/select-backend-modules.ts',
-]
-
-/**
- * 이 변경이 **전량 빌드**를 요구하나. 젠킨스 `전량 판정` stage 가 쓴다.
- *
- * ## 왜 필요했나 — 두 판단이 서로를 모르고 있었다
- *
- * 종전 `전량 판정` 은 브랜치·파라미터·야간만 봤고, false 면 「빠른 게이트」로 갔다.
- * 그런데 그 안에서 이 계산기가 [WIDEN_PREFIXES] 를 보고 **전량으로 넓혔다** —
- * 이름은 빠른 게이트인데 32.7분이 걸렸다(빌드 #21 실측).
- *
- * 더 나쁜 것은 **전량 stage 에만 있는 검사를 건너뛴다**는 점이다 —
- * 「조립 부팅」(`:modules:app` 조립)과 「인프라 봉인」(nginx 로그 마스킹 · springdoc 비노출).
- * 「영향 범위를 모르니 전부 본다」면서 정작 그 둘을 안 보는 **반쪽 확대**였다.
- *
- * 이제 판단이 한 곳으로 모인다 — `전량 판정` 이 이 함수를 보고 `RUN_FULL` 을 정하고,
- * 계산기는 그 결과를 따르기만 한다.
- *
- * @param files 변경 파일 목록. `null` 이면 못 구한 것이라 전량이다(모르면 넓게).
- */
-export function requiresFullBuild(files: string[] | null): boolean {
-  if (files === null) return true
-  return files.some((f) => CI_DEFINITION_PREFIXES.some((p) => f === p || f.startsWith(p)))
-}
-
-/**
- * 「무엇을 돌릴지」를 정하는 파일들 — 여기가 바뀌면 계산기의 답을 믿을 수 없다.
- *
- * ## ★왜 `WIDEN_PREFIXES` 와 따로 두나 (2026-09-11)
- *
- * 종전에는 [requiresFullBuild] 가 [WIDEN_PREFIXES] 를 그대로 봤다. 그런데 그 목록에는
- * `'backend/'` 가 들어 있고, [requiresFullBuild] 에는 **`moduleOf()` 게이트가 없다.**
- * (같은 파일의 `selectModules` 는 모듈에 귀속된 파일을 `continue` 로 빼낸 **뒤에야**
- * 그 목록을 본다. 두 곳의 전제가 달랐다.)
- *
- * 그래서 이렇게 됐다.
- *
- *     requiresFullBuild(['backend/modules/notification/src/main/kotlin/Foo.kt']) → true
- *
- * 백엔드 파일 하나만 고쳐도 `RUN_FULL='true'` 가 되어 **빠른 게이트가 통째로 꺼졌다.**
- * 「main 머지도 계산기가 정한 범위로 돈다」가 백엔드 PR 에서는 한 번도 성립하지 않았고,
- * 로그는 `CI설정변경=Y` 라고 찍어 원인을 오독하게 만들었다.
- *
- * 더 나쁜 것은 그 상태에서 `selectModules` 의 역의존 폐포 결과가 젠킨스에서 **한 번도
- * 쓰이지 않는다**는 점이다 — 백엔드 변경이 있으면 항상 전량으로 가므로, 이 파일 전체의
- * 존재 이유가 CI 에서 무효화돼 있었다.
- *
- * ## 무엇이 들어가나
- *
- * 「범위를 계산하는 코드」와 「그 계산을 실행하는 정의」다. 백엔드·프론트 소스는 아니다 —
- * 그쪽은 계산기가 스스로 폐포를 닫는다.
- *
- * ★목록이 낡는 것을 `requires-full-build-coverage.test.ts` 가 막는다. 그 판별식은
- *   `requires-full-build.ts` 가 **실제로 import 하는 로컬 모듈 전량**이 이 목록에 덮이는지
- *   차집합으로 본다 — 계산기에 파일을 하나 더 끼우면 red 가 된다.
- */
-export const CI_DEFINITION_PREFIXES = [
-  // 파이프라인 정의 — `Jenkinsfile` 과 `Jenkinsfile.e2e` 를 함께 문다.
-  'Jenkinsfile',
-  // 젠킨스 잡·컨트롤러 정의.
-  'infra/jenkins/',
-  // 범위 계산기 자신.
-  'scripts/workflow/select-backend-modules.ts',
-  'scripts/workflow/select-test-scope.ts',
-  'scripts/workflow/diff-base.ts',
-  'scripts/workflow/requires-full-build.ts',
 ]
 
 /**

@@ -39,9 +39,7 @@ import {
   allModules,
   selectModules,
   modulesWithUnparsedRefs,
-  requiresFullBuild,
   WIDEN_PREFIXES,
-  CI_DEFINITION_PREFIXES,
 } from './select-backend-modules.ts'
 // @ts-ignore — .mjs 는 타입 선언이 없다. 런타임 export 는 실재한다.
 import { gitFixtureEnv } from './git-fixture-env.mjs'
@@ -50,17 +48,6 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 /** 실측 기준선. 줄어들면 도출이 고장난 것이다. */
 const MIN_MODULES = 9
-
-/**
- * CI 정의 정본. 2026-09-09 이전까지는 `.github/workflows/backend-ci.yml` 이었다.
- *
- * ★그때 이 파일이 갖던 단언 6종을 지웠다(P4b) — 「매트릭스에 먹인다」·「select 스텝의 셸이
- *   실제로 돈다」·「라벨을 env 로 넘긴다」 같은 것들은 **GitHub Actions 의 구조 자체**에
- *   묶여 있어 젠킨스에 옮길 자리가 없다(매트릭스도 PR 라벨도 셸 스텝도 없다).
- *   그중 살릴 수 있는 보장은 먼저 옮겼다 — 「모듈 목록 하드코딩 금지」와
- *   「diff 에 `--no-renames`」가 그것이고 아래에 젠킨스판으로 있다.
- */
-const WORKFLOW = 'Jenkinsfile'
 
 describe('backend-ci 모듈 선별', () => {
   test('모듈과 그래프를 실제로 도출한다 (양성 대조군)', () => {
@@ -269,23 +256,6 @@ describe('backend-ci 모듈 선별', () => {
         assert.ok(universe.has(m), `실재하지 않는 모듈을 골랐다: ${m}`)
       }
     }
-  })
-
-  test('★★Jenkinsfile 에 모듈 목록이 하드코딩되지 않았다 (두 목록 차단)', () => {
-    const jf = fs.readFileSync(path.join(REPO_ROOT, 'Jenkinsfile'), 'utf8')
-    const code = jf
-      .split('\n')
-      .filter((l) => !l.trim().startsWith('//') && !l.trim().startsWith('#'))
-      .join('\n')
-
-    const hardcoded = allModules().filter((m) => m !== 'app' && new RegExp(`\\b${m}\\b`).test(code))
-    assert.deepEqual(
-      hardcoded,
-      [],
-      `Jenkinsfile 이 BC 모듈 이름을 직접 적고 있다: ${hardcoded.join(', ')}\n` +
-        '  무엇을 돌릴지는 select-test-scope.ts 가 정한다. 여기 목록을 두면\n' +
-        '  settings.gradle.kts 와 서로를 검사하지 않는 두 목록이 되고, 새 BC 가 조용히 빠진다.',
-    )
   })
 
   test('★★선별기 자신의 변경은 전 모듈을 고른다', () => {
@@ -525,10 +495,10 @@ describe('backend-ci 모듈 선별', () => {
     }
   })
 
-  // ★2026-09-09 P4 포팅. 이 배선이 **젠킨스 경로에서 통째로 사라져 있었다.**
+  // ★2026-09-09 포팅. 이 배선이 **스크립트 경로에서 통째로 사라져 있었다.**
   //
   //   Actions 시절에는 워크플로우 YAML 의 select 잡이 직접 `git diff` 를 돌렸고 거기에
-  //   `--no-renames` 가 있었다. 젠킨스는 YAML 대신 `select-test-scope.ts` 가 **내부에서**
+  //   `--no-renames` 가 있었다. 이제는 YAML 대신 `select-test-scope.ts` 가 **내부에서**
   //   diff 하는데, 옮기면서 그 플래그가 따라오지 않았다.
   //
   //   ★「YAML 이 하던 일을 스크립트가 물려받았다」는 이전에서 가장 놓치기 쉬운 자리다 —
@@ -537,7 +507,7 @@ describe('backend-ci 모듈 선별', () => {
   //   ★2026-09-10. 그 diff 자리가 `diff-base.ts` 한 곳으로 다시 모였다(사본이 6벌이었고
   //   여섯이 동시에 main 위에서 기준을 HEAD 로 잡았다). 대상 파일을 따라 옮긴다 —
   //   가드가 옮겨간 코드를 안 따라가면 그 순간부터 아무것도 안 지킨다.
-  test('★★계산기의 diff 명령에 `--no-renames` 가 있다 (젠킨스 배선)', () => {
+  test('★★계산기의 diff 명령에 `--no-renames` 가 있다', () => {
     const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts/workflow/diff-base.ts'), 'utf8')
     assert.match(
       src,
@@ -545,7 +515,7 @@ describe('backend-ci 모듈 선별', () => {
       'diff-base.ts 의 변경 파일 수집에 `--no-renames` 가 없다.\n' +
         '  모듈 간 파일 이동에서 **출발 모듈의 테스트가 통째로 건너뛰어진다** — 좁아지는 방향이고,\n' +
         '  좁게 고르는 실수만이 치명적이다(검증 안 된 코드가 초록으로 머지된다).\n' +
-        '  젠킨스는 이 계산기가 유일한 diff 자리다 — 워크플로우 YAML 에는 이제 아무것도 없다.',
+        '  이 계산기가 유일한 diff 자리다 — 워크플로우 YAML 에는 이제 아무것도 없다.',
     )
   })
 
@@ -572,69 +542,5 @@ describe('backend-ci 모듈 선별', () => {
     assert.equal(narrow.all, false)
     assert.equal(wide.all, true)
     assert.ok(wide.reason.length > 0, '전 모듈로 넓힌 사유가 비어 있다 — 로그가 설명하지 못한다.')
-  })
-})
-
-/**
- * ★CI 설정 변경은 **전량 빌드**로 다룬다 (2026-09-10).
- *
- * ## 왜 필요했나 — 두 판단이 서로를 모르고 있었다
- *
- * 젠킨스 `전량 판정` stage 는 브랜치·파라미터·야간만 보고 `RUN_FULL` 을 정했고, 그것이
- * false 면 「빠른 게이트」로 갔다. 그런데 그 안에서 이 계산기가 [WIDEN_PREFIXES] 를 보고
- * **전량으로 넓혔다.** 이름은 빠른 게이트인데 32.7분이 걸렸다(빌드 #21 실측).
- *
- * 더 나쁜 것은 **전량 stage 에만 있는 검사를 건너뛴다**는 점이다 —
- * 「조립 부팅」(`:modules:app` 조립)과 「인프라 봉인」(nginx 로그 마스킹 · springdoc 비노출).
- * 「영향 범위를 모르니 전부 본다」면서 정작 그 둘을 안 보는 반쪽 확대였다.
- *
- * ## 목록을 두 번 적지 않는다
- *
- * 판정 입력은 [WIDEN_PREFIXES] **하나**다. 젠킨스가 같은 목록을 따로 적으면 그 순간
- * 두 목록이 되고, 새 CI 파일이 생길 때 한쪽만 고쳐진다.
- */
-describe('CI 설정 변경 → 전량 빌드', () => {
-  test('★Jenkinsfile 변경은 전량이다', () => {
-    assert.equal(requiresFullBuild(['Jenkinsfile']), true)
-  })
-
-  test('★Jenkinsfile.e2e 변경도 전량이다 (접두 일치)', () => {
-    assert.equal(requiresFullBuild(['Jenkinsfile.e2e']), true)
-  })
-
-  test('★선별기 자신이 바뀌어도 전량이다', () => {
-    assert.equal(requiresFullBuild(['scripts/workflow/select-backend-modules.ts']), true)
-  })
-
-  test('평범한 프론트 변경은 전량이 아니다', () => {
-    assert.equal(requiresFullBuild(['apps/web/src/components/board/Board.tsx']), false)
-  })
-
-  test('문서 변경은 전량이 아니다', () => {
-    assert.equal(requiresFullBuild(['docs/rules/traps.md']), false)
-  })
-
-  test('★변경 목록을 못 구하면(null) 전량이다 — 모르면 넓게', () => {
-    assert.equal(requiresFullBuild(null), true)
-  })
-
-  // ★2026-09-11. 전량 판정의 정본이 `CI_DEFINITION_PREFIXES` 로 갈렸다.
-  //   `WIDEN_PREFIXES` 는 모듈 선별에서 「모듈에 안 걸리는 파일」을 넓히는 일만 한다.
-  //   두 목록을 겸하게 두면 백엔드 파일 하나가 전량 빌드를 부른다 — 빠른 게이트가 꺼진다.
-  test('★판정 입력이 CI_DEFINITION_PREFIXES 하나다 (두 목록 차단)', () => {
-    // 목록의 원소 **전부**가 전량으로 판정돼야 한다. 하나라도 빠지면 그 경로를 고친 PR 이
-    // 일부만 검증되고, 그 사실이 조용하다.
-    for (const p of CI_DEFINITION_PREFIXES) {
-      const sample = p.endsWith('/') ? `${p}x/y.sh` : p
-      assert.equal(
-        requiresFullBuild([sample]),
-        true,
-        `CI_DEFINITION_PREFIXES 의 '${p}' 가 전량 판정에 안 걸린다 — 두 판단이 갈렸다.`,
-      )
-    }
-    assert.ok(
-      CI_DEFINITION_PREFIXES.length > 0,
-      'CI_DEFINITION_PREFIXES 가 비었다 — 위 루프가 공허해진다.',
-    )
   })
 })

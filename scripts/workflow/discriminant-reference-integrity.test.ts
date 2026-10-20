@@ -36,11 +36,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  * 그 목록 자체가 또 하나의 썩는 두 번째 목록이 된다).
  */
 const LIVE_ROOTS: readonly string[] = [
-  // ★CI/CD 정의 정본. 2026-09-09 P4b 에서 `.github/workflows` 를 철거하고 여기로 왔다.
-  //   순서가 중요했다 — 재조준(P4a)을 먼저 끝내고 지웠다. 반대로 했으면 그것을 읽던
-  //   판별식 7종이 red 도 안 내고 사라졌을 것이다(삭제 방향으로 발현하는 「두 목록」).
-  'Jenkinsfile',
-  'infra/jenkins',
+  // ★서버 CI 정의가 생기면 여기에 추가한다 (2026-10-20 철거로 지금은 없다).
+  //   파이프라인이 판별식을 가리키는 참조도 깨지면 아무도 모른다.
   // ★배포 스크립트도 정본이다 (2026-09-11). `bts-deploy.sh` 가 「계약. scripts/workflow/…」로
   //   판별식을 가리키는데 이 목록에 없어 훑지 않았고, 그 참조 하나가 **실재하지 않는
   //   판별식**을 가리킨 채로 통과했다(`deploy-protects-operational-state.test.ts`).
@@ -103,15 +100,13 @@ export function referencedDiscriminants(source: string): string[] {
 describe('판별식 참조 정합 — 없는 장치를 「막는다」고 적지 않는다', () => {
   const existing = existingDiscriminants()
   const files = LIVE_ROOTS.flatMap((r) => walk(r)).filter(
-    // ★파이프라인 정의도 훑는다 (2026-09-11). 종전 확장자 필터가 `.md/.yml/.yaml/.husky`
-     //   뿐이라 `Jenkinsfile`·`Jenkinsfile.e2e` 가 **통째로 빠져** 있었다. LIVE_ROOTS 에
-     //   `'Jenkinsfile'` 이 적혀 있었지만 그 필터가 다시 걸러내 무효였다 —
+    // ★파이프라인 정의도 훑었다 (2026-09-11). 종전 확장자 필터가 `.md/.yml/.yaml/.husky`
+     //   뿐이라 확장자 없는 파이프라인 파일이 **통째로 빠져** 있었다. LIVE_ROOTS 에
+     //   이름이 적혀 있었지만 그 필터가 다시 걸러내 무효였다 —
      //   목록에 이름이 있는 것과 실제로 훑는 것은 다르다.
-     //   그 파일들이 판별식을 `계약. scripts/workflow/...` 로 가리키는데, 그 참조가
-     //   깨져도 아무도 몰랐다.
      //
-     // ★★같은 결함이 `.sh` 로 재발했다 (2026-09-11). `infra/deploy/bts-deploy.sh` 와
-     //   `infra/jenkins/bootstrap.sh` 도 「계약. scripts/workflow/…」로 판별식을 가리킨다.
+     // ★★같은 결함이 `.sh` 로 재발했다 (2026-09-11). `infra/deploy/bts-deploy.sh` 도
+     //   「계약. scripts/workflow/…」로 판별식을 가리킨다.
      //   그 확장자가 여기 없어 `deploy-protects-operational-state.test.ts` — **한 번도
      //   존재한 적 없는 파일** — 을 가리키는 주석이 통과했다.
      //   교훈은 종전과 같다. 목록에 이름이 있는 것과 실제로 훑는 것은 다르다.
@@ -120,9 +115,7 @@ describe('판별식 참조 정합 — 없는 장치를 「막는다」고 적지
       f.endsWith('.yml') ||
       f.endsWith('.yaml') ||
       f.endsWith('.sh') ||
-      f.startsWith('.husky/') ||
-      f === 'Jenkinsfile' ||
-      f.startsWith('Jenkinsfile.'),
+      f.startsWith('.husky/'),
   )
 
   test('★양성 대조군 — 훑기가 비어 있지 않다', () => {
