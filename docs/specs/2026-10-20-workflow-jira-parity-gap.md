@@ -23,12 +23,12 @@
 
 | # | 무엇이 안 되나 | 근거 | Jira 는 | 영향 |
 |---|---|---|---|---|
-| B1 | 후처리 5종 중 **`CALL_WEBHOOK` 만 실제로 동작**한다. `SET_FIELD` 의 `fieldChanges` 는 issue-tracking 이 적용하지 않고, `NOTIFY`·`ADD_WATCHER`·`RUN_AUTOMATION` 이 내는 이벤트는 구독자가 0이다 | `fieldChanges` 는 issue-tracking `main` 에서 참조 0 (`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/TransitionPlan.kt` 정의 · 테스트만) · `NotificationRequested`·`WatcherAdded`·`AutomationRequested` 를 읽는 `main` 코드 0 — 코드 판독 | 「Perform actions」 규칙은 전환 때 실행된다 [S2][S20] | FR-WF-03 은 「PostAction 계산만(GAP-2)」이라 적었으나(`docs/plan/product/project-workflow.md` §2.3) **하류 소비자가 끝내 안 생겼다는 기록이 없다** |
+| B1 | 후처리 5종 중 **`CALL_WEBHOOK` 만 실제로 동작**한다. `SET_FIELD` 의 `fieldChanges` 는 issue-tracking 이 적용하지 않고, `NOTIFY`·`ADD_WATCHER`·`RUN_AUTOMATION` 이 내는 이벤트는 웹훅 워커가 읽고 버린다 | `fieldChanges` 는 issue-tracking `main` 에서 참조 0 (`backend/modules/shared-kernel/src/main/kotlin/com/bts/shared/workflow/TransitionPlan.kt` 정의 · 테스트만) · `NotificationRequested`·`WatcherAdded`·`AutomationRequested` 는 `WebhookDispatchWorker` 가 지원 타입이 아니라며 delete 한다 · `TransitionRuleGuard.checkPostAction` 이 type 을 허용목록으로 거르지 않아 API 로는 이 type 들을 저장할 수 있다 — 코드 판독 | 「Perform actions」 규칙은 전환 때 실행된다 [S2][S20] | FR-WF-03 은 「PostAction 계산만(GAP-2)」이라 적었고(`docs/plan/product/project-workflow.md` §2.3), FR-NT-05 스펙은 나머지 3종을 「미래 FR 소비처」로 남겼으나(`docs/specs/2026-06-14-fr-nt-05-transition-event-publish.md`) **그 FR 은 없다**. product §2.3 에는 기록이 없다 |
 | B2 | `RequiredField` 검증기는 **`summary`·`resolution` 두 필드만** 볼 수 있다. 그런데 편집 화면은 필드명을 자유 입력으로 받는다 | 엔진 입력이 두 필드뿐 — `backend/modules/issue-tracking/src/main/kotlin/com/bts/issue/application/IssueApplicationService.kt` `availableTransitions`·전환 실행부의 `mapOf("summary" …, "resolution" …)` · 입력 칸 `apps/web/src/components/workflow/ValidatorFormDialog.tsx` | 「Field required」는 임의 필드를 고른다 [S20] | 다른 필드명을 넣으면 그 전환이 항상 막힐 것으로 본다 — 코드 판독, 미실행 |
 | B3 | **화면에서 새로 만든 워크플로우는 발행할 수 없다.** 생성 경로가 상태만 넣고 INITIAL 전환을 만들지 않는데, 편집기는 INITIAL 을 고를 수 없고 발행은 INITIAL 이 정확히 1개여야 한다 | 생성 `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/application/WorkflowCommandService.kt` (`insertWorkflow` → `attachStatuses`) · 폼 `apps/web/src/components/workflow/editor/TransitionFormDialog.tsx` 「사용자가 고를 수 있는 전환 종류 — INITIAL 은 없다」 · 발행 `WorkflowPublishService.kt` `requireExactlyOneInitial` | 새 워크플로우는 처음부터 Create 전환을 가진다 [S7][S20] | MSW 목은 생성 때 INITIAL 을 넣어(`apps/web/src/mocks/workflow-admin-handlers.ts` 「V207 ⑨ 백필과 같다」) 유닛에서 안 보인다. V207 백필은 마이그레이션 시점의 기존 행에만 적용된다 |
-| B4 | 전환 규칙 편집 화면(`/workflows/$key`)으로 가는 **링크가 앱 안에 없다.** 시스템 관리자에게만 보이고, 초안·발행 바깥에서 라이브 규칙을 바로 고친다 | 링크 grep 0 (라우트 정의 `apps/web/src/router.ts` 만) · `ValidatorConfigSection.tsx` `isSystemAdmin` 게이트 · 편집기는 규칙을 다루지 않는다(`apps/web/src/lib/workflow-draft.ts`) | 규칙은 편집기 안 전환 상세 패널에서 고치고 「Update workflow」로 함께 반영된다 [S2][S6] | FR-WF-08 로 프로젝트 관리자가 워크플로우를 소유해도 **그 규칙은 못 고친다**. 초안이 열린 동안 규칙을 고치면 다음 발행이 덮을 수 있다(미검증 — `DraftRuleWriter` KDoc 판독) |
-| B5 | 프로젝트의 스킴을 바꾸거나 스킴 매핑을 고쳐도 **이슈 상태를 옮기지 않는다.** 이슈가 새 워크플로우에 없는 상태에 남을 수 있다 | `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/application/WorkflowSchemeApplicationService.kt` `assignToProject` 는 저장 + `WorkflowSchemeAssignedEvent` 발행뿐이고, 그 이벤트의 `main` 소비자는 워크플로우 키 캐시뿐이다 | 스킴 연결·전환 시 사라지는 상태의 이슈마다 대상 상태를 고르게 한다(`mappingsByIssueTypeOverride`) [S38][S20] | 어디에도 편차로 기록되지 않았다 |
-| B6 | **새 상태를 만드는 화면이 없다.** 상태 카탈로그 API 는 있지만 피커는 기존 상태만 고른다. `useCreateStatus` 훅은 정의만 있고 호출 0 | `apps/web/src/hooks/use-workflows-admin.ts` · `StatusPickerDialog.tsx` · 쓰기 권한은 SYSTEM_ADMIN (`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/application/StatusCommandService.kt`) | 편집기 「Add status」에서 「Create a new status」로 이름·범주를 바로 만든다 [S4] | 프로젝트 관리자는 카탈로그에 없는 상태가 필요하면 시스템 관리자에게 부탁해야 하고, 그 관리자도 화면이 없다 |
+| B4 | 전환 규칙 편집 화면(`/workflows/$key`)으로 가는 **링크가 앱 안에 없다.** 시스템 관리자에게만 보이고, 초안·발행 바깥에서 라이브 규칙을 바로 고친다 | 링크 grep 0 (라우트 정의 `apps/web/src/router.ts` 만) · `ValidatorConfigSection.tsx` `isSystemAdmin` 게이트 · 편집기는 규칙을 다루지 않는다(`apps/web/src/lib/workflow-draft.ts`) | 규칙은 편집기 안 전환 상세 패널에서 고치고 「Update workflow」로 함께 반영된다 [S2][S6] | FR-WF-08 로 프로젝트 관리자가 워크플로우를 소유해도 **화면에서는 그 규칙을 못 고친다**. API 는 소유 스코프 `MANAGE_SCHEME` 을 이미 허용한다(`ManageSchemeGuard.requireForWorkflow`) — 막는 것은 화면 게이트뿐이다. 초안이 열린 동안 규칙을 고치면 다음 발행이 덮는다 — 규칙 CRUD(`ValidatorAdminService`·`PostActionAdminService`)가 workflow `version` 을 올리지 않아 발행의 anchor 검사가 못 잡고, `DraftRuleWriter.writeAll` 이 초안 규칙을 다시 심는다(코드 판독 · DB trigger 의 version 증가 여부는 미확인) |
+| B5 | 프로젝트의 스킴을 바꾸거나 스킴 매핑을 고쳐도 **이슈 상태를 옮기지 않는다.** 이슈가 새 워크플로우에 없는 상태에 남을 수 있다 | `backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/scheme/application/WorkflowSchemeApplicationService.kt` `assignToProject` 는 저장 + `WorkflowSchemeAssignedEvent` 를 `q_workflow_scheme_events` 에 넣을 뿐이고, 그 큐의 `main` 소비자는 0이다. `addMapping`·`deleteMapping` 은 이벤트도 내지 않는다 | 스킴 연결·전환 시 사라지는 상태의 이슈마다 대상 상태를 고르게 한다(`mappingsByIssueTypeOverride`) [S38][S20] | 어디에도 편차로 기록되지 않았다 |
+| B6 | **새 상태를 만드는 화면이 없다.** 상태 카탈로그 API 는 있지만 피커는 기존 상태만 고른다. `useCreateStatus` 훅은 정의만 있고 호출 0 | `apps/web/src/hooks/use-workflows-admin.ts` · `StatusPickerDialog.tsx` · 쓰기 권한은 전역 스코프 `CREATE` — 사실상 SYSTEM_ADMIN (`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/status/application/StatusCommandService.kt`) | 편집기 「Add status」에서 「Create a new status」로 이름·범주를 바로 만든다 [S4] | 프로젝트 관리자는 카탈로그에 없는 상태가 필요하면 시스템 관리자에게 부탁해야 하고, 그 관리자도 화면이 없다 |
 
 ## 2. 기능 차이 (G)
 
@@ -85,7 +85,7 @@
 
 | # | Jira Cloud | BTS | 출처 |
 |---|---|---|---|
-| U12 | 상태 드롭다운이 가능한 전환을 `opsbar-sequence` → 범주 순으로 보여 준다. 루프 전환은 별도 버튼 또는 「More actions」 | 네이티브 `<select>` 에 전환 이름. **고르는 즉시 실행**된다(`IssueStateTransition.tsx`). 순서 지정 수단이 없다(G2) | [S25][S15] |
+| U12 | 상태 드롭다운이 가능한 전환을 `opsbar-sequence` → 범주 순으로 보여 준다. 루프 전환은 별도 버튼 또는 「More actions」 | 네이티브 `<select>` 에 전환 이름. **고르는 즉시 실행**된다(`IssueStateTransition.tsx` · DONE 범주는 해결 모달을 거친다). 순서 지정 수단이 없다(G2) | [S25][S15] |
 | U13 | 전환 화면이 있으면 대화상자에서 필드를 받고 필수는 별표 | 해결 모달 하드코딩 1종(G11) | [S25] |
 | U14 | 막힌 전환은 「Unable to transition … Check if all transition conditions are met.」, 성공·실패 토스트 | EXECUTION 실패 시 「현재 상태에서 허용되지 않는 전환입니다.」 일반 토스트 — **검증기가 준 메시지를 안 보여 준다**(`apps/web/src/hooks/use-issue-transitions.ts`) | [S25] |
 | U15 | 마지막 하위 작업이 Done 이 되면 상위 항목을 옮길지 묻는다 | 없음 | [S25] |
@@ -114,18 +114,18 @@
 
 묶음은 「한 PR = 한 BC」와 사용자가 체감하는 단위로 나눴다. 우선순위는 제안이다.
 
-| 순 | 후보 | 묶는 항목 | BC | 성격 |
-|---|---|---|---|---|
-| 1 | 새 워크플로우가 발행되게 | B3 | project-workflow | **버그 fix** — FR 아님. 생성 때 INITIAL 1건을 심는다 |
-| 2 | `RequiredField` 필드 정합 | B2 | issue-tracking + apps/web | 버그 fix — 엔진 입력 확장 또는 필드명 입력을 지원 필드로 제한 |
-| 3 | 규칙을 편집기 안으로 | B4 · U1 · G7 · G13 · G15 | project-workflow + apps/web | FR 후보 — 초안·발행에 규칙 포함, 프로젝트 소유면 프로젝트 관리자 편집 |
-| 4 | 스킴 변경 시 상태 이관 | B5 · G14 | project-workflow + issue-tracking | FR 후보 — FR-WF-07 이관 마법사 재사용 |
-| 5 | 후처리 런타임 완성 | B1 · G10 · G16 | issue-tracking · notification · automation | FR 후보 — BC 별로 나눠야 한다 |
-| 6 | 상태 만들기 화면 | B6 | project-workflow + apps/web | FR 후보 — 편집기 상태 피커에서 바로 만들기 |
-| 7 | 이슈 화면 전환 경험 | U12 · U13 · U14 · G11 · G2(순서) | issue-tracking + apps/web | FR 후보 |
-| 8 | 사용처·목록·영향 표시 | G4 · U5 · U9 · U10 · U7 | project-workflow + apps/web | FR 후보 |
-| 9 | 조건·검증기 종류 확장 | G8 · G9 | project-workflow | FR 후보 — 기존 후속 후보 2건과 합친다 |
-| — | 낮음 / 보류 | G3 · G5 · G6 · G12 · U2 · U3 · U4 · U6 · U8 · U11 · U15 | — | 필요가 생기면 다시 본다 |
+| 순 | 후보 | 묶는 항목 | 관련 FR | BC | 성격 |
+|---|---|---|---|---|---|
+| 1 | 새 워크플로우가 발행되게 | B3 | FR-WF-04 · FR-WF-05 | project-workflow | **버그 fix** — FR 아님. 생성 때 INITIAL 1건을 심는다 |
+| 2 | `RequiredField` 필드 정합 | B2 | FR-WF-03 · FR-WF-06 | issue-tracking + apps/web | 버그 fix — 엔진 입력 확장 또는 필드명 입력을 지원 필드로 제한 |
+| 3 | 규칙을 편집기 안으로 | B4 · U1 · G7 · G13 · G15 | FR-WF-06 · FR-WF-07 · FR-WF-08 | project-workflow + apps/web | FR 후보 — 초안·발행에 규칙 포함, 프로젝트 소유면 화면 게이트를 API 와 맞춘다 |
+| 4 | 스킴 변경 시 상태 이관 | B5 · G14 | FR-WF-02 · FR-WF-07 | project-workflow + issue-tracking | FR 후보 — FR-WF-07 이관 마법사 재사용 |
+| 5 | 후처리 런타임 완성 | B1 · G10 · G16 | FR-WF-03 · FR-WF-06 · FR-NT-05 | issue-tracking · notification · automation | FR 후보 — BC 별로 나눠야 한다 |
+| 6 | 상태 만들기 화면 | B6 | FR-WF-04 | project-workflow + apps/web | FR 후보 — 편집기 상태 피커에서 바로 만들기 |
+| 7 | 이슈 화면 전환 경험 | U12 · U13 · U14 · G11 · G2(순서) | FR-WF-01 · FR-WF-05 | issue-tracking + apps/web | FR 후보 |
+| 8 | 사용처·목록·영향 표시 | G4 · U5 · U9 · U10 · U7 | FR-WF-04 · FR-WF-07 | project-workflow + apps/web | FR 후보 |
+| 9 | 조건·검증기 종류 확장 | G8 · G9 | FR-WF-06 | project-workflow | FR 후보 — 기존 후속 후보 2건과 합친다 |
+| — | 낮음 / 보류 | G3 · G5 · G6 · G12 · U2 · U3 · U4 · U6 · U8 · U11 · U15 | — | — | 필요가 생기면 다시 본다 |
 
 ## 7. Jira 출처
 

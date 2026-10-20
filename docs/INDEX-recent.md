@@ -7,7 +7,7 @@
 | 날짜 | slug | spec | plan | decision | adr | FR |
 |---|---|---|---|---|---|---|
 | 2026-10-20 | harness-diet | — | ✔ | — | — | — |
-| 2026-10-20 | workflow-jira-parity-gap | ✔ | — | — | — | FR-WF-01 FR-WF-03 FR-WF-07 FR-WF-08 |
+| 2026-10-20 | workflow-jira-parity-gap | ✔ | — | — | — | FR-NT-05 FR-WF-01 FR-WF-02 FR-WF-03 FR-WF-04 FR-WF-05 FR-WF-06 FR-WF-07 FR-WF-08 |
 | 2026-09-08 | project-nav-subapp-icon | ✔ | ✔ | — | — | FR-PJ-01 FR-PJ-02 FR-PJ-03 FR-PJ-04 FR-RP-02 FR-RP-03 FR-RP-04 FR-TT-02 FR-UX-06 FR-UX-08 |
 | 2026-09-08 | project-owned-workflows | ✔ | ✔ | — | — | FR-PM-04 FR-WF-02 FR-WF-04 FR-WF-08 |
 | 2026-09-08 | workflow-scope-shared-type | — | — | — | ✔ | FR-WF-08 |
