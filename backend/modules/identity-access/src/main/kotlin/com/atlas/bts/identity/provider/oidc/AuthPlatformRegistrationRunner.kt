@@ -20,6 +20,7 @@ import java.util.UUID
  * 운영도 env 만 넣으면 된다. issuer 가 비면 아무것도 하지 않는다 (기본).
  *
  * 콜백은 `{baseUrl}/login/oauth2/code/auth` — Auth_platform 에 이 주소를 redirect URI 로 등록한다.
+ * `enabled` 는 새 행에만 true 로 넣고 갱신하지 않는다 — 관리자가 SQL 로 끈 SSO(kill switch)를 재기동이 되살리지 않게.
  * secret 은 로그에 남기지 않는다.
  */
 @Component
@@ -34,6 +35,8 @@ class AuthPlatformRegistrationRunner(
 
     override fun run(args: ApplicationArguments) {
         if (issuerUri.isBlank()) return
+        // 빈 secret 은 기동은 되고 로그인 때 invalid_client 로 늦게 드러난다 — 여기서 멈춘다
+        check(clientSecret.isNotBlank()) { "BTS_AUTH_PLATFORM_ISSUER_URI 를 쓰면 BTS_AUTH_PLATFORM_CLIENT_SECRET 도 필요하다" }
         jdbc.update(
             """
             INSERT INTO oidc_provider_configs
@@ -41,7 +44,7 @@ class AuthPlatformRegistrationRunner(
             VALUES (:id, :reg, :name, :issuer, :clientId, :secret, 'openid,profile,email', :providerId)
             ON CONFLICT (registration_id) DO UPDATE SET
                 issuer_uri = EXCLUDED.issuer_uri, client_id = EXCLUDED.client_id,
-                client_secret_encrypted = EXCLUDED.client_secret_encrypted, enabled = true, updated_at = NOW()
+                client_secret_encrypted = EXCLUDED.client_secret_encrypted, updated_at = NOW()
             """.trimIndent(),
             mapOf(
                 "id" to UUID.randomUUID(),

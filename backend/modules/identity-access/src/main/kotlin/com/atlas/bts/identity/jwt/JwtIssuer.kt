@@ -43,6 +43,8 @@ import java.util.UUID
  * **발급 단일 지점인 [issue] 내부**에서 [mfaEnforcementPolicy] 를 호출해 박는다 — [issue] 가 이미
  * 첫 파라미터로 [userId] 를 받으므로 호출처 시그니처·코드 변경 없이 전 발급 경로(SSO 포함)를 자동
  * 포괄한다. 부재=false 로 해석되는 게이트와 일관되도록 false 여도 명시한다.
+ * 예외는 하나 — OIDC SSO 세션이 IdP 에서 MFA 를 거쳤으면(providerId=oidc · mfaVerified, 사내 Auth_platform 의
+ * amr) BTS TOTP 등록을 또 강제하지 않는다. local 세션은 mfaVerified 여도(WebAuthn 만 등록 등) 정책 그대로다.
  *
  * ## 키 교체 (Key Rotation)
  * JWS 헤더에 [JwtKeyProvider.kid] 를 포함하여 다중 키 공존을 지원한다.
@@ -71,7 +73,8 @@ class JwtIssuer(
      * @param scopes 허용 스코프 목록
      * @param roles 전역 시스템 역할 목록 (FR-PM-08). 비어 있으면 [CLAIM_ROLES] claim 을 생략한다.
      * @param mfaVerified MFA 2차 인증 통과 여부 ([CLAIM_MFA_VERIFIED]). 기본 `false` (FR-MF-01).
-     *   미전달 호출처(SSO 성공 핸들러 등)는 `false` 가 유지된다.
+     *   미전달 호출처(SAML 성공 핸들러 등)는 `false` 가 유지된다. providerId=oidc 와 함께 true 면
+     *   [CLAIM_MFA_ENROLLMENT_REQUIRED] 를 끈다 (IdP MFA 인정).
      * @return 서명된 JWT 문자열 (header.payload.signature)
      *
      * LongParameterList 억제 — 모든 파라미터가 독립적인 JWT 클레임 입력(sub/sid/providerId/scopes/
@@ -106,8 +109,11 @@ class JwtIssuer(
                 .claim(CLAIM_SID, sessionId.toString())
                 .claim(CLAIM_MFA_VERIFIED, mfaVerified)
                 // MFA 강제 등록 필요 여부 — 발급 chokepoint. false 여도 명시(부재=false 해석과 일관). FR-MF-04.
-                // 이 세션이 이미 MFA 를 거쳤으면(SSO amr · BTS MFA 검증) 등록을 강제하지 않는다.
-                .claim(CLAIM_MFA_ENROLLMENT_REQUIRED, !mfaVerified && mfaEnforcementPolicy.evaluate(userId))
+                // OIDC SSO 세션이 IdP 에서 MFA 를 거쳤으면(amr) 등록을 강제하지 않는다 — local 은 그대로(refresh 재평가 유지).
+                .claim(
+                    CLAIM_MFA_ENROLLMENT_REQUIRED,
+                    !(mfaVerified && providerId == SSO_OIDC_PROVIDER_ID) && mfaEnforcementPolicy.evaluate(userId),
+                )
                 .claim(CLAIM_PROVIDER_ID, providerId)
                 .claim(CLAIM_SCOPES, scopes)
                 // roles 가 비어 있으면 claim 자체를 생략한다 (일반 사용자 토큰은 roles 미포함).
@@ -120,6 +126,9 @@ class JwtIssuer(
     }
 
     internal companion object {
+        /** OIDC SSO 세션의 providerId ([com.atlas.bts.identity.provider.oidc.OidcAuthenticationSuccessHandler]) */
+        const val SSO_OIDC_PROVIDER_ID = "oidc"
+
         /** Access Token 유효 기간 (초) — 15분 */
         const val ACCESS_TOKEN_TTL_SECONDS = 900L
 

@@ -70,20 +70,28 @@ class AutoProvisionService(
     ): ExternalAccount {
         log.debug("Auto-provisioning 시작 — providerId={}", providerId)
 
+        // 이미 연결된 subject 면 연결된 사용자의 username 으로 UPSERT 한다 — 연결 키는 subject 다.
+        // IdP 쪽 이름이 바뀌어도 연결 없는 ghost 사용자를 만들거나 같은 이름의 다른 사용자 행을 덮지 않는다.
+        val linkedUsername =
+            externalAccountRepo.findByProviderIdAndExternalSubject(providerId, attrs.externalSubject)
+                ?.let { userRepo.findById(it.userId)?.username }
+
         // Step 1: users UPSERT — username 충돌 시 email/displayName 갱신 (id 보존). isNew 로 신규 INSERT 여부 노출.
-        val (user, isNew) = userRepo.provisionFromExternal(
-            username = attrs.username,
-            email = attrs.email,
-            displayName = attrs.displayName,
-        )
+        val (user, isNew) =
+            userRepo.provisionFromExternal(
+                username = linkedUsername ?: attrs.username,
+                email = attrs.email,
+                displayName = attrs.displayName,
+            )
 
         // Step 2: user_external_accounts UPSERT — Step 1 의 user.id 를 FK 로 사용 (REFERENCES users(id))
-        val account = externalAccountRepo.provisionUser(
-            providerId = providerId,
-            externalSubject = attrs.externalSubject,
-            userId = user.id,
-            groups = attrs.groups,
-        )
+        val account =
+            externalAccountRepo.provisionUser(
+                providerId = providerId,
+                externalSubject = attrs.externalSubject,
+                userId = user.id,
+                groups = attrs.groups,
+            )
 
         // FR-AU-10: 신규 INSERT 일 때만 USER_PROVISIONED 감사 기록 (기존 재로그인은 emit 안 함, EC-3)
         if (isNew) {

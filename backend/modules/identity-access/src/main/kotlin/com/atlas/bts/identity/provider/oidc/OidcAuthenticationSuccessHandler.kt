@@ -125,8 +125,11 @@ class OidcAuthenticationSuccessHandler(
                 attrs = toProvisionAttrs(sub, principal, registrationId),
             )
 
-        // IdP 가 MFA 를 거쳤다고 서명한 것(RFC 8176 amr)을 BTS 세션의 MFA 로 인정한다 — SSO 사용자에게 BTS TOTP 등록을 또 강제하지 않는다
-        val mfaVerified = principal.idToken?.getClaimAsStringList("amr")?.contains("mfa") == true
+        // 사내 Auth_platform 이 MFA 를 거쳤다고 서명한 것(RFC 8176 amr)을 BTS 세션의 MFA 로 인정한다 — BTS TOTP 등록을 또 강제하지 않는다.
+        // 다른 IdP 의 amr 은 뜻이 IdP 마다 달라 믿지 않는다.
+        val mfaVerified =
+            registrationId == AuthPlatformRegistrationRunner.REGISTRATION_ID &&
+                principal.idToken?.getClaimAsStringList("amr")?.contains("mfa") == true
         issueTokens(request, response, account.userId, mfaVerified)
         // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록(C-3) — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다.
         // best-effort(B-1) — 감사 INSERT 실패가 로그인 가용성을 인질로 잡지 않도록 recordAuditBestEffort 로 감싼다.
