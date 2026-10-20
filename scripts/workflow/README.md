@@ -2,19 +2,15 @@
 
 BTS 워크플로우 보조 스크립트.
 
-> **node 버전 정본은 `.nvmrc` 하나다** — 로컬(nvm/mise)과 CI(`setup-node` 의
-> `node-version-file`)가 같은 파일을 읽는다. 워크플로우에 버전을 직접 적으면
-> `node-ts-invocation.test.ts` 축 B 가 red 를 낸다.
->
 > 아래 명령이 전부 `--experimental-strip-types` 를 다는 이유. `.nvmrc` 는 **선언이지 강제가
 > 아니라서**, 셸이 그 파일을 안 읽는 환경에서는 여전히 22.18 미만이 쓰일 수 있다. 그때도
-> 명령이 그대로 돌게 하는 이식성 장치다(22.18+ 에서는 무동작). 축 A 가 이것을 강제한다.
+> 명령이 그대로 돌게 하는 이식성 장치다(22.18+ 에서는 무동작).
 >
 > 외부 의존성 0. `node_modules` 불필요.
 
 ## classify-task.ts
 
-자연어 입력을 작업 타입 / sub-agent / 바운디드 컨텍스트 / 슬러그로 분해.
+자연어 입력을 작업 타입 / 바운디드 컨텍스트 / 슬러그로 분해.
 
 ### 사용
 
@@ -36,7 +32,6 @@ npm run classify -- --title "<...>" --cache
   "title": "코멘트 멘션 알림 기능 추가해줘",
   "slug": "코멘트-멘션-알림-기능-추가해줘",
   "type": "feature",
-  "agent": "backend-engineer",
   "primary_bc": "notification",
   "task_count": 0,
   "cached_at": "2026-05-19T13:01:11.945Z"
@@ -56,16 +51,6 @@ npm run classify -- --title "<...>" --cache
 9. **auth weak** (인증, 권한, 세션 등 광의)
 10. **feature** (만들어줘, 추가, 새 기능)
 11. **backend** (기본값)
-
-### agent 매핑
-
-| type | agent |
-|---|---|
-| `auth` | `security-engineer` |
-| `migration` | `db-engineer` |
-| `ui` / `design` | `frontend-engineer` |
-| `qa` | `qa-engineer` |
-| `backend` / `api` / `feature` / `bugfix` / `chore` | `backend-engineer` |
 
 ### primary_bc 매핑
 
@@ -88,22 +73,11 @@ npm run classify -- --title "<...>" --cache
 # 이 브랜치가 바꾼 파일로 실측 티어를 본다
 git diff --name-only origin/main...HEAD | node --experimental-strip-types scripts/workflow/detect-tier.ts
 
-# 선언 티어와 나란히 (게이트 2 요약용). 어긋나도 종료 코드는 0 이다 — 승격은 사람이 정한다
+# 선언 티어와 나란히 (PR 본문용). 어긋나도 종료 코드는 0 이다 — 승격은 사람이 정한다
 git diff --name-only origin/main...HEAD | node --experimental-strip-types scripts/workflow/detect-tier.ts --declared T1
 ```
 
 출력은 `TIER:` · `SURFACES:` · 미분류가 있으면 `UNMAPPED: <경로>` 한 줄씩이다. `--json` 으로 기계용 출력.
-하한(보안 표면 T2 · Flyway T3)은 `tier-floor.test.ts` 가 CI 에서 차단한다.
-
-## 테스트
-
-```bash
-node --experimental-strip-types --test scripts/workflow/*.test.ts
-# 또는
-npm run test:workflow
-```
-
-Node 내장 test runner 사용. Vitest/Jest 불필요.
 
 ## 캐시
 

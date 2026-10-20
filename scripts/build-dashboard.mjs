@@ -810,7 +810,7 @@ export function renderTodos(todos) {
 }
 
 function renderHarness() {
-  // 작업 흐름. 한마디 요청 → [계획 단계 ①~⑤] → 게이트1 → [구현 단계 ⑥~⑦] → 게이트2 → 자동 머지
+  // 작업 흐름. 한마디 요청 → (T2+) 시작 질문 → [4단계] → 테스트 통과면 자동 머지
   const arrow = '<div class="flow-arrow">▼</div>';
   const renderTimeline = (steps) => steps.map(s => `<div class="tl-step">
       <div class="tl-rail"><div class="tl-circle">${s.n}</div></div>
@@ -819,16 +819,11 @@ function renderHarness() {
         <div class="tl-desc">${escapeHtml(s.desc)}</div>
       </div>
     </div>`).join('');
-  const PLAN_STEPS = [
-    { n: 1, title: '시작', skill: '/bts-start', desc: '요청을 종류별로 자동 분류하고, 본체를 건드리지 않을 별도 작업공간(worktree)과 검토 요청서(초안 PR)를 만든다.' },
-    { n: 2, title: '도메인 점검', skill: '/bts-domain', desc: '쓸 용어·규칙·과거 결정을 확인한다. 옵시디언의 용어 사전(glossary)과 해당 영역 도메인 노트를 읽어 엉뚱한 방향을 막는다.' },
-    { n: 3, title: '스펙(명세) 작성', skill: '/bts-spec', desc: '무엇을 만들지 — 사용자 시나리오·요구사항·예외 상황 — 를 글로 또렷하게 정리한다.' },
-    { n: 4, title: '계획 세우기', skill: '/bts-plan', desc: '스펙을 잘게 쪼갠 작업 목록으로 바꾼다. 각 작업은 "테스트 먼저" 순서.' },
-    { n: 5, title: '계획 리뷰', skill: '/bts-review-plan', desc: '엔지니어·사업·디자인·개발경험 등 여러 관점에서 계획을 미리 점검한다.' },
-  ];
-  const IMPL_STEPS = [
-    { n: 6, title: '구현', skill: '/bts-impl', desc: '일꾼(에이전트)들이 테스트를 먼저 쓰고(빨강) → 통과시키고(초록) → 다듬는다. 겹치지 않는 작업은 동시에.' },
-    { n: 7, title: '코드 리뷰', skill: '/bts-codereview', desc: '완성된 코드 전체를 한 번에 모아 규칙 위반·결함이 없는지 검수한다.' },
+  const STEPS = [
+    { n: 1, title: '시작', skill: '/bts', desc: '요청을 자동 분류하고, 본체를 건드리지 않을 별도 작업공간(worktree)과 검토 요청서(초안 PR)를 만든다. 무거운 작업(T2 이상)이면 할 일 3~7줄을 적은 짧은 계획 파일을 남긴다.' },
+    { n: 2, title: '구현', skill: '/bts', desc: '테스트를 먼저 쓰고(빨강) → 통과시키고(초록) → 다듬는다. 서로 독립인 할 일이 셋 이상일 때만 일꾼(에이전트)에게 나눠 맡긴다.' },
+    { n: 3, title: '끝 리뷰 — 한 번', skill: '/bts', desc: '완성된 변경 전체를 한 번에 검수한다. 지적은 고치고 넘어간다. 그다음 이번 변경에 걸리는 테스트를 다시 돌린다.' },
+    { n: 4, title: '병합', skill: '/bts', desc: '테스트가 전부 통과하면 본체(main)에 합치고 작업공간을 지운다. 실패하면 고치고 다시 돈다.' },
   ];
   const flowHtml = `
     <div class="flow-cap flow-start">
@@ -836,36 +831,20 @@ function renderHarness() {
       <div><div class="cap-title">사용자 한마디 요청</div><div class="cap-desc">"이슈에 마감일 기능 넣어줘" 같은 평범한 말 한마디로 시작.</div></div>
     </div>
     ${arrow}
-    <div class="flow-cap flow-read">
-      <span class="cap-icon">📖</span>
-      <div><div class="cap-title">선행 읽기 — 지식 노트부터 확인</div><div class="cap-desc">옵시디언에서 색인(_index) · 최근 작업 이력(history) · 과거 교훈(learnings)을 자동으로 먼저 읽고 시작한다.</div></div>
-    </div>
-    ${arrow}
-    <div class="flow-phase flow-phase-blue">
-      <div class="flow-phase-label">📐 1부 · 계획 단계</div>
-      <div class="flow-phase-sub">무엇을, 어떻게 만들지 사람과 AI가 함께 정한다. 아직 코드는 안 짠다.</div>
-      ${renderTimeline(PLAN_STEPS)}
-    </div>
-    ${arrow}
     <div class="flow-gate">
       <span class="gate-icon">🛑</span>
-      <div><div class="gate-title">게이트 1 — 계획 승인</div><div class="gate-desc">여기서 멈춘다. 당신이 계획을 확인하고 승인해야 비로소 코드를 짜기 시작한다.</div></div>
+      <div><div class="gate-title">시작 질문 — 무거운 작업(T2 이상)만 한 번</div><div class="gate-desc">무엇을 · 어디까지 · 무엇을 정해 뒀는지 한 화면으로 묻는다. "진행"을 고르면 그 뒤로는 멈추지 않는다.</div></div>
     </div>
     ${arrow}
     <div class="flow-phase flow-phase-green">
-      <div class="flow-phase-label">🔨 2부 · 구현 단계</div>
-      <div class="flow-phase-sub">승인된 계획대로 실제 코드를 만들고 검수한다.</div>
-      ${renderTimeline(IMPL_STEPS)}
-    </div>
-    ${arrow}
-    <div class="flow-gate">
-      <span class="gate-icon">🛑</span>
-      <div><div class="gate-title">게이트 2 — 머지 승인</div><div class="gate-desc">다시 멈춘다. 당신이 "합쳐도 좋다"고 승인해야 완료된다.</div></div>
+      <div class="flow-phase-label">🔨 네 단계</div>
+      <div class="flow-phase-sub">멈추는 곳은 셋뿐 — 실제 바뀐 범위가 처음 선언보다 무거울 때 · 고칠 수 없는 결함 · 같은 문제 3번 실패.</div>
+      ${renderTimeline(STEPS)}
     </div>
     ${arrow}
     <div class="flow-cap flow-finish">
       <span class="cap-icon">✅</span>
-      <div><div class="cap-title">자동 머지 + 정리 + 지식 기록</div><div class="cap-desc">본체(main)에 합치고 작업공간을 지운다. 그리고 옵시디언에 작업 이력(history)·새 결정(decisions)·교훈(learnings)을 다시 정리해 둔다 — 다음 작업의 선행 읽기 재료가 된다.</div></div>
+      <div><div class="cap-title">자동 머지 + 정리 + 지식 기록</div><div class="cap-desc">본체(main)에 합치고 작업공간을 지운다. 그리고 옵시디언 작업 이력(history)에 한 줄을 남긴다 — 다음 작업의 읽기 재료가 된다.</div></div>
     </div>`;
 
   // Git 용어 풀이 (비개발자용 비유)
@@ -887,7 +866,7 @@ function renderHarness() {
     { icon: '📋', title: '작업 시작', desc: '요청이 들어오면 본체와 분리된 작업공간 .worktrees/<이름> 을 새로 만든다.' },
     { icon: '💾', title: '첫 커밋 → 초안 PR', desc: '첫 변경을 저장하는 순간 "초안 PR(검토 요청서)"이 자동으로 열린다.' },
     { icon: '🧪', title: 'test: → 💻 feat:', desc: '테스트 커밋이 기능 커밋보다 반드시 먼저 와야 한다 (컴퓨터가 기록을 검사).' },
-    { icon: '🛑', title: '게이트 통과', desc: '코드 리뷰가 끝나고 당신이 머지를 승인하면 다음으로 간다.' },
+    { icon: '🛑', title: '리뷰 + 테스트', desc: '코드 리뷰를 한 번 받고, 테스트가 전부 통과하면 다음으로 간다.' },
     { icon: '🔀', title: '머지 + 정리', desc: '본체에 합친 뒤 작업공간을 자동으로 삭제하고 지식 노트를 갱신한다.' },
   ];
   const gitLaneHtml = GIT_LANE.map(s => `<div class="git-stage">
@@ -906,14 +885,10 @@ function renderHarness() {
     `<tr><td><b>${escapeHtml(k)}</b></td><td>${escapeHtml(v)}</td></tr>`
   ).join('');
 
-  // 6 일꾼 (서브에이전트)
+  // 일꾼 2명 (서브에이전트). 영역별 규칙은 docs/rules/code-checklists.md 에 있다
   const ROLES = [
-    { icon: '🔐', name: '보안', sub: 'security-engineer', desc: '로그인·2단계 인증·SSO·권한 검사처럼 잘못되면 폭발 반경이 큰 영역을 전담한다.' },
-    { icon: '⚙️', name: '백엔드', sub: 'backend-engineer', desc: '이슈·워크플로우·자동화 등 화면 뒤에서 도는 서버 로직 일반 (Kotlin/Spring).' },
-    { icon: '🎨', name: '프론트엔드', sub: 'frontend-engineer', desc: '눈에 보이는 화면 부분 (React). 디자인 스펙을 실제 동작하는 화면으로 구현한다.' },
-    { icon: '✏️', name: '디자이너', sub: 'designer', desc: '새 화면의 레이아웃·색·여백을 정하고 목업을 만든다. 코드 구현은 하지 않는다.' },
-    { icon: '🗄', name: 'DB', sub: 'db-engineer', desc: '데이터를 담는 표(테이블) 구조와 그 변경 이력(마이그레이션)을 관리한다.' },
-    { icon: '🧪', name: 'QA', sub: 'qa-engineer', desc: '사용자 흐름 전체를 자동으로 눌러보는 E2E 테스트와 테스트 환경을 담당한다.' },
+    { icon: '🔨', name: '구현', sub: 'bts-implementer', desc: '서로 독립인 할 일이 셋 이상일 때만 나눠 맡는다. 보통은 Sonnet, 보안·DB 변경은 더 신중한 Opus 로 돈다.' },
+    { icon: '👁', name: '리뷰', sub: 'code-reviewer', desc: '완성된 변경 전체를 한 번 검수한다. 백엔드·화면·보안·DB·E2E 체크리스트 중 이번 변경에 걸리는 것과 대조한다.' },
   ];
   const rolesHtml = ROLES.map(r => `<div class="role-card">
     <div class="role-card-head">${r.icon} ${escapeHtml(r.name)} <span class="role-card-sub">${escapeHtml(r.sub)}</span></div>
@@ -922,16 +897,16 @@ function renderHarness() {
 
   // 요청 자동 분류 (classify-task)
   const CLASSIFY = [
-    ['인증', 'auth', '로그인·2단계 인증·SSO·권한', '보안'],
-    ['백엔드', 'backend', '이슈·워크플로우·자동화 등 서버 로직', '백엔드'],
-    ['화면', 'ui', '페이지·컴포넌트 등 보이는 부분', '프론트엔드'],
-    ['디자인', 'design', '새 컴포넌트·목업·시안', '디자이너 → 프론트엔드'],
-    ['데이터', 'migration', '표 구조 변경·DB 마이그레이션', 'DB'],
-    ['연결 통로', 'api', '서버와 화면을 잇는 API', '백엔드 (+디자이너 검토)'],
-    ['테스트', 'qa', 'E2E·테스트 인프라', 'QA'],
-    ['버그 수정', 'bugfix', 'fix: 로 시작하는 작업', '영향 영역에 따라'],
-    ['잡무', 'chore', '문서·설정·정리', '자동'],
-    ['신규 기능', 'feature', '"만들어줘" + 새/여러 영역', '영향 영역에 따라'],
+    ['인증', 'auth', '로그인·2단계 인증·SSO·권한', '리뷰 + 사업 관점 검토(ceo)'],
+    ['백엔드', 'backend', '이슈·워크플로우·자동화 등 서버 로직', '티어대로'],
+    ['화면', 'ui', '페이지·컴포넌트 등 보이는 부분', '티어대로 + 브라우저 눈확인'],
+    ['디자인', 'design', '새 컴포넌트·목업·시안', '티어대로 + 브라우저 눈확인'],
+    ['데이터', 'migration', '표 구조 변경·DB 마이그레이션', '리뷰 + 사업 관점 검토(ceo)'],
+    ['연결 통로', 'api', '서버와 화면을 잇는 API', '티어대로'],
+    ['테스트', 'qa', 'E2E·테스트 인프라', '티어대로'],
+    ['버그 수정', 'bugfix', 'fix: 로 시작하는 작업', '재현 테스트 먼저'],
+    ['잡무', 'chore', '문서·설정·정리', '티어대로'],
+    ['신규 기능', 'feature', '"만들어줘" + 새/여러 영역', '티어대로'],
   ];
   const classifyRowsHtml = CLASSIFY.map(([ko, tag, what, who]) =>
     `<tr><td><b>${escapeHtml(ko)}</b> <span class="tag">${escapeHtml(tag)}</span></td><td>${escapeHtml(what)}</td><td>${escapeHtml(who)}</td></tr>`
@@ -957,28 +932,17 @@ function renderHarness() {
         <div class="kloop-when">자동 · 작업 시작 전</div>
         <div class="kloop-title">📥 1. 먼저 읽는다</div>
         <ul>
-          <li><code>_index</code> — 전체 노트 색인</li>
-          <li><code>history</code> — 최근 작업 이력(끝 50줄)</li>
-          <li><code>learnings</code> — 과거 사고·교훈(회귀 방지)</li>
-        </ul>
-      </div>
-      <div class="kloop-arrow">→</div>
-      <div class="kloop-card kloop-read">
-        <div class="kloop-when">②도메인 단계</div>
-        <div class="kloop-title">📖 2. 더 읽는다</div>
-        <ul>
-          <li><code>glossary</code> — 도메인 용어 사전</li>
-          <li><code>domain/&lt;영역&gt;</code> — 해당 업무 영역 노트</li>
+          <li><code>learnings</code> — 과거 사고·교훈 중 이번 영역 항목만(제목으로 골라 읽기)</li>
+          <li><code>code-checklists</code> — 이번 영역의 코드 체크리스트</li>
         </ul>
       </div>
       <div class="kloop-arrow">→</div>
       <div class="kloop-card kloop-write">
         <div class="kloop-when">머지 직후</div>
-        <div class="kloop-title">📤 3. 다시 정리한다</div>
+        <div class="kloop-title">📤 2. 다시 정리한다</div>
         <ul>
           <li><code>history</code>에 이번 작업 1줄 추가</li>
-          <li>새 결정·계획을 <code>decisions</code>로 복사</li>
-          <li><code>learning:</code> 라벨 시 <code>learnings</code>에 교훈 추가</li>
+          <li>새 결정(ADR)을 <code>decisions</code>로 복사</li>
         </ul>
       </div>
     </div>
@@ -991,7 +955,7 @@ function renderHarness() {
       BTS는 <b>Maxi 한 사람</b>과 <b>Claude Code(AI 개발 도우미)</b>가 함께 만든다.
       사람이 코드를 일일이 지시하는 대신, <b>하네스</b>라 부르는 정해진 작업 틀을 따른다.
       하네스(harness)란 작업자에게 채우는 "안전벨트·작업 틀"로, AI가 제멋대로 가지 않도록 정해둔 작업 순서와 안전장치 묶음이다.
-      요청을 받아 → 계획하고 → 만들고 → 검수하는 과정을 항상 같은 순서로 진행하고, 중요한 길목 두 곳에서 반드시 당신(사람)의 승인을 받는다.
+      요청을 받아 → 만들고 → 검수하고 → 합치는 과정을 항상 같은 순서로 진행한다. 무거운 작업은 시작할 때 한 번 당신(사람)에게 묻고, 그 뒤로는 테스트가 전부 통과할 때만 스스로 합친다.
     </div>
     <p class="harness-note">아래는 그 전체 그림이다. 스크롤하며 순서대로 읽으면 된다.</p>
 
@@ -1007,7 +971,7 @@ function renderHarness() {
     <div class="role-grid">${gitTermsHtml}</div>
     <div class="callout">
       <b>왜 이렇게 하나.</b> 본체(main)에는 항상 검증된 코드만 둔다. 실험은 별도 책상(worktree)에서 하고,
-      합치기 전 반드시 검토(PR)와 당신의 승인(게이트)을 거친다. 잘못돼도 본체는 멀쩡하니 언제든 되돌릴 수 있다.
+      합치기 전 반드시 검토(PR)와 테스트를 거친다. 잘못돼도 본체는 멀쩡하니 언제든 되돌릴 수 있다.
     </div>
     <h2 style="font-size:16px; margin-top:24px;">작업공간 하나의 일생</h2>
     <div class="git-lane">${gitLaneHtml}</div>
@@ -1019,14 +983,14 @@ function renderHarness() {
       덕분에 기록만 봐도 무엇을 왜 바꿨는지 알 수 있고, 한 번에 하나의 변경만 담아 언제든 되돌리기 쉽다.
     </div>
 
-    <h2>4. 일꾼들 — 6명의 전문 에이전트</h2>
-    <p class="harness-note">구현 단계에서 작업 종류에 맞는 전문 일꾼(AI 서브에이전트)이 투입된다.</p>
+    <h2>4. 일꾼들 — 구현 1명 · 리뷰 1명</h2>
+    <p class="harness-note">기본은 Claude 가 직접 만든다. 일이 크고 서로 독립일 때만 구현 일꾼을 부르고, 리뷰 일꾼은 끝에서 한 번 부른다.</p>
     <div class="role-grid">${rolesHtml}</div>
 
     <h2>5. 요청이 자동으로 분류된다</h2>
-    <p class="harness-note">시작 단계에서 요청 내용을 보고 종류를 자동으로 가려, 알맞은 일꾼과 검토 방식을 정한다.</p>
+    <p class="harness-note">시작 단계에서 요청 내용을 보고 종류를 자동으로 가려, 검토 방식을 정한다. 절차의 무게(티어)는 실제로 고친 파일 경로로 다시 잰다.</p>
     <table class="h-table">
-      <thead><tr><th>작업 종류</th><th>어떤 요청인가</th><th>담당 일꾼</th></tr></thead>
+      <thead><tr><th>작업 종류</th><th>어떤 요청인가</th><th>검토</th></tr></thead>
       <tbody>${classifyRowsHtml}</tbody>
     </table>
 

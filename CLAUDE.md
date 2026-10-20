@@ -12,15 +12,15 @@ notification search-export-import slack-integration automation) + 배포 조립 
 
 ## 작업 티어 — 바꾼 경로가 절차를 정한다
 
-| 티어 | 표면 | 계획·테스트 | 리뷰·게이트 |
+| 티어 | 표면 | 계획·테스트 | 사람·리뷰 |
 |---|---|---|---|
-| T0 | 문서 CSS 문구 | 계획 0 · lint+타입 · 시각이면 눈확인 | 리뷰 1 · 게이트 2 |
-| T1 | `apps/web/src` `.claude/**` 테스트 | 계획 0 · 재현 테스트 먼저 | 리뷰 1 · 게이트 2 |
-| T2 | 보안경로 `backend/**/main` API 의존성 가드·CI | 계획 1파일 · TDD red-first | 리뷰 2 · 게이트 1+2 |
-| T3 | 마이그레이션 `shared-kernel` 토폴로지 | ADR+plan · TDD + 마이그레이션 검증 | 리뷰 2+ceo · 게이트 1+2 |
+| T0 | 문서 CSS 문구 | 계획 0 · lint+타입 · 시각이면 눈확인 | 질문 0 · 끝 리뷰 1 |
+| T1 | `apps/web/src` `.claude/**` 테스트 | 계획 0 · 재현 테스트 먼저 | 질문 0 · 끝 리뷰 1 |
+| T2 | 보안경로 `backend/**/main` API 의존성 가드·CI | plan 1파일(짧게) · TDD red-first | 시작 질문 1 · 끝 리뷰 2 |
+| T3 | 마이그레이션 `shared-kernel` 토폴로지 | ADR+plan · TDD + 마이그레이션 검증 | 시작 질문 1 · 끝 리뷰 2+ceo |
 
-① 섞이면 **최고 티어** ② 기본 T1, Maxi 지정 우선 ③ 미분류는 T1 + `UNMAPPED: <경로>` 를 게이트 2 요약에.
-**이 표는 요약이다.** 절차 정본은 `.claude/skills/bts/SKILL.md §티어별 절차`, 표면 이름은 `docs/rules/behavior-rules.md` §1.
+① 섞이면 **최고 티어** ② 기본 T1, Maxi 지정 우선 ③ 미분류는 T1 + `UNMAPPED: <경로>` 를 PR 본문에. 그 밖에는 멈추지 않고 merge 까지 간다(로컬 테스트 EXIT=0 이 조건).
+**이 표는 요약이다.** 절차 정본은 `.claude/skills/bts/SKILL.md`(4단계), 표면 이름은 `docs/rules/behavior-rules.md` §1.
 보안 표면은 T2 미만 불가. 글로브 정본 `scripts/workflow/surfaces.ts` · 전문 `docs/rules/behavior-rules.md`.
 
 ## 코드 지도
@@ -28,7 +28,7 @@ notification search-export-import slack-integration automation) + 배포 조립 
 ```
 backend/modules/<bc>/src/{main,test}/  # 9 BC + app · gradlew 는 backend/
 apps/web/src/ apps/web/e2e/  # React 19 SPA · Playwright
-scripts/workflow/  # surfaces.ts · classify-task.ts · 판별식 (Node 22+)
+scripts/workflow/  # surfaces.ts · classify-task.ts · 테스트 범위 계산 (Node 22+)
 scripts/doc-index/  # 문서·메모리 인덱스 생성기
 .claude/skills/bts*/ · .claude/agents/  # 스킬 체인 · sub-agent
 Maxi_wiki/BTS/  # Obsidian 단방향 미러 (저장소 밖)
@@ -43,11 +43,9 @@ Maxi_wiki/BTS/  # Obsidian 단방향 미러 (저장소 밖)
 # 루트
 pnpm verify  # lint+typecheck+test+build
 pnpm --filter web test:e2e  # Playwright
-pnpm test:workflow  # 판별식 — CI 와 같은 목록
 node scripts/build-doc-index.mjs [--check]  # 인덱스 · pre-commit
 node scripts/build-dashboard.mjs  # progress.html
 bash scripts/verify-master-plan.sh  # 정본 정합 (EXIT 4 차단)
-node --experimental-strip-types scripts/workflow/jenkins-build-status.ts  # 0 초록·1 빨강·2 판정불가
 bash scripts/doc-index/mutation-probe.sh  # 비-공허 확인
 docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 ```
@@ -57,16 +55,14 @@ docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 - worktree 가 husky 훅을 **침묵 무력화**. 실패가 아니라 부재 — 돌았는지 직접 본다.
 - worktree lint-staged 가 **옆 작업 미커밋 파일을 훔친다**. `--only` 로 좁힌다.
 - worktree `node_modules` 는 심볼릭 — pnpm auto install 이 깨진다. `.bin` 부재부터 의심.
-- 가드 수정 시 **표면을 없애면 판별자도 사라진다**. 일부러 끊어 red 1회 확인.
-- 뮤테이션 검증은 **GREEN 선커밋 뒤**. 미커밋 원복은 소실이다.
-- **푸시 성공 ≠ 검증 통과.** 백엔드·프론트 테스트는 훅에서 빠져 젠킨스로 갔다(2026-09-09). 푸시는 안 막힌다.
+- **CI 가 없다.** merge 근거는 `select-test-scope.ts` 가 낸 로컬 테스트의 종료 코드뿐이다.
 - 지시문에 **개수를 쓰지 마라**. 「N건」은 눈가리개 — 전수 열거만 시킨다.
 
 그 밖 11건. `docs/rules/traps.md`
 
 ## 핵심 패턴
 
-- **TDD red→green→refactor** — 강도는 §작업 티어. T2+ 는 `test:` → `feat:` 순서가 대조된다.
+- **TDD red→green→refactor** — 강도는 §작업 티어. T2+ 는 `test:` → `feat:` 순서.
 - **worktree per 작업** — `.worktrees/<slug>` 안에서만 Edit/Write. 머지 후 정리.
 - **BC 격리** — 한 PR = 한 BC. 다른 BC 는 pgmq(PostgreSQL 큐) 이벤트만, 직접 import 금지.
 - **Obsidian 단방향** — Repo → `Maxi_wiki/BTS/`. 역방향 금지.

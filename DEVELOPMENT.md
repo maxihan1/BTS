@@ -10,7 +10,7 @@
 
 ## §1. 절대 규칙 (NEVER) — 19개
 
-다음 규칙은 어떤 경우에도 위반하지 않는다. PR 단위 코드 리뷰(`/bts-codereview`)에서 인라인 가이드로 첨부되어 자동 검증.
+다음 규칙은 어떤 경우에도 위반하지 않는다. `/bts` 끝 리뷰에서 리뷰어 프롬프트에 첨부해 대조.
 
 ### §1.1 보안 (6개)
 
@@ -132,13 +132,7 @@ feat: <slug> task-N green
 refactor: <slug> task-N
 ```
 
-**★`task-N` 토큰은 장식이 아니다.** `/bts-impl` 의 검증자가 이 문자열을 그대로 대조해
-`test:` 커밋 hash 가 `feat:` 커밋보다 먼저인지 본다 — 아니면 `TDD_VIOLATION` 이다.
-서식 정본은 `.claude/skills/bts-impl/dispatch-prompt.md` 이고 여기는 그 사본이다.
-
-**한 사이클 = 3커밋이다.** 종전 이 문서는 `feat:` 행에서 「한 사이클 = 한 커밋」이라 하고
-바로 아래에서 3커밋을 제시했다. 검증자는 3커밋 전제로 판정하므로 위 행을 따르면
-**규칙을 지켰는데 위반 판정**이 났다(2026-09-04 진단). 3커밋으로 통일한다.
+**한 사이클 = 3커밋이다.**
 
 부연을 쓰고 싶으면 `—` 뒤에 붙인다 — `task-N` 토큰과 순서만 계약이다.
 
@@ -147,7 +141,7 @@ refactor: <slug> task-N
 - 한 PR = 한 BC + 한 plan
 - PR 제목 = 첫 커밋 제목과 동일 (Conventional Commits)
 - 라벨. `bc:<context>`, `type:<feature|fix|...>`, 필요 시 `learning:<topic>` (머지 시 learnings.md auto-append)
-- Draft PR 자동 개설 (`/bts-start`이 worktree 생성 직후)
+- Draft PR 자동 개설 (`/bts` 1단계, worktree 생성 직후)
 
 ## §5. 도구 표준
 
@@ -162,7 +156,7 @@ refactor: <slug> task-N
 | 타입 체크 | `tsc --noEmit` | strict + noUncheckedIndexedAccess |
 | 백엔드 테스트 | JUnit 5 + Testcontainers + MockK | |
 | 프론트 테스트 | Vitest + Testing Library | |
-| E2E | Playwright | qa-engineer 담당 |
+| E2E | Playwright | `docs/rules/code-checklists.md` E2E 절 |
 
 ## §6. 환경 변수
 
