@@ -37,6 +37,8 @@
 
 ## §2 워크플로우 (FR-WF, 8개)
 
+> **Jira 대조 전수 목록(2026-10-20)** — 기능·사용성 차이와 동작하지 않는 결함(B1~B6)을 [`docs/specs/2026-10-20-workflow-jira-parity-gap.md`](../../specs/2026-10-20-workflow-jira-parity-gap.md) 에 모았다. FR 을 만들지 않았고 D 마커도 그대로다 — 승격 후보는 그 문서 §6.
+
 ### §2.1 FR-WF-01 — FSM 워크플로우 (상태/전환/조건/검증/후처리)
 
 **우선순위**. 필수 | **선행**. §1 | **Plan slug**. `workflow/fsm`
