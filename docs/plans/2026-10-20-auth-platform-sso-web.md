@@ -17,11 +17,17 @@ BTS 를 사내 통합 로그인 Auth_platform 의 OIDC client 로 붙이는 web 
 | 비밀번호 · MFA 설정 → IdP 계정 화면 링크 | 대응 없음 — Atlassian 은 SSO 사용자의 비밀번호를 IdP 가 관리한다고만 적는다. ADS `SectionMessage`(info) 준용: 한 문장 + 링크 | 위 Authentication policy settings |
 
 ## 할 일
-- [ ] 앱 기동 때 token 이 없으면 refresh 1회 — `apps/web/src/auth/restoreSession.ts` · `apps/web/src/main.tsx`
+- [x] 앱 기동 때 token 이 없으면 refresh 1회 — `apps/web/src/auth/restoreSession.ts` · `apps/web/src/main.tsx`
 **검증**: `pnpm --filter web test -- restoreSession`
-- [ ] dev·preview 프록시 `/oauth2` · `/login/oauth2` (Host 유지) — `apps/web/vite.config.ts`
+- [x] dev·preview 프록시 `/oauth2` · `/login/oauth2` (Host 유지) — `apps/web/vite.config.ts`
 **검증**: `pnpm --filter web typecheck`
-- [ ] providers 빈 목록 → 비밀번호 칸 숨김 — `apps/web/src/auth/LoginForm.tsx`
+- [x] providers 빈 목록 → 비밀번호 칸 숨김 — `apps/web/src/auth/LoginForm.tsx`
 **검증**: `pnpm --filter web test -- LoginForm`
-- [ ] `VITE_AUTH_ACCOUNT_URL` → 비밀번호 · MFA 설정 화면을 Auth 계정 링크로 — `apps/web/src/components/auth/ExternalAccountNotice.tsx` · `routes/settings.password.tsx` · `routes/settings.mfa.tsx`
+- [x] `VITE_AUTH_ACCOUNT_URL` → 비밀번호 · MFA 설정 화면을 Auth 계정 링크로 — `apps/web/src/components/auth/ExternalAccountNotice.tsx` · `routes/settings.password.tsx` · `routes/settings.mfa.tsx`
 **검증**: `pnpm --filter web test -- ExternalAccountNotice`
+
+## 알고 바꾼 것 (리뷰)
+- 세션 수명 — 앱 기동 때 refresh 를 부르므로 브라우저를 닫았다 열어도 refresh cookie(14일)가 살아 있으면 로그인된 채로 시작한다. 전에는 새 탭마다 로그인 화면이었다. SSO 착지에 꼭 필요하고 Jira 도 같다.
+- 강제 이동 대상자(`mustChangePassword` · `mfaEnrollmentRequired`)는 `VITE_AUTH_ACCOUNT_URL` 이 있어도 BTS 폼을 함께 본다 — 숨기면 그 화면에 갇힌다.
+- 탭 사이 refresh 는 Web Locks(`bts-auth-refresh`)로 줄 세운다 — 여러 탭이 동시에 기동하면 같은 refresh token 재사용으로 세션 전체가 revoke 됐다.
+- 그대로 둔 것 — 기동 refresh 의 시간 상한 (백엔드가 죽어 있으면 흰 화면이 길어진다. 이미 모든 API 가 같은 상태라 따로 두지 않았다).
