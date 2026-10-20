@@ -126,8 +126,8 @@ tasks.withType<Test> {
 }
 
 // 비-prod 조립 부팅 가드 — 전용 JVM. 위 useJUnitPlatform 분기가 태그로 이 태스크에만 실어 준다.
-// CI 배선은 .github/workflows/backend-ci.yml 의 assembly 잡(서비스 컨테이너 pgmq + 5433)에 있고,
-// scripts/workflow/ci-module-coverage.test.ts 가 그 배선의 존재를 강제한다.
+// CI 배선은 없다(서버 CI 2026-10-20 철거). dev postgres(5433)를 띄운 뒤
+// backend/ 에서 app 모듈의 `nonProdAssemblyTest` 태스크를 직접 돈다.
 val nonProdAssemblyTest =
     tasks.register<Test>("nonProdAssemblyTest") {
         group = "verification"

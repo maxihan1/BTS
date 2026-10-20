@@ -3,7 +3,7 @@
 // ## ★`@prod` 태그의 계약
 //
 // 「이 스펙은 **실서버**(MSW 없음 · dev 시드 없음)에서도 돌 수 있다」이다.
-// `Jenkinsfile.e2e` 가 실서버를 대상으로 할 때 `--grep @prod` 로 이 집합만 고른다.
+// 실서버를 대상으로 돌릴 때 `--grep @prod` 로 이 집합만 고른다.
 //
 // **`loginAsAlice` 나 `src/mocks` 를 쓰면 안 된다.** `e2e-prod-target.test.ts` 가
 // 그 차집합을 강제한다 — 어기면 red 다.
@@ -15,8 +15,8 @@
 // 배포본은 `vite build` 라 DEV=false 다. 실서버에는 그 계정이 없다
 // (`ProdDevSeedAbsenceBootTest` 가 부재를 단언한다).
 //
-// 즉 **구조적으로 전량 red** 였고, 그 3시간이 executor 1개를 점유해 `bts-ci` 가 멈춘다.
-// 젠킨스 화면에는 「배포 검증 실패」로 보이지만 실제로는 「이 대상에서 돌 수 없는 스펙」이다.
+// 즉 **구조적으로 전량 red** 였다. 「배포 검증 실패」로 보이지만 실제로는 「이 대상에서 돌 수
+// 없는 스펙」이다.
 //
 // ## 여기서 무엇을 확인하나
 //
@@ -27,7 +27,7 @@
 //
 // ★②가 핵심이다. ①만으로는 「index.html 은 오는데 JS 가 깨진 배포」를 못 잡는다 —
 //   nginx 가 없는 경로도 200 + HTML 로 주므로 HTTP 상태만으로는 아무것도 구별되지 않는다.
-//   그 함정은 `bts-deploy.sh` 와 `Jenkinsfile.e2e` 가 이미 각각 경고해 뒀다.
+//   그 함정은 `bts-deploy.sh` 가 이미 경고해 뒀다.
 import { test, expect } from '@playwright/test'
 import { loginPageStrings } from '../src/i18n/ko'
 

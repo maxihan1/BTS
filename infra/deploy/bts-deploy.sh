@@ -9,25 +9,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-# ★설정을 두 곳에서 찾는다 (2026-09-11).
-#
-#   `config.sh` 는 `.gitignore` 라 **저장소 체크아웃에 없다.** 그런데 젠킨스는 매 빌드
-#   `cleanWs` 로 워크스페이스를 지우므로, 젠킨스 배포는 **구조적으로** 이 파일을 가질 수
-#   없었다 — 배포 스크립트 12번째 줄에서 죽었고 REMOTE_DIR 은 정의조차 안 됐다.
-#   (2026-09-11 사전 점검에서 적발. 배포 0회라 드러난 적이 없었다.)
-#
-#   순서. ① 스크립트 옆(사람이 자기 체크아웃에서 돌릴 때)
-#         ② `BTS_DEPLOY_CONFIG`(젠킨스가 호스트 실물 경로를 준다)
-DEPLOY_CONFIG=""
-if [ -f "$SCRIPT_DIR/config.sh" ]; then
-  DEPLOY_CONFIG="$SCRIPT_DIR/config.sh"
-elif [ -n "${BTS_DEPLOY_CONFIG:-}" ] && [ -f "$BTS_DEPLOY_CONFIG" ]; then
-  DEPLOY_CONFIG="$BTS_DEPLOY_CONFIG"
-fi
-if [ -z "$DEPLOY_CONFIG" ]; then
+# 설정은 스크립트 옆 `config.sh` 하나다 — `.gitignore` 라 체크아웃마다 손으로 둔다.
+DEPLOY_CONFIG="$SCRIPT_DIR/config.sh"
+if [ ! -f "$DEPLOY_CONFIG" ]; then
   echo "❌ 배포 설정을 못 찾았다."
-  echo "   ① $SCRIPT_DIR/config.sh (config.sh.example 복사 후 값 기입)"
-  echo "   ② 환경변수 BTS_DEPLOY_CONFIG 가 가리키는 파일"
+  echo "   $DEPLOY_CONFIG (config.sh.example 복사 후 값 기입)"
   exit 1
 fi
 echo "⚙️  배포 설정 $DEPLOY_CONFIG"
@@ -40,11 +26,9 @@ echo "🚀 BTS 배포 시작 (서버 ${SERVER})"
 #
 # ★★이름이 아니라 **커밋**을 본다 (2026-09-11 수정).
 #
-#   종전은 `git rev-parse --abbrev-ref HEAD` 하나였다. 그런데 젠킨스는 **detached HEAD**
-#   로 체크아웃하므로 그 명령이 `HEAD` 를 돌려준다 — main 을 체크아웃했는데도
-#   「HEAD != main」으로 무조건 중단이다. 배포가 0회인 이유 중 하나가 이것이다.
-#   같은 함정을 `Jenkinsfile` 은 이미 고쳐 뒀는데(세 곳을 순서대로 본다) 이 스크립트는
-#   안 고쳤다 — 두 자리가 서로를 검사하지 않았다.
+#   종전은 `git rev-parse --abbrev-ref HEAD` 하나였다. 그런데 **detached HEAD** 로
+#   체크아웃하면 그 명령이 `HEAD` 를 돌려준다 — main 커밋을 체크아웃했는데도
+#   「HEAD != main」으로 무조건 중단이다.
 #
 #   물어야 할 것은 「브랜치 이름이 무엇인가」가 아니라 **「이 커밋이 배포 브랜치인가」**다.
 HEAD_SHA=$(git rev-parse HEAD)
@@ -186,7 +170,7 @@ fi
 #
 # ★`/actuator/info` 를 쓰지 않는다. nginx 가 `/actuator` 를 프록시하지 않는다
 #   (이 파일 아래 health 확인 주석 참고 — SPA fallback 가짜그린 방지). 정적 파일은
-#   HTTPS 로 바로 닿으므로 젠킨스 밖에서도, 브라우저에서도 확인된다.
+#   HTTPS 로 바로 닿으므로 어디서든, 브라우저에서도 확인된다.
 #
 # ★`git rev-parse` 가 실패해도 배포를 막지 않는다. 커밋을 모르는 배포가 커밋을 아는 배포보다
 #   낫지는 않지만, **배포 자체를 못 하게 만들 이유는 아니다.** 그때는 `unknown` 이 들어가고
@@ -196,25 +180,10 @@ printf '{"commit":"%s","builtAt":"%s"}\n' \
   "$DEPLOY_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > apps/web/dist/version.json
 echo "🏷  version.json — commit=$DEPLOY_SHA"
 
-# ── 전송 수단 — 어디서 실행하느냐만 다르다 ─────────────────────────────────────
-#
-# ★`BTS_DEPLOY_LOCAL=1` 은 **배포 대상 서버 위에서** 이 스크립트를 돌릴 때 쓴다(젠킨스).
-#   그때 rsync 전송과 원격 SSH 는 자기 자신에게 하는 꼴이라 의미가 없다.
-#
-# ★바꾸는 것은 **전송 수단뿐이고 아래 본문은 한 벌 그대로**다. DB 덤프·compose·health 를
-#   Jenkinsfile 에 옮겨 적으면 그 순간 두 벌이 되고, 한쪽만 고쳐지는 자리가 된다 —
-#   이 저장소가 반복해 물린 결함 양식이다. 그래서 heredoc 을 복제하지 않고
-#   실행기(`run_on_target`)만 갈아 끼운다.
-if [ "${BTS_DEPLOY_LOCAL:-}" = "1" ]; then
-  echo "🏠 로컬 모드 — 배포 대상 위에서 실행 중이다(전송·SSH 생략)"
-  RSYNC_DEST="${REMOTE_DIR}/"
-  RSYNC_TRANSPORT=()
-  run_on_target() { bash -s; }
-else
-  RSYNC_DEST="${SSH_USER}@${SERVER}:${REMOTE_DIR}/"
-  RSYNC_TRANSPORT=(-e "ssh -i $SSH_KEY -o StrictHostKeyChecking=yes")
-  run_on_target() { ssh -i "$SSH_KEY" "${SSH_USER}@${SERVER}" bash -s; }
-fi
+# ── 전송 수단 — 사람이 자기 체크아웃에서 SSH 로 대상에 보낸다 ─────────────────────
+RSYNC_DEST="${SSH_USER}@${SERVER}:${REMOTE_DIR}/"
+RSYNC_TRANSPORT=(-e "ssh -i $SSH_KEY -o StrictHostKeyChecking=yes")
+run_on_target() { ssh -i "$SSH_KEY" "${SSH_USER}@${SERVER}" bash -s; }
 
 # 3. 대상으로 전송 (빌드 산출물 포함, 소스/의존성 제외)
 #
@@ -223,17 +192,15 @@ fi
 #
 #   2026-09-11 실측. 배포 0회 상태에서 대상에 실재하던 것들.
 #     backups/                      588K · **유일한 DB 덤프**
-#     infra/jenkins/.env            젠킨스 관리자 비밀번호
-#     infra/jenkins/.deploy-key     GitHub 배포키 (개인키)
 #     infra/prod/.env               (이미 제외돼 있었다)
 #     infra/secrets                 (이미 제외돼 있었다)
 #
-#   앞의 셋은 제외 목록에 **없었다.** 첫 배포가 그것을 전부 지울 예정이었다 —
+#   `backups/` 는 제외 목록에 **없었다.** 첫 배포가 그것을 지울 예정이었다 —
 #   백업이 사라진 직후에 백업을 뜨는 순서라(4단계), 복구 수단이 먼저 증발한다.
 #
 # ★목록은 `protected-paths.txt` 하나가 정본이고, 읽는 것도 `read-protected-paths.sh`
 #   한 벌이다. 여기 직접 적지 않는다 — 두 벌이 되면 한쪽만 고쳐지고, 그 순간 지워질 것이
-#   조용히 늘어난다. 읽는 쪽이 둘이다(여기와 `infra/jenkins/bootstrap.sh` 의 chown).
+#   조용히 늘어난다.
 #   계약. scripts/workflow/deploy-path-viability.test.ts
 #         scripts/workflow/deploy-protected-paths-single-source.test.ts
 
@@ -257,29 +224,6 @@ DERIVED=(
 
 RSYNC_EXCLUDES=()
 for p in "${PROTECTED[@]}" "${DERIVED[@]}"; do RSYNC_EXCLUDES+=(--exclude="$p"); done
-
-# ★★쓸 수 있는지 **먼저 해본다.** 마운트됐다고 쓸 수 있는 것이 아니다.
-#
-#   2026-09-11 실측(빌드 #47). compose 가 `/opt/bts:/opt/bts` 를 마운트했지만 그 트리는
-#   `501:20 drwxr-xr-x` 였고 컨테이너는 uid 1000(jenkins)로 돈다. rsync 가 **한 파일도**
-#   못 쓰고 128MB 를 보낸 뒤 `exit 23` 으로 죽었다 — 5분과 로그 3천 줄을 쓰고 나서.
-#
-#   사전 점검이 이것을 놓친 이유가 중요하다. compose 를 **읽으면** 마운트가 보이고 그것으로
-#   충분해 보인다. `touch` 를 **해봐야** 보인다. 그래서 이 검사는 텍스트가 아니라 실제 쓰기다.
-#
-#   처방의 정본은 `infra/jenkins/bootstrap.sh up` 의 소유권 교정이다. 여기는 그것이
-#   안 돌았을 때 **싸게 실패**시키는 자리다.
-if [ "${BTS_DEPLOY_LOCAL:-}" = "1" ]; then
-  PROBE="${REMOTE_DIR}/.deploy-write-probe"
-  if ! : > "$PROBE" 2>/dev/null; then
-    echo "❌ ${REMOTE_DIR} 에 쓸 수 없다 (uid $(id -u), gid $(id -g))." >&2
-    echo "   마운트는 됐는데 소유권이 안 맞는 상태다. rsync 를 돌려도 한 파일도 못 쓴다." >&2
-    echo "   처방. 호스트에서 \`cd /opt/bts/infra/jenkins && ./bootstrap.sh up\` — 소유권을 교정한다." >&2
-    exit 1
-  fi
-  rm -f "$PROBE"
-  echo "✅ ${REMOTE_DIR} 쓰기 가능 (uid $(id -u))"
-fi
 
 echo "📤 산출물 반영 (보호 ${#PROTECTED[@]}건 · 파생 제외 ${#DERIVED[@]}건)"
 rsync -avz --delete \

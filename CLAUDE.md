@@ -58,7 +58,7 @@ docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 - **CI 가 없다.** merge 근거는 `select-test-scope.ts` 가 낸 로컬 테스트의 종료 코드뿐이다.
 - 지시문에 **개수를 쓰지 마라**. 「N건」은 눈가리개 — 전수 열거만 시킨다.
 
-그 밖 11건. `docs/rules/traps.md`
+그 밖 8건. `docs/rules/traps.md`
 
 ## 핵심 패턴
 
