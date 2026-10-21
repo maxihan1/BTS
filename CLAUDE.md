@@ -18,7 +18,7 @@ backend 9 BC + 배포 조립 `app` · 프론트 `apps/web` SPA.
 ## 테스트
 
 - 작업 중에는 **바꾼 코드의 대상 테스트만** 돌린다 — `./gradlew :modules:<bc>:test --tests '<클래스>'` · `vitest run <파일>`.
-- 전체 범위는 merge 직전 `select-test-scope.ts --run` **한 번**. 그 `EXIT=0` 이 merge 근거다 — CI 는 없다.
+- merge 전 모듈 전체 관문(`select-test-scope.ts --run`)은 **돌리지 않는다**(2026-10-21~, Maxi 지시). merge 근거는 대상 테스트 결과다 — CI 는 없다.
 - 모듈 전체 · 인자 없는 `vitest run` · `pnpm verify` · Playwright 는 user scope hook 이 막는다. 막히면 우회하지 말고 대상을 좁힌다.
 - E2E 는 쓰지도 돌리지도 않는다(2026-10-20~). UI 는 브라우저로 눈확인한다.
 
@@ -43,7 +43,6 @@ backend 9 BC + 배포 조립 `app` · 프론트 `apps/web` SPA.
 docker-compose -f infra/docker-compose.dev.yml up postgres redis minio
 (cd backend && ./gradlew :modules:<bc>:test --tests '<클래스>')              # 대상 테스트
 (cd apps/web && node_modules/.bin/vitest run <파일>)                       # 대상 테스트
-node --experimental-strip-types scripts/workflow/select-test-scope.ts --run  # merge 직전 관문
 node scripts/build-doc-index.mjs [--check]                                 # 문서·메모리 인덱스 · pre-commit 이 --check
 bash scripts/verify-master-plan.sh                                         # FR 정합 (EXIT 4 차단)
 ```
