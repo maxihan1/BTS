@@ -64,7 +64,7 @@ export function parsePlanFile(content, bcSlug) {
   const frs = [];
   let currentFr = null;
   const frHeaderRe = /^#{3,4}\s+§[\d.]+\s+(FR-[A-Z]+-\d+)\s*[—\-]\s*(.+?)\s*$/;
-  const stepRe = /^- \[([ x~!])\]\s+(D[1-7])\.\s+(.+?)(?:\s*\(책임\..*\))?\s*$/;
+  const stepRe = /^- \[([ x~!])\]\s+(D\d+)\.\s+(.+?)(?:\s*\(책임\..*\))?\s*$/;
 
   for (const line of lines) {
     const fr = line.match(frHeaderRe);
