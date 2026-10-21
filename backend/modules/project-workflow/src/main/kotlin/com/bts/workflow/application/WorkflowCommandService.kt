@@ -89,6 +89,18 @@ class WorkflowCommandService(
         val workflowId =
             writeRepository.insertWorkflow(command.key, command.name, command.description, ownerId)
         writeRepository.attachStatuses(workflowId, command.statuses)
+        // 최초 전환을 함께 심는다 — 편집기는 INITIAL 을 고를 수 없고 발행은 정확히 1개를 요구해서,
+        // 여기서 빠지면 그 워크플로우는 영영 발행되지 않는다(B3). 도착지·이름은 V207 ⑨ 백필과 같다.
+        val firstStatusKey = command.statuses.minBy { it.displayOrder }.key
+        writeRepository.insertTransition(
+            workflowId = workflowId,
+            kind = TransitionKind.INITIAL.name,
+            name = "이슈 생성",
+            fromStatusId = null,
+            toStatusId =
+                writeRepository.findStatusCompositionId(workflowId, firstStatusKey)
+                    ?: error("방금 편성한 상태 '$firstStatusKey' 를 찾지 못했다 — attachStatuses 를 확인할 것"),
+        )
         workflowCache.invalidate(command.key)
         log.info("워크플로우 생성 key={} statuses={}", command.key, command.statuses.size)
         return workflowId

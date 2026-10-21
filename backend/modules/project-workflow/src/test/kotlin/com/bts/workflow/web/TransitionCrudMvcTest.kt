@@ -12,6 +12,7 @@ import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.TransitionKind
+import com.bts.workflow.domain.Workflow
 import com.bts.workflow.globalOnlyOwnershipScope
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
@@ -168,7 +169,8 @@ class TransitionCrudMvcTest {
         createTransition("multi-edge", body(from = "open", to = "done", name = "완료"))
         createTransition("multi-edge", body(from = "open", to = "done", name = "조건부 승인"))
 
-        val transitions = requireNotNull(repository.findByKey("multi-edge")).transitions
+        // 생성이 심은 최초 전환은 이 계약의 대상이 아니다.
+        val transitions = normalTransitions(requireNotNull(repository.findByKey("multi-edge")))
         assertThat(transitions.map { it.name })
             .describedAs("같은 상태쌍에 전환을 여럿 둘 수 있어야 한다 (V207 ① 유니크 해제)")
             .containsExactlyInAnyOrder("완료", "조건부 승인")
@@ -204,7 +206,9 @@ class TransitionCrudMvcTest {
     @Test
     fun `INITIAL 전환 DELETE 는 409`() {
         createWorkflow("initial-edge", "open", "done")
-        val initialId = createTransition("initial-edge", body(to = "open", name = "이슈 생성", kind = "INITIAL"))
+        // 최초 전환은 워크플로우 생성이 심는다(B3).
+        val initialId =
+            requireNotNull(repository.findByKey("initial-edge")).transitions.single { it.kind == TransitionKind.INITIAL }.id
 
         mockMvc.perform(delete("/api/v1/workflows/initial-edge/transitions/$initialId"))
             .andExpect(status().isConflict)
@@ -215,8 +219,8 @@ class TransitionCrudMvcTest {
 
     @Test
     fun `INITIAL 전환을 두 개째 만들면 409`() {
+        // 첫 최초 전환은 워크플로우 생성이 심는다(B3).
         createWorkflow("initial-dup", "open", "done")
-        createTransition("initial-dup", body(to = "open", name = "이슈 생성", kind = "INITIAL"))
 
         mockMvc.perform(postTransition("initial-dup", body(to = "done", name = "또 다른 생성", kind = "INITIAL")))
             .andExpect(status().isConflict)
@@ -274,22 +278,24 @@ class TransitionCrudMvcTest {
     @Test
     fun `전환 CRUD 3종이 워크플로우 캐시를 무효화한다`() {
         createWorkflow("cached-flow", "open", "done")
-        assertThat(cache.findByKey("cached-flow")?.transitions).isEmpty()
+        // 생성이 심은 최초 전환은 셈에서 뺀다 — 여기서 보는 것은 전환 CRUD 의 무효화다.
+        fun cached() = normalTransitions(requireNotNull(cache.findByKey("cached-flow")))
+        assertThat(cached()).isEmpty()
 
         val transitionId = createTransition("cached-flow", body(from = "open", to = "done", name = "완료"))
-        assertThat(cache.findByKey("cached-flow")?.transitions)
+        assertThat(cached())
             .describedAs("생성이 캐시에 반영되지 않았다 — 편집이 런타임 전환 계산에 닿지 않는다")
             .hasSize(1)
 
         mockMvc.perform(putTransition("cached-flow", transitionId, body(from = "open", to = "done", name = "완료됨")))
             .andExpect(status().isOk)
-        assertThat(cache.findByKey("cached-flow")?.transitions?.map { it.name })
+        assertThat(cached().map { it.name })
             .describedAs("수정이 캐시에 반영되지 않았다")
             .containsExactly("완료됨")
 
         mockMvc.perform(delete("/api/v1/workflows/cached-flow/transitions/$transitionId"))
             .andExpect(status().isNoContent)
-        assertThat(cache.findByKey("cached-flow")?.transitions)
+        assertThat(cached())
             .describedAs("삭제가 캐시에 반영되지 않았다")
             .isEmpty()
     }
@@ -312,7 +318,8 @@ class TransitionCrudMvcTest {
                     "GLOBAL 인데 출발지가 있는 꼴이라 Workflow.of() invariant 6 이 워크플로우 전체를 거부한다",
             ).doesNotThrowAnyException()
 
-        val transition = repository.findByKey("legacy-carryover")?.transitions?.singleOrNull()
+        val transition =
+            repository.findByKey("legacy-carryover")?.transitions?.singleOrNull { it.kind != TransitionKind.INITIAL }
         assertThat(transition?.kind).isEqualTo(TransitionKind.GLOBAL)
         assertThat(transition?.fromStateKey)
             .describedAs(
@@ -323,6 +330,9 @@ class TransitionCrudMvcTest {
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
+
+    /** 워크플로우 생성이 심는 최초 전환을 뺀, 이 테스트가 손으로 만든 전환. */
+    private fun normalTransitions(workflow: Workflow) = workflow.transitions.filter { it.kind == TransitionKind.NORMAL }
 
     private fun createWorkflow(
         key: String,
