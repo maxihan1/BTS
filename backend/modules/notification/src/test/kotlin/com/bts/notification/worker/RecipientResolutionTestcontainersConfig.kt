@@ -3,7 +3,7 @@
 
 package com.bts.notification.worker
 
-import org.flywaydb.core.Flyway
+import com.bts.notification.support.SharedPostgres
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DataSourceConnectionProvider
@@ -20,8 +20,6 @@ import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.transaction.PlatformTransactionManager
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import javax.sql.DataSource
 
 /**
@@ -42,58 +40,13 @@ import javax.sql.DataSource
 @TestConfiguration
 class RecipientResolutionTestcontainersConfig {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container — pgmq 확장 사전 설치 이미지.
-         *
-         * NotificationDeliveryTestcontainersConfig 와 별도 DB 이름으로 격리한다.
-         */
+        /** [SharedPostgres] 템플릿을 복제한 이 설정 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_notification_rr_test")
-                .withUsername("bts")
-                .withPassword("bts_rr_test")
-                .apply { start() }
-
-        private var migrated = false
-
-        /**
-         * Flyway V400~V403 마이그레이션을 1회만 실행한다.
-         */
-        @Synchronized
-        fun migrateOnce(
-            jdbcUrl: String,
-            username: String,
-            password: String,
-        ) {
-            if (migrated) return
-
-            java.sql.DriverManager.getConnection(jdbcUrl, username, password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE")
-                    stmt.execute("SELECT pgmq.create('q_issue_events')")
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(jdbcUrl, username, password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/notification")
-                .load()
-                .migrate()
-
-            migrated = true
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     @Bean
-    fun dataSource(): DataSource {
-        migrateOnce(postgres.jdbcUrl, postgres.username, postgres.password)
-        return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-    }
+    fun dataSource(): DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
     @Bean
     fun dslContext(dataSource: DataSource): DSLContext {

@@ -3,13 +3,13 @@
 
 package com.bts.notification.channel
 
+import com.bts.notification.support.SharedPostgres
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
 import com.bts.shared.issue.ProjectRecipients
 import com.bts.shared.permission.IssueVisibilityPort
 import com.bts.shared.user.UserLookupPort
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DataSourceConnectionProvider
@@ -26,7 +26,6 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.transaction.PlatformTransactionManager
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import java.util.UUID
 import javax.sql.DataSource
@@ -56,19 +55,9 @@ import javax.sql.DataSource
 @TestConfiguration
 class EmailChannelSenderIntegrationTestConfig {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL 컨테이너.
-         *
-         * EmailChannelSender 통합 테스트 전용 DB.
-         * `.apply { start() }` 로 JVM 초기화 시점에 1회 기동, Ryuk 이 JVM 종료 시 자동 정리.
-         */
+        /** [SharedPostgres] 템플릿을 복제한 이 설정 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("bts_notification_email_test")
-                .withUsername("bts")
-                .withPassword("bts_email_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         /**
          * JVM 단위 singleton MailHog 컨테이너.
@@ -81,30 +70,6 @@ class EmailChannelSenderIntegrationTestConfig {
             GenericContainer(DockerImageName.parse("mailhog/mailhog:v1.0.1"))
                 .withExposedPorts(1025, 8025)
                 .apply { start() }
-
-        private var migrated = false
-
-        /**
-         * Flyway V400~V401 마이그레이션을 1회만 실행한다.
-         *
-         * - V400: notification_policies DDL
-         * - V401: 기본 정책 시드
-         */
-        @Synchronized
-        fun migrateOnce(
-            jdbcUrl: String,
-            username: String,
-            password: String,
-        ) {
-            if (migrated) return
-            Flyway.configure()
-                .dataSource(jdbcUrl, username, password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/notification")
-                .load()
-                .migrate()
-            migrated = true
-        }
     }
 
     /**
@@ -113,10 +78,7 @@ class EmailChannelSenderIntegrationTestConfig {
      * Flyway V400~V401 마이그레이션을 적용한 뒤 DataSource 를 반환한다.
      */
     @Bean
-    fun dataSource(): DataSource {
-        migrateOnce(postgres.jdbcUrl, postgres.username, postgres.password)
-        return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-    }
+    fun dataSource(): DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
     /**
      * jOOQ [DSLContext] 빈.

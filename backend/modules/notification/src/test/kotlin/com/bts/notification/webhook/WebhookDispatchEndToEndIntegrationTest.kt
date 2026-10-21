@@ -4,6 +4,7 @@ package com.bts.notification.webhook
 
 import com.bts.notification.NotificationTestBootApplication
 import com.bts.notification.TestPermissionConfig
+import com.bts.notification.support.SharedPostgres
 import com.bts.notification.worker.WebhookDispatchWorker
 import com.bts.shared.http.OutboundHttpClientConfig
 import com.bts.shared.http.OutboundUrlValidator
@@ -19,7 +20,6 @@ import com.sun.net.httpserver.HttpServer
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DataSourceConnectionProvider
@@ -44,8 +44,6 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.transaction.PlatformTransactionManager
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.net.InetSocketAddress
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -263,52 +261,15 @@ class WebhookDispatchEndToEndIntegrationTest {
     @Suppress("DEPRECATION")
     open class WebhookE2EConfig {
         companion object {
+            /** [SharedPostgres] 템플릿을 복제한 이 설정 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_webhook_e2e_test")
-                    .withUsername("bts")
-                    .withPassword("bts_webhook_e2e")
-                    .apply { start() }
-
-            private var migrated = false
-
-            @Synchronized
-            fun migrateOnce(
-                jdbcUrl: String,
-                username: String,
-                password: String,
-            ) {
-                if (migrated) return
-
-                java.sql.DriverManager.getConnection(jdbcUrl, username, password).use { conn ->
-                    conn.createStatement().use { stmt ->
-                        stmt.execute("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE")
-                        // q_transition_events 큐 생성 — PR1 V022 마이그레이션 선례
-                        stmt.execute("SELECT pgmq.create('q_transition_events')")
-                        // q_issue_events 큐 생성 — NotificationWorker(@Scheduled) 가 읽는 큐
-                        // 이 테스트 DB에 없으면 background scheduler 오류 발생
-                        stmt.execute("SELECT pgmq.create('q_issue_events')")
-                    }
-                }
-
-                Flyway.configure()
-                    .dataSource(jdbcUrl, username, password)
-                    .placeholderReplacement(false)
-                    .locations("classpath:db/migration/notification")
-                    .load()
-                    .migrate()
-                migrated = true
-            }
+            val postgres = SharedPostgres.freshDatabase()
         }
 
         @Bean
         open fun dataSource(): DataSource {
-            migrateOnce(postgres.jdbcUrl, postgres.username, postgres.password)
-            return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+            val db = postgres
+            return DriverManagerDataSource(db.jdbcUrl, db.username, db.password)
         }
 
         @Bean

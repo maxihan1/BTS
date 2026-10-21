@@ -3,6 +3,7 @@
 
 package com.bts.notification
 
+import com.bts.notification.support.SharedPostgres
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
@@ -11,7 +12,6 @@ import com.bts.shared.permission.IssueVisibilityPort
 import com.bts.shared.user.UserLookupPort
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.PlainJWT
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DataSourceConnectionProvider
@@ -31,8 +31,6 @@ import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.transaction.PlatformTransactionManager
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 import java.util.Date
 import javax.sql.DataSource
@@ -58,60 +56,9 @@ import javax.sql.DataSource
 @TestConfiguration
 class NotificationDeliveryTestcontainersConfig {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container — pgmq 확장 사전 설치 이미지.
-         *
-         * NotificationTestcontainersConfig 와 별도 컨테이너로 격리:
-         * 기존 테스트는 V400~V401, 이 컨테이너는 V400~V403(notifications 테이블 + pgmq 큐 필요).
-         * `.apply { start() }` 로 JVM 초기화 시점에 1회 기동, Ryuk 이 JVM 종료 시 자동 정리.
-         */
+        /** [SharedPostgres] 템플릿을 복제한 이 설정 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_notification_delivery_test")
-                .withUsername("bts")
-                .withPassword("bts_delivery_test")
-                .apply { start() }
-
-        private var migrated = false
-
-        /**
-         * Flyway V400~V403 마이그레이션을 1회만 실행한다.
-         *
-         * - V400: notification_policies 테이블
-         * - V401: 기본 정책 시드
-         * - V402: notifications 테이블
-         * - V403: issue.mentioned 정책 시드 (MENTIONED×IN_APP)
-         */
-        @Synchronized
-        fun migrateOnce(
-            jdbcUrl: String,
-            username: String,
-            password: String,
-        ) {
-            if (migrated) return
-
-            // pgmq extension 설치 — quay.io/tembo/pg16-pgmq 이미지에 바이너리는 있지만
-            // DB 단위로 CREATE EXTENSION 을 명시적으로 실행해야 스키마가 생성된다.
-            // issue-tracking IssueTestcontainersBase 와 동일한 이미지 채택 + V002 마이그레이션 선례.
-            java.sql.DriverManager.getConnection(jdbcUrl, username, password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute("CREATE EXTENSION IF NOT EXISTS pgmq CASCADE")
-                    stmt.execute("SELECT pgmq.create('q_issue_events')")
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(jdbcUrl, username, password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/notification")
-                .load()
-                .migrate()
-            migrated = true
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     /**
@@ -120,10 +67,7 @@ class NotificationDeliveryTestcontainersConfig {
      * Flyway V400~V403 를 적용한 뒤 DataSource 를 반환한다.
      */
     @Bean
-    fun dataSource(): DataSource {
-        migrateOnce(postgres.jdbcUrl, postgres.username, postgres.password)
-        return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-    }
+    fun dataSource(): DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
     /**
      * jOOQ DSLContext 빈.
