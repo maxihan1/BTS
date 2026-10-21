@@ -84,7 +84,7 @@ export function WorkflowDetailPage({ workflowKey }: WorkflowDetailPageProps): JS
       <WorkflowDiagram workflow={data} />
 
       {/*
-        전환 규칙(validator) 설정 섹션 (FR-WF-06) — isSystemAdmin 게이팅은 ValidatorConfigSection 내부에서 수행.
+        전환 규칙(validator) 설정 섹션 (FR-WF-06) — 권한은 백엔드 403 이 가르고 섹션이 안내로 그린다 (WF-08-1).
 
         post-action 섹션보다 **앞에** 둔다. 검증기는 전환을 막거나 후보에서 감추는 것이고
         post-action 은 전환이 끝난 뒤 실행되는 것이라, 위에서 아래로 읽는 순서가 곧 전환이
@@ -92,7 +92,7 @@ export function WorkflowDetailPage({ workflowKey }: WorkflowDetailPageProps): JS
       */}
       <ValidatorConfigSection workflowKey={workflowKey} transitions={data.transitions} />
 
-      {/* post-action 설정 섹션 (FR-NT-05) — isSystemAdmin 게이팅은 PostActionConfigSection 내부에서 수행 */}
+      {/* post-action 설정 섹션 (FR-NT-05) — 권한은 백엔드 403 (WF-08-1) */}
       <PostActionConfigSection workflowKey={workflowKey} transitions={data.transitions} />
     </div>
   )

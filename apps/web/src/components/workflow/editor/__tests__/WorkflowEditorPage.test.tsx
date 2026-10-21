@@ -1,4 +1,5 @@
 // 워크플로우 초안 편집기 인수 테스트 — FR-WF-07 D6 (편집 ≠ 배포 · 캐스케이드 · 발행 흐름)
+import type { ReactNode } from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -21,6 +22,12 @@ if (typeof window.HTMLElement.prototype.scrollIntoView !== 'function') {
 }
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+// 편집기는 라우터 밖에서 렌더한다 — 전환 규칙 링크만 평범한 <a> 로 바꿔 href 를 잰다 (WF-08-1)
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ to, params, children }: { to: string; params: Record<string, string>; children: ReactNode }) => (
+    <a href={to.replace('$key', params.key ?? '')}>{children}</a>
+  ),
+}))
 
 beforeEach(() => {
   resetWorkflowAdminStore()
@@ -81,6 +88,13 @@ describe('편집기 셸', () => {
     await waitForLoaded()
 
     expect(screen.getByText(P.draft.unpublishedNotice)).toBeInTheDocument()
+  })
+
+  it('전환 규칙 화면으로 가는 링크가 있다 — 앱 안 링크가 0 이던 결함 B4 (WF-08-1)', async () => {
+    renderEditor()
+    await waitForLoaded()
+
+    expect(screen.getByRole('link', { name: L.editor.rulesLink })).toHaveAttribute('href', '/workflows/software-default')
   })
 })
 

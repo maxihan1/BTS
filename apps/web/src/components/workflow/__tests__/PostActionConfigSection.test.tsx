@@ -1,4 +1,4 @@
-// PostActionConfigSection 컴포넌트 단위 테스트 — 게이팅/전환선택/목록/추가/수정/삭제
+// PostActionConfigSection 컴포넌트 단위 테스트 — 권한 403/전환선택/목록/추가/수정/삭제
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,6 +8,7 @@ import { server } from '@/test/server'
 import { useAuthStore } from '@/auth/authStore'
 import type { WorkflowTransitionView } from '@/components/workflow/workflow.types'
 import { PostActionConfigSection } from '@/components/workflow/PostActionConfigSection'
+import { postActionLabels } from '@/i18n/post-action-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 픽스처
@@ -84,10 +85,10 @@ afterEach(() => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PACS-1 ~ PACS-2: isSystemAdmin 게이팅
+// PACS-1 ~ PACS-2: 권한은 백엔드 403 이 가른다 (WF-08-1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('PostActionConfigSection — isSystemAdmin 게이팅', () => {
+describe('PostActionConfigSection — 권한 게이팅', () => {
   /**
    * PACS-1. isSystemAdmin=true이면 섹션이 렌더된다.
    */
@@ -112,9 +113,10 @@ describe('PostActionConfigSection — isSystemAdmin 게이팅', () => {
   })
 
   /**
-   * PACS-2. isSystemAdmin=false이면 섹션이 렌더되지 않는다(null 반환).
+   * PACS-2. 시스템 관리자가 아니어도 섹션이 렌더된다 — 권한은 백엔드 403 이 가른다 (WF-08-1).
+   * 프로젝트 소유 워크플로우의 관리자가 이 섹션을 쓴다.
    */
-  it('PACS-2: isSystemAdmin=false이면 섹션이 렌더되지 않는다', () => {
+  it('PACS-2: isSystemAdmin=false 여도 섹션이 렌더된다 (WF-08-1)', () => {
     useAuthStore.setState({
       accessToken: 'token',
       user: {
@@ -130,19 +132,25 @@ describe('PostActionConfigSection — isSystemAdmin 게이팅', () => {
 
     renderSection()
 
-    // combobox(전환 선택)도 없어야 하고, 특정 헤딩도 없어야 함
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toBeInTheDocument()
   })
 
   /**
-   * PACS-2b. user가 null(미인증)이면 섹션이 렌더되지 않는다.
+   * PACS-2b. 목록 조회가 403 이면 「불러오지 못했다」가 아니라 권한 안내를 띄우고 추가를 잠근다.
    */
-  it('PACS-2b: 미인증(user=null)이면 섹션이 렌더되지 않는다', () => {
-    useAuthStore.setState({ accessToken: null, user: null })
+  it('PACS-2b: 목록 403 이면 권한 안내 + 추가 버튼 disabled (WF-08-1)', async () => {
+    server.use(
+      http.get(BASE_PATH, () =>
+        HttpResponse.json({ error: { code: 'WORKFLOW_SCHEME_ACCESS_DENIED' } }, { status: 403 }),
+      ),
+    )
 
     renderSection()
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: TX_REF } })
 
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(await screen.findByText(postActionLabels.error.forbidden)).toBeInTheDocument()
+    expect(screen.queryByText(postActionLabels.error.loadFailed)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Webhook 추가/ })).toBeDisabled()
   })
 })
 
@@ -585,6 +593,35 @@ describe('PostActionConfigSection — C1 mutation 에러 toast', () => {
 
     await waitFor(() => expect(toastErrorSpy).toHaveBeenCalled())
 
+    toastErrorSpy.mockRestore()
+  })
+
+  /**
+   * PACS-C1c. 초안이 열려 있어 409 면 toast 가 발행·폐기하라고 말한다 (WF-08-1).
+   */
+  it('PACS-C1c: delete 409(초안 열림) 시 초안 안내 toast', async () => {
+    const action = {
+      id: '550e8400-e29b-41d4-a716-446655440002',
+      type: 'CALL_WEBHOOK',
+      config: { url: 'https://example.com/hook', method: 'POST' },
+      displayOrder: 0,
+    }
+    const toastErrorSpy = vi.spyOn(sonner.toast, 'error').mockImplementation(() => '')
+
+    server.use(
+      http.get(BASE_PATH, () => HttpResponse.json({ data: [action] })),
+      http.delete(`${BASE_PATH}/${action.id}`, () =>
+        HttpResponse.json({ error: { code: 'WORKFLOW_TRANSITION_CONFLICT', message: '초안' } }, { status: 409 }),
+      ),
+    )
+
+    renderSection()
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: TX_REF } })
+    await waitFor(() => expect(screen.getByRole('table')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /CALL_WEBHOOK post-action 삭제/ }))
+
+    await waitFor(() => expect(toastErrorSpy).toHaveBeenCalledWith(postActionLabels.error.draftOpen))
     toastErrorSpy.mockRestore()
   })
 

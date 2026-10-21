@@ -203,10 +203,11 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
   })
 
   /**
-   * T5-5. isSystemAdmin=false이면 PostActionConfigSection이 렌더되지 않는다.
-   * 다이어그램(워크플로우 이름)은 여전히 표시되어야 한다.
+   * T5-5. 시스템 관리자가 아니어도 규칙 섹션이 보인다 (WF-08-1).
+   * 프로젝트 소유 워크플로우의 관리자가 고칠 수 있어야 하고, 권한은 백엔드 403 이 가른다 —
+   * 403 안내는 각 섹션 테스트가 잰다. 미인증은 라우트 가드(`requireAuthAndPasswordChanged`)가 막는다.
    */
-  it('T5-5: 비admin이면 PostActionConfigSection이 렌더되지 않는다', async () => {
+  it('T5-5: 비admin 에게도 전환 규칙 섹션이 렌더된다', async () => {
     useAuthStore.setState({
       accessToken: 'token',
       user: {
@@ -222,27 +223,11 @@ describe('WorkflowDetailPage — PostActionConfigSection 게이팅', () => {
 
     renderPage()
 
-    // 다이어그램은 렌더되어야 함
     await waitFor(() =>
       expect(screen.getByText('소프트웨어 개발 기본 워크플로우')).toBeInTheDocument(),
     )
 
-    // PostActionConfigSection의 combobox가 없어야 함
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
-  })
-
-  /**
-   * T5-6. user=null(미인증)이면 PostActionConfigSection이 렌더되지 않는다.
-   */
-  it('T5-6: 미인증(user=null)이면 PostActionConfigSection이 렌더되지 않는다', async () => {
-    useAuthStore.setState({ accessToken: null, user: null })
-
-    renderPage()
-
-    await waitFor(() =>
-      expect(screen.getByText('소프트웨어 개발 기본 워크플로우')).toBeInTheDocument(),
-    )
-
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    // validator · post-action 두 섹션의 전환 선택
+    expect(screen.getAllByRole('combobox')).toHaveLength(2)
   })
 })

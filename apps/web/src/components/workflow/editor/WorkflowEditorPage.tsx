@@ -1,7 +1,9 @@
 // 워크플로우 초안 편집기 셸 — 초안을 고치고 발행해야 운영에 반영된다 (FR-WF-07 D6)
 import * as React from 'react'
+import { Link } from '@tanstack/react-router'
 import { ApiError } from '@/api/client'
 import { WorkflowAdminApiError } from '@/api/workflows-admin.http'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
@@ -112,6 +114,26 @@ function toMigrationProgress(migration: UseMigrationWizardResult): MigrationProg
   }
   const operation = migration.operation
   return { processed: operation?.processedCount ?? 0, total: operation?.totalCount ?? 0 }
+}
+
+/**
+ * 전환 규칙 화면(`/workflows/$key`)으로 가는 길 (WF-08-1 · 결함 B4).
+ *
+ * 그 화면으로 가는 링크가 앱 어디에도 없어 URL 을 아는 사람만 규칙을 고칠 수 있었다. 편집기가
+ * 관리·프로젝트 두 경로 모두의 입구라 여기 한 곳에 둔다. Jira 는 규칙을 편집기의 전환 패널에서
+ * 초안과 함께 고치지만, 이 저장소의 규칙은 초안을 거치지 않는다 — 그 차이를 안내가 말한다.
+ */
+function RulesLink({ workflowKey }: { workflowKey: string }): React.JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <Button asChild variant="outline" size="sm">
+        <Link to="/workflows/$key" params={{ key: workflowKey }}>
+          {labels.editor.rulesLink}
+        </Link>
+      </Button>
+      <p className="text-muted-foreground text-sm">{labels.editor.rulesHint}</p>
+    </div>
+  )
 }
 
 /**
@@ -247,6 +269,8 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
         busy={flow.busy || migration.discardDisabled}
         migration={toMigrationProgress(migration)}
       />
+
+      <RulesLink workflowKey={workflowKey} />
 
       {draft.state.lastRejection !== null ? (
         <p role="alert" className="text-destructive text-sm">

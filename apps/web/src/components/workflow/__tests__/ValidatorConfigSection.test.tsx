@@ -1,4 +1,4 @@
-// ValidatorConfigSection 단위 테스트 — 게이팅/목록/editable 소비/평가 시점 배지/저장 400/하드 삭제/baseline 병합
+// ValidatorConfigSection 단위 테스트 — 권한 403/목록/editable 소비/평가 시점 배지/저장 400/하드 삭제/baseline 병합
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -102,24 +102,30 @@ afterEach(() => {
 // 게이팅
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('ValidatorConfigSection — isSystemAdmin 게이팅', () => {
-  it('T6-1: isSystemAdmin 이 아니면 렌더하지 않는다', () => {
+describe('ValidatorConfigSection — 권한은 백엔드가 가른다 (WF-08-1)', () => {
+  it('T6-1: 시스템 관리자가 아니어도 섹션이 보인다 — 프로젝트 소유 워크플로우의 관리자가 쓴다', () => {
     loginAs(false)
-    renderSection()
-    expect(screen.queryByLabelText(validatorLabels.section.transitionSelectLabel)).not.toBeInTheDocument()
-    expect(screen.queryByText(validatorLabels.section.title)).not.toBeInTheDocument()
-  })
-
-  it('T6-1b: 미인증(user=null)이면 렌더하지 않는다', () => {
-    useAuthStore.setState({ accessToken: null, user: null })
-    renderSection()
-    expect(screen.queryByLabelText(validatorLabels.section.transitionSelectLabel)).not.toBeInTheDocument()
-  })
-
-  it('T6-1c: 시스템 관리자에게는 섹션이 보인다', () => {
     renderSection()
     expect(screen.getByText(validatorLabels.section.title)).toBeInTheDocument()
     expect(screen.getByLabelText(validatorLabels.section.transitionSelectLabel)).toBeInTheDocument()
+  })
+
+  it('T6-1b: 목록 조회가 403 이면 재시도 대신 권한 안내를 띄우고 추가를 잠근다', async () => {
+    server.use(
+      http.get(BASE_PATH, () =>
+        HttpResponse.json(
+          { error: { code: 'WORKFLOW_SCHEME_ACCESS_DENIED', message: '권한 없음' } },
+          { status: 403 },
+        ),
+      ),
+    )
+    loginAs(false)
+    renderSection()
+    selectTransition(TX_ID)
+
+    expect(await screen.findByText(validatorLabels.error.forbidden)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: validatorLabels.error.retryButton })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: validatorLabels.section.addButton })).toBeDisabled()
   })
 })
 
@@ -297,6 +303,31 @@ describe('ValidatorConfigSection — 규칙 추가', () => {
     expect(await within(dialog).findByText(message)).toBeInTheDocument()
     // 닫히지 않는다.
     expect(screen.getByRole('dialog', { name: validatorLabels.dialog.createTitle })).toBeInTheDocument()
+  })
+
+  it('T6-11b: 초안이 열려 있어 409 이면 발행·폐기하라는 안내가 다이얼로그 안에 뜬다 (WF-08-1)', async () => {
+    server.use(
+      http.post(`/api/v1/workflows/${WF_KEY}/transitions/${EMPTY_TX_ID}/validators`, () =>
+        HttpResponse.json(
+          { error: { code: 'WORKFLOW_TRANSITION_CONFLICT', message: '초안이 열려 있어 전환 규칙을 고칠 수 없습니다.' } },
+          { status: 409 },
+        ),
+      ),
+    )
+
+    renderSection()
+    selectTransition(EMPTY_TX_ID)
+    await screen.findByText(validatorLabels.list.emptyTitle)
+
+    fireEvent.click(screen.getByRole('button', { name: validatorLabels.section.addButton }))
+    const dialog = await screen.findByRole('dialog', { name: validatorLabels.dialog.createTitle })
+    fireEvent.change(within(dialog).getByLabelText(validatorLabels.form.typeLabel), {
+      target: { value: VALIDATOR_TYPES.requiredField },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/field/), { target: { value: 'resolution' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: validatorLabels.dialog.createButton }))
+
+    expect(await within(dialog).findByText(validatorLabels.error.draftOpen)).toBeInTheDocument()
   })
 })
 
