@@ -50,6 +50,7 @@
 - [x] D5. 백엔드 테스트 — TDD + property-based test (전환 무결성) (책임. backend-engineer) (PR #10, 2026-05-22)
 - [x] D6. 프론트 UI — 워크플로우 다이어그램 (mermaid 또는 SVG) (책임. designer → frontend-engineer) (PR #13, 2026-05-22; 후속 cleanup PR #16/#20/#21)
 - [x] D7. E2E + NFR — 상태 전환 6단계 시나리오 (책임. qa-engineer) (PR #13 + PR #19, 2026-05-22 ~ 2026-05-23; 후속 cleanup PR #16/#20/#21)
+- [ ] D8. WF-01-1 이슈 화면 전환 경험 개선 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-7)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
@@ -66,6 +67,7 @@
 - [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *종전 각주 「S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속」은 **2026-09-03 실측으로 닫는다** — 스킴 통합 테스트가 실재한다(`scheme/repository/` 3건 · `scheme/web/WorkflowSchemeControllerIntegrationTest.kt`). 「S1~S8」이라는 명명은 정의처가 없고, 이름이 겹치는 두 가지가 저장소에 따로 있다 — `integration/WorkflowIntegrationTest.kt` 의 S1~S7(FR-WF-01 Task 35)과 `apps/web/e2e/issue-transition.spec.ts` 의 S8(#398, §2.5 각주). 그 명명을 되살리지 않는다*
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
+- [ ] D8. WF-02-1 스킴을 바꾸거나 매핑을 고쳐도 이슈 상태를 옮기지 않는다 — 결함 B5 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
 
 ### §2.3 FR-WF-03 — 워크플로우 전환 validator/PostAction 런타임 결선
 
@@ -77,6 +79,8 @@
 - [x] D2. 명세 — factory/repo/seed 결선 + test-assembled 검증. 확정 D8=A(phase 구분)/D9=A(PostAction 계산만, GAP-2)/D10=B(test-assembled 검증) (책임. backend-engineer) (PR #66, 2026-06-03)
 - [x] D4. 백엔드 — DefaultWorkflowValidatorFactory/PostActionFactory + DefaultWorkflowDefinitionRepository(jOOQ, workflowKey로 transition_id 해석) + WorkflowEngineConfig(SpelEvaluator·ExecutorService @Bean) + YamlSeedService validators/post_actions 시드(시드 시점 type fail-fast) + WorkflowValidator.phase (책임. backend-engineer) (PR #66, 2026-06-03)
 - [x] D5. 백엔드 테스트 — TDD 8 task(red→green→refactor) + test-assembled @ContextConfiguration 통합검증(B2 cross-workflow 격리, validator plan 거부/availableTransitions 포함, PostAction plan 누적) (책임. backend-engineer) (PR #66 + #69 테스트 토큰 정본화, 2026-06-03)
+- [ ] D6. WF-03-1 후처리 5종 중 `CALL_WEBHOOK` 만 실제로 동작한다 — 결함 B1 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
+- [ ] D7. WF-03-2 `RequiredField` 검증기가 `summary`·`resolution` 두 필드만 본다 — 결함 B2 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
 
 > **D3/D6/D7 비해당**. 마이그레이션 신규 없음(`workflow_validators`/`workflow_post_actions` V200 기존, jOOQ 상수 자동 생성). UI/E2E 없음(백엔드 기반 인프라). 잔존 비차단 — `YamlSeedService.isDirty`가 validator/post_action config-only 변경 미감지(type만 비교), 프레임워크가 config를 런타임 실소비하는 시점에 확장.
 
@@ -99,6 +103,14 @@
 - [x] D5. 백엔드 테스트 — TDD red-first · 마이그레이션 체인 검증 · 재기동 후 편집분 생존 · 캐시 무효화 누락 감지 (책임. backend-engineer)
 - [x] D6. 프론트 — `/admin/workflows` 목록 + 목록 모드 편집기(상태 추가·제거·순서) (책임. frontend-engineer) (PR #400, 2026-08-24)
 - [x] D7. E2E — 이름 수정 · 상태 추가 · 재기동 생존 (책임. qa-engineer) (PR #400, 2026-08-24). *스펙 4시나리오. 처음엔 Maxi 지시로 작성만 했으나, 리뷰가 그중 1건이 **돌리면 red** 임을 실행으로 밝혀 재설계 후 Maxi 승인으로 실행했다 — **4/4 통과**(PR #400)*
+- [ ] D8. WF-04-1 화면에서 새로 만든 워크플로우를 발행할 수 없다(INITIAL 전환 미생성) — 결함 B3 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
+- [ ] D9. WF-04-2 지운 key 를 다시 쓰면 `key` 조회 2곳이 소프트 삭제를 안 걸러 500 · 부팅 실패 (`TODOS.md` 같은 제목)
+- [ ] D10. WF-04-3 새 상태를 만드는 화면이 없다(`useCreateStatus` 호출 0) — 결함 B6 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
+- [ ] D11. WF-04-4 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 — T3 (`TODOS.md`)
+- [ ] D12. WF-04-5 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (`TODOS.md`)
+- [ ] D13. WF-04-6 캐시 무효화가 커밋 전에 일어난다 (`TODOS.md`)
+- [ ] D14. WF-04-7 상태·워크플로우 사용처 표시 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-8)
+- [ ] D15. WF-04-8 테스트 빈틈 — 복제 전환 복사 0행 · 마이그레이션 테스트 컬럼 수 (`TODOS.md`)
 
 ### §2.5 FR-WF-05 — 전환 ID 식별자 (다중 전환 + 전역/최초 전환)
 
@@ -113,6 +125,13 @@
 - [x] D5. 백엔드 테스트 — 같은 쌍 다중 전환 · 전역 전환 후보 노출 · 모호 시 409 (책임. backend-engineer) (PR #395, 2026-08-20)
 - [x] D6. 프론트 — 이슈 상태 드롭다운이 전환 이름을 구분해 표시 + **고른 전환을 그대로 실행**(`transitionId` 전달, 409 왕복 제거) (책임. frontend-engineer) (PR #398, 2026-08-24)
 - [x] D7. E2E — 같은 쌍 두 전환이 각각 보이고 각각 실행된다 (책임. qa-engineer) (PR #398, 2026-08-24)
+- [ ] D8. WF-05-1 전환 CRUD 가 수정 시각·버전을 안 올려 낙관적 잠금이 없다 (`TODOS.md`)
+- [ ] D9. WF-05-2 전환 이름이 무검증이라 빈 문자열이 저장된다 (`TODOS.md`)
+- [ ] D10. WF-05-3 INITIAL 전환에 붙인 규칙은 저장되지만 실행 경로가 없다 (`TODOS.md`)
+- [ ] D11. WF-05-4 신규 설치와 기존 DB 의 전환 표시 순서가 갈린다 (`TODOS.md`)
+- [ ] D12. WF-05-5 전환 계획 미리보기에 `transitionId` 가 없어 409 왕복이 막힌다 (`TODOS.md`)
+- [ ] D13. WF-05-6 두 벌 정리 — `TransitionRequestDto.toDomain()` 매핑 · 시작 상태 규칙(프로덕션·테스트) (`TODOS.md`)
+- [ ] D14. WF-05-7 테스트 빈틈 — 최초 전환 수정 경로 미도달 · V207 백필 가드 미발화 (`TODOS.md`)
 
 ### §2.6 FR-WF-06 — 전환 규칙(조건/검증기/후처리) 편집
 
@@ -126,6 +145,10 @@
 - [x] D5. 백엔드 테스트 — 잘못된 config 400 · 저장한 규칙이 실제 전환에서 동작(엔진 통합) (책임. backend-engineer) (PR #404, 2026-08-25). *테스트 +25건*
 - [x] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer) (PR #407, 2026-08-26). *형제 post-action UI(FR-NT-05)의 대칭 구현 — `/workflows/{key}` 상세에 `ValidatorConfigSection` 을 나란히 뒀다. **응답의 `editable` 을 그대로 소비**하고 편집 가능 type 목록을 화면에 베끼지 않는다*
 - [x] D7. E2E — ~~규칙을 걸면 전환이 막히고, 풀면 통과한다~~ → **화면 계약 + 편집 불가 행**으로 축소 (책임. qa-engineer) (PR #407, 2026-08-26). **스펙 deviation — 아래 각주**
+- [ ] D8. WF-06-1 규칙 `config` JSONB 가 크기·키 제한 없이 저장된다 (`TODOS.md`)
+- [ ] D9. WF-06-2 전환 규칙 변경 로그에 행위자가 없다 (`TODOS.md`)
+- [ ] D10. WF-06-3 전환 규칙 표면에 남은 사본 5종 (`TODOS.md`)
+- [ ] D11. WF-06-4 조건·검증기 종류 확장 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-9)
 
 > **★ D7 스펙 deviation** (Maxi 결정, PR #407). `apps/web/e2e/workflow-validator.spec.ts` 는 규칙 CRUD ·
 > 편집 불가 행 · 비admin 게이팅 · 프리필 격리를 덮고, **「규칙을 걸면 전환이 막힌다」는 재지 않는다.**
@@ -155,6 +178,14 @@
 - [x] D6. 프론트 — 발행 다이얼로그 · 상태 이관 마법사 · 기본값 복원 (책임. frontend-engineer) (로드맵 PR 10a — 초안 전환·발행·복원 · 로드맵 PR 10b — 이관 마법사)
 - [x] D7. E2E — 상태를 빼고 발행하면 마법사가 뜨고 이관 후 발행된다 (책임. qa-engineer) (로드맵 PR 10a·10b)
 - [x] D8. 프론트 — `@xyflow/react` 다이어그램 편집기 (책임. frontend-engineer) (PR #434, 2026-09-03 — 로드맵 PR 9)
+- [ ] D9. WF-07-1 이관 필요 판정과 실제 교체 사이에 이슈가 끼어들 수 있다 (`TODOS.md`)
+- [ ] D10. WF-07-2 한 프로젝트가 워크플로우를 둘 이상 쓰면 상태 이관을 못 쓴다 — T3 (`TODOS.md`)
+- [ ] D11. WF-07-3 이관을 예약한 뒤 발행 전에 초안을 고칠 수 있다 (`TODOS.md`)
+- [ ] D12. WF-07-4 아카이브된 프로젝트의 이슈가 워크플로우에 없는 상태로 남는다 (`TODOS.md`)
+- [ ] D13. WF-07-5 발행 이력 append-only 트리거가 `TRUNCATE` 에 뚫려 있다 (`TODOS.md`)
+- [ ] D14. WF-07-6 다이어그램(D8) 브라우저 눈확인 9항목 미실시 (`TODOS.md`)
+- [ ] D15. WF-07-7 이관 마법사(D6b) 실서버 눈확인 5경로 미실시 (`TODOS.md`)
+- [ ] D16. WF-07-8 테스트 빈틈 — 편집 잠금 409 · 순수 이동 판정 (`TODOS.md`)
 
 > **D3 의 번호를 V207 → V208 로 정정했다** (2026-08-26). 계획 당시 예약해 둔 V207 을 FR-WF-05
 > (전환 identity, #395)가 먼저 가져갔다. 착수 시점 실측으로 확인해 다음 가용 번호로 바꿨다 —
@@ -354,6 +385,7 @@
 - [ ] D5. 백엔드 테스트 — 자기 프로젝트 200 · 남의 프로젝트 403 · 전역 403 · 복제본 소유 확인 (책임. backend-engineer)
 - [ ] D6. 프론트 — 프로젝트 설정에 워크플로우·스킴 편집 (기존 `WorkflowEditorPage` 재사용, 신규 편집기 금지) (책임. frontend-engineer)
 - [ ] D7. E2E — 프로젝트 관리자가 만들고 고쳐 발행하고, 비-관리자 멤버는 403 안내를 본다 (책임. qa-engineer)
+- [ ] D8. WF-08-1 전환 규칙 편집이 SYSTEM_ADMIN 전용이고 앱 안 링크가 없다 — 공유 안 된 워크플로우는 그 프로젝트 관리자가 고쳐야 한다 — 결함 B4 · G15 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1·§2)
 
 > **shared-kernel 공용 `WorkflowScope` 를 신설한다** (스펙 D8, Maxi 2026-09-08 확정). `WorkflowSchemeScope` 를 일반화하지 않는다 — 이름에 `Scheme` 이 남으면 `WorkflowDefinitionPermission` KDoc 이 경고한 개념 혼동을 그대로 일으키고, 그 경고 때문에 enum 은 이미 둘로 갈라져 있다. 정의 resolver 전용 스코프를 따로 두지도 않는다(두 목록이 서로를 검사하지 않게 된다). ⇒ **D4 를 담는 PR 이 shared-kernel 을 건드리므로 T3 이다.**
 
@@ -381,7 +413,7 @@
 
 > **§2 진척**. FR-WF-01 ✅ / FR-WF-02 D1~D5 ✅ 머지 #18 / D6 ✅ 머지 #31 / D7 ✅ 머지 #35 / FR-WF-03 ✅ 머지 #66 (테스트 토큰 정본화 #69) / **FR-WF-04 D1~D5 ✅ 머지 #392·#393 / D6~D7 ✅ #400 (로드맵 PR 8 — PR 9·10 은 다이어그램·발행으로 FR-WF-07 소관) · FR-WF-05 D1~D5 ✅ #395 / D6~D7 ✅ #398 · FR-WF-06 D1·D2·D4·D5 ✅ #404 (D3 비해당 확정) / D6~D7 ✅ #407 (D7 은 스펙 deviation — §2.6 각주) · FR-WF-07 D1·D3 ✅ (로드맵 PR 6) / D2·D5 ✅ (로드맵 PR 7 — 이관 실행) / D4 ✅ (로드맵 PR 7b — #417 결선) / D6·D7 ✅ #423·#427 (로드맵 PR 10a 초안 전환·발행·복원 · PR 10b 이관 마법사) / D8 ✅ #434 (로드맵 PR 9 — xyflow 다이어그램)** — **§2 FR-WF 는 전수 `[x]`**. 후속. **Wave 6 와 C1 은 2026-09-03 실측으로 정리했다** — Wave 6 는 §2.2 D5 각주로(통합 테스트 실재 · 「S1~S8」 명명은 정의처 없음), `C1 detekt 정합` 은 **이 줄 말고 정의처가 저장소 어디에도 없어**(`grep` 0건) 유령 항목으로 판정하고 지운다. 되살리려면 무엇을 맞추는 일인지부터 적어야 한다. **남은 실질은 §NFR deferred trigger 도달 시 측정 하나다.**
 
-- [ ] §2 (FR-WF 8개) 모두 `[x]` 마킹 — **2026-09-08 재실측: 미완 7건(FR-WF-08 D1~D7)**. FR-WF-08(프로젝트 소유 워크플로우·스킴) 신설로 이 게이트가 **세 번째로 열렸다**. 아래 2026-08-18 기록은 그 시점의 것이다. **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
+- [ ] §2 (FR-WF 8개) 모두 `[x]` 마킹 — **2026-10-21 재실측: 미완 39건** — FR-WF-08 D1~D8 과 남은 작업(WF 번호)을 FR-WF-01~08 의 D 단계로 등재했다. **2026-09-08 재실측: 미완 7건(FR-WF-08 D1~D7)**. FR-WF-08(프로젝트 소유 워크플로우·스킴) 신설로 이 게이트가 **세 번째로 열렸다**. 아래 2026-08-18 기록은 그 시점의 것이다. **2026-08-18 재실측: 미완 27건**. WF-01 D1~D7 · WF-02 D1~D7 · WF-03 D1/D2/D4/D5(D3/D6/D7 비해당)까지 18/18 `[x]` 로 닫혀 있었으나, 워크플로우 편집기 FR 4건(WF-04~07)이 신설되며 D 마커 27개가 새로 열렸다. **이 게이트는 2026-07-27 에 한 번 닫혔다가 범위 확대로 다시 열린 것**이다 — 조용히 닫아 두지 않는다.
   **2026-08-26 재실측(PR #407 시점) — 미완은 §2.7 FR-WF-07 의 D1~D7 뿐이다.** WF-04·05·06 이 전부 닫혔다.
   **같은 날 재실측(초안·발행 PR 시점)** — §2.7 에 D8(xyflow 다이어그램)이 신설돼 마커가 8개가 됐고,
   그중 D1·D3 가 닫혔다. 미완은 **D2·D4·D5·D6·D7·D8** 여섯이며 D2·D4·D5 는 부분 완료다(잔여가 전부

@@ -7,7 +7,7 @@
 **BTS (Project Atlas)** — 사내 1,000명 협업 워크스페이스. Atlas Issues + Atlas Wiki(v0.5).
 Kotlin/Spring + React 19 · Naver Cloud 단일 호스트 · Maxi 1인 + Claude Code.
 backend 9 BC + 배포 조립 `app` · 프론트 `apps/web` SPA.
-**진척** — 146 FR 중 145 D 단계 완료 — FR-WF-08 은 구현이 merge 됐고(#477~#483) 결함 B3 · B4 수정과 D 마킹이 남았다. **D 단계 완료는 BC 완료 선언이 아니다** — §NFR 측정이 공통 관문이다. 정본 `docs/plan/README.md`.
+**진척** — 146 FR 중 138 D 단계 완료 — 미완 8건은 FR-WF-01~08 이다. 2026-10-21 에 남은 작업(WF 번호)을 D 단계로 등재했고, 가장 급한 것은 WF-04-1(B3) · WF-04-2 · WF-08-1(B4) 다. **D 단계 완료는 BC 완료 선언이 아니다** — §NFR 측정이 공통 관문이다. 정본 `docs/plan/README.md`.
 
 ## 작업
 
