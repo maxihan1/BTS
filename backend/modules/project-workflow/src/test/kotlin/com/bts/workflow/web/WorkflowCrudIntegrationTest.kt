@@ -10,6 +10,7 @@ import com.bts.workflow.application.command.CreateWorkflowCommand
 import com.bts.workflow.application.command.UpdateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.exception.WorkflowInUseException
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowKeyConflictException
@@ -224,6 +225,26 @@ class WorkflowCrudIntegrationTest {
 
         assertThat(found).isNotNull()
         assertThat(found!!.states.map { it.key }).containsExactly("open", "done")
+    }
+
+    @Test
+    fun `생성한 워크플로우는 표시 순서가 가장 앞선 상태로 들어가는 최초 전환을 가진다`() {
+        // 목록 순서와 표시 순서를 엇갈려 둔다 — 「목록 첫 항목」을 고르는 구현이면 여기서 red 다.
+        create(
+            "with-initial",
+            statuses =
+                listOf(
+                    WorkflowStatusSeed(key = "done", name = "DONE", category = "DONE", displayOrder = 1),
+                    WorkflowStatusSeed(key = "open", name = "OPEN", category = "TODO", displayOrder = 0),
+                ),
+        )
+
+        val initial = repository.findByKey("with-initial")!!.transitions.filter { it.kind == TransitionKind.INITIAL }
+
+        assertThat(initial)
+            .describedAs("발행은 INITIAL 이 정확히 1개여야 하고 편집기는 INITIAL 을 고를 수 없다 — 없으면 영영 발행 불가(B3)")
+            .singleElement()
+            .satisfies({ assertThat(it.toStateKey).isEqualTo("open") })
     }
 
     @Test

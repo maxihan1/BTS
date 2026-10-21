@@ -358,14 +358,16 @@ class WorkflowStatusCompositionIntegrationTest {
         workflowService.createTransition(
             actor,
             "compose-txn-from",
-            TransitionDefinitionCommand(fromStatusKey = "tf1", toStatusKey = "tf2", name = "작업 시작", kind = "NORMAL"),
+            // tf1 은 생성이 심은 최초 전환의 도착지다 — 출발지 쪽만 보려고 tf2 를 출발지로 쓴다.
+            TransitionDefinitionCommand(fromStatusKey = "tf2", toStatusKey = "tf1", name = "작업 시작", kind = "NORMAL"),
         )
+        val before = transitionCount(workflowId)
 
-        val thrown = catchThrowable { service.removeStatus(actor, "compose-txn-from", statusIdOf("tf1")) }
+        val thrown = catchThrowable { service.removeStatus(actor, "compose-txn-from", statusIdOf("tf2")) }
 
         assertThat(transitionCount(workflowId))
             .describedAs("from_status_id 의 ON DELETE CASCADE 가 전환을 하드 삭제하면 되살릴 방법이 없다")
-            .isEqualTo(1)
+            .isEqualTo(before)
         assertThat(thrown)
             .describedAs("무엇이 막는지 알아야 다음 행동을 정한다 — 막은 전환 이름이 메시지에 있어야 한다")
             .isInstanceOf(WorkflowStatusReferencedByTransitionException::class.java)
@@ -374,12 +376,8 @@ class WorkflowStatusCompositionIntegrationTest {
 
     @Test
     fun `최초 전환이 도착지로 쓰는 상태는 뺄 수 없고 그 전환은 살아남는다`() {
+        // 생성이 ti1(표시 순서 최소)로 들어가는 최초 전환 「이슈 생성」을 심는다(B3).
         val workflowId = makeWorkflow("compose-txn-initial", "ti1", "ti2")
-        workflowService.createTransition(
-            actor,
-            "compose-txn-initial",
-            TransitionDefinitionCommand(fromStatusKey = null, toStatusKey = "ti1", name = "이슈 생성", kind = "INITIAL"),
-        )
 
         val thrown = catchThrowable { service.removeStatus(actor, "compose-txn-initial", statusIdOf("ti1")) }
 
