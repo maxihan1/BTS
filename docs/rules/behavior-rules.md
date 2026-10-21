@@ -33,9 +33,8 @@
 
 | 장치 | 시점 | 막는 것 |
 |---|---|---|
-| `~/.claude/hooks/bts-test-guard.mjs` (user scope PreToolUse) | 명령 실행 전 | BTS 경로의 대상 없는 전체 테스트 · `pnpm verify` · Playwright |
+| `~/.claude/hooks/bts-test-guard.mjs` (user scope PreToolUse) | 명령 실행 전 | BTS 경로의 대상 없는 전체 테스트 · `pnpm verify` · Playwright · merge 전 관문 `select-test-scope.ts --run`(2026-10-21~) |
 | `.husky/pre-commit` — lint-staged · `build-doc-index.mjs --check` | 커밋 | 포맷 · 문서 인덱스 drift |
-| `select-test-scope.ts --run` 의 EXIT | merge 직전 | 바뀐 범위의 테스트 실패 |
 | `scripts/verify-master-plan.sh` EXIT 3/4 | FR · 스펙이 바뀐 PR | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
 
 CI 와 브랜치 보호는 없다. 이 표에 없는 규칙은 지침이다 — 지켜지지 않을 수 있다.
