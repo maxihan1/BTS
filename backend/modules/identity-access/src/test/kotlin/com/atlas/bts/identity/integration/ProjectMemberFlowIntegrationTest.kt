@@ -7,6 +7,7 @@ import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.atlas.bts.identity.user.UserRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -25,9 +26,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.security.MessageDigest
 import java.sql.Timestamp
 import java.time.Instant
@@ -68,17 +66,10 @@ import java.util.concurrent.atomic.AtomicInteger
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
-@Testcontainers
 class ProjectMemberFlowIntegrationTest {
-
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -86,6 +77,8 @@ class ProjectMemberFlowIntegrationTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }
@@ -101,17 +94,24 @@ class ProjectMemberFlowIntegrationTest {
 
     // LDAP Bean 목킹 — 실제 LDAP 서버 없이 부팅 (PatAndConcurrencyIntegrationTest 선례 동일)
     @MockBean lateinit var ldapProvider: LdapProvider
+
     @MockBean lateinit var ldapProviderConfigService: LdapProviderConfigService
+
     @MockBean lateinit var externalAccountRepository: ExternalAccountRepository
+
     @MockBean lateinit var autoProvisionService: AutoProvisionService
+
     @MockBean lateinit var ldapTemplate: LdapTemplate
 
     @LocalServerPort
     var port: Int = 0
 
     @Autowired lateinit var restTemplate: TestRestTemplate
+
     @Autowired lateinit var userRepository: UserRepository
+
     @Autowired lateinit var localCredentialService: LocalCredentialService
+
     @Autowired lateinit var jdbc: NamedParameterJdbcTemplate
 
     /** 테스트 픽스처 — 매 테스트 @BeforeEach에서 재생성. */
@@ -379,29 +379,31 @@ class ProjectMemberFlowIntegrationTest {
         val latch = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
 
-        val futures = listOf(
-            executor.submit {
-                latch.await()
-                val resp = postMember(tokenAlice, projectId, aliceId, "PROJECT_ADMIN")
-                if (resp.statusCode == HttpStatus.CREATED) successCount.incrementAndGet()
-            },
-            executor.submit {
-                latch.await()
-                val resp = postMember(tokenBob, projectId, bobId, "PROJECT_ADMIN")
-                if (resp.statusCode == HttpStatus.CREATED) successCount.incrementAndGet()
-            },
-        )
+        val futures =
+            listOf(
+                executor.submit {
+                    latch.await()
+                    val resp = postMember(tokenAlice, projectId, aliceId, "PROJECT_ADMIN")
+                    if (resp.statusCode == HttpStatus.CREATED) successCount.incrementAndGet()
+                },
+                executor.submit {
+                    latch.await()
+                    val resp = postMember(tokenBob, projectId, bobId, "PROJECT_ADMIN")
+                    if (resp.statusCode == HttpStatus.CREATED) successCount.incrementAndGet()
+                },
+            )
 
         latch.countDown()
         futures.forEach { it.get() }
         executor.shutdown()
 
         // DB에 저장된 최종 admin 수가 1명이어야 한다 (두 건 다 성공하면 2명 — 이것이 결함)
-        val adminCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM project_memberships WHERE project_id = :pid AND role = 'PROJECT_ADMIN'",
-            mapOf("pid" to projectId),
-            Int::class.java,
-        ) ?: 0
+        val adminCount =
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM project_memberships WHERE project_id = :pid AND role = 'PROJECT_ADMIN'",
+                mapOf("pid" to projectId),
+                Int::class.java,
+            ) ?: 0
         assertThat(adminCount)
             .withFailMessage("EC-1 위반: advisory lock이 동작하지 않아 admin이 2명 생성됨")
             .isEqualTo(1)
@@ -433,20 +435,28 @@ class ProjectMemberFlowIntegrationTest {
         val latch = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
 
-        val futures = listOf(
-            executor.submit { latch.await(); deleteMember(tokenAlice, activeProjectId, bobId) },
-            executor.submit { latch.await(); deleteMember(tokenBob, activeProjectId, aliceId) },
-        )
+        val futures =
+            listOf(
+                executor.submit {
+                    latch.await()
+                    deleteMember(tokenAlice, activeProjectId, bobId)
+                },
+                executor.submit {
+                    latch.await()
+                    deleteMember(tokenBob, activeProjectId, aliceId)
+                },
+            )
 
         latch.countDown()
         futures.forEach { it.get() }
         executor.shutdown()
 
-        val adminCount = jdbc.queryForObject(
-            "SELECT COUNT(*) FROM project_memberships WHERE project_id = :pid AND role = 'PROJECT_ADMIN'",
-            mapOf("pid" to activeProjectId),
-            Int::class.java,
-        ) ?: 0
+        val adminCount =
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM project_memberships WHERE project_id = :pid AND role = 'PROJECT_ADMIN'",
+                mapOf("pid" to activeProjectId),
+                Int::class.java,
+            ) ?: 0
         assertThat(adminCount)
             .withFailMessage("EC-2b 위반: 동시 상호제거로 admin 0명 상태가 발생함")
             .isGreaterThanOrEqualTo(1)
@@ -467,6 +477,7 @@ class ProjectMemberFlowIntegrationTest {
 
         assertThat(resp.statusCode).isEqualTo(HttpStatus.OK)
         val body = resp.body as Map<*, *>
+
         @Suppress("UNCHECKED_CAST")
         val members = body["members"] as List<Map<*, *>>
         assertThat(members).hasSize(1)
@@ -547,7 +558,10 @@ class ProjectMemberFlowIntegrationTest {
         insertDeletedProject(deletedProjectId)
     }
 
-    private fun insertActiveProject(id: UUID, key: String? = null) {
+    private fun insertActiveProject(
+        id: UUID,
+        key: String? = null,
+    ) {
         jdbc.update(
             "INSERT INTO projects (id, key, deleted_at) VALUES (:id, :key, NULL)",
             mapOf("id" to id, "key" to key),
@@ -566,12 +580,16 @@ class ProjectMemberFlowIntegrationTest {
      *
      * S2·S3·S4·S5·S6·S8·EC-2b 시나리오의 선행 조건.
      */
-    private fun bootstrapAdmin(userId: UUID, password: String) {
-        val username = when (userId) {
-            aliceId -> "alice"
-            bobId -> "bob"
-            else -> "carol"
-        }
+    private fun bootstrapAdmin(
+        userId: UUID,
+        password: String,
+    ) {
+        val username =
+            when (userId) {
+                aliceId -> "alice"
+                bobId -> "bob"
+                else -> "carol"
+            }
         val token = loginJwt(username, password)
         val resp = postMember(token, activeProjectId, userId, "PROJECT_ADMIN")
         check(resp.statusCode == HttpStatus.CREATED) {
@@ -584,7 +602,10 @@ class ProjectMemberFlowIntegrationTest {
      *
      * S3·S4·S5·EC-2b 시나리오에서 ADMIN 권한 없이 멤버를 추가해야 할 때 사용한다.
      */
-    private fun seedMember(targetUserId: UUID, role: String) {
+    private fun seedMember(
+        targetUserId: UUID,
+        role: String,
+    ) {
         // direct INSERT — 서비스 레이어 우회로 시드 (actor 파라미터 불필요, activeProjectId 직접 참조)
         jdbc.update(
             """
@@ -635,15 +656,19 @@ class ProjectMemberFlowIntegrationTest {
      *
      * login 엔드포인트는 SecurityConfig에서 CSRF skip이므로 X-XSRF-TOKEN 불필요.
      */
-    private fun loginJwt(username: String, password: String): String {
+    private fun loginJwt(
+        username: String,
+        password: String,
+    ): String {
         val headers = HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }
         val body = """{"provider":"local","username":"$username","password":"$password"}"""
-        val resp = restTemplate.exchange(
-            "http://localhost:$port/api/v1/auth/login",
-            HttpMethod.POST,
-            HttpEntity(body, headers),
-            Map::class.java,
-        )
+        val resp =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/auth/login",
+                HttpMethod.POST,
+                HttpEntity(body, headers),
+                Map::class.java,
+            )
         check(resp.statusCode == HttpStatus.OK) {
             "loginJwt 실패 ($username): ${resp.statusCode}"
         }
@@ -683,7 +708,10 @@ class ProjectMemberFlowIntegrationTest {
     )
 
     /** JWT Bearer로 GET /api/v1/projects/{projectId}/members 요청을 보낸다 (UUID 경로). */
-    private fun getMembers(jwt: String, projectId: UUID) = restTemplate.exchange(
+    private fun getMembers(
+        jwt: String,
+        projectId: UUID,
+    ) = restTemplate.exchange(
         "http://localhost:$port/api/v1/projects/$projectId/members",
         HttpMethod.GET,
         HttpEntity<Void>(bearerHeaders(jwt)),
@@ -691,7 +719,10 @@ class ProjectMemberFlowIntegrationTest {
     )
 
     /** JWT Bearer로 GET /api/v1/projects/{projectIdOrKey}/members 요청을 보낸다 (key 경로, B3). */
-    private fun getMembers(jwt: String, projectKey: String) = restTemplate.exchange(
+    private fun getMembers(
+        jwt: String,
+        projectKey: String,
+    ) = restTemplate.exchange(
         "http://localhost:$port/api/v1/projects/$projectKey/members",
         HttpMethod.GET,
         HttpEntity<Void>(bearerHeaders(jwt)),
@@ -715,7 +746,11 @@ class ProjectMemberFlowIntegrationTest {
     )
 
     /** JWT Bearer로 DELETE /api/v1/projects/{projectId}/members/{userId} 요청을 보낸다. */
-    private fun deleteMember(jwt: String, projectId: UUID, targetUserId: UUID) = restTemplate.exchange(
+    private fun deleteMember(
+        jwt: String,
+        projectId: UUID,
+        targetUserId: UUID,
+    ) = restTemplate.exchange(
         "http://localhost:$port/api/v1/projects/$projectId/members/$targetUserId",
         HttpMethod.DELETE,
         HttpEntity<Void>(bearerHeaders(jwt)),
@@ -723,7 +758,11 @@ class ProjectMemberFlowIntegrationTest {
     )
 
     /** PAT Bearer로 DELETE /api/v1/projects/{projectId}/members/{userId} 요청을 보낸다. */
-    private fun deleteMemberWithPat(rawPat: String, projectId: UUID, targetUserId: UUID) = restTemplate.exchange(
+    private fun deleteMemberWithPat(
+        rawPat: String,
+        projectId: UUID,
+        targetUserId: UUID,
+    ) = restTemplate.exchange(
         "http://localhost:$port/api/v1/projects/$projectId/members/$targetUserId",
         HttpMethod.DELETE,
         HttpEntity<Void>(bearerHeaders(rawPat)),
@@ -735,8 +774,9 @@ class ProjectMemberFlowIntegrationTest {
      *
      * Content-Type은 application/json으로 고정한다 (POST/PATCH body 포함 요청에도 동일).
      */
-    private fun bearerHeaders(token: String) = HttpHeaders().apply {
-        contentType = MediaType.APPLICATION_JSON
-        set(HttpHeaders.AUTHORIZATION, "Bearer $token")
-    }
+    private fun bearerHeaders(token: String) =
+        HttpHeaders().apply {
+            contentType = MediaType.APPLICATION_JSON
+            set(HttpHeaders.AUTHORIZATION, "Bearer $token")
+        }
 }

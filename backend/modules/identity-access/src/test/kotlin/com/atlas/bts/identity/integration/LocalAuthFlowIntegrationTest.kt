@@ -9,6 +9,7 @@ import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.atlas.bts.identity.user.UserRepository
 import com.github.benmanes.caffeine.cache.Cache
 import org.assertj.core.api.Assertions.assertThat
@@ -28,13 +29,9 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.springframework.transaction.support.TransactionSynchronizationManager
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
 /**
@@ -91,19 +88,12 @@ import java.util.UUID
         "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class LocalAuthFlowIntegrationTest {
-
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001~V006 적용 대상 */
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         /**
          * Spring Boot 의 DataSource / Flyway / bts.security.cors 설정을 Testcontainers 컨테이너 좌표로 교체.
@@ -119,6 +109,8 @@ class LocalAuthFlowIntegrationTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             // LDAP 설정 — LdapAutoConfiguration 이 LdapTemplate Bean 을 생성하도록 URL 유지
@@ -168,10 +160,12 @@ class LocalAuthFlowIntegrationTest {
         val factory = org.springframework.http.client.HttpComponentsClientHttpRequestFactory(httpClient)
         org.springframework.web.client.RestTemplate(factory).apply {
             // 4xx/5xx 를 예외로 throw 하지 않음 — ResponseEntity 로 반환
-            errorHandler = object : org.springframework.web.client.ResponseErrorHandler {
-                override fun hasError(response: org.springframework.http.client.ClientHttpResponse) = false
-                override fun handleError(response: org.springframework.http.client.ClientHttpResponse) {}
-            }
+            errorHandler =
+                object : org.springframework.web.client.ResponseErrorHandler {
+                    override fun hasError(response: org.springframework.http.client.ClientHttpResponse) = false
+
+                    override fun handleError(response: org.springframework.http.client.ClientHttpResponse) {}
+                }
         }
     }
 
@@ -201,11 +195,12 @@ class LocalAuthFlowIntegrationTest {
      */
     @BeforeEach
     fun prepareTestUser() {
-        val user = userRepository.save(
-            username = testUsername,
-            email = testEmail,
-            displayName = testDisplayName,
-        )
+        val user =
+            userRepository.save(
+                username = testUsername,
+                email = testEmail,
+                displayName = testDisplayName,
+            )
         localCredentialService.store(user.id, testPassword.toCharArray())
     }
 
@@ -261,15 +256,17 @@ class LocalAuthFlowIntegrationTest {
 
         val accessToken = (loginResp.body as Map<*, *>)["access_token"] as String
 
-        val headers = HttpHeaders().apply {
-            set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
-        }
-        val whoamiResp = restTemplate.exchange(
-            "http://localhost:$port/api/v1/users/me/whoami",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            Map::class.java,
-        )
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val whoamiResp =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users/me/whoami",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                Map::class.java,
+            )
 
         assertThat(whoamiResp.statusCode).isEqualTo(HttpStatus.OK)
         assertThat(whoamiResp.body?.get("authMethod")).isEqualTo("jwt")
@@ -365,15 +362,17 @@ class LocalAuthFlowIntegrationTest {
         // EC-29: Caffeine 캐시 강제 무효화 — logout 즉시 401 보장
         invalidateSidRevokeCache()
 
-        val headers = HttpHeaders().apply {
-            set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
-        }
-        val whoamiResp = restTemplate.exchange(
-            "http://localhost:$port/api/v1/users/me/whoami",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers),
-            Map::class.java,
-        )
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
+        val whoamiResp =
+            restTemplate.exchange(
+                "http://localhost:$port/api/v1/users/me/whoami",
+                HttpMethod.GET,
+                HttpEntity<Void>(headers),
+                Map::class.java,
+            )
 
         assertThat(whoamiResp.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
     }
@@ -519,10 +518,14 @@ class LocalAuthFlowIntegrationTest {
      * login 은 SecurityConfig.ignoringRequestMatchers 로 CSRF skip 이므로
      * X-XSRF-TOKEN 헤더 없이 호출한다.
      */
-    private fun performLogin(username: String, password: String): ResponseEntity<Map<*, *>> {
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-        }
+    private fun performLogin(
+        username: String,
+        password: String,
+    ): ResponseEntity<Map<*, *>> {
+        val headers =
+            HttpHeaders().apply {
+                contentType = MediaType.APPLICATION_JSON
+            }
         val body = """{"provider":"local","username":"$username","password":"$password"}"""
         return restTemplate.exchange(
             "http://localhost:$port/api/v1/auth/login",
@@ -543,9 +546,10 @@ class LocalAuthFlowIntegrationTest {
      * @param refreshTokenRaw raw refresh token 값 (Cookie 헤더 값)
      */
     private fun performRefresh(refreshTokenRaw: String): ResponseEntity<Map<*, *>> {
-        val headers = HttpHeaders().apply {
-            set(HttpHeaders.COOKIE, "refresh_token=$refreshTokenRaw")
-        }
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.COOKIE, "refresh_token=$refreshTokenRaw")
+            }
         // plainRestTemplate: setOutputStreaming(false) 로 401 응답 body 읽기 보장
         return plainRestTemplate.exchange(
             "http://localhost:$port/api/v1/auth/refresh",
@@ -563,9 +567,10 @@ class LocalAuthFlowIntegrationTest {
      * @param accessToken 로그인 후 발급된 access_token
      */
     private fun performLogout(accessToken: String): ResponseEntity<Void> {
-        val headers = HttpHeaders().apply {
-            set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
-        }
+        val headers =
+            HttpHeaders().apply {
+                set(HttpHeaders.AUTHORIZATION, "Bearer $accessToken")
+            }
         return restTemplate.exchange(
             "http://localhost:$port/api/v1/auth/logout",
             HttpMethod.POST,
@@ -614,12 +619,13 @@ class LocalAuthFlowIntegrationTest {
     private fun invalidateSidRevokeCache() {
         try {
             // SidRevokeJwtConverter 가 Spring AOP 프록시로 래핑된 경우 실제 인스턴스 접근 필요
-            val target = if (org.springframework.aop.support.AopUtils.isAopProxy(sidRevokeJwtConverter)) {
-                (sidRevokeJwtConverter as org.springframework.aop.framework.Advised).targetSource.target
-                    ?: sidRevokeJwtConverter
-            } else {
-                sidRevokeJwtConverter
-            }
+            val target =
+                if (org.springframework.aop.support.AopUtils.isAopProxy(sidRevokeJwtConverter)) {
+                    (sidRevokeJwtConverter as org.springframework.aop.framework.Advised).targetSource.target
+                        ?: sidRevokeJwtConverter
+                } else {
+                    sidRevokeJwtConverter
+                }
 
             val cacheField = target.javaClass.getDeclaredField("cache")
             cacheField.isAccessible = true

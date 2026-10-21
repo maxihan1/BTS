@@ -2,10 +2,10 @@
 
 package com.atlas.bts.identity.integration
 
+import com.atlas.bts.identity.support.SharedPostgres
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.utility.MountableFile
 import java.time.Duration
@@ -57,12 +57,7 @@ abstract class KeycloakSamlTestcontainersBase {
         const val SAML_TEST_PASSWORD = "Test1234!"
 
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         @JvmStatic
         val keycloak: GenericContainer<*> =
@@ -97,7 +92,8 @@ abstract class KeycloakSamlTestcontainersBase {
             r.add("spring.datasource.url") { postgres.jdbcUrl }
             r.add("spring.datasource.username") { postgres.username }
             r.add("spring.datasource.password") { postgres.password }
-            r.add("spring.flyway.enabled") { "true" }
+            r.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
+            r.add("spring.flyway.enabled") { "false" }
         }
 
         /** Keycloak SAML descriptor 엔드포인트가 realm import 완료 시 반환하는 HTTP 상태코드. */
