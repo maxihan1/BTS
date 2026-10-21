@@ -3,13 +3,13 @@
 
 package com.bts.notification
 
+import com.bts.notification.support.SharedPostgres
 import com.bts.shared.issue.IssueRecipientLookupPort
 import com.bts.shared.issue.IssueRecipients
 import com.bts.shared.issue.ProjectRecipientLookupPort
 import com.bts.shared.issue.ProjectRecipients
 import com.bts.shared.permission.IssueVisibilityPort
 import com.bts.shared.user.UserLookupPort
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DataSourceConnectionProvider
@@ -25,8 +25,6 @@ import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.transaction.PlatformTransactionManager
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import javax.sql.DataSource
 
 /**
@@ -47,43 +45,9 @@ import javax.sql.DataSource
 @TestConfiguration
 class NotificationTestcontainersConfig {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL 16-alpine container.
-         *
-         * `.apply { start() }` 로 companion object 초기화 시점에 한 번만 기동.
-         * Ryuk 이 JVM 종료 시 자동 정리하므로 명시적 stop 불필요.
-         * (memory: concurrent-testcontainers-suite-flaky — singleton 패턴 표준.)
-         */
+        /** [SharedPostgres] 템플릿을 복제한 이 설정 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("bts_notification_e2e_test")
-                .withUsername("bts")
-                .withPassword("bts_e2e_test")
-                .apply { start() }
-
-        private var migrated = false
-
-        /**
-         * Flyway V400(DDL) + V401(시드) 마이그레이션을 1회만 실행한다.
-         *
-         * 동일 JVM 에서 여러 테스트 클래스가 이 설정을 공유해도 migrate 는 한 번만 수행된다.
-         */
-        @Synchronized
-        fun migrateOnce(
-            jdbcUrl: String,
-            username: String,
-            password: String,
-        ) {
-            if (migrated) return
-            Flyway.configure()
-                .dataSource(jdbcUrl, username, password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/notification")
-                .load()
-                .migrate()
-            migrated = true
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     /**
@@ -94,10 +58,7 @@ class NotificationTestcontainersConfig {
      * @return Testcontainers DB 에 연결된 [DriverManagerDataSource]
      */
     @Bean
-    fun dataSource(): DataSource {
-        migrateOnce(postgres.jdbcUrl, postgres.username, postgres.password)
-        return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-    }
+    fun dataSource(): DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
     /**
      * jOOQ [DSLContext] 빈.
