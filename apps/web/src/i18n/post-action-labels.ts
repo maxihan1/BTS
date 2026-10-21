@@ -77,6 +77,10 @@ export const postActionLabels = {
   error: {
     /** 목록 조회 실패 안내 문구 */
     loadFailed: 'post-action 목록을 불러오지 못했습니다. 다시 시도해 주세요.',
+    /** 목록 조회 403 (WF-08-1) */
+    forbidden: '이 워크플로우의 post-action 을 고칠 권한이 없습니다.',
+    /** 쓰기 409 — 초안이 열린 동안 고친 규칙은 다음 발행이 덮는다 (WF-08-1) */
+    draftOpen: '초안이 열려 있어 post-action 을 고칠 수 없습니다. 편집기에서 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.',
     /** 추가 실패 toast 메시지 */
     addFailed: 'post-action 추가에 실패했습니다.',
     /** 수정 실패 toast 메시지 */

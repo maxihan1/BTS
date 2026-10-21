@@ -135,6 +135,10 @@ export const validatorLabels = {
   error: {
     /** 목록 조회 실패 */
     loadFailed: '전환 규칙을 불러오지 못했습니다.',
+    /** 목록 조회 403 — 공유 워크플로우는 시스템 관리자, 프로젝트 워크플로우는 그 프로젝트 관리자 몫이다 (WF-08-1) */
+    forbidden: '이 워크플로우의 전환 규칙을 고칠 권한이 없습니다.',
+    /** 쓰기 409 — 초안이 열린 동안 고친 규칙은 다음 발행이 초안 것으로 덮는다 (WF-08-1) */
+    draftOpen: '초안이 열려 있어 규칙을 고칠 수 없습니다. 편집기에서 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.',
     /** 목록 조회 실패 재시도 버튼 */
     retryButton: '다시 시도',
     /** 삭제 실패 */
@@ -185,6 +189,8 @@ export function validatorErrorMessage(
       return '규칙 또는 전환을 찾을 수 없습니다. 목록을 새로 불러와 주세요.'
     case 'WORKFLOW_SCHEME_ACCESS_DENIED':
       return '워크플로우를 관리할 권한이 없습니다.'
+    case 'WORKFLOW_TRANSITION_CONFLICT':
+      return validatorLabels.error.draftOpen
     case 'WORKFLOW_INVALID_REQUEST':
       return '요청 형식이 올바르지 않습니다. 값을 확인해 주세요.'
     case 'WORKFLOW_UNAUTHENTICATED':

@@ -1,7 +1,6 @@
-// 워크플로우 전환별 전환 규칙(validator) 목록 + 추가/편집/삭제 섹션 — isSystemAdmin 게이팅 (FR-WF-06 D6)
+// 워크플로우 전환별 전환 규칙(validator) 목록 + 추가/편집/삭제 섹션 — 권한은 백엔드 403 이 가른다 (FR-WF-06 D6 · WF-08-1)
 import type { JSX } from 'react'
 import { useState } from 'react'
-import { useAuthUser } from '@/auth/authStore'
 import { ValidatorApiError, validatorConfigFormSchema } from '@/api/validators'
 import type { ValidatorPhase, ValidatorResponse } from '@/api/validators'
 import {
@@ -214,32 +213,6 @@ function ValidatorTableSkeleton(): JSX.Element {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 메인 컴포넌트 — isSystemAdmin 게이팅
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * 워크플로우 전환별 전환 규칙 설정 섹션.
- *
- * - `isSystemAdmin=true` 인 경우에만 렌더한다(아니면 `null`). 형제 `PostActionConfigSection` 승계.
- * - 전환을 고르면 그 전환의 규칙 목록을 로딩/에러/빈/목록 4갈래로 그린다.
- * - 편집 가능 여부는 **응답의 `editable`** 만 본다(제약 C1).
- */
-export function ValidatorConfigSection({
-  workflowKey,
-  transitions,
-}: ValidatorConfigSectionProps): JSX.Element | null {
-  const user = useAuthUser()
-  if (user?.isSystemAdmin !== true) {
-    return null
-  }
-  return <ValidatorConfigSectionContent workflowKey={workflowKey} transitions={transitions} />
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 내부 구현 (게이팅 통과 후) — hook 규칙 준수를 위해 분리
-// ─────────────────────────────────────────────────────────────────────────────
-
 interface DialogState {
   open: boolean
   mode: 'create' | 'edit'
@@ -256,7 +229,20 @@ const CLOSED_DIALOG: DialogState = {
   initialValue: undefined,
 }
 
-function ValidatorConfigSectionContent({
+// ─────────────────────────────────────────────────────────────────────────────
+// 메인 컴포넌트
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 워크플로우 전환별 전환 규칙 설정 섹션.
+ *
+ * - ★**화면이 권한을 판정하지 않는다** (WF-08-1). 예전 `isSystemAdmin` 게이트는 프로젝트 소유
+ *   워크플로우의 관리자까지 막았다 — 백엔드는 소유 스코프 `MANAGE_SCHEME` 을 이미 허용하는데
+ *   화면만 막는 두 번째 판정이었다. 목록 조회 403 이면 안내로 바꿔 그린다.
+ * - 전환을 고르면 그 전환의 규칙 목록을 로딩/권한 없음/에러/빈/목록 5갈래로 그린다.
+ * - 편집 가능 여부는 **응답의 `editable`** 만 본다(제약 C1).
+ */
+export function ValidatorConfigSection({
   workflowKey,
   transitions,
 }: ValidatorConfigSectionProps): JSX.Element {
@@ -267,7 +253,8 @@ function ValidatorConfigSectionContent({
   const [deleteTarget, setDeleteTarget] = useState<ValidatorResponse | null>(null)
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined)
 
-  const { data: validators = [], isLoading, isError, refetch } = useValidators(workflowKey, selectedTxId)
+  const { data: validators = [], isLoading, isError, error, refetch } = useValidators(workflowKey, selectedTxId)
+  const forbidden = error instanceof ValidatorApiError && error.status === 403
   const addMutation = useAddValidator(workflowKey, selectedTxId)
   const updateMutation = useUpdateValidator(workflowKey, selectedTxId, dialog.editingId)
   const deleteMutation = useDeleteValidator(workflowKey, selectedTxId)
@@ -340,7 +327,7 @@ function ValidatorConfigSectionContent({
           variant="default"
           size="xs"
           onClick={handleAddClick}
-          disabled={selectedTxId === ''}
+          disabled={selectedTxId === '' || forbidden}
           title={selectedTxId === '' ? validatorLabels.error.selectTransitionFirst : undefined}
           className="rounded-md px-3"
         >
@@ -380,6 +367,7 @@ function ValidatorConfigSectionContent({
           <ValidatorListArea
             validators={validators}
             isLoading={isLoading}
+            forbidden={forbidden}
             isError={isError}
             onRetry={() => { void refetch() }}
             onAddClick={handleAddClick}
@@ -428,6 +416,7 @@ function ValidatorConfigSectionContent({
 interface ValidatorListAreaProps {
   validators: ValidatorResponse[]
   isLoading: boolean
+  forbidden: boolean
   isError: boolean
   onRetry: () => void
   onAddClick: () => void
@@ -437,7 +426,7 @@ interface ValidatorListAreaProps {
 }
 
 /**
- * 목록 영역의 4갈래 — 로딩 / 에러(재시도) / 빈 / 표.
+ * 목록 영역의 5갈래 — 로딩 / 권한 없음 / 에러(재시도) / 빈 / 표.
  *
  * 빈 `<div/>` 를 돌려주는 갈래가 없어야 한다. 백로그 에러가 빈 화면으로 침묵한 실사고가
  * 로드맵 결함 목록에 있다.
@@ -445,6 +434,7 @@ interface ValidatorListAreaProps {
 function ValidatorListArea({
   validators,
   isLoading,
+  forbidden,
   isError,
   onRetry,
   onAddClick,
@@ -454,6 +444,10 @@ function ValidatorListArea({
 }: ValidatorListAreaProps): JSX.Element {
   if (isLoading) {
     return <ValidatorTableSkeleton />
+  }
+  if (forbidden) {
+    // 재시도 버튼을 주지 않는다 — 다시 불러와도 같은 403 이다.
+    return <EmptyState title={validatorLabels.error.forbidden} />
   }
   if (isError) {
     return (

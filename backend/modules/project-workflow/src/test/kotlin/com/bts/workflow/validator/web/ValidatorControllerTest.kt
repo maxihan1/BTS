@@ -6,6 +6,7 @@ import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowScope
+import com.bts.workflow.domain.exception.TransitionConflictException
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
@@ -16,6 +17,7 @@ import com.bts.workflow.validator.ValidatorRow
 import com.bts.workflow.validator.ValidatorTypeNotEditableException
 import com.bts.workflow.validator.ValidatorValidationException
 import com.bts.workflow.web.ManageSchemeGuard
+import com.bts.workflow.web.TransitionConflictExceptionHandler
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -133,6 +135,10 @@ class ValidatorControllerTest {
         /** validator 패키지 전용 예외 핸들러. */
         @Bean
         open fun validatorExceptionHandler(): ValidatorExceptionHandler = ValidatorExceptionHandler()
+
+        /** 전역 409 핸들러 — validator advice 에 없는 예외가 이쪽으로 떨어지는지를 재기 위해 함께 둔다. */
+        @Bean
+        open fun conflictHandler(): TransitionConflictExceptionHandler = TransitionConflictExceptionHandler()
     }
 
     @Autowired
@@ -280,6 +286,26 @@ class ValidatorControllerTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").value("WORKFLOW_VALIDATOR_INVALID"))
+    }
+
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `초안이 열려 있으면 409 WORKFLOW_TRANSITION_CONFLICT 와 사유`() {
+        // validator advice 는 basePackages 로 묶였고 이 예외의 핸들러가 없다 — 전역 advice 까지
+        // 떨어져야 표준 본문이 나간다. 중간에 catch-all 이 생기면 이 테스트가 500 으로 잡는다.
+        allowPermission()
+        every {
+            service.create(workflowKey, existingTransitionKey, "RequiredField", mapOf("field" to "resolution"), 0)
+        } throws TransitionConflictException(workflowKey, "초안이 열려 있어 전환 규칙을 고칠 수 없습니다.")
+
+        mockMvc.perform(
+            post(basePath(existingTransitionKey))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(requestBody())),
+        )
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_TRANSITION_CONFLICT"))
+            .andExpect(jsonPath("$.error.message").value("초안이 열려 있어 전환 규칙을 고칠 수 없습니다."))
     }
 
     /**

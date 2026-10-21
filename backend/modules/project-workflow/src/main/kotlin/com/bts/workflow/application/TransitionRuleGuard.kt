@@ -2,8 +2,10 @@
 
 package com.bts.workflow.application
 
+import com.bts.workflow.domain.exception.TransitionConflictException
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
+import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.validator.isEditable
 import org.springframework.stereotype.Component
 
@@ -119,5 +121,24 @@ class TransitionRuleRejected(
 
         /** 만들 수는 있으나 이 경로로 쓰기가 허용되지 않은 타입이다. */
         NOT_EDITABLE,
+    }
+}
+
+/**
+ * 초안이 열린 워크플로우의 전환 규칙 편집을 거절한다 — 편집 API(`ValidatorAdminService` ·
+ * `PostActionAdminService`) 전용 관문이다 (WF-08-1).
+ *
+ * 발행은 전환을 전량 교체하고 규칙을 **초안의 것으로** 다시 심는다([DraftRuleWriter]). 초안이 열린
+ * 동안 라이브 규칙을 고치면 다음 발행이 그 편집을 말없이 지운다. 규칙 CRUD 가 `workflows.version`
+ * 을 올리지 않아 발행의 `base_version` 검사로도 잡히지 않으므로, 쓰는 순간에 막는다.
+ *
+ * @throws TransitionConflictException 초안이 열려 있을 때(409).
+ */
+internal fun WorkflowDraftRepository.requireNoOpenDraft(workflowKey: String) {
+    if (existsForLiveWorkflow(workflowKey)) {
+        throw TransitionConflictException(
+            workflowKey,
+            "초안이 열려 있어 전환 규칙을 고칠 수 없습니다. 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.",
+        )
     }
 }

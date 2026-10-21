@@ -385,7 +385,7 @@
 - [ ] D5. 백엔드 테스트 — 자기 프로젝트 200 · 남의 프로젝트 403 · 전역 403 · 복제본 소유 확인 (책임. backend-engineer)
 - [ ] D6. 프론트 — 프로젝트 설정에 워크플로우·스킴 편집 (기존 `WorkflowEditorPage` 재사용, 신규 편집기 금지) (책임. frontend-engineer)
 - [ ] D7. E2E — 프로젝트 관리자가 만들고 고쳐 발행하고, 비-관리자 멤버는 403 안내를 본다 (책임. qa-engineer)
-- [ ] D8. WF-08-1 전환 규칙 편집이 SYSTEM_ADMIN 전용이고 앱 안 링크가 없다 — 공유 안 된 워크플로우는 그 프로젝트 관리자가 고쳐야 한다 — 결함 B4 · G15 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1·§2)
+- [x] D8. WF-08-1 전환 규칙 편집이 SYSTEM_ADMIN 전용이고 앱 안 링크가 없다 — 공유 안 된 워크플로우는 그 프로젝트 관리자가 고쳐야 한다 — 결함 B4 · G15 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1·§2) (PR #523, 2026-10-22). *화면 `isSystemAdmin` 게이트를 걷고 403 안내로 바꿨다 · 편집기에 규칙 화면 링크 · 초안이 열린 동안 규칙 쓰기는 409(발행이 초안 규칙으로 덮기 때문)*
 
 > **shared-kernel 공용 `WorkflowScope` 를 신설한다** (스펙 D8, Maxi 2026-09-08 확정). `WorkflowSchemeScope` 를 일반화하지 않는다 — 이름에 `Scheme` 이 남으면 `WorkflowDefinitionPermission` KDoc 이 경고한 개념 혼동을 그대로 일으키고, 그 경고 때문에 enum 은 이미 둘로 갈라져 있다. 정의 resolver 전용 스코프를 따로 두지도 않는다(두 목록이 서로를 검사하지 않게 된다). ⇒ **D4 를 담는 PR 이 shared-kernel 을 건드리므로 T3 이다.**
 

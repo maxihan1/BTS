@@ -10,6 +10,7 @@ import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
+import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
@@ -186,7 +187,12 @@ class PostActionE2EIntegrationTest {
             val resolver = TransitionKeyResolver(dsl)
 
             val service =
-                PostActionAdminService(postActionRepository, TransitionRuleGuard(mockk(), factory), resolver)
+                PostActionAdminService(
+                    postActionRepository,
+                    TransitionRuleGuard(mockk(), factory),
+                    resolver,
+                    WorkflowDraftRepository(dsl, objectMapper),
+                )
 
             // permissionResolver — relaxed mock (always allow)
             val permissionResolver: WorkflowSchemePermissionResolver = mockk(relaxed = true)

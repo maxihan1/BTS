@@ -24,9 +24,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * `@Order(HIGHEST_PRECEDENCE)` 가 **필요했다**.
  *
  * 이 예외는 그 조건에 해당하지 않는다 — 던지는 곳이
- * `WorkflowCommandService.createTransition`/`deleteTransition` 뿐이고 그 둘을 부르는 컨트롤러는
- * [WorkflowController](`com.bts.workflow.web`) 하나다(실측 — 레포 전역 호출자 grep).
- * 그 패키지를 덮는 catch-all advice 는 없다. 레포의 catch-all 은 전부
+ * `WorkflowCommandService.createTransition`/`deleteTransition` 과 전환 규칙 편집 서비스
+ * (`ValidatorAdminService` · `PostActionAdminService` — 초안이 열려 있을 때, WF-08-1)이고, 부르는
+ * 컨트롤러는 전부 project-workflow 안에 있다. 규칙 컨트롤러의 advice 는 `basePackages` 로 묶여 있고
+ * catch-all 이 없어 이 advice 까지 떨어진다(`ValidatorControllerTest` 가 409 로 잰다).
+ * 이 BC 를 덮는 catch-all advice 는 없다. 레포의 catch-all 은 전부
  * `basePackages`/`assignableTypes` 로 자기 BC 에 묶여 있고, `com.bts.workflow.web` 를 덮는 유일한
  * 전역 advice 인 [WorkflowExceptionHandler] 에는 catch-all 자체가 없다.
  * 필요 없는 전역 우선권은 **다른 advice 의 매핑을 빼앗아** 응답 형식을 조용히 바꾸므로 붙이지 않는다.
@@ -38,10 +40,10 @@ class TransitionConflictExceptionHandler {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 최초 전환 규칙 충돌 — 409.
+     * 전환 충돌 — 409.
      *
-     * 두 자리에서 온다 — 최초 전환을 두 개째 만들려 할 때(spec E2), 하나뿐인 최초 전환을 지우려
-     * 할 때(spec E5). 어느 쪽인지는 `code` 가 아니라 `message` 가 가른다. 호출자가 할 일(기존 최초
+     * 세 자리에서 온다 — 최초 전환을 두 개째 만들려 할 때(spec E2), 하나뿐인 최초 전환을 지우려
+     * 할 때(spec E5), 초안이 열린 워크플로우의 전환 규칙을 고치려 할 때(WF-08-1). 어느 쪽인지는 `code` 가 아니라 `message` 가 가른다. 호출자가 할 일(기존 최초
      * 전환을 고치거나 지운다 · 삭제를 포기한다)이 다르므로 사유를 사람 말 그대로 돌려준다.
      *
      * @param ex 충돌이 난 워크플로우 키와 사유를 담은 예외.

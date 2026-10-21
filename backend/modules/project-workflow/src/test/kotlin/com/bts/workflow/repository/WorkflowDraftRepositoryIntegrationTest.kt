@@ -53,12 +53,15 @@ class WorkflowDraftRepositoryIntegrationTest {
     private val repository = WorkflowDraftRepository(dsl, objectMapper)
 
     /** 테스트마다 새 워크플로우를 심는다. key 는 호출마다 달라야 uq_workflows_key 에 걸리지 않는다. */
-    private fun newWorkflow(): UUID {
-        val key = "wf-draft-${UUID.randomUUID()}"
+    private fun newWorkflow(
+        key: String = "wf-draft-${UUID.randomUUID()}",
+        deleted: Boolean = false,
+    ): UUID {
+        val deletedAt = if (deleted) "now()" else "NULL"
         return DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().use { stmt ->
                 stmt.executeQuery(
-                    "INSERT INTO workflows (key, name) VALUES ('$key', '초안 테스트') RETURNING id",
+                    "INSERT INTO workflows (key, name, deleted_at) VALUES ('$key', '초안 테스트', $deletedAt) RETURNING id",
                 ).use { rs ->
                     rs.next()
                     UUID.fromString(rs.getString(1))
@@ -192,6 +195,30 @@ class WorkflowDraftRepositoryIntegrationTest {
     @Test
     fun `초안이 없으면 null 이다`() {
         assertThat(repository.findByWorkflowId(newWorkflow())).isNull()
+    }
+
+    // ── 초안 열림 판정 (WF-08-1 — 규칙 편집 API 가 쓴다) ─────────────────────────
+
+    @Test
+    fun `초안이 열린 워크플로우만 열림으로 본다`() {
+        val key = "wf-open-${UUID.randomUUID()}"
+        val workflowId = newWorkflow(key)
+
+        assertThat(repository.existsForLiveWorkflow(key)).isFalse()
+        repository.upsert(workflowId, sampleDefinition(), baseVersion = 0, updatedBy = null)
+        assertThat(repository.existsForLiveWorkflow(key)).isTrue()
+    }
+
+    @Test
+    fun `지운 동명 워크플로우의 초안은 살아 있는 워크플로우를 막지 않는다`() {
+        // V206 이 key 유니크를 살아 있는 행끼리로 완화했다 — 지운 행의 초안이 같은 key 로 잡히면
+        // 새로 만든 워크플로우의 규칙 편집이 이유 없이 409 가 된다.
+        val key = "wf-reused-${UUID.randomUUID()}"
+        val deletedId = newWorkflow(key, deleted = true)
+        repository.upsert(deletedId, sampleDefinition(), baseVersion = 0, updatedBy = null)
+        newWorkflow(key)
+
+        assertThat(repository.existsForLiveWorkflow(key)).isFalse()
     }
 
     // ── 손상된 JSONB 는 조용히 접지 않는다 ────────────────────────────────────

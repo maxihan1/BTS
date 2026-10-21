@@ -3,7 +3,9 @@
 package com.bts.workflow.postaction
 
 import com.bts.workflow.application.TransitionRuleGuard
+import com.bts.workflow.domain.exception.TransitionConflictException
 import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.transition.TransitionKeyResolver
 import io.mockk.every
 import io.mockk.mockk
@@ -38,6 +40,7 @@ class PostActionAdminServiceTest {
     private lateinit var repository: PostActionRepository
     private lateinit var factory: WorkflowPostActionFactory
     private lateinit var transitionResolver: TransitionKeyResolver
+    private lateinit var draftRepository: WorkflowDraftRepository
     private lateinit var service: PostActionAdminService
 
     private val workflowKey = "test-wf"
@@ -50,7 +53,14 @@ class PostActionAdminServiceTest {
         repository = mockk()
         factory = mockk()
         transitionResolver = mockk()
-        service = PostActionAdminService(repository, TransitionRuleGuard(mockk(), factory), transitionResolver)
+        draftRepository = mockk { every { existsForLiveWorkflow(any()) } returns false }
+        service =
+            PostActionAdminService(
+                repository,
+                TransitionRuleGuard(mockk(), factory),
+                transitionResolver,
+                draftRepository,
+            )
 
         // 기본 stub: 합성 키 해석 성공 (단건)
         every {
@@ -79,6 +89,26 @@ class PostActionAdminServiceTest {
         assertThat(result).hasSize(1)
         assertThat(result.first().type).isEqualTo("CALL_WEBHOOK")
         verify(exactly = 1) { repository.findByTransitionId(transitionId) }
+    }
+
+    // ── 초안이 열린 동안의 쓰기 (WF-08-1) ─────────────────────────────────────
+
+    @Test
+    fun `초안이 열려 있으면 생성 수정 삭제가 전부 409 이고 DB 에 쓰지 않는다`() {
+        // 발행이 규칙을 초안 것으로 다시 심는다 — 여기서 통과시키면 다음 발행이 이 편집을 지운다.
+        every { draftRepository.existsForLiveWorkflow(workflowKey) } returns true
+        val config = mapOf<String, Any?>("url" to "https://example.com/hook", "method" to "POST")
+
+        assertThatThrownBy { service.create(workflowKey, transitionKey, "CALL_WEBHOOK", config, 0) }
+            .isInstanceOf(TransitionConflictException::class.java)
+        assertThatThrownBy { service.update(workflowKey, transitionKey, postActionId, "CALL_WEBHOOK", config, 0) }
+            .isInstanceOf(TransitionConflictException::class.java)
+        assertThatThrownBy { service.delete(workflowKey, transitionKey, postActionId) }
+            .isInstanceOf(TransitionConflictException::class.java)
+
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
+        verify(exactly = 0) { repository.update(any(), any(), any(), any()) }
+        verify(exactly = 0) { repository.deleteById(any()) }
     }
 
     // ── create ────────────────────────────────────────────────────────────────

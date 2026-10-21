@@ -1,14 +1,14 @@
-// 워크플로우 전환별 post-action 목록 + Webhook 추가/수정/삭제 섹션 — isSystemAdmin 게이팅
+// 워크플로우 전환별 post-action 목록 + Webhook 추가/수정/삭제 섹션 — 권한은 백엔드 403 이 가른다 (WF-08-1)
 import type { JSX } from 'react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { useAuthUser } from '@/auth/authStore'
 import {
   usePostActions,
   useAddPostAction,
   useUpdatePostAction,
   useRemovePostAction,
 } from '@/hooks/use-post-actions'
+import { PostActionApiError } from '@/api/post-actions'
 import type { PostActionResponse } from '@/api/post-actions'
 import { PostActionFormDialog } from '@/components/workflow/PostActionFormDialog'
 import type { PostActionFormValues } from '@/components/workflow/PostActionFormDialog'
@@ -172,14 +172,24 @@ function PostActionTable({ actions, onEditClick, onDeleteClick, isDeleting }: Po
   )
 }
 
+/**
+ * 쓰기 실패 toast 문구. 초안이 열려 있어 거절됐으면(409) 그 사유를, 아니면 [fallback] 을 쓴다 (WF-08-1).
+ */
+function mutationErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof PostActionApiError && error.errorCode === 'WORKFLOW_TRANSITION_CONFLICT'
+    ? postActionLabels.error.draftOpen
+    : fallback
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 메인 컴포넌트 — isSystemAdmin 게이팅
+// 메인 컴포넌트
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * 워크플로우 전환별 post-action 설정 섹션.
  *
- * - isSystemAdmin=true 인 경우에만 렌더 (아니면 null 반환).
+ * - 화면이 권한을 판정하지 않는다 — 목록 조회 403 이면 안내를 그린다 (WF-08-1, 형제
+ *   `ValidatorConfigSection` 과 같은 계약).
  * - 전환 선택 → usePostActions(workflowKey, transitionKey) 쿼리 활성.
  * - 0건 → 빈 상태 안내, N건 → 테이블 (type/config 요약/displayOrder/수정·삭제).
  * - CALL_WEBHOOK 행만 수정 버튼 활성 (config에서 url/method 추출 가능 시).
@@ -187,21 +197,6 @@ function PostActionTable({ actions, onEditClick, onDeleteClick, isDeleting }: Po
  * - 수정 버튼 → PostActionFormDialog(edit 모드, initialValues 프리필).
  * - 삭제 버튼 → useRemovePostAction.mutate(id).
  */
-export function PostActionConfigSection({ workflowKey, transitions }: PostActionConfigSectionProps): JSX.Element | null {
-  const user = useAuthUser()
-
-  // isSystemAdmin이 아니면 미렌더
-  if (user?.isSystemAdmin !== true) {
-    return null
-  }
-
-  return <PostActionConfigSectionContent workflowKey={workflowKey} transitions={transitions} />
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 내부 구현 컴포넌트 (게이팅 통과 후) — hook 규칙 준수를 위해 별도 분리
-// ─────────────────────────────────────────────────────────────────────────────
-
 interface DialogState {
   open: boolean
   mode: 'create' | 'edit'
@@ -218,12 +213,13 @@ const CLOSED_DIALOG: DialogState = {
   initialValues: undefined,
 }
 
-function PostActionConfigSectionContent({ workflowKey, transitions }: PostActionConfigSectionProps): JSX.Element {
+export function PostActionConfigSection({ workflowKey, transitions }: PostActionConfigSectionProps): JSX.Element {
   // 선택 값은 전환 id 다 — 그 문자열이 post-action 경로 세그먼트로 그대로 나간다.
   const [selectedTxId, setSelectedTxId] = useState<string>('')
   const [dialog, setDialog] = useState<DialogState>(CLOSED_DIALOG)
 
-  const { data: actions = [], isLoading, isError } = usePostActions(workflowKey, selectedTxId)
+  const { data: actions = [], isLoading, isError, error } = usePostActions(workflowKey, selectedTxId)
+  const forbidden = error instanceof PostActionApiError && error.status === 403
 
   // 모든 mutation hook은 컴포넌트 최상단에서 호출 (hook 규칙)
   const addMutation = useAddPostAction(workflowKey, selectedTxId)
@@ -252,8 +248,8 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
   function handleDeleteClick(id: string) {
     // C1: 삭제 실패 toast
     removeMutation.mutate(id, {
-      onError: () => {
-        toast.error(postActionLabels.error.removeFailed)
+      onError: (err: unknown) => {
+        toast.error(mutationErrorMessage(err, postActionLabels.error.removeFailed))
       },
     })
   }
@@ -280,8 +276,8 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         {
           onSuccess: () => setDialog(CLOSED_DIALOG),
           // C1: 추가 실패 toast
-          onError: () => {
-            toast.error(postActionLabels.error.addFailed)
+          onError: (err: unknown) => {
+            toast.error(mutationErrorMessage(err, postActionLabels.error.addFailed))
           },
         },
       )
@@ -296,8 +292,8 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
         {
           onSuccess: () => setDialog(CLOSED_DIALOG),
           // C1: 수정 실패 toast
-          onError: () => {
-            toast.error(postActionLabels.error.updateFailed)
+          onError: (err: unknown) => {
+            toast.error(mutationErrorMessage(err, postActionLabels.error.updateFailed))
           },
         },
       )
@@ -321,7 +317,7 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           variant="default"
           size="xs"
           onClick={handleAddClick}
-          disabled={selectedTxId === ''}
+          disabled={selectedTxId === '' || forbidden}
           aria-label={postActionLabels.section.addWebhookButton}
           title={selectedTxId === '' ? postActionLabels.error.selectTransitionFirst : undefined}
           className={cn(
@@ -370,6 +366,10 @@ function PostActionConfigSectionContent({ workflowKey, transitions }: PostAction
           {isLoading ? (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               로딩 중...
+            </div>
+          ) : forbidden ? (
+            <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+              {postActionLabels.error.forbidden}
             </div>
           ) : isError ? (
             // D9: 목록 조회 실패 에러 UI

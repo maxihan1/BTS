@@ -4,7 +4,9 @@ package com.bts.workflow.postaction
 
 import com.bts.workflow.application.TransitionRuleGuard
 import com.bts.workflow.application.TransitionRuleRejected
+import com.bts.workflow.application.requireNoOpenDraft
 import com.bts.workflow.engine.WorkflowPostActionFactory
+import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.transition.TransitionKeyResolver
 import com.bts.workflow.transition.requireContains
 import com.bts.workflow.transition.resolveTransitionOrThrow
@@ -40,12 +42,14 @@ import java.util.UUID
  * @param guard 전환 규칙 관문. 발행 경로([com.bts.workflow.application.DraftRuleWriter])와 **같은
  *   한 벌**이다 — 사본을 두면 관문이 하나 늘 때 한쪽만 늘어 그 경로가 우회로가 된다.
  * @param transitionResolver transitionKey → transition_id UUID 해석기.
+ * @param draftRepository 초안이 열린 워크플로우의 규칙 쓰기를 막는 데 쓴다 — [requireNoOpenDraft].
  */
 @Service
 class PostActionAdminService(
     private val repository: PostActionRepository,
     private val guard: TransitionRuleGuard,
     private val transitionResolver: TransitionKeyResolver,
+    private val draftRepository: WorkflowDraftRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -87,6 +91,7 @@ class PostActionAdminService(
         displayOrder: Int,
     ): PostActionRow {
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
+        draftRepository.requireNoOpenDraft(workflowKey)
         validateConfig(type, config)
         val row = repository.insert(transitionId, type, config, displayOrder)
         log.info(
@@ -123,6 +128,7 @@ class PostActionAdminService(
         displayOrder: Int,
     ): PostActionRow {
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
+        draftRepository.requireNoOpenDraft(workflowKey)
         ensurePostActionBelongsToTransition(id, transitionId)
         validateConfig(type, config)
         val row = repository.update(id, type, config, displayOrder)
@@ -151,6 +157,7 @@ class PostActionAdminService(
         id: UUID,
     ) {
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
+        draftRepository.requireNoOpenDraft(workflowKey)
         ensurePostActionBelongsToTransition(id, transitionId)
         repository.deleteById(id)
         log.info(
