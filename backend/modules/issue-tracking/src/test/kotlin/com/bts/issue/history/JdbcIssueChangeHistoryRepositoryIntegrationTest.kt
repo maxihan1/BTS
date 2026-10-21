@@ -2,16 +2,14 @@
 
 package com.bts.issue.history
 
+import com.bts.issue.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -32,21 +30,9 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class JdbcIssueChangeHistoryRepositoryIntegrationTest {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container.
-         * quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구.
-         * [com.bts.issue.repository.IssueTestcontainersBase] 와 동일 이미지 선택 이유.
-         */
+        /** SharedPostgres 템플릿을 복제한 클래스 전용 DB 접속 정보 */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     private lateinit var repository: IssueChangeHistoryRepository
@@ -55,14 +41,6 @@ class JdbcIssueChangeHistoryRepositoryIntegrationTest {
     @BeforeAll
     fun bootstrap() {
         if (bootstrapped) return
-
-        // Flyway — DB 스키마 버전 관리 도구. V001~V018 마이그레이션 전체 적용.
-        Flyway.configure()
-            .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/issue-tracking")
-            .load()
-            .migrate()
 
         val dataSource =
             DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)

@@ -9,6 +9,7 @@ import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.project.repository.ProjectLookupRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
 import com.bts.issue.version.application.VersionApplicationService
 import com.bts.issue.version.releasenotes.ReleaseNotesService
@@ -18,7 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -52,8 +52,6 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Clock
 import java.time.Instant
@@ -112,17 +110,9 @@ class ReleaseNotesIntegrationTest {
         }
 
         companion object {
-            /** JVM 단위 singleton Testcontainers — singleton pattern */
+            /** SharedPostgres 템플릿을 복제한 클래스 전용 DB 접속 정보 */
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_rn_test")
-                    .withUsername("bts")
-                    .withPassword("bts_rn_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabase()
         }
 
         @Bean
@@ -241,7 +231,6 @@ class ReleaseNotesIntegrationTest {
     @BeforeAll
     fun setUpAll() {
         if (!initialized) {
-            applyMigrations()
             seedProject()
             initialized = true
         }
@@ -581,19 +570,6 @@ class ReleaseNotesIntegrationTest {
                 return rs.getObject("id") as UUID
             }
         }
-    }
-
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/issue-tracking")
-            .load()
-            .migrate()
     }
 
     private fun seedProject() {

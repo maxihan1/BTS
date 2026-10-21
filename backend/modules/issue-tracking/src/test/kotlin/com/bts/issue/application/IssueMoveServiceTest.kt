@@ -19,6 +19,7 @@ import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueKeyRedirectRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.version.repository.VersionRepository
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -33,7 +34,6 @@ import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -46,8 +46,6 @@ import org.junit.jupiter.api.assertThrows
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -70,15 +68,7 @@ import java.util.UUID
 class IssueMoveServiceTest {
     companion object {
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_move_svc_test")
-                .withUsername("bts")
-                .withPassword("bts_move_svc_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         private const val SRC_PROJECT = "MSRC"
         private const val DST_PROJECT = "MDST"
@@ -117,13 +107,6 @@ class IssueMoveServiceTest {
     @BeforeAll
     fun bootstrap() {
         if (bootstrapped) return
-
-        Flyway.configure()
-            .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/issue-tracking")
-            .load()
-            .migrate()
 
         val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         dsl = DSL.using(dataSource, SQLDialect.POSTGRES)

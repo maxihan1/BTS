@@ -2,6 +2,7 @@
 
 package com.bts.issue
 
+import com.bts.issue.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -11,8 +12,6 @@ import org.springframework.scheduling.TaskScheduler
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 
 /**
  * IssueTracking 모듈 부팅 컨텍스트 로드 테스트.
@@ -48,22 +47,17 @@ class IssueTrackingApplicationContextTest {
 
     companion object {
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_context_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         @JvmStatic
         @DynamicPropertySource
         fun datasourceProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+            registry.add("spring.datasource.url") { postgres.jdbcUrl }
+            registry.add("spring.datasource.username") { postgres.username }
+            registry.add("spring.datasource.password") { postgres.password }
+            // 템플릿에서 마이그레이션이 이미 적용됐다.
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
         }
     }
 

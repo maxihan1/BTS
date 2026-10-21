@@ -4,9 +4,9 @@ package com.bts.issue.project.repository
 
 import com.bts.issue.project.domain.Project
 import com.bts.issue.project.domain.ProjectKeyAlreadyExistsException
+import com.bts.issue.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.exception.IntegrityConstraintViolationException
 import org.jooq.impl.DSL
@@ -14,10 +14,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.OffsetDateTime
 import java.util.concurrent.CountDownLatch
@@ -38,35 +34,16 @@ import java.util.concurrent.TimeUnit
  * - 소프트 삭제된 프로젝트의 key 재사용(EC-1) — DB UNIQUE 는 deleted_at 무관하게 점유하므로 409.
  * - 동시 동일 key 2건 insert(EC-6) — DB UNIQUE 가 진실원천, 1건만 성공.
  */
-@Testcontainers
 class ProjectCreateRepositoryIntegrationTest {
     companion object {
-        // quay.io/tembo/pg16-pgmq:latest — V002 마이그레이션의 pgmq 확장 요구로 tembo 이미지 사용.
-        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var repository: ProjectCreateRepository
 
         @BeforeAll
         @JvmStatic
         fun setup() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking")
-                .load()
-                .migrate()
-
             val dataSource =
                 DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)

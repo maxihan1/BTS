@@ -13,6 +13,7 @@ import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.shared.issue.IssueStatusMigrationPort
 import com.bts.shared.issue.StatusMigrationCommand
@@ -22,7 +23,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -41,8 +41,6 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Clock
 import java.time.OffsetDateTime
@@ -77,17 +75,9 @@ class StatusMigrationEnqueueIntegrationTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
         companion object {
-            /** JVM 단위 singleton Testcontainers — quay.io/tembo/pg16-pgmq:latest (pgmq 확장 포함) */
+            /** SharedPostgres 템플릿을 복제한 클래스 전용 DB 접속 정보 */
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_status_migration_it")
-                    .withUsername("bts")
-                    .withPassword("bts_status_migration_it")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabaseWithWorkflow()
         }
 
         @Bean
@@ -165,7 +155,6 @@ class StatusMigrationEnqueueIntegrationTest {
     @BeforeAll
     fun setUpAll() {
         if (!bootstrapped) {
-            applyMigrations()
             seedStatusCatalog()
             seedProjects()
             bootstrapped = true
@@ -523,23 +512,6 @@ class StatusMigrationEnqueueIntegrationTest {
             1,
             10,
         ).map { it.get("message", String::class.java) }
-
-    /** Flyway — issue-tracking(bulk_operations·pgmq) + project-workflow(statuses 카탈로그) 단일 pass. */
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-            .placeholderReplacement(false)
-            .locations(
-                "classpath:db/migration/issue-tracking",
-                "classpath:db/migration/project-workflow",
-            )
-            .load()
-            .migrate()
-    }
 
     /**
      * 상태 카탈로그 픽스처 — **이 테스트가 자기 상태를 직접 심는다.**

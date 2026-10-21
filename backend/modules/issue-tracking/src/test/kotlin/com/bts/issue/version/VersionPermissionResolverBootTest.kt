@@ -4,6 +4,7 @@ package com.bts.issue.version
 
 import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.version.adapter.AlwaysAllowVersionPermissionResolver
 import com.bts.shared.permission.VersionPermissionResolver
 import com.bts.shared.user.UserLookupPort
@@ -18,8 +19,6 @@ import org.springframework.context.ApplicationContext
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 
 /**
  * 비prod issue-tracking 컨텍스트 [VersionPermissionResolver] 부팅 회귀 가드 (FR-VR-01 task-5).
@@ -53,22 +52,17 @@ class VersionPermissionResolverBootTest {
 
     companion object {
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_version_perm_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         @JvmStatic
         @DynamicPropertySource
         fun datasourceProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+            registry.add("spring.datasource.url") { postgres.jdbcUrl }
+            registry.add("spring.datasource.username") { postgres.username }
+            registry.add("spring.datasource.password") { postgres.password }
+            // 템플릿에서 마이그레이션이 이미 적용됐다.
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
         }
     }
 

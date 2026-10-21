@@ -10,6 +10,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueMentioned
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
@@ -36,7 +37,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -59,8 +59,6 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Clock
 import java.util.UUID
@@ -108,17 +106,9 @@ class IssueMentionPublishIntegrationTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
         companion object {
-            /** JVM 단위 singleton Testcontainers — singleton pattern (learnings 2026-05-21) */
+            /** SharedPostgres 템플릿을 복제한 클래스 전용 DB 접속 정보 */
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_mention_it_test")
-                    .withUsername("bts")
-                    .withPassword("bts_mention_it_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabaseWithWorkflow()
 
             /** Bob — G1-S1 멘션 대상 UUID (Zod v4 형식) */
             val BOB_ID: UUID = UUID.fromString("bb000000-0000-4000-8000-000000000001")
@@ -381,7 +371,6 @@ class IssueMentionPublishIntegrationTest {
     lateinit var objectMapper: ObjectMapper
 
     companion object {
-        private var migrated = false
         private var seeded = false
 
         private const val PROJECT_KEY = "MENTION"
@@ -392,10 +381,6 @@ class IssueMentionPublishIntegrationTest {
 
     @BeforeAll
     fun setUpAll() {
-        if (!migrated) {
-            applyMigrations()
-            migrated = true
-        }
         if (!seeded) {
             seedProjectAndWorkflow()
             seeded = true
@@ -520,22 +505,6 @@ class IssueMentionPublishIntegrationTest {
             .filter { json -> json.get("type")?.asText() == "issue.mentioned" }
             .map { json -> objectMapper.treeToValue(json, IssueMentioned::class.java) }
             .firstOrNull()
-    }
-
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-            .placeholderReplacement(false)
-            .locations(
-                "classpath:db/migration/issue-tracking",
-                "classpath:db/migration/project-workflow",
-            )
-            .load()
-            .migrate()
     }
 
     @Suppress("LongMethod")

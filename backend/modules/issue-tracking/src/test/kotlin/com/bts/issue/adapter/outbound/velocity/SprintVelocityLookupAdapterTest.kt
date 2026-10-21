@@ -10,6 +10,7 @@ import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
@@ -31,7 +32,6 @@ import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -50,8 +50,6 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
@@ -83,15 +81,7 @@ class SprintVelocityLookupAdapterTest {
     open class TestConfig {
         companion object {
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_velocity_test")
-                    .withUsername("bts")
-                    .withPassword("bts_velocity_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabaseWithWorkflow()
 
             val securityDirectory = SwitchableSecurityDirectory()
         }
@@ -226,7 +216,6 @@ class SprintVelocityLookupAdapterTest {
 
     companion object {
         private const val PROJECT_KEY = "VELOC"
-        private var migrated = false
         private var seeded = false
 
         private var testProjectId: UUID = UUID.randomUUID()
@@ -249,10 +238,6 @@ class SprintVelocityLookupAdapterTest {
 
     @BeforeAll
     fun setUpAll() {
-        if (!migrated) {
-            applyMigrations()
-            migrated = true
-        }
         if (!seeded) {
             seedAll()
             seeded = true
@@ -474,18 +459,6 @@ class SprintVelocityLookupAdapterTest {
                 stmt.executeUpdate()
             }
         }
-    }
-
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(TestConfig.postgres.jdbcUrl, TestConfig.postgres.username, TestConfig.postgres.password)
-            .placeholderReplacement(false)
-            .locations(
-                "classpath:db/migration/issue-tracking",
-                "classpath:db/migration/project-workflow",
-            )
-            .load()
-            .migrate()
     }
 
     /**
