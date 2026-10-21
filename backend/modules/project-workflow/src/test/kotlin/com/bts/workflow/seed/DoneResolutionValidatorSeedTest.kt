@@ -16,9 +16,9 @@ import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -32,17 +32,12 @@ import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import java.sql.DriverManager
 import java.util.concurrent.Executors
 
 /**
  * DONE 카테고리 진입 전환에 RequiredField(resolution) validator 가 시드되는지 검증한다.
  *
- * Testcontainers PostgreSQL + Flyway + YamlSeedService (production 구현체) 전체 스택.
+ * SharedPostgres(Testcontainers 공용 PostgreSQL) + YamlSeedService (production 구현체) 전체 스택.
  * Spring ApplicationContext 없이 의존 객체를 직접 조합한다.
  *
  * ## 검증 범위 (FR-IS-07 Task B7 명세)
@@ -66,23 +61,12 @@ import java.util.concurrent.Executors
  * ## TDD 근거
  * B7 RED — production YAML 에 validators 미추가 상태에서 S1 을 실행하면 RequiredField 가 0건이어서 실패한다.
  */
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class DoneResolutionValidatorSeedTest {
     companion object {
         private val log = LoggerFactory.getLogger(DoneResolutionValidatorSeedTest::class.java)
 
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_done_res_test")
-                .withUsername("bts")
-                .withPassword("bts_done_res_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         private val spelExecutor = Executors.newCachedThreadPool()
 
@@ -97,46 +81,6 @@ class DoneResolutionValidatorSeedTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // Flyway 2단계 — V201 이 issue_types FK 참조
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 

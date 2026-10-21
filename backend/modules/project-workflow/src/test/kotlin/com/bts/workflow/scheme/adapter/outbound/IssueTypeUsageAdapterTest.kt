@@ -2,14 +2,12 @@
 
 package com.bts.workflow.scheme.adapter.outbound
 
+import com.bts.workflow.testsupport.SharedPostgres
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
@@ -29,25 +27,10 @@ import java.util.UUID
  */
 class IssueTypeUsageAdapterTest : DescribeSpec({
 
-    val temboImage =
-        DockerImageName
-            .parse("quay.io/tembo/pg16-pgmq:latest")
-            .asCompatibleSubstituteFor("postgres")
-
-    val postgres =
-        PostgreSQLContainer(temboImage)
-            .withDatabaseName("bts_test")
-            .withUsername("test")
-            .withPassword("test")
+    val postgres = SharedPostgres.freshDatabase()
 
     beforeSpec {
-        postgres.start()
         Class.forName("org.postgresql.Driver")
-        applyMigrations(postgres)
-    }
-
-    afterSpec {
-        postgres.stop()
     }
 
     fun newDsl(): Pair<Connection, DSLContext> {
@@ -176,67 +159,4 @@ class IssueTypeUsageAdapterTest : DescribeSpec({
             }
         }
     }
-}) {
-    companion object {
-        /**
-         * V200 + V201 마이그레이션 적용.
-         *
-         * [WorkflowSchemeEventPublisherIntegrationTest.applyMigrations] 와 동일 전략.
-         * cross-BC FK (issue_type_id → issue_types.id) 를 위해
-         * issue-tracking + project-workflow 마이그레이션을 함께 적용한다.
-         */
-        private fun applyMigrations(postgres: PostgreSQLContainer<*>) {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS projects (
-                            id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-                            key           VARCHAR(10)  NOT NULL UNIQUE,
-                            name          VARCHAR(255) NOT NULL,
-                            key_sequence  BIGINT       NOT NULL DEFAULT 0,
-                            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at    TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-        }
-    }
-}
+})

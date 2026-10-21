@@ -40,6 +40,7 @@ import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.scheme.repository.ProjectRef
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.ValidatorRepository
 import com.bts.workflow.web.WorkflowDraftController
@@ -49,23 +50,21 @@ import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.http.converter.json.Jackson2ObjectMapperBuilder
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.context.SecurityContextHolder
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 import java.util.concurrent.Executors
+
+// LargeClass 억제 — 발행·이관 두 경로의 전 시나리오(가드 8종·권한 순서·재카운트·in-flight)가
+// 같은 DB 픽스처와 스텁 포트 4종을 공유한다. 쪼개면 그 조립이 파일마다 복제되고,
+// 복제된 픽스처는 서로 어긋나도 아무도 모른다.
 
 /**
  * [WorkflowPublishService] Testcontainers 통합 테스트.
@@ -86,58 +85,10 @@ import java.util.concurrent.Executors
  *
  * 참조. FR-WF-07 D5 · ADR 2026-08-18-workflow-db-as-source-of-truth
  */
-@Testcontainers
-// LargeClass 억제 — 발행·이관 두 경로의 전 시나리오(가드 8종·권한 순서·재카운트·in-flight)가
-// 같은 Testcontainers 픽스처와 스텁 포트 4종을 공유한다. 쪼개면 그 조립이 파일마다 복제되고,
-// 복제된 픽스처는 서로 어긋나도 아무도 모른다.
 @Suppress("LargeClass")
 class WorkflowPublishServiceIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-
-        /** 순서가 load-bearing 이다 — issue_types 를 먼저 만들면 Flyway 가 non-empty 스키마를 거부한다. */
-        @BeforeAll
-        @JvmStatic
-        fun applyMigrations() {
-            flyway().target("200").load().migrate()
-            createIssueTypes()
-            flyway().load().migrate()
-        }
-
-        @JvmStatic
-        private fun flyway() =
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-
-        @JvmStatic
-        private fun createIssueTypes() {
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     /**

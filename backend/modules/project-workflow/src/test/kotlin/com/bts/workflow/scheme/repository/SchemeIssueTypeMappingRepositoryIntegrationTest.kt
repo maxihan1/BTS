@@ -7,17 +7,13 @@ import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
 import com.bts.workflow.scheme.exception.MappingDuplicateException
+import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Instant
 import java.util.UUID
@@ -43,31 +39,15 @@ import java.util.UUID
  * - DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY: Kotlin 맵과 DB workflow_schemes(is_default=TRUE) 정합
  *   (SQL↔Kotlin DRY drift fail-fast — V201 CASE 문과 값이 중복되어 컴파일타임 강제가 불가하다)
  *
- * Cross-BC FK 대응 패턴 (T7 WorkflowSchemesMigrationIntegrationTest 동일).
- * - Flyway target="1" → issue_types 스텁 생성 → LATEST migrate.
+ * Cross-BC FK 대응 — SharedPostgres 가 마이그레이션이 끝난 전용 데이터베이스를 준다.
  * - workflow_scheme_issue_type_mappings 는 workflows(UUID PK) + issue_types(BIGINT PK) FK 보유.
  * - workflows fixture 및 issue_types fixture 사전 INSERT 필요.
  *
- * Testcontainers 이미지: quay.io/tembo/pg16-pgmq:latest (V004 pgmq 확장 요구).
- * Spring 컨텍스트 없이 Flyway + jOOQ DSL 직접 구성.
+ * Spring 컨텍스트 없이 jOOQ DSL 직접 구성.
  */
-@Testcontainers
 class SchemeIssueTypeMappingRepositoryIntegrationTest {
     companion object {
-        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 + pgmq.create() 요구로 인해 tembo 이미지 사용.
-        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
-        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var repository: SchemeIssueTypeMappingRepository
 
@@ -82,44 +62,6 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // 2단계 Flyway — V200 까지 적용 → issue_types 스텁 IF NOT EXISTS → V201 실행.
-            // cross-BC dep 으로 issue-tracking V001~V003 도 함께 적용됨 (V003 가 issue_types 진짜 테이블 생성).
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            // issue_types 스텁 — workflow_scheme_issue_type_mappings.issue_type_id cross-BC FK 통과용.
-            // 프로덕션: issue-tracking V003 이 먼저 실행. 테스트: project-workflow 모듈 Flyway 만 실행.
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-
-            // V002~V004 실행 (LATEST)
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             // workflows fixture — V004 default mapping seed 가 ON CONFLICT 를 쓰므로,
             // test 전용 워크플로우를 추가 삽입한다.
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->

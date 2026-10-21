@@ -3,9 +3,9 @@
 package com.bts.workflow.seed
 
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -15,10 +15,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 
 /**
@@ -34,42 +30,16 @@ import java.sql.DriverManager
  *
  * 기대값 12/17 은 시드 YAML 4개 전수 실측이다 (상태 키 유일 12 · 워크플로우별 행 합 17).
  */
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class SeedStatusCatalogIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var service: YamlSeedService
 
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // V201 이 issue_types 를 참조하므로 2단계 — V200 까지 적용 → 스텁 생성 → 나머지 전부.
-            migrate("200")
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-            migrate(null)
-
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             service =
@@ -80,19 +50,6 @@ class SeedStatusCatalogIntegrationTest {
                     mockk(relaxed = true),
                     SchemeIssueTypeMappingRepository(dsl),
                 )
-        }
-
-        private fun migrate(target: String?) {
-            val configure =
-                Flyway.configure()
-                    .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                    .placeholderReplacement(false)
-                    .locations(
-                        "classpath:db/migration/issue-tracking",
-                        "classpath:db/migration/project-workflow",
-                    )
-            if (target != null) configure.target(target)
-            configure.load().migrate()
         }
     }
 

@@ -15,19 +15,15 @@ import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentReposit
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.bts.workflow.scheme.web.dto.WorkflowSchemeDetailResponse
+import com.bts.workflow.testsupport.SharedPostgres
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 
 /**
@@ -41,20 +37,9 @@ import java.sql.DriverManager
  * - IT2. findDetail — usedByProjectsCount + mappingsCount 올바른 값 반환
  * - IT3. listWithCounts — WorkflowSchemeDetailResponse 목록에 카운트 포함
  */
-@Testcontainers
 class WorkflowSchemeControllerIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_ctrl_int")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var service: WorkflowSchemeApplicationService
         lateinit var issueTypeLookupPort: IssueTypeLookupPort
@@ -63,58 +48,6 @@ class WorkflowSchemeControllerIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // 1단계: project-workflow + issue-tracking migration (cross-BC stub 포함)
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                    stmt.execute(
-                        """
-                        INSERT INTO issue_types (key, name, is_standard) VALUES
-                            ('story',    '스토리',    TRUE),
-                            ('bug',      '버그',      TRUE),
-                            ('task',     '태스크',    TRUE),
-                            ('epic',     '에픽',      TRUE),
-                            ('subtask',  '서브태스크', TRUE)
-                        ON CONFLICT DO NOTHING
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            // 2단계: 나머지 migration 전부 적용
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             // workflows seed (V004 mapping seed 가 workflows FK 참조)
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.createStatement().use { stmt ->

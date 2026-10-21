@@ -22,19 +22,15 @@ import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -50,20 +46,9 @@ import java.util.UUID
  * 컨트롤러가 권한을 먼저 묻고 서비스가 대상을 조회한다(`VersionApplicationService.kt:136-138` 관례).
  * 존재 probe 를 막기 위한 의도된 정책이다.
  */
-@Testcontainers
 class WorkflowCrudIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var dsl: DSLContext
         lateinit var repository: WorkflowRepository
@@ -101,10 +86,6 @@ class WorkflowCrudIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            migrateTo("200")
-            createIssueTypes()
-            migrateToLatest()
-
             val dataSource =
                 DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
@@ -120,39 +101,6 @@ class WorkflowCrudIntegrationTest {
                     // 이 테스트는 소유를 실제로 잰다 — 스텁이 아니라 실물 결정기를 쓴다.
                     WorkflowOwnershipScopeResolver(WorkflowSchemeRepository(dsl), repository, projectLookup),
                 )
-        }
-
-        private fun migrateTo(target: String) {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking", "classpath:db/migration/project-workflow")
-                .target(target)
-                .load()
-                .migrate()
-        }
-
-        private fun migrateToLatest() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking", "classpath:db/migration/project-workflow")
-                .load()
-                .migrate()
-        }
-
-        private fun createIssueTypes() {
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
         }
     }
 

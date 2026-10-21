@@ -18,6 +18,7 @@ import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.validator.CustomExpressionValidator
 import com.bts.workflow.validator.RequiredFieldValidator
@@ -25,7 +26,6 @@ import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -36,10 +36,6 @@ import org.junit.jupiter.api.TestMethodOrder
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
@@ -63,23 +59,10 @@ import java.util.concurrent.Executors
  *
  * 참조. FR-WF-01 Task 35 / docs/plans/2026-05-21-project-workflow-bc-fr-wf-01-fsm-1-pr.md
  */
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class WorkflowIntegrationTest {
     companion object {
-        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 요구로 인해 tembo 이미지 사용.
-        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         /**
          * S4 SpEL 평가용 공유 executor.
@@ -98,40 +81,6 @@ class WorkflowIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // Flyway 2단계 — V201 (workflow_schemes) issue_types cross-BC FK 대응
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
             // jOOQ DSLContext — SQL을 코드로 안전하게 작성하는 라이브러리의 핵심 진입점

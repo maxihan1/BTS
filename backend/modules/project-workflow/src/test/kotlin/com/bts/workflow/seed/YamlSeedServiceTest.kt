@@ -7,11 +7,10 @@ import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
-import org.flywaydb.core.api.configuration.FluentConfiguration
 import org.jooq.DSLContext
 import org.jooq.Record
 import org.jooq.SQLDialect
@@ -27,10 +26,6 @@ import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.core.io.Resource
 import org.springframework.core.io.ResourceLoader
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.sql.DriverManager
@@ -38,7 +33,7 @@ import java.sql.DriverManager
 /**
  * YamlSeedService 통합 테스트.
  *
- * Testcontainers PostgreSQL + Flyway V001 적용 후 YamlSeedService를 직접 호출한다.
+ * SharedPostgres(Testcontainers 공용 PostgreSQL)가 마이그레이션을 끝낸 DB 에서 YamlSeedService를 직접 호출한다.
  * Spring ApplicationContext 없이 필요한 의존성을 직접 조합한다.
  *
  * 검증 범위.
@@ -47,25 +42,12 @@ import java.sql.DriverManager
  * 3. YAML 변경 후 재호출 → 기존 DB 무변경 (ADR db-as-source-of-truth D2)
  * 4. 잘못된 YAML → IllegalStateException (fail-fast 부팅 차단)
  */
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class YamlSeedServiceTest {
     companion object {
         private val log = LoggerFactory.getLogger(YamlSeedServiceTest::class.java)
 
-        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 요구로 인해 tembo 이미지 사용.
-        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var service: YamlSeedService
         lateinit var repository: WorkflowRepository
@@ -73,50 +55,6 @@ class YamlSeedServiceTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // Flyway — DB 스키마 변경을 버전 관리하는 도구.
-            // V201 (workflow_schemes) 가 issue_types FK 를 참조하므로 2단계 실행:
-            //   1단계: V200 (project-workflow init) 까지만 — cross-BC dep 으로 issue-tracking V001~V003 도 함께 적용
-            //   2단계: issue_types 스텁 IF NOT EXISTS 안전판 → V201 까지
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            // issue_types 스텁 — V004 의 cross-BC FK 통과용 (프로덕션에서는 issue-tracking V003 이 생성)
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             val dataSource =
                 DriverManagerDataSource(
                     postgres.jdbcUrl,
@@ -661,11 +599,11 @@ class YamlSeedServiceTest {
     /**
      * **빈 스키마를 이 테스트가 직접 만든 뒤** 시드만 돌려 INITIAL 전환이 생기는지 본다.
      *
-     * ### 왜 컨테이너를 하나 더 띄우나 — 선재 행이 판정을 가짜로 만든다
+     * ### 왜 전용 DB 를 하나 더 만드나 — 선재 행이 판정을 가짜로 만든다
      * V207 ⑨ 의 INITIAL 백필은 **마이그레이션 시점에 있던 워크플로우**에만 1건씩 넣는다. 그래서
      * 이미 워크플로우가 들어 있는 DB 에서는 시드가 INITIAL 을 안 심어도 INITIAL 행이 보인다 —
      * 저장소가 `shared-dev-db-preexisting-rows-fake-green` 으로 부르는 그 양식이다. 클래스 공용
-     * 컨테이너는 앞선 시나리오들이 이미 시드를 돌려 놓았으므로 여기서 쓸 수 없다. 새 컨테이너에
+     * 컨테이너는 앞선 시나리오들이 이미 시드를 돌려 놓았으므로 여기서 쓸 수 없다. 새 DB 에
      * 마이그레이션만 적용하면 `workflows` 가 비어 백필이 0행이고, 그 뒤에 나타나는 INITIAL 은
      * **시드가 심은 것뿐**이다. 시드 전 전환 0건을 직접 단언해 그 전제를 못 박는다.
      *
@@ -677,36 +615,26 @@ class YamlSeedServiceTest {
     @Test
     @Order(13)
     fun `빈 스키마에 시드만 돌려도 표준 4 워크플로우가 INITIAL 전환을 1건씩 갖는다`() {
-        val fresh: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_seed_only")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val dsl = dslFor(SharedPostgres.freshDatabase())
 
-        fresh.use { container ->
-            container.start()
-            migrateWorkflowSchema(container)
-            val dsl = dslFor(container)
+        assertThat(dsl.fetchValue("SELECT COUNT(*) FROM workflow_transitions") as Long)
+            .withFailMessage("빈 스키마 전제가 깨졌다 — 시드 전에 전환이 이미 있다(%s)", "선재 행")
+            .isZero()
 
-            assertThat(dsl.fetchValue("SELECT COUNT(*) FROM workflow_transitions") as Long)
-                .withFailMessage("빈 스키마 전제가 깨졌다 — 시드 전에 전환이 이미 있다(%s)", "선재 행")
-                .isZero()
+        seedServiceFor(dsl).seedAll()
 
-            seedServiceFor(dsl).seedAll()
+        assertThat(dsl.fetch(initialTransitionSql).map { it.rowText() })
+            .describedAs("INITIAL 전환 — 워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL")
+            .containsExactly(
+                "bug-tracking|이슈 생성|reported|0|true|true|true",
+                "kanban-basic|이슈 생성|backlog|0|true|true|true",
+                "simple|이슈 생성|todo|0|true|true|true",
+                "software-default|이슈 생성|open|0|true|true|true",
+            )
 
-            assertThat(dsl.fetch(initialTransitionSql).map { it.rowText() })
-                .describedAs("INITIAL 전환 — 워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL")
-                .containsExactly(
-                    "bug-tracking|이슈 생성|reported|0|true|true|true",
-                    "kanban-basic|이슈 생성|backlog|0|true|true|true",
-                    "simple|이슈 생성|todo|0|true|true|true",
-                    "software-default|이슈 생성|open|0|true|true|true",
-                )
-
-            assertThat(dsl.fetch(initialTargetSql).map { it.rowText() })
-                .describedAs("시드가 고른 INITIAL 도착지가 V207 ⑨ 백필 규칙과 어긋나면 기존 DB 와 갈린다")
-                .isEqualTo(dsl.fetch(v207InitialTargetRuleSql).map { it.rowText() })
-        }
+        assertThat(dsl.fetch(initialTargetSql).map { it.rowText() })
+            .describedAs("시드가 고른 INITIAL 도착지가 V207 ⑨ 백필 규칙과 어긋나면 기존 DB 와 갈린다")
+            .isEqualTo(dsl.fetch(v207InitialTargetRuleSql).map { it.rowText() })
 
         log.info("시나리오 13 통과 — 빈 스키마 + 시드만으로 INITIAL 전환 4건이 생긴다")
     }
@@ -767,21 +695,7 @@ class YamlSeedServiceTest {
 // ── 시나리오 13 헬퍼 — 빈 스키마를 새로 만드는 도구 ─────────────────────────────
 //
 // 클래스 밖 top-level 로 둔 것은 클래스 공용 `setup()` 이 static 필드(service·repository)를 세팅해
-// 앞선 시나리오들의 대상 DB 를 바꿔 버리기 때문이다. 여기 함수들은 넘겨받은 컨테이너만 건드린다.
-
-/** V201 의 cross-BC FK 통과용 `issue_types` 스텁. 프로덕션에서는 issue-tracking V003 이 만든다. */
-private val issueTypesStubDdl =
-    """
-    CREATE TABLE IF NOT EXISTS issue_types (
-        id          BIGSERIAL    PRIMARY KEY,
-        key         VARCHAR(30)  NOT NULL UNIQUE,
-        name        VARCHAR(255) NOT NULL,
-        is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        deleted_at  TIMESTAMPTZ
-    )
-    """.trimIndent()
+// 앞선 시나리오들의 대상 DB 를 바꿔 버리기 때문이다. 여기 함수들은 넘겨받은 DB 만 건드린다.
 
 /**
  * INITIAL 전환 1행을 (워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL) 로 읽는다.
@@ -830,36 +744,10 @@ private val v207InitialTargetRuleSql =
      ORDER BY w.key
     """.trimIndent()
 
-/**
- * 새 컨테이너에 project-workflow 스키마를 끝까지 적용한다.
- *
- * 클래스 공용 `setup()` 과 같은 2단계 절차다 — V201(workflow_schemes)이 issue-tracking 의
- * `issue_types` 를 FK 로 참조하므로 V200 까지 올린 뒤 스텁을 만들고 나머지를 올린다.
- *
- * @param container 방금 띄운 빈 PostgreSQL 컨테이너
- */
-private fun migrateWorkflowSchema(container: PostgreSQLContainer<*>) {
-    flywayFor(container).target("200").load().migrate()
-    DriverManager.getConnection(container.jdbcUrl, container.username, container.password).use { conn ->
-        conn.createStatement().use { it.execute(issueTypesStubDdl) }
-    }
-    flywayFor(container).load().migrate()
-}
-
-/** issue-tracking + project-workflow 두 위치를 함께 보는 Flyway 설정. */
-private fun flywayFor(container: PostgreSQLContainer<*>): FluentConfiguration =
-    Flyway.configure()
-        .dataSource(container.jdbcUrl, container.username, container.password)
-        .placeholderReplacement(false)
-        .locations(
-            "classpath:db/migration/issue-tracking",
-            "classpath:db/migration/project-workflow",
-        )
-
-/** 컨테이너 접속 정보로 jOOQ DSLContext 를 만든다. */
-private fun dslFor(container: PostgreSQLContainer<*>): DSLContext =
+/** 접속 정보로 jOOQ DSLContext 를 만든다. */
+private fun dslFor(db: SharedPostgres.Handle): DSLContext =
     DSL.using(
-        DriverManagerDataSource(container.jdbcUrl, container.username, container.password),
+        DriverManagerDataSource(db.jdbcUrl, db.username, db.password),
         SQLDialect.POSTGRES,
     )
 

@@ -12,8 +12,8 @@ import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -28,9 +28,6 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
-import java.sql.DriverManager
 
 /**
  * project-workflow BC 컨텍스트 부팅 테스트.
@@ -60,71 +57,13 @@ class ProjectWorkflowContextBootTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
         companion object {
-            /** JVM 단위 singleton Testcontainers — 컨텍스트 부팅 검증용 최소 DB */
+            /** 컨텍스트 부팅 검증용 최소 DB — 템플릿 복제본이라 마이그레이션이 이미 끝나 있다 */
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_boot_test")
-                    .withUsername("bts")
-                    .withPassword("bts_test")
-                    .apply { start() }
-
-            @JvmStatic
-            private var migrated = false
-
-            @JvmStatic
-            fun ensureMigrated() {
-                if (migrated) return
-                // 2-phase Flyway — V201 이 issue_types FK 를 참조하므로 target 200 적용 후 stub 생성 뒤 전체 적용
-                Flyway.configure()
-                    .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                    .placeholderReplacement(false)
-                    .locations(
-                        "classpath:db/migration/issue-tracking",
-                        "classpath:db/migration/project-workflow",
-                    )
-                    .target("200")
-                    .load()
-                    .migrate()
-
-                DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                    conn.createStatement().use { stmt ->
-                        stmt.execute(
-                            """
-                            CREATE TABLE IF NOT EXISTS issue_types (
-                                id          BIGSERIAL    PRIMARY KEY,
-                                key         VARCHAR(30)  NOT NULL UNIQUE,
-                                name        VARCHAR(255) NOT NULL,
-                                is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                                created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                                updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                                deleted_at  TIMESTAMPTZ
-                            )
-                            """.trimIndent(),
-                        )
-                    }
-                }
-
-                Flyway.configure()
-                    .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                    .placeholderReplacement(false)
-                    .locations(
-                        "classpath:db/migration/issue-tracking",
-                        "classpath:db/migration/project-workflow",
-                    )
-                    .load()
-                    .migrate()
-
-                migrated = true
-            }
+            val postgres = SharedPostgres.freshDatabase()
         }
 
         @Bean
         open fun dataSource(): DriverManagerDataSource {
-            ensureMigrated()
             return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         }
 

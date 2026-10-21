@@ -11,6 +11,7 @@ import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.postaction.web.PostActionController
 import com.bts.workflow.postaction.web.PostActionExceptionHandler
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.bts.workflow.transition.TransitionKeyResolver
 import com.bts.workflow.web.ManageSchemeGuard
@@ -18,7 +19,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -36,10 +36,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
@@ -60,21 +56,10 @@ import java.util.UUID
  * 주의: post-action 은 전환 실행 시 DB 직접 조회(WorkflowCache 비캐시 대상)이므로
  * WorkflowCache mock 및 캐시 무효화 검증이 불필요하다.
  */
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class PostActionE2EIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var mockMvc: MockMvc
 
@@ -122,48 +107,6 @@ class PostActionE2EIntegrationTest {
         @JvmStatic
         @Suppress("LongMethod")
         fun setup() {
-            // 1단계: V200 까지 적용
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            // issue_types 스텁
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            // 2단계: 전체 적용
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             // simple 워크플로우 시드 (todo/doing/done 3상태 + 전환)
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 conn.createStatement().use { stmt ->

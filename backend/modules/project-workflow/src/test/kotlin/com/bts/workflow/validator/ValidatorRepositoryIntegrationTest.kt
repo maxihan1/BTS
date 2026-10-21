@@ -2,19 +2,15 @@
 
 package com.bts.workflow.validator
 
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.util.UUID
@@ -37,20 +33,9 @@ import java.util.UUID
  * 그 오염을 `@TestMethodOrder` 로 막으면 실행 순서에 기대는 테스트가 된다.
  * V207 이 `UNIQUE(workflow_id, from_state_id, to_state_id)` 를 풀었으므로 같은 상태쌍에 여러 전환을 둘 수 있다.
  */
-@Testcontainers
 class ValidatorRepositoryIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var repository: ValidatorRepository
         private lateinit var fromStateId: UUID
@@ -60,51 +45,10 @@ class ValidatorRepositoryIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            migrateToV200()
-            createIssueTypesStub()
-            migrateRemaining()
             seedWorkflowAndStates()
 
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             repository = ValidatorRepository(DSL.using(dataSource, SQLDialect.POSTGRES), ObjectMapper())
-        }
-
-        /** 1단계 — V200 까지 적용 (cross-BC issue-tracking 포함). */
-        private fun migrateToV200() {
-            flyway().target("200").load().migrate()
-        }
-
-        /** 2단계 — 나머지 마이그레이션 전체 적용. */
-        private fun migrateRemaining() {
-            flyway().load().migrate()
-        }
-
-        private fun flyway() =
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-
-        /** issue_types 스텁 — V201+ FK 통과용. */
-        private fun createIssueTypesStub() {
-            connection().use { conn ->
-                conn.prepareStatement(
-                    """
-                    CREATE TABLE IF NOT EXISTS issue_types (
-                        id          BIGSERIAL    PRIMARY KEY,
-                        key         VARCHAR(30)  NOT NULL UNIQUE,
-                        name        VARCHAR(255) NOT NULL,
-                        is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                        updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                        deleted_at  TIMESTAMPTZ
-                    )
-                    """.trimIndent(),
-                ).use { it.execute() }
-            }
         }
 
         /** 워크플로우 1개 + 상태 2개. 전환은 테스트마다 [newTransition] 이 만든다. */
