@@ -20,11 +20,11 @@ import com.bts.workflow.seed.StateYamlDto
 import com.bts.workflow.seed.TransitionYamlDto
 import com.bts.workflow.seed.WorkflowYamlDto
 import com.bts.workflow.seed.YamlSeedService
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.transition.TransitionKeyResolver
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -35,11 +35,6 @@ import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
-import java.sql.DriverManager
 import java.util.UUID
 import java.util.concurrent.Executors
 
@@ -72,19 +67,9 @@ import java.util.concurrent.Executors
  * 전환 2개를 [BeforeAll] 에 심고 phase 별로 하나씩 쓴다. 시나리오마다 새 전환을 만들면 캐시된
  * `Workflow` 에 그 전환이 없어 열거·실행이 빗나간다. 건 규칙은 [clearRules] 가 매번 되푼다.
  */
-@Testcontainers
 class ValidatorEngineIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest").asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_validator_engine_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         private const val WF_KEY = "validator-engine-wf"
         private const val FROM_STATE = "open"
@@ -111,10 +96,6 @@ class ValidatorEngineIntegrationTest {
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
 
-            // V201+ 가 issue_types 를 FK 참조한다. 그 스텁을 사이에 끼우려 마이그레이션을 2단계로 나눈다.
-            flyway().target("200").load().migrate()
-            createIssueTypesStub()
-            flyway().load().migrate()
             val validatorFactory =
                 DefaultWorkflowValidatorFactory(AlwaysAllowPermissionResolver(), SpelEvaluator(spelExecutor))
             val workflowRepository = WorkflowRepository(dsl)
@@ -135,30 +116,6 @@ class ValidatorEngineIntegrationTest {
             seedWorkflow(dsl, validatorFactory)
             executionTransitionKey = seededTransitionKey(workflowRepository, EXECUTION_TO_STATE)
             availabilityTransitionKey = seededTransitionKey(workflowRepository, AVAILABILITY_TO_STATE)
-        }
-
-        private fun flyway() =
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking", "classpath:db/migration/project-workflow")
-
-        /**
-         * issue_types 스텁 — V201+ FK 통과용. `DATA.md §5` 가 SQL 문자열을 jOOQ 에 넘기는 형태를
-         * 이름으로 지목해 금지하므로, 형제 `ValidatorRepositoryIntegrationTest` 와 같이 JDBC 로 친다.
-         */
-        private fun createIssueTypesStub() {
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.prepareStatement(
-                    """
-                    CREATE TABLE IF NOT EXISTS issue_types (
-                        id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE,
-                        name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE,
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)
-                    """.trimIndent(),
-                ).use { it.execute() }
-            }
         }
 
         /** 상태 3개 · 전환 2개. **전환에 규칙을 달지 않는다** — 규칙은 전부 서비스가 걸어야 한다. */

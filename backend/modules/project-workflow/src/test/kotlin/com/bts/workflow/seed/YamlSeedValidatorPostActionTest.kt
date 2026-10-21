@@ -10,12 +10,12 @@ import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -29,19 +29,14 @@ import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.core.io.Resource
 import org.springframework.core.io.ResourceLoader
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.io.InputStream
-import java.sql.DriverManager
 import java.util.concurrent.Executors
 
 /**
  * YamlSeedService validators/post_actions 시드 통합 테스트.
  *
- * Testcontainers PostgreSQL + Flyway V200 적용 후 테스트 YAML 을 단건 시드해
+ * SharedPostgres(Testcontainers 공용 PostgreSQL)가 마이그레이션을 끝낸 DB 에 테스트 YAML 을 단건 시드해
  * workflow_validators / workflow_post_actions 테이블에 올바르게 적재되는지 검증한다.
  *
  * Spring ApplicationContext 없이 필요한 의존성을 직접 조합한다.
@@ -53,23 +48,12 @@ import java.util.concurrent.Executors
  * 4. validators/post_actions 빈 전환은 관련 테이블에 행 없음
  * 5. 표준 4 워크플로우 시드는 회귀 없음 (seedAll 호출 후 4건 유지)
  */
-@Testcontainers
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class YamlSeedValidatorPostActionTest {
     companion object {
         private val log = LoggerFactory.getLogger(YamlSeedValidatorPostActionTest::class.java)
 
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var service: YamlSeedService
         lateinit var defRepo: DefaultWorkflowDefinitionRepository
@@ -81,46 +65,6 @@ class YamlSeedValidatorPostActionTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            // Flyway 2단계 — V201 (workflow_schemes) cross-BC FK 대응
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-
             val dataSource =
                 DriverManagerDataSource(
                     postgres.jdbcUrl,

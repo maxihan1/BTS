@@ -17,6 +17,7 @@ import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -24,7 +25,6 @@ import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
@@ -32,10 +32,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.support.TransactionTemplate
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -56,20 +52,9 @@ import java.util.UUID
  * [WorkflowStateCatalog.listStates] 는 Propagation.MANDATORY 이므로
  * [DataSourceTransactionManager] + [TransactionTemplate] 으로 감싼다.
  */
-@Testcontainers
 class WorkflowStateCatalogImplTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         private lateinit var catalog: WorkflowStateCatalog
         private lateinit var txTemplate: TransactionTemplate
@@ -92,8 +77,6 @@ class WorkflowStateCatalogImplTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            applyMigrations()
-
             val dataSource =
                 DriverManagerDataSource(
                     postgres.jdbcUrl,
@@ -144,49 +127,6 @@ class WorkflowStateCatalogImplTest {
             seedWorkflowsAndMappings()
             insertProjectFixtures()
             setupAssignments()
-        }
-
-        private fun applyMigrations() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS projects (" +
-                            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), " +
-                            "key VARCHAR(10) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, " +
-                            "key_sequence BIGINT NOT NULL DEFAULT 0, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
         }
 
         private fun seedWorkflowsAndMappings() {

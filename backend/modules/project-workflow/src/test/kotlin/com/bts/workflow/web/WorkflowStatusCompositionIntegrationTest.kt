@@ -21,11 +21,11 @@ import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.status.repository.StatusRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
-import org.flywaydb.core.Flyway
 import org.hamcrest.Matchers.containsString
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
@@ -42,10 +42,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delet
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -78,20 +74,9 @@ import java.util.UUID
  * 그래서 마지막 제거 가드 테스트는 계층을 건너뛰지 않고 컨트롤러 + advice 를 통과시켜
  * **상태 코드와 본문**을 잰다.
  */
-@Testcontainers
 class WorkflowStatusCompositionIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var dsl: DSLContext
         lateinit var repository: WorkflowRepository
@@ -111,10 +96,6 @@ class WorkflowStatusCompositionIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            migrate("200")
-            createIssueTypes()
-            migrate(null)
-
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             repository = WorkflowRepository(dsl)
@@ -142,31 +123,6 @@ class WorkflowStatusCompositionIntegrationTest {
                     allowAll,
                     globalOnlyOwnershipScope(),
                 )
-        }
-
-        private fun migrate(target: String?) {
-            Flyway
-                .configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking", "classpath:db/migration/project-workflow")
-                .apply { if (target != null) target(target) }
-                .load()
-                .migrate()
-        }
-
-        private fun createIssueTypes() {
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
         }
     }
 

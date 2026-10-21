@@ -7,17 +7,15 @@ import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.event.WorkflowSchemeDeletedEvent
 import com.bts.workflow.scheme.event.WorkflowSchemeDomainEvent
 import com.bts.workflow.scheme.event.WorkflowSchemeUpdatedEvent
+import com.bts.workflow.testsupport.SharedPostgres
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
@@ -41,28 +39,7 @@ import java.util.UUID
  */
 class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
 
-    // ── Testcontainers: quay.io/tembo/pg16-pgmq:latest ──────────────────────
-    // pgmq 확장 사전 설치 이미지 — V004 pgmq.create() 요구로 postgres:16-alpine 사용 불가
-    val temboImage =
-        DockerImageName
-            .parse("quay.io/tembo/pg16-pgmq:latest")
-            .asCompatibleSubstituteFor("postgres")
-
-    val postgres =
-        PostgreSQLContainer(temboImage)
-            .withDatabaseName("bts_test")
-            .withUsername("test")
-            .withPassword("test")
-
-    beforeSpec {
-        postgres.start()
-        Class.forName("org.postgresql.Driver")
-        applyMigrations(postgres)
-    }
-
-    afterSpec {
-        postgres.stop()
-    }
+    val postgres = SharedPostgres.freshDatabase()
 
     // ── 공통 헬퍼 ────────────────────────────────────────────────────────────
 
@@ -325,73 +302,4 @@ class WorkflowSchemeEventPublisherIntegrationTest : DescribeSpec({
             txAnnotation!!.propagation shouldBe org.springframework.transaction.annotation.Propagation.MANDATORY
         }
     }
-}) {
-    companion object {
-        /**
-         * V200 + V201 마이그레이션 적용 (project-workflow init + workflow_schemes).
-         *
-         * Cross-BC FK 패턴 (WorkflowSchemesMigrationIntegrationTest 와 동일).
-         * 1단계: Flyway target=200 으로 V200 까지 적용 (cross-BC dep 으로 issue-tracking V001~V003 동시 적용).
-         * 2단계: issue_types 스텁 테이블 IF NOT EXISTS — V003 가 진짜 테이블을 만들면 no-op.
-         * 3단계: Flyway migrate 재실행 (V201 적용).
-         */
-        private fun applyMigrations(postgres: PostgreSQLContainer<*>) {
-            // 1단계: V200 (project-workflow init) 까지 적용
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            // 2단계: 스텁 테이블 — cross-BC FK 통과용 (V001/V003 이 먼저 실행되면 no-op)
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS issue_types (
-                            id          BIGSERIAL    PRIMARY KEY,
-                            key         VARCHAR(30)  NOT NULL UNIQUE,
-                            name        VARCHAR(255) NOT NULL,
-                            is_standard BOOLEAN      NOT NULL DEFAULT FALSE,
-                            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at  TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                    // V202 FK (project_id → projects.id ON DELETE CASCADE) 를 위해 projects 스텁 보장.
-                    // issue-tracking V001 이 먼저 실행되면 no-op.
-                    stmt.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS projects (
-                            id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-                            key           VARCHAR(10)  NOT NULL UNIQUE,
-                            name          VARCHAR(255) NOT NULL,
-                            key_sequence  BIGINT       NOT NULL DEFAULT 0,
-                            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                            deleted_at    TIMESTAMPTZ
-                        )
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            // 3단계: V002~V004 적용
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
-        }
-    }
-}
+})

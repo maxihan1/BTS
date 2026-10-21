@@ -6,19 +6,14 @@ import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
+import com.bts.workflow.testsupport.SharedPostgres
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -42,60 +37,9 @@ import java.util.UUID
  *
  * 참조. FR-WF-07 D4 · V208__workflow_drafts_and_publications.sql
  */
-@Testcontainers
 class WorkflowDraftRepositoryIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-
-        /**
-         * ★ 순서가 load-bearing 이다. `issue_types` 를 먼저 만들면 public 스키마가 비어 있지 않은
-         * 상태가 되고, Flyway 가 schema history 없는 non-empty 스키마를 만나 통째로 거부한다
-         * (`Found non-empty schema(s) "public" but no schema history table`). V200 까지 먼저 돌려
-         * 히스토리를 세운 뒤 cross-BC FK 대상을 만든다 — V207MigrationTest 와 같은 순서다.
-         */
-        @BeforeAll
-        @JvmStatic
-        fun applyMigrations() {
-            flyway().target("200").load().migrate()
-            createIssueTypes()
-            flyway().load().migrate()
-        }
-
-        @JvmStatic
-        private fun flyway() =
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-
-        /** V201 의 cross-BC FK 대상. issue-tracking 마이그레이션이 만들지 않는 경로라 테스트가 직접 만든다. */
-        @JvmStatic
-        private fun createIssueTypes() {
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     private val dsl =

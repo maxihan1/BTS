@@ -4,16 +4,12 @@ package com.bts.workflow.scheme.repository
 
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
+import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.time.Instant
 import java.util.UUID
@@ -36,25 +32,11 @@ import java.util.UUID
  * 통합 테스트 setUp 에서 projects 테이블에 fixture row 를 SQL 직접 INSERT 하고
  * 생성된 UUID 를 각 시나리오에서 사용한다.
  *
- * Testcontainers 이미지: quay.io/tembo/pg16-pgmq:latest (V201 pgmq 확장 요구).
- * Flyway 2단계 패턴: target="200" → issue_types 스텁 → LATEST (T7 WorkflowSchemesMigrationIntegrationTest 패턴).
+ * DB: SharedPostgres 가 마이그레이션이 끝난 전용 데이터베이스를 준다.
  */
-@Testcontainers
 class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
     companion object {
-        // quay.io/tembo/pg16-pgmq:latest — V201 pgmq 확장 + pgmq.create() 요구로 인해 tembo 이미지 사용.
-        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var repository: ProjectWorkflowSchemeAssignmentRepository
 
@@ -112,7 +94,6 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            applyMigrations()
             loadSchemeFixtures()
             insertProjectFixtures()
             insertReverseLookupFixtures()
@@ -130,52 +111,6 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
                 )
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             repository = ProjectWorkflowSchemeAssignmentRepository(dsl)
-        }
-
-        /** 2단계 Flyway 마이그레이션 적용. target=200 → cross-BC 스텁 → LATEST. */
-        private fun applyMigrations() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .target("200")
-                .load()
-                .migrate()
-
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    // issue_types 스텁 — workflow_scheme_issue_type_mappings FK 통과용 (V003 있으면 no-op)
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                    // projects 스텁 — V202 FK (project_id → projects.id) 통과용 (V001 있으면 no-op)
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS projects (" +
-                            "id UUID PRIMARY KEY DEFAULT gen_random_uuid(), " +
-                            "key VARCHAR(10) NOT NULL UNIQUE, name VARCHAR(255) NOT NULL, " +
-                            "key_sequence BIGINT NOT NULL DEFAULT 0, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
-                .load()
-                .migrate()
         }
 
         /** workflow_schemes 에서 기존 seed id 2개를 읽어 schemeId1/schemeId2 에 저장한다. */

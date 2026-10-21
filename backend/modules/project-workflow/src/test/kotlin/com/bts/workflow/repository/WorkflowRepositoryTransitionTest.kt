@@ -3,19 +3,15 @@
 package com.bts.workflow.repository
 
 import com.bts.workflow.domain.TransitionKind
+import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
-import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.PreparedStatement
@@ -57,21 +53,9 @@ private fun PreparedStatement.setUuidOrNull(
  * 워크플로우 2개를 쓴다. `legacy-normal` 은 구 컬럼이 채워진 NORMAL 행만 두어 `id`·`kind`·순서
  * 계약을 보고, `global-initial` 은 구 컬럼이 NULL 인 INITIAL·GLOBAL 을 섞어 그 결함을 본다.
  */
-@Testcontainers
 class WorkflowRepositoryTransitionTest {
     companion object {
-        // quay.io/tembo/pg16-pgmq:latest — V004 pgmq 확장 요구. ADR 2026-05-22-pgmq-postgres-image.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         private val stateSeeds =
             listOf(
@@ -107,39 +91,12 @@ class WorkflowRepositoryTransitionTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            migrate()
             seededTransitionIds = seedData()
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             repository = WorkflowRepository(dsl)
             writeRepository = WorkflowWriteRepository(dsl)
         }
-
-        /** Flyway 2단계 — V201(workflow_schemes) 이 issue_types 를 cross-BC FK 로 요구한다. */
-        private fun migrate() {
-            flyway().target("200").load().migrate()
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
-            flyway().load().migrate()
-        }
-
-        private fun flyway() =
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations(
-                    "classpath:db/migration/issue-tracking",
-                    "classpath:db/migration/project-workflow",
-                )
 
         private fun seedData(): Map<String, UUID> =
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->

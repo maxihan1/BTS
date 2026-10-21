@@ -16,19 +16,15 @@ import com.bts.workflow.status.domain.exception.StatusNameConflictException
 import com.bts.workflow.status.domain.exception.StatusNotFoundException
 import com.bts.workflow.status.domain.exception.StatusProtectedException
 import com.bts.workflow.status.repository.StatusRepository
+import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -43,20 +39,9 @@ import java.util.UUID
  * `workflow_statuses.status_id` 가 **FK RESTRICT** 라 DB 가 먼저 막고, 그 예외를 409 로 번역한다.
  * 소프트 삭제라 DB 가 개입하지 않는 경우를 대비해 애플리케이션도 참조를 센다.
  */
-@Testcontainers
 class StatusCrudIntegrationTest {
     companion object {
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
-        @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var dsl: DSLContext
         lateinit var statusRepository: StatusRepository
@@ -75,40 +60,11 @@ class StatusCrudIntegrationTest {
         @BeforeAll
         @JvmStatic
         fun setup() {
-            migrate("200")
-            createIssueTypes()
-            migrate(null)
-
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
             dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             statusRepository = StatusRepository(dsl)
             cache = WorkflowCache(WorkflowRepository(dsl), dsl)
             service = StatusCommandService(statusRepository, cache, allowAll)
-        }
-
-        private fun migrate(target: String?) {
-            Flyway
-                .configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking", "classpath:db/migration/project-workflow")
-                .apply { if (target != null) target(target) }
-                .load()
-                .migrate()
-        }
-
-        private fun createIssueTypes() {
-            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-                conn.createStatement().use { stmt ->
-                    stmt.execute(
-                        "CREATE TABLE IF NOT EXISTS issue_types (" +
-                            "id BIGSERIAL PRIMARY KEY, key VARCHAR(30) NOT NULL UNIQUE, " +
-                            "name VARCHAR(255) NOT NULL, is_standard BOOLEAN NOT NULL DEFAULT FALSE, " +
-                            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), " +
-                            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), deleted_at TIMESTAMPTZ)",
-                    )
-                }
-            }
         }
     }
 
