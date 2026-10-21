@@ -43,10 +43,10 @@
 //
 // 그래프가 못 닫는 것(설정·의존성·전역 셋업)은 `FE_WIDEN` 으로 전량 처리한다.
 //
-// 사용. node --experimental-strip-types scripts/workflow/select-test-scope.ts [--plan <경로>]
-// 판별식. scripts/workflow/select-test-scope.test.ts
+// 사용. node --experimental-strip-types scripts/workflow/select-test-scope.ts [--plan <경로>] [--run]
+//   `--run` 은 계산한 명령을 직접 돌리고 하나라도 실패하면 1 로 끝난다. merge 직전 관문은 이 한 줄이다.
+//   ★E2E · 시각 회귀는 내지 않는다 — 2026-10-20 부터 E2E 를 돌리지 않는다.
 
-import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -179,57 +179,6 @@ export function vitestArgs(scope: FrontendScope): string[] {
   return scope.files.map((f) => f.slice(FRONTEND_PREFIX.length))
 }
 
-/** Playwright 시나리오가 바뀌었나. 바뀌었으면 e2e 를 돌려야 한다. */
-export function e2eTouched(files: string[] | null): boolean {
-  if (files === null) return true
-  return files.some((f) => f.startsWith(FRONTEND_E2E))
-}
-
-/**
- * 바뀐 Playwright 시나리오 목록(`apps/web` 기준 상대경로). 전량을 뜻할 때는 `null`.
- *
- * ## 왜 「돌린다/만다」가 아니라 목록인가
- *
- * 종전 [e2eTouched] 는 참이면 `playwright test` 를 **인자 없이** 냈다 — 167파일 전량이다.
- * 2코어 실측으로 그것이 **약 3시간**이다(1파일 46초 · 3파일 165초 → 파일당 약 60초,
- * 고정 비용 거의 0).
- *
- * E2E 한 줄을 고쳐도 3시간이 뜨면 **아무도 안 돌린다.** 가드가 있어도 쓰이지 않으면 없는
- * 것과 같다 — 실제로 그 명령은 훅 어디에도 배선되지 않았고, E2E 를 고쳐도 푸시 전에
- * 아무것도 확인되지 않았다. 바뀐 파일만이면 1파일 46초라 사람이 실제로 돌린다.
- *
- * ★`null`(전량)과 `[]`(돌 것 없음)를 **구분한다.** 둘을 같은 값으로 만들면 「변경 목록을
- *   못 구했다」가 조용히 「생략」이 된다 — 이 저장소가 이름 붙인 침묵 실패다.
- *
- * @param files 변경 파일 목록. `null` 이면 목록을 못 구한 것이라 전량을 뜻한다.
- * @returns `apps/web` 기준 상대경로 목록. 전량이면 `null`.
- */
-export function e2eSpecs(files: string[] | null): string[] | null {
-  if (files === null) return null
-  return files
-    .filter((f) => f.startsWith(FRONTEND_E2E) && f.endsWith('.spec.ts'))
-    /*
-     * ★★`--project=chromium` 이 못 도는 것을 넘기지 않는다 (2026-09-11).
-     *
-     * 두 경우가 **거짓 빨강**을 만든다. 둘 다 playwright 가 `No tests found` 로 exit 1 이다.
-     *
-     *   ① `e2e/visual/` — `playwright.config.ts` 의 chromium 프로젝트가
-     *      `testIgnore: '**‍/e2e/visual/**'` 다. 그 스펙은 `--project=visual` 전용이다.
-     *   ② **삭제된 스펙** — `diff-base.ts` 가 `--no-renames` 라 개명하면 옛 경로가
-     *      반드시 삭제로 목록에 들어온다. 그 파일은 디스크에 없다.
-     *
-     * 실측. `board-kanban.spec.ts` → `board-board.spec.ts` 로 개명하고 푸시하면
-     * 훅이 exit 1 로 막는다. 에러 문구는 「정규식 인자를 확인하라」라 원인이 안 보인다.
-     *
-     * ★여기서 사람이 배우는 처방은 `git push --no-verify` 이고, 그 순간 **판별식 전량**
-     *   (유일한 기계 강제 지점)까지 함께 꺼진다. 훅 주석이 스스로 경고한 그 상태다.
-     *   거짓 빨강은 가드를 무력화하는 가장 흔한 경로다.
-     */
-    .filter((f) => !f.startsWith(`${FRONTEND_E2E}visual/`))
-    .filter((f) => fs.existsSync(path.resolve(REPO_ROOT, f)))
-    .map((f) => f.slice(FRONTEND_PREFIX.length))
-}
-
 /**
  * plan 이 task 마다 적어 둔 검증 명령을 전부 뽑는다.
  *
@@ -252,9 +201,6 @@ export interface TestScope {
   backendModules: string[]
   backendReason: string
   frontend: FrontendScope
-  e2e: boolean
-  /** 바뀐 시나리오 목록(`apps/web` 상대경로). 전량이면 `null`, 돌 것이 없으면 `[]`. */
-  e2eSpecs: string[] | null
   planVerify: string[]
 }
 
@@ -281,75 +227,8 @@ export function computeScope(files: string[] | null, planText: string | null): T
     backendModules,
     backendReason,
     frontend: frontendScope(files),
-    e2e: e2eTouched(files),
-    e2eSpecs: e2eSpecs(files),
     planVerify: planText === null ? [] : planVerifyCommands(planText),
   }
-}
-
-/** 기준 이미지가 실재하나. IO 는 여기 한 줄뿐이라 아래 판정은 순수하다. */
-export function hasVisualBaseline(
-  dir: string = path.join(REPO_ROOT, 'apps/web/e2e/visual/__screenshots__'),
-): boolean {
-  return fs.existsSync(dir) && fs.readdirSync(dir).some((f) => f.endsWith('.png'))
-}
-
-/** 시각 회귀를 돌 것인가, 못 돈다면 왜인가. */
-export type VisualDecision = 'run' | 'no-baseline' | 'no-frontend'
-
-/**
- * 시각 회귀 판정.
- *
- * ★IO 에서 분리한다. 기준 이미지가 0장인 동안에는 「돈다」 갈래를 **디스크로는 잴 수
- *   없어서**, 판별식이 그 분기를 지운 뮤테이션도 통과했다(2026-09-11 실측).
- *   판정을 순수 함수로 두면 도입 전에도 세 갈래를 전부 잰다.
- */
-export function visualDecision(
-  hasBaseline: boolean,
-  frontendMode: FrontendScope['mode'],
-): VisualDecision {
-  if (!hasBaseline) return 'no-baseline'
-  if (frontendMode === 'skip') return 'no-frontend'
-  return 'run'
-}
-
-/** 판정에 따른 실행 블록 줄. */
-export function visualLines(
-  hasBaseline: boolean,
-  frontendMode: FrontendScope['mode'],
-): string[] {
-  switch (visualDecision(hasBaseline, frontendMode)) {
-    case 'no-baseline':
-      return [
-        '# 시각 회귀 — 생략 (기준 이미지 0장 · P3 미도입)',
-        '#   기준 생성. (cd apps/web && node_modules/.bin/playwright test --project=visual --update-snapshots)',
-        '#   생성한 PNG 를 눈으로 확인해 커밋한다. 커밋되는 순간 이 줄이 명령으로 바뀐다.',
-      ]
-    case 'no-frontend':
-      return ['# 시각 회귀 — 생략 (프론트 변경 없음)']
-    default:
-      return ['# 시각 회귀 — 기준 이미지와 대조한다.', visualCommand()]
-  }
-}
-
-/**
- * 시각 회귀 실행 명령.
- *
- * ★`--project=visual` 이다. `chromium` 은 `e2e/visual/**` 를 `testIgnore` 하므로
- *   그 프로젝트로는 이 스펙이 **절대** 안 돈다.
- */
-function visualCommand(): string {
-  return '(cd apps/web && node_modules/.bin/playwright test --project=visual)'
-}
-
-/**
- * Playwright 실행 명령.
- *
- * @param specs 돌릴 시나리오(`apps/web` 상대경로). 비면 전량이다.
- */
-function e2eCommand(specs: string[]): string {
-  const args = specs.length > 0 ? ` ${specs.join(' ')}` : ''
-  return `(cd apps/web && node_modules/.bin/playwright test${args})`
 }
 
 /** 사람이 읽고 그대로 실행할 수 있는 명령 블록. */
@@ -376,36 +255,6 @@ export function renderCommands(scope: TestScope): string {
     lines.push(`# 프론트 — ${scope.frontend.reason}`)
     lines.push(`(cd apps/web && node_modules/.bin/vitest related --run ${vitestArgs(scope.frontend).join(' ')})`)
   }
-
-  lines.push('')
-  // ★바뀐 파일만 인자로 붙인다. 인자 없는 `playwright test` 는 전량(약 3시간)이라
-  //   사람이 안 돌린다 — 안 돌리는 가드는 없는 가드다.
-  if (scope.e2eSpecs === null) {
-    lines.push('# E2E — 변경 목록을 못 구했다. 전량을 돈다(약 3시간).')
-    lines.push(e2eCommand([]))
-  } else if (scope.e2eSpecs.length > 0) {
-    lines.push(`# E2E — 바뀐 시나리오 ${scope.e2eSpecs.length}개만 돈다.`)
-    lines.push(e2eCommand(scope.e2eSpecs))
-  } else {
-    lines.push('# E2E — 생략 (시나리오 변경 없음)')
-  }
-
-  /*
-   * ★★시각 회귀 (P3). **기준 이미지가 실재할 때만** 돈다.
-   *
-   * `visual` 프로젝트는 `chromium` 의 `testIgnore` 밖이라 위 E2E 줄로는 절대 안 돈다.
-   * 2026-09-11 실측에서 그 프로젝트를 돌리는 곳이 **저장소 어디에도 없었다** —
-   * 스펙 4건이 작성돼 있는데 고아였다.
-   *
-   * ★조건의 입력이 「기준 이미지 디렉터리」 하나뿐이라 두 목록이 생기지 않는다.
-   *   기준이 0장인 동안은 돌려 봐야 전부 실패하고(비교 대상이 없다), 그 빨간불은
-   *   회귀가 아니라 「아직 도입 안 됨」이라 읽는 법을 가르친다 — 거짓 빨강이다.
-   *   기준이 커밋되는 순간 자동으로 켜진다.
-   *
-   * ★프론트가 안 바뀌었으면 안 돈다. 화면 픽셀은 프론트 소스에서만 바뀐다.
-   */
-  lines.push('')
-  lines.push(...visualLines(hasVisualBaseline(), scope.frontend.mode))
 
   if (scope.planVerify.length > 0) {
     lines.push('')
@@ -435,8 +284,19 @@ function main(argv: string[]): number {
   }
 
   const scope = computeScope(changedFiles(), planText)
-  process.stdout.write(renderCommands(scope) + '\n')
-  return 0
+  const rendered = renderCommands(scope)
+  process.stdout.write(rendered + '\n')
+  if (!argv.includes('--run')) return 0
+
+  // 하나가 실패해도 나머지를 돈다 — 실패를 한 번에 다 보고 고친다.
+  let failed = 0
+  for (const cmd of rendered.split('\n').filter((l) => l.trim() !== '' && !l.startsWith('#'))) {
+    process.stdout.write(`\n$ ${cmd}\n`)
+    const r = spawnSync('bash', ['-c', cmd], { cwd: REPO_ROOT, stdio: 'inherit' })
+    process.stdout.write(`EXIT=${r.status}\n`)
+    if (r.status !== 0) failed++
+  }
+  return failed === 0 ? 0 : 1
 }
 
 // 판별식이 import 할 때는 실행하지 않는다.

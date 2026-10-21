@@ -58,9 +58,11 @@ function git(cwd: string, args: string[]): string | null {
  *
  * 순서.
  *   ① `BTS_DIFF_BASE` — CI 가 직전 성공 커밋을 안다
- *   ② 업스트림(`@{u}`) 과의 분기점 — 흔한 작업 브랜치
- *   ③ `origin/main` 과의 분기점 — 업스트림이 없을 때(detached HEAD 체크아웃 등)
- *   ④ 분기점이 HEAD 자신이면 `HEAD~1` — **우리가 곧 main 인 경우**
+ *   ② `origin/main` 과의 분기점 — 브랜치 전체가 바뀐 범위다
+ *   ③ 분기점이 HEAD 자신이면 `HEAD~1` — **우리가 곧 main 인 경우**
+ *
+ * ★업스트림(`@{u}`)은 기준으로 쓰지 않는다 (2026-10-21). push 뒤에는 업스트림이 곧 HEAD 라
+ *   ③ 으로 떨어져 **직전 커밋 하나만** 보게 된다 — merge 직전 관문이 브랜치 대부분을 놓친다.
  *
  * @param cwd 저장소 경로. 기본값은 이 저장소 루트
  * @returns 기준 커밋 SHA. 정할 수 없으면 `null`(= 호출자는 전량으로 넓힌다)
@@ -72,9 +74,7 @@ export function resolveDiffBase(cwd: string = REPO_ROOT): string | null {
     return git(cwd, ['rev-parse', '--verify', `${explicit}^{commit}`]);
   }
 
-  const upstream = git(cwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']);
-  const candidates = upstream === null ? FALLBACK_REFS : [upstream];
-  const merged = candidates
+  const merged = FALLBACK_REFS
     .map((ref) => git(cwd, ['merge-base', ref, 'HEAD']))
     .find((sha) => sha !== null);
   if (merged === undefined || merged === null) return null;
