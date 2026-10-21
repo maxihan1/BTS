@@ -7,20 +7,17 @@ import com.bts.slack.message.SlackMessageClient
 import com.bts.slack.message.SlackSendResult
 import com.bts.slack.persistence.JdbcSlackDeliveryLogRepository
 import com.bts.slack.persistence.JdbcSlackUserMappingRepository
+import com.bts.slack.support.SharedPostgres
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.util.UUID
 
 /**
@@ -253,30 +250,11 @@ class SlackDeliveryWorkerIntegrationTest {
 
     companion object {
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_slack_worker_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         private val dataSource: DriverManagerDataSource =
             DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
 
         private val jdbc: JdbcTemplate = JdbcTemplate(dataSource)
-
-        @BeforeAll
-        @JvmStatic
-        fun applyMigrations() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/slack-integration")
-                .load()
-                .migrate()
-        }
     }
 }
