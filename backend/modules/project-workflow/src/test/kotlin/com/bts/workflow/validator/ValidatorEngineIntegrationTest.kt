@@ -14,6 +14,7 @@ import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
+import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.seed.StateYamlDto
@@ -112,6 +113,7 @@ class ValidatorEngineIntegrationTest {
                     ValidatorRepository(dsl, ObjectMapper()),
                     TransitionRuleGuard(validatorFactory, DefaultWorkflowPostActionFactory()),
                     TransitionKeyResolver(dsl),
+                    WorkflowDraftRepository(dsl, ObjectMapper()),
                 )
             seedWorkflow(dsl, validatorFactory)
             executionTransitionKey = seededTransitionKey(workflowRepository, EXECUTION_TO_STATE)

@@ -4,6 +4,7 @@ package com.bts.workflow.repository
 
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.jooq.tables.WorkflowDrafts.Companion.WORKFLOW_DRAFTS
+import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.DSLContext
@@ -93,6 +94,20 @@ class WorkflowDraftRepository(
             updatedBy = record.get(WORKFLOW_DRAFTS.UPDATED_BY),
         )
     }
+
+    /**
+     * 살아 있는 [workflowKey] 워크플로우에 초안이 열려 있는지 본다.
+     *
+     * `DELETED_AT.isNull` 이 빠지면 지운 동명 워크플로우의 초안이 지금 워크플로우를 막는다 —
+     * V206 이 key 유니크를 「살아 있는 행끼리만」으로 완화했다.
+     */
+    fun existsForLiveWorkflow(workflowKey: String): Boolean =
+        dsl.fetchExists(
+            dsl.selectOne()
+                .from(WORKFLOW_DRAFTS)
+                .join(WORKFLOWS).on(WORKFLOWS.ID.eq(WORKFLOW_DRAFTS.WORKFLOW_ID))
+                .where(WORKFLOWS.KEY.eq(workflowKey).and(WORKFLOWS.DELETED_AT.isNull)),
+        )
 
     /**
      * 초안을 폐기한다.

@@ -3,9 +3,11 @@
 package com.bts.workflow.validator
 
 import com.bts.workflow.application.TransitionRuleGuard
+import com.bts.workflow.domain.exception.TransitionConflictException
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.port.outbound.PermissionResolver
+import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.transition.TransitionKeyResolver
 import io.mockk.every
 import io.mockk.justRun
@@ -41,6 +43,7 @@ import java.util.UUID
 class ValidatorAdminServiceTest {
     private lateinit var repository: ValidatorRepository
     private lateinit var transitionResolver: TransitionKeyResolver
+    private lateinit var draftRepository: WorkflowDraftRepository
     private lateinit var service: ValidatorAdminService
 
     /** SpEL 평가기 — strict mock. 생성만 하고 평가하지 않는다는 계약의 감시자다. */
@@ -75,17 +78,39 @@ class ValidatorAdminServiceTest {
     fun setUp() {
         repository = mockk()
         transitionResolver = mockk()
+        draftRepository = mockk { every { existsForLiveWorkflow(any()) } returns false }
         service =
             ValidatorAdminService(
                 repository = repository,
                 guard = TransitionRuleGuard(factory, mockk()),
                 transitionResolver = transitionResolver,
+                draftRepository = draftRepository,
             )
 
         // 기본 stub: 합성 키 해석 성공 (단건)
         every {
             transitionResolver.resolveTransitionIds(workflowKey, "open", "in_progress")
         } returns listOf(transitionId)
+    }
+
+    // ── 초안이 열린 동안의 쓰기 (WF-08-1) ─────────────────────────────────────
+
+    @Test
+    fun `초안이 열려 있으면 생성 수정 삭제가 전부 409 이고 DB 에 쓰지 않는다`() {
+        // 발행이 규칙을 초안 것으로 다시 심는다 — 여기서 통과시키면 다음 발행이 이 편집을 지운다.
+        every { draftRepository.existsForLiveWorkflow(workflowKey) } returns true
+        val config = mapOf<String, Any?>("permission" to "TRANSITION_ISSUE")
+
+        assertThatThrownBy { service.create(workflowKey, transitionKey, "permission-check", config, 0) }
+            .isInstanceOf(TransitionConflictException::class.java)
+        assertThatThrownBy { service.update(workflowKey, transitionKey, validatorId, "permission-check", config, 0) }
+            .isInstanceOf(TransitionConflictException::class.java)
+        assertThatThrownBy { service.delete(workflowKey, transitionKey, validatorId) }
+            .isInstanceOf(TransitionConflictException::class.java)
+
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
+        verify(exactly = 0) { repository.update(any(), any(), any(), any()) }
+        verify(exactly = 0) { repository.deleteById(any()) }
     }
 
     // ── type / config 검증 (FR-5 · E6 · E7) ───────────────────────────────────
