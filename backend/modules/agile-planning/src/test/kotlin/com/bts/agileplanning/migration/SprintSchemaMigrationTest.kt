@@ -2,15 +2,10 @@
 
 package com.bts.agileplanning.migration
 
+import com.bts.agileplanning.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -42,27 +37,10 @@ import java.util.UUID
  * 참조. FR-BL-02 plan Task 1 / spec §5 데이터 모델 /
  * DATA.md §4 TIMESTAMPTZ·§4.1 V번호 범위·§7 FK 인덱스.
  */
-@Testcontainers
 class SprintSchemaMigrationTest {
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("bts_agileplanning_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-
-        @BeforeAll
-        @JvmStatic
-        fun applyMigrations() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/agile-planning")
-                .load()
-                .migrate()
-        }
+        val postgres = SharedPostgres.freshDatabase()
 
         // sprints 가 V503 에서 보유해야 하는 11개 컬럼.
         private val SPRINTS_COLUMNS =
