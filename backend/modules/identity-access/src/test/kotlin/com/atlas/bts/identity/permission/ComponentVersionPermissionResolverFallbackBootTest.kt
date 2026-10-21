@@ -6,6 +6,7 @@ import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.bts.shared.permission.ComponentPermissionResolver
 import com.bts.shared.permission.CustomFieldPermissionResolver
 import com.bts.shared.permission.VersionPermissionResolver
@@ -17,9 +18,6 @@ import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.context.ApplicationContext
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 
 // OAuth2ClientAutoConfiguration: 테스트 환경에서 keycloak issuer-uri OIDC discovery 원격 호출 차단.
 private const val EXCLUDE_OAUTH2_CLIENT =
@@ -47,16 +45,10 @@ private const val EXCLUDE_OAUTH2_CLIENT =
  * 실패하므로 이 테스트가 RED 가 된다.
  */
 @SpringBootTest(properties = [EXCLUDE_OAUTH2_CLIENT])
-@Testcontainers
 class ComponentVersionPermissionResolverFallbackBootTest {
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -64,6 +56,8 @@ class ComponentVersionPermissionResolverFallbackBootTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }

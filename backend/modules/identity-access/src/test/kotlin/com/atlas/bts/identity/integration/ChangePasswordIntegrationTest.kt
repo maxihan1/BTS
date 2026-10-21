@@ -15,6 +15,7 @@ import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.atlas.bts.identity.user.UserRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -24,9 +25,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -63,17 +61,11 @@ import java.util.UUID
             "org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
-@Testcontainers
 class ChangePasswordIntegrationTest {
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001~V006 자동 마이그레이션 적용 */
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -81,6 +73,8 @@ class ChangePasswordIntegrationTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }

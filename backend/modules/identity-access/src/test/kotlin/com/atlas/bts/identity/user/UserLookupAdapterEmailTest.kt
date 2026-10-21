@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.user
 
+import com.atlas.bts.identity.support.SharedPostgres
 import com.bts.shared.user.UserLookupPort
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.MapAssert
@@ -12,9 +13,6 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
 /**
@@ -46,17 +44,11 @@ import java.util.UUID
             "org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
-@Testcontainers
 class UserLookupAdapterEmailTest {
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001 이상 마이그레이션 적용 대상 */
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         /**
          * Spring Boot 의 DataSource / Flyway / bts.security 설정을 Testcontainers 좌표로 교체.
@@ -67,6 +59,8 @@ class UserLookupAdapterEmailTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }

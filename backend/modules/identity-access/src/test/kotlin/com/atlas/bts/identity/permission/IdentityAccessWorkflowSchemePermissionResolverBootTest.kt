@@ -6,6 +6,7 @@ import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
+import com.atlas.bts.identity.support.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.junit.jupiter.api.Test
@@ -17,9 +18,6 @@ import org.springframework.ldap.core.LdapTemplate
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.nio.file.Files
 import java.security.KeyPairGenerator
 import java.security.Security
@@ -59,11 +57,13 @@ private val pemFilePath: String =
  */
 private fun configureBootProperties(
     registry: DynamicPropertyRegistry,
-    postgres: PostgreSQLContainer<*>,
+    postgres: SharedPostgres.Handle,
 ) {
     registry.add("spring.datasource.url") { postgres.jdbcUrl }
     registry.add("spring.datasource.username") { postgres.username }
     registry.add("spring.datasource.password") { postgres.password }
+    registry.add("spring.flyway.enabled") { "false" }
+    registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
     registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
     registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
     registry.add("spring.ldap.urls") { "ldap://localhost:389" }
@@ -89,16 +89,10 @@ private fun configureBootProperties(
  */
 @SpringBootTest(properties = [EXCLUDE_OAUTH2_CLIENT])
 @ActiveProfiles("prod")
-@Testcontainers
 class IdentityAccessWorkflowSchemePermissionResolverBootTest {
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -135,16 +129,10 @@ class IdentityAccessWorkflowSchemePermissionResolverBootTest {
  * vacuous(항상참)가 아니다. 자세한 맥락은 [IdentityAccessWorkflowSchemePermissionResolverBootTest] KDoc 참조.
  */
 @SpringBootTest(properties = [EXCLUDE_OAUTH2_CLIENT])
-@Testcontainers
 class WorkflowSchemePermissionResolverNonProdBootTest {
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic

@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.issuesecurity
 
+import com.atlas.bts.identity.support.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -12,9 +13,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.UUID
 
 /**
@@ -51,16 +49,10 @@ import java.util.UUID
 @JdbcTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(JdbcIssueSecurityLookup::class)
-@Testcontainers
 class JdbcIssueSecurityLookupIntegrationTest {
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -68,6 +60,7 @@ class JdbcIssueSecurityLookupIntegrationTest {
             r.add("spring.datasource.url") { postgres.jdbcUrl }
             r.add("spring.datasource.username") { postgres.username }
             r.add("spring.datasource.password") { postgres.password }
+            r.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             // issues 테이블만 직접 생성하므로 identity-access Flyway 는 끈다(스키마 충돌 회피).
             r.add("spring.flyway.enabled") { "false" }
         }

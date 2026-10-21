@@ -7,6 +7,7 @@ import com.atlas.bts.identity.provider.ldap.AutoProvisionService
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.ldap.LdapProvider
 import com.atlas.bts.identity.provider.ldap.LdapProviderConfigService
+import com.atlas.bts.identity.support.SharedPostgres
 import com.atlas.bts.identity.user.UserRepository
 import dev.samstevens.totp.code.DefaultCodeGenerator
 import dev.samstevens.totp.code.HashingAlgorithm
@@ -27,9 +28,6 @@ import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.net.URI
 import java.time.Instant
 import java.util.Base64
@@ -88,17 +86,11 @@ import java.util.UUID
             "org.springframework.boot.autoconfigure.security.oauth2.client.servlet.OAuth2ClientAutoConfiguration",
     ],
 )
-@Testcontainers
 class MfaTotpIntegrationTest {
     companion object {
         /** Testcontainers PostgreSQL 16 — Flyway V001~V022 자동 마이그레이션 적용 */
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         /** MFA 암호화 테스트 키 — [MfaSecretEncryptor] 가 setup/enable 시 요구(미설정이면 IllegalStateException). */
         private const val MFA_TEST_KEY = "test-app-encryption-key-for-mfa-totp"
@@ -118,6 +110,8 @@ class MfaTotpIntegrationTest {
             registry.add("spring.datasource.url") { postgres.jdbcUrl }
             registry.add("spring.datasource.username") { postgres.username }
             registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
             registry.add("bts.auth.issuer-uri") { "http://localhost:8090" }
             registry.add("bts.security.cors.allowed-origins") { "http://localhost:5173" }
             registry.add("spring.ldap.urls") { "ldap://localhost:389" }

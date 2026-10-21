@@ -2,10 +2,10 @@
 
 package com.atlas.bts.identity.provider.ldap
 
+import com.atlas.bts.identity.support.SharedPostgres
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.GenericContainer
-import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.utility.MountableFile
 import java.nio.file.Paths
@@ -60,12 +60,7 @@ abstract class LdapTestcontainersBase {
                 .apply { start() }
 
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer("postgres:16-alpine")
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         @DynamicPropertySource
         @JvmStatic
@@ -73,7 +68,8 @@ abstract class LdapTestcontainersBase {
             r.add("spring.datasource.url") { postgres.jdbcUrl }
             r.add("spring.datasource.username") { postgres.username }
             r.add("spring.datasource.password") { postgres.password }
-            r.add("spring.flyway.enabled") { "true" }
+            r.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
+            r.add("spring.flyway.enabled") { "false" }
             r.add("spring.ldap.urls") { "ldap://${openldap.host}:${openldap.firstMappedPort}" }
             r.add("spring.ldap.base") { "dc=example,dc=org" }
             r.add("spring.ldap.username") { "cn=admin,dc=example,dc=org" }
