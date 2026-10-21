@@ -2,14 +2,9 @@
 
 package com.bts.agileplanning.migration
 
+import com.bts.agileplanning.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -50,27 +45,10 @@ private val FIELD_GROUPS = listOf("GENERAL", "DATE", "PEOPLE", "LINKS")
  * 참조. `docs/specs/2026-09-05-board-settings-remaining-tabs-177.md` §데이터 모델 · R7 · 편차 X10 ·
  * `docs/plans/2026-09-05-board-settings-remaining-tabs-177.md` Task 3 · DATA.md §4·§4.1·§7.
  */
-@Testcontainers
 class BoardDetailViewSchemaTest {
     companion object {
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(DockerImageName.parse("postgres:16-alpine"))
-                .withDatabaseName("bts_agileplanning_detail_view_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-
-        @BeforeAll
-        @JvmStatic
-        fun migrate() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/agile-planning")
-                .load()
-                .migrate()
-        }
+        val postgres = SharedPostgres.freshDatabase()
 
         fun conn(): Connection = DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password)
 
