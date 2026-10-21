@@ -4,16 +4,14 @@ package com.bts.slack.persistence
 
 import com.bts.slack.domain.ChannelProjectMapping
 import com.bts.slack.domain.SlackChannelEventType
+import com.bts.slack.support.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 import java.util.UUID
 
@@ -33,37 +31,9 @@ import java.util.UUID
  */
 class JdbcSlackChannelMappingRepositoryIntegrationTest {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container.
-         * (memory: concurrent-testcontainers-suite-flaky — singleton 패턴 표준.)
-         */
+        /** 공용 컨테이너에서 템플릿을 복제한 이 클래스 전용 DB. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_slack_channel_map_repo_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
-
-        @JvmStatic
-        private var migrated = false
-
-        /** Flyway V700~V704 마이그레이션을 JVM 당 1회만 실행한다. */
-        @JvmStatic
-        @Synchronized
-        fun migrateOnce() {
-            if (migrated) return
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/slack-integration")
-                .load()
-                .migrate()
-            migrated = true
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     private lateinit var jdbcTemplate: JdbcTemplate
@@ -71,7 +41,6 @@ class JdbcSlackChannelMappingRepositoryIntegrationTest {
 
     @BeforeEach
     fun setUp() {
-        migrateOnce()
         val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         jdbcTemplate = JdbcTemplate(dataSource)
         jdbcTemplate.update("DELETE FROM slack_channel_project_map")

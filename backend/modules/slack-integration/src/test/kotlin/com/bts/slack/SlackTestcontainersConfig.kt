@@ -3,6 +3,7 @@
 package com.bts.slack
 
 import com.bts.slack.message.SlackUserLookupClient
+import com.bts.slack.support.SharedPostgres
 import com.slack.api.RequestConfigurator
 import com.slack.api.methods.MethodsClient
 import com.slack.api.methods.request.chat.ChatUpdateRequest
@@ -11,7 +12,6 @@ import com.slack.api.methods.response.chat.ChatUpdateResponse
 import com.slack.api.methods.response.views.ViewsOpenResponse
 import io.mockk.every
 import io.mockk.mockk
-import org.flywaydb.core.Flyway
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
@@ -20,8 +20,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.transaction.PlatformTransactionManager
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import javax.sql.DataSource
 
 /**
@@ -52,10 +50,8 @@ import javax.sql.DataSource
  * - [StubIssueMutationPort] — cross-BC 이슈 변경(담당자 배정/댓글 추가/필드 변경) 실행 stub(FR-SL-05 PR2
  *   Task 3, 메서드별 성공 결과/실패 예외 시드 가능, [issueMutationPort] 참고).
  *
- * ## JVM 단위 singleton container (교훈 concurrent-testcontainers-suite-flaky)
- * companion 의 `.apply { start() }` 로 JVM 시작 시 한 번만 기동하고 Ryuk 의 종료 시 자동 정리에 위임한다.
- * Flyway V700 은 [migrateOnce] 로 JVM 당 1회만 실행한다([JdbcSlackInstallRepositoryTest] /
- * notification `NotificationTestcontainersConfig` 동형).
+ * ## 공용 컨테이너의 전용 DB (교훈 concurrent-testcontainers-suite-flaky)
+ * 컨테이너 기동과 Flyway 는 [SharedPostgres] 가 JVM 당 1회만 하고, 이 설정은 거기서 복제한 DB 하나를 쓴다.
  *
  * ## `@TestConfiguration` — 스캔 비대상
  * 이 클래스는 [SlackIntegrationTestBootApplication] 컴포넌트 스캔에 잡히지 않으며(`@TestConfiguration`
@@ -70,7 +66,6 @@ class SlackTestcontainersConfig {
      */
     @Bean
     fun dataSource(): DataSource {
-        migrateOnce()
         return DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
     }
 
@@ -213,38 +208,8 @@ class SlackTestcontainersConfig {
                 ChatUpdateResponse().apply { isOk = true }
         }
 
-        /**
-         * JVM 단위 singleton PostgreSQL 16-alpine container.
-         * `.apply { start() }` 로 JVM 시작 시 한 번만 기동. Ryuk 이 종료 시 자동 정리한다.
-         */
+        /** 공용 컨테이너에서 템플릿을 복제한 이 설정 전용 DB. 마이그레이션은 템플릿에 이미 적용돼 있다. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            // V701(FR-SL-02)이 q_slack_deliveries pgmq 큐를 생성하므로 pgmq 바이너리 포함 이미지 사용.
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_slack_web_it")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
-
-        @JvmStatic
-        private var migrated = false
-
-        /** Flyway V700 마이그레이션을 JVM 당 1회만 실행한다. */
-        @JvmStatic
-        @Synchronized
-        fun migrateOnce() {
-            if (migrated) return
-            Flyway
-                .configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/slack-integration")
-                .load()
-                .migrate()
-            migrated = true
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 }

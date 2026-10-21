@@ -3,14 +3,12 @@
 package com.bts.slack.persistence
 
 import com.bts.slack.application.SlackInteractionLogRepository
+import com.bts.slack.support.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -31,37 +29,9 @@ import javax.sql.DataSource
  */
 class JdbcSlackInteractionLogRepositoryTest {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container.
-         * (memory: concurrent-testcontainers-suite-flaky — singleton 패턴 표준.)
-         */
+        /** 공용 컨테이너에서 템플릿을 복제한 이 클래스 전용 DB. */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_slack_interaction_log_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
-
-        @JvmStatic
-        private var migrated = false
-
-        /** Flyway V700~V703 마이그레이션을 JVM 당 1회만 실행한다. */
-        @JvmStatic
-        @Synchronized
-        fun migrateOnce() {
-            if (migrated) return
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/slack-integration")
-                .load()
-                .migrate()
-            migrated = true
-        }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     private lateinit var jdbc: NamedParameterJdbcTemplate
@@ -69,7 +39,6 @@ class JdbcSlackInteractionLogRepositoryTest {
 
     @BeforeEach
     fun setUp() {
-        migrateOnce()
         val dataSource: DataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
         jdbc = NamedParameterJdbcTemplate(dataSource)
         jdbc.update("DELETE FROM slack_interaction_log", emptyMap<String, Any>())
