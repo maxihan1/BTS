@@ -43,6 +43,6 @@
 
 ## 관련
 
-- 문서 인덱스 재생성·판별식. [`docs/rules/doc-index.md`](doc-index.md)
+- 문서 인덱스 재생성. [`docs/rules/doc-index.md`](doc-index.md)
 - 표면 표 · 행동 규칙 배치표. [`docs/rules/behavior-rules.md`](behavior-rules.md)
 - 명령어·코드 지도. `CLAUDE.md` 본문

@@ -1,7 +1,7 @@
 # DATA.md
 
 > **BTS 개발 헌법 §3 — 데이터 / DB / 마이그레이션 규칙.**
-> 위반 시 데이터 무결성 손상 가능. `/bts` 끝 리뷰가 `migration`/`auth`/이슈키 영향 PR의 리뷰어 프롬프트에 첨부.
+> 위반 시 데이터 무결성 손상 가능. `/bts` 리뷰(위험 경로)가 `migration`/`auth`/이슈키 영향 PR의 리뷰어 프롬프트에 첨부.
 > 자세한 스키마. `docs/sdd/05-data-model.md`. 정책 결정. `Maxi_wiki/BTS/decisions/`.
 
 **목차.** [§1 절대 원칙 5개](#1-절대-원칙-bts-데이터-무결성-5원칙) · [§2 이슈 키 영속성](#2-이슈-키-영속성-11-상세) ·
@@ -18,7 +18,7 @@ AIG의 "자금 손실 5원칙"과 동일 패턴. 위반 시 즉시 PR BLOCKER.
 2. **`DELETE`는 항상 `WHERE` + 소프트 삭제 우선** — 하드 삭제는 ADR + Maxi 확인 필수.
 3. **마이그레이션은 Flyway만** — 수동 ALTER TABLE / 임시 SQL 금지.
 4. **트랜잭션 경계 명시** — `@Transactional` 누락 = BLOCKER. 코드리뷰가 잡는다 (Detekt 커스텀 룰은 **미구현** — §6 은 계획이다).
-5. **인증/CSRF 우회 불가** — Spring Security 필터 체인 변경은 plan-eng-review + plan-ceo-review 필수.
+5. **인증/CSRF 우회 불가** — Spring Security 필터 체인 변경은 위험 경로다 — `/bts` 시작 질문과 리뷰를 거친다.
 
 ## §2. 이슈 키 영속성 (§1.1 상세)
 
@@ -156,7 +156,7 @@ val issues = dsl.selectFrom(ISSUES).where(cond).fetch()
 
 ### 코드 생성
 
-- jOOQ 코드젠은 Flyway 마이그레이션 후 `./gradlew generateJooq` (CI 자동 실행)
+- jOOQ 코드젠은 Flyway 마이그레이션 후 `./gradlew generateJooq`
 - 생성물은 git에 커밋 (개발 환경 일관성)
 
 ## §6. 트랜잭션 경계 (§1.4 상세)

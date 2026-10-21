@@ -10,7 +10,7 @@
 
 ## §1. 절대 규칙 (NEVER) — 19개
 
-다음 규칙은 어떤 경우에도 위반하지 않는다. `/bts` 끝 리뷰에서 리뷰어 프롬프트에 첨부해 대조.
+다음 규칙은 어떤 경우에도 위반하지 않는다. `/bts` 리뷰(위험 경로)에서 리뷰어 프롬프트에 첨부해 대조.
 
 ### §1.1 보안 (6개)
 
@@ -35,8 +35,8 @@
 11. **`any` 타입 금지** (TypeScript). 모르면 `unknown`.
 12. **`!!` null assertion 금지** (Kotlin/TS). 명시적 null 체크.
 13. **빈 catch 블록 금지.** 최소한 로그.
-14. **테스트 없는 새 기능 커밋 금지 — 강도는 티어별.** T2·T3 는 정식 TDD red→green→refactor (`test:` 커밋이 `feat:` 보다 먼저 · CI 판별식이 대조) · T1 은 재현 테스트 1개 먼저 · T0 는 lint+타입체크(시각 변경이면 눈확인 1회). **ui 시각 변경은 red-first 면제** — 시각 검증 트랙(덮는 E2E 동반 실행 + 브라우저 눈확인)으로 대신한다. 티어 정의. `CLAUDE.md §작업 티어`.
-    - 머지된 초록 테스트를 사후에 끄는 것(`skip` · `only` · `@Disabled`)은 금지. 파일럿에서 채택되지 않은 spec 을 **애초에 작성하지 않는 것**은 여기 해당하지 않는다. 배치·강제 여부. `docs/rules/behavior-rules.md`
+14. **테스트 없는 새 기능 커밋 금지.** 새 동작은 그것을 덮는 테스트와 같은 PR 에 둔다. 버그는 재현 테스트의 red 를 먼저 본다. 작업 중에는 대상 테스트만 돌리고, 전체 범위는 merge 직전 `select-test-scope.ts --run` 한 번이다. UI 시각 변경은 브라우저 눈확인으로 대신한다. E2E 는 쓰지 않는다(2026-10-20~).
+    - 머지된 초록 테스트를 사후에 끄는 것(`skip` · `only` · `@Disabled`)은 금지.
 15. **`console.log` / `println` 디버깅 코드 커밋 금지.** Pino/Logback 사용.
 16. **PoC / 프로토타입 / 임시 코드 금지.** 모든 작업은 완제품(production) 기준으로 작성한다. Phase 0 / Phase 1 단계 표기는 도입 시점 표시일 뿐, 작업 품질 수준이 아니다. "일단 동작만" / "나중에 리팩토링" 금지. Maxi가 "PoC 수준으로"라고 명시한 경우에만 예외. 새 코드·문서·스킬에 PoC·prototype 같은 단어를 쓰지 않는다 (에이전트가 품질 기준으로 오인한다).
 
@@ -103,7 +103,7 @@ export const issueKey = (input: string): IssueKey | null => { ... };
 |---|---|
 | 라이브러리 임의 도입 | SDD/Skills 명시 라이브러리만 (§1.17) |
 | 잘 작동하는 코드를 "더 좋게" 리팩토링 | 요청받은 것만 |
-| 테스트 없이 큰 변경 | TDD 강제 (§1.14) |
+| 테스트 없이 큰 변경 | 바꾼 동작을 덮는 테스트 (§1.14) |
 | `any` 타입 회피 | `unknown` 또는 정확한 타입 |
 | try-catch로 오류 숨김 | 명시적 처리 또는 propagate |
 | 주석 없는 복잡한 로직 | "왜" 설명 주석 |
@@ -117,31 +117,18 @@ export const issueKey = (input: string): IssueKey | null => { ... };
 
 | Prefix | 용도 |
 |---|---|
-| `feat:` | 새 기능의 **green 단계** (TDD 한 사이클 = 아래 3커밋) |
-| `test:` | TDD red 단계 (실패 테스트) |
+| `feat:` | 새 기능 |
+| `test:` | 테스트만 |
 | `fix:` | 버그 수정 |
 | `refactor:` | 동작 변경 없는 정리 |
 | `chore:` | 빌드/설정/문서 |
 | `docs:` | 문서만 |
 
-### TDD 강제 커밋 패턴
-
-```
-test: <slug> task-N red
-feat: <slug> task-N green
-refactor: <slug> task-N
-```
-
-**한 사이클 = 3커밋이다.**
-
-부연을 쓰고 싶으면 `—` 뒤에 붙인다 — `task-N` 토큰과 순서만 계약이다.
-
 ### PR 규칙
 
-- 한 PR = 한 BC + 한 plan
+- 한 PR = 한 BC
 - PR 제목 = 첫 커밋 제목과 동일 (Conventional Commits)
 - 라벨. `bc:<context>`, `type:<feature|fix|...>`, 필요 시 `learning:<topic>` (머지 시 learnings.md auto-append)
-- Draft PR 자동 개설 (`/bts` 1단계, worktree 생성 직후)
 
 ## §5. 도구 표준
 
@@ -156,7 +143,7 @@ refactor: <slug> task-N
 | 타입 체크 | `tsc --noEmit` | strict + noUncheckedIndexedAccess |
 | 백엔드 테스트 | JUnit 5 + Testcontainers + MockK | |
 | 프론트 테스트 | Vitest + Testing Library | |
-| E2E | Playwright | `docs/rules/code-checklists.md` E2E 절 |
+| E2E | Playwright | 2026-10-20 부터 쓰지 않는다 |
 
 ## §6. 환경 변수
 
@@ -171,3 +158,4 @@ refactor: <slug> task-N
 ## §7. 변경 이력
 
 - 2026-05-19. 초안. 기존 `CLAUDE.md`에서 절대 규칙 + 스타일 + 자주 하는 실수를 분리.
+- 2026-10-21. 하네스 재구축 — §1.14 를 「대상 테스트 + merge 직전 관문 한 번」으로. TDD 3커밋 패턴 · Draft PR 삭제.
