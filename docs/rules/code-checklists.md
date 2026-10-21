@@ -29,7 +29,7 @@
 ### 절차
 
 1. **기존 패턴 조사** — 같은 BC의 가까운 컨트롤러/서비스 2-3개 Read
-2. **테스트 먼저 (TDD 강제)** — 비즈니스 로직은 MockK 단위, 트랜잭션/DB 경계는 Testcontainers 통합
+2. **테스트** — 비즈니스 로직은 MockK 단위, 트랜잭션/DB 경계는 Testcontainers 통합. 돌릴 때는 대상만(`--tests '<클래스>'`)
 3. **새 이벤트 발행** — 같은 트랜잭션에서 pgmq enqueue. 다른 BC 직접 호출 금지 · 핸들러는 별도 워커 프로세스
 4. **모듈 경계 위반 감지** — Detekt 커스텀 룰 미도입. 다른 BC의 `internal` import 는 코드 리뷰에서 수동 차단
 
@@ -38,7 +38,7 @@
 - **jOOQ 다중 LEFT JOIN + count = cartesian product** — 여러 LEFT JOIN 뒤 count/집계는 행이 곱으로 폭증해 값이 틀어진다. 연관 카운트는 스칼라 서브쿼리로 분리 (PR #31 BLOCKER)
 - **advisory lock 시그니처 + TOCTOU** — `pg_advisory_xact_lock`은 `(bigint, bigint)` 시그니처가 없다. 단일 `bigint` 또는 `(int4, int4)`만 존재하므로 `dsl.execute("select pg_advisory_xact_lock(?)", key)` 형태로 호출. 그리고 lock을 잡았어도 lock 밖에서 미리 읽은 count로 판단하면 TOCTOU(검사-사용 사이 변경)가 무력화된다 → **lock 획득 후 반드시 재조회**. 단위 mock은 못 잡고 Testcontainers 통합만 표면화 (PR #48)
 - **PATCH 도메인 우회** — PATCH 핸들러가 service→repository 직행하면 도메인 Aggregate 불변식 검증이 dead code가 된다. service가 도메인 정규화 함수를 호출해야 함. DTO 검증(@field:*)은 1차 방어일 뿐 (PR #43 BLOCKER)
-- **detekt false-green** — 빌드 캐시가 위반을 가린다. 실검증은 `./gradlew detekt --rerun-tasks`. PRE_EXISTING 위반은 모듈 `detekt-baseline.xml` 동결(현재 8모듈 보유 — shared-kernel·agile-planning 없음), 신규 위반은 코드 수정 또는 `@Suppress`. 전역 임계값 완화 금지 (PR #37/#40)
+- **detekt false-green** — 빌드 캐시가 위반을 가린다. 실검증은 바뀐 모듈의 `:modules:<bc>:detekt --rerun-tasks`(merge 직전 관문이 그렇게 돈다). PRE_EXISTING 위반은 모듈 `detekt-baseline.xml` 동결(현재 8모듈 보유 — shared-kernel·agile-planning 없음), 신규 위반은 코드 수정 또는 `@Suppress`. 전역 임계값 완화 금지 (PR #37/#40)
 - **트랜잭션 self-invocation 무력화** — `@Transactional` 메서드를 같은 클래스 안에서 호출하면 Spring 프록시를 타지 않아 트랜잭션 속성이 무시된다. `REQUIRES_NEW`가 필요한 로직은 별도 Bean으로 분리해 주입받아 호출 (rollback 오염 사고)
 - **catch-all 핸들러가 ResponseStatusException 삼킴** — `@ExceptionHandler(Exception::class)` catch-all이 프레임워크 예외까지 잡으면 401이 500으로 변질된다. 구체 예외 핸들러를 분리하고 advice의 basePackage 스코프를 좁게. 도메인 예외는 타 컨트롤러 경로에서의 HTTP 통합테스트로 확인
 - **cross-BC 권한은 resolver 창구만** — 타 BC의 권한 확인은 권한코드 + 권한 resolver 경유만. 멤버십 role 직접 조회는 권한 모델 우회 (FR-PM-07)
@@ -233,49 +233,17 @@ BTS 의 UI/UX 기준은 **Jira Cloud (2025)** 다. 정본은 `docs/design/jira-p
 - 먼저 볼 것 — `DATA.md` 전체(특히 §1 · §2 · §4 · §7) · `DEVELOPMENT.md` §1.2
 - 필요 시 Read — `docs/sdd/05-data-model.md` · `docs/sdd/15-migration.md`
 
-## E2E · 테스트 인프라
-### 담당
+## 테스트 인프라
 
-- E2E 시나리오 (Playwright, `apps/web/e2e/` — 스펙 수는 하드코딩하지 않는다. `ls apps/web/e2e/*.spec.ts | wc -l` 로 착수 시점에 실측)
-- Testcontainers 통합 테스트 인프라 · 픽스처(`apps/web/e2e/fixtures/`) · `storageState` 인증 재사용
-- 커버리지 감사 (`./gradlew jacocoTestReport`, `pnpm test:coverage`) — 목표는 라인이 아니라 **시나리오** 커버리지(단위 60 / 통합 25 / E2E 15, SDD §22.7.2)
-- 회귀 테스트 보강 PR (단독)
-
-### 필수 체크리스트 (E2E 시나리오마다)
-
-1. **Given-When-Then 명시** — 시나리오 상단 주석. 쓰기 전에 가까운 기존 spec·fixture 를 먼저 Read 해 재사용을 우선한다 (plan 의 핵심 시나리오 1~3개 = golden path + 핵심 엣지)
-2. **인증 상태 재사용** — `storageState` 활용 (매 테스트 로그인 X)
-3. **데이터 격리** — 각 테스트가 자기 데이터 생성/정리 (전역 fixture 공유 금지)
-4. **selector 안정성** — `data-testid` 우선(텍스트 변경/번역에 견고). 셀렉터는 spec 안에서 정의한다 — `apps/web/e2e/pages/` Page Object 디렉터리는 현재 없다(전 spec 평면 구조)
-5. **타이밍** — `await expect(...).toBeVisible()` (sleep 금지)
-6. **스크린샷** — 실패 시 자동. 시각 회귀 스냅샷은 `apps/web/e2e/visual/visual-regression.spec.ts` 1파일 · `visual` 프로젝트로 **도입(파일럿)** — baseline PNG 갱신은 `apps/web/src/**` 변경을 동반해야 하고(`snapshot-baseline-guard`), 파일럿 4화면 밖은 `docs/design/jira-parity-contract.md` §6 브라우저 눈확인이 계속 정본이다. 화면 추가는 Maxi 게이트
-7. **모바일 + 데스크탑** — config에 모바일 project가 있으면 둘 다 (현행은 chromium 단일 — project 추가는 Maxi 확인)
-8. **접근성 계약 검증** — UI 변경 동반 시 `jira-parity-contract.md` §2 즉사 계약(aria-label 4종 · h1 verbatim · dialog 고유 label)이 깨지지 않았는지 해당 `getByRole` 어서션 실행으로 확인. axe 등 자동검사 도구는 신규 의존이라 **제안만 가능, 도입은 Maxi 승인** (§1.16)
-
-### flaky 판별 (원문 — 완화 금지)
-
-- **풀 suite 동시 실행 flaky 판별** — 백엔드 풀 suite를 여러 개 동시에 돌리면 Testcontainers 워커 크래시로 가짜 실패가 난다. test-results XML에 실패가 0건일 때**만** 해당 클래스 단독 재실행으로 확정 후 통과 처리 가능. XML에 실패가 기록돼 있으면 flaky가 아니다 — 정상대로 BLOCKED 보고
+- **E2E(Playwright)는 2026-10-20 부터 쓰지도 돌리지도 않는다.** `apps/web/e2e/` 는 동결이다. UI 는 브라우저 눈확인.
+- 작업 중에는 대상 테스트만 돌린다. 범위는 `CLAUDE.md` §테스트.
 
 ### 회귀 방지 (실제 사고 교훈 — 같은 실수 재발 금지)
 
-- **getByRole strict mode** — 같은 텍스트 버튼이 여러 곳에 노출되면 `getByRole` substring 매칭이 strict mode violation을 낸다. `{ exact: true }` 또는 좁은 컨테이너로 한정 (PR #35)
-- **MSW serviceWorker:'block' 금지** — 프론트 E2E에서 `serviceWorkers: 'block'`은 MSW 의존 앱 부팅을 깨뜨린다. 새 API mock은 MSW 핸들러를 추가하는 게 정석이고, mock 분기 순서는 백엔드와 일치시킬 것 (PR #37)
 - **MSW mutation은 stateful 영속** — PATCH/POST 핸들러가 결과를 stateful 오버라이드에 영속하지 않으면, `invalidateQueries` refetch 후 화면이 옛 값으로 롤백된다(setQueryData 위에서만 통과하는 가짜 그린). 핸들러가 변경을 메모리에 보존해야 함 (FR-IS-02 D7)
 - **MSW 파생동작은 공유 store 경유** — mutation의 파생 응답(다른 엔드포인트가 반환할 값)이 핸들러별 지역 상태에 분산되면 시나리오 간 drift가 난다. 브라우저에서 시드 가능한 공유 store에서 읽도록 통일 (FR-CM)
-- **시나리오 토글은 localStorage + addInitScript** — MSW 시나리오 분기(에러 응답 등)는 localStorage 플래그를 `addInitScript`로 심는 패턴이 정석. 핸들러 임시 교체 방식은 페이지 리로드에 깨진다
-- **UI 추가 PR은 기존 E2E 함께 실행** — 새 UI 요소가 기존 E2E의 전역 셀렉터를 strict mode로 깨도 단위 테스트는 못 잡는다. E2E를 후속 PR로 미루면 머지 시점에 회귀가 잠복한다. UI PR은 기존 E2E를 함께 돌리고, 텍스트 중복 버튼은 컨테이너로 한정 (PR #46 유발 → #47)
-- **fixture userId 정합** — 권한 UI fixture의 userId가 whoami fixture(예: alice=`00000000-...-001`)와 어긋나면 ADMIN 판정이 실패해 액션 버튼이 숨겨지고 E2E가 깨진다. 단위는 자체 리터럴로 self-consistent해 가려진다 (PR #50)
-
-그 외 사고 이력(userEvent.type 타임아웃 등)은 `Maxi_wiki/BTS/learnings.md` 참조 (inline 주입 대상 아님 — 필요 시 직접 Read 가능).
 
 ### 절대 금지
 
-- 테스트 안에서 production DB 접근(모두 Testcontainers) · 인증 정보 하드코딩(`.env.test` + storageState)
-- `Thread.sleep()` / `page.waitForTimeout()` · 1 시나리오 = 여러 assert · 테스트 격리 깨기(다른 테스트 결과 의존)
-- 추가 시나리오로 e2e job 소요가 **직전 main 대비 +20% 이상** 늘었는데 Maxi 무통보로 통과
-
-### 참조 파일
-
-- 먼저 볼 것 — `DEVELOPMENT.md` §5(도구 표준) · §2.3(테스트 규칙)
-- 필요 시 Read — `docs/design/jira-parity-contract.md` §2 · §5 · §6 · `DESIGN.md` §4(헤딩 grep 후 부분 Read) · `apps/web/playwright.config.ts`(설정 변경 전 현행 확인 · 임의 변경은 Maxi 확인)
-- 관련 SDD — `docs/sdd/22-claude-code-env.md` §22.7.2
+- 테스트 안에서 production DB 접근(모두 Testcontainers) · 인증 정보 하드코딩
+- `Thread.sleep()` · 테스트 격리 깨기(다른 테스트 결과 의존)
