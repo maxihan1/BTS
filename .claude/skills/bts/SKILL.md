@@ -11,7 +11,7 @@ description: BTS 의 모든 코드 작업 진입점. 자연어로 하고 싶은 
 ```
 1. 시작    worktree + 연결 · 위험 판정 · (위험) 시작 질문
 2. 구현    코드 + 대상 테스트
-3. 마무리  (위험) 리뷰 한 번 · 관문 한 번 · PR · merge · 정리
+3. 마무리  (위험) 리뷰 한 번 · PR · merge · 정리
 ```
 
 plan 파일 · Draft PR · 티어 분류는 없다.
@@ -58,28 +58,24 @@ plan 파일 · Draft PR · 티어 분류는 없다.
 
 1. **리뷰 한 번 (위험만)** — `code-reviewer` 에이전트. 프롬프트에 diff 범위 `origin/main...HEAD` · worktree 절대경로 · 하려던 것 · `DEVELOPMENT.md` §1 · DB 면 `DATA.md` §1.
    지적은 고치고 push 한다. **고친 뒤 리뷰를 다시 부르지 않는다.** 고친 곳은 그 대상 테스트로만 확인한다. 보통이면 리뷰가 없다.
-2. **관문 한 번** — 모든 변경을 커밋한 뒤에 돈다. 커밋된 것만 본다.
-   ```bash
-   node --experimental-strip-types scripts/workflow/select-test-scope.ts --run > "$CLAUDE_JOB_DIR/tmp/gate.log" 2>&1; echo "EXIT=$?"
-   ```
-   `EXIT=0` 이 아니면 실패한 대상만 고쳐 그 대상 테스트로 확인하고 관문을 다시 돈다. 결과를 PR 본문에 한 줄 적는다.
-3. **PR · merge**
+   모듈 전체 관문(`select-test-scope.ts --run`)은 돌리지 않는다(2026-10-21~, Maxi 지시). merge 근거는 2단계의 대상 테스트 결과다.
+2. **PR · merge**
    ```bash
    git push -u origin <브랜치>
-   gh pr create --title "[<type>] <제목>" --body "<무엇을 왜 · 확인 방법 · 위험 여부 · 관문 EXIT>"
+   gh pr create --title "[<type>] <제목>" --body "<무엇을 왜 · 확인 방법(돌린 대상 테스트) · 위험 여부>"
    gh pr merge <번호> --squash --delete-branch
    gh pr view <번호> --json state -q .state   # MERGED 인지 본다
    ```
    `--delete-branch` 가 「main is already used by worktree」로 실패해도 merge 는 된 것이다.
-4. **정리 (`MERGED` 뒤에만)** — 배경 세션은 먼저 `ExitWorktree`(`keep`)로 루트에 나온다.
+3. **정리 (`MERGED` 뒤에만)** — 배경 세션은 먼저 `ExitWorktree`(`keep`)로 루트에 나온다.
    ```bash
    node --experimental-strip-types scripts/workflow/safe-worktree-remove.ts <worktree 경로>
    git worktree prune
    git checkout main && git pull --ff-only origin main
    ```
    `safe-worktree-remove` 가 종료 코드 2 면 미커밋 · 미푸시가 남은 것이다 — 지우지 말고 보고한다.
-5. Obsidian — `/Users/maxi.moff/Maxi_wiki/BTS/history.md` 에 `- YYYY-MM-DD #<PR> [<type>/<slug>] <제목>` 한 줄.
-6. 보고 — 첫 줄에 무엇이 반영됐고 Maxi 가 어디서 확인하는지. 이어서 PR · 위험 여부 · 관문 결과 각 한 줄.
+4. Obsidian — `/Users/maxi.moff/Maxi_wiki/BTS/history.md` 에 `- YYYY-MM-DD #<PR> [<type>/<slug>] <제목>` 한 줄.
+5. 보고 — 첫 줄에 무엇이 반영됐고 Maxi 가 어디서 확인하는지. 이어서 PR · 위험 여부 · 대상 테스트 결과 각 한 줄.
 
 ## 막혔을 때
 
