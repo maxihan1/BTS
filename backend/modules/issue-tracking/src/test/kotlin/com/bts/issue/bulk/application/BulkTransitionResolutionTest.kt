@@ -19,6 +19,7 @@ import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.user.UserLookupPort
@@ -46,7 +47,6 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -66,8 +66,6 @@ import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Clock
@@ -120,17 +118,9 @@ class BulkTransitionResolutionTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
         companion object {
-            /** JVM 단위 singleton Testcontainers — pgmq 확장 포함 */
+            /** SharedPostgres 템플릿을 복제한 클래스 전용 DB 접속 정보 */
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_bulk_res_it_test")
-                    .withUsername("bts")
-                    .withPassword("bts_bulk_res_it_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabaseWithWorkflow()
         }
 
         @Bean
@@ -435,7 +425,6 @@ class BulkTransitionResolutionTest {
     @BeforeAll
     fun setUpAll() {
         if (!bootstrapped) {
-            applyMigrations()
             seedFixtures()
             bootstrapped = true
         }
@@ -592,25 +581,6 @@ class BulkTransitionResolutionTest {
     }
 
     // ── private helpers ────────────────────────────────────────────────────────
-
-    /**
-     * Flyway 마이그레이션 — issue-tracking V001~V011 + project-workflow V200~V202.
-     */
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-            .placeholderReplacement(false)
-            .locations(
-                "classpath:db/migration/issue-tracking",
-                "classpath:db/migration/project-workflow",
-            )
-            .load()
-            .migrate()
-    }
 
     /**
      * 테스트 픽스처 seed.

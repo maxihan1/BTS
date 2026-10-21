@@ -9,13 +9,13 @@ import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -48,8 +48,6 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -88,15 +86,7 @@ class IssueLinkControllerIntegrationTest {
     open class TestConfig {
         companion object {
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_lk_test")
-                    .withUsername("bts")
-                    .withPassword("bts_lk_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabase()
         }
 
         @Bean
@@ -218,7 +208,6 @@ class IssueLinkControllerIntegrationTest {
 
         /** 컨트롤러가 CurrentActor 로 읽는 테스트 actor UUID. */
         private val TEST_ACTOR_ID: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
-        private var migrated = false
         private var projectSeeded = false
 
         /** issue_types.id — V003 task 시드로 생성되는 기본 타입 id (BIGSERIAL 시작값 1) */
@@ -228,10 +217,6 @@ class IssueLinkControllerIntegrationTest {
 
     @BeforeAll
     fun setUpAll() {
-        if (!migrated) {
-            applyMigrations()
-            migrated = true
-        }
         if (!projectSeeded) {
             seedProjectAndType()
             projectSeeded = true
@@ -797,19 +782,6 @@ class IssueLinkControllerIntegrationTest {
                 .andReturn()
         val json = mapper.readTree(result.response.contentAsString)
         return json["data"]["id"].asLong()
-    }
-
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/issue-tracking")
-            .load()
-            .migrate()
     }
 
     @Suppress("NestedBlockDepth") // JDBC try-with-resources(conn→stmt→rs) 시드 보일러플레이트 — 테스트 1회성 setup

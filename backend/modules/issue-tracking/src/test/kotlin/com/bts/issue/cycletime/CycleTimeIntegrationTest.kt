@@ -13,6 +13,7 @@ import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_GROUP
 import com.bts.issue.jooq.tables.references.ISSUE_CHANGE_ITEM
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.statushistory.repository.StatusHistoryRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.permission.IssuePermission
@@ -38,7 +39,6 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -72,8 +72,6 @@ import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.Types
@@ -201,15 +199,7 @@ class CycleTimeIntegrationTest {
 
         companion object {
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_cycletime_http_test")
-                    .withUsername("bts")
-                    .withPassword("bts_cycletime_http_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabaseWithWorkflow()
 
             val permissionResolver = SwitchablePermissionResolver()
             internal val securityDirectory = SwitchableSecurityDirectory()
@@ -369,7 +359,6 @@ class CycleTimeIntegrationTest {
 
     companion object {
         private const val PROJECT_KEY = "CYCP"
-        private var migrated = false
         private var seeded = false
 
         private var testProjectId: UUID = UUID.randomUUID()
@@ -392,10 +381,6 @@ class CycleTimeIntegrationTest {
 
     @BeforeAll
     fun setUpAll() {
-        if (!migrated) {
-            applyMigrations()
-            migrated = true
-        }
         if (!seeded) {
             seedAll()
             seeded = true
@@ -796,18 +781,6 @@ class CycleTimeIntegrationTest {
             .set(ISSUE_CHANGE_ITEM.FROM_VALUE, fromValue)
             .set(ISSUE_CHANGE_ITEM.TO_VALUE, toValue)
             .execute()
-    }
-
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(TestConfig.postgres.jdbcUrl, TestConfig.postgres.username, TestConfig.postgres.password)
-            .placeholderReplacement(false)
-            .locations(
-                "classpath:db/migration/issue-tracking",
-                "classpath:db/migration/project-workflow",
-            )
-            .load()
-            .migrate()
     }
 
     /** 전체 시드: 프로젝트(CYCP) + task 타입 id 조회 + 워크플로우 스킴 배정. */

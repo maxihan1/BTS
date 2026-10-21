@@ -4,6 +4,7 @@ package com.bts.issue.config
 
 import com.bts.issue.CrossBcPortTestConfig
 import com.bts.issue.IssueTrackingApplication
+import com.bts.issue.testsupport.SharedPostgres
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -21,8 +22,6 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 
 /**
  * OpenAPI annotation 통합 검증 (FR-API-01 Task 7).
@@ -59,22 +58,17 @@ class OpenApiAnnotationTest {
         private val objectMapper = ObjectMapper().registerKotlinModule()
 
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_annotation_test")
-                .withUsername("bts")
-                .withPassword("bts_annotation_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         @JvmStatic
         @DynamicPropertySource
         fun datasourceProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+            registry.add("spring.datasource.url") { postgres.jdbcUrl }
+            registry.add("spring.datasource.username") { postgres.username }
+            registry.add("spring.datasource.password") { postgres.password }
+            // 템플릿에서 마이그레이션이 이미 적용됐다.
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
         }
     }
 

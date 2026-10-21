@@ -11,11 +11,11 @@ import com.bts.issue.link.repository.IssueLinkRepository
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.shared.permission.IssuePermission
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -46,8 +46,6 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -78,15 +76,7 @@ class IssueGraphControllerIntegrationTest {
     open class TestConfig {
         companion object {
             @JvmStatic
-            val postgres: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                )
-                    .withDatabaseName("bts_gk_test")
-                    .withUsername("bts")
-                    .withPassword("bts_gk_test")
-                    .apply { start() }
+            val postgres = SharedPostgres.freshDatabase()
         }
 
         @Bean
@@ -195,7 +185,6 @@ class IssueGraphControllerIntegrationTest {
 
     companion object {
         private const val PROJECT_KEY = "GKTEST"
-        private var migrated = false
         private var projectSeeded = false
 
         /** issue_types.id — V003 task 시드로 생성되는 기본 타입 id */
@@ -205,10 +194,6 @@ class IssueGraphControllerIntegrationTest {
 
     @BeforeAll
     fun setUpAll() {
-        if (!migrated) {
-            applyMigrations()
-            migrated = true
-        }
         if (!projectSeeded) {
             seedProjectAndType()
             projectSeeded = true
@@ -482,19 +467,6 @@ class IssueGraphControllerIntegrationTest {
                 .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .content(mapper.writeValueAsString(mapOf("parentKey" to parentKey))),
         ).andExpect(status().isOk)
-    }
-
-    private fun applyMigrations() {
-        Flyway.configure()
-            .dataSource(
-                TestConfig.postgres.jdbcUrl,
-                TestConfig.postgres.username,
-                TestConfig.postgres.password,
-            )
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/issue-tracking")
-            .load()
-            .migrate()
     }
 
     @Suppress("NestedBlockDepth") // JDBC try-with-resources(conn→stmt→rs) 시드 보일러플레이트 — 테스트 1회성 setup

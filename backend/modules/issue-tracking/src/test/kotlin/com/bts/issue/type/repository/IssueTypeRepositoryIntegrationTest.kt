@@ -2,6 +2,7 @@
 
 package com.bts.issue.type.repository
 
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeKey
 import org.assertj.core.api.Assertions.assertThat
@@ -10,10 +11,6 @@ import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 
 /**
  * IssueTypeRepository 통합 테스트.
@@ -37,36 +34,16 @@ import org.testcontainers.utility.DockerImageName
  * findAll / findByKey / findById 3 메서드만 검증.
  * CRUD (save / update / delete) 는 후속 FR-IS-02 PR scope.
  */
-@Testcontainers
 class IssueTypeRepositoryIntegrationTest {
     companion object {
-        // quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
-        // asCompatibleSubstituteFor("postgres"): Testcontainers 이미지 호환성 검증 우회.
-        // ADR 2026-05-22-pgmq-postgres-image 와 동일 패턴.
-        private val temboImage: DockerImageName =
-            DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                .asCompatibleSubstituteFor("postgres")
-
-        @Container
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(temboImage)
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
+        val postgres = SharedPostgres.freshDatabase()
 
         lateinit var repository: IssueTypeRepository
 
         @BeforeAll
         @JvmStatic
         fun setup() {
-            Flyway.configure()
-                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/issue-tracking")
-                .load()
-                .migrate()
-
             val dataSource =
                 org.springframework.jdbc.datasource.DriverManagerDataSource(
                     postgres.jdbcUrl,

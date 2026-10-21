@@ -2,10 +2,10 @@
 
 package com.bts.issue.type.repository
 
+import com.bts.issue.testsupport.SharedPostgres
 import com.bts.issue.type.domain.IssueType
 import com.bts.shared.issue.IssueTypeKey
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -14,8 +14,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.springframework.jdbc.datasource.DriverManagerDataSource
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.sql.DriverManager
 import java.util.UUID
 
@@ -36,20 +34,9 @@ import java.util.UUID
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class IssueTypeRepositoryCrudTest {
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container.
-         * quay.io/tembo/pg16-pgmq:latest — V002 pgmq 확장 요구로 인해 tembo 이미지 사용.
-         */
+        /** SharedPostgres 템플릿을 복제한 클래스 전용 DB 접속 정보 */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_test")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
     }
 
     lateinit var dsl: DSLContext
@@ -60,13 +47,6 @@ class IssueTypeRepositoryCrudTest {
     @BeforeAll
     fun bootstrap() {
         if (bootstrapped) return
-
-        Flyway.configure()
-            .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/issue-tracking")
-            .load()
-            .migrate()
 
         val dataSource =
             DriverManagerDataSource(
