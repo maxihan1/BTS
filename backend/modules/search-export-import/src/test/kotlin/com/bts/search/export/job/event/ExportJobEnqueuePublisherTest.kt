@@ -54,8 +54,8 @@ class ExportJobEnqueuePublisherTest : SearchPersistenceTestBase() {
     /**
      * 최소 Spring 빈 구성 — DataSource/TM/DSLContext/Publisher/TransactionTemplate.
      *
-     * DataSource 는 [SearchPersistenceTestBase.postgres] 컨테이너(이미 기동됨)의 JDBC URL 을 사용한다.
-     * [SearchPersistenceTestBase.bootstrap] 이 Flyway 를 실행하여 q_export_jobs 큐를 생성하므로
+     * DataSource 는 [SearchPersistenceTestBase.postgres] 의 JDBC URL 을 사용한다.
+     * `SharedPostgres` 템플릿이 V602 로 q_export_jobs 큐를 이미 만들었으므로
      * 테스트 메서드 실행 시점에 큐가 보장된다.
      */
     @Configuration

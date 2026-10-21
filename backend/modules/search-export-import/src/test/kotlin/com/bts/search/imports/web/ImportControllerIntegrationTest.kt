@@ -9,6 +9,7 @@ import com.bts.search.imports.job.storage.MinioImportStorageAdapter
 import com.bts.search.imports.job.storage.MinioImportStorageConfig
 import com.bts.search.imports.job.storage.MinioImportStorageException
 import com.bts.search.jooq.tables.references.IMPORT_JOBS
+import com.bts.search.support.SharedPostgres
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -18,7 +19,6 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.minio.MinioClient
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -48,8 +48,6 @@ import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
 import org.testcontainers.containers.MinIOContainer
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -92,16 +90,7 @@ class ImportControllerIntegrationTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
         @Bean
-        open fun dataSource(): DriverManagerDataSource {
-            Flyway
-                .configure()
-                .dataSource(pg.jdbcUrl, pg.username, pg.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/search-export-import")
-                .load()
-                .migrate()
-            return DriverManagerDataSource(pg.jdbcUrl, pg.username, pg.password)
-        }
+        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(pg.jdbcUrl, pg.username, pg.password)
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
@@ -180,22 +169,9 @@ class ImportControllerIntegrationTest {
         }
 
         companion object {
-            /**
-             * JVM 단위 singleton PostgreSQL container.
-             * quay.io/tembo/pg16-pgmq:latest — search-export-import 마이그레이션 체인의 V602(pgmq 확장)
-             * 때문에 postgres:16-alpine 으로는 실패한다(ADR 2026-05-22-pgmq-postgres-image, 형제
-             * `WebhookIntegrationConfig` 동일 패턴). Ryuk 이 JVM 종료 시 자동 정리한다.
-             */
+            /** [SharedPostgres] 템플릿을 복제한 이 클래스 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
             @JvmStatic
-            val pg: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName
-                        .parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                ).withDatabaseName("bts_import_controller_it")
-                    .withUsername("bts")
-                    .withPassword("bts_test")
-                    .apply { start() }
+            val pg = SharedPostgres.freshDatabase()
 
             /** JVM 단위 singleton MinIO container — `MinioImportStorageAdapterTest` 와 동일 pinned 버전. */
             @JvmStatic

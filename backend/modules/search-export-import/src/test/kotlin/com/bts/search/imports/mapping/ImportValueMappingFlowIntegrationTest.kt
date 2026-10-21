@@ -16,6 +16,7 @@ import com.bts.search.imports.mapping.repository.ImportMappingRepository
 import com.bts.search.imports.mapping.repository.ImportUserMappingRepository
 import com.bts.search.imports.mapping.repository.ImportValueMappingRepository
 import com.bts.search.jooq.tables.references.IMPORT_JOBS
+import com.bts.search.support.SharedPostgres
 import com.bts.shared.issue.ImportAttachmentSource
 import com.bts.shared.issue.IssueImportCommand
 import com.bts.shared.issue.IssueImportPort
@@ -32,7 +33,6 @@ import com.bts.shared.workflow.WorkflowStateCatalog
 import com.bts.shared.workflow.WorkflowStateView
 import io.minio.MinioClient
 import org.assertj.core.api.Assertions.assertThat
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -50,8 +50,6 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.annotation.EnableTransactionManagement
 import org.springframework.transaction.support.TransactionTemplate
 import org.testcontainers.containers.MinIOContainer
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -114,16 +112,7 @@ class ImportValueMappingFlowIntegrationTest {
     @EnableTransactionManagement(proxyTargetClass = true)
     open class TestConfig {
         @Bean
-        open fun dataSource(): DriverManagerDataSource {
-            Flyway
-                .configure()
-                .dataSource(pg.jdbcUrl, pg.username, pg.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/search-export-import")
-                .load()
-                .migrate()
-            return DriverManagerDataSource(pg.jdbcUrl, pg.username, pg.password)
-        }
+        open fun dataSource(): DriverManagerDataSource = DriverManagerDataSource(pg.jdbcUrl, pg.username, pg.password)
 
         @Bean
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
@@ -366,21 +355,9 @@ class ImportValueMappingFlowIntegrationTest {
         }
 
         companion object {
-            /**
-             * JVM 단위 singleton PostgreSQL container.
-             * quay.io/tembo/pg16-pgmq:latest — V604(pgmq 확장) 때문에 postgres:16-alpine 으로는 실패한다
-             * (ADR 2026-05-22-pgmq-postgres-image, `ImportMappingFlowIntegrationTest` 동일 패턴).
-             */
+            /** [SharedPostgres] 템플릿을 복제한 이 클래스 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
             @JvmStatic
-            val pg: PostgreSQLContainer<*> =
-                PostgreSQLContainer(
-                    DockerImageName
-                        .parse("quay.io/tembo/pg16-pgmq:latest")
-                        .asCompatibleSubstituteFor("postgres"),
-                ).withDatabaseName("bts_import_value_mapping_flow_it")
-                    .withUsername("bts")
-                    .withPassword("bts_test")
-                    .apply { start() }
+            val pg = SharedPostgres.freshDatabase()
 
             /** JVM 단위 singleton MinIO container — 다른 Import 통합테스트와 동일 pinned 버전. */
             @JvmStatic

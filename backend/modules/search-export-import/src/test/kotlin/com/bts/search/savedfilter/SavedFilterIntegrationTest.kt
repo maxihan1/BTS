@@ -9,6 +9,7 @@ import com.bts.search.savedfilter.persistence.JooqSavedFilterShareRepository
 import com.bts.search.savedfilter.web.SavedFilterController
 import com.bts.search.savedfilter.web.SavedFilterExceptionHandler
 import com.bts.search.savedfilter.web.SavedFilterSearchController
+import com.bts.search.support.SharedPostgres
 import com.bts.shared.membership.GroupMembershipPort
 import com.bts.shared.membership.ProjectMembershipPort
 import com.bts.shared.search.IssueSearchPage
@@ -17,7 +18,6 @@ import com.bts.shared.search.IssueSearchQuery
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -47,8 +47,6 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.util.UUID
 
 /**
@@ -77,13 +75,6 @@ class SavedFilterIntegrationTest {
     open class IntegrationConfig {
         @Bean
         open fun dslContext(): DSLContext {
-            Flyway
-                .configure()
-                .dataSource(pg.jdbcUrl, pg.username, pg.password)
-                .placeholderReplacement(false)
-                .locations("classpath:db/migration/search-export-import")
-                .load()
-                .migrate()
             val dataSource = DriverManagerDataSource(pg.jdbcUrl, pg.username, pg.password)
             return DSL.using(dataSource, SQLDialect.POSTGRES)
         }
@@ -290,20 +281,8 @@ class SavedFilterIntegrationTest {
     }
 
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container — 통합테스트 격리(T3와 별도 DB).
-         * 이미지 = quay.io/tembo/pg16-pgmq:latest — FR-EX-02 V602(pgmq 확장 + pgmq.create) 가 마이그레이션 체인에
-         * 포함되어 postgres:16-alpine 으로는 적용 실패하므로 tembo 이미지 사용 (ADR 2026-05-22-pgmq-postgres-image).
-         */
+        /** [SharedPostgres] 템플릿을 복제한 이 클래스 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
         @JvmStatic
-        val pg: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_savedfilter_it")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val pg = SharedPostgres.freshDatabase()
     }
 }

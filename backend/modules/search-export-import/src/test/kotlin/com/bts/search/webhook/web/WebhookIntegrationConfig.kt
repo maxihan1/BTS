@@ -2,6 +2,7 @@
 
 package com.bts.search.webhook.web
 
+import com.bts.search.support.SharedPostgres
 import com.bts.search.webhook.application.OutboundWebhookRepository
 import com.bts.search.webhook.application.OutboundWebhookService
 import com.bts.search.webhook.application.WebhookDeliveryRepository
@@ -11,7 +12,6 @@ import com.bts.search.webhook.persistence.JooqWebhookDeliveryRepository
 import com.bts.shared.crypto.SecretEncryptor
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.permission.SystemPermissionResolver
-import org.flywaydb.core.Flyway
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -20,8 +20,6 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.datasource.DriverManagerDataSource
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -55,13 +53,6 @@ open class WebhookIntegrationConfig {
      */
     @Bean
     open fun dslContext(): DSLContext {
-        Flyway
-            .configure()
-            .dataSource(pg.jdbcUrl, pg.username, pg.password)
-            .placeholderReplacement(false)
-            .locations("classpath:db/migration/search-export-import")
-            .load()
-            .migrate()
         val dataSource = DriverManagerDataSource(pg.jdbcUrl, pg.username, pg.password)
         return DSL.using(dataSource, SQLDialect.POSTGRES)
     }
@@ -147,23 +138,8 @@ open class WebhookIntegrationConfig {
     }
 
     companion object {
-        /**
-         * JVM 단위 singleton PostgreSQL container.
-         *
-         * 이미지 = quay.io/tembo/pg16-pgmq:latest (pgmq 사전 설치). search-export-import 마이그레이션 체인의
-         * V602(`CREATE EXTENSION pgmq`) 때문에 postgres:16-alpine 으로는 실패하므로 tembo 이미지가 필수다
-         * (형제 SavedFilterIntegrationTest·SearchPersistenceTestBase 와 동일, ADR 2026-05-22-pgmq-postgres-image).
-         * Ryuk 이 JVM 종료 시 자동 정리하므로 명시적 stop 은 불필요하다.
-         */
+        /** [SharedPostgres] 템플릿을 복제한 이 클래스 전용 DB. 컨테이너와 마이그레이션은 공용이다. */
         @JvmStatic
-        val pg: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName
-                    .parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            ).withDatabaseName("bts_webhook_it")
-                .withUsername("bts")
-                .withPassword("bts_test")
-                .apply { start() }
+        val pg = SharedPostgres.freshDatabase()
     }
 }

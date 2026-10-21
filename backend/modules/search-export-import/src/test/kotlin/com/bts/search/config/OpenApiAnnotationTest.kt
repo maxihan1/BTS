@@ -2,6 +2,7 @@
 
 package com.bts.search.config
 
+import com.bts.search.support.SharedPostgres
 import com.bts.shared.http.OutboundUrlValidator
 import com.bts.shared.issue.IssueImportPort
 import com.bts.shared.issue.IssueTypeCatalog
@@ -39,8 +40,6 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.client.RestClient
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.utility.DockerImageName
 
 /**
  * OpenAPI annotation 통합 검증 (FR-API-02 Task 2).
@@ -57,7 +56,7 @@ import org.testcontainers.utility.DockerImageName
  * ComponentScan excludeFilter 로 제외해 Spring Boot MVC 자동 구성을 보호한다.
  * cross-BC 포트([IssueSearchPort]/[GroupMembershipPort]/[ProjectMembershipPort])는 @MockBean.
  * MinIO 는 가짜 endpoint(bts.minio.endpoint=http://localhost:9001) 설정 후 best-effort warn 통과.
- * PostgreSQL 은 Testcontainers(quay.io/tembo/pg16-pgmq) 로 제공 — Flyway V600~ 자동 적용.
+ * PostgreSQL 은 Testcontainers(quay.io/tembo/pg16-pgmq) 로 제공 — SharedPostgres 템플릿에 V600~ 적용.
  */
 @SpringBootTest(
     classes = [OpenApiAnnotationTest.SearchTestApplication::class],
@@ -176,29 +175,20 @@ class OpenApiAnnotationTest {
         private val objectMapper = ObjectMapper().registerKotlinModule()
 
         /**
-         * JVM 단위 singleton PostgreSQL container.
-         *
-         * search-export-import V602 마이그레이션이 `CREATE EXTENSION pgmq` 를 포함하므로
-         * pgmq 사전 설치된 Tembo 이미지([com.bts.search.savedfilter.persistence.SearchPersistenceTestBase] 동일)가 필수다.
-         * Spring Boot Flyway 자동 구성이 V600~ 마이그레이션을 자동 적용한다.
+         * [SharedPostgres] 템플릿을 복제한 이 클래스 전용 DB. V600~ 마이그레이션은 템플릿에 적용돼 있어
+         * Spring Boot Flyway 자동 구성은 끈다(`spring.flyway.enabled=false`).
          */
         @JvmStatic
-        val postgres: PostgreSQLContainer<*> =
-            PostgreSQLContainer(
-                DockerImageName.parse("quay.io/tembo/pg16-pgmq:latest")
-                    .asCompatibleSubstituteFor("postgres"),
-            )
-                .withDatabaseName("bts_openapi_test")
-                .withUsername("bts")
-                .withPassword("bts_openapi_test")
-                .apply { start() }
+        val postgres = SharedPostgres.freshDatabase()
 
         @JvmStatic
         @DynamicPropertySource
         fun datasourceProperties(registry: DynamicPropertyRegistry) {
-            registry.add("spring.datasource.url", postgres::getJdbcUrl)
-            registry.add("spring.datasource.username", postgres::getUsername)
-            registry.add("spring.datasource.password", postgres::getPassword)
+            registry.add("spring.datasource.url") { postgres.jdbcUrl }
+            registry.add("spring.datasource.username") { postgres.username }
+            registry.add("spring.datasource.password") { postgres.password }
+            registry.add("spring.flyway.enabled") { "false" }
+            registry.add("spring.datasource.hikari.maximum-pool-size") { SharedPostgres.MAX_POOL_SIZE }
         }
     }
 
