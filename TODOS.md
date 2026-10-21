@@ -2837,7 +2837,14 @@ ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 
 
 ---
 
-## ⬜ 워크플로우 — `key` 조회 2곳이 소프트 삭제를 안 걸러 재현 가능한 500 을 낸다 (선재 · 미착수 · T2)
+## ✅ 워크플로우 — `key` 조회 2곳이 소프트 삭제를 안 걸러 재현 가능한 500 을 낸다 (선재 · **해소** · T2)
+
+**해소 — 2026-10-22 · WF-04-2.** 남은 두 자리를 닫았다. `DefaultWorkflowDefinitionRepository.resolveWorkflowId` 에
+`deleted_at` 필터, `SchemeIssueTypeMappingRepository.repairDefaultMappings` 의 워크플로우·스킴 key 조회 둘에
+「전역 + 살아 있는 행」 필터. 후자는 V209 이후 **프로젝트 소유 동명 행**도 다건을 만들어 같은 부팅 실패를 내므로
+소유 조건까지 걸었다(표준 4 스킴·워크플로우는 정의상 전역). `WORKFLOWS.KEY.eq` 전수 재확인 —
+`TransitionKeyResolver.resolveById` 는 join 조건에 필터가 있고, 나머지는 아래 「무해함을 확인한 자리」 그대로다.
+재현 테스트는 `DefaultWorkflowDefinitionRepositoryTest` · `SchemeIssueTypeMappingRepositoryIntegrationTest` 의 WF-04-2 케이스.
 
 **쉬운 말.** 워크플로우를 이름으로 찾는 코드가 「지워진 것 빼고」 조건을 안 건다. 지웠다가 같은 이름으로 다시 만들면 두 개가 함께 잡혀 서버가 500 으로 죽는다.
 

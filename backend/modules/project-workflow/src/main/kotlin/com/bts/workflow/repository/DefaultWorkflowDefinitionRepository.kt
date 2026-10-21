@@ -158,6 +158,9 @@ class DefaultWorkflowDefinitionRepository(
     /**
      * workflows.key to workflows.id 조회.
      *
+     * ★ `DELETED_AT.isNull` 이 빠지면 지운 동명 워크플로우가 함께 잡혀 `fetchOne` 이 다건을 만난다 —
+     * V206 이 key 유니크를 「살아 있는 행끼리만」으로 완화했기 때문이다 (WF-04-2).
+     *
      * @param workflowKey 워크플로우 식별 키
      * @return workflows.id, 미존재 시 null
      */
@@ -166,6 +169,7 @@ class DefaultWorkflowDefinitionRepository(
             .select(WORKFLOWS.ID)
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(workflowKey))
+            .and(WORKFLOWS.DELETED_AT.isNull)
             .fetchOne()
             ?.get(WORKFLOWS.ID) as UUID?
 

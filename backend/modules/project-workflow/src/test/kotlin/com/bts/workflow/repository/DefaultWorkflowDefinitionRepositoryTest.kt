@@ -38,6 +38,9 @@ class DefaultWorkflowDefinitionRepositoryTest {
         // B2 검증용: workflowBeta — 같은 state key (open→done) 를 사용하지만 다른 validator 세트
         lateinit var betaTransition: WorkflowTransition
 
+        // WF-04-2 검증용: 지운 뒤 같은 key 로 다시 만든 워크플로우의 전환
+        lateinit var reusedTransition: WorkflowTransition
+
         @BeforeAll
         @JvmStatic
         fun setup() {
@@ -61,10 +64,12 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료", id = seeded.alpha)
             betaTransition =
                 WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료", id = seeded.beta)
+            reusedTransition =
+                WorkflowTransition(fromStateKey = "open", toStateKey = "done", name = "완료", id = seeded.reused)
         }
 
-        /** 시드가 만든 두 전환의 `workflow_transitions.id`. 픽스처가 DB 값을 그대로 들고 가는 통로다. */
-        private data class SeededTransitions(val alpha: UUID, val beta: UUID)
+        /** 시드가 만든 전환의 `workflow_transitions.id`. 픽스처가 DB 값을 그대로 들고 가는 통로다. */
+        private data class SeededTransitions(val alpha: UUID, val beta: UUID, val reused: UUID)
 
         private fun seedData(): SeededTransitions {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
@@ -90,8 +95,20 @@ class DefaultWorkflowDefinitionRepositoryTest {
                 insertValidator(conn, betaTransId, "not-status-category", """{"category":"IN_PROGRESS"}""", 0)
                 // post_action 없음 — 빈 리스트 반환 검증
 
+                // ── WF-04-2: 소프트 삭제된 행과 살아 있는 행이 같은 key 를 쓴다 (V206 부분 유니크가 허용) ──
+                val deletedId = insertWorkflow(conn, "reused-workflow", "지운 워크플로우")
+                conn.prepareStatement("UPDATE workflows SET deleted_at = now() WHERE id = ?").use { stmt ->
+                    stmt.setObject(1, deletedId)
+                    stmt.executeUpdate()
+                }
+                val reusedId = insertWorkflow(conn, "reused-workflow", "다시 만든 워크플로우")
+                val reusedOpenId = insertState(conn, reusedId, StateSpec("open", "열림", "TODO", 0))
+                val reusedDoneId = insertState(conn, reusedId, StateSpec("done", "완료", "DONE", 1))
+                val reusedTransId = insertTransition(conn, reusedId, reusedOpenId, reusedDoneId, "완료")
+                insertValidator(conn, reusedTransId, "RequiredField", """{"field":"summary"}""", 0)
+
                 conn.commit()
-                return SeededTransitions(alpha = alphaTransId, beta = betaTransId)
+                return SeededTransitions(alpha = alphaTransId, beta = betaTransId, reused = reusedTransId)
             }
         }
 
@@ -272,5 +289,14 @@ class DefaultWorkflowDefinitionRepositoryTest {
         assertThat(betaResult.map { it.type }).doesNotContain("permission-check")
         assertThat(betaResult).hasSize(1)
         assertThat(betaResult[0].type).isEqualTo("not-status-category")
+    }
+
+    // ── WF-04-2 지운 key 재사용 ───────────────────────────────────────────────
+
+    @Test
+    fun `WF-04-2 - 지운 워크플로우와 같은 key 로 다시 만들어도 규칙 조회가 살아 있는 쪽을 본다`() {
+        assertThat(repository.findValidators("reused-workflow", reusedTransition).map { it.type })
+            .containsExactly("RequiredField")
+        assertThat(repository.findPostActions("reused-workflow", reusedTransition)).isEmpty()
     }
 }
