@@ -38,7 +38,7 @@
 - **jOOQ 다중 LEFT JOIN + count = cartesian product** — 여러 LEFT JOIN 뒤 count/집계는 행이 곱으로 폭증해 값이 틀어진다. 연관 카운트는 스칼라 서브쿼리로 분리 (PR #31 BLOCKER)
 - **advisory lock 시그니처 + TOCTOU** — `pg_advisory_xact_lock`은 `(bigint, bigint)` 시그니처가 없다. 단일 `bigint` 또는 `(int4, int4)`만 존재하므로 `dsl.execute("select pg_advisory_xact_lock(?)", key)` 형태로 호출. 그리고 lock을 잡았어도 lock 밖에서 미리 읽은 count로 판단하면 TOCTOU(검사-사용 사이 변경)가 무력화된다 → **lock 획득 후 반드시 재조회**. 단위 mock은 못 잡고 Testcontainers 통합만 표면화 (PR #48)
 - **PATCH 도메인 우회** — PATCH 핸들러가 service→repository 직행하면 도메인 Aggregate 불변식 검증이 dead code가 된다. service가 도메인 정규화 함수를 호출해야 함. DTO 검증(@field:*)은 1차 방어일 뿐 (PR #43 BLOCKER)
-- **detekt false-green** — 빌드 캐시가 위반을 가린다. 실검증은 바뀐 모듈의 `:modules:<bc>:detekt --rerun-tasks`(merge 직전 관문이 그렇게 돈다). PRE_EXISTING 위반은 모듈 `detekt-baseline.xml` 동결(현재 8모듈 보유 — shared-kernel·agile-planning 없음), 신규 위반은 코드 수정 또는 `@Suppress`. 전역 임계값 완화 금지 (PR #37/#40)
+- **detekt false-green** — 빌드 캐시가 위반을 가린다. 실검증은 바뀐 모듈의 `:modules:<bc>:detekt --rerun-tasks`. PRE_EXISTING 위반은 모듈 `detekt-baseline.xml` 동결(현재 8모듈 보유 — shared-kernel·agile-planning 없음), 신규 위반은 코드 수정 또는 `@Suppress`. 전역 임계값 완화 금지 (PR #37/#40)
 - **트랜잭션 self-invocation 무력화** — `@Transactional` 메서드를 같은 클래스 안에서 호출하면 Spring 프록시를 타지 않아 트랜잭션 속성이 무시된다. `REQUIRES_NEW`가 필요한 로직은 별도 Bean으로 분리해 주입받아 호출 (rollback 오염 사고)
 - **catch-all 핸들러가 ResponseStatusException 삼킴** — `@ExceptionHandler(Exception::class)` catch-all이 프레임워크 예외까지 잡으면 401이 500으로 변질된다. 구체 예외 핸들러를 분리하고 advice의 basePackage 스코프를 좁게. 도메인 예외는 타 컨트롤러 경로에서의 HTTP 통합테스트로 확인
 - **cross-BC 권한은 resolver 창구만** — 타 BC의 권한 확인은 권한코드 + 권한 resolver 경유만. 멤버십 role 직접 조회는 권한 모델 우회 (FR-PM-07)
