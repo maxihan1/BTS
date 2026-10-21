@@ -640,6 +640,29 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
         assertThat(mapping!!.workflowId).isEqualTo(adminChosenWorkflowId)
     }
 
+    @Test
+    fun `repairDefaultMappings - 지운 동명 행 · 프로젝트 소유 동명 행이 있어도 전역 표준을 잇는다 (WF-04-2)`() {
+        val schemeId = fetchSchemeIdByKey("simple-scheme")
+        val globalWorkflowId =
+            fetchWorkflowIdByKey("simple") ?: error("fixture 워크플로우 'simple' 없음 — setup() 확인")
+        clearDefaultMapping(schemeId)
+        // V206 · V209 부분 유니크가 허용하는 동명 행 — 지운 전역 1건, 살아 있는 프로젝트 소유 1건씩.
+        val projectId = UUID.randomUUID()
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                listOf("workflows" to "simple", "workflow_schemes" to "simple-scheme").forEach { (table, key) ->
+                    stmt.execute("INSERT INTO $table (key, name, deleted_at) VALUES ('$key', '지운 동명', now())")
+                    stmt.execute("INSERT INTO $table (key, name, project_id) VALUES ('$key', '프로젝트 동명', '$projectId')")
+                }
+            }
+        }
+
+        repository.repairDefaultMappings()
+
+        val mapping = repository.findDefaultMapping(WorkflowSchemeId(schemeId))
+        assertThat(mapping?.workflowId).isEqualTo(globalWorkflowId)
+    }
+
     // ── SSOT 정합 — Kotlin DEFAULT_WORKFLOW_KEY_BY_SCHEME_KEY ↔ DB workflow_schemes (DRY drift) ──
     //
     // 표준 스킴 key → 표준 워크플로우 key 4쌍은 SchemeIssueTypeMappingRepository.
@@ -697,7 +720,9 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
     /** workflow_schemes.key 로 id 를 조회한다. 없으면 예외 (V201 seed 로 4 표준 스킴은 항상 존재). */
     private fun fetchSchemeIdByKey(schemeKey: String): Long =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement("SELECT id FROM workflow_schemes WHERE key = ?").use { stmt ->
+            conn.prepareStatement(
+                "SELECT id FROM workflow_schemes WHERE key = ? AND project_id IS NULL AND deleted_at IS NULL",
+            ).use { stmt ->
                 stmt.setString(1, schemeKey)
                 stmt.executeQuery().use { rs ->
                     check(rs.next()) { "workflow_schemes.key='$schemeKey' 없음" }
@@ -709,7 +734,9 @@ class SchemeIssueTypeMappingRepositoryIntegrationTest {
     /** workflows.key 로 id(UUID) 를 조회한다. 없으면 null. */
     private fun fetchWorkflowIdByKey(workflowKey: String): UUID? =
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
-            conn.prepareStatement("SELECT id FROM workflows WHERE key = ?").use { stmt ->
+            conn.prepareStatement(
+                "SELECT id FROM workflows WHERE key = ? AND project_id IS NULL AND deleted_at IS NULL",
+            ).use { stmt ->
                 stmt.setString(1, workflowKey)
                 stmt.executeQuery().use { rs -> extractOptionalUuid(rs) }
             }

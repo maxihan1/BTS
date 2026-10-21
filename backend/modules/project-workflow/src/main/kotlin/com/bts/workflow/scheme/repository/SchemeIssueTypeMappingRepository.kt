@@ -88,6 +88,8 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
     private val SCHEME_TABLE = DSL.table("workflow_schemes")
     private val SCHEME_ID = DSL.field("workflow_schemes.id", Long::class.java)
     private val SCHEME_KEY = DSL.field("workflow_schemes.key", String::class.java)
+    private val SCHEME_PROJECT_ID = DSL.field("workflow_schemes.project_id", UUID::class.java)
+    private val SCHEME_DELETED_AT = DSL.field("workflow_schemes.deleted_at", OffsetDateTime::class.java)
 
     /**
      * 매핑을 저장하고 DB 에서 할당된 id 를 포함한 [SchemeIssueTypeMapping] 을 반환한다.
@@ -342,11 +344,15 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
         }
     }
 
+    // ★ 표준 스킴·워크플로우는 전역이다. key 유일성이 「살아 있는 전역끼리」뿐이라(V206 · V209)
+    //   두 조건이 빠지면 지운 동명 행이나 프로젝트 소유 동명 행이 함께 잡혀 `fetchOne` 이 부팅을 죽인다 (WF-04-2).
     private fun findSchemeIdByKey(schemeKey: String): Long? =
         dsl
             .select(SCHEME_ID)
             .from(SCHEME_TABLE)
             .where(SCHEME_KEY.eq(schemeKey))
+            .and(SCHEME_PROJECT_ID.isNull)
+            .and(SCHEME_DELETED_AT.isNull)
             .fetchOne(SCHEME_ID)
 
     private fun findWorkflowIdByKey(workflowKey: String): UUID? =
@@ -354,6 +360,8 @@ class SchemeIssueTypeMappingRepository(private val dsl: DSLContext) {
             .select(WORKFLOWS.ID)
             .from(WORKFLOWS)
             .where(WORKFLOWS.KEY.eq(workflowKey))
+            .and(WORKFLOWS.PROJECT_ID.isNull)
+            .and(WORKFLOWS.DELETED_AT.isNull)
             .fetchOne(WORKFLOWS.ID)
 
     /** workflow_id 가 더 이상 workflows 에 존재하지 않는(dangling) default mapping 을 유효한 workflowId 로 갱신한다. */
