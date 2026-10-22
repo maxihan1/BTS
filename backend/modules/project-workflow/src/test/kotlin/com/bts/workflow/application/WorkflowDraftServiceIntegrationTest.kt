@@ -263,6 +263,24 @@ class WorkflowDraftServiceIntegrationTest {
         assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.transitions).isEmpty()
     }
 
+    @Test
+    fun `이름이 공백뿐인 전환을 담은 초안은 저장 단계에서 막는다`() {
+        // 발행되면 후보 409 에 이름 없는 전환이 섞여 프론트 후보 다이얼로그가 안 뜬다 (WF-05-2).
+        val key = seedWorkflow()
+        fun withTransitionName(name: String) =
+            WorkflowDraftDefinition(
+                key = key,
+                name = "전환 이름 검사",
+                states = listOf(DraftStateDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
+                transitions = listOf(DraftTransitionDto(to = "open", name = name, kind = "GLOBAL")),
+            )
+
+        assertThatThrownBy { service.save(ACTOR, key, withTransitionName("  "), baseVersion = 0) }
+            .isInstanceOf(WorkflowInvalidRequestException::class.java)
+        // 비-공허 짝. 같은 정의가 이름만 채우면 저장돼야 위 거절이 이름 때문이다.
+        service.save(ACTOR, key, withTransitionName("전역 이동"), baseVersion = 0)
+    }
+
     /**
      * ★ 규칙 관문은 **저장에서도** 돈다 — 발행에서만 돌면 「저장 204 · 발행 400」이 된다.
      *

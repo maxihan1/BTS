@@ -53,16 +53,23 @@ data class WorkflowDraftDefinition(
      * `GET /draft` 로 받은 본문을 그대로 `PUT` 해도 400 이 된다. 초안은 원래 불완전한 중간 상태이고,
      * 그것을 담아 두는 것이 초안이 존재하는 이유다.
      *
-     * @throws IllegalArgumentException [Workflow.of] 의 invariant 를 위반할 때
+     * ### 전환 이름 공백은 여기서 본다
+     * 이름 없는 전환이 발행되면 후보 409 에 섞여 프론트 후보 스키마(`min(1)`)가 응답 전체를 못 읽는다
+     * (WF-05-2). [Workflow.of] 에 넣지 않는 것은 그것이 조회 경로의 방어선이기도 해서다 — 이미 저장된
+     * 빈 이름 행이 있는 DB 에서 조회가 500 이 된다.
+     *
+     * @throws IllegalArgumentException [Workflow.of] 의 invariant 를 위반하거나 전환 이름이 비었을 때
      */
-    fun toWorkflow(): Workflow =
-        Workflow.of(
+    fun toWorkflow(): Workflow {
+        require(transitions.none { it.name.isBlank() }) { "이름이 빈 전환이 있습니다. 전환 이름을 입력해 주세요." }
+        return Workflow.of(
             key = key,
             name = name,
             description = description,
             states = states.map { it.toDomain() },
             transitions = transitions.map { it.toDomain() },
         )
+    }
 
     /** 이 정의가 담은 시작 전환의 개수. 발행 경계가 「정확히 1개」를 요구할 때 쓴다. */
     fun initialTransitionCount(): Int = transitions.count { it.kind == INITIAL_KIND }

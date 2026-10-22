@@ -220,7 +220,7 @@ class WorkflowCommandService(
      * @return 만들어진 전환. `id` 는 DB 가 정한 값이다
      * @throws WorkflowNotFoundException 살아 있는 워크플로우가 없을 때 (404)
      * @throws WorkflowLockedException 편집이 잠겼을 때 (409)
-     * @throws WorkflowInvalidRequestException 종류와 출발지의 조합이 어긋나거나 상태가 편성돼 있지 않을 때 (400)
+     * @throws WorkflowInvalidRequestException 이름이 비었거나 종류와 출발지의 조합이 어긋나거나 상태가 편성돼 있지 않을 때 (400)
      * @throws TransitionConflictException 최초 전환이 이미 있을 때 (409)
      */
     @Transactional
@@ -320,6 +320,10 @@ class WorkflowCommandService(
         command: TransitionDefinitionCommand,
         excludingId: UUID?,
     ): TransitionShape {
+        // 이름 없는 전환이 후보 409 에 섞이면 프론트 후보 스키마(min(1))가 응답 전체를 못 읽는다 (WF-05-2).
+        if (command.name.isBlank()) {
+            throw WorkflowInvalidRequestException(workflowKey, "전환 이름을 입력해 주세요.")
+        }
         val kind = parseKind(workflowKey, command.kind)
         requireOriginMatchesKind(workflowKey, kind, command.fromStatusKey)
         if (kind == TransitionKind.INITIAL && writeRepository.hasInitialTransition(workflowId, excludingId)) {

@@ -2980,7 +2980,18 @@ mock 테스트만 import) 라이브↔라이브 동시 편집은 원시 API 로�
 
 ---
 
-## ⬜ 워크플로우 — 전환 이름이 무검증이라 빈 문자열이 저장되고 후보 다이얼로그를 막는다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — 전환 이름이 무검증이라 빈 문자열이 저장되고 후보 다이얼로그를 막는다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-05-2.** 이름을 쓰는 API 경로 둘을 다 닫았다. 공백 이름은 둘 다 `WORKFLOW_INVALID_REQUEST`(400)다.
+- 라이브 전환 CRUD — `WorkflowCommandService.resolveShape`(생성·수정 공통)가 `name.isBlank()` 를 거절한다.
+  처방 ①의 `@Valid`+`@NotBlank` 대신 이 자리를 고른 것은 DTO KDoc 이 「판정은 서비스가 진다」로 이미 정해 두어서다.
+- **초안 저장·발행** — 항목이 빠뜨린 경로다. 편집 화면은 라이브 CRUD 가 아니라 초안을 쓴다.
+  `WorkflowDraftDefinition.toWorkflow()`(저장·발행이 함께 지남)에 같은 검사를 넣었다. `Workflow.of()` 에 넣지 않은 것은
+  그것이 조회 경로의 방어선이기도 해서다 — 이미 빈 이름 행이 있는 DB 에서 조회가 500 이 된다.
+  편집기 폼(`TransitionFormDialog`)은 이미 공백 이름 제출을 막으므로 화면 흐름은 그대로다.
+
+재현 테스트는 `TransitionCrudMvcTest`(red `expected:<400> but was:<201>`) · `WorkflowDraftServiceIntegrationTest`(red 「Expecting code to raise a throwable」).
+**처방 ② DB `CHECK` 는 남았다** — 아래 별도 항목.
 
 **쉬운 말.** 화살표 이름을 비운 채로도 저장이 된다. 그 화살표가 「어느 쪽이냐」를 묻는 창에 섞이면 창이 아예 안 뜨고 사용자가 갇힌다.
 
@@ -2998,6 +3009,18 @@ mock 테스트만 import) 라이브↔라이브 동시 편집은 원시 API 로�
 **처방 후보.** ① DTO 에 `@field:NotBlank` + 컨트롤러에 `@Valid`(400 계약). ② 3단계 마이그레이션에
 `CHECK (length(btrim(name)) > 0)` 을 함께 건다. **①이 하한이고 ②는 T3 이라 마이그레이션 PR 로 붙인다** —
 ①만 하면 API 밖 경로(시드·직접 INSERT)가 남는다.
+
+---
+
+## ⬜ 워크플로우 — `workflow_transitions.name` 에 공백 금지 `CHECK` 가 없다 (신규 · 미착수 · T3)
+
+**쉬운 말.** 화면과 API 는 이제 이름 없는 화살표를 막지만, DB 자체는 아직 받아 준다. 시드나 직접 넣는 경로로 들어오면 같은 고장이 난다.
+
+**무엇.** WF-05-2 가 API 두 경로(`WorkflowCommandService.resolveShape` · `WorkflowDraftDefinition.toWorkflow`)를 닫았다.
+`workflow_transitions.name` 에는 여전히 `CHECK` 가 없다.
+
+**처방.** `CHECK (length(btrim(name)) > 0)` 를 거는 마이그레이션. 기존 공백 행을 먼저 고쳐야 걸린다 — 운영 DB 실측부터.
+`DATA.md §4-1` 3단 분할 3단계(`workflow_states` DROP 과 같은 PR)에 붙일지는 착수 시 정한다.
 
 ---
 
