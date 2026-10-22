@@ -157,6 +157,28 @@ class TransitionCrudMvcTest {
             .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
     }
 
+    // ── 전환 이름 (WF-05-2) ────────────────────────────────────────────────────
+
+    @Test
+    fun `이름이 비었거나 공백뿐이면 POST 와 PUT 모두 400 이고 저장되지 않는다`() {
+        createWorkflow("blank-name", "open", "done")
+        val transitionId = createTransition("blank-name", body(from = "open", to = "done", name = "완료"))
+
+        // 이름 없는 전환이 후보 409 에 섞이면 프론트 후보 스키마(min(1))가 파싱에 실패해 다이얼로그가 안 뜬다.
+        for (blank in listOf("", "   ")) {
+            mockMvc.perform(postTransition("blank-name", body(from = "open", to = "done", name = blank)))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+            mockMvc.perform(putTransition("blank-name", transitionId, body(from = "open", to = "done", name = blank)))
+                .andExpect(status().isBadRequest)
+                .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+        }
+
+        assertThat(normalTransitions(requireNotNull(repository.findByKey("blank-name"))).map { it.name })
+            .describedAs("거절된 요청은 새 행도, 기존 이름 변경도 남기지 않는다")
+            .containsExactly("완료")
+    }
+
     // ── E5·E2. 최초 전환 ───────────────────────────────────────────────────────
 
     @Test
