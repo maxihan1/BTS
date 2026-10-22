@@ -880,7 +880,7 @@ class BulkOperationIntegrationTest {
     }
 
     /**
-     * workflow_states INSERT helper.
+     * 워크플로우 상태 INSERT helper.
      *
      * @param conn DB 연결.
      * @param wfId 워크플로우 ID.
@@ -908,10 +908,10 @@ class BulkOperationIntegrationTest {
         transitionName: String,
     ) {
         conn.prepareStatement(
-            "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
+            "INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name) " +
                 "SELECT ?, ?, ?, ? WHERE NOT EXISTS (" +
                 "SELECT 1 FROM workflow_transitions " +
-                "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ?)",
+                "WHERE workflow_id = ? AND from_status_id = ? AND to_status_id = ?)",
         ).use { stmt ->
             stmt.setObject(1, wfId)
             stmt.setObject(2, fromId)

@@ -580,7 +580,7 @@ class TransitionEmitEventsPublishIntegrationTest {
             }
         }
 
-    // workflow_states 컬럼과 1:1 대응하는 테스트 시드 헬퍼라 파라미터 수가 컬럼 수를 따른다.
+    // 상태 컬럼과 1:1 대응하는 테스트 시드 헬퍼라 파라미터 수가 컬럼 수를 따른다.
     @Suppress("LongParameterList")
     private fun insertWorkflowState(
         conn: Connection,
@@ -596,8 +596,8 @@ class TransitionEmitEventsPublishIntegrationTest {
     /**
      * workflow_transitions 를 삽입하고 생성된 transition UUID 를 반환한다.
      *
-     * workflow_transitions 는 from_state_id, to_state_id(UUID FK)를 사용하므로
-     * 먼저 workflow_states 에서 상태 UUID 를 조회한 뒤 INSERT 한다.
+     * workflow_transitions 는 from_status_id, to_status_id(UUID FK)를 사용하므로
+     * 먼저 workflow_statuses 에서 편성 UUID 를 조회한 뒤 INSERT 한다.
      *
      * @param conn DB 커넥션.
      * @param workflowId 워크플로우 UUID.
@@ -617,10 +617,10 @@ class TransitionEmitEventsPublishIntegrationTest {
         val toStateId = findWorkflowStateId(conn, workflowId, toStateKey)
 
         conn.prepareStatement(
-            "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
+            "INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name) " +
                 "SELECT ?, ?, ?, ? WHERE NOT EXISTS (" +
                 "SELECT 1 FROM workflow_transitions " +
-                "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ?)",
+                "WHERE workflow_id = ? AND from_status_id = ? AND to_status_id = ?)",
         ).use { stmt ->
             stmt.setObject(1, workflowId)
             stmt.setObject(2, fromStateId)
@@ -654,7 +654,7 @@ class TransitionEmitEventsPublishIntegrationTest {
     ): UUID =
         conn.prepareStatement(
             "SELECT id FROM workflow_transitions " +
-                "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ? " +
+                "WHERE workflow_id = ? AND from_status_id = ? AND to_status_id = ? " +
                 "ORDER BY created_at, id LIMIT 1",
         ).use { stmt ->
             stmt.setObject(1, workflowId)
@@ -669,7 +669,7 @@ class TransitionEmitEventsPublishIntegrationTest {
         }
 
     /**
-     * workflow_states 에서 (workflowId, key) 로 상태 UUID 를 조회한다.
+     * workflow_statuses 에서 (workflowId, key) 로 편성 UUID 를 조회한다.
      *
      * @param conn DB 커넥션.
      * @param workflowId 워크플로우 UUID.
@@ -682,12 +682,13 @@ class TransitionEmitEventsPublishIntegrationTest {
         stateKey: String,
     ): UUID =
         conn.prepareStatement(
-            "SELECT id FROM workflow_states WHERE workflow_id = ? AND key = ?",
+            "SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                " WHERE ws.workflow_id = ? AND s.key = ? AND s.deleted_at IS NULL",
         ).use { stmt ->
             stmt.setObject(1, workflowId)
             stmt.setString(2, stateKey)
             stmt.executeQuery().use { rs ->
-                check(rs.next()) { "workflow_states 에 workflowId=$workflowId, key=$stateKey 가 없습니다." }
+                check(rs.next()) { "workflow_statuses 에 workflowId=$workflowId, key=$stateKey 가 없습니다." }
                 rs.getObject(1) as UUID
             }
         }

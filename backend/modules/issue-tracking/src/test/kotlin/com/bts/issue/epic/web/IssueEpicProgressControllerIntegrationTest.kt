@@ -913,16 +913,19 @@ class IssueEpicProgressControllerIntegrationTest {
     ) {
         conn.prepareStatement(
             """
-            INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
+            INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name)
             SELECT ?, f.id, t.id, ?
-            FROM workflow_states f, workflow_states t
-            WHERE f.workflow_id = ? AND f.key = ?
-              AND t.workflow_id = ? AND t.key = ?
+            FROM workflow_statuses f
+            JOIN statuses fs ON fs.id = f.status_id AND fs.deleted_at IS NULL,
+                 workflow_statuses t
+            JOIN statuses ts ON ts.id = t.status_id AND ts.deleted_at IS NULL
+            WHERE f.workflow_id = ? AND fs.key = ?
+              AND t.workflow_id = ? AND ts.key = ?
               AND NOT EXISTS (
                   SELECT 1 FROM workflow_transitions x
                   WHERE x.workflow_id = f.workflow_id
-                    AND x.from_state_id = f.id
-                    AND x.to_state_id = t.id
+                    AND x.from_status_id = f.id
+                    AND x.to_status_id = t.id
               )
             """.trimIndent(),
         ).use { stmt ->
