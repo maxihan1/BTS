@@ -1,8 +1,11 @@
-// IssueStateTransition 단위 테스트 — IssueMetaPanel 분해 B (FR-UX-06 PR19 Task 3)
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+// IssueStateTransition 단위 테스트 — IssueMetaPanel 분해 B (FR-UX-06 PR19 Task 3) · 상태 메뉴 (FR-WF-01 D9)
+import type { ReactElement } from 'react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { IssueTransition } from '@/api/issues'
+import type { IssueStateTransitionProps } from '@/components/issue/meta/IssueStateTransition'
 import {
   IssueStateTransition,
   AmbiguousTransitionDialog,
@@ -11,109 +14,129 @@ import {
 import { AmbiguousTransitionPrompt } from '@/components/issue/meta/AmbiguousTransitionPrompt'
 import type { IssueTransitionFlow } from '@/hooks/use-issue-transitions'
 import { issueDetailStrings } from '@/i18n/ko'
+import { workflowHandlers } from '@/mocks/workflow-handlers'
+import { server } from '@/test/server'
 
 const transitionsFixture: IssueTransition[] = [
-  { key: 'open__in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress' },
-  { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed' },
+  { key: 'open__in_progress', name: 'Start Work', fromStateKey: 'open', toStateKey: 'in_progress', toCategory: 'IN_PROGRESS' },
+  { key: 'open__closed', name: 'Cancel', fromStateKey: 'open', toStateKey: 'closed', toCategory: 'DONE' },
 ]
 
+// 상태 이름 해석이 `GET /api/v1/workflows` 를 부른다 — 픽스처 워크플로우(Open · In Progress …)를 준다
+beforeEach(() => {
+  server.use(...workflowHandlers)
+})
+
+/** 상태 이름 해석이 `useWorkflows`(react-query) 를 거치므로 Provider 로 감싼다 */
+function withQuery(ui: ReactElement): ReactElement {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={client}>{ui}</QueryClientProvider>
+}
+
+function renderTransition(overrides: Partial<IssueStateTransitionProps> = {}) {
+  const props: IssueStateTransitionProps = {
+    currentStateKey: 'open',
+    transitions: transitionsFixture,
+    onTransition: vi.fn(),
+    isTransitioning: false,
+    unavailableReason: null,
+    ...overrides,
+  }
+  const utils = render(withQuery(<IssueStateTransition {...props} />))
+  return { ...utils, props }
+}
+
+/** 트리거(현재 상태 배지)를 눌러 메뉴를 연다 */
+async function openMenu(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('button', { name: new RegExp(`^${issueDetailStrings.transitionSelectLabel}`) }))
+}
+
+/** 메뉴 항목 이름 — 「전환 이름 + 도착 상태 배지」라 접두로 찾는다 */
+function item(name: string): RegExp {
+  return new RegExp(`^${name}`)
+}
+
 describe('IssueStateTransition', () => {
-  it('가용 전환이 있으면 셀렉터와 옵션이 렌더된다', () => {
-    render(
-      <IssueStateTransition
-        transitions={transitionsFixture}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    expect(select).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Start Work' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Cancel' })).toBeInTheDocument()
+  it('현재 상태 배지가 트리거이고 이름·범주를 워크플로우에서 해석한다', async () => {
+    renderTransition()
+    // 픽스처 워크플로우의 `open` 은 「Open」(TODO) 이다 — 원시 키가 아니라 이름이 보여야 한다
+    expect(await screen.findByRole('button', { name: `${issueDetailStrings.transitionSelectLabel}, Open` })).toBeInTheDocument()
+    expect(screen.getByTestId('issue-state-badge')).toHaveTextContent('Open')
   })
 
-  it('전환 선택 시 onSelectedValueChange 는 옵션 값으로, onTransition 은 고른 전환으로 호출된다', async () => {
-    const onTransition = vi.fn()
-    const onSelectedValueChange = vi.fn()
-    render(
-      <IssueStateTransition
-        transitions={transitionsFixture}
-        onTransition={onTransition}
-        isTransitioning={false}
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={onSelectedValueChange}
-      />,
-    )
+  it('메뉴를 열면 전환이 서버 순서대로 「이름 → 도착 상태」로 나온다', async () => {
     const user = userEvent.setup()
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    // ★값 문자열을 리터럴로 쓰지 않는다 — 옵션 값의 형식은 `lib/transition-key.ts` 정본이
-    //   정하고 그 형식은 거기서 따로 고정한다. 여기서 재는 것은 「고른 옵션이 그대로
-    //   전달되는가」다. 형식을 여기에도 박으면 정본을 고칠 때마다 무관한 테스트가 깨진다.
-    const option = screen.getByRole('option', { name: transitionsFixture[0]!.name })
-    await user.selectOptions(select, option)
-    expect(onSelectedValueChange).toHaveBeenCalledWith((option as HTMLOptionElement).value)
-    expect(onTransition).toHaveBeenCalledOnce()
-    expect(onTransition).toHaveBeenCalledWith(transitionsFixture[0])
+    // 일부러 DONE 을 앞에 둔다 — 화면이 범주로 다시 정렬하면 순서가 뒤집힌다
+    renderTransition({ transitions: [transitionsFixture[1]!, transitionsFixture[0]!] })
+    await openMenu(user)
+
+    const names = screen.getAllByRole('button').map((b) => b.textContent ?? '')
+    const cancel = names.findIndex((n) => n.startsWith('Cancel'))
+    const start = names.findIndex((n) => n.startsWith('Start Work'))
+    expect(cancel).toBeGreaterThanOrEqual(0)
+    expect(cancel).toBeLessThan(start)
+    expect(await screen.findByRole('button', { name: 'Start Work In Progress' })).toBeInTheDocument()
   })
 
-  it('isTransitioning=true이면 셀렉터가 disabled된다', () => {
-    render(
-      <IssueStateTransition
-        transitions={transitionsFixture}
-        onTransition={vi.fn()}
-        isTransitioning
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
-    expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeDisabled()
+  it('항목을 고르면 그 전환으로 onTransition 이 불리고 메뉴가 닫힌다', async () => {
+    const user = userEvent.setup()
+    const { props } = renderTransition()
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: item('Start Work') }))
+
+    expect(props.onTransition).toHaveBeenCalledOnce()
+    expect(props.onTransition).toHaveBeenCalledWith(transitionsFixture[0])
+    expect(screen.queryByRole('button', { name: item('Cancel') })).not.toBeInTheDocument()
   })
 
-  it("가용 전환 0건 + unavailableReason='no-workflow'이면 워크플로우 미설정 문구가 렌더된다", () => {
-    render(
-      <IssueStateTransition
-        transitions={[]}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason="no-workflow"
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
+  it('같은 항목을 연달아 다시 고를 수 있다 (실패 뒤 재시도 — select 의 onChange 미발화 회귀 없음)', async () => {
+    const user = userEvent.setup()
+    const { props } = renderTransition()
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: item('Start Work') }))
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: item('Start Work') }))
+    expect(props.onTransition).toHaveBeenCalledTimes(2)
+  })
+
+  it('자기 루프 전환은 따로 묶여 아래에 나오고 고를 수 있다', async () => {
+    const user = userEvent.setup()
+    const loop: IssueTransition = { key: 'open__open', name: '코멘트 요청', fromStateKey: 'open', toStateKey: 'open', toCategory: 'TODO' }
+    const { props } = renderTransition({ transitions: [loop, ...transitionsFixture] })
+    await openMenu(user)
+
+    const heading = screen.getByText(issueDetailStrings.transitionLoopHeading)
+    const loopButton = screen.getByRole('button', { name: '코멘트 요청' })
+    // 루프는 서버 순서상 첫째지만 묶음 제목 뒤 — 상태를 옮기는 항목들 아래에 있어야 한다
+    expect(heading.compareDocumentPosition(loopButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      screen.getByRole('button', { name: item('Cancel') }).compareDocumentPosition(heading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+
+    await user.click(loopButton)
+    expect(props.onTransition).toHaveBeenCalledWith(loop)
+  })
+
+  it('isTransitioning=true이면 트리거가 disabled된다', () => {
+    renderTransition({ isTransitioning: true })
+    expect(screen.getByRole('button', { name: new RegExp(`^${issueDetailStrings.transitionSelectLabel}`) })).toBeDisabled()
+  })
+
+  it("가용 전환 0건 + unavailableReason='no-workflow'이면 배지와 워크플로우 미설정 문구가 렌더된다", () => {
+    renderTransition({ transitions: [], unavailableReason: 'no-workflow' })
     expect(screen.getByText(issueDetailStrings.transitionWorkflowNotConfiguredError)).toBeInTheDocument()
-    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.getByTestId('issue-state-badge')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it("가용 전환 0건 + unavailableReason='terminal'이면 더 이상 전환 없음 문구가 렌더된다", () => {
-    render(
-      <IssueStateTransition
-        transitions={[]}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason="terminal"
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
+    renderTransition({ transitions: [], unavailableReason: 'terminal' })
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
   })
 
   it('가용 전환 0건 + unavailableReason=null이면 더 이상 전환 없음 문구가 렌더된다', () => {
-    render(
-      <IssueStateTransition
-        transitions={[]}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
+    renderTransition({ transitions: [] })
     expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
   })
 })
@@ -135,97 +158,58 @@ const CANDIDATES = [
 const AMBIGUOUS_MESSAGE = '이동할 수 있는 전환이 2개입니다. 어느 전환인지 골라 주세요.'
 
 describe('IssueStateTransition — 같은 도착 상태 전환이 둘일 때 (T21)', () => {
-  it('T21-C0: 도착 상태가 같아도 두 옵션이 모두 렌더된다 (React key 중복 없음)', () => {
-    const duplicated: IssueTransition[] = [
-      { key: 'open__done', name: '조건부 승인', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_ONE_ID },
-      { key: 'open__done', name: '즉시 완료', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_TWO_ID },
-    ]
-    render(
-      <IssueStateTransition
-        transitions={duplicated}
-        onTransition={vi.fn()}
-        isTransitioning={false}
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
-    expect(screen.getByRole('option', { name: '조건부 승인' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '즉시 완료' })).toBeInTheDocument()
+  const duplicated: IssueTransition[] = [
+    { key: 'open__done', name: '조건부 승인', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_ONE_ID },
+    { key: 'open__done', name: '즉시 완료', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_TWO_ID },
+  ]
+
+  it('T21-C0: 도착 상태가 같아도 두 항목이 모두 렌더된다 (React key 중복 없음)', async () => {
+    const user = userEvent.setup()
+    renderTransition({ transitions: duplicated })
+    await openMenu(user)
+    expect(screen.getByRole('button', { name: item('조건부 승인') })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: item('즉시 완료') })).toBeInTheDocument()
   })
 
   it('T21-C5: 도착 상태가 같은 두 전환 중 둘째를 고르면 그 전환이 onTransition 에 전달된다', async () => {
-    const onTransition = vi.fn()
-    const duplicated: IssueTransition[] = [
-      { key: 'open__done', name: '조건부 승인', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_ONE_ID },
-      { key: 'open__done', name: '즉시 완료', fromStateKey: 'open', toStateKey: 'done', transitionId: CANDIDATE_TWO_ID },
-    ]
-    render(
-      <IssueStateTransition
-        transitions={duplicated}
-        onTransition={onTransition}
-        isTransitioning={false}
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
     const user = userEvent.setup()
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, screen.getByRole('option', { name: '즉시 완료' }))
+    const { props } = renderTransition({ transitions: duplicated })
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: item('즉시 완료') }))
 
     // ★도착 상태(`done`)로는 두 전환을 가를 수 없다. 고른 전환 **자체**가 넘어와야
     //   호출부가 `transitionId` 를 실어 보내고 409 왕복이 사라진다.
-    expect(onTransition).toHaveBeenCalledOnce()
-    expect(onTransition).toHaveBeenCalledWith(duplicated[1])
+    expect(props.onTransition).toHaveBeenCalledOnce()
+    expect(props.onTransition).toHaveBeenCalledWith(duplicated[1])
   })
 
   it('T21-C6: `transitionId` 가 없는 구 데이터도 고른 전환이 그대로 전달된다 (폴백)', async () => {
-    const onTransition = vi.fn()
+    const user = userEvent.setup()
     const legacy: IssueTransition[] = [
       { key: 'open__in_progress', name: '작업 시작', fromStateKey: 'open', toStateKey: 'in_progress' },
     ]
-    render(
-      <IssueStateTransition
-        transitions={legacy}
-        onTransition={onTransition}
-        isTransitioning={false}
-        unavailableReason={null}
-        selectedValue=""
-        onSelectedValueChange={vi.fn()}
-      />,
-    )
-    const user = userEvent.setup()
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, screen.getByRole('option', { name: '작업 시작' }))
-    expect(onTransition).toHaveBeenCalledWith(legacy[0])
+    const { props } = renderTransition({ transitions: legacy })
+    await openMenu(user)
+    await user.click(screen.getByRole('button', { name: item('작업 시작') }))
+    expect(props.onTransition).toHaveBeenCalledWith(legacy[0])
   })
 
-  it('T21-C7: `transitionId` 가 **둘 다** 없는 같은 상태쌍도 두 옵션이 살아남는다', () => {
-    // ★폴백의 최악 경우다. 옵션 값이 `key`(`from__to`)로 떨어지는데 같은 상태쌍이면 그 값이
-    //   겹치고, React key 도 함께 겹친다. 종전 주석이 `transitionId` 우선 key 를 정당화한
-    //   근거가 정확히 「한쪽이 조용히 사라진다」였으므로, 겹침을 되살린 이상 「둘 다 남는다」를
-    //   판정으로 세워 둔다. 산문으로만 적어 두면 다음 사람이 확인할 방법이 없다.
+  it('T21-C7: `transitionId` 가 **둘 다** 없는 같은 상태쌍도 두 항목이 살아남는다', async () => {
+    // ★폴백의 최악 경우다. key 가 `from__to` 로 떨어지는데 같은 상태쌍이면 그 값이 겹친다.
+    //   정본(`lib/transition-key`)이 목록 위치를 덧붙여 둘 다 남긴다 — 재조정을 지나서도.
+    const user = userEvent.setup()
     const bothNull: IssueTransition[] = [
       { key: 'open__done', name: '조건부 승인', fromStateKey: 'open', toStateKey: 'done' },
       { key: 'open__done', name: '즉시 완료', fromStateKey: 'open', toStateKey: 'done' },
     ]
-    const props = {
-      transitions: bothNull,
-      onTransition: vi.fn(),
-      unavailableReason: null,
-      selectedValue: '',
-      onSelectedValueChange: vi.fn(),
-    }
-    const { rerender } = render(<IssueStateTransition {...props} isTransitioning={false} />)
-    expect(screen.getAllByRole('option')).toHaveLength(3) // placeholder + 전환 2
+    const { rerender, props } = renderTransition({ transitions: bothNull })
+    await openMenu(user)
+    const menu = screen.getByRole('dialog')
+    expect(within(menu).getAllByRole('button')).toHaveLength(2)
 
-    // 409 후보 선택 왕복 중 `isTransitioning` 이 토글하며 재렌더가 일어난다. 중복 key 의
-    // omission 은 재조정에서 나므로 그 시점을 지나서도 둘이 남는지 본다.
-    rerender(<IssueStateTransition {...props} isTransitioning={true} />)
-    expect(screen.getAllByRole('option')).toHaveLength(3)
-    expect(screen.getByRole('option', { name: '조건부 승인' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '즉시 완료' })).toBeInTheDocument()
+    rerender(withQuery(<IssueStateTransition {...props} transitions={[...bothNull]} />))
+    expect(screen.getByRole('button', { name: item('조건부 승인') })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: item('즉시 완료') })).toBeInTheDocument()
   })
 })
 

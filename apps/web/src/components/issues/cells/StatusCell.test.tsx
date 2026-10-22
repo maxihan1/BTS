@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { StatusMeta } from '@/components/issues/IssueTable'
 import type { IssueTransition } from '@/api/issues'
 import { transitionIssue } from '@/api/issues'
 import { issueAtlas1Fixture } from '@/mocks/issue-fixtures'
@@ -153,12 +154,16 @@ describe('StatusCellDisplay', () => {
   })
 })
 
+/** 상태 이름 맵 없음 — 도착 상태 배지가 원시 키로 폴백한다. 이름 판정은 접두(`^전환이름`)로 한다 */
+const NO_STATUS_META = new Map<string, StatusMeta>()
+
 describe('StatusCellEditor', () => {
   it('가용 전환만 버튼으로 노출하고 고르면 toStateKey 로 onTransition 을 부른다 (FR7)', async () => {
     const onTransition = vi.fn()
     render(
       <StatusCellEditor
         transitions={TRANSITIONS}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason={null}
         canTransition
         isSaving={false}
@@ -168,7 +173,7 @@ describe('StatusCellEditor', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: '진행 시작' }))
+    await userEvent.click(screen.getByRole('button', { name: /^진행 시작/ }))
 
     expect(onTransition).toHaveBeenCalledWith('IN_PROGRESS')
   })
@@ -177,6 +182,7 @@ describe('StatusCellEditor', () => {
     render(
       <StatusCellEditor
         transitions={[]}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason="no-workflow"
         canTransition
         isSaving={false}
@@ -196,6 +202,7 @@ describe('StatusCellEditor', () => {
     render(
       <StatusCellEditor
         transitions={[]}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason="terminal"
         canTransition
         isSaving={false}
@@ -215,6 +222,7 @@ describe('StatusCellEditor', () => {
     render(
       <StatusCellEditor
         transitions={TRANSITIONS}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason={null}
         canTransition={false}
         isSaving={false}
@@ -224,13 +232,14 @@ describe('StatusCellEditor', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: '진행 시작' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^진행 시작/ })).toBeDisabled()
   })
 
   it('저장 중이면 선택지가 비활성이다 (NFR3 중복 제출 차단)', () => {
     render(
       <StatusCellEditor
         transitions={TRANSITIONS}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason={null}
         canTransition
         isSaving
@@ -240,13 +249,14 @@ describe('StatusCellEditor', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: '진행 시작' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^진행 시작/ })).toBeDisabled()
   })
 
   it('조회 중이면 "결과 없음" 대신 로딩을 알린다 (전환 0건과 구분)', () => {
     render(
       <StatusCellEditor
         transitions={[]}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason={null}
         canTransition
         isSaving={false}
@@ -273,6 +283,7 @@ describe('StatusCellEditor', () => {
     render(
       <StatusCellEditor
         transitions={[doneTransition]}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason={null}
         canTransition
         isSaving={false}
@@ -282,7 +293,7 @@ describe('StatusCellEditor', () => {
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: '완료' }))
+    await userEvent.click(screen.getByRole('button', { name: /^완료/ }))
 
     expect(onDoneTransition).toHaveBeenCalledWith(doneTransition)
     // ★결의안 없이 전환하지 않는다 — 해결 결과는 종료 전환의 필수 입력이다
@@ -316,7 +327,8 @@ describe('StatusCell — 종료 전환 성공 경로 (리뷰 C6)', () => {
     await userEvent.click(
       screen.getByRole('button', { name: new RegExp(`^${issueAtlas1Fixture.key} 상태 변경`) }),
     )
-    await userEvent.click(await screen.findByRole('button', { name }))
+    // 항목 이름은 「전환 이름 + 도착 상태 배지」다 — 접두로 찾는다
+    await userEvent.click(await screen.findByRole('button', { name: new RegExp(`^${name}`) }))
   }
 
   /** 종료 전환을 골라 결의안 모달까지 간다 */
@@ -399,6 +411,7 @@ describe('StatusCellEditor — 같은 상태쌍 전환 둘 (장부 「목록 인
     render(
       <StatusCellEditor
         transitions={SAME_PAIR}
+        statusMetaByKey={NO_STATUS_META}
         unavailableReason={null}
         canTransition
         isSaving={false}
@@ -408,7 +421,7 @@ describe('StatusCellEditor — 같은 상태쌍 전환 둘 (장부 「목록 인
       />,
     )
 
-    expect(screen.getByRole('button', { name: '승인 완료' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '강제 완료' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^승인 완료/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^강제 완료/ })).toBeInTheDocument()
   })
 })

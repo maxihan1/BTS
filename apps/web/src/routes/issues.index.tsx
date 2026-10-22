@@ -11,7 +11,7 @@ import { useColumnVisibility } from '@/hooks/use-column-visibility'
 import { useColumnWidths } from '@/hooks/use-column-widths'
 import { useUsersByIds } from '@/hooks/use-users'
 import { useIssueTypes } from '@/hooks/use-issue-types'
-import { useWorkflows, extractStatusMeta } from '@/hooks/use-workflows'
+import { useStatusMetaByKey } from '@/hooks/use-workflows'
 import { useMediaQuery } from '@/hooks/use-media-query'
 import { useContextShortcuts } from '@/components/keyboard-shortcuts/useContextShortcuts'
 import { nextCursorKey } from '@/components/keyboard-shortcuts/context-shortcuts'
@@ -350,8 +350,7 @@ function IssueListContent({
     [issueTypes],
   )
 
-  const { data: workflows = [] } = useWorkflows()
-  const statusMetaByKey = useMemo(() => extractStatusMeta(workflows), [workflows])
+  const statusMetaByKey = useStatusMetaByKey()
 
   // ── 컬럼 폭 — 드래그 리사이즈 결과를 localStorage persist ───────────────────
   const { widths, setWidth, reset: resetWidths } = useColumnWidths(

@@ -1,6 +1,5 @@
 // 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전환 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
 import type { JSX, RefObject } from 'react'
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 import type { IssueResponse, IssueTransition, CustomFieldValues } from '@/api/issues'
@@ -633,7 +632,7 @@ function IssueMetaActions({
 /**
  * 이슈 상세 우측 메타패널 컴포넌트.
  *
- * - 상태: 읽기전용 배지 + IssueStateTransition 전환 셀렉터
+ * - 상태: IssueStateTransition — 현재 상태 배지가 전환 메뉴 트리거
  * - 유형: IssueTypeIcon + typeName 표시 + 셀렉터(availableTypes 옵션)
  * - 셀렉터 현재값은 issue.typeId props 파생 (useState 초기화 금지 — stale key prop 회귀 방지)
  * - 우선순위: IssuePrioritySelect — 1~5 즉시 콜백
@@ -717,18 +716,6 @@ export function IssueMetaPanel({
   /** issue.typeId에 해당하는 타입 항목 — iconName 해석에 사용 */
   const currentType = availableTypes.find((t) => t.id === issue.typeId)
 
-  /**
-   * 전환 셀렉터 제어값 — 전환 시도 후(성공/실패 모두) placeholder로 리셋.
-   * 실패 후 같은 옵션 재선택 시 onChange 재발화를 보장한다 (C1 회귀 방지).
-   */
-  const [selectedTransition, setSelectedTransition] = useState('')
-
-  function handleTransition(transition: IssueTransition) {
-    onTransition(transition)
-    // 전환 요청 직후 즉시 리셋 — 성공/실패 모두 placeholder로 복귀
-    setSelectedTransition('')
-  }
-
   return (
     <aside className="flex flex-col gap-3">
       {/* 보드가 정한 상세 보기 필드 — 조회 실패 안내와 빈 상태 판단은 섹션이 쥔다. */}
@@ -736,23 +723,15 @@ export function IssueMetaPanel({
 
       {/* 메타 패널 카드 */}
       <div className="border border-border rounded-xl overflow-hidden">
-        {/* 상태 — 읽기전용 배지 + 전환 셀렉터 (FR-IS-01) */}
+        {/* 상태 — 현재 상태 배지가 곧 전환 메뉴 트리거 (FR-IS-01 · FR-WF-01 D9) */}
         <div className="px-3.5 py-3 border-b border-border">
           <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.statLabel}</p>
-          <span
-            data-testid="issue-state-badge"
-            className="inline-flex items-center gap-1.5 text-sm font-medium mb-1.5"
-          >
-            <span className="size-2 rounded-full bg-primary/60 shrink-0" aria-hidden="true" />
-            {issue.currentStateKey}
-          </span>
           <IssueStateTransition
+            currentStateKey={issue.currentStateKey}
             transitions={transitions}
-            onTransition={handleTransition}
+            onTransition={onTransition}
             isTransitioning={isTransitioning}
             unavailableReason={unavailableReason}
-            selectedValue={selectedTransition}
-            onSelectedValueChange={setSelectedTransition}
           />
         </div>
 

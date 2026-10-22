@@ -1,4 +1,5 @@
 // 워크플로우 목록 조회 훅 + 상태 옵션 추출 순수 함수 (FR-SR-01 Task 3)
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchWorkflows, fetchProjectWorkflows } from '@/api/workflows'
 import type { WorkflowView } from '@/api/workflows'
@@ -92,6 +93,22 @@ export function extractStatusMeta(
   }
 
   return map
+}
+
+/** 조회 전 기본값 — 렌더마다 새 배열을 만들면 useMemo 가 매번 다시 돈다 */
+const EMPTY_WORKFLOWS: WorkflowView[] = []
+
+/**
+ * 상태 키 → 표시 이름·카테고리 맵 — {@link useWorkflows} + {@link extractStatusMeta}.
+ *
+ * 이슈 목록 배지와 상태 전환 메뉴(상세 · 목록 셀)가 같은 맵을 쓴다. 쿼리 키가 같아 화면마다
+ * 따로 불러도 조회는 한 번이다.
+ *
+ * @returns 상태 키 → `{ name, category }` 맵. 조회 전·실패면 빈 맵
+ */
+export function useStatusMetaByKey(): ReturnType<typeof extractStatusMeta> {
+  const { data: workflows = EMPTY_WORKFLOWS } = useWorkflows()
+  return useMemo(() => extractStatusMeta(workflows), [workflows])
 }
 
 /**

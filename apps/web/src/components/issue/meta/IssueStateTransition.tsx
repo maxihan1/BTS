@@ -1,5 +1,7 @@
-// 이슈 상태 전환 셀렉터 + 409 모호 전환 후보 선택 다이얼로그 (IssueMetaPanel 분해 B, FR-IS-01)
+// 이슈 상태 전환 메뉴(현재 상태 배지 → 전환 목록) + 409 모호 전환 후보 선택 다이얼로그 (IssueMetaPanel 분해 B, FR-IS-01 · FR-WF-01 D9)
 import type { JSX } from 'react'
+import { useState } from 'react'
+import { ChevronDownIcon } from 'lucide-react'
 import type { AmbiguousTransitionCandidate, IssueTransition } from '@/api/issues'
 import {
   Dialog,
@@ -9,14 +11,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useReportModalOpen } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 // IssueMetaPanel.tsx가 정본으로 export하는 타입을 재사용 — type-only import라 컴파일 시
 // 소거되므로 IssueMetaPanel.tsx가 이 파일을 값으로 import해도 런타임 순환 문제는 없다
 // (meta/IssueCustomFieldsEdit.tsx의 isFieldHidden/isFieldDisabled 재사용 선례 동형).
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
+import { statusBadgeVariant } from '@/components/issues/issue-visuals'
+import { useStatusMetaByKey } from '@/hooks/use-workflows'
 import { issueDetailStrings } from '@/i18n/ko'
-import { transitionElementKey } from '@/lib/transition-key'
+import { TransitionMenuList } from './TransitionMenuList'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -24,6 +30,8 @@ import { transitionElementKey } from '@/lib/transition-key'
 
 /** IssueStateTransition props */
 export interface IssueStateTransitionProps {
+  /** 이슈의 현재 상태 키 — 트리거 배지의 이름·색을 여기서 해석한다 */
+  currentStateKey: string
   /** 현재 상태에서 가용한 전환 목록 */
   transitions: IssueTransition[]
   /**
@@ -35,36 +43,10 @@ export interface IssueStateTransitionProps {
    * 다시 고르게** 된다. 전환 객체를 통째로 넘겨 그 왕복을 없앤다.
    */
   onTransition: (transition: IssueTransition) => void
-  /** 전환 진행 중 여부 — true 시 셀렉터 disabled (NFR3) */
+  /** 전환 진행 중 여부 — true 시 트리거 disabled (NFR3) */
   isTransitioning: boolean
   /** 전환 컨트롤을 노출할 수 없는 사유 (스펙 E5) */
   unavailableReason: TransitionUnavailableReason
-  /** 제어값 — `optionValueOf` 가 만든 옵션 값. 전환 시도 후 리셋에 쓴다 (C1 회귀 방지) */
-  selectedValue: string
-  /** 제어값 변경 콜백 */
-  onSelectedValueChange: (value: string) => void
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 옵션 값
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * `<option>` 의 값 — React key 와 **같은 규칙**을 쓴다.
- *
- * 규칙을 둘로 나누면 key 는 전환을 가르는데 value 는 못 가르는 상태가 생기고, 그때 화면은
- * 두 옵션을 그리면서 어느 쪽을 골라도 같은 값을 보낸다. 한 함수로 묶어 그 자리를 없앤다.
- *
- * ★**정본은 `@/lib/transition-key` 의 {@link transitionElementKey} 다.** 종전에는 이 파일이
- * `transitionId ?? key` 를 자기 손으로 갖고 있었는데, 그 폴백은 두 군데서 무너진다 —
- * 같은 상태쌍의 전환 둘은 `key` 가 서로 같고, 서버 계약상 `key` 는 null 일 수도 있다.
- * 정본은 목록 위치를 최후 수단으로 덧붙여 형제 사이의 고유성을 보장한다.
- *
- * 위치가 섞이므로 **값을 렌더 밖으로 들고 나가면 안 된다.** 여기서는 같은 렌더의 같은
- * `transitions` 배열로 옵션을 그리고 되찾으므로 일관된다.
- */
-function optionValueOf(transition: IssueTransition, index: number): string {
-  return transitionElementKey(transition, index)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,72 +54,79 @@ function optionValueOf(transition: IssueTransition, index: number): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 이슈 상태 전환 셀렉터 컴포넌트.
+ * 이슈 상태 전환 메뉴.
  *
- * - 가용전환 0건 + unavailableReason='no-workflow' → 미설정 안내 (스펙 E5 S5)
- * - 가용전환 0건 + unavailableReason='terminal'|null → "더 진행할 전환 없음" 안내 (스펙 E5 S6)
- * - 가용전환 있으면 네이티브 select — IssueTypeSelect 동일 패턴
- * - 첫 옵션은 placeholder(비선택 상태), 전환 선택 시 onTransition(전환 객체) 호출
- * - isTransitioning=true → disabled (중복클릭 방지, NFR3)
- * - WCAG AA: min-h-[44px] 터치 타깃, aria-label
+ * - 현재 상태를 범주 색 배지로 보이고, 전환이 있으면 그 배지가 메뉴 트리거다 (Jira 상태 버튼)
+ * - 메뉴 본문은 목록 셀과 같은 {@link TransitionMenuList} — 같은 순서 · 같은 자기 루프 묶음
+ * - 가용전환 0건 → 배지 + 사유 안내 (스펙 E5 S5·S6)
+ * - 고르면 메뉴를 닫고 onTransition(전환 객체). DONE 범주 분기(해결 모달)는 호출부 몫이다
+ * - isTransitioning=true → 트리거 disabled (중복클릭 방지, NFR3)
+ * - WCAG AA: 트리거 min-h-[44px], 접근성 이름에 현재 상태를 싣는다
  */
 export function IssueStateTransition({
+  currentStateKey,
   transitions,
   onTransition,
   isTransitioning,
   unavailableReason,
-  selectedValue,
-  onSelectedValueChange,
 }: IssueStateTransitionProps): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const statusMetaByKey = useStatusMetaByKey()
+  // ★메뉴가 열린 동안 이슈 상세 단축키를 막는다. 본문이 입력 요소 없는 버튼뿐이라
+  //   `shouldIgnoreEvent` 를 그대로 통과한다 — AmbiguousTransitionDialog 와 같은 처방.
+  useReportModalOpen(open)
+
+  const current = statusMetaByKey.get(currentStateKey)
+  const currentName = current?.name ?? currentStateKey
+  const badge = (
+    <Badge data-testid="issue-state-badge" variant={statusBadgeVariant(current?.category)} className="max-w-full">
+      <span className="truncate">{currentName}</span>
+    </Badge>
+  )
+
   // 가용전환 0건 → 사유에 따라 안내문구 분기 (스펙 E5)
   if (transitions.length === 0) {
-    if (unavailableReason === 'no-workflow') {
-      return (
-        <p className="text-xs text-muted-foreground mt-1">
-          {issueDetailStrings.transitionWorkflowNotConfiguredError}
-        </p>
-      )
-    }
     return (
-      <p className="text-xs text-muted-foreground mt-1">
-        {issueDetailStrings.noTransitionsAvailable}
-      </p>
+      <div className="flex flex-col items-start gap-1">
+        {badge}
+        <p className="text-xs text-muted-foreground">
+          {unavailableReason === 'no-workflow'
+            ? issueDetailStrings.transitionWorkflowNotConfiguredError
+            : issueDetailStrings.noTransitionsAvailable}
+        </p>
+      </div>
     )
   }
 
-  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const optionValue = e.target.value
-    // placeholder 옵션 선택 무시
-    if (optionValue === '') return
-    const selected = transitions.find((t, i) => optionValueOf(t, i) === optionValue)
-    // ★가드가 아니라 타입 좁히기다. 옵션은 같은 렌더의 같은 `transitions` 로 그려지므로
-    //   `find` 가 빗나갈 수 없다 — 이 분기를 겨냥한 테스트를 쓰려면 도달 불가 상태를
-    //   지어내야 하고, 그것이 곧 가짜 그린이다.
-    if (selected === undefined) return
-    onSelectedValueChange(optionValue)
-    onTransition(selected)
+  function handleSelect(transition: IssueTransition): void {
+    setOpen(false)
+    onTransition(transition)
   }
 
   return (
-    <select
-      className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
-      value={selectedValue}
-      onChange={handleChange}
-      disabled={isTransitioning}
-      aria-label={issueDetailStrings.transitionSelectLabel}
-    >
-      <option value="" disabled>
-        {issueDetailStrings.transitionSelectLabel}
-      </option>
-      {transitions.map((t, i) => (
-        // ★key 도 value 도 `optionValueOf` 하나를 쓴다. `key`(`from__to`)는 같은 상태쌍의
-        //   전환 둘이 서로 **같은 값**이라(ADR 2026-08-18 로 UNIQUE 해제) 중복이 나고,
-        //   value 가 `toStateKey` 이던 종전에는 어느 쪽을 골라도 같은 값이 나갔다.
-        <option key={optionValueOf(t, i)} value={optionValueOf(t, i)}>
-          {t.name}
-        </option>
-      ))}
-    </select>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={isTransitioning}
+          aria-label={`${issueDetailStrings.transitionSelectLabel}, ${currentName}`}
+          className="min-h-[44px] max-w-full justify-start gap-1 px-1"
+        >
+          {badge}
+          <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-(--text-subtle)" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-2">
+        <TransitionMenuList
+          transitions={transitions}
+          statusMetaByKey={statusMetaByKey}
+          disabled={isTransitioning}
+          onSelect={handleSelect}
+        />
+      </PopoverContent>
+    </Popover>
   )
 }
 

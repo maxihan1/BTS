@@ -161,6 +161,15 @@ function setupIssueNotFoundHandler() {
   )
 }
 
+/** 상태 메뉴 트리거 — 접근성 이름이 「상태 전환 선택, <현재 상태>」다 (FR-WF-01 D9) */
+const TRANSITION_TRIGGER = new RegExp(`^${issueDetailStrings.transitionSelectLabel}`)
+
+/** 현재 상태 배지(트리거)를 눌러 메뉴를 열고 그 이름의 전환을 고른다 */
+async function pickTransition(user: ReturnType<typeof userEvent.setup>, name: string): Promise<void> {
+  await user.click(screen.getByRole('button', { name: TRANSITION_TRIGGER }))
+  await user.click(await screen.findByRole('button', { name: new RegExp(`^${name}`) }))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 3-상태 분기 테스트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -775,14 +784,12 @@ describe('IssueDetailPage — 상태전환', () => {
     )
     // 전환 셀렉터가 렌더될 때까지 대기
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: TRANSITION_TRIGGER })).toBeInTheDocument(),
     )
-
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
     // ★도착 상태 키가 아니라 **옵션 이름**으로 고른다. 옵션 값은 전환의 1급 식별자
     //   (`transitionId ?? key`)라 도착 상태와 다르고, 같은 상태쌍에 전환이 둘이면
     //   도착 상태로는 애초에 어느 쪽인지 지목할 수 없다.
-    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
+    await pickTransition(user, 'Start Work')
 
     // onSuccess → 캐시 무효화 → GET re-fetch → 상태 배지 갱신
     await waitFor(() => {
@@ -815,11 +822,9 @@ describe('IssueDetailPage — 상태전환', () => {
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: TRANSITION_TRIGGER })).toBeInTheDocument(),
     )
-
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, screen.getByRole('option', { name: 'Trigger Conflict' }))
+    await pickTransition(user, 'Trigger Conflict')
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
@@ -849,11 +854,9 @@ describe('IssueDetailPage — 상태전환', () => {
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: TRANSITION_TRIGGER })).toBeInTheDocument(),
     )
-
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
+    await pickTransition(user, 'Start Work')
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
@@ -886,11 +889,9 @@ describe('IssueDetailPage — 상태전환', () => {
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: TRANSITION_TRIGGER })).toBeInTheDocument(),
     )
-
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    await user.selectOptions(select, screen.getByRole('option', { name: 'Trigger 422' }))
+    await pickTransition(user, 'Trigger 422')
 
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
@@ -918,7 +919,7 @@ describe('IssueDetailPage — 상태전환', () => {
     )
 
     await waitFor(() => {
-      expect(screen.queryByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: TRANSITION_TRIGGER })).not.toBeInTheDocument()
       expect(screen.getByText(issueDetailStrings.noTransitionsAvailable)).toBeInTheDocument()
     })
   })
@@ -963,7 +964,7 @@ describe('IssueDetailPage — 상태전환', () => {
    * 같은 옵션을 재선택하면 onChange가 다시 발화되고 두 번째 POST 요청이 발생한다.
    * defaultValue="" 비제어 패턴이면 이 테스트가 실패한다.
    */
-  it('T4-8: 전환 실패 후 같은 옵션 재선택 시 POST 요청이 다시 발생한다 (select 리셋 가드)', async () => {
+  it('T4-8: 전환 실패 후 같은 항목 재선택 시 POST 요청이 다시 발생한다', async () => {
     let postCallCount = 0
     server.use(
       http.post('/api/v1/issues/:key/transition', () => {
@@ -982,22 +983,15 @@ describe('IssueDetailPage — 상태전환', () => {
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: TRANSITION_TRIGGER })).toBeInTheDocument(),
     )
 
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-
     // 1차 선택 — 실패
-    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
+    await pickTransition(user, 'Start Work')
     await waitFor(() => expect(postCallCount).toBe(1))
 
-    // 실패 후 셀렉터가 placeholder로 리셋되어 있어야 함
-    await waitFor(() => {
-      expect((select as HTMLSelectElement).value).toBe('')
-    })
-
-    // 2차 — 동일 옵션 재선택해도 onChange 발화 → POST 2회
-    await user.selectOptions(select, screen.getByRole('option', { name: 'Start Work' }))
+    // 2차 — 메뉴는 값을 쥐지 않으므로 같은 항목을 다시 골라도 POST 2회 (종전 select 의 onChange 미발화 회귀 가드)
+    await pickTransition(user, 'Start Work')
     await waitFor(() => expect(postCallCount).toBe(2))
   })
 

@@ -109,6 +109,8 @@ export const issueDetailStrings = {
   typeChangeError: '이슈 유형 변경 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
   /** 전환 셀렉터 aria-label */
   transitionSelectLabel: '상태 전환 선택',
+  /** 상태 메뉴의 자기 루프 전환 묶음 제목 — 상태를 바꾸지 않는 전환 (FR-WF-01 D9, Jira 「work item actions」) */
+  transitionLoopHeading: '상태를 그대로 두는 작업',
   /** 가용전환 0건일 때 안내 문구 (종료상태 S6) */
   noTransitionsAvailable: '더 진행할 전환 없음',
   /** 409 transition_not_allowed 에러 메시지 (S3) */
