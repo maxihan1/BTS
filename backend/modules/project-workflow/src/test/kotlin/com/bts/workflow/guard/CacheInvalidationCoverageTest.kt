@@ -43,8 +43,9 @@ class CacheInvalidationCoverageTest {
      *
      * ### `withWriteLock` 도 무효화다 (FR-WF-07 에서 추가)
      * `WorkflowCache.withWriteLock(key) { ... }` 은 block 실행 **직후 반드시** `invalidate(key)` 를
-     * 부른다 — 성공 경로 두 갈래(첫 시도 획득 · 재시도 획득) 모두에서 그렇다. 직접 호출보다
-     * 오히려 강한 보장이다(advisory lock 으로 동시 쓰기까지 막는다).
+     * 부른다 — 성공 경로 두 갈래(첫 시도 획득 · 재시도 획득) 모두에서 그렇다. advisory lock 으로
+     * 동시 **쓰기**까지 막는다는 점에서만 직접 호출보다 강하다. 커밋 순서 축에서는 같다 — 둘 다
+     * [com.bts.workflow.cache.WorkflowCache.invalidate] 가 커밋 뒤로 미룬다(WF-04-6).
      *
      * 이것을 신호로 인정하지 않으면 발행 경로가 「무효화를 빠뜨렸다」로 **거짓 양성**이 나고,
      * 그 오탐을 허용목록으로 덮으면 그 줄이 미래의 진짜 누락까지 함께 통과시킨다.

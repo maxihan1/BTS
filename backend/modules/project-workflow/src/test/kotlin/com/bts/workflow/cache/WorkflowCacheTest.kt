@@ -21,6 +21,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.transaction.support.TransactionSynchronizationUtils
 import java.sql.DriverManager
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -257,6 +259,37 @@ class WorkflowCacheTest {
             val afterLock = cache.findByKey("cached-workflow")
             assertThat(afterLock).isNull()
             verify(exactly = 1) { mockRepo.findByKey("cached-workflow") }
+        }
+    }
+
+    // ── 시나리오 6 — 트랜잭션 안의 무효화는 커밋 뒤에 일어난다 (WF-04-6) ──────────────
+
+    @Nested
+    inner class InvalidateAfterCommitCase {
+        @Test
+        fun `시나리오 6 - 커밋 전에 끼어든 리더가 옛 정의를 다시 채워도 커밋 뒤 조회는 새 정의다`() {
+            val mockRepo = mockk<WorkflowRepository>()
+            val old = fixtureWorkflow("race-key")
+            val new = fixtureWorkflow("race-key")
+            var committed = false
+            // READ COMMITTED 모사 — 커밋 전 다른 리더는 옛 정의만 본다.
+            every { mockRepo.findByKey("race-key") } answers { if (committed) new else old }
+
+            val cache = WorkflowCache(mockRepo, mockk())
+            cache.injectForTest("race-key", old)
+
+            TransactionSynchronizationManager.initSynchronization()
+            try {
+                cache.invalidate("race-key")
+                // 무효화와 커밋 사이에 들어온 리더.
+                cache.findByKey("race-key")
+                committed = true
+                TransactionSynchronizationUtils.triggerAfterCommit()
+            } finally {
+                TransactionSynchronizationManager.clearSynchronization()
+            }
+
+            assertThat(cache.findByKey("race-key")).isSameAs(new)
         }
     }
 }
