@@ -10,7 +10,6 @@ import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.TransitionKind
-import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
@@ -112,38 +111,6 @@ class DoneResolutionValidatorSeedTest {
             // 표준 4 워크플로우 시드
             seedService.seedAll()
         }
-    }
-
-    // ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
-
-    /**
-     * 시드가 DB 에 심은 전환을 되읽어 **DB 가 정한 `workflow_transitions.id`** 를 가진 전환을 준다.
-     *
-     * validator/post_action 조회는 (from, to) 상태쌍이 아니라 [WorkflowTransition.id] 로 전환을
-     * 해석한다 (V207 · FR-WF-05 · F1). 픽스처가 [WorkflowTransition] 을 직접 만들면 `id` 가 임의
-     * UUID 라 조회가 **언제나 빈 리스트**이고, 아래 단언들이 통째로 공허해진다.
-     *
-     * 이름까지 함께 맞춘다 — 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있게 된 것이 이 변경의
-     * 골자라, (from, to) 만으로 고르면 그 자리가 다시 모호해진다.
-     *
-     * @param workflowKey 시드된 워크플로우 키
-     * @param from 출발 상태 key
-     * @param to 도착 상태 key
-     * @param name 전환 표시 이름 (YAML 시드의 `name`)
-     * @return DB 의 전환 id 를 실은 [WorkflowTransition]
-     */
-    private fun seededTransition(
-        workflowKey: String,
-        from: String,
-        to: String,
-        name: String,
-    ): WorkflowTransition {
-        val workflow =
-            workflowRepository.findByKey(workflowKey)
-                ?: error("시드된 워크플로우가 없다: $workflowKey")
-        return workflow.transitions.firstOrNull {
-            it.fromStateKey == from && it.toStateKey == to && it.name == name
-        } ?: error("시드된 전환이 없다: $workflowKey $from→$to '$name'")
     }
 
     // ── S1. 해결 결과 검증기는 시드되지 않는다 — 필수의 정본은 화면이다 (FR-WF-01 D11) ──────────────
