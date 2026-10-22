@@ -2,6 +2,7 @@
 
 package com.bts.workflow.adapter.outbound
 
+import com.bts.workflow.application.port.IssueTypeStatusCount
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
 import org.jooq.SQLDialect
@@ -58,7 +59,13 @@ class IssueStatusUsageAdapterIntegrationTest {
         /** 알파에 **소프트 삭제된** 이슈 1건만 달린 상태 키. */
         private const val DELETED_ONLY_KEY = "scope-gone"
 
+        /** 알파에 task 1건 · bug 1건이 달린 상태 키. 타입 축 집계(WF-02-1)를 잰다. */
+        private const val TYPED_KEY = "scope-typed"
+
         lateinit var adapter: IssueStatusUsageAdapter
+
+        var taskType = 0L
+        var bugType = 0L
 
         /** 판정 대상 프로젝트. */
         lateinit var alpha: UUID
@@ -88,12 +95,16 @@ class IssueStatusUsageAdapterIntegrationTest {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 alpha = insertProject(conn, "SCOPEA", "스코프 알파")
                 beta = insertProject(conn, "SCOPEB", "스코프 베타")
-                val typeId = taskTypeId(conn)
+                val typeId = typeId(conn, "task")
+                taskType = typeId
+                bugType = typeId(conn, "bug")
 
                 insertIssue(conn, "SCOPEA-1", alpha, typeId, SHARED_KEY, deleted = false)
                 insertIssue(conn, "SCOPEA-2", alpha, typeId, SHARED_KEY, deleted = false)
                 insertIssue(conn, "SCOPEB-1", beta, typeId, SHARED_KEY, deleted = false)
                 insertIssue(conn, "SCOPEA-3", alpha, typeId, DELETED_ONLY_KEY, deleted = true)
+                insertIssue(conn, "SCOPEA-4", alpha, taskType, TYPED_KEY, deleted = false)
+                insertIssue(conn, "SCOPEA-5", alpha, bugType, TYPED_KEY, deleted = false)
             }
         }
 
@@ -112,9 +123,13 @@ class IssueStatusUsageAdapterIntegrationTest {
             return id
         }
 
-        /** V003 이 심는 표준 타입 중 `task` 의 id. `issues.type_id` 가 NOT NULL FK 라 필요하다. */
-        private fun taskTypeId(conn: Connection): Long =
-            conn.prepareStatement("SELECT id FROM issue_types WHERE key = 'task'").use { ps ->
+        /** V003 이 심는 표준 타입의 id. `issues.type_id` 가 NOT NULL FK 라 필요하다. */
+        private fun typeId(
+            conn: Connection,
+            key: String,
+        ): Long =
+            conn.prepareStatement("SELECT id FROM issue_types WHERE key = ?").use { ps ->
+                ps.setString(1, key)
                 ps.executeQuery().use { rs ->
                     rs.next()
                     rs.getLong(1)
@@ -170,5 +185,16 @@ class IssueStatusUsageAdapterIntegrationTest {
     fun `소프트 삭제된 이슈는 세지 않는다`() {
         // 이 키에 달린 유일한 행은 deleted_at 이 채워져 있다 — 기존 계약의 회귀 방지다.
         assertThat(adapter.countIssuesInStatus(DELETED_ONLY_KEY, setOf(alpha))).isZero()
+    }
+
+    @Test
+    fun `countByTypeAndStatus — 스코프 안 살아 있는 이슈를 타입·상태별로 센다`() {
+        // 베타 이슈 · 소프트 삭제 이슈는 빠지고, 같은 상태라도 타입이 다르면 따로 센다.
+        assertThat(adapter.countByTypeAndStatus(setOf(alpha))).containsExactlyInAnyOrder(
+            IssueTypeStatusCount(taskType, SHARED_KEY, 2),
+            IssueTypeStatusCount(taskType, TYPED_KEY, 1),
+            IssueTypeStatusCount(bugType, TYPED_KEY, 1),
+        )
+        assertThat(adapter.countByTypeAndStatus(emptySet())).isEmpty()
     }
 }

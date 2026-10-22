@@ -276,6 +276,8 @@ class StatusMigrationMaterializeIntegrationTest {
                 // 이 테스트는 이슈 전환을 잰다 — 소유는 전역으로 고정한다 (FR-WF-08).
                 scopeResolver =
                     WorkflowOwnershipScopeResolver(schemeRepo, workflowRepo, GlobalOnlyProjectLookup),
+                // 스킴 변경 가드(WF-02-1)는 이 테스트의 경로가 아니다 — 불리면 strict mock 이 터진다.
+                issueStatusUsagePort = mockk(),
             )
 
         @Bean

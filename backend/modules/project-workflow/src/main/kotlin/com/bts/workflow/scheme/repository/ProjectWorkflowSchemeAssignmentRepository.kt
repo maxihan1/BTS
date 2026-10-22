@@ -151,6 +151,29 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
             .fetchOne() != null
 
     /**
+     * 스킴에 할당된 프로젝트 중 살아 있고 아카이브되지 않은 것의 id.
+     *
+     * 매핑을 고칠 때 이슈가 새 워크플로우에 없는 상태에 남는지 세는 범위다(WF-02-1). 아카이브를
+     * 빼는 이유는 발행 차단 카운트([findProjectRefsByWorkflowId])와 같다 — 아카이브 이슈는 옮길 수
+     * 없으므로 넣으면 매핑 변경이 **관리자가 풀 수 없게** 막힌다.
+     *
+     * @param schemeId 조회할 스킴.
+     * @return 프로젝트 id 집합. 할당이 없으면 빈 집합.
+     */
+    @Transactional(readOnly = true)
+    fun findActiveProjectIdsBySchemeId(schemeId: WorkflowSchemeId): Set<UUID> =
+        dsl
+            .select(P_ID)
+            .from(TABLE)
+            .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
+            .where(A_SCHEME_ID.eq(schemeId.value))
+            .and(P_DELETED_AT.isNull)
+            .and(P_ARCHIVED_AT.isNull)
+            .fetchSet(P_ID)
+            .filterNotNull()
+            .toSet()
+
+    /**
      * project_id 에 대한 스킴 할당을 삭제한다.
      *
      * 존재하지 않는 `projectId` 에 대해 예외 없이 no-op 으로 처리한다.

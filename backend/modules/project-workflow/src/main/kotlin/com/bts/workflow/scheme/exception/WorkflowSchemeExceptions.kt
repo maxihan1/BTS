@@ -14,6 +14,7 @@ package com.bts.workflow.scheme.exception
  * |--------------------------------------|----------------------------------|-----------|
  * | [WorkflowSchemeNotFoundException]    | `SCHEME_NOT_FOUND`               | 404       |
  * | [SchemeInUseException]               | `SCHEME_IN_USE`                  | 409       |
+ * | [SchemeChangeStrandsIssuesException] | `SCHEME_CHANGE_STRANDS_ISSUES`   | 409       |
  * | [SchemeStandardNotDeletableException]| `SCHEME_STANDARD_NOT_DELETABLE`  | 409       |
  * | [SchemeStandardFieldLockedException] | `SCHEME_STANDARD_FIELD_LOCKED`   | 409       |
  * | [MappingDuplicateException]          | `MAPPING_DUPLICATE`              | 409       |
@@ -32,6 +33,21 @@ sealed class WorkflowSchemeDomainException(message: String) : RuntimeException(m
 class WorkflowSchemeNotFoundException(
     val key: String,
 ) : WorkflowSchemeDomainException("WorkflowScheme not found: $key")
+
+/**
+ * 스킴 배정·매핑 변경이 이슈를 새 워크플로우에 없는 상태에 남길 때 던지는 예외 (WF-02-1 · 결함 B5).
+ *
+ * errorCode: `SCHEME_CHANGE_STRANDS_ISSUES`
+ *
+ * @param strandedByStatus 남게 될 상태 키 → 이슈 수.
+ */
+class SchemeChangeStrandsIssuesException(
+    val strandedByStatus: Map<String, Long>,
+) : WorkflowSchemeDomainException(
+        "새 워크플로우에 없는 상태에 이슈가 남는다 — " +
+            strandedByStatus.entries.joinToString(" · ") { "${it.key} ${it.value}건" } +
+            ". 그 이슈를 새 워크플로우에도 있는 상태로 먼저 옮길 것",
+    )
 
 /**
  * 하나 이상의 프로젝트가 사용 중인 스킴을 삭제하려 할 때 던지는 예외.

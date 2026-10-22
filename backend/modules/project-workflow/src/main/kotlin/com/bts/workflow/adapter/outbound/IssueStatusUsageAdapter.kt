@@ -3,6 +3,7 @@
 package com.bts.workflow.adapter.outbound
 
 import com.bts.workflow.application.port.IssueStatusUsagePort
+import com.bts.workflow.application.port.IssueTypeStatusCount
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
@@ -31,6 +32,7 @@ class IssueStatusUsageAdapter(
     private val stateKeyField = DSL.field("current_state_key", String::class.java)
     private val projectIdField = DSL.field("project_id", UUID::class.java)
     private val deletedAtField = DSL.field("deleted_at")
+    private val typeIdField = DSL.field("type_id", Long::class.java)
 
     /**
      * [projectIds] 안의 살아 있는 이슈 중 [statusKey] 를 쓰는 것을 센다.
@@ -58,5 +60,19 @@ class IssueStatusUsageAdapter(
             .and(deletedAtField.isNull)
             .fetchOne(0, Long::class.java)
             ?: 0L
+    }
+
+    /** 빈 스코프는 [countIssuesInStatus] 와 같은 이유로 조기에 끊는다. */
+    @Transactional(readOnly = true)
+    override fun countByTypeAndStatus(projectIds: Set<UUID>): List<IssueTypeStatusCount> {
+        if (projectIds.isEmpty()) return emptyList()
+        val count = DSL.count()
+        return dsl
+            .select(typeIdField, stateKeyField, count)
+            .from(issuesTable)
+            .where(projectIdField.`in`(projectIds))
+            .and(deletedAtField.isNull)
+            .groupBy(typeIdField, stateKeyField)
+            .fetch { IssueTypeStatusCount(it.get(typeIdField), it.get(stateKeyField), it.get(count).toLong()) }
     }
 }
