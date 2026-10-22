@@ -48,7 +48,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
     val resolutionRepository = mockk<com.bts.issue.resolution.repository.ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>(relaxed = true)
     val permissionResolver = mockk<IssuePermissionResolver>()
-    val workflowPort = mockk<WorkflowTransitionPort>()
+    val workflowPort = mockk<WorkflowTransitionPort>().passesCreation()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val securityDirectory = mockk<IssueSecurityDirectory>()

@@ -62,7 +62,7 @@ class IssueCustomFieldsTest : DescribeSpec({
     val resolutionRepository = mockk<ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>(relaxed = true)
     val permissionResolver = mockk<IssuePermissionResolver>()
-    val workflowPort = mockk<WorkflowTransitionPort>()
+    val workflowPort = mockk<WorkflowTransitionPort>().passesCreation()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val customFieldDefinitionRepository = mockk<CustomFieldDefinitionRepository>()
     val clock = Clock.fixed(Instant.parse("2026-06-08T00:00:00Z"), ZoneOffset.UTC)
