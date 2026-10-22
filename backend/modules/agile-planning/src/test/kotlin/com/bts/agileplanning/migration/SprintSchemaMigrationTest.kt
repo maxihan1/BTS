@@ -17,14 +17,13 @@ import java.util.UUID
  * 요구하지 않으므로 postgres:16-alpine 이미지로 충분하다 (BoardSchemaMigrationTest 동일 결정).
  *
  * 검증 범위 (FR-BL-02 spec §5 데이터 모델).
- * - sprints 테이블 존재 + 11개 컬럼
- *   (id/project_key/name/goal/status/start_date/end_date/version/created_at/updated_at/deleted_at)
+ * - sprints 테이블 존재 + 컬럼 집합 = [SPRINTS_COLUMNS] (V506 board_id 누적)
  * - sprints.id uuid PK / project_key·name·status·version·created_at·updated_at NOT NULL
  * - sprints.status VARCHAR NOT NULL DEFAULT 'PLANNED' + CHECK(IN ('PLANNED','ACTIVE','COMPLETED'))
  * - sprints.version BIGINT NOT NULL DEFAULT 0 (낙관적 락 OCC)
  * - sprints.deleted_at timestamptz NULL 허용(소프트 삭제)
  * - 부분 인덱스 idx_sprints_project — sprints(project_key) WHERE deleted_at IS NULL
- * - sprint_issues 테이블 존재 + 3개 컬럼(sprint_id/issue_key/created_at)
+ * - sprint_issues 테이블 존재 + 컬럼 집합 = [SPRINT_ISSUES_COLUMNS]
  * - sprint_issues.issue_key NOT NULL / PK(sprint_id, issue_key) / UNIQUE(issue_key)
  * - sprint_issues.sprint_id FK 가 sprints(id) 참조 + ON DELETE CASCADE
  * - 인덱스 idx_sprint_issues_sprint 존재
@@ -42,7 +41,7 @@ class SprintSchemaMigrationTest {
         @JvmStatic
         val postgres = SharedPostgres.freshDatabase()
 
-        // sprints 가 V503 에서 보유해야 하는 11개 컬럼.
+        // sprints 가 보유해야 하는 컬럼 (V503 + V506 board_id). 개수는 적지 않는다 — 정본은 리스트다.
         private val SPRINTS_COLUMNS =
             listOf(
                 "id",
@@ -60,7 +59,7 @@ class SprintSchemaMigrationTest {
                 "board_id",
             )
 
-        // sprint_issues 가 V503 에서 보유해야 하는 3개 컬럼.
+        // sprint_issues 가 V503 에서 보유해야 하는 컬럼.
         private val SPRINT_ISSUES_COLUMNS =
             listOf(
                 "sprint_id",
@@ -327,7 +326,7 @@ class SprintSchemaMigrationTest {
     }
 
     @Test
-    fun `V503+V506 sprints 12개 컬럼 존재`() {
+    fun `V503+V506 sprints 컬럼 존재`() {
         assertThat(columnsOf("sprints"))
             .containsExactlyInAnyOrderElementsOf(SPRINTS_COLUMNS)
     }
@@ -478,7 +477,7 @@ class SprintSchemaMigrationTest {
     }
 
     @Test
-    fun `V503 sprint_issues 3개 컬럼 존재`() {
+    fun `V503 sprint_issues 컬럼 존재`() {
         assertThat(columnsOf("sprint_issues"))
             .containsExactlyInAnyOrderElementsOf(SPRINT_ISSUES_COLUMNS)
     }

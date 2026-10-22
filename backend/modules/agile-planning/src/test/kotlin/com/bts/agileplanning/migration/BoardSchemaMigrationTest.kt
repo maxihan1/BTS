@@ -1,4 +1,4 @@
-// agile-planning V500 마이그레이션 검증 — boards / board_columns 테이블 + 컬럼 + UNIQUE + FK CASCADE + 부분 인덱스 존재 확인 (FR-BD-01)
+// agile-planning V500~ 마이그레이션 검증 — boards / board_columns 테이블 + 컬럼 + UNIQUE + FK CASCADE + 부분 인덱스 존재 확인 (FR-BD-01)
 
 package com.bts.agileplanning.migration
 
@@ -16,18 +16,17 @@ import java.util.UUID
  * Spring 컨텍스트 없이 실행한다. agile-planning BC 마이그레이션 체인(V500~)은 pgmq 확장을
  * 요구하지 않으므로 postgres:16-alpine 이미지로 충분하다 (UserNotificationSubsSchemaTest 동일 결정).
  *
- * 검증 범위 (FR-BD-01 §데이터 모델 + FR-BD-03 V501 WIP/스윔레인).
- * - boards 테이블 존재 + 11개 컬럼(id/project_key/name/created_at/updated_at/deleted_at/swimlane_field
- *   + V505 board_type + V509 time_tracking/working_days/board_timezone)
+ * 검증 범위 (FR-BD-01 §데이터 모델 + FR-BD-03 V501 WIP/스윔레인 + V504 퀵 필터 · V505 종류 · V509 보드 설정).
+ * - boards 테이블 존재 + 컬럼 집합 = [BOARDS_COLUMNS]
  * - boards.deleted_at NULL 허용(소프트 삭제) / project_key·name·created_at·updated_at NOT NULL
  * - 부분 인덱스 idx_boards_project_key — boards(project_key) WHERE deleted_at IS NULL
- * - board_columns 테이블 존재 + 7개 컬럼(id/board_id/state_key/name/category/display_order/wip_limit)
+ * - board_columns 테이블 존재 + 컬럼 집합 = [BOARD_COLUMNS_COLUMNS]
  * - board_columns.board_id FK 가 boards(id) 참조 + ON DELETE CASCADE
  * - UNIQUE(board_id, state_key) 제약 — 같은 조합 중복 INSERT 시 위반
  * - project_key 는 FK 없음 (issue-tracking projects 테이블 BC 격리, notification 선례)
  * - (V501) board_columns.wip_limit INTEGER NULL + CHECK(wip_limit IS NULL OR wip_limit > 0)
  * - (V501) boards.swimlane_field VARCHAR NOT NULL DEFAULT 'NONE' + CHECK(IN ('NONE','ASSIGNEE','PRIORITY'))
- * - (V504) board_quick_filters 테이블 + 6개 컬럼(id/board_id/name/query/created_at/updated_at)
+ * - (V504) board_quick_filters 테이블 + 컬럼 집합 = [BOARD_QUICK_FILTERS_COLUMNS]
  *   + board_id FK boards(id) ON DELETE CASCADE + UNIQUE(board_id,name) + idx_board_quick_filters_board (FR-UX-01)
  *
  * 정보 스키마(information_schema / pg_indexes / pg_constraint) 조회로 단언한다.
@@ -41,7 +40,7 @@ class BoardSchemaMigrationTest {
         @JvmStatic
         val postgres = SharedPostgres.freshDatabase()
 
-        // board_columns 가 보유해야 하는 7개 컬럼 (V501 에서 wip_limit 추가).
+        // board_columns 가 보유해야 하는 컬럼 (V501 에서 wip_limit 추가).
         private val BOARD_COLUMNS_COLUMNS =
             listOf(
                 "id",
@@ -53,10 +52,10 @@ class BoardSchemaMigrationTest {
                 "wip_limit",
             )
 
-        // boards 가 V509 이후 보유해야 하는 11개 컬럼.
-        // ★ 숫자는 리스트와 **함께** 갱신한다 — V505 가 board_type 을 더하면서 이 주석만 「7개」로
-        //   남겨 8칸 리스트와 어긋나 있었다(부채 177 Task 28 에서 정정). 정본은 언제나 리스트다.
-        private val BOARDS_COLUMNS_V501 =
+        // boards 가 V509 이후 보유해야 하는 컬럼.
+        // ★ 개수를 주석·테스트 이름에 적지 않는다 — V505 · V506 이 리스트만 늘리고 숫자를 남겨
+        //   두 번 어긋났다(부채 177 Task 28 · WF-04-8). 정본은 리스트 하나다.
+        private val BOARDS_COLUMNS =
             listOf(
                 "id",
                 "project_key",
@@ -74,7 +73,7 @@ class BoardSchemaMigrationTest {
                 "board_timezone",
             )
 
-        // board_quick_filters 가 보유해야 하는 6개 컬럼 (V504 FR-UX-01 퀵 필터).
+        // board_quick_filters 가 보유해야 하는 컬럼 (V504 FR-UX-01 퀵 필터).
         private val BOARD_QUICK_FILTERS_COLUMNS =
             listOf(
                 "id",
@@ -366,7 +365,7 @@ class BoardSchemaMigrationTest {
     }
 
     /**
-     * boards 의 컬럼 집합을 [BOARDS_COLUMNS_V501] 과 **완전 일치**로 잰다.
+     * boards 의 컬럼 집합을 [BOARDS_COLUMNS] 와 **완전 일치**로 잰다.
      * (목록 이름의 V501 은 이 상수가 생긴 이력일 뿐 범위가 아니다 — 지금은 V509 까지 누적이다.)
      *
      * **왜 완전 일치인가.** 부분집합(`containsAll`)으로 재면 「빠진 칸」만 잡고 「새로 생긴 칸」은
@@ -395,9 +394,9 @@ class BoardSchemaMigrationTest {
      *   `./gradlew :modules:agile-planning:test --tests 'com.bts.agileplanning.migration.*'`
      */
     @Test
-    fun `V509 boards 11개 컬럼 존재 (V505 종류 · V509 설정 3칸 누적)`() {
+    fun `V509 boards 컬럼 존재 (V505 종류 · V509 설정 누적)`() {
         assertThat(columnsOf("boards"))
-            .containsExactlyInAnyOrderElementsOf(BOARDS_COLUMNS_V501)
+            .containsExactlyInAnyOrderElementsOf(BOARDS_COLUMNS)
     }
 
     @Test
@@ -455,7 +454,7 @@ class BoardSchemaMigrationTest {
     }
 
     @Test
-    fun `V501 board_columns 7개 컬럼 존재 (V501 wip_limit 누적)`() {
+    fun `V501 board_columns 컬럼 존재 (V501 wip_limit 누적)`() {
         assertThat(columnsOf("board_columns"))
             .containsExactlyInAnyOrderElementsOf(BOARD_COLUMNS_COLUMNS)
     }
@@ -658,7 +657,7 @@ class BoardSchemaMigrationTest {
     }
 
     @Test
-    fun `V504 board_quick_filters 6개 컬럼 존재`() {
+    fun `V504 board_quick_filters 컬럼 존재`() {
         assertThat(columnsOf("board_quick_filters"))
             .containsExactlyInAnyOrderElementsOf(BOARD_QUICK_FILTERS_COLUMNS)
     }
