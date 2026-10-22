@@ -85,7 +85,7 @@ class BulkItemExecutor(
      * - [IssueTransitionNotAllowedException] → [FailureReasonCode.TRANSITION_NOT_ALLOWED]
      * - [IssueVersionConflictException] → [FailureReasonCode.VERSION_CONFLICT]
      * - [IssueWorkflowNotConfiguredException] → [FailureReasonCode.WORKFLOW_NOT_CONFIGURED]
-     * - [ProjectArchivedException] → [FailureReasonCode.PROJECT_ARCHIVED] (STATUS_MIGRATION · spec E14)
+     * - [ProjectArchivedException] → [FailureReasonCode.PROJECT_ARCHIVED] (Edit/Transition — 이관은 가드를 건너뛴다 · WF-07-4)
      * - [StateNotInMigrationMappingException] → [FailureReasonCode.STATE_NOT_IN_MAPPING]
      *   (STATUS_MIGRATION · spec E8)
      *

@@ -20,8 +20,6 @@ import com.bts.issue.event.IssueDomainEvent
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.history.IssueHistoryRecorder
-import com.bts.issue.project.archive.ProjectArchiveGuard
-import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.StatusMigrationTypeFilter
@@ -53,7 +51,6 @@ import java.util.UUID
  * - 완료기준 4 · J8 · F8 — 엔진(`transitionIssue`)을 타지 않아 `TRANSITION_NOT_ALLOWED` 가 0건이다.
  * - 완료기준 6 · G6 · F10 — 기존 `resolutionId` 가 보존된다.
  * - E8 · F7 — 처리 시점 현재 상태가 매핑에 없으면 밀지 않고 [StateNotInMigrationMappingException] 을 던진다.
- * - E14 · D3 ② — 아카이브된 프로젝트의 이슈는 [ProjectArchiveGuard] 가 막아 상태가 재작성되지 않는다.
  * - E10 · F9 — `applyTransition` 이 0행(OCC 충돌)이면 SUCCEEDED 로 기록하지 않는다.
  * - 완료기준 10 · C-B1 · F11 · F17 — 이관 성공 시 [IssueTransitioned] 를 발행하고 그 이벤트에만
  *   `cause = "STATUS_MIGRATION"` 이 실린다. 일반 전환 발행부가 만드는 이벤트는 `cause` 가 `null` 이다.
@@ -65,12 +62,9 @@ import java.util.UUID
  * [IssueTransitioned] 는 pgmq 로 JSON 이 흐르는 타입이다. 배포 순서상 **`cause` 없는 옛 메시지를
  * 신버전이 읽는** 구간이 반드시 생기므로, 필드를 더한 자리에서 그 왕복을 함께 못박는다.
  *
- * **실패 기록은 이 클래스의 책임이 아니다.** 매핑 부재·아카이브 모두 예외로 올리고
+ * **실패 기록은 이 클래스의 책임이 아니다.** 매핑 부재는 예외로 올리고
  * [BulkItemExecutor] 가 `FailureReasonCode` 로 번역해 FAILED 를 적는다. 여기서 직접 적으면 executor 의
  * 성공 로그(`bulk_op_item_succeeded`)가 FAILED 장부와 어긋난다 — 그 매핑은 `BulkItemExecutorTest` 가 덮는다.
- *
- * **가드는 실제로 주입한다.** `projectArchiveGuard` 는 nullable(`?`) 이라 null 픽스처면 `?.` 가 조용히
- * 통과해 「가드를 검사하는 테스트」가 공허해진다. 그래서 모의 Bean 을 주입하고 호출 자체를 verify 한다.
  *
  * **OCC 0행이 도달 불가 픽스처가 아닌 근거.** `IssueRepositoryTest` 의 `T5 - applyTransition stale`
  * 이 실제 DB 에서 version 불일치 시 0 이 반환되는 것을 증명한다. 이 단위 테스트의 `returns 0` 은
@@ -86,7 +80,6 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val issueService = mockk<IssueApplicationService>()
     val bulkRepo = mockk<BulkOperationRepository>()
     val issueRepository = mockk<IssueRepository>()
-    val archiveGuard = mockk<ProjectArchiveGuard>()
     val eventPublisher = mockk<IssueEventPublisher>()
     val historyRecorder = mockk<IssueHistoryRecorder>()
 
@@ -102,7 +95,6 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             issueRepository,
             eventPublisher,
             historyRecorder,
-            archiveGuard,
             Clock.fixed(fixedInstant, ZoneOffset.UTC),
         )
 
@@ -172,11 +164,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
         )
 
     beforeEach {
-        clearMocks(issueService, bulkRepo, issueRepository, archiveGuard, eventPublisher, historyRecorder)
-        // 기본은 「아카이브 아님」. IssueKey 는 value class 라 any() 매처를 못 쓰므로 키를 명시한다.
-        listOf(inReviewKey, blockedKey, otherInReviewKey).forEach { key ->
-            justRun { archiveGuard.checkByIssue(key) }
-        }
+        clearMocks(issueService, bulkRepo, issueRepository, eventPublisher, historyRecorder)
         // 락 뒤 재조회 기본 stub — 이관 가지의 상태·버전·해결책과 이력 before 스냅샷이 모두 이 읽기에서 나온다.
         every { issueRepository.findByKeyForUpdate(inReviewKey) } returns
             issueEntity(inReviewKey, "in_review", 5L)
@@ -303,33 +291,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
             verify(exactly = 0) { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) }
         }
 
-        it("아카이브된 프로젝트의 이슈는 가드가 막아 상태가 재작성되지 않는다 (E14 · D3 ②)") {
-            every { issueService.findByKey(actor, inReviewKey) } returns
-                issueResponse(inReviewKey, "in_review", version = 5L)
-            every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
-            every { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) } returns 1
-
-            // ① 아카이브 프로젝트 — 가드가 409 도메인 예외를 던진다.
-            every { archiveGuard.checkByIssue(inReviewKey) } throws ProjectArchivedException(inReviewKey.value)
-
-            shouldThrow<ProjectArchivedException> {
-                sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
-            }
-
-            verify(exactly = 1) { archiveGuard.checkByIssue(inReviewKey) }
-            verify(exactly = 0) { issueRepository.applyTransition(inReviewKey, any(), any(), any()) }
-            verify(exactly = 0) { bulkRepo.updateItemResult(operationId, inReviewKey, any(), any()) }
-
-            // ② 비-공허 짝 — 아카이브가 아니면 여전히 정상 이관된다. 「항상 거부」 구현을 배제한다.
-            justRun { archiveGuard.checkByIssue(inReviewKey) }
-
-            sut.applyAndRecordSuccess(actor, operationId, inReviewKey, payload)
-
-            verify(exactly = 1) { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) }
-            verify(exactly = 1) { bulkRepo.updateItemResult(operationId, inReviewKey, ItemStatus.SUCCEEDED, null) }
-        }
-
-        it("D-ORDER — 권한 → 아카이브 가드 → 비관락 → 쓰기 순서를 지킨다 (spec §D3 ②③ · 게이트 2 리뷰 ③)") {
+        it("D-ORDER — 권한 → 비관락 → 쓰기 순서를 지킨다 (spec §D3 ③ · 게이트 2 리뷰 ③)") {
             every { issueService.findByKey(actor, inReviewKey) } returns
                 issueResponse(inReviewKey, "in_review", version = 5L)
             every { issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null) } returns 1
@@ -339,16 +301,13 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
 
             // [migrateStatus] KDoc 이 이 순서를 계약으로 선언한다. 단언이 없으면 계약이 문장으로만 남는다.
             // - findByKey 를 다른 가지로 옮기면 이관 가지의 유일한 권한 검사(BROWSE)가 사라진다.
-            // - 가드와 락을 맞바꾸면 미인가 actor 가 행을 잠글 수 있게 된다.
             // - 쓴 뒤에 잠그면 동시 편집과의 경합을 하나도 막지 못한다.
             verifyOrder {
                 issueService.findByKey(actor, inReviewKey)
-                archiveGuard.checkByIssue(inReviewKey)
                 issueRepository.findByKeyForUpdate(inReviewKey)
                 issueRepository.applyTransition(inReviewKey, "in_progress", 5L, null)
             }
             verify(exactly = 1) { issueService.findByKey(actor, inReviewKey) }
-            verify(exactly = 1) { archiveGuard.checkByIssue(inReviewKey) }
             verify(exactly = 1) { issueRepository.findByKeyForUpdate(inReviewKey) }
             // 잠그지 않는 읽기로 되돌아가면 여기가 red 다 (beforeEach 가 그 읽기도 무장해 두었다).
             verify(exactly = 0) { issueRepository.findByKey(inReviewKey) }

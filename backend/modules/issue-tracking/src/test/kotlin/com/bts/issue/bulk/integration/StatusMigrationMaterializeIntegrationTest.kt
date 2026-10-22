@@ -21,7 +21,6 @@ import com.bts.issue.bulk.domain.BulkOperationId
 import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationStatus
 import com.bts.issue.bulk.domain.BulkOperationType
-import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
 import com.bts.issue.bulk.event.BulkOperationEventPublisher
@@ -361,8 +360,7 @@ class StatusMigrationMaterializeIntegrationTest {
         /**
          * ★실물 [ProjectArchiveGuard] — 모의가 아니다 (M7).
          *
-         * 이 빈이 없으면 이관은 아카이브 잠금을 통과한다. 「가드가 주입된다」를 판정하려면
-         * 판정 술어(`archived_at IS NOT NULL`)가 실 DB 를 읽어야 한다.
+         * 운영처럼 가드가 컨텍스트에 **있는 채로** 이관이 아카이브 프로젝트의 이슈를 옮기는지 본다.
          */
         @Bean
         open fun projectArchiveGuard(dsl: DSLContext): ProjectArchiveGuard = ProjectArchiveGuard(ProjectArchiveStateRepository(dsl))
@@ -373,7 +371,6 @@ class StatusMigrationMaterializeIntegrationTest {
             bulkRepo: BulkOperationRepository,
             issueRepository: IssueRepository,
             eventPublisher: IssueEventPublisher,
-            projectArchiveGuard: ProjectArchiveGuard,
         ): BulkItemApplier =
             BulkItemApplier(
                 issueService = issueService,
@@ -383,7 +380,6 @@ class StatusMigrationMaterializeIntegrationTest {
                 // 이 컨텍스트에는 IssueHistoryRecorder 빈이 없다 — 이 테스트가 보는 것은 이력이 아니라
                 // 「무엇이 대상이 되었는가」다. 이력·이벤트 검증은 Task 6 의 단위 테스트가 맡는다.
                 historyRecorder = mockk(relaxed = true),
-                projectArchiveGuard = projectArchiveGuard,
             )
 
         @Bean
@@ -679,47 +675,32 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(alert).containsIgnoringCase("status_migration")
     }
 
-    // ── M7. 아카이브 잠금은 이관에도 걸린다 — 가드가 **결선**되어 있는가 ────────
+    // ── M7. 이관은 아카이브 잠금을 건너뛴다 (WF-07-4) ──────────────────────────
 
     /**
-     * M7 (E14 · D3 ② · 게이트 2 리뷰 ①②) — 아카이브된 프로젝트의 이슈는 이관되지 않고
-     * `PROJECT_ARCHIVED` 로 FAILED 된다.
+     * M7 (WF-07-4 · E14 개정) — 아카이브된 프로젝트의 이슈도 **이관된다**.
      *
-     * ## 단위 테스트가 못 보는 것
-     * `BulkItemApplierStatusMigrationTest` 는 「가드가 **호출된다**」를 mockk 로 본다. 그러나
-     * 「가드가 **주입된다**」는 아무도 안 봤다. 실제로 이 PR 의 통합 컨텍스트 3곳이 가드를 생략한 채
-     * 이관 경로를 돌렸고, 그때 nullable 기본값의 `?.` 가 검사를 **조용히 건너뛰었다**(fail-open).
-     * 이 테스트는 그 결선 자체를 판정한다 — 가드 빈을 빼면 여기가 red 다.
-     *
-     * ## 비-공허 짝
-     * 같은 실행에서 아카이브가 아닌 프로젝트의 이슈는 **정상 이관**된다. 「전부 실패」 구현이나
-     * 「이관 자체가 안 도는」 픽스처를 배제한다.
+     * 이관은 사용자 쓰기가 아니라 공유 워크플로우가 바뀐 데 따른 정합 작업이다. 아카이브가 막으면
+     * 그 이슈는 워크플로우에 없는 상태로 남고, 아카이브를 해제해도 어떤 전환도 계산할 수 없다.
+     * 일괄작업 기록은 30일 뒤 지워지므로(`BulkOperationCleanupWorker`) 해제 시점에 되살릴 근거도 없다.
      */
     @Test
-    fun `M7 - 아카이브된 프로젝트의 이슈는 이관되지 않고 PROJECT_ARCHIVED 로 FAILED 된다`() {
+    fun `M7 - 아카이브된 프로젝트의 이슈도 이관된다`() {
         val archived = insertIssue(ARCHIVED_KEY, "in_review")
         val active = insertIssue(SCOPE_KEY, "in_review")
 
         val operationId = enqueue(projectKeys = setOf(SCOPE_KEY, ARCHIVED_KEY))
         worker.pollAndProcess()
 
-        // ① 아카이브 프로젝트의 이슈는 옛 상태 그대로다 — 다른 모든 쓰기가 거부하는 일을 이관만 해내면 안 된다.
         assertThat(stateOf(archived))
-            .describedAs("아카이브된 프로젝트의 이슈는 이관되지 않아야 한다 (가드 미결선이면 in_progress 가 된다)")
-            .isEqualTo("in_review")
-        // ② 비-공허 짝 — 아카이브가 아닌 프로젝트는 같은 실행에서 정상 이관된다.
+            .describedAs("아카이브된 프로젝트의 이슈도 워크플로우 안의 상태로 옮겨져야 한다")
+            .isEqualTo("in_progress")
         assertThat(stateOf(active)).isEqualTo("in_progress")
 
         val operation = requireNotNull(bulkRepo.findById(BulkOperationId(operationId))) { "작업을 찾을 수 없음" }
         assertThat(operation.totalCount).isEqualTo(2)
-        assertThat(operation.succeededCount).isEqualTo(1)
-        assertThat(operation.failedCount).isEqualTo(1)
-
-        val failed =
-            bulkRepo.findItemsByOperationId(BulkOperationId(operationId))
-                .single { it.issueKey.value == archived }
-        assertThat(failed.status).isEqualTo(ItemStatus.FAILED)
-        assertThat(failed.failureReasonCode).isEqualTo(FailureReasonCode.PROJECT_ARCHIVED)
+        assertThat(operation.succeededCount).isEqualTo(2)
+        assertThat(operation.failedCount).isEqualTo(0)
     }
 
     // ── M8 · M9. 소프트 삭제 필터는 수동이다 (DATA.md §3) ──────────────────────
