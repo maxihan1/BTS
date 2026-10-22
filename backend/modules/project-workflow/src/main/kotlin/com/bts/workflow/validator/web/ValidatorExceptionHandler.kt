@@ -60,15 +60,7 @@ class ValidatorExceptionHandler {
     @ExceptionHandler(WorkflowSchemeAccessDeniedException::class)
     fun handleAccessDenied(ex: WorkflowSchemeAccessDeniedException): ResponseEntity<ErrorResponse> {
         log.info("VALIDATOR_403 access_denied detail='{}'", ex.message)
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(
-            ErrorResponse(
-                error =
-                    ErrorBody(
-                        code = WorkflowSchemeAccessDeniedException.WORKFLOW_SCHEME_ACCESS_DENIED,
-                        message = "이 작업을 수행할 권한이 없습니다.",
-                    ),
-            ),
-        )
+        return TransitionRuleFrameworkErrors.accessDenied()
     }
 
     /**
@@ -190,8 +182,8 @@ class ValidatorExceptionHandler {
 /**
  * 전환 규칙 관리 두 표면(validator · post-action)이 공유하는 **프레임워크 층** 에러 코드와 응답 봉투.
  *
- * 이 셋은 도메인 실패가 아니라 요청이 컨트롤러 본문에 닿기도 전에(또는 인증을 확인하는 자리에서)
- * 깨진 경우다. 표면에 따라 코드가 갈리면 화면이 「validator 인지 post-action 인지」로 한 번 더
+ * 여기 모은 응답은 도메인 실패가 아니라 요청이 컨트롤러 본문에 닿기도 전에(또는 인증·권한을 확인하는
+ * 자리에서) 깨진 경우다. 표면에 따라 코드가 갈리면 화면이 「validator 인지 post-action 인지」로 한 번 더
  * 분기해야 하므로 **양쪽이 같은 값**을 쓴다. 코드 문자열을 두 핸들러에 각각 적으면 그 순간 두 벌이
  * 되고, 두 벌은 서로를 검사하지 않는다.
  *
@@ -214,6 +206,26 @@ internal object TransitionRuleFrameworkErrors {
     private const val UNREADABLE_BODY_MESSAGE = "요청 본문을 읽을 수 없습니다."
     private const val UNAUTHENTICATED_MESSAGE = "인증이 필요합니다. 다시 로그인해 주세요."
     private const val REQUEST_REJECTED_MESSAGE = "요청을 처리할 수 없습니다."
+    private const val ACCESS_DENIED_MESSAGE = "이 작업을 수행할 권한이 없습니다."
+
+    /**
+     * 워크플로우 스킴 권한 거부 응답 — 403.
+     *
+     * 예외의 actorId/permission/scope 는 받지 않는다 — 응답에 실을 길 자체를 두지 않는다.
+     * 상세는 호출한 핸들러가 자기 로그 태그로 남긴다.
+     *
+     * @return `WORKFLOW_SCHEME_ACCESS_DENIED` 봉투를 실은 403 응답.
+     */
+    fun accessDenied(): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+            ErrorResponse(
+                error =
+                    ErrorBody(
+                        code = WorkflowSchemeAccessDeniedException.WORKFLOW_SCHEME_ACCESS_DENIED,
+                        message = ACCESS_DENIED_MESSAGE,
+                    ),
+            ),
+        )
 
     /**
      * 경로 변수·요청 파라미터 형식 오류 응답 — 400.

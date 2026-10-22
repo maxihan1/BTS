@@ -53,12 +53,7 @@ class PostActionExceptionHandler {
     @ExceptionHandler(WorkflowSchemeAccessDeniedException::class)
     fun handleAccessDenied(ex: WorkflowSchemeAccessDeniedException): ResponseEntity<ErrorResponse> {
         log.info("POST_ACTION_403 access_denied detail='{}'", ex.message)
-        val errorBody =
-            ErrorBody(
-                code = WorkflowSchemeAccessDeniedException.WORKFLOW_SCHEME_ACCESS_DENIED,
-                message = "이 작업을 수행할 권한이 없습니다.",
-            )
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse(errorBody))
+        return TransitionRuleFrameworkErrors.accessDenied()
     }
 
     /**

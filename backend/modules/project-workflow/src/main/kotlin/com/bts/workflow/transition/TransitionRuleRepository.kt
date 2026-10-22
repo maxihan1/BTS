@@ -98,7 +98,7 @@ abstract class TransitionRuleRepository(
                 val id =
                     record.get(idField)
                         ?: error("$tableName.${idField.name} null — transitionId=$transitionId")
-                val transitionId =
+                val rowTransitionId =
                     record.get(transitionIdField)
                         ?: error("$tableName.${transitionIdField.name} null")
                 val type =
@@ -106,7 +106,7 @@ abstract class TransitionRuleRepository(
                         ?: error("$tableName.${typeField.name} null")
                 TransitionRuleRow(
                     id = id,
-                    transitionId = transitionId,
+                    transitionId = rowTransitionId,
                     type = type,
                     config = parseJsonb(record.get(configField)),
                     displayOrder = record.get(displayOrderField) ?: 0,
