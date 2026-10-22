@@ -510,9 +510,8 @@ class V203ToV206MigrationTest {
     }
 
     @Test
-    fun `V204 백필은 원본 workflow_states 를 지우지 않는다`() {
-        val count = query("SELECT COUNT(*) FROM workflow_states") { it.getInt(1) }
-        assertThat(count).isEqualTo(seedStates.size)
+    fun `V204 가 백필한 원본 workflow_states 는 V210 이 지운다`() {
+        assertThat(tableExists("workflow_states")).isFalse()
     }
 
     // ── V204. 유일성 가드 3종 (격리 DB — ADR D4 는 위반 데이터로 red 1회를 요구한다) ──
@@ -617,7 +616,6 @@ class V203ToV206MigrationTest {
             .describedAs("미러에 있어야 할 테이블이 빠졌다")
             .contains(
                 "workflows",
-                "workflow_states",
                 "workflow_transitions",
                 "workflow_validators",
                 "workflow_post_actions",

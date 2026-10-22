@@ -2666,7 +2666,15 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 
 **처방.** `invalidate` 를 `TransactionSynchronizationManager.registerSynchronization { afterCommit { ... } }` 로 옮긴다. `pg_try_advisory_xact_lock` 은 커밋까지 유지되므로 쓰기끼리의 직렬화는 그대로다. 아울러 `CacheInvalidationCoverageTest` 의 「`withWriteLock` 이 직접 호출보다 오히려 강한 보장이다」 문구를 좁힌다 — 커밋 순서 축에서는 사실이 아니다.
 
-## ⬜ 워크플로우 — 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 (미착수 · T3)
+## ✅ 워크플로우 — 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 (**해소** · T3)
+
+**해소 — 2026-10-22 · WF-04-4.** 3단(drop)을 끝냈다. 선행 #528 이 issue-tracking 테스트 픽스처를 신 컬럼으로 옮겼고,
+`V210__drop_workflow_states` 가 ① 구 컬럼만 찬 전환을 같은 다리(key)로 재백필 ② 옮기지 못한 행이 있으면 이름을 들고
+RAISE ③ `from_state_id`·`to_state_id` · `workflow_states` DROP ④ V207 이 이연한 `to_status_id NOT NULL` ·
+`ck_transition_kind_from` CHECK 를 건다. 코드 쪽은 읽기 폴백(`WorkflowRepository` · `TransitionKeyResolver`)과
+구 테이블 쓰기(`YamlSeedService` · 복제)를 지웠다. 부팅마다 돌던 `repairStatusCatalog`(구 테이블 → 카탈로그 보정)도
+원본이 사라져 함께 지웠다. `RawWorkflowStateInsertGuardTest` · `StatusCatalogParityTest` 는 대상 표가 없어져 삭제.
+판별식은 `V210MigrationTest`.
 
 **쉬운 말.** 상태를 담는 옛 표와 새 표가 동시에 살아 있어서, 어느 쪽이 진짜인지 헷갈릴 여지가 남아 있다.
 

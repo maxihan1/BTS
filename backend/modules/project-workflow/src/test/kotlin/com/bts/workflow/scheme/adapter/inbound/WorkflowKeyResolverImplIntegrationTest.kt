@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * ## 마이그레이션 순서 (WorkflowResolverImplIntegrationTest 패턴 동일)
  * 1. Flyway target=200 → issue_types/projects 스텁 → LATEST
- * 2. workflows / workflow_states / scheme 매핑 seed 직접 INSERT
+ * 2. workflows / 상태 / scheme 매핑 seed 직접 INSERT
  */
 class WorkflowKeyResolverImplIntegrationTest {
     companion object {

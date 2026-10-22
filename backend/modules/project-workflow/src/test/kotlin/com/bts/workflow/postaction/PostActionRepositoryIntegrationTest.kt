@@ -76,7 +76,8 @@ class PostActionRepositoryIntegrationTest {
 
                 val fromStateId: String =
                     conn.prepareStatement(
-                        "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='open'",
+                        "SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                            " WHERE ws.workflow_id='$workflowId'::uuid AND s.key='open'",
                     ).use { ps ->
                         ps.executeQuery().use { rs ->
                             rs.next()
@@ -86,7 +87,8 @@ class PostActionRepositoryIntegrationTest {
 
                 val toStateId: String =
                     conn.prepareStatement(
-                        "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='in_progress'",
+                        "SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                            " WHERE ws.workflow_id='$workflowId'::uuid AND s.key='in_progress'",
                     ).use { ps ->
                         ps.executeQuery().use { rs ->
                             rs.next()
@@ -96,7 +98,8 @@ class PostActionRepositoryIntegrationTest {
 
                 val doneStateId: String =
                     conn.prepareStatement(
-                        "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='done'",
+                        "SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                            " WHERE ws.workflow_id='$workflowId'::uuid AND s.key='done'",
                     ).use { ps ->
                         ps.executeQuery().use { rs ->
                             rs.next()
@@ -107,7 +110,7 @@ class PostActionRepositoryIntegrationTest {
                 // post-action 이 있을 전환
                 conn.prepareStatement(
                     """
-                    INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
+                    INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name)
                     VALUES ('$workflowId'::uuid, '$fromStateId'::uuid, '$toStateId'::uuid, 'Start')
                     RETURNING id
                     """.trimIndent(),
@@ -121,7 +124,7 @@ class PostActionRepositoryIntegrationTest {
                 // post-action 이 없는 빈 전환
                 conn.prepareStatement(
                     """
-                    INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
+                    INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name)
                     VALUES ('$workflowId'::uuid, '$toStateId'::uuid, '$doneStateId'::uuid, 'Complete')
                     RETURNING id
                     """.trimIndent(),

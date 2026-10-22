@@ -78,7 +78,7 @@ class WorkflowCacheTest {
 
                 conn.prepareStatement(
                     "INSERT INTO workflow_transitions" +
-                        " (workflow_id, from_state_id, to_state_id, name) VALUES (?, ?, ?, '완료')",
+                        " (workflow_id, from_status_id, to_status_id, name) VALUES (?, ?, ?, '완료')",
                 ).use { stmt ->
                     stmt.setObject(1, wfId)
                     stmt.setObject(2, openId)

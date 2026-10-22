@@ -7,7 +7,6 @@ import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
-import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
@@ -146,10 +145,8 @@ val workflowYamlValidation: Validation<WorkflowYamlDto> =
  *
  * 부작용 — 시드 YAML 을 고쳐 배포해도 기존 DB 에는 반영되지 않는다. 의도된 동작이다.
  *
- * ### 전역 상태 카탈로그 이중 기록 (FR-WF-04)
- * 삽입 시 `workflow_states` 와 `statuses`/`workflow_statuses` 를 같은 트랜잭션에서 함께 기록한다.
- * 전자는 `workflow_transitions` 의 FK 대상이라 아직 필요하고, 후자가 없으면 빈 DB(시드가 채움)와
- * 기존 DB(V204 백필이 채움)의 카탈로그 상태가 갈라진다.
+ * ### 상태는 전역 카탈로그에 기록한다 (FR-WF-04)
+ * 삽입 시 상태를 `statuses`/`workflow_statuses` 에 기록한다. 구형 `workflow_states` 는 V210 이 지웠다.
  *
  * ### post-action 공존 정책 (FR-NT-05 D6)
  * post-action 은 런타임 API(PostActionAdminService)로만 관리된다. 시드가 기존 워크플로우를 지우지
@@ -241,72 +238,7 @@ class YamlSeedService(
         // 루프 밖(4 워크플로우 처리 완료 후) 1회 호출해 매 seedAll() 마다 dangling/누락을 보정한다.
         mappingRepository.repairDefaultMappings()
 
-        // 상태 카탈로그 보정 — 같은 자리에서 같은 이유(유실 보정)로 돈다. 아래 KDoc 참조.
-        repairStatusCatalog()
-
         log.info("YamlSeedService 완료 — 표준 4 워크플로우 시드 점검 끝")
-    }
-
-    /**
-     * `workflow_states` 를 기준으로 전역 상태 카탈로그의 **빠진 행만** 채운다.
-     *
-     * ### 왜 필요한가
-     * 이 서비스는 「workflow 행이 없을 때만 삽입」한다. 그래서 workflow 행은 있는데 카탈로그만 비어 있는
-     * 상태에 빠지면 재기동으로는 영영 복구되지 않는다. 그런 상태는 실제로 만들어질 수 있다 —
-     * 이 PR 배포 후 앱만 이전 버전으로 롤백하면 구 코드의 `deleteWorkflow` → 재삽입이 돌고,
-     * `workflow_statuses` 가 `workflows` FK CASCADE 로 함께 사라진다. 다시 롤포워드해도 workflow 행은
-     * 이미 있으므로 삽입 경로를 타지 않는다.
-     *
-     * CI 판별식은 운영 DB 를 보지 않으므로 이 상태는 **조용하다.** 그래서 부팅마다 스스로 보정한다.
-     *
-     * 선례는 바로 위의 [SchemeIssueTypeMappingRepository.repairDefaultMappings] 다 — 같은 자리에서
-     * 같은 이유(빈 DB·유실 보정)로 루프 밖 1회 돈다. 새 패턴이 아니다.
-     *
-     * INSERT 만 한다. `ON CONFLICT DO NOTHING` 이라 멀쩡한 DB 에서는 아무 행도 늘지 않는다.
-     * 로직은 V204 백필과 같다 — 마이그레이션이 한 번 하는 일을 런타임이 반복 가능하게 한다.
-     */
-    private fun repairStatusCatalog() {
-        val insertedStatuses =
-            dsl.insertInto(STATUSES)
-                .columns(STATUSES.KEY, STATUSES.NAME, STATUSES.CATEGORY)
-                .select(
-                    dsl.selectDistinct(WORKFLOW_STATES.KEY, WORKFLOW_STATES.NAME, WORKFLOW_STATES.CATEGORY)
-                        .on(WORKFLOW_STATES.KEY)
-                        .from(WORKFLOW_STATES)
-                        .orderBy(WORKFLOW_STATES.KEY),
-                )
-                // V206 이 statuses.key 를 부분 유니크 인덱스(WHERE deleted_at IS NULL)로 바꿨다.
-                // 술어를 함께 적지 않으면 PostgreSQL 이 추론할 제약을 못 찾아
-                // "there is no unique or exclusion constraint matching the ON CONFLICT specification" 로 죽는다.
-                .onConflict(STATUSES.KEY)
-                .where(STATUSES.DELETED_AT.isNull)
-                .doNothing()
-                .execute()
-
-        val insertedLinks =
-            dsl.insertInto(WORKFLOW_STATUSES)
-                .columns(
-                    WORKFLOW_STATUSES.WORKFLOW_ID,
-                    WORKFLOW_STATUSES.STATUS_ID,
-                    WORKFLOW_STATUSES.DISPLAY_ORDER,
-                )
-                .select(
-                    dsl.select(WORKFLOW_STATES.WORKFLOW_ID, STATUSES.ID, WORKFLOW_STATES.DISPLAY_ORDER)
-                        .from(WORKFLOW_STATES)
-                        .join(STATUSES)
-                        .on(STATUSES.KEY.eq(WORKFLOW_STATES.KEY)),
-                )
-                .onConflict(WORKFLOW_STATUSES.WORKFLOW_ID, WORKFLOW_STATUSES.STATUS_ID)
-                .doNothing()
-                .execute()
-        if (insertedStatuses > 0 || insertedLinks > 0) {
-            log.warn(
-                "상태 카탈로그 보정 — statuses {}행 · workflow_statuses {}행을 되채웠다. " +
-                    "정상 상태에서는 0행이다 (앱만 롤백한 이력이 있는지 확인할 것).",
-                insertedStatuses,
-                insertedLinks,
-            )
-        }
     }
 
     /**
@@ -409,12 +341,12 @@ class YamlSeedService(
         )
 
     /**
-     * [WorkflowYamlDto] 를 workflows / workflow_states / workflow_transitions /
+     * [WorkflowYamlDto] 를 workflows / statuses·workflow_statuses / workflow_transitions /
      * workflow_validators / workflow_post_actions 에 삽입한다.
      *
      * 삽입 순서.
      * 1. workflows 행 삽입 → workflow UUID 획득
-     * 2. workflow_states 행 삽입 → state key → UUID 매핑 구성
+     * 2. 상태를 전역 카탈로그에 편성
      * 3. workflow_transitions 행 삽입 → transition UUID 획득 후 validators/post_actions 삽입
      *
      * @return 새로 발급된 workflows.id (UUID).
@@ -432,27 +364,13 @@ class YamlSeedService(
                 ?.value1()
                 ?: error("workflows 삽입 실패: ${dto.key}")
 
-        // 2. 상태 적재 — workflow_states 와 전역 카탈로그를 **같은 루프에서** 기록한다.
-        //    두 기록이 갈라지면 StatusCatalogParityTest 가 red 를 낸다.
-        val stateKeyToId = mutableMapOf<String, java.util.UUID>()
+        // 2. 상태 적재 — 전역 카탈로그 편성
         for (state in dto.states) {
-            val stateId =
-                dsl.insertInto(WORKFLOW_STATES)
-                    .set(WORKFLOW_STATES.WORKFLOW_ID, workflowId)
-                    .set(WORKFLOW_STATES.KEY, state.key)
-                    .set(WORKFLOW_STATES.NAME, state.name)
-                    .set(WORKFLOW_STATES.CATEGORY, state.category)
-                    .set(WORKFLOW_STATES.DISPLAY_ORDER, state.displayOrder)
-                    .returningResult(WORKFLOW_STATES.ID)
-                    .fetchOne()
-                    ?.value1()
-                    ?: error("workflow_states 삽입 실패: ${dto.key}/${state.key}")
-            stateKeyToId[state.key] = stateId
             insertStatusForWorkflow(workflowId, state)
         }
 
         // 3. workflow_transitions 삽입 + validators/post_actions 삽입
-        insertTransitions(dto, workflowId, stateKeyToId)
+        insertTransitions(dto, workflowId)
 
         logSeeded(dto, workflowId)
 
@@ -462,22 +380,8 @@ class YamlSeedService(
     /**
      * 전환과 그에 딸린 validator / post_action 을 심는다.
      *
-     * ### 신 컬럼이 정본이다 (V207 · 3단 분할 2단계)
-     * V207 이 전환의 출발·도착을 워크플로우 종속 `workflow_states` 에서 전역 카탈로그 편성
-     * `workflow_statuses` 로 재지정했다. 그 재지정 백필은 **마이그레이션 시점에 있던 행**만 손댄다 —
-     * 그 뒤에 시드가 심는 행은 시드가 직접 신 컬럼을 채워야 한다. 채우지 않으면 빈 DB 로 부팅한
-     * 사이트의 표준 워크플로우 전환이 전부 신 컬럼 NULL 로 남아, 3단계에서 NOT NULL 을 걸 수 없다.
-     *
-     * [TransitionKind.NORMAL] 은 구 컬럼도 함께 채운다 — 시드는 `workflow_states` 행을 직접 만드는
-     * 두 경로 중 하나라 가리킬 대상이 실재하고, 3단계(`workflow_states` DROP)까지 롤백 자리를 지킨다.
-     * 신·구가 **같은 상태**를 가리키므로 읽기 폴백이 어느 쪽을 보든 결과가 같다.
-     *
-     * ### GLOBAL·INITIAL 은 구 컬럼을 비워 둔다
-     * 출발지가 없으니 `from_state_id` 는 애초에 채울 값이 없고, `to_state_id` 도 **일부러 비운다** —
-     * V207 ⑨ 가 기존 DB 에 심은 INITIAL 행이 정확히 그 모양(구 컬럼 둘 다 NULL)이기 때문이다.
-     * 여기서만 채우면 빈 DB 로 올린 사이트와 기존 사이트의 같은 전환이 서로 다른 모양이 된다.
-     * V207 ⑧ 이 두 구 컬럼의 NOT NULL 을 풀어 NULL 이 적법하고, 읽기는 신 컬럼이 차 있으면
-     * 구 컬럼을 보지 않는다(`WorkflowRepository` 폴백 순서).
+     * 출발·도착은 그 워크플로우의 `workflow_statuses.id` 다. GLOBAL·INITIAL 은 출발지가 없다
+     * (V210 `ck_transition_kind_from`).
      *
      * ### `display_order` 를 여기서 지정하지 않는 이유
      * INITIAL 이 받아야 할 값은 0 이고
@@ -487,17 +391,15 @@ class YamlSeedService(
      *
      * @param dto 파싱·검증이 끝난 워크플로우 정의
      * @param workflowId 방금 삽입한 `workflows.id`
-     * @param stateKeyToId 상태 키 → 구형 `workflow_states.id`
      */
     private fun insertTransitions(
         dto: WorkflowYamlDto,
         workflowId: java.util.UUID,
-        stateKeyToId: Map<String, java.util.UUID>,
     ) {
         val stateKeyToCompositionId = fetchStatusCompositionIds(workflowId)
         for (transition in dto.transitions) {
             val transitionId =
-                insertTransitionRow(dto, workflowId, transition, stateKeyToId, stateKeyToCompositionId)
+                insertTransitionRow(dto, workflowId, transition, stateKeyToCompositionId)
             insertValidators(transitionId, transition.validators)
             insertPostActions(transitionId, transition.postActions)
         }
@@ -509,26 +411,18 @@ class YamlSeedService(
      * @param dto 파싱·검증이 끝난 워크플로우 정의
      * @param workflowId 방금 삽입한 `workflows.id`
      * @param transition 심을 전환 1건
-     * @param stateKeyToId 상태 키 → 구형 `workflow_states.id`
      * @param compositionIds 상태 키 → 전역 카탈로그 편성 `workflow_statuses.id`
      */
     private fun insertTransitionRow(
         dto: WorkflowYamlDto,
         workflowId: java.util.UUID,
         transition: TransitionYamlDto,
-        stateKeyToId: Map<String, java.util.UUID>,
         compositionIds: Map<String, java.util.UUID>,
     ): java.util.UUID {
         val kind = transition.kindOrFail(dto.key)
         val fromKey = transition.fromStateKeyOrFail(dto.key, kind)
-        val originless = kind != TransitionKind.NORMAL
         return dsl.insertInto(WORKFLOW_TRANSITIONS)
             .set(WORKFLOW_TRANSITIONS.WORKFLOW_ID, workflowId)
-            .set(WORKFLOW_TRANSITIONS.FROM_STATE_ID, fromKey?.let { stateKeyToId.stateIdOf(dto.key, it) })
-            .set(
-                WORKFLOW_TRANSITIONS.TO_STATE_ID,
-                if (originless) null else stateKeyToId.stateIdOf(dto.key, transition.to),
-            )
             .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromKey?.let { compositionIds.stateIdOf(dto.key, it) })
             .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, compositionIds.stateIdOf(dto.key, transition.to))
             .set(WORKFLOW_TRANSITIONS.KIND, kind.name)
@@ -699,8 +593,7 @@ class YamlSeedService(
 }
 
 /**
- * 상태 키에 대응하는 id 를 돌려준다. 구형 `workflow_states.id` 맵과 전역 카탈로그 편성
- * `workflow_statuses.id` 맵이 **같은 키 집합**을 갖는다는 전제를 여기 한 곳에서 확인한다.
+ * 상태 키에 대응하는 전역 카탈로그 편성 `workflow_statuses.id` 를 돌려준다.
  *
  * 없으면 조용히 NULL 을 넣지 않고 멈춘다 — NULL 이 들어가면 그 전환이 새 읽기 경로에서 사라진다.
  *

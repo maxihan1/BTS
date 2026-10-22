@@ -206,7 +206,7 @@ class WorkflowCommandService(
         val source = workflowRepository.findByKey(sourceKey) ?: throw WorkflowNotFoundException(sourceKey)
         val targetId = writeRepository.insertWorkflow(newKey, newName, source.description, ownerId)
         writeRepository.copyStatusComposition(sourceId, targetId)
-        writeRepository.copyLegacyStatesAndTransitions(sourceId, targetId)
+        writeRepository.copyTransitions(sourceId, targetId)
         workflowCache.invalidate(newKey)
         log.info("워크플로우 복제 source={} target={} project={}", sourceKey, newKey, targetProjectKey)
         return targetId

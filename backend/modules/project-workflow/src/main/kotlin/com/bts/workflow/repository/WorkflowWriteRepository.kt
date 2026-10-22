@@ -5,7 +5,6 @@ package com.bts.workflow.repository
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
-import com.bts.workflow.jooq.tables.WorkflowStates.Companion.WORKFLOW_STATES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
@@ -226,9 +225,7 @@ class WorkflowWriteRepository(
 
     // ── 전환 정의 CRUD (FR-WF-05 F6) ──────────────────────────────────────────
     //
-    // 전환의 출발·도착은 **신 컬럼**(from_status_id·to_status_id)만 채운다. 구 컬럼은 V207 이
-    // NOT NULL 을 풀어 뒀고, 3단계(workflow_states DROP)가 그것을 떨어뜨린다 — 지금 채우면
-    // 지울 때 되살아난다.
+    // 전환의 출발·도착은 from_status_id·to_status_id(→ workflow_statuses)다.
 
     /**
      * 이 워크플로우에 편성된 상태의 `workflow_statuses.id`. 없으면 null.
@@ -316,21 +313,6 @@ class WorkflowWriteRepository(
 
     /**
      * 전환의 정의를 통째로 갈아 끼운다. 표시 순서는 건드리지 않는다 — 순서 변경은 별도 관심사다.
-     *
-     * ### ★ 구 컬럼을 함께 비운다 — 안 비우면 읽기 폴백이 옛 값을 되살린다
-     * 지금은 add → backfill → drop 3단 분할의 2단계라 구(`from_state_id`·`to_state_id`)와
-     * 신(`from_status_id`·`to_status_id`) 컬럼이 공존하고, 읽기는 **신 컬럼 우선 · 구 컬럼 폴백**
-     * 이다(`WorkflowRepository`). 신 컬럼만 갈아 끼우면 GLOBAL·INITIAL 로 바꿔 `from_status_id` 를
-     * NULL 로 만든 순간 남아 있던 구 `from_state_id` 가 폴백으로 되살아난다. 그 행은 「출발지 없는
-     * 전환에 출발지가 있는」 꼴이라 `Workflow.of()` invariant 5 가 워크플로우 **전체**를 거부한다 —
-     * 수정 요청은 200 인데 그 뒤 그 워크플로우 조회가 전부 죽는다.
-     *
-     * ### 왜 같은 값 동기화가 아니라 NULL 인가
-     * 구 컬럼은 구형 `workflow_states(id)` 를 가리키는 FK 다. 그런데 CRUD 로 만든 워크플로우는
-     * 전역 카탈로그(`workflow_statuses`)에만 상태를 두고 `workflow_states` 행이 아예 없어서
-     * **같은 값으로 맞추려 해도 가리킬 행이 없다**. V207 ⑧ 이 두 컬럼의 NOT NULL 을 풀었으므로
-     * NULL 은 적법하고, [insertTransition] 도 구 컬럼을 채우지 않는다 — 수정 결과가 생성 결과와
-     * 같은 모양이 된다. 3단계(구 컬럼 DROP)가 오면 아래 두 줄을 함께 지운다.
      */
     fun updateTransition(
         transitionId: UUID,
@@ -345,9 +327,6 @@ class WorkflowWriteRepository(
             .set(WORKFLOW_TRANSITIONS.NAME, name)
             .set(WORKFLOW_TRANSITIONS.FROM_STATUS_ID, fromStatusId)
             .set(WORKFLOW_TRANSITIONS.TO_STATUS_ID, toStatusId)
-            // ★ 3단계에서 아래 두 줄을 지운다. 신 컬럼이 정본이므로 구 세대는 남기지 않는다.
-            .setNull(WORKFLOW_TRANSITIONS.FROM_STATE_ID)
-            .setNull(WORKFLOW_TRANSITIONS.TO_STATE_ID)
             .where(WORKFLOW_TRANSITIONS.ID.eq(transitionId))
             .execute()
     }
@@ -391,49 +370,13 @@ class WorkflowWriteRepository(
             ).execute()
     }
 
-    /**
-     * 원본의 구형 상태 행과 전환을 복사한다. 전역 카탈로그 편성은 [copyStatusComposition] 이 먼저 한다.
-     *
-     * ### 복제본의 구형 `workflow_states` 를 가리키는 것은 지금 아무것도 없다
-     * [copyTransitions] 가 복제본 전환에 **신 컬럼만** 채우므로 구 컬럼은 NULL 이다. 구 테이블을
-     * 보는 두 경로 — `WorkflowRepository` 의 읽기 폴백과 `TransitionKeyResolver` 의 해석 —
-     * 은 **둘 다 신 컬럼이 정본이고 구 컬럼은 신 컬럼이 NULL 인 행에서만 탄다**. 복제본은 신 컬럼이
-     * 차 있으므로 어느 쪽도 이 복사된 행에 닿지 않는다.
-     *
-     * 그럼에도 함께 복사하는 것은 add → backfill → drop 의 3단(DROP)까지 원본과 복제본의 모양을
-     * 같게 두려는 보수적 선택이다. 3단계가 구 컬럼·구 테이블과 함께 이 복사도 지운다.
-     */
-    fun copyLegacyStatesAndTransitions(
+    /** 원본의 전환을 복사한다. 상태 편성은 [copyStatusComposition] 이 먼저 해 둬야 한다. */
+    fun copyTransitions(
         sourceId: UUID,
         targetId: UUID,
     ) {
-        dsl.copyLegacyStates(sourceId, targetId)
         dsl.copyTransitions(sourceId, targetId)
     }
-}
-
-/** 구형 `workflow_states` 행 복사. 전환 FK 는 더 이상 이 테이블을 쓰지 않으므로 id 매핑이 필요 없다. */
-private fun DSLContext.copyLegacyStates(
-    sourceId: UUID,
-    targetId: UUID,
-) {
-    insertInto(WORKFLOW_STATES)
-        .columns(
-            WORKFLOW_STATES.WORKFLOW_ID,
-            WORKFLOW_STATES.KEY,
-            WORKFLOW_STATES.NAME,
-            WORKFLOW_STATES.CATEGORY,
-            WORKFLOW_STATES.DISPLAY_ORDER,
-        ).select(
-            select(
-                DSL.value(targetId),
-                WORKFLOW_STATES.KEY,
-                WORKFLOW_STATES.NAME,
-                WORKFLOW_STATES.CATEGORY,
-                WORKFLOW_STATES.DISPLAY_ORDER,
-            ).from(WORKFLOW_STATES)
-                .where(WORKFLOW_STATES.WORKFLOW_ID.eq(sourceId)),
-        ).execute()
 }
 
 /**
@@ -444,12 +387,8 @@ private fun DSLContext.copyLegacyStates(
  *
  * 출발지 join 만 LEFT 인 것은 GLOBAL·INITIAL 전환의 `from_status_id` 가 NULL 이기 때문이다.
  *
- * ### 여기에 DB CHECK 안전망은 없다
- * NORMAL 인데 출발지 대응 행을 못 찾으면 `from_status_id` 가 NULL 인 채로 복사된다. 그것을 막는
- * `ck_transition_kind_from` CHECK 는 **스키마에 존재하지 않는다** — V207 ⑪ 이 3단계로 이연했고
- * `V207MigrationTest` 가 그 부재를 단언한다. 그동안의 방어선은 애플리케이션이다. 읽기 때
- * `Workflow.of()` invariant 5 가 「NORMAL 은 출발지 필수」로 그 워크플로우를 거부한다.
- *
+ * NORMAL 인데 출발지 대응 행을 못 찾으면 `from_status_id` 가 NULL 이 되어 V210 의
+ * `ck_transition_kind_from` CHECK 가 복제 전체를 거부한다.
  * 다만 호출부(`WorkflowCommandService.duplicate`)가 [WorkflowWriteRepository.copyStatusComposition]
  * 으로 편성 행을 통째로 복사한 **뒤에** 이 함수를 부르므로, 원본 편성 행에는 언제나 복제본 짝이 있다.
  */

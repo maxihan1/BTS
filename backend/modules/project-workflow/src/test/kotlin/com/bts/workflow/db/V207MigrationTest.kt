@@ -22,7 +22,7 @@ import java.sql.DriverManager
  * ② issue_types 수동 생성          V201 의 cross-BC FK 대상 (V203ToV206MigrationTest 와 동일 패턴)
  * ③ target 203   V201 · V202 · V203
  * ④ 픽스처 주입   workflows 2 + workflow_states 6 + workflow_transitions 5   ← V204·V207 백필의 원본
- * ⑤ target latest V204(카탈로그 백필) · V205 · V206 · V207
+ * ⑤ target 209    V204(카탈로그 백필) · V205 · V206 · V207 (V210 이 구 컬럼을 지우기 직전에서 멈춘다)
  * ```
  * ④ 가 ③ 과 ⑤ 사이에 있어야 한다. 빈 DB 에 V207 을 적용하면 백필이 0행이라 아무것도 검증하지 못한다
  * (`[[shared-dev-db-preexisting-rows-fake-green]]` 의 반대 방향 — 원본이 없으면 조용히 초록이다).
@@ -96,7 +96,9 @@ class V207MigrationTest {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 seedFixture(conn)
             }
-            migrateToLatest(postgres.jdbcUrl)
+            // V210 이 구 컬럼·workflow_states 를 지우고 이연된 제약을 건다. 이 클래스는 V207 직후의
+            // 2단계 계약을 보므로 그 앞에서 멈춘다. 3단계 계약은 V210MigrationTest 가 본다.
+            migrateTo(postgres.jdbcUrl, "209")
         }
 
         /** Flyway 를 지정 버전까지 적용한다. project-workflow V201 이 issue-tracking 테이블을 참조해 두 경로를 함께 건다. */
@@ -106,12 +108,6 @@ class V207MigrationTest {
             target: String,
         ) {
             flyway(jdbcUrl).target(target).load().migrate()
-        }
-
-        /** 남은 마이그레이션을 전부 적용한다. target 을 숫자로 고정하면 그 마이그레이션 이전 시점에 클래스가 통째로 죽는다. */
-        @JvmStatic
-        fun migrateToLatest(jdbcUrl: String) {
-            flyway(jdbcUrl).load().migrate()
         }
 
         @JvmStatic
@@ -417,8 +413,7 @@ class V207MigrationTest {
     //
     // spec `## 데이터 모델 변경` 의 ★ 정정(2026-08-20) 이 정본이다. 지금은 구 컬럼과 신 컬럼이
     // **공존**하는 구간이라, 신 컬럼에 NOT NULL·CHECK 를 걸면 구 컬럼으로만 쓰는 코드가 전부 깨진다.
-    // 아래 3개는 「아직 안 건다」를 못박는 자리다 — 3단계(workflow_states DROP) PR 이 이 3개를
-    // 뒤집힌 단언으로 교체한다.
+    // 아래 3개는 「아직 안 건다」를 못박는 자리다 — 뒤집힌 단언은 3단계(V210)의 V210MigrationTest 에 있다.
 
     /**
      * `to_status_id` 의 NOT NULL 승격을 3단계로 미뤘는가.
