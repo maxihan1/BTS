@@ -135,6 +135,20 @@ class ValidatorAdminServiceTest {
     }
 
     @Test
+    fun `RequiredField 의 field 가 엔진이 받지 않는 필드면 400 이고 DB 에 쓰지 않는다`() {
+        // WF-03-2 — issue-tracking 이 엔진에 넘기는 필드는 summary · resolution 뿐이다.
+        // 다른 필드명을 받아 두면 그 값은 늘 null 이라 그 전환이 영영 막힌다.
+        val config = mapOf<String, Any?>("field" to "priority")
+
+        assertThatThrownBy {
+            service.create(workflowKey, transitionKey, "RequiredField", config, 0)
+        }.isInstanceOf(ValidatorValidationException::class.java)
+            .hasMessageContaining("priority")
+
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `not-status-category 의 category 가 알 수 없는 값이면 400`() {
         val config = mapOf<String, Any?>("category" to "NOT_A_CATEGORY")
 

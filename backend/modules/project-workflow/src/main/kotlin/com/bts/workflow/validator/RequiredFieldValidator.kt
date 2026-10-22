@@ -22,8 +22,18 @@ import com.bts.workflow.domain.spi.WorkflowValidator
  *
  * @param field 검사할 이슈 필드 이름. [TransitionContext.request.issueFields] 맵의 키와 일치해야 한다.
  */
-class RequiredFieldValidator(private val field: String) : WorkflowValidator {
+class RequiredFieldValidator(val field: String) : WorkflowValidator {
     override val type: String = "RequiredField"
+
+    companion object {
+        /**
+         * 엔진이 실제로 값을 받는 필드 — issue-tracking `IssueApplicationService` 가
+         * `issueFields` 에 넣는 키 전수다(WF-03-2). 여기 없는 필드명은 값이 늘 null 이라 그 전환이
+         * 영영 막히므로 편집 관문([com.bts.workflow.application.TransitionRuleGuard])이 거절한다.
+         * 엔진 입력을 넓히면 여기 한 줄을 더한다.
+         */
+        val ENGINE_FIELDS: Set<String> = setOf("summary", "resolution")
+    }
 
     /**
      * 이 Validator 는 실제 전환 실행 시에만 평가되는 EXECUTION 게이트다.
