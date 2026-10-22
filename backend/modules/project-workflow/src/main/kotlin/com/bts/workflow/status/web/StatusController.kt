@@ -10,6 +10,7 @@ import com.bts.workflow.status.web.dto.StatusResponse
 import com.bts.workflow.status.web.dto.UpdateStatusRequest
 import com.bts.workflow.web.CurrentActor
 import com.bts.workflow.web.DataResponse
+import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -58,7 +59,7 @@ class StatusController(
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun create(
-        @RequestBody request: CreateStatusRequest,
+        @Valid @RequestBody request: CreateStatusRequest,
     ): DataResponse<CreatedStatusResponse> {
         val actor = CurrentActor.current()
         log.info("StatusController.create key={}", request.key)
@@ -75,7 +76,7 @@ class StatusController(
     @PutMapping("/{id}")
     fun update(
         @PathVariable id: UUID,
-        @RequestBody request: UpdateStatusRequest,
+        @Valid @RequestBody request: UpdateStatusRequest,
     ): DataResponse<Nothing?> {
         val actor = CurrentActor.current()
         log.info("StatusController.update id={}", id)

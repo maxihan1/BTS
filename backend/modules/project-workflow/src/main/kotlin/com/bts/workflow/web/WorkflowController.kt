@@ -21,6 +21,7 @@ import com.bts.workflow.web.dto.WorkflowDto
 import com.bts.workflow.web.dto.toDto
 import com.bts.workflow.web.dto.toTransitionResponse
 import io.konform.validation.Invalid
+import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -195,7 +196,7 @@ class WorkflowController(
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     fun createWorkflow(
-        @RequestBody request: CreateWorkflowRequest,
+        @Valid @RequestBody request: CreateWorkflowRequest,
     ): DataResponse<CreatedWorkflowResponse> {
         val actor = CurrentActor.current()
         log.info("WorkflowController.createWorkflow key={}", request.key)
@@ -211,7 +212,7 @@ class WorkflowController(
     @PutMapping("/{key}")
     fun updateWorkflow(
         @PathVariable key: String,
-        @RequestBody request: UpdateWorkflowRequest,
+        @Valid @RequestBody request: UpdateWorkflowRequest,
     ): DataResponse<Nothing?> {
         val actor = CurrentActor.current()
         log.info("WorkflowController.updateWorkflow key={}", key)
@@ -243,7 +244,7 @@ class WorkflowController(
     @ResponseStatus(HttpStatus.CREATED)
     fun duplicateWorkflow(
         @PathVariable key: String,
-        @RequestBody request: DuplicateWorkflowRequest,
+        @Valid @RequestBody request: DuplicateWorkflowRequest,
     ): DataResponse<CreatedWorkflowResponse> {
         val actor = CurrentActor.current()
         log.info(
