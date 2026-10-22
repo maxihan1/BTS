@@ -6,6 +6,7 @@ import com.bts.workflow.domain.exception.TransitionConflictException
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.repository.WorkflowDraftRepository
+import com.bts.workflow.validator.RequiredFieldValidator
 import com.bts.workflow.validator.isEditable
 import org.springframework.stereotype.Component
 
@@ -18,7 +19,7 @@ import org.springframework.stereotype.Component
  * 발행」 두 번으로 통째로 우회된다. 그것이 PR #411 리뷰가 BLOCKER 로 잡은 결함이고, 사본을
  * 두 벌 두면 다음에 관문이 하나 늘 때 같은 우회가 다시 살아난다.
  *
- * ### 네 관문
+ * ### 다섯 관문
  * 1. **팩토리 dry-run** — 미지원 type 과 필수 config 키 누락을 거른다. 이것이 없으면 오타 하나가
  *    저장 200 · 발행 200 을 통과한 뒤 **그 전환을 처음 시도한 이슈**에서야 터진다.
  * 2. **`CALL_WEBHOOK` url 스킴** — `http://` · `https://` 만 받는다. 없으면 `file://` ·
@@ -31,6 +32,8 @@ import org.springframework.stereotype.Component
  *    `RUN_AUTOMATION` 의 이벤트는 웹훅 워커가 지원 타입이 아니라며 버린다. 받아 두면 저장 200 뒤
  *    아무 일도 일어나지 않는다. 넷을 실제로 돌리는 일은 BC 별 FR 후보다
  *    (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-5) — 소비처가 생기면 여기 한 줄을 더한다.
+ * 5. **`RequiredField` 필드 허용목록** — 엔진이 값을 받는 필드([RequiredFieldValidator.ENGINE_FIELDS])만
+ *    받는다(WF-03-2). 다른 필드명은 값이 늘 null 이라 저장 200 뒤 그 전환이 영영 막힌다.
  *
  * ### 거절 사유를 왜 나눠 던지나
  * 호출부마다 응답 계약이 다르다 — 편집 API 는 「미지원」과 「편집 불가」에 서로 다른 에러 코드를
@@ -45,7 +48,7 @@ class TransitionRuleGuard(
     /**
      * validator 하나가 저장 가능한지 본다.
      *
-     * @throws TransitionRuleRejected 미지원 type · config 누락 · 편집 불가 타입일 때
+     * @throws TransitionRuleRejected 미지원 type · config 누락 · 편집 불가 타입 · 엔진이 받지 않는 필드일 때
      */
     fun checkValidator(
         type: String,
@@ -62,11 +65,23 @@ class TransitionRuleGuard(
                 )
             }
 
-        if (!isEditable(instance)) {
-            throw TransitionRuleRejected(
-                TransitionRuleRejected.Reason.NOT_EDITABLE,
-                "validator '$type' 은 이 API 로 편집할 수 없는 타입이다",
-            )
+        val rejection =
+            when {
+                !isEditable(instance) ->
+                    TransitionRuleRejected(
+                        TransitionRuleRejected.Reason.NOT_EDITABLE,
+                        "validator '$type' 은 이 API 로 편집할 수 없는 타입이다",
+                    )
+                instance is RequiredFieldValidator && instance.field !in RequiredFieldValidator.ENGINE_FIELDS ->
+                    TransitionRuleRejected(
+                        TransitionRuleRejected.Reason.UNSUPPORTED,
+                        "RequiredField 는 아직 '${instance.field}' 필드를 검사할 수 없다 — " +
+                            "지금은 ${RequiredFieldValidator.ENGINE_FIELDS.joinToString()} 만 동작한다",
+                    )
+                else -> null
+            }
+        if (rejection != null) {
+            throw rejection
         }
     }
 
