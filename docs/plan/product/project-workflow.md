@@ -112,7 +112,7 @@
 - [x] D12. WF-04-5 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (`TODOS.md`) (2026-10-22). *모듈에 검증 구현체를 선언하고 쓰기 바디 6곳에 `@Valid` · 워크플로우 key 는 `[A-Za-z0-9_-]+`. 실패는 컨트롤러 한정 advice 가 400 `WORKFLOW_INVALID_REQUEST`*
 - [x] D13. WF-04-6 캐시 무효화가 커밋 전에 일어난다 (`TODOS.md`) (2026-10-22). *`WorkflowCache.invalidate` 가 트랜잭션 안이면 `afterCommit` 으로 미룬다 — `withWriteLock` 과 직접 호출 10곳이 함께 고쳐진다*
 - [ ] D14. WF-04-7 상태·워크플로우 사용처 표시 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-8)
-- [ ] D15. WF-04-8 테스트 빈틈 — 복제 전환 복사 0행 · 마이그레이션 테스트 컬럼 수 (`TODOS.md`)
+- [x] D15. WF-04-8 테스트 빈틈 — 복제 전환 복사 0행 · 마이그레이션 테스트 컬럼 수 (`TODOS.md`) (#532, 2026-10-22). *복제 테스트가 NORMAL·GLOBAL·INITIAL 을 심어 사본 전환을 잰다 · agile-planning 마이그레이션 테스트 주석·이름에서 개수를 걷어 리스트를 유일한 정본으로 둔다*
 
 ### §2.5 FR-WF-05 — 전환 ID 식별자 (다중 전환 + 전역/최초 전환)
 
