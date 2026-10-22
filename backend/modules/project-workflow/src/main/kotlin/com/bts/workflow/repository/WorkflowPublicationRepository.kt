@@ -19,7 +19,8 @@ import java.util.UUID
  * 원본도 함께 사라진다. 되돌리려면 이전 정의를 **새 발행으로 다시 올린다**.
  *
  * 다만 그 규칙을 이 클래스가 지고 있지는 않다 — 여기에 메서드를 하나 더하면 그만이기 때문이다.
- * 실제 강제는 V208 의 `trg_workflow_publications_append_only` 트리거가 한다. 이 KDoc 은 왜
+ * 실제 강제는 V208 의 `trg_workflow_publications_append_only` · V211 의
+ * `trg_workflow_publications_reject_truncate` 트리거가 한다. 이 KDoc 은 왜
  * 메서드가 없는지를 설명할 뿐이고, 계약은 DB 에 있다.
  */
 @Repository

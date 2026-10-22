@@ -20,7 +20,7 @@ import java.sql.DriverManager
  * ```
  * ① target 200   issue-tracking V001~ + project-workflow V200
  * ② issue_types 수동 생성          V201 의 cross-BC FK 대상 (V207MigrationTest 와 동일 패턴)
- * ③ target latest V201 ~ V208
+ * ③ target latest V201 ~ latest   V211(TRUNCATE 거부) 케이스도 이 클래스가 본다
  * ```
  * V207 과 달리 **픽스처 선주입이 없다.** V208 은 백필이 0행인 순수 add 마이그레이션이라
  * 원본 데이터가 검증에 기여하지 않는다 — 각 테스트가 필요한 행을 롤백 트랜잭션 안에서 직접 심는다.
@@ -361,13 +361,13 @@ class V208MigrationTest {
     @Test
     fun `발행 이력은 TRUNCATE 할 수 없다 (V211 문장 트리거)`() {
         // 행 트리거는 TRUNCATE 에 발동하지 않는다. 문장 트리거가 없으면 이 한 줄이 예외 없이 이력을 비운다.
-        assertThat(statementFailsWith("TRUNCATE workflow_publications")).contains("append-only")
+        assertThat(statementFailsWith("TRUNCATE workflow_publications")).contains("append-only", "TRUNCATE")
     }
 
     @Test
     fun `부모를 CASCADE 로 비워도 발행 이력 TRUNCATE 가 거부된다`() {
         // CASCADE 로 딸려 비워지는 자식에도 BEFORE TRUNCATE 가 발동한다 — 부모 workflows 에 따로 달지 않는 근거.
-        assertThat(statementFailsWith("TRUNCATE workflows CASCADE")).contains("append-only")
+        assertThat(statementFailsWith("TRUNCATE workflows CASCADE")).contains("append-only", "TRUNCATE")
     }
 
     @Test
