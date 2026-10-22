@@ -1,4 +1,4 @@
-// WorkflowPostActionFactory production 구현 — type 분기로 5종 PostAction 인스턴스 생성
+// WorkflowPostActionFactory production 구현 — type 분기로 PostAction 인스턴스 생성
 
 package com.bts.workflow.engine
 

@@ -1621,7 +1621,14 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
-## ⬜ project-workflow — 전환 규칙 표면에 남은 사본 5종 (신규 · 미착수 · T2)
+## ✅ project-workflow — 전환 규칙 표면에 남은 사본 5종 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-06-3.** 남은 ①③④⑤ 를 처방대로 닫았다(② 는 아래 PR #407 에서 이미 해소).
+- ① `PostActionControllerTest` 의 403 스텁 4벌을 형제와 같은 `denyPermission()` 헬퍼 · `DENIED_ACTOR` 상수로 접었다.
+- ③ 403 봉투를 `TransitionRuleFrameworkErrors.accessDenied()` 한 벌로 옮기고 두 핸들러가 그것을 부른다. 로그 태그는 각 핸들러에 남는다. `WorkflowExceptionHandler` 의 같은 문구는 **다른 예외(`AccessDeniedException`)·다른 코드**라 대상이 아니다.
+- ④ 두 팩토리 머리 주석에서 종류 수를 지웠다. 그 김에 `TransitionRuleFrameworkErrors` KDoc 의 「이 셋은」도 같은 양식이라 개수 없는 문장으로 바꿨다.
+- ⑤ `findByTransitionId` 의 람다 지역변수를 `rowTransitionId` 로 바꿨다. 행 생성은 여전히 레코드 값을 읽는다.
+- 판별식 — 동작 영향 0 이라 새 테스트는 없다. `ValidatorControllerTest` · `PostActionControllerTest` · 두 `*RepositoryIntegrationTest` 가 그대로 초록(50건).
 
 **쉬운 말.** 같은 내용이 여러 군데에 베껴져 있다. 한 곳을 고쳐도 나머지는 그대로 남는다.
 

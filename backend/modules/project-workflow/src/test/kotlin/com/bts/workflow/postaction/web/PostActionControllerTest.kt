@@ -301,20 +301,9 @@ class PostActionControllerTest {
     // ── 권한 Guard — 403 (리소스 조회 전) ───────────────────────────────────────
 
     @Test
-    @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
+    @WithMockUser(username = DENIED_ACTOR)
     fun `권한 없음 - POST 진입 직후 403 (service 미호출)`() {
-        every {
-            permissionResolver.requirePermission(
-                any(),
-                WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowScope.Global,
-            )
-        } throws
-            WorkflowSchemeAccessDeniedException(
-                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
-                permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowScope.Global,
-            )
+        denyPermission()
 
         val requestBody = mapOf("type" to "CALL_WEBHOOK", "config" to emptyMap<String, Any>(), "displayOrder" to 0)
 
@@ -329,20 +318,9 @@ class PostActionControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
+    @WithMockUser(username = DENIED_ACTOR)
     fun `권한 없음 - GET 도 403`() {
-        every {
-            permissionResolver.requirePermission(
-                any(),
-                WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowScope.Global,
-            )
-        } throws
-            WorkflowSchemeAccessDeniedException(
-                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
-                permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowScope.Global,
-            )
+        denyPermission()
 
         mockMvc.perform(get(basePath))
             .andExpect(status().isForbidden)
@@ -351,20 +329,9 @@ class PostActionControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
+    @WithMockUser(username = DENIED_ACTOR)
     fun `권한 없음 - PUT 도 403`() {
-        every {
-            permissionResolver.requirePermission(
-                any(),
-                WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowScope.Global,
-            )
-        } throws
-            WorkflowSchemeAccessDeniedException(
-                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
-                permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowScope.Global,
-            )
+        denyPermission()
 
         val requestBody = mapOf("type" to "CALL_WEBHOOK", "config" to emptyMap<String, Any>(), "displayOrder" to 0)
 
@@ -380,20 +347,9 @@ class PostActionControllerTest {
     }
 
     @Test
-    @WithMockUser(username = "22222222-2222-2222-2222-222222222222")
+    @WithMockUser(username = DENIED_ACTOR)
     fun `권한 없음 - DELETE 도 403`() {
-        every {
-            permissionResolver.requirePermission(
-                any(),
-                WorkflowSchemePermission.MANAGE_SCHEME,
-                WorkflowScope.Global,
-            )
-        } throws
-            WorkflowSchemeAccessDeniedException(
-                actorId = UUID.fromString("22222222-2222-2222-2222-222222222222"),
-                permission = WorkflowSchemePermission.MANAGE_SCHEME,
-                scope = WorkflowScope.Global,
-            )
+        denyPermission()
 
         mockMvc.perform(delete("$basePath/$postActionId"))
             .andExpect(status().isForbidden)
@@ -576,6 +532,21 @@ class PostActionControllerTest {
         verify(exactly = 0) { service.listForTransition(any(), any()) }
     }
 
+    private fun denyPermission() {
+        every {
+            permissionResolver.requirePermission(
+                any(),
+                WorkflowSchemePermission.MANAGE_SCHEME,
+                WorkflowScope.Global,
+            )
+        } throws
+            WorkflowSchemeAccessDeniedException(
+                actorId = UUID.fromString(DENIED_ACTOR),
+                permission = WorkflowSchemePermission.MANAGE_SCHEME,
+                scope = WorkflowScope.Global,
+            )
+    }
+
     private companion object {
         /**
          * 누수 카나리 — **요청에 심어 응답에 없음을 재는** 고유 토큰.
@@ -589,5 +560,7 @@ class PostActionControllerTest {
          * 알 필요가 없다.
          */
         const val LEAK_CANARY = "canary9f3a"
+
+        const val DENIED_ACTOR = "22222222-2222-2222-2222-222222222222"
     }
 }

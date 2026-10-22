@@ -1,4 +1,4 @@
-// WorkflowValidatorFactory production 구현 — type 분기로 4종 validator 인스턴스 생성
+// WorkflowValidatorFactory production 구현 — type 분기로 validator 인스턴스 생성
 
 package com.bts.workflow.engine
 
