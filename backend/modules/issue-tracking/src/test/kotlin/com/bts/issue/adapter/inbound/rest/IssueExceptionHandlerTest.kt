@@ -55,7 +55,7 @@ import java.util.UUID
  * - H-5. `IssueProjectNotFoundException` → 404 + `PROJECT_NOT_FOUND`
  * - H-6. `IssueKeyPrefixReservedException` → 409 + `KEY_PREFIX_RESERVED`
  * - H-7. `IssueVersionConflictException` → 409 + `VERSION_CONFLICT`
- * - H-8. `IssueTransitionNotAllowedException` → 409 + `TRANSITION_NOT_ALLOWED`
+ * - H-8. `IssueTransitionNotAllowedException` → 409 + `TRANSITION_NOT_ALLOWED` · 사유가 있으면 `reason`
  * - H-9. generic `RuntimeException` → 500 + `INTERNAL_ERROR`
  * - H-10. `AssigneeNotFoundException` → 422 + `ASSIGNEE_NOT_FOUND`
  * - H-11. `CursorDecodeException` → 400 + `ISSUE_INVALID_CURSOR`, RFC 7807 필드 + detail 비노출 (FR-API-01 Task 4)
@@ -114,6 +114,11 @@ class IssueExceptionHandlerTest {
         @GetMapping("/transition-not-allowed")
         fun throwTransitionNotAllowed(): Nothing {
             throw IssueTransitionNotAllowedException(sampleKey, "open", "IN_PROGRESS")
+        }
+
+        @GetMapping("/transition-not-allowed-reason")
+        fun throwTransitionNotAllowedWithReason(): Nothing {
+            throw IssueTransitionNotAllowedException(sampleKey, "open", "DONE", reason = "'해결 결과' 항목을 채워야 합니다.")
         }
 
         @GetMapping("/unauthenticated")
@@ -214,6 +219,15 @@ class IssueExceptionHandlerTest {
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.status").value(409))
             .andExpect(jsonPath("$.errorCode").value("TRANSITION_NOT_ALLOWED"))
+            .andExpect(jsonPath("$.reason").doesNotExist())
+    }
+
+    @Test
+    fun `H-8b 거부 사유가 있으면 409 본문 reason 에 그대로 싣는다 (WF-01-1a)`() {
+        mockMvc.perform(get("/exceptions/transition-not-allowed-reason").accept(MediaType.APPLICATION_JSON))
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.errorCode").value("TRANSITION_NOT_ALLOWED"))
+            .andExpect(jsonPath("$.reason").value("'해결 결과' 항목을 채워야 합니다."))
     }
 
     @Test
