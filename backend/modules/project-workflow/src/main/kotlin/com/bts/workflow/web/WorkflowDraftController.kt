@@ -93,7 +93,9 @@ class WorkflowDraftController(
             try {
                 objectMapper.treeToValue(body, SaveDraftRequest::class.java)
             } catch (e: JsonProcessingException) {
-                throw WorkflowInvalidRequestException(key, "요청 본문을 읽을 수 없다: ${e.originalMessage}", e)
+                // 응답에는 고정 문구만 — Jackson 원문에는 내부 클래스 이름이 실린다.
+                log.info("WorkflowDraftController.saveDraft unreadable workflow={} cause={}", key, e.originalMessage)
+                throw WorkflowInvalidRequestException(key, "요청 본문을 읽을 수 없습니다.", e)
             }
         val actor = CurrentActor.current()
         log.info(

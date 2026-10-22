@@ -1,4 +1,4 @@
-// DONE 카테고리 진입 전환에 RequiredField(resolution) validator 시드 검증 — FR-IS-07 Task B7
+// DONE 카테고리 진입 전환의 해결 결과 필수 시드 검증 — 화면이 정본이고 RequiredField(resolution) 검증기는 없다 (FR-IS-07 B7 · FR-WF-01 D11)
 
 package com.bts.workflow.seed
 
@@ -58,7 +58,7 @@ import java.util.concurrent.Executors
  * Then   결과에 toStateKey == "done" 전환 포함
  *
  * ## TDD 근거
- * B7 RED — production YAML 에 validators 미추가 상태에서 S1 을 실행하면 RequiredField 가 0건이어서 실패한다.
+ * B7 RED — production YAML 에 validators 미추가 상태에서 실패하던 자리다. D11 부터 강제는 화면(S4)이 하고 S1 은 검증기가 없음을 잰다.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class DoneResolutionValidatorSeedTest {
@@ -135,7 +135,7 @@ class DoneResolutionValidatorSeedTest {
     // ── S2. plan() — resolution 없이 DONE 전환 시 WorkflowValidatorFailureException ──
 
     /**
-     * Given  software-default 워크플로우, in_review→done 전환에 RequiredField(resolution) validator 존재
+     * Given  software-default 워크플로우, in_review→done 전환에 해결 결과 필수 화면 존재
      *         issueFields 에 resolution 없음
      * When   plan() 호출
      * Then   WorkflowValidatorFailureException, field == "resolution"
@@ -182,7 +182,7 @@ class DoneResolutionValidatorSeedTest {
      */
     @Test
     @Order(9)
-    fun `S3 - availableTransitions 는 EXECUTION 페이즈 RequiredField 가 있어도 DONE 전환을 목록에 포함한다`() {
+    fun `S3 - availableTransitions 는 해결 결과 필수 화면이 있어도 DONE 전환을 목록에 포함한다`() {
         val request =
             AvailableTransitionsRequest(
                 workflowKey = "software-default",

@@ -81,7 +81,7 @@ class WorkflowEngineScreenTest {
     )
 
     @Test
-    fun `가용 전환에 화면 칸이 고정 순서 그대로 실린다`() {
+    fun `가용 전환에 화면 칸이 받은 순서 그대로 실린다`() {
         val result =
             engine.availableTransitions(
                 AvailableTransitionsRequest(

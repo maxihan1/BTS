@@ -192,8 +192,9 @@ class WorkflowEngine(
         val transition = resolveTransition(req, workflow)
         val ctx = buildContext(req, workflow, transition)
 
-        enforceScreen(req, transition)
+        // 검증기(권한 등)가 먼저다 — 막힐 사람에게 「칸을 채워라」를 먼저 보이지 않는다.
         runValidators(ctx, transition)
+        enforceScreen(req, transition)
         val (fieldChanges, emitEvents) = runPostActions(ctx, transition)
 
         return TransitionPlan(transition.toStateKey, fieldChanges, emitEvents)

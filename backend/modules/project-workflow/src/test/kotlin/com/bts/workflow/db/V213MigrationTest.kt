@@ -95,10 +95,17 @@ class V213MigrationTest {
                 transitionSql("생성", "INITIAL", null, "v213_done"),
                 transitionSql("Complete", "NORMAL", "v213_todo", "v213_done"),
                 transitionSql("Reopen", "NORMAL", "v213_done", "v213_todo"),
+                transitionSql("Rework", "NORMAL", "v213_done", "v213_todo"),
                 validatorSql("생성", "resolution", 0),
                 validatorSql("Complete", "resolution", 0),
                 validatorSql("Reopen", "summary", 0),
                 validatorSql("Reopen", "resolution", 1),
+                // 같은 전환에 해결 결과 검증기 둘 — DISTINCT 가 없으면 ON CONFLICT 가 같은 행을 두 번 고치려다 멈춘다.
+                validatorSql("Rework", "resolution", 0),
+                validatorSql("Rework", "resolution", 1),
+                // 이미 있는 「해결 결과 · 선택」 칸 — 필수로 올라가야 한다(DO UPDATE).
+                "INSERT INTO workflow_transition_screen_fields (transition_id, field, required) " +
+                    "SELECT id, 'resolution', FALSE FROM workflow_transitions WHERE name = 'Rework'",
                 // V212 는 DONE 도착 전환(Complete)에 화면을 이미 심었다. Reopen 에는 담당자 칸만 둔다.
                 "INSERT INTO workflow_transition_screen_fields (transition_id, field, required) " +
                     "SELECT id, 'assignee', FALSE FROM workflow_transitions WHERE name = 'Reopen'",
@@ -167,6 +174,7 @@ class V213MigrationTest {
             "Complete:resolution:true",
             "Reopen:assignee:false",
             "Reopen:resolution:true",
+            "Rework:resolution:true",
         )
         // INITIAL 에는 화면이 없어 옮길 자리가 없다 — 남는다. 다른 필드 검증기도 남는다.
         assertThat(validators).containsExactlyInAnyOrder("Reopen:summary", "생성:resolution")
