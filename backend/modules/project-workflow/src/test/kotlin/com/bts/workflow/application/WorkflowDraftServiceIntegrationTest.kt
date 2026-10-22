@@ -4,12 +4,14 @@ package com.bts.workflow.application
 
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
+import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowMigrationInFlightException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
@@ -24,6 +26,7 @@ import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.seed.StandardWorkflowDefaults
 import com.bts.workflow.seed.StateYamlDto
 import com.bts.workflow.seed.TransitionYamlDto
@@ -82,6 +85,14 @@ class WorkflowDraftServiceIntegrationTest {
     private val publishRepository = WorkflowPublishRepository(dsl)
     private val cache = WorkflowCache(WorkflowRepository(dsl), dsl)
     private val defaults = StubDefaults()
+
+    /** 진행 중 이관 유무를 테스트가 정한다. 실제 판정(`bulk_operations` 조회)은 어댑터 테스트 소관이다. */
+    private val inFlight =
+        object : MigrationInFlightPort {
+            var value = false
+
+            override fun hasInFlightMigration(projectKeys: Set<String>): Boolean = value
+        }
     private val permissions = SwitchableWorkflowPermissions()
 
     /** 실물 팩토리로 조립한다 — 「지원 type 의 정본은 팩토리」 계약이 이 테스트에서도 성립해야 한다. */
@@ -121,6 +132,8 @@ class WorkflowDraftServiceIntegrationTest {
                     ruleGuard,
                 ),
             scopeResolver = globalOnlyOwnershipScope(),
+            schemeAssignmentRepository = ProjectWorkflowSchemeAssignmentRepository(dsl),
+            migrationInFlightPort = inFlight,
         )
 
     // ── 픽스처 ────────────────────────────────────────────────────────────────
@@ -506,6 +519,64 @@ class WorkflowDraftServiceIntegrationTest {
     @Test
     fun `없는 초안을 폐기하면 false 다`() {
         assertThat(service.discard(ACTOR, seedWorkflow())).isFalse()
+    }
+
+    // ── 이관 예약 뒤 초안 동결 (WF-07-3) ──────────────────────────────────────
+
+    /**
+     * ★ 예약한 이관은 접수 시점의 초안대로 이슈를 옮긴다. 그 뒤 초안을 고칠 수 있으면 관리자가
+     * 원하지 않은 대량 이동이 한 번 일어난다 — 저장 · 폐기 · 복원이 모두 막혀야 한다.
+     */
+    @Test
+    fun `끝나지 않은 이관이 있으면 초안을 저장할 수 없다`() {
+        val key = seedWorkflow()
+        service.save(ACTOR, key, validDraft(key, name = "이관 전 초안"), baseVersion = 0)
+        inFlight.value = true
+
+        try {
+            assertThatThrownBy { service.save(ACTOR, key, validDraft(key, name = "이관 뒤 초안"), baseVersion = 0) }
+                .isInstanceOf(WorkflowMigrationInFlightException::class.java)
+            assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.name).isEqualTo("이관 전 초안")
+        } finally {
+            inFlight.value = false
+        }
+    }
+
+    @Test
+    fun `끝나지 않은 이관이 있으면 초안을 폐기할 수 없다`() {
+        val key = seedWorkflow()
+        service.save(ACTOR, key, validDraft(key), baseVersion = 0)
+        inFlight.value = true
+
+        try {
+            assertThatThrownBy { service.discard(ACTOR, key) }
+                .isInstanceOf(WorkflowMigrationInFlightException::class.java)
+            assertThat(draftRepository.findByWorkflowId(workflowId(key))).isNotNull()
+        } finally {
+            inFlight.value = false
+        }
+    }
+
+    @Test
+    fun `끝나지 않은 이관이 있으면 기본값으로 복원할 수 없다`() {
+        val key = seedWorkflow(origin = "SEED")
+        service.save(ACTOR, key, validDraft(key, name = "이관 전 초안"), baseVersion = 0)
+        defaults.yaml =
+            WorkflowYamlDto(
+                key = key,
+                name = "YAML 원본 이름",
+                states = listOf(StateYamlDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
+                transitions = listOf(TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL")),
+            )
+        inFlight.value = true
+
+        try {
+            assertThatThrownBy { service.resetToDefault(ACTOR, key, baseVersion = 0) }
+                .isInstanceOf(WorkflowMigrationInFlightException::class.java)
+            assertThat(draftRepository.findByWorkflowId(workflowId(key))!!.definition.name).isEqualTo("이관 전 초안")
+        } finally {
+            inFlight.value = false
+        }
     }
 
     // ── 기본값 복원 ───────────────────────────────────────────────────────────

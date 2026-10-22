@@ -148,7 +148,10 @@ class WorkflowMigrationInvalidMappingException(
 ) : RuntimeException("Invalid status migration mapping for '$workflowKey': $reason")
 
 /**
- * 끝나지 않은 상태 이관이 이미 있는데 또 이관을 요청했을 때 던진다. → 409
+ * 끝나지 않은 상태 이관이 이미 있는데 또 이관을 요청했거나 초안을 바꾸려 할 때 던진다. → 409
+ *
+ * 초안 변경(저장 · 폐기 · 기본값 복원)까지 막는 것은 WF-07-3 이다 — 예약한 이관은 접수 시점의
+ * 초안대로 이슈를 옮기므로, 그 뒤 초안을 고치면 관리자가 원하지 않은 대량 이동이 한 번 일어난다.
  *
  * ### 왜 400 이 아니라 409 인가
  * 요청 자체는 멀쩡하다. **지금 상태와 부딪힐 뿐**이고, 앞선 이관이 끝나면 같은 요청이 그대로
