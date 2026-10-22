@@ -33,6 +33,9 @@ class RequiredFieldValidator(val field: String) : WorkflowValidator {
          * 엔진 입력을 넓히면 여기 한 줄을 더한다.
          */
         val ENGINE_FIELDS: Set<String> = setOf("summary", "resolution")
+
+        /** 거부 사유에 넣을 화면 이름 — 프론트 `i18n/ko.ts` 의 필드 라벨과 같은 말을 쓴다. */
+        private val FIELD_LABELS: Map<String, String> = mapOf("summary" to "제목", "resolution" to "해결 결과")
     }
 
     /**
@@ -49,11 +52,9 @@ class RequiredFieldValidator(val field: String) : WorkflowValidator {
      */
     override fun validate(ctx: TransitionContext): ValidatorResult {
         val value = ctx.request.issueFields[field]
-        return when {
-            value == null -> ValidatorResult.Fail(field = field, reason = "required field missing")
-            value is String && value.trim().isEmpty() ->
-                ValidatorResult.Fail(field = field, reason = "required field blank")
-            else -> ValidatorResult.Pass
-        }
+        val blank = value == null || (value is String && value.trim().isEmpty())
+        if (!blank) return ValidatorResult.Pass
+        val label = FIELD_LABELS[field] ?: field
+        return ValidatorResult.Fail(field = field, reason = "'$label' 항목을 채워야 이 전환을 할 수 있습니다.")
     }
 }

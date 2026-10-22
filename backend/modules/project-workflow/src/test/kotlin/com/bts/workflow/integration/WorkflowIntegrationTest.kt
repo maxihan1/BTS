@@ -228,7 +228,7 @@ class WorkflowIntegrationTest {
                 val failure = ex as WorkflowValidatorFailureException
                 assertThat(failure.validatorType).isEqualTo("RequiredField")
                 assertThat(failure.field).isEqualTo("resolution")
-                assertThat(failure.reason).contains("required field")
+                assertThat(failure.reason).isEqualTo("'해결 결과' 항목을 채워야 이 전환을 할 수 있습니다.")
             })
     }
 

@@ -8,6 +8,7 @@ import com.bts.workflow.domain.spi.WorkflowValidator
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.port.outbound.Scope
+import org.slf4j.LoggerFactory
 
 /**
  * Validator config 에서 scope 를 지정할 때 사용하는 열거형.
@@ -50,12 +51,14 @@ class PermissionValidator(
 ) : WorkflowValidator {
     override val type: String = "permission-check"
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /**
      * 전환 요청자가 [permission] 을 보유하는지 [resolver] 에 위임해 판정한다.
      *
      * - resolver 가 true → [ValidatorResult.Pass]
-     * - resolver 가 false → [ValidatorResult.Fail] (field = null, reason = "permission denied: {permission}")
-     * - resolver 가 예외 → [ValidatorResult.Fail] (field = null, reason = "permission resolver error")
+     * - resolver 가 false → [ValidatorResult.Fail] (field = null, reason = 권한 없음 안내)
+     * - resolver 가 예외 → [ValidatorResult.Fail] (field = null, reason = 확인 실패 안내) + 원인 예외는 로그로
      *
      * @param ctx 전환 컨텍스트. actorId 와 scope 키를 여기서 추출한다.
      * @return [ValidatorResult.Pass] 또는 [ValidatorResult.Fail].
@@ -78,11 +81,13 @@ class PermissionValidator(
             if (allowed) {
                 ValidatorResult.Pass
             } else {
-                ValidatorResult.Fail(field = null, reason = "permission denied: $permission")
+                ValidatorResult.Fail(field = null, reason = "이 전환을 할 권한이 없습니다.")
             }
         } catch (ex: Exception) {
             // resolver 예외는 보안 우선 원칙에 따라 전환을 차단한다.
-            ValidatorResult.Fail(field = null, reason = "permission resolver error: ${ex.message}")
+            // 사유는 화면에 그대로 나가므로 예외 메시지는 로그에만 남긴다 (WF-01-1a).
+            log.warn("PermissionValidator: resolver error permission='{}'", permission, ex)
+            ValidatorResult.Fail(field = null, reason = "권한을 확인하지 못해 전환을 막았습니다. 잠시 후 다시 시도해 주세요.")
         }
     }
 }

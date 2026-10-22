@@ -108,7 +108,7 @@ class RequiredFieldValidatorTest {
         assertThat(result).isInstanceOf(ValidatorResult.Fail::class.java)
         val fail = result as ValidatorResult.Fail
         assertThat(fail.field).isEqualTo("resolution")
-        assertThat(fail.reason).isNotBlank()
+        assertThat(fail.reason).isEqualTo("'해결 결과' 항목을 채워야 이 전환을 할 수 있습니다.")
     }
 
     @Test
@@ -121,7 +121,7 @@ class RequiredFieldValidatorTest {
                 .isInstanceOf(ValidatorResult.Fail::class.java)
             val fail = result as ValidatorResult.Fail
             assertThat(fail.field).isEqualTo("resolution")
-            assertThat(fail.reason).isNotBlank()
+            assertThat(fail.reason).isEqualTo("'해결 결과' 항목을 채워야 이 전환을 할 수 있습니다.")
         }
     }
 }
