@@ -7,6 +7,7 @@ import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.application.command.CreateWorkflowCommand
+import com.bts.workflow.application.command.TransitionDefinitionCommand
 import com.bts.workflow.application.command.UpdateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
@@ -249,6 +250,65 @@ class WorkflowCrudIntegrationTest {
         assertThatThrownBy {
             service.update(actor, "locked-flow", UpdateWorkflowCommand(name = "x", description = null))
         }.isInstanceOf(WorkflowLockedException::class.java)
+    }
+
+    // ── 잠금 409 — 던지는 자리마다 따로 판정한다 (WF-07-8) ─────────────────────
+    // ★전환 CRUD 셋은 `requireEditable` 하나를 공유하지만 대표 1건으로 접지 않는다 — 그 호출을
+    //   빠뜨린 함수는 대표가 못 잡는다. 거절 뒤 DB 가 그대로인지도 함께 본다.
+
+    @Test
+    fun `잠긴 워크플로우는 삭제할 수 없다`() {
+        create("locked-delete")
+        lockWorkflow("locked-delete")
+
+        assertThatThrownBy { service.delete(actor, "locked-delete") }
+            .isInstanceOf(WorkflowLockedException::class.java)
+        assertThat(repository.findByKey("locked-delete")).isNotNull()
+    }
+
+    @Test
+    fun `잠긴 워크플로우에는 전환을 만들 수 없다`() {
+        create("locked-create-tr")
+        lockWorkflow("locked-create-tr")
+
+        assertThatThrownBy {
+            service.createTransition(
+                actor,
+                "locked-create-tr",
+                TransitionDefinitionCommand(fromStatusKey = "open", toStatusKey = "done", name = "완료", kind = null),
+            )
+        }.isInstanceOf(WorkflowLockedException::class.java)
+        assertThat(transitionCount("locked-create-tr")).isEqualTo(1)
+    }
+
+    @Test
+    fun `잠긴 워크플로우의 전환은 고칠 수 없다`() {
+        create("locked-update-tr")
+        addTransition("locked-update-tr", "NORMAL", "시작", from = "open", to = "done", displayOrder = 1)
+        val transitionId = transitionIdOf("locked-update-tr", "시작")
+        lockWorkflow("locked-update-tr")
+
+        assertThatThrownBy {
+            service.updateTransition(
+                actor,
+                "locked-update-tr",
+                transitionId,
+                TransitionDefinitionCommand(fromStatusKey = "open", toStatusKey = "done", name = "바뀐 이름", kind = null),
+            )
+        }.isInstanceOf(WorkflowLockedException::class.java)
+        assertThat(repository.findByKey("locked-update-tr")!!.transitions.map { it.name }).contains("시작")
+    }
+
+    @Test
+    fun `잠긴 워크플로우의 전환은 지울 수 없다`() {
+        create("locked-delete-tr")
+        addTransition("locked-delete-tr", "NORMAL", "시작", from = "open", to = "done", displayOrder = 1)
+        val transitionId = transitionIdOf("locked-delete-tr", "시작")
+        lockWorkflow("locked-delete-tr")
+
+        assertThatThrownBy { service.deleteTransition(actor, "locked-delete-tr", transitionId) }
+            .isInstanceOf(WorkflowLockedException::class.java)
+        assertThat(transitionCount("locked-delete-tr")).isEqualTo(2)
     }
 
     @Test
@@ -565,6 +625,30 @@ class WorkflowCrudIntegrationTest {
                 stmt.executeQuery().use { rs ->
                     rs.next()
                     rs.getString(1)
+                }
+            }
+        }
+
+    private fun transitionCount(workflowKey: String): Int =
+        countRows(
+            "SELECT COUNT(*) FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
+                " WHERE w.key = '$workflowKey' AND w.deleted_at IS NULL",
+        )
+
+    private fun transitionIdOf(
+        workflowKey: String,
+        name: String,
+    ): UUID =
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "SELECT t.id FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
+                    " WHERE w.key = ? AND w.deleted_at IS NULL AND t.name = ?",
+            ).use { stmt ->
+                stmt.setString(1, workflowKey)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs ->
+                    rs.next()
+                    rs.getObject(1) as UUID
                 }
             }
         }
