@@ -92,9 +92,9 @@ class WorkflowTransitionAdapter(
                     req.issueKey,
                     e.message,
                 )
-                TransitionResult.ValidatorFailure(
-                    message = e.message ?: "워크플로우 유효성 검증에 실패했습니다.",
-                )
+                // 사유만 넘긴다 — e.message 의 「Validator '…' failed on field …」 틀은 로그용이다.
+                //   issue-tracking 이 이것을 409 응답에 실어 화면이 그대로 띄운다 (WF-01-1a).
+                TransitionResult.ValidatorFailure(message = e.reason)
             }
             is WorkflowNotFoundException -> {
                 log.info(

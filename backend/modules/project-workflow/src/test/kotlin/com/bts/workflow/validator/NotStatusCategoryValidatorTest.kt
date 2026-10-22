@@ -99,7 +99,7 @@ class NotStatusCategoryValidatorTest {
         assertThat(result as Any).isInstanceOf(ValidatorResult.Fail::class.java)
         val fail = result as ValidatorResult.Fail
         assertThat(fail.field).isNull()
-        assertThat(fail.reason).isEqualTo("from state category 'DONE' is forbidden")
+        assertThat(fail.reason).isEqualTo("'완료' 범주 상태에서는 이 전환을 할 수 없습니다.")
     }
 
     /**

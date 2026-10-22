@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test
  * PermissionResolver 를 mockk 로 대체해 PermissionValidator 의 판정 로직만 격리 검증한다.
  * 테스트 케이스 3건.
  * 1. pass — resolver 가 true 반환 시 ValidatorResult.Pass
- * 2. fail — resolver 가 false 반환 시 ValidatorResult.Fail (permission denied 메시지 포함)
+ * 2. fail — resolver 가 false 반환 시 ValidatorResult.Fail (사용자용 사유)
  * 3. scope 분기 — Scope.Issue(issueKey) / Scope.Project(workflowKey) 둘 다 호출 가능
  */
 class PermissionValidatorTest {
@@ -82,7 +82,7 @@ class PermissionValidatorTest {
     // ── 케이스 2. fail ──────────────────────────────────────────────────────────
 
     @Test
-    fun `resolver 가 false 반환 시 Fail 을 반환하고 permission 이름을 reason 에 포함한다`() {
+    fun `resolver 가 false 반환 시 Fail 을 반환하고 사용자용 사유를 싣는다`() {
         val permission = "TRANSITION_ISSUE"
         val validator = PermissionValidator(resolver, permission)
         val ctx = buildContext()
@@ -96,8 +96,8 @@ class PermissionValidatorTest {
         assertThat(result).isInstanceOf(ValidatorResult.Fail::class.java)
         val fail = result as ValidatorResult.Fail
         assertThat(fail.field).isNull()
-        assertThat(fail.reason).contains("permission denied")
-        assertThat(fail.reason).contains(permission)
+        // 화면에 그대로 나가는 문구라 권한 키(내부 식별자)를 싣지 않는다 (WF-01-1a)
+        assertThat(fail.reason).isEqualTo("이 전환을 할 권한이 없습니다.")
     }
 
     // ── 케이스 3. Scope 분기 ────────────────────────────────────────────────────
@@ -154,6 +154,6 @@ class PermissionValidatorTest {
 
         assertThat(result).isInstanceOf(ValidatorResult.Fail::class.java)
         val fail = result as ValidatorResult.Fail
-        assertThat(fail.reason).contains("permission resolver error")
+        assertThat(fail.reason).isEqualTo("권한을 확인하지 못해 전환을 막았습니다. 잠시 후 다시 시도해 주세요.")
     }
 }

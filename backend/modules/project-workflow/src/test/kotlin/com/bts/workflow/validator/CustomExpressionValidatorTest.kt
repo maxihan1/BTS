@@ -27,9 +27,9 @@ import org.junit.jupiter.api.Test
  *
  * 테스트 3건.
  * - pass — SpEL 평가 결과 true 이면 ValidatorResult.Pass 반환.
- * - fail — SpEL 평가 결과 false 이면 ValidatorResult.Fail(field=null, reason="expression evaluated to false") 반환.
+ * - fail — SpEL 평가 결과 false 이면 ValidatorResult.Fail(field=null, reason="전환 조건을 충족하지 않습니다.") 반환.
  * - edge — SpelEvaluator 가 WorkflowExpressionTimeoutException 을 던지면
- *   ValidatorResult.Fail(field=null, reason="expression_timeout") 으로 변환하고 예외를 전파하지 않는다.
+ *   ValidatorResult.Fail(field=null, reason=시간 초과 안내) 으로 변환하고 예외를 전파하지 않는다.
  */
 class CustomExpressionValidatorTest {
     private val evaluator: SpelEvaluator = mockk()
@@ -117,7 +117,7 @@ class CustomExpressionValidatorTest {
     }
 
     @Test
-    fun `fail — SpEL 평가 결과 false 이면 Fail(field=null, reason=expression evaluated to false) 를 반환한다`() {
+    fun `fail — SpEL 평가 결과 false 이면 Fail(field=null, reason=전환 조건 미충족) 를 반환한다`() {
         every { evaluator.evaluate(expression, any<SpelRoot>()) } returns false
 
         val result = validator.validate(buildContext())
@@ -125,11 +125,11 @@ class CustomExpressionValidatorTest {
         assertThat(result as Any).isInstanceOf(ValidatorResult.Fail::class.java)
         val fail = result as ValidatorResult.Fail
         assertThat(fail.field).isNull()
-        assertThat(fail.reason).isEqualTo("expression evaluated to false")
+        assertThat(fail.reason).isEqualTo("전환 조건을 충족하지 않습니다.")
     }
 
     @Test
-    fun `edge — SpelEvaluator 가 WorkflowExpressionTimeoutException 을 던지면 Fail(reason=expression_timeout) 으로 변환한다`() {
+    fun `edge — SpelEvaluator 가 WorkflowExpressionTimeoutException 을 던지면 Fail(reason=시간 초과 안내) 으로 변환한다`() {
         val timeoutEx =
             WorkflowExpressionTimeoutException(
                 expression = expression,
@@ -142,6 +142,6 @@ class CustomExpressionValidatorTest {
         assertThat(result as Any).isInstanceOf(ValidatorResult.Fail::class.java)
         val fail = result as ValidatorResult.Fail
         assertThat(fail.field).isNull()
-        assertThat(fail.reason).isEqualTo("expression_timeout")
+        assertThat(fail.reason).isEqualTo("전환 조건을 확인하는 데 시간이 너무 오래 걸렸습니다. 잠시 후 다시 시도해 주세요.")
     }
 }

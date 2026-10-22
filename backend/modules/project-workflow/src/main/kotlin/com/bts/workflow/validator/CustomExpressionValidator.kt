@@ -17,7 +17,7 @@ import com.bts.workflow.expression.SpelEvaluator
  *
  * ### timeout 처리
  * [SpelEvaluator] 가 [WorkflowExpressionTimeoutException] 을 던지면 전환을 거부하되
- * 예외를 전파하지 않는다. 거부 사유는 `"expression_timeout"` 으로 고정한다.
+ * 예외를 전파하지 않는다. 거부 사유는 시간 초과 안내문으로 고정한다.
  * 원인 예외는 이 KDoc 에만 명시한다 — [ValidatorResult.Fail] 에 cause 필드가 없기 때문이다.
  *
  * @param evaluator SpEL 평가기. 50ms timeout + SimpleEvaluationContext sandbox 를 내장한다.
@@ -35,8 +35,8 @@ class CustomExpressionValidator(
      * @param ctx 전환 요청 컨텍스트. [com.bts.workflow.domain.expression.IssueView] 와
      *   [com.bts.workflow.domain.expression.ActorView] 를 포함한다.
      * @return 표현식이 true 이면 [ValidatorResult.Pass],
-     *   false 이면 [ValidatorResult.Fail] (reason = "expression evaluated to false"),
-     *   timeout 이면 [ValidatorResult.Fail] (reason = "expression_timeout").
+     *   false 이면 [ValidatorResult.Fail] (조건 미충족 안내),
+     *   timeout 이면 [ValidatorResult.Fail] (시간 초과 안내). 사유는 화면에 그대로 나간다 (WF-01-1a).
      *
      * ### SwallowedException 억제 근거
      * [ValidatorResult.Fail] 에 cause 필드가 없어 timeout 예외를 직접 전달할 수 없다.
@@ -50,10 +50,13 @@ class CustomExpressionValidator(
             if (evaluator.evaluate(expression, root)) {
                 ValidatorResult.Pass
             } else {
-                ValidatorResult.Fail(field = null, reason = "expression evaluated to false")
+                ValidatorResult.Fail(field = null, reason = "전환 조건을 충족하지 않습니다.")
             }
         } catch (e: WorkflowExpressionTimeoutException) {
-            ValidatorResult.Fail(field = null, reason = "expression_timeout")
+            ValidatorResult.Fail(
+                field = null,
+                reason = "전환 조건을 확인하는 데 시간이 너무 오래 걸렸습니다. 잠시 후 다시 시도해 주세요.",
+            )
         }
     }
 }

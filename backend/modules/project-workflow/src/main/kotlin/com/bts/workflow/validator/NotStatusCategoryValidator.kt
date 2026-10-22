@@ -38,9 +38,15 @@ class NotStatusCategoryValidator(
         if (ctx.fromState?.category == forbidden) {
             return ValidatorResult.Fail(
                 field = null,
-                reason = "from state category '$forbidden' is forbidden",
+                reason = "'${CATEGORY_LABELS.getValue(forbidden)}' 범주 상태에서는 이 전환을 할 수 없습니다.",
             )
         }
         return ValidatorResult.Pass
+    }
+
+    private companion object {
+        /** 거부 사유에 넣을 범주 화면 이름. */
+        val CATEGORY_LABELS: Map<StateCategory, String> =
+            mapOf(StateCategory.TODO to "할 일", StateCategory.IN_PROGRESS to "진행 중", StateCategory.DONE to "완료")
     }
 }

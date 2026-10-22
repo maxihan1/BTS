@@ -87,7 +87,8 @@ class WorkflowTransitionAdapterTest {
 
         assertThat(result).isInstanceOf(TransitionResult.ValidatorFailure::class.java)
         val failure = result as TransitionResult.ValidatorFailure
-        assertThat(failure.message).isEqualTo(exception.message)
+        // 사유만 넘긴다 — 「Validator 'RequiredField' failed on field …」 틀은 로그용이라 화면에 나가면 안 된다 (WF-01-1a)
+        assertThat(failure.message).isEqualTo("조건 X 위반")
     }
 
     // ── S3. WorkflowNotFound ─────────────────────────────────────────────────
