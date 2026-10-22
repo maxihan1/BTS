@@ -79,7 +79,8 @@
 - [x] D2. 명세 — factory/repo/seed 결선 + test-assembled 검증. 확정 D8=A(phase 구분)/D9=A(PostAction 계산만, GAP-2)/D10=B(test-assembled 검증) (책임. backend-engineer) (PR #66, 2026-06-03)
 - [x] D4. 백엔드 — DefaultWorkflowValidatorFactory/PostActionFactory + DefaultWorkflowDefinitionRepository(jOOQ, workflowKey로 transition_id 해석) + WorkflowEngineConfig(SpelEvaluator·ExecutorService @Bean) + YamlSeedService validators/post_actions 시드(시드 시점 type fail-fast) + WorkflowValidator.phase (책임. backend-engineer) (PR #66, 2026-06-03)
 - [x] D5. 백엔드 테스트 — TDD 8 task(red→green→refactor) + test-assembled @ContextConfiguration 통합검증(B2 cross-workflow 격리, validator plan 거부/availableTransitions 포함, PostAction plan 누적) (책임. backend-engineer) (PR #66 + #69 테스트 토큰 정본화, 2026-06-03)
-- [ ] D6. WF-03-1 후처리 5종 중 `CALL_WEBHOOK` 만 실제로 동작한다 — 결함 B1 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
+- [x] D6. WF-03-1 후처리 5종 중 `CALL_WEBHOOK` 만 실제로 동작한다 — 결함 B1 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1) (2026-10-22)
+  - **닫은 방식은 「실행」이 아니라 「거절」이다.** `TransitionRuleGuard.checkPostAction` 이 전환 때 소비처가 있는 type(`CALL_WEBHOOK`)만 받는다 — 편집 API · 초안 저장 · 발행이 같은 관문을 지나므로 세 경로 모두 `SET_FIELD` · `NOTIFY` · `ADD_WATCHER` · `RUN_AUTOMATION` 을 400 으로 거절한다. 넷을 실제로 돌리는 일은 issue-tracking · notification · automation 에 걸친 FR 후보로 남는다(같은 문서 §6-5, Maxi 결정). **편차** — 이미 DB 에 앉아 있는 그 넷의 행은 지우지 않는다. 엔진은 계속 평가만 하고(아무 일도 안 일어남), 초안은 라이브 규칙을 복제하므로(`CurrentDefinitionReader`) 그런 행이 있는 워크플로우는 발행이 400 으로 막힌다 — 초안에서 그 규칙을 빼면 풀린다. YAML 시드는 관문을 지나지 않으며 표준 4종에 post-action 이 없다.
 - [ ] D7. WF-03-2 `RequiredField` 검증기가 `summary`·`resolution` 두 필드만 본다 — 결함 B2 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
 
 > **D3/D6/D7 비해당**. 마이그레이션 신규 없음(`workflow_validators`/`workflow_post_actions` V200 기존, jOOQ 상수 자동 생성). UI/E2E 없음(백엔드 기반 인프라). 잔존 비차단 — `YamlSeedService.isDirty`가 validator/post_action config-only 변경 미감지(type만 비교), 프레임워크가 config를 런타임 실소비하는 시점에 확장.
