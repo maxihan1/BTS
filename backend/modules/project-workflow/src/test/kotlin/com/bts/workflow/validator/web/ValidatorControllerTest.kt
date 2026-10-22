@@ -528,7 +528,9 @@ class ValidatorControllerTest {
             mockMvc.perform(post(basePath(existingTransitionKey)).contentType(MediaType.APPLICATION_JSON).content(json))
                 .andExpect(status().isCreated)
             mockMvc.perform(
-                put("${basePath(existingTransitionKey)}/$validatorId").contentType(MediaType.APPLICATION_JSON).content(json),
+                put("${basePath(existingTransitionKey)}/$validatorId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json),
             ).andExpect(status().isOk)
             mockMvc.perform(delete("${basePath(existingTransitionKey)}/$validatorId"))
                 .andExpect(status().isNoContent)

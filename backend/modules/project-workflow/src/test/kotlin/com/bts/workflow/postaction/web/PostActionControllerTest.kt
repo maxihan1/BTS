@@ -280,7 +280,8 @@ class PostActionControllerTest {
         logger.addAppender(appender)
 
         try {
-            val json = mapper.writeValueAsString(mapOf("type" to "CALL_WEBHOOK", "config" to row.config, "displayOrder" to 0))
+            val json =
+                mapper.writeValueAsString(mapOf("type" to "CALL_WEBHOOK", "config" to row.config, "displayOrder" to 0))
             mockMvc.perform(post(basePath).contentType(MediaType.APPLICATION_JSON).content(json))
                 .andExpect(status().isCreated)
             mockMvc.perform(put("$basePath/$postActionId").contentType(MediaType.APPLICATION_JSON).content(json))
