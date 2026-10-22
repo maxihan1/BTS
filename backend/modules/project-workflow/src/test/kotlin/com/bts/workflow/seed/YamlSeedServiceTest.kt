@@ -355,8 +355,10 @@ class YamlSeedServiceTest {
                     """
                     SELECT wt.name
                     FROM workflow_transitions wt
-                    JOIN workflow_states fs ON wt.from_state_id = fs.id
-                    JOIN workflow_states ts ON wt.to_state_id = ts.id
+                    JOIN workflow_statuses fws ON wt.from_status_id = fws.id
+                    JOIN statuses fs ON fws.status_id = fs.id
+                    JOIN workflow_statuses tws ON wt.to_status_id = tws.id
+                    JOIN statuses ts ON tws.status_id = ts.id
                     JOIN workflows w ON wt.workflow_id = w.id
                     WHERE w.key = 'multi-transition-wf' AND fs.key = 'open' AND ts.key = 'done'
                     """.trimIndent(),
@@ -437,8 +439,10 @@ class YamlSeedServiceTest {
                     """
                     SELECT wt.id
                     FROM workflow_transitions wt
-                    JOIN workflow_states fs ON wt.from_state_id = fs.id
-                    JOIN workflow_states ts ON wt.to_state_id = ts.id
+                    JOIN workflow_statuses fws ON wt.from_status_id = fws.id
+                    JOIN statuses fs ON fws.status_id = fs.id
+                    JOIN workflow_statuses tws ON wt.to_status_id = tws.id
+                    JOIN statuses ts ON tws.status_id = ts.id
                     JOIN workflows w ON wt.workflow_id = w.id
                     WHERE w.key = 'simple' AND fs.key = 'todo' AND ts.key = 'doing'
                     """.trimIndent(),
@@ -551,15 +555,8 @@ class YamlSeedServiceTest {
     /**
      * 시드가 심은 전환이 `from_status_id`·`to_status_id`·`kind` 를 채우는가.
      *
-     * ### 왜 이 가드가 필요한가 — 빈 DB 부팅이 조용히 반쪽이 된다
-     * V207 이 전환의 출발·도착을 `workflow_states` 에서 전역 카탈로그 편성 `workflow_statuses` 로
-     * 재지정했다. 재지정 백필은 **마이그레이션 시점에 있던 행**만 손대므로, 그 뒤에 시드가 심는 행은
-     * 시드가 직접 신 컬럼을 채워야 한다. 채우지 않으면 표준 4 워크플로우의 전환이 전부 신 컬럼 NULL 로
-     * 남아 ① 3단계에서 NOT NULL 을 걸 수 없고 ② 읽기가 구 컬럼 폴백에만 의존하게 된다.
-     *
-     * ### 왜 `repository.findAll()` 로는 못 잡는가
-     * 읽기에 구 컬럼 폴백이 있어 신 컬럼이 비어도 aggregate 복원은 성공한다(시나리오 1 이 그래서 초록이다).
-     * 그래서 **컬럼을 직접 본다** — 폴백이 가리는 것을 드러내는 유일한 축이다.
+     * V207 의 재지정 백필은 **마이그레이션 시점에 있던 행**만 손대므로, 그 뒤에 시드가 심는 행은
+     * 시드가 직접 채워야 한다. 컬럼을 직접 본다.
      */
     @Test
     @Order(12)
@@ -569,29 +566,23 @@ class YamlSeedServiceTest {
         val rows = fetchTransitionStateKeys("software-default")
         val normalRows = rows.filter { it[1] == "NORMAL" }
 
+        // NULL 은 NOT NULL · CHECK 가 막으므로 「올바른 상태를 가리키는가」를 YAML 원문과 대조한다.
         assertThat(normalRows)
-            .describedAs("software-default 의 보통 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
-            .hasSize(6)
-        assertThat(normalRows).allSatisfy { row ->
-            // 대조 기준이 NULL 이면 아래 isEqualTo 가 「둘 다 NULL」로 조용히 통과한다.
-            // 3단계에서 시드가 구 컬럼을 그만 채울 때 여기가 먼저 red 를 낸다.
-            assertThat(row[2]).describedAs("전환 '%s' 의 구 from 컬럼이 대조 기준이다", row[0]).isNotNull()
-            assertThat(row[3]).describedAs("전환 '%s' 의 구 to 컬럼이 대조 기준이다", row[0]).isNotNull()
-            assertThat(row[4])
-                .describedAs("전환 '%s' 의 from_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
-                .isEqualTo(row[2])
-            assertThat(row[5])
-                .describedAs("전환 '%s' 의 to_status_id 가 구 컬럼과 같은 상태를 가리켜야 한다", row[0])
-                .isEqualTo(row[3])
-        }
+            .describedAs("software-default 의 보통 전환 — (이름, kind, from, to) 가 software-default.yaml 과 같아야 한다")
+            .containsExactlyInAnyOrder(
+                listOf("Start Work", "NORMAL", "open", "in_progress"),
+                listOf("Submit for Review", "NORMAL", "in_progress", "in_review"),
+                listOf("Approve", "NORMAL", "in_review", "done"),
+                listOf("Request Changes", "NORMAL", "in_review", "in_progress"),
+                listOf("Close", "NORMAL", "done", "closed"),
+                listOf("Cancel", "NORMAL", "open", "closed"),
+            )
 
-        // INITIAL 은 구 컬럼을 비운 채 신 컬럼만 채운다 — V207 ⑨ 가 기존 DB 에 심은 행과 같은 모양이다.
-        // 여기서 구 컬럼을 채우면 빈 DB 사이트와 기존 사이트의 같은 전환이 서로 다른 모양이 된다.
         assertThat(rows.filter { it[1] == "INITIAL" })
-            .describedAs("INITIAL — (이름, kind, 구 from, 구 to, 신 from, 신 to)")
-            .containsExactly(listOf("이슈 생성", "INITIAL", null, null, null, "open"))
+            .describedAs("INITIAL — (이름, kind, from, to)")
+            .containsExactly(listOf("이슈 생성", "INITIAL", null, "open"))
 
-        log.info("시나리오 12 통과 — 시드가 전환 신 컬럼(from_status_id·to_status_id·kind)을 채운다")
+        log.info("시나리오 12 통과 — 시드가 전환 from_status_id·to_status_id·kind 를 채운다")
     }
 
     // ── 시나리오 13. 빈 스키마에 시드만 돌려도 INITIAL 전환이 생긴다 (P1 #7) ────────
@@ -608,7 +599,7 @@ class YamlSeedServiceTest {
      * **시드가 심은 것뿐**이다. 시드 전 전환 0건을 직접 단언해 그 전제를 못 박는다.
      *
      * ### 무엇을 대조하나
-     * 도착지·이름·표시순서·구 컬럼 NULL 여부를 V207 ⑨ 가 기존 DB 에 심은 것과 같은 모양으로 맞춘다.
+     * 도착지·이름·표시순서·출발지 NULL 여부를 V207 ⑨ 가 기존 DB 에 심은 것과 같은 모양으로 맞춘다.
      * 어긋나면 빈 DB 로 올린 사이트와 기존 사이트의 이슈 생성 진입 상태가 갈린다.
      * 도착지 규칙(`display_order` 최소 편성)은 하드코딩 기대값과 **V207 ⑨ 규칙 재현 조회**를 함께 본다.
      */
@@ -624,12 +615,12 @@ class YamlSeedServiceTest {
         seedServiceFor(dsl).seedAll()
 
         assertThat(dsl.fetch(initialTransitionSql).map { it.rowText() })
-            .describedAs("INITIAL 전환 — 워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL")
+            .describedAs("INITIAL 전환 — 워크플로우|이름|도착상태|표시순서|from NULL")
             .containsExactly(
-                "bug-tracking|이슈 생성|reported|0|true|true|true",
-                "kanban-basic|이슈 생성|backlog|0|true|true|true",
-                "simple|이슈 생성|todo|0|true|true|true",
-                "software-default|이슈 생성|open|0|true|true|true",
+                "bug-tracking|이슈 생성|reported|0|true",
+                "kanban-basic|이슈 생성|backlog|0|true",
+                "simple|이슈 생성|todo|0|true",
+                "software-default|이슈 생성|open|0|true",
             )
 
         assertThat(dsl.fetch(initialTargetSql).map { it.rowText() })
@@ -640,11 +631,7 @@ class YamlSeedServiceTest {
     }
 
     /**
-     * 그 워크플로우의 전환마다 (이름, kind, 구 from key, 구 to key, 신 from key, 신 to key) 를 읽는다.
-     *
-     * 구 세대(`workflow_states`)와 신 세대(`workflow_statuses ⋈ statuses`) 를 **같은 행에 나란히** 놓아야
-     * 「신 컬럼이 구 컬럼과 같은 상태를 가리키는가」를 한 번에 대조할 수 있다. 신 컬럼이 비어 있으면
-     * 그 자리가 NULL 로 남아 대조가 어긋난다 — 그것이 이 조회가 잡으려는 것이다.
+     * 그 워크플로우의 전환마다 (이름, kind, from key, to key) 를 읽는다. 비어 있는 컬럼은 NULL 로 남는다.
      *
      * @param workflowKey 대상 `workflows.key`
      */
@@ -652,13 +639,9 @@ class YamlSeedServiceTest {
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.prepareStatement(
                 """
-                SELECT wt.name, wt.kind,
-                       fs.key  AS legacy_from, ts.key  AS legacy_to,
-                       nfs.key AS status_from, nts.key AS status_to
+                SELECT wt.name, wt.kind, nfs.key AS status_from, nts.key AS status_to
                   FROM workflow_transitions wt
                   JOIN workflows w ON w.id = wt.workflow_id
-                  LEFT JOIN workflow_states   fs  ON fs.id  = wt.from_state_id
-                  LEFT JOIN workflow_states   ts  ON ts.id  = wt.to_state_id
                   LEFT JOIN workflow_statuses wfs ON wfs.id = wt.from_status_id
                   LEFT JOIN statuses          nfs ON nfs.id = wfs.status_id
                   LEFT JOIN workflow_statuses wts ON wts.id = wt.to_status_id
@@ -667,7 +650,7 @@ class YamlSeedServiceTest {
                 """.trimIndent(),
             ).use { ps ->
                 ps.setString(1, workflowKey)
-                ps.executeQuery().use { rs -> readSixColumns(rs) }
+                ps.executeQuery().use { rs -> readFourColumns(rs) }
             }
         }
 
@@ -678,15 +661,11 @@ class YamlSeedServiceTest {
         return result
     }
 
-    /** [java.sql.ResultSet] 을 6열 문자열 행 목록으로 옮긴다. while 루프를 밖으로 빼 중첩 깊이를 낮춘다. */
-    private fun readSixColumns(rs: java.sql.ResultSet): List<List<String?>> {
+    /** [java.sql.ResultSet] 을 4열 문자열 행 목록으로 옮긴다. while 루프를 밖으로 빼 중첩 깊이를 낮춘다. */
+    private fun readFourColumns(rs: java.sql.ResultSet): List<List<String?>> {
         val result = mutableListOf<List<String?>>()
         while (rs.next()) {
-            result +=
-                listOf(
-                    rs.getString(1), rs.getString(2), rs.getString(3),
-                    rs.getString(4), rs.getString(5), rs.getString(6),
-                )
+            result += listOf(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4))
         }
         return result
     }
@@ -698,14 +677,12 @@ class YamlSeedServiceTest {
 // 앞선 시나리오들의 대상 DB 를 바꿔 버리기 때문이다. 여기 함수들은 넘겨받은 DB 만 건드린다.
 
 /**
- * INITIAL 전환 1행을 (워크플로우|이름|도착상태|표시순서|from신 NULL|from구 NULL|to구 NULL) 로 읽는다.
- *
- * 신·구 컬럼의 NULL 여부를 같은 행에 실어야 「신 컬럼이 정본이고 구 컬럼은 비어 있다」를 한 번에 본다.
+ * INITIAL 전환 1행을 (워크플로우|이름|도착상태|표시순서|from NULL) 로 읽는다.
  */
 private val initialTransitionSql =
     """
     SELECT w.key, t.name, s.key, t.display_order,
-           t.from_status_id IS NULL, t.from_state_id IS NULL, t.to_state_id IS NULL
+           t.from_status_id IS NULL
       FROM workflow_transitions t
       JOIN workflows          w  ON w.id  = t.workflow_id
       JOIN workflow_statuses  ws ON ws.id = t.to_status_id

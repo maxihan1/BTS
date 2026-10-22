@@ -141,7 +141,8 @@ class PostActionE2EIntegrationTest {
 
                 val todoId: String =
                     conn.prepareStatement(
-                        "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='todo'",
+                        "SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                            " WHERE ws.workflow_id='$workflowId'::uuid AND s.key='todo'",
                     ).use { ps ->
                         ps.executeQuery().use { rs ->
                             rs.next()
@@ -151,7 +152,8 @@ class PostActionE2EIntegrationTest {
 
                 val doingId: String =
                     conn.prepareStatement(
-                        "SELECT id FROM workflow_states WHERE workflow_id='$workflowId'::uuid AND key='doing'",
+                        "SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                            " WHERE ws.workflow_id='$workflowId'::uuid AND s.key='doing'",
                     ).use { ps ->
                         ps.executeQuery().use { rs ->
                             rs.next()
@@ -161,7 +163,7 @@ class PostActionE2EIntegrationTest {
 
                 conn.prepareStatement(
                     """
-                    INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)
+                    INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name)
                     VALUES ('$workflowId'::uuid, '$todoId'::uuid, '$doingId'::uuid, 'Start')
                     ON CONFLICT DO NOTHING
                     """.trimIndent(),

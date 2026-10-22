@@ -1,4 +1,4 @@
-// 시드가 workflow_states 와 전역 상태 카탈로그(statuses · workflow_statuses)를 함께 기록하는지 검증한다
+// 시드가 전역 상태 카탈로그(statuses · workflow_statuses)를 기록하는지 검증한다
 
 package com.bts.workflow.seed
 
@@ -18,15 +18,12 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource
 import java.sql.DriverManager
 
 /**
- * 시드가 상태를 **두 곳에 함께** 기록하는지 본다.
+ * 시드가 상태를 전역 카탈로그에 기록하는지 본다.
  *
- * ### 왜 이중 기록인가
+ * ### 왜 시드가 카탈로그를 채우나
  * 배포된 DB 는 V204 백필이 `statuses`/`workflow_statuses` 를 채운다. 그런데 빈 DB 는 백필할
  * `workflow_states` 가 0행이라 백필이 아무것도 만들지 않고, 그 뒤 시드가 워크플로우를 넣는다.
  * 시드가 카탈로그를 함께 기록하지 않으면 **빈 DB 와 기존 DB 의 카탈로그 상태가 갈라진다**(스펙 E1).
- *
- * `workflow_states` 는 계속 기록한다 — `workflow_transitions` 의 FK 대상이라 로드맵 마지막 PR 의
- * DROP 전까지 살아 있어야 한다.
  *
  * 기대값 12/17 은 시드 YAML 4개 전수 실측이다 (상태 키 유일 12 · 워크플로우별 행 합 17).
  */
@@ -82,8 +79,6 @@ class SeedStatusCatalogIntegrationTest {
 
         assertThat(count("statuses")).isEqualTo(12)
         assertThat(count("workflow_statuses")).isEqualTo(17)
-        // workflow_states 도 그대로 기록한다 — workflow_transitions 의 FK 대상이다.
-        assertThat(count("workflow_states")).isEqualTo(17)
     }
 
     @Test

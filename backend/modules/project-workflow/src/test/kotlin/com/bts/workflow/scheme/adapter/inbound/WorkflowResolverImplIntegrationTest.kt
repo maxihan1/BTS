@@ -152,7 +152,7 @@ class WorkflowResolverImplIntegrationTest {
                     )
                 }
 
-                // workflow_states — software-default 워크플로우에 최소 1개 state 필요
+                // 상태 — software-default 워크플로우에 최소 1개 state 필요
                 conn.prepareStatement(
                     "SELECT id FROM workflows WHERE key = ?",
                 ).use { stmt ->

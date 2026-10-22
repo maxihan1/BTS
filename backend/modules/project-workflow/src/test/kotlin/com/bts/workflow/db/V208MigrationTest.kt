@@ -380,13 +380,6 @@ class V208MigrationTest {
     // ── 마이그레이션이 기존 체인을 깨지 않았는가 ──────────────────────────────
 
     @Test
-    fun `V207 이 남긴 구 컬럼과 workflow_states 는 여전히 살아 있다`() {
-        // 3단 분할의 3단(DROP)은 이 PR 범위 밖이다. 여기서 사라졌다면 롤백 자리를 잃은 것이다.
-        assertThat(tableExists("workflow_states")).isTrue()
-        assertThat(columnType("workflow_transitions", "from_state_id")).isEqualTo("uuid")
-    }
-
-    @Test
     fun `초안이 없는 워크플로우도 정상이다`() {
         // 초안은 선택적이다. 편집을 시작하지 않은 워크플로우에는 행이 없다.
         val drafts =

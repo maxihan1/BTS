@@ -81,7 +81,7 @@ class ValidatorRepositoryIntegrationTest {
         fun newTransition(name: String): UUID =
             connection().use { conn ->
                 conn.prepareStatement(
-                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name)" +
+                    "INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name)" +
                         " VALUES (?, ?, ?, ?) RETURNING id",
                 ).use { stmt ->
                     stmt.setObject(1, workflowId)

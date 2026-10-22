@@ -183,11 +183,6 @@ class WorkflowPublishRepository(
 
     /**
      * 전환을 심는다.
-     *
-     * ★ 구 컬럼(`from_state_id`·`to_state_id`)을 채우지 않는다. 읽기가 신 컬럼 우선 · 구 컬럼
-     * 폴백이라(`WorkflowRepository`) 구 컬럼에 값이 남으면 GLOBAL·INITIAL 전환에서 출발지가
-     * 되살아나고, 그 행은 `Workflow.of()` invariant 5 를 깨 워크플로우 **전체** 조회가 죽는다.
-     * 전량 교체라 애초에 지우고 새로 심으므로 여기서는 값을 넣지 않는 것으로 충분하다.
      */
     private fun insertTransitions(
         workflowId: UUID,
