@@ -56,7 +56,7 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
     val resolutionRepository = mockk<com.bts.issue.resolution.repository.ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>()
     val permissionResolver = mockk<IssuePermissionResolver>()
-    val workflowPort = mockk<WorkflowTransitionPort>()
+    val workflowPort = mockk<WorkflowTransitionPort>().passesCreation()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>()
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val projectLeadRepository = mockk<ProjectLeadRepository>(relaxed = true)

@@ -57,7 +57,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
     val resolutionRepository = mockk<com.bts.issue.resolution.repository.ResolutionRepository>(relaxed = true)
     val eventPublisher = mockk<IssueEventPublisher>(relaxed = true)
     val permissionResolver = mockk<IssuePermissionResolver>(relaxed = true)
-    val workflowPort = mockk<WorkflowTransitionPort>(relaxed = true)
+    val workflowPort = mockk<WorkflowTransitionPort>(relaxed = true).passesCreation()
     val workflowKeyResolver = mockk<WorkflowKeyResolver>(relaxed = true)
     val userLookupPort = mockk<UserLookupPort>(relaxed = true)
     val watcherRepository = mockk<IssueWatcherRepository>(relaxed = true)

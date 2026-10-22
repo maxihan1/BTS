@@ -113,6 +113,7 @@ class IssueHistoryRecordingTest : DescribeSpec({
     beforeTest {
         // mock 상태 초기화 — 이전 test 의 stub 누적이 value class 매처 등록 시 MockK internal state 를 오염시키는 것을 방지한다.
         clearMocks(repo, permissionResolver, workflowPort, workflowKeyResolver, historyRecorder)
+        workflowPort.passesCreation()
         every { permissionResolver.hasPermission(any(), any(), any()) } returns true
         justRun { historyRecorder.record(any(), any(), any(), any()) }
         // withSingleDetail() 내 repo 추가 호출 stub — relaxed mock 이 아닌 repo 에 필요

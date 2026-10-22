@@ -201,12 +201,13 @@ class IssueApplicationService(
      * 6. [resolveDefaultAssignee] — 컴포넌트 리드 중 이름 오름차순 첫 번째를 담당자로 결정.
      * 7. [WorkflowKeyResolver.resolveStart] 로 초기 상태 키 결정
      *    — WorkflowSchemeNoDefaultException 발생 시 [IssueWorkflowNotConfiguredException] 으로 변환 (BC 격리)
+     * 7-1. [planCreation] — 최초(INITIAL) 전환 규칙. validator 가 거절하면 여기서 멈춘다 (WF-05-3)
      * 8. [resolveDescription] — 옵션 C 안전망 (FR-TM-01 Task 7):
      *    request.description non-blank → 요청 값 사용, null/blank → 활성 템플릿 content 조회 (없으면 null).
      * 9. Issue.create (assigneeId + componentIds + description 포함)
      * 10. DB INSERT (issues)
      * 11. [IssueRepository.insertComponents] — issue_components batch INSERT (version bump 없음)
-     * 12. IssueCreated 이벤트 발행
+     * 12. IssueCreated 이벤트 발행 + 최초 전환 post-action 이벤트 발행 ([publishTransitionEvents])
      *
      * @param actor 이슈를 생성하는 행위자.
      * @param request 생성 요청 DTO. typeId null 이면 task 타입으로 fallback.
@@ -215,6 +216,7 @@ class IssueApplicationService(
      * @throws IssueAccessDeniedException 권한 없을 때.
      * @throws IssueTypeNotFoundException request.typeId 가 non-null 이지만 활성 타입이 없을 때.
      * @throws IssueWorkflowNotConfiguredException 프로젝트에 기본 워크플로우 스킴이 없을 때.
+     * @throws IssueTransitionNotAllowedException 최초 전환 validator 가 생성을 거절할 때 (409).
      *
      * TooGenericExceptionCaught/ThrowsCount: BC 격리 — project-workflow 내부 예외를 직접 import 할 수 없으므로
      * javaClass.simpleName 으로 감지한다. RuntimeException catch 는 의도적인 설계 (DEVELOPMENT.md §1.1).
@@ -258,6 +260,7 @@ class IssueApplicationService(
                 }
                 throw e
             }
+        val creationPlan = planCreation(startState, key, actor, request.summary)
 
         val resolvedAssignee = resolveCreateAssignee(request.assignee, projectId, normalizedComponentIds)
 
@@ -291,7 +294,7 @@ class IssueApplicationService(
                 typeId = resolvedTypeId,
                 summary = request.summary,
                 reporterId = request.reporterId,
-                currentStateKey = startState.startStateKey,
+                currentStateKey = creationPlan.toStateKey,
                 assigneeId = resolvedAssignee,
                 componentIds = normalizedComponentIds,
                 securityLevelId = request.securityLevelId,
@@ -316,6 +319,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        publishTransitionEvents(creationPlan)
         // FR-UX-09 B1 (ADR D-4 + D-5) — 담당자가 확정됐고 REST 생성 경로일 때만 발행한다.
         // 판정식은 「최종 assigneeId non-null AND notifyAssignment」 단일 술어다.
         // ★fail-safe 게이트. Import 는 이제 AssigneeIntent.None 을 넘겨 이 조건에 **도달하지 않는다**
@@ -390,6 +394,9 @@ class IssueApplicationService(
         val seq = repo.incrementKeySequence(projectKey)
         val newKey = IssueKey.of(projectKey, seq)
         val startState = resolveWorkflowKey(newKey)
+        val summary = resolveCloneSummary(request, source)
+        // 복제도 생성이다 — 최초 전환 규칙을 똑같이 탄다 (WF-05-3).
+        val creationPlan = planCreation(startState, newKey, actor, summary)
 
         // FR-BL-01 옵션 B: 클론본도 rank=NULL(lazy). 드래그(rerank) 시 BacklogRankService 가 부여한다.
         val clone =
@@ -398,9 +405,9 @@ class IssueApplicationService(
                 key = newKey,
                 projectId = source.projectId,
                 typeId = source.typeId,
-                summary = resolveCloneSummary(request, source),
+                summary = summary,
                 reporterId = actor,
-                currentStateKey = startState.startStateKey,
+                currentStateKey = creationPlan.toStateKey,
                 description = source.description,
                 priority = source.priority,
                 labels = source.labels,
@@ -422,6 +429,7 @@ class IssueApplicationService(
                 occurredAt = Instant.now(clock),
             ),
         )
+        publishTransitionEvents(creationPlan)
         // 클론본에 담당자가 확정됐으면 배정 알림을 발행한다 (TODOS 「cloneIssue 는 담당자를
         // 정해도 IssueAssigned 를 발행하지 않는다」 봉합). 판정식은 createIssue 와 같은
         // 단일 술어 — 「최종 assigneeId 가 non-null AND notifyAssignment」.
@@ -1555,12 +1563,53 @@ class IssueApplicationService(
     }
 
     /**
+     * 최초(INITIAL) 전환 규칙을 돌려 생성 계획을 받는다 (WF-05-3) — Jira Create 전환의 validator ·
+     * post function 자리다. 이슈가 아직 없으므로 [TransitionRequest.creation] 으로 생성임을 알린다 — 출발 상태
+     * 자리에는 엔진이 읽지 않는 시작 상태 키를 싣는다.
+     *
+     * validator 가 거절하면 [IssueTransitionNotAllowedException] 이고 이슈는 만들어지지 않는다 — 호출자가
+     * insert 전에 부르므로 남는 행이 없다. 최초 전환이 없는 워크플로우는 빈 계획이다.
+     * [issueFields] 는 [transitionIssue] 와 같은 두 필드다 — `RequiredField` 가 받는 필드가 그 둘뿐이다.
+     *
+     * @param start 시작 상태 결정 결과.
+     * @param key 새 이슈 키(발급 완료, 아직 insert 전).
+     * @param actor 생성 행위자.
+     * @param summary 새 이슈 제목.
+     * @return 생성 계획. [TransitionPlan.emitEvents] 는 insert 뒤 [publishTransitionEvents] 로 발행한다.
+     * @throws IssueTransitionNotAllowedException 최초 전환 validator 가 거절할 때.
+     */
+    private fun planCreation(
+        start: WorkflowStartState,
+        key: IssueKey,
+        actor: ActorId,
+        summary: String,
+    ): TransitionPlan =
+        resolveWorkflowResult(
+            workflowPort.plan(
+                TransitionRequest(
+                    workflowKey = start.workflowKey,
+                    issueKey = key.value,
+                    fromStateKey = start.startStateKey,
+                    toStateKey = start.startStateKey,
+                    actorId = actor.value.toString(),
+                    issueFields = mapOf("summary" to summary, "resolution" to null),
+                    actorRoles = emptySet(),
+                    version = 1L,
+                    creation = true,
+                ),
+            ),
+            key,
+            CREATION_FROM_LABEL,
+            start.startStateKey,
+        )
+
+    /**
      * [TransitionPlan.emitEvents] 를 [TransitionEventPublisher] 로 발행한다.
      *
      * [transitionEventPublisher] 가 null 이면 발행 없이 조용히 종료한다(기존 단위 테스트 호환 fallback).
      * [transitionEventPublisher] 가 주입된 경우 각 [com.bts.shared.workflow.DomainEvent] 를 순서대로 발행한다.
-     * 호출 시점은 [transitionIssue] 의 클래스 레벨 @Transactional(REQUIRED) 트랜잭션 안이므로
-     * 상태 변경([IssueRepository.applyTransition])과 enqueue 가 원자적으로 커밋된다 (outbox 정합, DATA.md §7.2).
+     * 호출 시점은 [transitionIssue] · [createIssue] · [cloneIssue] 의 클래스 레벨 @Transactional(REQUIRED) 트랜잭션
+     * 안이므로 상태 변경([IssueRepository.applyTransition] · insert)과 enqueue 가 원자적으로 커밋된다 (outbox 정합, DATA.md §7.2).
      *
      * @param plan [WorkflowTransitionPort.plan] 이 반환한 전환 실행 계획.
      */
@@ -1573,6 +1622,9 @@ class IssueApplicationService(
     companion object {
         /** 템플릿 date 토큰 포맷 — ISO-8601 날짜(yyyy-MM-dd). */
         private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+        /** 생성 거절 메시지의 출발 자리 표기 — 생성에는 출발 상태가 없다 (WF-05-3). */
+        private const val CREATION_FROM_LABEL = "이슈 생성"
     }
 
     /**

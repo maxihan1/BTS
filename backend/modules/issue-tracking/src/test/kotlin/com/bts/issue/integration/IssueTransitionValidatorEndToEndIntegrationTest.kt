@@ -542,6 +542,70 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
         }
     }
 
+    // ── S4. 이슈 생성 — 최초(INITIAL) 전환의 validator 가 생성을 막는다 (WF-05-3) ──────
+
+    /**
+     * S4 — 최초 전환에 붙인 validator 가 이슈 생성에서 실제로 돈다.
+     *
+     * Jira Create 전환의 Validator 와 같은 자리다. 종전에는 이 규칙이 저장만 되고 생성 경로가 엔진을
+     * 건너뛰어 한 번도 평가되지 않았다. 생성에는 resolution 이 없으므로 RequiredField(resolution) 는
+     * 반드시 거절한다 — 그 거절이 보이면 생성 → 엔진 → DB 규칙 조회가 이어진 것이다.
+     *
+     * 비-공허 짝으로 같은 요청이 규칙을 지운 뒤에는 생성된다(같은 클래스 DB 를 공유하므로 지우고 끝낸다).
+     */
+    @Test
+    fun `S4 — 최초 전환의 RequiredField validator 가 이슈 생성을 막고 지우면 생성된다`() {
+        val service = webApplicationContext.getBean(IssueApplicationService::class.java)
+        val actor = com.bts.issue.domain.ActorId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
+        val request =
+            com.bts.issue.application.CreateIssueRequest(
+                projectKey = PROJECT_KEY,
+                summary = "최초 전환 validator 검증 이슈",
+                reporterId = actor,
+                typeId = null,
+                // 이 픽스처 프로젝트의 리드는 nil UUID 라 자동 배정을 타면 읽기에서 터진다 — 이 시나리오와 무관하다.
+                assignee = com.bts.issue.application.AssigneeIntent.None,
+            )
+        val validatorId = UUID.randomUUID()
+        withConnection { conn ->
+            conn.prepareStatement(
+                """
+                INSERT INTO workflow_validators (id, transition_id, type, config, display_order)
+                SELECT ?, t.id, 'RequiredField', '{"field":"resolution"}'::jsonb, 0
+                  FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id
+                 WHERE w.key = 'software-default' AND w.deleted_at IS NULL AND t.kind = 'INITIAL'
+                """.trimIndent(),
+            ).use { stmt ->
+                stmt.setObject(1, validatorId)
+                check(stmt.executeUpdate() == 1) { "software-default 에 최초 전환이 없다 — 시드가 바뀌었는지 본다" }
+            }
+        }
+
+        try {
+            service.createIssue(actor, request)
+            error("최초 전환 validator 가 생성을 막아야 하는데 이슈가 만들어졌습니다")
+        } catch (ex: com.bts.issue.domain.IssueTransitionNotAllowedException) {
+            log.info("S4 거절 확인: {}", ex.message)
+        } finally {
+            withConnection { conn ->
+                conn.prepareStatement("DELETE FROM workflow_validators WHERE id = ?").use { stmt ->
+                    stmt.setObject(1, validatorId)
+                    stmt.executeUpdate()
+                }
+            }
+        }
+
+        val created = service.createIssue(actor, request)
+        check(created.currentStateKey.isNotBlank()) { "규칙을 지운 뒤에는 생성돼야 한다" }
+    }
+
+    private fun <T> withConnection(block: (java.sql.Connection) -> T): T =
+        DriverManager.getConnection(
+            TestConfig.postgres.jdbcUrl,
+            TestConfig.postgres.username,
+            TestConfig.postgres.password,
+        ).use(block)
+
     // ── private helpers ───────────────────────────────────────────────────────
 
     /**
