@@ -148,6 +148,55 @@ class WorkflowCacheTest {
         }
     }
 
+    // ── 시나리오 7 — 전환 조회는 발행의 키 잠금을 기다린다 (WF-07-1) ──────────────────
+
+    @Nested
+    inner class FindForTransitionCase {
+        private fun connect() =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).apply {
+                autoCommit = false
+            }
+
+        @Test
+        fun `시나리오 7 - 발행이 키 잠금을 쥐고 있으면 전환 조회는 그 COMMIT 까지 기다린다`() {
+            val publisher = connect()
+            val transition = connect()
+            val executor = Executors.newSingleThreadExecutor()
+            try {
+                // 발행 쪽 — withKeyLock 과 같은 키로 배타 잠금을 잡고 COMMIT 하지 않는다.
+                publisher.prepareStatement("SELECT pg_advisory_xact_lock(?)").use { stmt ->
+                    stmt.setLong(1, "software-default".hashCode().toLong())
+                    stmt.executeQuery().close()
+                }
+                val txDsl = DSL.using(transition, SQLDialect.POSTGRES)
+                val cache = WorkflowCache(WorkflowRepository(txDsl), txDsl)
+
+                val loaded = executor.submit<Workflow?> { cache.findForTransition("software-default") }
+
+                assertThatThrownBy { loaded.get(300, TimeUnit.MILLISECONDS) }
+                    .isInstanceOf(java.util.concurrent.TimeoutException::class.java)
+                publisher.commit()
+                assertThat(loaded.get(5, TimeUnit.SECONDS)!!.key).isEqualTo("software-default")
+            } finally {
+                executor.shutdownNow()
+                transition.rollback()
+                transition.close()
+                publisher.close()
+            }
+        }
+
+        @Test
+        fun `시나리오 8 - 캐시에 옛 정의가 남아 있어도 전환 조회는 DB 를 읽는다`() {
+            val cache = WorkflowCache(realRepository, realDsl)
+            cache.injectForTest("software-default", fixtureWorkflow("software-default"))
+
+            val loaded = cache.findForTransition("software-default")!!
+
+            // 픽스처는 이름이 다르다 — DB 정의(「소프트웨어 기본」)가 와야 한다.
+            assertThat(loaded.name).isEqualTo("소프트웨어 기본")
+        }
+    }
+
     // ── 시나리오 3 — MockK 기반 advisory lock timeout ────────────────────────────
 
     @Nested

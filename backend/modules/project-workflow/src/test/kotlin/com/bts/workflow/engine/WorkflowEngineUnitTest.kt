@@ -116,7 +116,7 @@ class WorkflowEngineUnitTest {
         val validatorConfigB = ValidatorConfig("permission-check", emptyMap())
         val postActionConfigB = PostActionConfig("NOTIFY", emptyMap())
 
-        every { cache.findByKey("DEFAULT") } returns workflow
+        every { cache.findForTransition("DEFAULT") } returns workflow
         every {
             definitionRepo.findValidators("DEFAULT", transition)
         } returns listOf(validatorConfigA, validatorConfigB)
@@ -150,7 +150,7 @@ class WorkflowEngineUnitTest {
                     )
             }
 
-        every { cache.findByKey("DEFAULT") } returns workflow
+        every { cache.findForTransition("DEFAULT") } returns workflow
         every { definitionRepo.findValidators("DEFAULT", transition) } returns listOf(validatorConfigA)
         every { validatorFactory.create("RequiredField", validatorConfigA.config) } returns failValidator
 
@@ -169,7 +169,7 @@ class WorkflowEngineUnitTest {
 
     @Test
     fun `cache 에 workflow 가 없으면 WorkflowNotFoundException 을 던진다`() {
-        every { cache.findByKey("MISSING") } returns null
+        every { cache.findForTransition("MISSING") } returns null
 
         val request = baseRequest.copy(workflowKey = "MISSING")
 
@@ -216,7 +216,7 @@ class WorkflowEngineUnitTest {
             }
         val postActionCfg = PostActionConfig("SET_FIELD", emptyMap())
 
-        every { cache.findByKey("SEED") } returns seedWorkflow
+        every { cache.findForTransition("SEED") } returns seedWorkflow
         every { definitionRepo.findValidators("SEED", yamlTransition) } returns emptyList()
         every { definitionRepo.findPostActions("SEED", yamlTransition) } returns listOf(postActionCfg)
         every { postActionFactory.create("SET_FIELD", postActionCfg.config) } returns postAction
