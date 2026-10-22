@@ -359,6 +359,18 @@ class V208MigrationTest {
     }
 
     @Test
+    fun `발행 이력은 TRUNCATE 할 수 없다 (V211 문장 트리거)`() {
+        // 행 트리거는 TRUNCATE 에 발동하지 않는다. 문장 트리거가 없으면 이 한 줄이 예외 없이 이력을 비운다.
+        assertThat(statementFailsWith("TRUNCATE workflow_publications")).contains("append-only")
+    }
+
+    @Test
+    fun `부모를 CASCADE 로 비워도 발행 이력 TRUNCATE 가 거부된다`() {
+        // CASCADE 로 딸려 비워지는 자식에도 BEFORE TRUNCATE 가 발동한다 — 부모 workflows 에 따로 달지 않는 근거.
+        assertThat(statementFailsWith("TRUNCATE workflows CASCADE")).contains("append-only")
+    }
+
+    @Test
     fun `워크플로우를 지우면 발행 이력도 함께 지워진다 (CASCADE 는 트리거보다 먼저다)`() {
         // append-only 트리거가 CASCADE 까지 막으면 워크플로우를 영영 못 지운다.
         // 이력 보존과 삭제 가능성이 충돌하는 지점이라 어느 쪽인지 명시적으로 못박는다.

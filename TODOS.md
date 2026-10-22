@@ -2693,7 +2693,12 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 
 **선행.** 로드맵 PR 7(이관 실행). 포트·어댑터·워커·`cause` 표시가 그 PR 로 들어와 있다.
 
-## ⬜ 워크플로우 — 발행 이력 append-only 트리거가 `TRUNCATE` 에 뚫려 있다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — 발행 이력 append-only 트리거가 `TRUNCATE` 에 뚫려 있다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-07-5.** V208 은 이미 적용돼 고치면 Flyway checksum 이 깨지므로 **새 V211** 로
+`trg_workflow_publications_reject_truncate`(`BEFORE TRUNCATE … FOR EACH STATEMENT`)를 기존 함수로 달았다.
+부모 `workflows` 에는 달지 않았다 — `TRUNCATE workflows CASCADE` 도 딸려 비워지는 자식의 트리거가 막고,
+CASCADE 없는 `TRUNCATE workflows` 는 FK 로 원래 실패한다. 판별식은 `V208MigrationTest` 의 TRUNCATE 케이스 2개(red-first).
 
 **쉬운 말.** 발행 기록은 지울 수 없게 잠가 뒀는데, 표를 통째로 비우는 명령 하나에는 그 잠금이 걸리지 않는다.
 
