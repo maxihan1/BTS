@@ -467,6 +467,8 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.errorCode").value("TRANSITION_NOT_ALLOWED"))
+            // 검증기 사유가 화면까지 그대로 간다 (WF-01-1a)
+            .andExpect(jsonPath("$.reason").value("'해결 결과' 항목을 채워야 이 전환을 할 수 있습니다."))
 
         log.info("S1 통과 — resolution 누락 DONE 전환 → 409 TRANSITION_NOT_ALLOWED 확인")
     }

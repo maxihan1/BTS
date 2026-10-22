@@ -332,6 +332,7 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                         sut.transitionIssue(actor, issueKey, request)
                     }
                 ex.message shouldContain "조건 X 위반"
+                ex.reason shouldBe "조건 X 위반"
             }
 
             it("이벤트가 발행되지 않는다") {
@@ -370,6 +371,8 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 ex.issueKey shouldBe issueKey
                 ex.fromStatus shouldBe "open"
                 ex.toStatus shouldBe "IN_PROGRESS"
+                // 낡은 transitionId 가 여기로 온다 — 워크플로우 키를 화면에 띄우지 않는다 (WF-01-1a)
+                ex.reason shouldBe null
             }
 
             it("이벤트가 발행되지 않는다") {
@@ -408,6 +411,8 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
                 ex.issueKey shouldBe issueKey
                 ex.fromStatus shouldBe "open"
                 ex.toStatus shouldBe "IN_PROGRESS"
+                // 엔진 메시지는 표현식 원문을 싣는다 — 화면에는 고정 안내문만 (WF-01-1a)
+                ex.reason shouldBe "전환 조건을 확인하는 데 시간이 너무 오래 걸렸습니다. 잠시 후 다시 시도해 주세요."
             }
 
             it("이벤트가 발행되지 않는다") {

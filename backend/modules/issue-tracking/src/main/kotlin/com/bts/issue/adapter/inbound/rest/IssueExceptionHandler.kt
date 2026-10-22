@@ -400,7 +400,10 @@ class IssueExceptionHandler {
      * [IssueTransitionNotAllowedException] 으로 감싸서 throw 한다.
      * project-workflow BC 예외가 어댑터 계층까지 누출되지 않는다.
      *
-     * @param ex 이슈 키, 출발 상태, 도착 상태를 포함하는 예외.
+     * 거부 사유([IssueTransitionNotAllowedException.reason])가 있으면 `reason` 에 따로 싣는다 —
+     * `detail` 은 영어 로그 틀이라 화면은 `reason` 을 그대로 띄운다 (WF-01-1a).
+     *
+     * @param ex 이슈 키, 출발 상태, 도착 상태, 거부 사유를 포함하는 예외.
      */
     @ExceptionHandler(IssueTransitionNotAllowedException::class)
     fun handleTransitionNotAllowed(ex: IssueTransitionNotAllowedException): ProblemDetail {
@@ -416,7 +419,7 @@ class IssueExceptionHandler {
             title = "Transition Not Allowed",
             errorCode = IssueErrorCodes.TRANSITION_NOT_ALLOWED,
             detail = ex.message,
-        )
+        ).apply { ex.reason?.let { setProperty("reason", it) } }
     }
 
     // ── 422 WORKFLOW_NOT_CONFIGURED ──────────────────────────────────────────

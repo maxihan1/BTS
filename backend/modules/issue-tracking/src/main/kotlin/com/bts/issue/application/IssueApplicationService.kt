@@ -1267,19 +1267,21 @@ class IssueApplicationService(
                     toStatus = toStatus,
                     reason = result.message,
                 )
+            // 아래 둘은 사유를 화면에 내지 않는다 — 409 `reason` 으로 그대로 나가기 때문이다 (WF-01-1a).
+            //   WorkflowNotFound 는 화면이 들고 있던 낡은 transitionId 라 워크플로우 키가 오해만 부르고,
+            //   ExpressionTimeout 메시지는 표현식 원문을 싣는다. 원인은 project-workflow 어댑터가 로그에 남긴다.
             is TransitionResult.WorkflowNotFound ->
                 throw IssueTransitionNotAllowedException(
                     issueKey = issueKey,
                     fromStatus = fromStatus,
                     toStatus = toStatus,
-                    reason = "워크플로우를 찾을 수 없습니다: ${result.key}",
                 )
             is TransitionResult.ExpressionTimeout ->
                 throw IssueTransitionNotAllowedException(
                     issueKey = issueKey,
                     fromStatus = fromStatus,
                     toStatus = toStatus,
-                    reason = result.message,
+                    reason = "전환 조건을 확인하는 데 시간이 너무 오래 걸렸습니다. 잠시 후 다시 시도해 주세요.",
                 )
         }
 
