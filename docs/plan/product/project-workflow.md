@@ -50,7 +50,10 @@
 - [x] D5. 백엔드 테스트 — TDD + property-based test (전환 무결성) (책임. backend-engineer) (PR #10, 2026-05-22)
 - [x] D6. 프론트 UI — 워크플로우 다이어그램 (mermaid 또는 SVG) (책임. designer → frontend-engineer) (PR #13, 2026-05-22; 후속 cleanup PR #16/#20/#21)
 - [x] D7. E2E + NFR — 상태 전환 6단계 시나리오 (책임. qa-engineer) (PR #13 + PR #19, 2026-05-22 ~ 2026-05-23; 후속 cleanup PR #16/#20/#21)
-- [ ] D8. WF-01-1 이슈 화면 전환 경험 개선 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-7)
+- [ ] D8. WF-01-1a 막힌 전환이 이유를 말하지 않는다 — 검증기가 준 메시지를 일반 토스트 대신 그대로 보여 준다 (U14 · `docs/specs/2026-10-20-workflow-jira-parity-gap.md` §3·§6-7, Maxi 승격 2026-10-22)
+- [ ] D9. WF-01-1b 이슈 상태 드롭다운 — 네이티브 select 를 범주 색 메뉴로 · 전환 순서(`display_order` → 범주)를 편집기에서 정하고 이슈 화면이 따른다 · 자기 루프 전환을 구분한다 (U12 · G2, PR 은 BC 별로 가른다)
+- [ ] D10. WF-01-1c 전환 화면 정의 — 전환마다 입력받을 필드와 필수 여부를 워크플로우 정의(초안·발행)에 두고 편집기에서 설정한다 (G11 · U13)
+- [ ] D11. WF-01-1d 전환 화면 실행 — 전환 때 D10 의 필드 대화상자를 띄우고, 하드코딩된 해결 모달을 이것으로 일반화하며, 전환과 필드 갱신을 한 트랜잭션으로 저장한다 (G11 · U13 · G16)
 
 | 항목 | 임계 | 실측 (p95) |
 |---|---|---|
@@ -111,7 +114,6 @@
 - [x] D11. WF-04-4 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 — T3 (`TODOS.md`) (2026-10-22). *V210 이 구 컬럼만 찬 전환을 재백필한 뒤 `workflow_states` · 구 컬럼을 지우고 이연된 `to_status_id NOT NULL` · `ck_transition_kind_from` 을 건다. 선행 #528(issue-tracking 픽스처)*
 - [x] D12. WF-04-5 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (`TODOS.md`) (2026-10-22). *모듈에 검증 구현체를 선언하고 쓰기 바디 6곳에 `@Valid` · 워크플로우 key 는 `[A-Za-z0-9_-]+`. 실패는 컨트롤러 한정 advice 가 400 `WORKFLOW_INVALID_REQUEST`*
 - [x] D13. WF-04-6 캐시 무효화가 커밋 전에 일어난다 (`TODOS.md`) (2026-10-22). *`WorkflowCache.invalidate` 가 트랜잭션 안이면 `afterCommit` 으로 미룬다 — `withWriteLock` 과 직접 호출 10곳이 함께 고쳐진다*
-- [ ] D14. WF-04-7 상태·워크플로우 사용처 표시 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-8)
 - [x] D15. WF-04-8 테스트 빈틈 — 복제 전환 복사 0행 · 마이그레이션 테스트 컬럼 수 (`TODOS.md`) (#532, 2026-10-22). *복제 테스트가 NORMAL·GLOBAL·INITIAL 을 심어 사본 전환을 잰다 · agile-planning 마이그레이션 테스트 주석·이름에서 개수를 걷어 리스트를 유일한 정본으로 둔다*
 
 ### §2.5 FR-WF-05 — 전환 ID 식별자 (다중 전환 + 전역/최초 전환)
@@ -150,7 +152,6 @@
 - [x] D8. WF-06-1 규칙 `config` JSONB 가 크기·키 제한 없이 저장된다 (`TODOS.md`) (2026-10-22). *관문 `TransitionRuleGuard.checkValidator` 가 팩토리 dry-run 이 읽지 않은 키와 8KB 초과를 400 으로 거절 — 편집 API · 발행 공통 · 허용 키 사본 없음*
 - [x] D9. WF-06-2 전환 규칙 변경 로그에 행위자가 없다 (`TODOS.md`) (2026-10-22). *`ManageSchemeGuard` 가 해석한 행위자를 돌려주고 validator · post-action 컨트롤러의 생성·수정·삭제 줄이 서비스 호출 뒤에 `actorId` · 행 `id` 를 싣는다*
 - [x] D10. WF-06-3 전환 규칙 표면에 남은 사본 5종 (`TODOS.md`) (2026-10-22). *403 스텁은 테스트 헬퍼로, 403 봉투는 `TransitionRuleFrameworkErrors.accessDenied()` 한 벌로 접고 · 팩토리 헤더의 종류 수를 지우고 · `findByTransitionId` 지역변수 섀도잉을 개명 — 동작 영향 0*
-- [ ] D11. WF-06-4 조건·검증기 종류 확장 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-9)
 
 > **★ D7 스펙 deviation** (Maxi 결정, PR #407). `apps/web/e2e/workflow-validator.spec.ts` 는 규칙 CRUD ·
 > 편집 불가 행 · 비admin 게이팅 · 프리필 격리를 덮고, **「규칙을 걸면 전환이 막힌다」는 재지 않는다.**

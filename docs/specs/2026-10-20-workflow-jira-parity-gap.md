@@ -122,9 +122,9 @@
 | 4 | 스킴 변경 시 상태 이관 | B5 · G14 | FR-WF-02 · FR-WF-07 | project-workflow + issue-tracking | FR 후보 — FR-WF-07 이관 마법사 재사용 |
 | 5 | 후처리 런타임 완성 | B1 · G10 · G16 | FR-WF-03 · FR-WF-06 · FR-NT-05 | issue-tracking · notification · automation | FR 후보 — BC 별로 나눠야 한다 |
 | 6 | 상태 만들기 화면 | B6 | FR-WF-04 | project-workflow + apps/web | FR 후보 — 편집기 상태 피커에서 바로 만들기 |
-| 7 | 이슈 화면 전환 경험 | U12 · U13 · U14 · G11 · G2(순서) | FR-WF-01 · FR-WF-05 | issue-tracking + apps/web | FR 후보 |
-| 8 | 사용처·목록·영향 표시 | G4 · U5 · U9 · U10 · U7 | FR-WF-04 · FR-WF-07 | project-workflow + apps/web | FR 후보 |
-| 9 | 조건·검증기 종류 확장 | G8 · G9 | FR-WF-06 | project-workflow | FR 후보 — 기존 후속 후보 2건과 합친다 |
+| 7 | 이슈 화면 전환 경험 | U12 · U13 · U14 · G11 · G2(순서) | FR-WF-01 · FR-WF-05 | issue-tracking + apps/web | **승격** (Maxi 2026-10-22) — FR-WF-01 D8~D11 |
+| 8 | 사용처·목록·영향 표시 | G4 · U5 · U9 · U10 · U7 | FR-WF-04 · FR-WF-07 | project-workflow + apps/web | **기각** (Maxi 2026-10-22) — 필요가 생기면 다시 본다 |
+| 9 | 조건·검증기 종류 확장 | G8 · G9 | FR-WF-06 | project-workflow | **기각** (Maxi 2026-10-22) — 필요가 생기면 다시 본다 |
 | — | 낮음 / 보류 | G3 · G5 · G6 · G12 · U2 · U3 · U4 · U6 · U8 · U11 · U15 | — | — | 필요가 생기면 다시 본다 |
 
 ## 7. Jira 출처
