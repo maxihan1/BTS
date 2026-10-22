@@ -94,7 +94,9 @@ function renderLoadGate(loading: boolean, error: unknown): React.JSX.Element | n
     return null
   }
   const status = error instanceof ApiError || error instanceof WorkflowAdminApiError ? error.status : null
-  return <EmptyState title={status === 404 ? labels.editor.notFound : labels.editor.loadFailed} />
+  // 403 은 재시도로 안 풀린다 — 「불러오지 못했다」로 뭉개면 사용자가 다시 누르기만 한다 (FR-WF-08 D7).
+  const titles: Record<number, string> = { 403: labels.editor.forbidden, 404: labels.editor.notFound }
+  return <EmptyState title={(status !== null && titles[status]) || labels.editor.loadFailed} />
 }
 
 /**

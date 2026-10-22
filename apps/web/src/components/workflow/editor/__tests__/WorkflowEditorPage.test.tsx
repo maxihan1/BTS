@@ -83,6 +83,20 @@ describe('편집기 셸', () => {
     })
   })
 
+  it('권한 없는 사용자는 403 전용 문구를 본다 — 「불러오지 못했다」로 뭉개지 않는다 (FR-WF-08 D7)', async () => {
+    server.use(
+      http.get('/api/v1/workflows/:key/draft', () =>
+        HttpResponse.json({ code: 'WORKFLOW_DEFINITION_ACCESS_DENIED', detail: 'denied' }, { status: 403 }),
+      ),
+    )
+    renderEditor()
+
+    await waitFor(() => {
+      expect(screen.getByText(L.editor.forbidden)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(L.editor.loadFailed)).not.toBeInTheDocument()
+  })
+
   it('초안 표시줄이 「발행해야 반영된다」를 항상 띄운다', async () => {
     renderEditor()
     await waitForLoaded()

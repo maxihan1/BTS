@@ -109,16 +109,16 @@ export function ProjectWorkflowSchemeSettingsPage({
   }
 
   // 배정 조회 실패 — 404 는 이 엔드포인트에서 「프로젝트 없음」 하나뿐이므로 전용 안내를 낸다.
-  // 나머지(권한/서버 오류)는 아래 목록 조회 실패와 같은 문구로 묶는다.
+  // ★403 도 여기서 가른다. 배정 조회와 목록 조회는 같은 ASSIGN_SCHEME 이라 MEMBER 는 둘 다 403 이고,
+  //   이 분기가 먼저 return 하므로 아래 목록 403 분기에는 실서버에서 도달하지 않는다(FR-WF-08 D7).
   if (assignmentError != null) {
+    const status = assignmentError instanceof WorkflowSchemeApiError ? assignmentError.status : null
     return (
       <div className="p-8 space-y-6 max-w-2xl">
         <PageHeader />
-        {assignmentError instanceof WorkflowSchemeApiError && assignmentError.status === 404 ? (
-          <ProjectNotFoundCard />
-        ) : (
-          <SchemeLoadErrorCard />
-        )}
+        {status === 404 && <ProjectNotFoundCard />}
+        {status === 403 && <ForbiddenSchemeCard />}
+        {status !== 404 && status !== 403 && <SchemeLoadErrorCard />}
       </div>
     )
   }
