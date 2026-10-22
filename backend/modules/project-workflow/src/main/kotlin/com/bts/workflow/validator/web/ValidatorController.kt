@@ -56,6 +56,12 @@ import java.util.UUID
  * **세 번째 사본**이 되고, 세 목록은 서로를 검사하지 않으므로 갈린 사실이 드러나지 않는다.
  * 응답이 이 값을 실어야 소비자(화면) 쪽에도 같은 표가 생기지 않는다.
  *
+ * ### 변경 로그는 행위자를 싣고 서비스 호출 **뒤에** 남는다 (WF-06-2)
+ * 전환 규칙은 그 자체가 보안 통제이고 그것을 떼는 것도 이 API 다. 생성·수정·삭제 줄에 가드가
+ * 해석한 행위자를 싣는다 — 서비스로 내려보내 다시 적으면 행위자 해석이 두 벌이 된다. 줄은 서비스가
+ * 커밋한 뒤에 남겨 실패한 시도가 「바꿨다」로 기록되지 않게 하고, 생성 줄은 새 행 id 를 실어 나중의
+ * 삭제 줄과 이어지게 한다.
+ *
  * @param service validator 관리 서비스.
  * @param manageSchemeGuard 워크플로우 소유 스코프로 MANAGE_SCHEME 을 요구하는 공용 가드.
  * @param validatorFactory validator 인스턴스 팩토리. `phase` 의 진실 출처다.
@@ -103,14 +109,16 @@ class ValidatorController(
         @PathVariable transitionKey: String,
         @RequestBody request: ValidatorRequest,
     ): ResponseEntity<DataEnvelope<ValidatorResponse>> {
-        manageSchemeGuard.requireForWorkflow(workflowKey)
+        val actor = manageSchemeGuard.requireForWorkflow(workflowKey)
+        val row = service.create(workflowKey, transitionKey, request.type, request.config, request.displayOrder)
         log.info(
-            "ValidatorController.create workflowKey={} transitionKey={} type={}",
+            "ValidatorController.create actorId={} workflowKey={} transitionKey={} id={} type={}",
+            actor,
             workflowKey,
             transitionKey,
+            row.id,
             request.type,
         )
-        val row = service.create(workflowKey, transitionKey, request.type, request.config, request.displayOrder)
         return ResponseEntity.status(HttpStatus.CREATED).body(DataEnvelope(toResponse(row)))
     }
 
@@ -130,15 +138,16 @@ class ValidatorController(
         @PathVariable id: UUID,
         @RequestBody request: ValidatorRequest,
     ): ResponseEntity<DataEnvelope<ValidatorResponse>> {
-        manageSchemeGuard.requireForWorkflow(workflowKey)
+        val actor = manageSchemeGuard.requireForWorkflow(workflowKey)
+        val row = service.update(workflowKey, transitionKey, id, request.type, request.config, request.displayOrder)
         log.info(
-            "ValidatorController.update workflowKey={} transitionKey={} id={} type={}",
+            "ValidatorController.update actorId={} workflowKey={} transitionKey={} id={} type={}",
+            actor,
             workflowKey,
             transitionKey,
             id,
             request.type,
         )
-        val row = service.update(workflowKey, transitionKey, id, request.type, request.config, request.displayOrder)
         return ResponseEntity.ok(DataEnvelope(toResponse(row)))
     }
 
@@ -156,14 +165,15 @@ class ValidatorController(
         @PathVariable transitionKey: String,
         @PathVariable id: UUID,
     ) {
-        manageSchemeGuard.requireForWorkflow(workflowKey)
+        val actor = manageSchemeGuard.requireForWorkflow(workflowKey)
+        service.delete(workflowKey, transitionKey, id)
         log.info(
-            "ValidatorController.delete workflowKey={} transitionKey={} id={}",
+            "ValidatorController.delete actorId={} workflowKey={} transitionKey={} id={}",
+            actor,
             workflowKey,
             transitionKey,
             id,
         )
-        service.delete(workflowKey, transitionKey, id)
     }
 
     /**

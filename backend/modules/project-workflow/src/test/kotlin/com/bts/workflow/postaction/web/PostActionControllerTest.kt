@@ -2,6 +2,10 @@
 
 package com.bts.workflow.postaction.web
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
@@ -23,6 +27,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -247,6 +252,50 @@ class PostActionControllerTest {
 
         mockMvc.perform(delete("$basePath/$postActionId"))
             .andExpect(status().isNoContent)
+    }
+
+    /**
+     * 생성·수정·삭제 로그가 **누가** 했는지를 싣는다 (WF-06-2). 형제 `ValidatorControllerTest` 와
+     * 같은 계약이다 — 한쪽만 고치면 두 표면이 갈린다.
+     */
+    @Test
+    @WithMockUser(username = "11111111-1111-1111-1111-111111111111")
+    fun `생성 수정 삭제 로그에 행위자와 행 id 가 실린다`() {
+        val row =
+            PostActionRow(
+                id = postActionId,
+                transitionId = transitionId,
+                type = "CALL_WEBHOOK",
+                config = mapOf("url" to "https://hook.example.com", "method" to "POST"),
+                displayOrder = 0,
+            )
+        justRun {
+            permissionResolver.requirePermission(any(), WorkflowSchemePermission.MANAGE_SCHEME, WorkflowScope.Global)
+        }
+        every { service.create(workflowKey, transitionKey, "CALL_WEBHOOK", any(), 0) } returns row
+        every { service.update(workflowKey, transitionKey, postActionId, "CALL_WEBHOOK", any(), 0) } returns row
+        justRun { service.delete(workflowKey, transitionKey, postActionId) }
+        val logger = LoggerFactory.getLogger(PostActionController::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().also { it.start() }
+        logger.addAppender(appender)
+
+        try {
+            val json =
+                mapper.writeValueAsString(mapOf("type" to "CALL_WEBHOOK", "config" to row.config, "displayOrder" to 0))
+            mockMvc.perform(post(basePath).contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isCreated)
+            mockMvc.perform(put("$basePath/$postActionId").contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isOk)
+            mockMvc.perform(delete("$basePath/$postActionId"))
+                .andExpect(status().isNoContent)
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        val lines = appender.list.filter { it.level == Level.INFO }.map { it.formattedMessage }
+        assertThat(lines).hasSize(3).allSatisfy {
+            assertThat(it).contains("actorId=11111111-1111-1111-1111-111111111111").contains("id=$postActionId")
+        }
     }
 
     // ── 권한 Guard — 403 (리소스 조회 전) ───────────────────────────────────────
