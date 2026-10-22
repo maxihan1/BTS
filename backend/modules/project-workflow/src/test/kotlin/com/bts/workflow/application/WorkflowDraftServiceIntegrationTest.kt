@@ -305,6 +305,27 @@ class WorkflowDraftServiceIntegrationTest {
             .isInstanceOf(WorkflowInvalidRequestException::class.java)
     }
 
+    /** WF-05-3 — 편집 API 와 같은 관문이다. 초안 저장 → 발행이 최초 전환 조건의 우회로가 되면 안 된다. */
+    @Test
+    fun `최초 전환에 조건 validator 를 담은 초안은 저장 단계에서 막힌다`() {
+        val key = seedWorkflow()
+        val base = validDraft(key)
+        fun withValidator(rule: DraftRuleDto) =
+            base.copy(transitions = base.transitions.map { it.copy(validators = listOf(rule)) })
+
+        assertThatThrownBy {
+            service.save(
+                ACTOR,
+                key,
+                withValidator(DraftRuleDto("permission-check", mapOf("permission" to "TRANSITION_ISSUE"))),
+                baseVersion = 0,
+            )
+        }.isInstanceOf(WorkflowInvalidRequestException::class.java)
+
+        // 비-공허 짝. 같은 최초 전환에 실행 validator 는 저장돼야 위 거절이 「조건」 때문이다.
+        service.save(ACTOR, key, withValidator(DraftRuleDto("RequiredField", mapOf("field" to "summary"))), baseVersion = 0)
+    }
+
     // ── ★ 다이어그램 노드 좌표 (FR-WF-07 D8) ─────────────────────────────────
     //
     // 편집기에서 노드를 끌어 놓은 결과가 초안에 담긴다. 여기서 재는 것은 **저장 → 조회** 반쪽이고,

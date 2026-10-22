@@ -29,13 +29,13 @@ class NotStatusCategoryValidator(
 
     /**
      * [ctx] 의 [TransitionContext.fromState] 카테고리가 [forbidden] 이면 [ValidatorResult.Fail] 을 반환한다.
-     * 그 외에는 [ValidatorResult.Pass] 를 반환한다.
+     * 그 외에는 [ValidatorResult.Pass] 를 반환한다. 출발 상태가 없는 이슈 생성은 막을 카테고리도 없다.
      *
      * @param ctx 전환 요청 컨텍스트.
      * @return [ValidatorResult.Pass] 또는 [ValidatorResult.Fail].
      */
     override fun validate(ctx: TransitionContext): ValidatorResult {
-        if (ctx.fromState.category == forbidden) {
+        if (ctx.fromState?.category == forbidden) {
             return ValidatorResult.Fail(
                 field = null,
                 reason = "from state category '$forbidden' is forbidden",

@@ -79,6 +79,22 @@ class TransitionKeyResolver(
     }
 
     /**
+     * 전환이 이슈 생성 진입(최초 · INITIAL) 전환인지 본다. 규칙 관문이 조건 validator 를 거를 때 쓴다 (WF-05-3).
+     *
+     * @param transitionId 해석이 끝난 전환 UUID.
+     * @return INITIAL 이면 true. 행이 없으면 false — 해석 직후라 그럴 일이 없다.
+     */
+    @Transactional(readOnly = true)
+    fun isInitial(transitionId: UUID): Boolean =
+        dsl
+            .fetchExists(
+                WORKFLOW_TRANSITIONS,
+                WORKFLOW_TRANSITIONS.ID
+                    .eq(transitionId)
+                    .and(WORKFLOW_TRANSITIONS.KIND.eq(TransitionKind.INITIAL.name)),
+            )
+
+    /**
      * (workflowKey, fromStateKey, toStateKey) 에 걸리는 전환 id 를 **전부** 반환한다.
      *
      * ★ 단건을 가정하지 않는다. 같은 (from,to) 구간에 전환이 여럿일 수 있고, GLOBAL 은 조건이

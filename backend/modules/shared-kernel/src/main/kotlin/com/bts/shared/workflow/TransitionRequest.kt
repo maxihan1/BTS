@@ -39,7 +39,7 @@ private val transitionRequestValidation: Validation<TransitionRequest> =
  *
  * @param workflowKey 적용할 워크플로우의 고유 키. 예: "DEFAULT", "BUGFIX".
  * @param issueKey 전환 대상 이슈의 키. 예: "BTS-1".
- * @param fromStateKey 현재 이슈 상태 키. 예: "TODO".
+ * @param fromStateKey 현재 이슈 상태 키. 예: "TODO". 이슈 생성이면 [INITIAL_FROM_STATE_KEY] 다.
  * @param toStateKey 전환 목표 상태 키. 예: "IN_PROGRESS".
  * @param actorId 전환을 실행하는 사용자 ID.
  * @param issueFields 현재 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다.
@@ -69,4 +69,15 @@ data class TransitionRequest(
      * @return [io.konform.validation.Valid] 또는 [io.konform.validation.Invalid].
      */
     fun validate(): ValidationResult<TransitionRequest> = transitionRequestValidation(this)
+
+    companion object {
+        /**
+         * 이슈 생성 요청의 출발 자리 토큰 (WF-05-3). 이슈가 아직 없으므로 출발 상태도 없다.
+         *
+         * 이 값을 [fromStateKey] 에 실으면 project-workflow 가 그 워크플로우의 최초(INITIAL) 전환
+         * 규칙을 돌린다 — Jira Create 전환의 validator · post function 과 같은 자리다.
+         * 값은 project-workflow `TransitionKind.INITIAL` 의 이름과 같다(그쪽 테스트가 지킨다).
+         */
+        const val INITIAL_FROM_STATE_KEY = "INITIAL"
+    }
 }

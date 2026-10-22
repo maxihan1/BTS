@@ -183,6 +183,10 @@ class WorkflowEngine(
         )
 
         val workflow = resolveWorkflow(req)
+        // 이슈 생성인데 최초 전환이 없는 워크플로우 — 시작 상태가 displayOrder 폴백이라 돌릴 규칙이 없다.
+        if (req.fromStateKey == INITIAL_FROM && workflow.transitions.none { it.kind == TransitionKind.INITIAL }) {
+            return TransitionPlan(req.toStateKey, emptyList(), emptyList())
+        }
         val transition = resolveTransition(req, workflow)
         val ctx = buildContext(req, workflow, transition)
 
@@ -376,7 +380,9 @@ class WorkflowEngine(
      * - [TransitionKind.NORMAL] — 출발 상태가 [fromStateKey] 와 같을 때만 후보다.
      * - [TransitionKind.GLOBAL] — 현재 상태와 무관하게 항상 후보다. 단 도착지가 [fromStateKey] 와 같으면
      *   자기 자신으로 가는 전환이므로 제외한다 (spec 2026-08-20-backend-workflow-transition-id-multi-global E1).
-     * - [TransitionKind.INITIAL] — 이슈 생성 진입에만 쓰이며 전환 후보가 아니다.
+     * - [TransitionKind.INITIAL] — 이슈 생성 진입에만 쓰인다. [fromStateKey] 가 생성 토큰
+     *   ([TransitionRequest.INITIAL_FROM_STATE_KEY])일 때 **그것만** 후보다 (WF-05-3).
+     *   생성에서 NORMAL·GLOBAL 이 섞이면 GLOBAL 전부가 후보가 되어 모호 409 가 난다.
      *
      * 열거 경로([availableTransitions])와 실행 경로([resolveTransition])의 후보 산출이 갈라지면
      * 「목록에는 보이는데 실행은 안 되는」 전환이 생긴다. 두 경로 모두 이 함수를 거쳐야 한다.
@@ -390,9 +396,9 @@ class WorkflowEngine(
     ): List<WorkflowTransition> =
         workflow.transitions.filter { transition ->
             when (transition.kind) {
-                TransitionKind.NORMAL -> transition.fromStateKey == fromStateKey
-                TransitionKind.GLOBAL -> transition.toStateKey != fromStateKey
-                TransitionKind.INITIAL -> false
+                TransitionKind.NORMAL -> fromStateKey != INITIAL_FROM && transition.fromStateKey == fromStateKey
+                TransitionKind.GLOBAL -> fromStateKey != INITIAL_FROM && transition.toStateKey != fromStateKey
+                TransitionKind.INITIAL -> fromStateKey == INITIAL_FROM
             }
         }
 
@@ -401,9 +407,14 @@ class WorkflowEngine(
         workflow: Workflow,
         transition: WorkflowTransition,
     ): TransitionContext {
-        val fromState: WorkflowState =
-            workflow.states.find { it.key == req.fromStateKey }
-                ?: throw WorkflowNotFoundException("${req.workflowKey}::state::${req.fromStateKey}")
+        // 이슈 생성에는 출발 상태가 없다 — 최초 전환은 출발지 없이 도착 상태로만 들어간다.
+        val fromState: WorkflowState? =
+            if (transition.kind == TransitionKind.INITIAL) {
+                null
+            } else {
+                workflow.states.find { it.key == req.fromStateKey }
+                    ?: throw WorkflowNotFoundException("${req.workflowKey}::state::${req.fromStateKey}")
+            }
         val issueView =
             DefaultIssueView(
                 key = req.issueKey,
@@ -525,3 +536,6 @@ class WorkflowEngine(
         return true
     }
 }
+
+/** 이슈 생성 요청의 출발 자리 토큰. 정본은 shared-kernel 이고 [TransitionKind.INITIAL] 의 이름과 같다. */
+private const val INITIAL_FROM = TransitionRequest.INITIAL_FROM_STATE_KEY

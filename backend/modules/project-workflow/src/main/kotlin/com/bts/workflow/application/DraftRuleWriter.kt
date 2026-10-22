@@ -2,6 +2,7 @@
 
 package com.bts.workflow.application
 
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.postaction.PostActionRepository
 import com.bts.workflow.validator.ValidatorRepository
@@ -44,7 +45,7 @@ class DraftRuleWriter(
         definition.transitions.forEachIndexed { index, transition ->
             val transitionId = transitionIds[index] ?: return@forEachIndexed
             transition.validators.forEachIndexed { order, rule ->
-                guard.checkValidator(rule.type, rule.config)
+                guard.checkValidator(rule.type, rule.config, transition.kind == TransitionKind.INITIAL.name)
                 validatorRepository.insert(transitionId, rule.type, rule.config, order)
             }
             transition.postActions.forEachIndexed { order, rule ->
@@ -64,7 +65,8 @@ class DraftRuleWriter(
      */
     fun checkAll(definition: WorkflowDraftDefinition) {
         definition.transitions.forEach { transition ->
-            transition.validators.forEach { guard.checkValidator(it.type, it.config) }
+            val onInitial = transition.kind == TransitionKind.INITIAL.name
+            transition.validators.forEach { guard.checkValidator(it.type, it.config, onInitial) }
             transition.postActions.forEach { guard.checkPostAction(it.type, it.config) }
         }
     }
