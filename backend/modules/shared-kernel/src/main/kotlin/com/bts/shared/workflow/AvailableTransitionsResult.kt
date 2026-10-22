@@ -85,6 +85,8 @@ sealed interface AvailableTransitionsResult {
  *   `PostActionController` 의 `.../transitions/{transitionKey}/post-actions` 경로 세그먼트로도 소비된다.
  *   전환 **지목**에는 [transitionId] 를 써라. [key] 는 같은 상태쌍의 전환 둘을 못 가른다.
  *   null 은 미계산 상태다.
+ * @param screen 전환 화면 — 전환 때 대화상자로 받을 필드(FR-WF-01 D11). 비면 화면 없이 바로 전환한다.
+ *   필수([TransitionScreenFieldView.required])는 [WorkflowTransitionPort.plan] 이 [TransitionRequest.issueFields] 로 강제한다.
  */
 data class AvailableTransitionView(
     val fromStateKey: String,
@@ -94,4 +96,17 @@ data class AvailableTransitionView(
     val transitionId: UUID? = null,
     val kind: String? = null,
     val key: String? = null,
+    val screen: List<TransitionScreenFieldView> = emptyList(),
+)
+
+/**
+ * 전환 화면의 필드 한 칸 — published language.
+ *
+ * @param field 필드 키. `resolution` · `assignee` · `comment` 중 하나이고, 그 이름 그대로
+ *   [TransitionRequest.issueFields] 의 키다 — 호출자 BC 는 전환 후 값을 그 키로 실어 보낸다.
+ * @param required 비어 있으면 전환을 거절하는지. 화면이 정본이다(Maxi 2026-10-22).
+ */
+data class TransitionScreenFieldView(
+    val field: String,
+    val required: Boolean,
 )

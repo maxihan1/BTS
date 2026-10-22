@@ -311,7 +311,7 @@ class WorkflowPublishServiceIntegrationTest {
      * 초안 서비스는 이 경로에 쓰이지 않으므로 목으로 둔다. 컨트롤러를 끼우는 이유는 하나다 —
      * 서비스만 직접 부르면 「본문의 `projectKeys` 를 컨트롤러가 실어 보낸다」는 회귀를 못 잡는다.
      */
-    private val controller = WorkflowDraftController(mockk(relaxed = true), service)
+    private val controller = WorkflowDraftController(mockk(relaxed = true), service, objectMapper)
 
     /** [CurrentActor] 가 SecurityContext 를 읽으므로 컨트롤러를 부르는 동안만 채워 둔다. */
     private fun <T> withActor(

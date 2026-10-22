@@ -5,6 +5,7 @@ package com.bts.workflow.web
 import com.bts.workflow.application.WorkflowDraftService
 import com.bts.workflow.application.WorkflowPublishService
 import com.bts.workflow.domain.exception.WorkflowDraftNotFoundException
+import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.DraftResponse
 import com.bts.workflow.web.dto.MigrateRequest
@@ -14,6 +15,9 @@ import com.bts.workflow.web.dto.PublishRequest
 import com.bts.workflow.web.dto.PublishResponse
 import com.bts.workflow.web.dto.ResetToDefaultRequest
 import com.bts.workflow.web.dto.SaveDraftRequest
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -43,6 +47,7 @@ import org.springframework.web.bind.annotation.RestController
 class WorkflowDraftController(
     private val draftService: WorkflowDraftService,
     private val publishService: WorkflowPublishService,
+    private val objectMapper: ObjectMapper,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -77,8 +82,21 @@ class WorkflowDraftController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun saveDraft(
         @PathVariable key: String,
-        @RequestBody request: SaveDraftRequest,
+        @RequestBody body: JsonNode,
     ) {
+        // D10 이전 편집기 탭은 전환에 `screen` 을 싣지 않는다. 그대로 받으면 기본값(빈 화면)으로 읽혀
+        // 화면 정의가 조용히 지워진다 — 지금 편집기는 늘 싣으므로(zod strict) 키가 없으면 옛 탭이다.
+        if (body.path("definition").path("transitions").any { !it.has("screen") }) {
+            throw WorkflowInvalidRequestException(key, "편집기가 옛 버전입니다. 새로 고침한 뒤 다시 저장하세요.")
+        }
+        val request =
+            try {
+                objectMapper.treeToValue(body, SaveDraftRequest::class.java)
+            } catch (e: JsonProcessingException) {
+                // 응답에는 고정 문구만 — Jackson 원문에는 내부 클래스 이름이 실린다.
+                log.info("WorkflowDraftController.saveDraft unreadable workflow={} cause={}", key, e.originalMessage)
+                throw WorkflowInvalidRequestException(key, "요청 본문을 읽을 수 없습니다.", e)
+            }
         val actor = CurrentActor.current()
         log.info(
             "WorkflowDraftController.saveDraft workflow={} states={} baseVersion={}",

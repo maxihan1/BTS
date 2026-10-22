@@ -19,16 +19,8 @@ transitions:
     to: resolved
     name: Resolve
     screen: [{ field: resolution, required: true }]
-    validators:
-      - type: RequiredField
-        config:
-          field: resolution
   - from: resolved
     to: closed
     name: Close
     screen: [{ field: resolution, required: true }]
-    validators:
-      - type: RequiredField
-        config:
-          field: resolution
   - { from: resolved, to: in_progress, name: Reopen }

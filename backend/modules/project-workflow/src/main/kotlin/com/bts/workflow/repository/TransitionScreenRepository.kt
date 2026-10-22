@@ -5,6 +5,7 @@ package com.bts.workflow.repository
 import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.jooq.tables.WorkflowTransitionScreenFields.Companion.WORKFLOW_TRANSITION_SCREEN_FIELDS
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.springframework.stereotype.Repository
 import java.util.UUID
@@ -35,30 +36,34 @@ fun DSLContext.insertTransitionScreen(
 class TransitionScreenRepository(
     private val dsl: DSLContext,
 ) {
-    /**
-     * 그 워크플로우의 전환 id → 화면 필드. 화면이 없는 전환은 키가 없다.
-     * 필드는 [DraftScreenFieldDto.FIELDS] 순서로 정렬한다 — 테이블에 순서 컬럼이 없다(V212).
-     */
+    /** 그 워크플로우의 전환 id → 화면 필드 — [fetchTransitionScreens]. */
     fun findByWorkflowId(workflowId: UUID): Map<UUID, List<DraftScreenFieldDto>> =
-        dsl
-            .select(
-                WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID,
-                WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD,
-                WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED,
-            )
-            .from(WORKFLOW_TRANSITION_SCREEN_FIELDS)
-            .join(WORKFLOW_TRANSITIONS)
-            .on(WORKFLOW_TRANSITIONS.ID.eq(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID))
-            .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
-            .fetch()
-            .groupBy(
-                { it.required(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID) },
-                {
-                    DraftScreenFieldDto(
-                        field = it.required(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD),
-                        required = it.required(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED),
-                    )
-                },
-            )
-            .mapValues { (_, fields) -> fields.sortedBy { field -> DraftScreenFieldDto.FIELDS.indexOf(field.field) } }
+        dsl.fetchTransitionScreens(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
 }
+
+/**
+ * [condition] 에 걸리는 전환의 id → 화면 필드. 화면이 없는 전환은 키가 없다.
+ * 필드는 [DraftScreenFieldDto.FIELDS] 순서로 정렬한다 — 테이블에 순서 컬럼이 없다(V212).
+ * 편집기([TransitionScreenRepository])와 엔진이 읽는 [WorkflowRepository] 가 같은 SQL 을 쓰게 한 벌로 둔다.
+ */
+fun DSLContext.fetchTransitionScreens(condition: Condition): Map<UUID, List<DraftScreenFieldDto>> =
+    select(
+        WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID,
+        WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD,
+        WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED,
+    )
+        .from(WORKFLOW_TRANSITION_SCREEN_FIELDS)
+        .join(WORKFLOW_TRANSITIONS)
+        .on(WORKFLOW_TRANSITIONS.ID.eq(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID))
+        .where(condition)
+        .fetch()
+        .groupBy(
+            { it.required(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID) },
+            {
+                DraftScreenFieldDto(
+                    field = it.required(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD),
+                    required = it.required(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED),
+                )
+            },
+        )
+        .mapValues { (_, fields) -> fields.sortedBy { field -> DraftScreenFieldDto.FIELDS.indexOf(field.field) } }

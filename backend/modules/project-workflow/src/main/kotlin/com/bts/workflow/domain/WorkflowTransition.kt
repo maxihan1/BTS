@@ -31,6 +31,8 @@ import java.util.UUID
  * @property key 하위호환용 계산 키. [key] 는 URL 경로 세그먼트로 소비되므로
  *   (`PostActionController` 의 `.../transitions/{transitionKey}/post-actions`) 경로 문자로 안전한 토큰만 쓴다.
  *   NORMAL 은 종전대로 `from__to`, GLOBAL·INITIAL 은 `KIND__to`.
+ * @property screen 전환 화면 — 전환 때 대화상자로 받을 필드와 필수 여부 (FR-WF-01 D10 · D11).
+ *   비면 화면 없이 바로 전환한다. 엔진이 가용 전환에 실어 보내고 실행 때 필수를 강제한다.
  */
 data class WorkflowTransition(
     val fromStateKey: String?,
@@ -38,6 +40,7 @@ data class WorkflowTransition(
     val name: String,
     val id: UUID = UUID.randomUUID(),
     val kind: TransitionKind = TransitionKind.NORMAL,
+    val screen: List<DraftScreenFieldDto> = emptyList(),
 ) {
     val key: String
         get() =

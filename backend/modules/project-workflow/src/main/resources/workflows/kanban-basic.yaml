@@ -18,7 +18,3 @@ transitions:
     to: done
     name: Finish
     screen: [{ field: resolution, required: true }]
-    validators:
-      - type: RequiredField
-        config:
-          field: resolution

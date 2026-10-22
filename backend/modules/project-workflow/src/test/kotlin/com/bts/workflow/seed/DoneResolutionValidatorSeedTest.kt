@@ -1,4 +1,4 @@
-// DONE 카테고리 진입 전환에 RequiredField(resolution) validator 시드 검증 — FR-IS-07 Task B7
+// DONE 카테고리 진입 전환의 해결 결과 필수 시드 검증 — 화면이 정본이고 RequiredField(resolution) 검증기는 없다 (FR-IS-07 B7 · FR-WF-01 D11)
 
 package com.bts.workflow.seed
 
@@ -10,7 +10,6 @@ import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.TransitionKind
-import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
 import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
@@ -39,23 +38,19 @@ import org.springframework.transaction.support.TransactionTemplate
 import java.util.concurrent.Executors
 
 /**
- * DONE 카테고리 진입 전환에 RequiredField(resolution) validator 가 시드되는지 검증한다.
+ * DONE 카테고리 진입 전환의 해결 결과 필수가 시드되는지 검증한다 — D11 부터 검증기가 아니라 전환 화면이다.
  *
  * SharedPostgres(Testcontainers 공용 PostgreSQL) + YamlSeedService (production 구현체) 전체 스택.
  * Spring ApplicationContext 없이 의존 객체를 직접 조합한다.
  *
  * ## 검증 범위 (FR-IS-07 Task B7 명세)
  *
- * ### S1. 표준 4 워크플로우 DONE 진입 전환마다 RequiredField(resolution) validator DB 존재
- * - software-default: in_review→done, done→closed, open→closed
- * - bug-tracking: in_progress→resolved, resolved→closed
- * - simple: doing→done
- * - kanban-basic: in_progress→done
+ * ### S1. 표준 4 워크플로우 어느 전환에도 RequiredField(resolution) validator 가 없다 (FR-WF-01 D11)
  *
  * ### S2. plan() — resolution 없이 DONE 전환 시 WorkflowValidatorFailureException
  * Given  software-default 워크플로우, issueFields 에 resolution 없음
  * When   in_review→done plan() 호출
- * Then   WorkflowValidatorFailureException, field == "resolution"
+ * Then   WorkflowValidatorFailureException(TransitionScreen), field == "resolution"
  *
  * ### S3. availableTransitions — EXECUTION 페이즈 validator 가 있어도 DONE 전환이 목록에 포함된다 (A3)
  * Given  software-default 워크플로우, from = "in_review"
@@ -63,7 +58,7 @@ import java.util.concurrent.Executors
  * Then   결과에 toStateKey == "done" 전환 포함
  *
  * ## TDD 근거
- * B7 RED — production YAML 에 validators 미추가 상태에서 S1 을 실행하면 RequiredField 가 0건이어서 실패한다.
+ * B7 RED — production YAML 에 validators 미추가 상태에서 실패하던 자리다. D11 부터 강제는 화면(S4)이 하고 S1 은 검증기가 없음을 잰다.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class DoneResolutionValidatorSeedTest {
@@ -118,174 +113,29 @@ class DoneResolutionValidatorSeedTest {
         }
     }
 
-    // ── 픽스처 헬퍼 ─────────────────────────────────────────────────────────────
+    // ── S1. 해결 결과 검증기는 시드되지 않는다 — 필수의 정본은 화면이다 (FR-WF-01 D11) ──────────────
 
     /**
-     * 시드가 DB 에 심은 전환을 되읽어 **DB 가 정한 `workflow_transitions.id`** 를 가진 전환을 준다.
-     *
-     * validator/post_action 조회는 (from, to) 상태쌍이 아니라 [WorkflowTransition.id] 로 전환을
-     * 해석한다 (V207 · FR-WF-05 · F1). 픽스처가 [WorkflowTransition] 을 직접 만들면 `id` 가 임의
-     * UUID 라 조회가 **언제나 빈 리스트**이고, 아래 단언들이 통째로 공허해진다.
-     *
-     * 이름까지 함께 맞춘다 — 같은 상태쌍에 이름이 다른 전환을 여럿 둘 수 있게 된 것이 이 변경의
-     * 골자라, (from, to) 만으로 고르면 그 자리가 다시 모호해진다.
-     *
-     * @param workflowKey 시드된 워크플로우 키
-     * @param from 출발 상태 key
-     * @param to 도착 상태 key
-     * @param name 전환 표시 이름 (YAML 시드의 `name`)
-     * @return DB 의 전환 id 를 실은 [WorkflowTransition]
-     */
-    private fun seededTransition(
-        workflowKey: String,
-        from: String,
-        to: String,
-        name: String,
-    ): WorkflowTransition {
-        val workflow =
-            workflowRepository.findByKey(workflowKey)
-                ?: error("시드된 워크플로우가 없다: $workflowKey")
-        return workflow.transitions.firstOrNull {
-            it.fromStateKey == from && it.toStateKey == to && it.name == name
-        } ?: error("시드된 전환이 없다: $workflowKey $from→$to '$name'")
-    }
-
-    // ── S1. DONE 진입 전환마다 RequiredField(resolution) validator 존재 ──────────────
-
-    /**
-     * software-default: in_review→done 전환에 RequiredField(resolution) validator 가 존재한다.
-     *
-     * Given  software-default 워크플로우 시드 완료
-     * When   findValidators("software-default", in_review→done) 조회
-     * Then   RequiredField 타입 validator 가 1건 이상 존재하고, config.field == "resolution"
+     * Maxi 2026-10-22 「검증기를 걷는다」. 표준 4 워크플로우 어느 전환에도 `RequiredField(resolution)` 이 없다.
+     * 강제는 S4 의 화면 「해결 결과 필수」가 하고, S2 가 그 강제를 잰다.
      */
     @Test
     @Order(1)
-    fun `software-default in_review→done 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("software-default", from = "in_review", to = "done", name = "Approve")
-        val validators = definitionRepo.findValidators("software-default", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("in_review→done 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-1 통과 — software-default in_review→done RequiredField 확인: {}", validators.map { it.type })
-    }
-
-    /**
-     * software-default: done→closed 전환에 RequiredField(resolution) validator 가 존재한다.
-     */
-    @Test
-    @Order(2)
-    fun `software-default done→closed 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("software-default", from = "done", to = "closed", name = "Close")
-        val validators = definitionRepo.findValidators("software-default", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("done→closed 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-2 통과 — software-default done→closed RequiredField 확인: {}", validators.map { it.type })
-    }
-
-    /**
-     * software-default: open→closed 전환에 RequiredField(resolution) validator 가 존재한다.
-     */
-    @Test
-    @Order(3)
-    fun `software-default open→closed 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("software-default", from = "open", to = "closed", name = "Cancel")
-        val validators = definitionRepo.findValidators("software-default", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("open→closed 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-3 통과 — software-default open→closed RequiredField 확인: {}", validators.map { it.type })
-    }
-
-    /**
-     * bug-tracking: in_progress→resolved 전환에 RequiredField(resolution) validator 가 존재한다.
-     */
-    @Test
-    @Order(4)
-    fun `bug-tracking in_progress→resolved 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("bug-tracking", from = "in_progress", to = "resolved", name = "Resolve")
-        val validators = definitionRepo.findValidators("bug-tracking", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("bug-tracking in_progress→resolved 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-4 통과 — bug-tracking in_progress→resolved RequiredField 확인: {}", validators.map { it.type })
-    }
-
-    /**
-     * bug-tracking: resolved→closed 전환에 RequiredField(resolution) validator 가 존재한다.
-     */
-    @Test
-    @Order(5)
-    fun `bug-tracking resolved→closed 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("bug-tracking", from = "resolved", to = "closed", name = "Close")
-        val validators = definitionRepo.findValidators("bug-tracking", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("bug-tracking resolved→closed 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-5 통과 — bug-tracking resolved→closed RequiredField 확인: {}", validators.map { it.type })
-    }
-
-    /**
-     * simple: doing→done 전환에 RequiredField(resolution) validator 가 존재한다.
-     */
-    @Test
-    @Order(6)
-    fun `simple doing→done 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("simple", from = "doing", to = "done", name = "Complete")
-        val validators = definitionRepo.findValidators("simple", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("simple doing→done 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-6 통과 — simple doing→done RequiredField 확인: {}", validators.map { it.type })
-    }
-
-    /**
-     * kanban-basic: in_progress→done 전환에 RequiredField(resolution) validator 가 존재한다.
-     */
-    @Test
-    @Order(7)
-    fun `kanban-basic in_progress→done 전환에 RequiredField resolution validator 가 존재한다`() {
-        val transition = seededTransition("kanban-basic", from = "in_progress", to = "done", name = "Finish")
-        val validators = definitionRepo.findValidators("kanban-basic", transition)
-
-        val requiredField = validators.find { it.type == "RequiredField" }
-        assertThat(requiredField)
-            .`as`("kanban-basic in_progress→done 전환에 RequiredField validator 가 없습니다. B7 YAML 추가가 필요합니다.")
-            .isNotNull
-        assertThat(requiredField!!.config).containsEntry("field", "resolution")
-
-        log.info("S1-7 통과 — kanban-basic in_progress→done RequiredField 확인: {}", validators.map { it.type })
+    fun `S1 - 표준 워크플로우 어느 전환에도 RequiredField resolution 검증기가 없다`() {
+        listOf("software-default", "bug-tracking", "simple", "kanban-basic").forEach { key ->
+            val workflow = workflowRepository.findByKey(key) ?: error("시드된 워크플로우가 없다: $key")
+            workflow.transitions.forEach { transition ->
+                assertThat(definitionRepo.findValidators(key, transition))
+                    .`as`("$key '${transition.name}' 의 검증기")
+                    .noneMatch { it.type == "RequiredField" && it.config["field"] == "resolution" }
+            }
+        }
     }
 
     // ── S2. plan() — resolution 없이 DONE 전환 시 WorkflowValidatorFailureException ──
 
     /**
-     * Given  software-default 워크플로우, in_review→done 전환에 RequiredField(resolution) validator 존재
+     * Given  software-default 워크플로우, in_review→done 전환에 해결 결과 필수 화면 존재
      *         issueFields 에 resolution 없음
      * When   plan() 호출
      * Then   WorkflowValidatorFailureException, field == "resolution"
@@ -301,7 +151,7 @@ class DoneResolutionValidatorSeedTest {
                 toStateKey = "done",
                 actorId = "user-b7-test",
                 actorRoles = setOf("MEMBER"),
-                // resolution 필드 없음 — RequiredFieldValidator 가 거부해야 한다
+                // resolution 필드 없음 — 화면의 「해결 결과 필수」가 거부해야 한다
                 issueFields = mapOf("priority" to "HIGH"),
                 version = 1L,
             )
@@ -312,7 +162,8 @@ class DoneResolutionValidatorSeedTest {
             .isInstanceOf(WorkflowValidatorFailureException::class.java)
             .satisfies({ ex ->
                 val failure = ex as WorkflowValidatorFailureException
-                assertThat(failure.validatorType).isEqualTo("RequiredField")
+                // 검증기가 아니라 화면 필수가 막는다 (D11)
+                assertThat(failure.validatorType).isEqualTo("TransitionScreen")
                 assertThat(failure.field).isEqualTo("resolution")
             })
 
@@ -331,7 +182,7 @@ class DoneResolutionValidatorSeedTest {
      */
     @Test
     @Order(9)
-    fun `S3 - availableTransitions 는 EXECUTION 페이즈 RequiredField 가 있어도 DONE 전환을 목록에 포함한다`() {
+    fun `S3 - availableTransitions 는 해결 결과 필수 화면이 있어도 DONE 전환을 목록에 포함한다`() {
         val request =
             AvailableTransitionsRequest(
                 workflowKey = "software-default",

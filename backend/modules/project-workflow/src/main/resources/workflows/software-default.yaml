@@ -19,24 +19,12 @@ transitions:
     to: done
     name: Approve
     screen: [{ field: resolution, required: true }]
-    validators:
-      - type: RequiredField
-        config:
-          field: resolution
   - { from: in_review, to: in_progress, name: Request Changes }
   - from: done
     to: closed
     name: Close
     screen: [{ field: resolution, required: true }]
-    validators:
-      - type: RequiredField
-        config:
-          field: resolution
   - from: open
     to: closed
     name: Cancel
     screen: [{ field: resolution, required: true }]
-    validators:
-      - type: RequiredField
-        config:
-          field: resolution

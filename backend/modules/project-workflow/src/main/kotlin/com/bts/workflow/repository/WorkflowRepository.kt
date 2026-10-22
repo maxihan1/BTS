@@ -2,6 +2,7 @@
 
 package com.bts.workflow.repository
 
+import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.Workflow
@@ -216,6 +217,8 @@ class WorkflowRepository(private val dsl: DSLContext) {
 
         // workflow_id 기준 그룹핑
         val grouped = this.groupBy { it[WORKFLOWS.ID] as UUID }
+        // 전환 화면은 따로 한 번 읽는다 — JOIN 에 끼우면 카르테시안 곱이 화면 칸 수만큼 또 불어난다.
+        val screens = dsl.fetchTransitionScreens(WORKFLOW_TRANSITIONS.WORKFLOW_ID.`in`(grouped.keys))
 
         return grouped.map { (_, rows) ->
             val firstRow = rows.first()
@@ -243,7 +246,7 @@ class WorkflowRepository(private val dsl: DSLContext) {
                 rows
                     .filter { it[WORKFLOW_TRANSITIONS.ID] != null }
                     .distinctBy { it.required(WORKFLOW_TRANSITIONS.ID) }
-                    .map { row -> row.toWorkflowTransition(statusIdToKey) }
+                    .map { row -> row.toWorkflowTransition(statusIdToKey, screens) }
 
             Workflow.of(
                 key = workflowKey,
@@ -275,13 +278,17 @@ class WorkflowRepository(private val dsl: DSLContext) {
      *
      * @param statusIdToKey 이 워크플로우의 `workflow_statuses.id` → 상태 key 매핑.
      */
-    private fun Record.toWorkflowTransition(statusIdToKey: Map<UUID, String>): WorkflowTransition =
+    private fun Record.toWorkflowTransition(
+        statusIdToKey: Map<UUID, String>,
+        screens: Map<UUID, List<DraftScreenFieldDto>>,
+    ): WorkflowTransition =
         WorkflowTransition(
             id = required(WORKFLOW_TRANSITIONS.ID),
             fromStateKey = this[WORKFLOW_TRANSITIONS.FROM_STATUS_ID]?.let { statusIdToKey.statusKeyOf(it) },
             toStateKey = statusIdToKey.statusKeyOf(required(WORKFLOW_TRANSITIONS.TO_STATUS_ID)),
             name = required(WORKFLOW_TRANSITIONS.NAME),
             kind = transitionKind(),
+            screen = screens[required(WORKFLOW_TRANSITIONS.ID)].orEmpty(),
         )
 
     companion object {
