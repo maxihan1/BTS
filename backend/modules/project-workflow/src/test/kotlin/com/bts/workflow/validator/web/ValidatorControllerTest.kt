@@ -2,6 +2,10 @@
 
 package com.bts.workflow.validator.web
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
@@ -30,6 +34,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -497,6 +502,44 @@ class ValidatorControllerTest {
 
         assertThat(response.contentAsString).isEmpty()
         verify(exactly = 1) { service.delete(workflowKey, existingTransitionKey, validatorId) }
+    }
+
+    /**
+     * 생성·수정·삭제 로그가 **누가** 했는지를 싣는다 (WF-06-2).
+     *
+     * 전환 규칙은 그 자체가 보안 통제다 — 규칙을 떼는 것도 이 API 다. 로그에 행위자가 없으면 문이
+     * 사라진 뒤 누가 뗐는지 알 방법이 없다. 생성 줄은 새 행의 id 도 실어야 나중의 삭제 줄과 이어진다.
+     */
+    @Test
+    @WithMockUser(username = ALLOWED_ACTOR)
+    fun `생성 수정 삭제 로그에 행위자와 행 id 가 실린다`() {
+        allowPermission()
+        every { service.create(workflowKey, existingTransitionKey, "RequiredField", any(), 0) } returns sampleRow()
+        every {
+            service.update(workflowKey, existingTransitionKey, validatorId, "RequiredField", any(), 0)
+        } returns sampleRow()
+        justRun { service.delete(workflowKey, existingTransitionKey, validatorId) }
+        val logger = LoggerFactory.getLogger(ValidatorController::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().also { it.start() }
+        logger.addAppender(appender)
+
+        try {
+            val json = mapper.writeValueAsString(requestBody())
+            mockMvc.perform(post(basePath(existingTransitionKey)).contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isCreated)
+            mockMvc.perform(
+                put("${basePath(existingTransitionKey)}/$validatorId").contentType(MediaType.APPLICATION_JSON).content(json),
+            ).andExpect(status().isOk)
+            mockMvc.perform(delete("${basePath(existingTransitionKey)}/$validatorId"))
+                .andExpect(status().isNoContent)
+        } finally {
+            logger.detachAppender(appender)
+        }
+
+        val lines = appender.list.filter { it.level == Level.INFO }.map { it.formattedMessage }
+        assertThat(lines).hasSize(3).allSatisfy {
+            assertThat(it).contains("actorId=$ALLOWED_ACTOR").contains("id=$validatorId")
+        }
     }
 
     // ── phase — 응답이 진실 출처다 (소비자가 `type → phase` 표를 만들 이유를 없앤다) ──

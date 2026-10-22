@@ -42,6 +42,12 @@ import java.util.UUID
  * 포함되므로, [WorkflowSchemeExceptionHandler] 가 detail 을 일반 메시지로 교체해 HTTP 응답에서
  * 내부 식별자가 누출되지 않도록 한다 (메모리 fr-pm-04-guard-exception-message-http-leak).
  *
+ * ### 변경 로그는 행위자를 싣고 서비스 호출 **뒤에** 남는다 (WF-06-2)
+ * 전환 규칙은 그 자체가 보안 통제이고 그것을 떼는 것도 이 API 다. 생성·수정·삭제 줄에 가드가
+ * 해석한 행위자를 싣는다 — 서비스로 내려보내 다시 적으면 행위자 해석이 두 벌이 된다. 줄은 서비스가
+ * 커밋한 뒤에 남겨 실패한 시도가 「바꿨다」로 기록되지 않게 하고, 생성 줄은 새 행 id 를 실어 나중의
+ * 삭제 줄과 이어지게 한다.
+ *
  * @param service post-action 관리 서비스.
  * @param manageSchemeGuard 워크플로우 소유 스코프로 MANAGE_SCHEME 을 요구하는 공용 가드.
  */
@@ -85,14 +91,16 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        manageSchemeGuard.requireForWorkflow(workflowKey)
+        val actor = manageSchemeGuard.requireForWorkflow(workflowKey)
+        val row = service.create(workflowKey, transitionKey, request.type, request.config, request.displayOrder)
         log.info(
-            "PostActionController.create workflowKey={} transitionKey={} type={}",
+            "PostActionController.create actorId={} workflowKey={} transitionKey={} id={} type={}",
+            actor,
             workflowKey,
             transitionKey,
+            row.id,
             request.type,
         )
-        val row = service.create(workflowKey, transitionKey, request.type, request.config, request.displayOrder)
         return ResponseEntity.status(HttpStatus.CREATED).body(DataEnvelope(PostActionResponse.from(row)))
     }
 
@@ -112,15 +120,16 @@ class PostActionController(
         @PathVariable id: UUID,
         @RequestBody request: PostActionRequest,
     ): ResponseEntity<DataEnvelope<PostActionResponse>> {
-        manageSchemeGuard.requireForWorkflow(workflowKey)
+        val actor = manageSchemeGuard.requireForWorkflow(workflowKey)
+        val row = service.update(workflowKey, transitionKey, id, request.type, request.config, request.displayOrder)
         log.info(
-            "PostActionController.update workflowKey={} transitionKey={} id={} type={}",
+            "PostActionController.update actorId={} workflowKey={} transitionKey={} id={} type={}",
+            actor,
             workflowKey,
             transitionKey,
             id,
             request.type,
         )
-        val row = service.update(workflowKey, transitionKey, id, request.type, request.config, request.displayOrder)
         return ResponseEntity.ok(DataEnvelope(PostActionResponse.from(row)))
     }
 
@@ -138,13 +147,14 @@ class PostActionController(
         @PathVariable transitionKey: String,
         @PathVariable id: UUID,
     ) {
-        manageSchemeGuard.requireForWorkflow(workflowKey)
+        val actor = manageSchemeGuard.requireForWorkflow(workflowKey)
+        service.delete(workflowKey, transitionKey, id)
         log.info(
-            "PostActionController.delete workflowKey={} transitionKey={} id={}",
+            "PostActionController.delete actorId={} workflowKey={} transitionKey={} id={}",
+            actor,
             workflowKey,
             transitionKey,
             id,
         )
-        service.delete(workflowKey, transitionKey, id)
     }
 }

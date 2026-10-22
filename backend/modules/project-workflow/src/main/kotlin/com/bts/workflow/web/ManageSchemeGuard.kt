@@ -7,6 +7,7 @@ import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
 import org.springframework.stereotype.Component
+import java.util.UUID
 
 /**
  * 현재 인증 주체에게 대상 워크플로우에 대한 MANAGE_SCHEME 권한을 요구한다. 없으면 그 자리에서 거부한다.
@@ -39,15 +40,19 @@ class ManageSchemeGuard(
      * [workflowKey] 워크플로우의 전환 규칙을 관리할 권한을 요구한다.
      *
      * @param workflowKey 대상 워크플로우 키. 스코프 결정의 근거다.
+     * @return 권한을 통과한 행위자 UUID. 호출자가 변경 로그에 싣는다 — 다시 해석하면 사본이 된다 (WF-06-2).
+     *   value class `ActorId` 를 돌려주지 않는다 — 반환형이면 JVM 이름이 mangling 되어
+     *   `SchemeHandlerPermissionMatrixTest` 의 가드 이름 대조가 깨진다.
      * @throws org.springframework.web.server.ResponseStatusException 인증 주체가 없거나 UUID 가 아닐 때(401).
      * @throws com.bts.shared.permission.WorkflowSchemeAccessDeniedException MANAGE_SCHEME 이 없을 때(403).
      */
-    fun requireForWorkflow(workflowKey: String) {
-        val actor = CurrentActor.current()
+    fun requireForWorkflow(workflowKey: String): UUID {
+        val actor = CurrentActor.current().toUuid()
         permissionResolver.requirePermission(
-            actor.toUuid(),
+            actor,
             WorkflowSchemePermission.MANAGE_SCHEME,
             scopeResolver.ofWorkflow(workflowKey),
         )
+        return actor
     }
 }

@@ -148,7 +148,7 @@
 - [x] D6. 프론트 — 전환 규칙 편집 다이얼로그 (책임. frontend-engineer) (PR #407, 2026-08-26). *형제 post-action UI(FR-NT-05)의 대칭 구현 — `/workflows/{key}` 상세에 `ValidatorConfigSection` 을 나란히 뒀다. **응답의 `editable` 을 그대로 소비**하고 편집 가능 type 목록을 화면에 베끼지 않는다*
 - [x] D7. E2E — ~~규칙을 걸면 전환이 막히고, 풀면 통과한다~~ → **화면 계약 + 편집 불가 행**으로 축소 (책임. qa-engineer) (PR #407, 2026-08-26). **스펙 deviation — 아래 각주**
 - [x] D8. WF-06-1 규칙 `config` JSONB 가 크기·키 제한 없이 저장된다 (`TODOS.md`) (2026-10-22). *관문 `TransitionRuleGuard.checkValidator` 가 팩토리 dry-run 이 읽지 않은 키와 8KB 초과를 400 으로 거절 — 편집 API · 발행 공통 · 허용 키 사본 없음*
-- [ ] D9. WF-06-2 전환 규칙 변경 로그에 행위자가 없다 (`TODOS.md`)
+- [x] D9. WF-06-2 전환 규칙 변경 로그에 행위자가 없다 (`TODOS.md`) (2026-10-22). *`ManageSchemeGuard` 가 해석한 행위자를 돌려주고 validator · post-action 컨트롤러의 생성·수정·삭제 줄이 서비스 호출 뒤에 `actorId` · 행 `id` 를 싣는다*
 - [ ] D10. WF-06-3 전환 규칙 표면에 남은 사본 5종 (`TODOS.md`)
 - [ ] D11. WF-06-4 조건·검증기 종류 확장 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-9)
 
