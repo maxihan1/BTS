@@ -1565,7 +1565,12 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
-## ⬜ project-workflow — `config` JSONB 가 크기·키 제한 없이 저장된다 (신규 · 미착수 · T2)
+## ✅ project-workflow — `config` JSONB 가 크기·키 제한 없이 저장된다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-06-1.** 처방 그대로이되 자리는 `ValidatorAdminService` 가 아니라 그것이 부르는 관문 `TransitionRuleGuard.checkValidator` 다 — 발행(`DraftRuleWriter`)도 같은 관문을 타므로 「초안 저장 → 발행」 우회가 없다. 허용 키 목록을 따로 들지 않고 팩토리 dry-run 이 실제로 읽은 키를 적어(`ReadTrackingMap`) 나머지를 거부한다. 크기 상한은 8KB(`Map.toString()` UTF-8 바이트).
+- 판별식 — `ValidatorAdminServiceTest` 「팩토리가 읽지 않는 키가 섞이면 400」 · 「config 가 8KB 를 넘으면 400」. 구현 전 red 2건 실측. 「여분 키가 섞여도 통과한다」 테스트는 반대 계약이라 지웠다.
+- 남은 것 — post-action config 는 이번 범위 밖이다(같은 관문의 `checkPostAction`).
+
 
 **쉬운 말.** 규칙 설정을 담는 칸에 아무 크기, 아무 이름의 값이나 넣어도 그대로 저장되고 그대로
 돌아온다.

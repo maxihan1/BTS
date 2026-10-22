@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component
  * 발행」 두 번으로 통째로 우회된다. 그것이 PR #411 리뷰가 BLOCKER 로 잡은 결함이고, 사본을
  * 두 벌 두면 다음에 관문이 하나 늘 때 같은 우회가 다시 살아난다.
  *
- * ### 여섯 관문
+ * ### 일곱 관문
  * 1. **팩토리 dry-run** — 미지원 type 과 필수 config 키 누락을 거른다. 이것이 없으면 오타 하나가
  *    저장 200 · 발행 200 을 통과한 뒤 **그 전환을 처음 시도한 이슈**에서야 터진다.
  * 2. **`CALL_WEBHOOK` url 스킴** — `http://` · `https://` 만 받는다. 없으면 `file://` ·
@@ -39,6 +39,9 @@ import org.springframework.stereotype.Component
  *    최초(INITIAL) 전환에 받지 않는다(WF-05-3). Jira Create 전환이 Condition 을 받지 않는 것과 같다 —
  *    이슈가 아직 없으니 숨길 버튼도, 볼 출발 상태도 없다. Validator(EXECUTION) 와 post-action 은 받고
  *    이슈 생성 때 돈다.
+ * 7. **validator config 는 팩토리가 읽는 키만 · 8KB 까지** — 읽히지 않는 키(`categroy` 같은 오타)는
+ *    저장 200 뒤 규칙이 안 도는 상태를 만들고, 크기 상한이 없으면 설정 칸이 저장소를 채우는 통로가
+ *    된다(WF-06-1). 허용 키 목록을 따로 들지 않고 dry-run 이 실제로 읽은 키([ReadTrackingMap])로 판정한다.
  *
  * ### 거절 사유를 왜 나눠 던지나
  * 호출부마다 응답 계약이 다르다 — 편집 API 는 「미지원」과 「편집 불가」에 서로 다른 에러 코드를
@@ -54,17 +57,18 @@ class TransitionRuleGuard(
      * validator 하나가 저장 가능한지 본다.
      *
      * @param onInitial 붙일 전환이 최초(INITIAL) 전환인가. 참이면 조건(AVAILABILITY) validator 를 거절한다.
-     * @throws TransitionRuleRejected 미지원 type · config 누락 · 편집 불가 타입 · 엔진이 받지 않는 필드 ·
-     *   최초 전환에 붙인 조건일 때
+     * @throws TransitionRuleRejected 미지원 type · config 누락 · 읽히지 않는 config 키 · config 크기 초과 ·
+     *   편집 불가 타입 · 엔진이 받지 않는 필드 · 최초 전환에 붙인 조건일 때
      */
     fun checkValidator(
         type: String,
         config: Map<String, Any?>,
         onInitial: Boolean,
     ) {
+        val tracked = ReadTrackingMap(config)
         val instance =
             try {
-                validatorFactory.create(type, config)
+                validatorFactory.create(type, tracked)
             } catch (ex: IllegalArgumentException) {
                 throw TransitionRuleRejected(
                     TransitionRuleRejected.Reason.UNSUPPORTED,
@@ -73,8 +77,20 @@ class TransitionRuleGuard(
                 )
             }
 
+        val unreadKeys = config.keys - tracked.readKeys
         val rejection =
             when {
+                unreadKeys.isNotEmpty() ->
+                    TransitionRuleRejected(
+                        TransitionRuleRejected.Reason.UNSUPPORTED,
+                        "validator '$type' config 에 쓰이지 않는 키가 있다: ${unreadKeys.joinToString()} — " +
+                            "이 type 이 읽는 키는 ${tracked.readKeys.joinToString()} 뿐이다",
+                    )
+                config.toString().toByteArray().size > MAX_VALIDATOR_CONFIG_BYTES ->
+                    TransitionRuleRejected(
+                        TransitionRuleRejected.Reason.UNSUPPORTED,
+                        "validator '$type' config 가 너무 크다 — 최대 $MAX_VALIDATOR_CONFIG_BYTES 바이트",
+                    )
                 !isEditable(instance) ->
                     TransitionRuleRejected(
                         TransitionRuleRejected.Reason.NOT_EDITABLE,
@@ -137,6 +153,26 @@ class TransitionRuleGuard(
 
         /** 전환 때 실제로 소비되는 post-action — `WebhookDispatchWorker` 가 `WebhookRequested` 만 읽는다. */
         val RUNTIME_CONSUMED_POST_ACTIONS = setOf(CALL_WEBHOOK)
+
+        /** validator config 크기 상한 — `Map.toString()` 의 UTF-8 바이트로 잰다(WF-06-1). */
+        const val MAX_VALIDATOR_CONFIG_BYTES = 8 * 1024
+    }
+}
+
+/**
+ * 팩토리가 읽은 키를 적어 두는 Map — 「팩토리가 소비하지 않는 키」를 사본 목록 없이 가려낸다(WF-06-1).
+ *
+ * 팩토리는 `config[key]` 로만 읽는다. 다른 방식(`containsKey` · 순회)으로 읽게 되면 그 키가 「안 읽힘」
+ * 으로 잡혀 400 이 나므로 조용한 허용이 아니라 시끄러운 거절로 드러난다.
+ */
+private class ReadTrackingMap(
+    private val source: Map<String, Any?>,
+) : Map<String, Any?> by source {
+    val readKeys = mutableSetOf<String>()
+
+    override fun get(key: String): Any? {
+        readKeys += key
+        return source[key]
     }
 }
 

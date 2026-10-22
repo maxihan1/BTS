@@ -207,18 +207,29 @@ class ValidatorAdminServiceTest {
     }
 
     @Test
-    fun `config 에 여분 키가 섞여도 통과한다`() {
-        // E5 — 팩토리는 필요한 키만 읽는다. 여분 키 거절은 요구에 없다.
-        // 통과만 재면 config 를 도중에 깎아도 초록이라, 넘어간 Map 이 그대로인지까지 본다.
-        val config = mapOf<String, Any?>("field" to "resolution", "note" to "관리자 메모")
-        every {
-            repository.insert(transitionId, "RequiredField", config, 0)
-        } returns ValidatorRow(validatorId, transitionId, "RequiredField", config, 0)
+    fun `팩토리가 읽지 않는 키가 섞이면 400 이고 DB 에 쓰지 않는다`() {
+        // WF-06-1 — 오타(categroy)는 저장 200 뒤 무동작이 아니라 400 이어야 한다.
+        val config = mapOf<String, Any?>("category" to "DONE", "categroy" to "DONE")
 
-        val result = service.create(workflowKey, transitionKey, "RequiredField", config, 0)
+        assertThatThrownBy {
+            service.create(workflowKey, transitionKey, "not-status-category", config, 0)
+        }.isInstanceOf(ValidatorValidationException::class.java)
+            .hasMessageContaining("categroy")
 
-        assertThat(result.config).containsEntry("note", "관리자 메모")
-        verify(exactly = 1) { repository.insert(transitionId, "RequiredField", config, 0) }
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `config 가 8KB 를 넘으면 400 이고 DB 에 쓰지 않는다`() {
+        // WF-06-1 — permission 은 자유 문자열이라 키 허용목록만으로는 크기가 묶이지 않는다.
+        val config = mapOf<String, Any?>("permission" to "x".repeat(9 * 1024))
+
+        assertThatThrownBy {
+            service.create(workflowKey, transitionKey, "permission-check", config, 0)
+        }.isInstanceOf(ValidatorValidationException::class.java)
+            .hasMessageContaining("8192")
+
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
     }
 
     // ── 편집 불가 타입 (FR-6 · E8) ────────────────────────────────────────────
