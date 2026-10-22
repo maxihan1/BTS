@@ -9,6 +9,7 @@ import com.bts.shared.permission.WorkflowScope
 import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
+import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
@@ -22,6 +23,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -46,6 +49,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.web.context.WebApplicationContext
 import org.springframework.web.servlet.config.annotation.EnableWebMvc
+import java.util.UUID
 
 /** 테스트 행위자. `CurrentActor` 가 UUID 형식을 요구하므로 실제 UUID 를 쓴다. */
 private const val ACTOR_ID = "11111111-2222-3333-4444-555555555555"
@@ -211,6 +215,37 @@ class WorkflowControllerMvcTest {
             .andExpect(jsonPath("$.data.toStateKey").value("IN_PROGRESS"))
             .andExpect(jsonPath("$.data.fieldChanges[0].field").value("status"))
             .andExpect(jsonPath("$.data.events[0].type").value("ISSUE_TRANSITIONED"))
+    }
+
+    // WF-05-5 — 후보가 둘이면 409 로 후보를 돌려주고 호출자가 `transitionId` 를 되실어 다시 부른다
+    //   (ADR 2026-08-18 §D3). 바디에 그 칸이 없으면 왕복이 첫 409 에서 끝난다.
+
+    @Test
+    @WithMockUser
+    fun `전환 계획 바디의 transitionId 가 엔진 요청까지 실린다`() {
+        val transitionId = UUID.fromString("6f1c2a9e-3b4d-4e5f-8a7b-9c0d1e2f3a4b")
+        val captured = slot<TransitionRequest>()
+        every { workflowApplicationService.planTransition(capture(captured)) } returns
+            TransitionPlan(toStateKey = "DONE", fieldChanges = emptyList(), emitEvents = emptyList())
+
+        val body =
+            mapOf(
+                "toStateKey" to "DONE",
+                "version" to 1,
+                "issueKey" to "BTS-1",
+                "fromStateKey" to "TODO",
+                "actorId" to "user-1",
+                "transitionId" to transitionId.toString(),
+            )
+
+        mockMvc.perform(
+            post("/api/v1/workflows/software-default/transitions/plan")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+            .andExpect(status().isOk)
+
+        assertThat(captured.captured.transitionId).isEqualTo(transitionId)
     }
 
     // ── Case 4: POST /api/v1/workflows/cache/invalidate — 권한 검증 ───────────
