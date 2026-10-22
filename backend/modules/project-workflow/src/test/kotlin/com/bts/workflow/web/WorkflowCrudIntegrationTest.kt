@@ -25,6 +25,7 @@ import com.bts.workflow.scheme.repository.WorkflowSchemeRepository
 import com.bts.workflow.testsupport.SharedPostgres
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.tuple
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
@@ -262,6 +263,26 @@ class WorkflowCrudIntegrationTest {
         assertThat(originOf("copied-flow")).isEqualTo("CUSTOM")
     }
 
+    // ★ 세 종류를 다 심는다 — `copyTransitions` 는 출발지 join 만 LEFT 라 GLOBAL·INITIAL(출발지 NULL)이
+    //   NORMAL 과 별개 분기다. 생성이 심는 INITIAL 하나뿐이면 NORMAL 경로가 0행으로 지나간다.
+    //   사본이 원본 편성 행을 가리키면 `findByKey` 의 상태 키 해석이 예외를 내므로 따로 재지 않는다.
+    @Test
+    fun `복제는 세 종류 전환을 복제본의 상태로 다시 이어 복사한다`() {
+        create("trans-src", statuses = seeds("alpha", "beta", "gamma"))
+        addTransition("trans-src", "NORMAL", "시작", from = "alpha", to = "beta", displayOrder = 1)
+        addTransition("trans-src", "GLOBAL", "어디서든 완료", from = null, to = "gamma", displayOrder = 2)
+
+        service.duplicate(actor, "trans-src", newKey = "trans-copy", newName = "사본", targetProjectKey = null)
+
+        assertThat(repository.findByKey("trans-copy")!!.transitions)
+            .extracting({ it.kind }, { it.name }, { it.fromStateKey }, { it.toStateKey })
+            .containsExactlyInAnyOrder(
+                tuple(TransitionKind.INITIAL, "이슈 생성", null, "alpha"),
+                tuple(TransitionKind.NORMAL, "시작", "alpha", "beta"),
+                tuple(TransitionKind.GLOBAL, "어디서든 완료", null, "gamma"),
+            )
+    }
+
     // ── FR-WF-08 소유 프로젝트 ────────────────────────────────────────────────
     // ★ 복제가 주 사용 경로다. 사본이 소유를 못 실으면 전역 사본이 되어 프로젝트 관리자가 결국
     // 못 고친다 — Jira 가 권장 우회로로 명시하는 그 경로가 그 자리에서 죽는다.
@@ -441,6 +462,36 @@ class WorkflowCrudIntegrationTest {
                 stmt.setLong(1, schemeId)
                 stmt.setObject(2, workflowId)
                 stmt.executeUpdate()
+            }
+        }
+    }
+
+    /** 전환 1행을 상태 키로 심는다. 출발·도착은 그 워크플로우 자신의 편성 행으로 찾는다. */
+    private fun addTransition(
+        workflowKey: String,
+        kind: String,
+        name: String,
+        from: String?,
+        to: String,
+        displayOrder: Int,
+    ) {
+        val composition =
+            "(SELECT ws.id FROM workflow_statuses ws JOIN statuses s ON s.id = ws.status_id" +
+                " WHERE ws.workflow_id = w.id AND s.key = ?)"
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO workflow_transitions" +
+                    " (workflow_id, kind, name, from_status_id, to_status_id, display_order)" +
+                    " SELECT w.id, ?, ?, $composition, $composition, ?" +
+                    " FROM workflows w WHERE w.key = ? AND w.deleted_at IS NULL",
+            ).use { stmt ->
+                stmt.setString(1, kind)
+                stmt.setString(2, name)
+                stmt.setString(3, from)
+                stmt.setString(4, to)
+                stmt.setInt(5, displayOrder)
+                stmt.setString(6, workflowKey)
+                assertThat(stmt.executeUpdate()).isEqualTo(1)
             }
         }
     }
