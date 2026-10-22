@@ -75,9 +75,10 @@ export class WorkflowSchemeApiError extends Error {
 // 내부 유틸리티
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** RFC 7807 에러 응답 Zod 스키마 — code 필드 보존 */
+/** RFC 7807 에러 응답 Zod 스키마 — 백엔드는 `errorCode` 를 싣는다(`code` 는 옛 MSW 픽스처 호환) */
 const rfc7807ErrorSchema = z.object({
-  code: z.string().default('UNKNOWN'),
+  errorCode: z.string().optional(),
+  code: z.string().optional(),
   detail: z.string().default(''),
 })
 
@@ -88,7 +89,7 @@ const rfc7807ErrorSchema = z.object({
 async function throwSchemeApiError(res: Response): Promise<never> {
   const rawBody: unknown = await res.json().catch(() => ({}))
   const parsed = rfc7807ErrorSchema.safeParse(rawBody)
-  const errorCode = parsed.success ? parsed.data.code : 'UNKNOWN'
+  const errorCode = (parsed.success ? (parsed.data.errorCode ?? parsed.data.code) : undefined) ?? 'UNKNOWN'
   const detail = parsed.success ? parsed.data.detail : String(rawBody)
   throw new WorkflowSchemeApiError(res.status, errorCode, detail)
 }
