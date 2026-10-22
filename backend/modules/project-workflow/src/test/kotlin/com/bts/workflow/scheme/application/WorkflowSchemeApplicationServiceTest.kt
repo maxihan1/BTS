@@ -600,7 +600,11 @@ class WorkflowSchemeApplicationServiceTest {
     private fun stubWorkflows() {
         every { workflowRepo.findByIds(any()) } answers {
             firstArg<List<UUID>>().associateWith { id ->
-                if (id == wfReview) workflowWith("wf-review", "open", "review") else workflowWith("wf-plain", "open", "done")
+                if (id == wfReview) {
+                    workflowWith("wf-review", "open", "review")
+                } else {
+                    workflowWith("wf-plain", "open", "done")
+                }
             }
         }
     }

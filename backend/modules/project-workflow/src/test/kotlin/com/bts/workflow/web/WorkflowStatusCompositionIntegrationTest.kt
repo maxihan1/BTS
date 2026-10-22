@@ -143,8 +143,8 @@ class WorkflowStatusCompositionIntegrationTest {
          */
         var lastProjectIds: Set<UUID> = emptySet()
 
-        override fun countByTypeAndStatus(projectIds: Set<UUID>) =
-            error("이 테스트는 스킴 변경을 재지 않는다 — 불렸다면 경로가 바뀐 것이다")
+        // 이 테스트는 스킴 변경을 재지 않는다 — 불렸다면 경로가 바뀐 것이다.
+        override fun countByTypeAndStatus(projectIds: Set<UUID>) = error("스킴 변경 가드는 이 테스트의 경로가 아니다")
 
         override fun countIssuesInStatus(
             statusKey: String,
