@@ -7,6 +7,7 @@ import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowScope
+import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
@@ -19,6 +20,7 @@ import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
+import com.bts.workflow.scheme.exception.SchemeChangeStrandsIssuesException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
@@ -58,6 +60,7 @@ import java.util.UUID
  * @param workflowRepo 워크플로우 조회 Repository.
  * @param issueTypeLookupPort 이슈타입 정보 조회 outbound port (issue-tracking BC SPI).
  * @param scopeResolver 소유 프로젝트 → 권한 스코프 변환의 단일 결정 지점 (FR-WF-08).
+ * @param issueStatusUsagePort 스킴 변경이 이슈를 새 워크플로우에 없는 상태에 남기는지 세는 읽기 포트 (WF-02-1).
  *
  * @suppress TooManyFunctions — Scheme CRUD(create/find/findDetail/listWithCounts/update/softDelete/list) 7 +
  * Mapping 관리(addMapping/addMappingByKeys/deleteMapping) 3 + Assignment(assignToProject/findAssignedScheme) 2
@@ -76,6 +79,7 @@ class WorkflowSchemeApplicationService(
     private val workflowRepo: WorkflowRepository,
     private val issueTypeLookupPort: IssueTypeLookupPort,
     private val scopeResolver: WorkflowOwnershipScopeResolver,
+    private val issueStatusUsagePort: IssueStatusUsagePort,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -338,6 +342,8 @@ class WorkflowSchemeApplicationService(
                 workflowId = workflowId,
                 createdAt = Instant.now(),
             )
+        val before = mappingRepo.findBySchemeId(schemeId)
+        requireNoStrandedIssues(assignmentRepo.findActiveProjectIdsBySchemeId(schemeId), before, before + mapping)
         return mappingRepo.addMapping(mapping)
     }
 
@@ -407,10 +413,16 @@ class WorkflowSchemeApplicationService(
         )
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
-        if (mappingRepo.findBySchemeId(schemeId).none { it.id == mappingId }) {
+        val before = mappingRepo.findBySchemeId(schemeId)
+        if (before.none { it.id == mappingId }) {
             log.info("deleteMapping no-op: 매핑 {} 은 스킴 {} 것이 아니다", mappingId, schemeKey.value)
             return
         }
+        requireNoStrandedIssues(
+            assignmentRepo.findActiveProjectIdsBySchemeId(schemeId),
+            before,
+            before.filterNot { it.id == mappingId },
+        )
         log.info("deleteMapping: actor={} schemeKey={} mappingId={}", actor.raw, schemeKey.value, mappingId)
         mappingRepo.deleteMapping(mappingId)
     }
@@ -485,6 +497,15 @@ class WorkflowSchemeApplicationService(
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         requireAssignableTo(scheme, projectId)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+        // auto-assign 은 할당이 없는 프로젝트에 표준 스킴을 처음 붙이는 일이라 옮겨질 워크플로우가 없다.
+        // 여기서 막으면 워크플로우 조회 핫패스(resolveFor)가 예외로 끊긴다.
+        if (actorUuid != SYSTEM_ACTOR_UUID) {
+            val before =
+                assignmentRepo.findByProjectId(projectId)
+                    ?.let { mappingRepo.findBySchemeId(it.workflowSchemeId) }
+                    .orEmpty()
+            requireNoStrandedIssues(setOf(projectId), before, mappingRepo.findBySchemeId(schemeId))
+        }
 
         val now = Instant.now()
         val assignment =
@@ -566,6 +587,59 @@ class WorkflowSchemeApplicationService(
     }
 
     // ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
+
+    /**
+     * 매핑이 [before] 에서 [after] 로 바뀔 때 [projectIds] 의 이슈가 새 워크플로우에 없는 상태에
+     * 남으면 막는다 (WF-02-1 · 결함 B5).
+     *
+     * 이슈를 옮기지는 않는다 — 이슈 UPDATE 는 issue-tracking 소유이고, 이관 워커는 이슈 타입 축을
+     * 보지 않아(장부 145) 타입마다 워크플로우가 갈리는 스킴 변경을 안전하게 표현하지 못한다. Jira 처럼
+     * 변경과 함께 상태를 고르는 것(G14)은 그 축이 생긴 뒤의 일이다.
+     *
+     * 워크플로우가 **바뀌는** 이슈 타입만 본다. 안 바뀌는 타입까지 보면 이 변경과 무관한 기존 유령
+     * 상태 때문에 막힌다. 새 매핑에 워크플로우가 없는 타입(기본 매핑 삭제)은 이 판정의 몫이 아니다.
+     *
+     * 판정과 COMMIT 사이에 들어온 전환은 잡지 못한다 — 발행 차단(`WorkflowPublishService`)과 같은 잔여 창이다.
+     *
+     * @throws SchemeChangeStrandsIssuesException 남는 이슈가 한 건이라도 있을 때.
+     */
+    private fun requireNoStrandedIssues(
+        projectIds: Set<UUID>,
+        before: List<SchemeIssueTypeMapping>,
+        after: List<SchemeIssueTypeMapping>,
+    ) {
+        if (projectIds.isEmpty()) return
+        val moved =
+            issueStatusUsagePort.countByTypeAndStatus(projectIds).mapNotNull { usage ->
+                val target = workflowOf(after, usage.issueTypeId) ?: return@mapNotNull null
+                if (target == workflowOf(before, usage.issueTypeId)) null else usage to target
+            }
+        if (moved.isEmpty()) return
+        val statusKeys =
+            workflowRepo
+                .findByIds(moved.map { it.second }.distinct())
+                .mapValues { (_, wf) -> wf.states.map { it.key }.toSet() }
+        // 워크플로우를 못 읽으면 빈 집합 — 전부 남는 것으로 본다(fail-closed).
+        val stranded =
+            moved
+                .filter { (usage, target) -> usage.statusKey !in statusKeys[target].orEmpty() }
+                .groupBy({ it.first.statusKey }, { it.first.count })
+                .mapValues { (_, counts) -> counts.sum() }
+        if (stranded.isNotEmpty()) {
+            log.info("스킴 변경 거부 — 새 워크플로우에 없는 상태에 이슈가 남는다. stranded={}", stranded)
+            throw SchemeChangeStrandsIssuesException(stranded)
+        }
+    }
+
+    /** 이슈 타입의 워크플로우. 명시 매핑이 먼저이고 없으면 기본 매핑이다(`WorkflowResolverImpl` 과 같은 규칙). */
+    private fun workflowOf(
+        mappings: List<SchemeIssueTypeMapping>,
+        issueTypeId: Long,
+    ): UUID? =
+        (
+            mappings.firstOrNull { it.issueTypeId?.value == issueTypeId }
+                ?: mappings.firstOrNull { it.issueTypeId == null }
+        )?.workflowId
 
     /**
      * 매핑 목록에서 IssueType + Workflow 정보를 조회해 [MappingResponseDetail] 리스트를 빌드한다.

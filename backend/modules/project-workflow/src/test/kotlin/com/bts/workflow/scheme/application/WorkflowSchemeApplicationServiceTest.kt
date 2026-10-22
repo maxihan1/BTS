@@ -8,6 +8,8 @@ import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
 import com.bts.shared.permission.WorkflowSchemePermission
 import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowScope
+import com.bts.workflow.application.port.IssueStatusUsagePort
+import com.bts.workflow.application.port.IssueTypeStatusCount
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
@@ -23,6 +25,7 @@ import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
 import com.bts.workflow.scheme.exception.MappingDuplicateException
+import com.bts.workflow.scheme.exception.SchemeChangeStrandsIssuesException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
@@ -58,6 +61,7 @@ class WorkflowSchemeApplicationServiceTest {
     private val workflowRepo: WorkflowRepository = mockk()
     private val issueTypeLookupPort: IssueTypeLookupPort = mockk()
     private val scopeResolver: WorkflowOwnershipScopeResolver = mockk()
+    private val issueStatusUsagePort: IssueStatusUsagePort = mockk()
 
     private lateinit var service: WorkflowSchemeApplicationService
 
@@ -75,10 +79,16 @@ class WorkflowSchemeApplicationServiceTest {
                 workflowRepo,
                 issueTypeLookupPort,
                 scopeResolver,
+                issueStatusUsagePort,
             )
         // 이 파일의 픽스처는 전부 전역 스킴이다 — 소유별 스코프 판정은 WorkflowOwnershipScopeResolverTest 가 잰다.
         every { scopeResolver.ofScheme(any()) } returns WorkflowScope.Global
         every { scopeResolver.ofProjectId(any()) } returns WorkflowScope.Global
+        // 스킴 변경 가드(WF-02-1)의 기본값 — 할당·이슈가 없는 세계. 가드를 재는 테스트가 덮어쓴다.
+        every { assignmentRepo.findByProjectId(any()) } returns null
+        every { assignmentRepo.findActiveProjectIdsBySchemeId(any()) } returns emptySet()
+        every { mappingRepo.findBySchemeId(any()) } returns emptyList()
+        every { issueStatusUsagePort.countByTypeAndStatus(any()) } returns emptyList()
     }
 
     // ── create ────────────────────────────────────────────────────────────────
@@ -504,6 +514,7 @@ class WorkflowSchemeApplicationServiceTest {
                 workflowRepo,
                 issueTypeLookupPort,
                 scopeResolver,
+                issueStatusUsagePort,
             )
 
         assertThatThrownBy {
@@ -542,6 +553,7 @@ class WorkflowSchemeApplicationServiceTest {
                 workflowRepo,
                 issueTypeLookupPort,
                 scopeResolver,
+                issueStatusUsagePort,
             )
 
         val softwareSchemeKey = WorkflowSchemeApplicationService.SOFTWARE_SCHEME_KEY
@@ -573,6 +585,120 @@ class WorkflowSchemeApplicationServiceTest {
             )
         }
     }
+
+    // ── WF-02-1 — 스킴 변경이 이슈를 새 워크플로우에 없는 상태에 남기면 막는다 (결함 B5) ─────
+
+    private val projectId = UUID.fromString("00000000-0000-0000-0000-0000000000c1")
+    private val oldSchemeId = WorkflowSchemeId(1L)
+    private val newSchemeId = WorkflowSchemeId(2L)
+    private val wfReview = UUID.fromString("dddddddd-0000-0000-0000-000000000001") // open · review
+    private val wfPlain = UUID.fromString("dddddddd-0000-0000-0000-000000000002") // open · done
+    private val bug = IssueTypeId(10L)
+    private val task = IssueTypeId(20L)
+
+    /** 두 워크플로우의 상태 편성. 가드는 이 상태 키 집합으로 「새 워크플로우에 있는가」를 잰다. */
+    private fun stubWorkflows() {
+        every { workflowRepo.findByIds(any()) } answers {
+            firstArg<List<UUID>>().associateWith { id ->
+                if (id == wfReview) {
+                    workflowWith("wf-review", "open", "review")
+                } else {
+                    workflowWith("wf-plain", "open", "done")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `assignToProject — 새 스킴의 워크플로우에 없는 상태에 이슈가 남으면 배정하지 않는다`() {
+        val newKey = WorkflowSchemeKey("plain-scheme")
+        every { schemeRepo.findByKey(newKey) } returns buildScheme(newKey, id = newSchemeId)
+        every { assignmentRepo.findByProjectId(projectId) } returns
+            ProjectWorkflowSchemeAssignment(projectId, oldSchemeId, Instant.now(), actor.toUuid())
+        every { mappingRepo.findBySchemeId(oldSchemeId) } returns listOf(buildMapping(oldSchemeId, null, wfReview))
+        every { mappingRepo.findBySchemeId(newSchemeId) } returns listOf(buildMapping(newSchemeId, null, wfPlain))
+        every { issueStatusUsagePort.countByTypeAndStatus(setOf(projectId)) } returns
+            listOf(IssueTypeStatusCount(bug.value, "review", 3), IssueTypeStatusCount(bug.value, "open", 5))
+        stubWorkflows()
+
+        assertThatThrownBy { service.assignToProject(actor, projectId, "ATLAS", newKey) }
+            .isInstanceOfSatisfying(SchemeChangeStrandsIssuesException::class.java) {
+                assertThat(it.strandedByStatus).isEqualTo(mapOf("review" to 3L))
+            }
+        verify(exactly = 0) { assignmentRepo.saveAssignment(any()) }
+    }
+
+    @Test
+    fun `assignToProject — 모든 이슈 상태가 새 워크플로우에도 있으면 배정된다`() {
+        val newKey = WorkflowSchemeKey("plain-scheme")
+        every { schemeRepo.findByKey(newKey) } returns buildScheme(newKey, id = newSchemeId)
+        every { assignmentRepo.findByProjectId(projectId) } returns
+            ProjectWorkflowSchemeAssignment(projectId, oldSchemeId, Instant.now(), actor.toUuid())
+        every { mappingRepo.findBySchemeId(oldSchemeId) } returns listOf(buildMapping(oldSchemeId, null, wfReview))
+        every { mappingRepo.findBySchemeId(newSchemeId) } returns listOf(buildMapping(newSchemeId, null, wfPlain))
+        every { issueStatusUsagePort.countByTypeAndStatus(setOf(projectId)) } returns
+            listOf(IssueTypeStatusCount(bug.value, "open", 5))
+        stubWorkflows()
+        justRun { assignmentRepo.saveAssignment(any()) }
+        justRun { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
+
+        service.assignToProject(actor, projectId, "ATLAS", newKey)
+
+        verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
+    }
+
+    @Test
+    fun `addMapping — 워크플로우가 바뀌는 타입의 이슈만 본다`() {
+        // Bug 를 wf-plain 으로 옮긴다. review 에 있는 Task 는 계속 wf-review 라 막을 이유가 아니다.
+        val key = WorkflowSchemeKey("review-scheme")
+        every { schemeRepo.findByKey(key) } returns buildScheme(key, id = oldSchemeId)
+        every { mappingRepo.findBySchemeId(oldSchemeId) } returns listOf(buildMapping(oldSchemeId, null, wfReview))
+        every { assignmentRepo.findActiveProjectIdsBySchemeId(oldSchemeId) } returns setOf(projectId)
+        every { issueStatusUsagePort.countByTypeAndStatus(setOf(projectId)) } returns
+            listOf(IssueTypeStatusCount(bug.value, "review", 2), IssueTypeStatusCount(task.value, "review", 7))
+        stubWorkflows()
+
+        assertThatThrownBy { service.addMapping(actor, key, bug, wfPlain) }
+            .isInstanceOfSatisfying(SchemeChangeStrandsIssuesException::class.java) {
+                assertThat(it.strandedByStatus).isEqualTo(mapOf("review" to 2L))
+            }
+        verify(exactly = 0) { mappingRepo.addMapping(any()) }
+    }
+
+    @Test
+    fun `deleteMapping — 명시 매핑을 지워 기본 워크플로우로 떨어지는 이슈가 남으면 지우지 않는다`() {
+        val key = WorkflowSchemeKey("review-scheme")
+        every { schemeRepo.findByKey(key) } returns buildScheme(key, id = oldSchemeId)
+        every { mappingRepo.findBySchemeId(oldSchemeId) } returns
+            listOf(buildMapping(oldSchemeId, null, wfPlain, id = 1L), buildMapping(oldSchemeId, bug, wfReview, id = 2L))
+        every { assignmentRepo.findActiveProjectIdsBySchemeId(oldSchemeId) } returns setOf(projectId)
+        every { issueStatusUsagePort.countByTypeAndStatus(setOf(projectId)) } returns
+            listOf(IssueTypeStatusCount(bug.value, "review", 4))
+        stubWorkflows()
+
+        assertThatThrownBy { service.deleteMapping(actor, key, mappingId = 2L) }
+            .isInstanceOf(SchemeChangeStrandsIssuesException::class.java)
+        verify(exactly = 0) { mappingRepo.deleteMapping(any()) }
+    }
+
+    private fun workflowWith(
+        key: String,
+        vararg stateKeys: String,
+    ): Workflow =
+        Workflow.of(
+            key = key,
+            name = key,
+            states =
+                stateKeys.mapIndexed { i, k ->
+                    com.bts.workflow.domain.WorkflowState(
+                        key = k,
+                        name = k,
+                        category = com.bts.workflow.domain.StateCategory.TODO,
+                        displayOrder = i,
+                    )
+                },
+            transitions = emptyList(),
+        )
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
 

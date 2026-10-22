@@ -67,7 +67,7 @@
 - [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *종전 각주 「S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속」은 **2026-09-03 실측으로 닫는다** — 스킴 통합 테스트가 실재한다(`scheme/repository/` 3건 · `scheme/web/WorkflowSchemeControllerIntegrationTest.kt`). 「S1~S8」이라는 명명은 정의처가 없고, 이름이 겹치는 두 가지가 저장소에 따로 있다 — `integration/WorkflowIntegrationTest.kt` 의 S1~S7(FR-WF-01 Task 35)과 `apps/web/e2e/issue-transition.spec.ts` 의 S8(#398, §2.5 각주). 그 명명을 되살리지 않는다*
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
-- [ ] D8. WF-02-1 스킴을 바꾸거나 매핑을 고쳐도 이슈 상태를 옮기지 않는다 — 결함 B5 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1)
+- [x] D8. WF-02-1 스킴을 바꾸거나 매핑을 고쳐도 이슈 상태를 옮기지 않는다 — 결함 B5 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1) (PR #524, 2026-10-22). *옮기지 않고 막는다 — 워크플로우가 바뀌는 이슈 타입의 이슈가 새 편성에 없는 상태에 있으면 배정·매핑 추가·삭제가 409 `SCHEME_CHANGE_STRANDS_ISSUES`. 이관 워커가 이슈 타입 축을 못 봐(장부 145) 변경과 함께 상태를 고르는 것(G14)은 기능 후보로 남는다*
 
 ### §2.3 FR-WF-03 — 워크플로우 전환 validator/PostAction 런타임 결선
 

@@ -83,6 +83,7 @@ class ProjectWorkflowSchemeControllerTest {
         workflowRepo = mockk(),
         issueTypeLookupPort = mockk(),
         scopeResolver = mockk(relaxed = true),
+        issueStatusUsagePort = mockk(),
     ) {
         var assignToProjectResponse: ProjectWorkflowSchemeAssignment? = null
         var findAssignedSchemeResponse: WorkflowScheme? = null

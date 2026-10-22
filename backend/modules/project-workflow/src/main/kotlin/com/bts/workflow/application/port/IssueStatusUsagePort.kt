@@ -34,4 +34,28 @@ interface IssueStatusUsagePort {
         statusKey: String,
         projectIds: Set<UUID>,
     ): Long
+
+    /**
+     * [projectIds] 안의 살아 있는 이슈를 (이슈 타입, 상태) 별로 센다.
+     *
+     * 스킴을 바꾸거나 매핑을 고치면 **이슈 타입마다** 워크플로우가 갈린다. 상태 키 하나로만 세면
+     * 「이 상태가 새 워크플로우에 있는가」를 타입별로 판정할 수 없어 둘을 함께 묶는다(WF-02-1).
+     *
+     * @param projectIds 셀 범위. **비어 있으면 빈 목록** 이다 — 「전체」가 아니다.
+     * @return 0건인 조합은 담지 않는다.
+     */
+    fun countByTypeAndStatus(projectIds: Set<UUID>): List<IssueTypeStatusCount>
 }
+
+/**
+ * (이슈 타입, 상태) 한 조합의 이슈 수.
+ *
+ * @property issueTypeId `issues.type_id` — 스킴 매핑의 `issue_type_id` 와 같은 축이다.
+ * @property statusKey `issues.current_state_key`.
+ * @property count 살아 있는 이슈 수.
+ */
+data class IssueTypeStatusCount(
+    val issueTypeId: Long,
+    val statusKey: String,
+    val count: Long,
+)

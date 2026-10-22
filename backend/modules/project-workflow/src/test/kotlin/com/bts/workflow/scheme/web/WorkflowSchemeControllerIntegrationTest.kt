@@ -4,6 +4,7 @@ package com.bts.workflow.scheme.web
 
 import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.IssueTypeRef
+import com.bts.workflow.adapter.outbound.IssueStatusUsageAdapter
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.adapter.outbound.AlwaysAllowWorkflowSchemePermissionResolver
 import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
@@ -120,6 +121,7 @@ class WorkflowSchemeControllerIntegrationTest {
                 // 실 저장소 위에서 도는 통합 테스트라 스코프 판정도 실물을 쓴다.
                 scopeResolver =
                     WorkflowOwnershipScopeResolver(schemeRepo, workflowRepo, mockk(relaxed = true)),
+                issueStatusUsagePort = IssueStatusUsageAdapter(dsl),
             )
         }
     }

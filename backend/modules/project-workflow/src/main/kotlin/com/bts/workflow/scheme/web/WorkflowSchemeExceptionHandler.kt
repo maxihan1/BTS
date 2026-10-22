@@ -7,6 +7,7 @@ import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.MappingDefaultDuplicateException
 import com.bts.workflow.scheme.exception.MappingDuplicateException
+import com.bts.workflow.scheme.exception.SchemeChangeStrandsIssuesException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeKeyInvalidException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
@@ -36,6 +37,7 @@ import java.time.Instant
  * - [WorkflowSchemeNotFoundException]       → 404 + SCHEME_NOT_FOUND
  * - [SchemeStandardNotDeletableException]   → 403 + SCHEME_STANDARD_NOT_DELETABLE
  * - [SchemeInUseException]                  → 409 + SCHEME_IN_USE (usedByProjects 포함)
+ * - [SchemeChangeStrandsIssuesException]    → 409 + SCHEME_CHANGE_STRANDS_ISSUES (strandedByStatus 포함)
  * - [MappingDuplicateException]             → 409 + MAPPING_DUPLICATE
  * - [MappingDefaultDuplicateException]      → 409 + MAPPING_DEFAULT_DUPLICATE
  * - [WorkflowNotFoundException]             → 404 + WORKFLOW_NOT_FOUND
@@ -234,6 +236,28 @@ class WorkflowSchemeExceptionHandler {
         )
     }
 
+    // ── 409 SCHEME_CHANGE_STRANDS_ISSUES ──────────────────────────────────────
+
+    /**
+     * 스킴 배정·매핑 변경이 이슈를 새 워크플로우에 없는 상태에 남긴다 — 409 (WF-02-1).
+     *
+     * 응답 body 에 `strandedByStatus`(상태 키 → 이슈 수)를 싣는다. `detail` 은 화면에 그대로 띄우는 안내문이다.
+     *
+     * @param ex 남게 될 상태별 이슈 수를 담은 예외.
+     */
+    @ExceptionHandler(SchemeChangeStrandsIssuesException::class)
+    fun handleSchemeChangeStrandsIssues(ex: SchemeChangeStrandsIssuesException): ProblemDetail {
+        log.info("SCHEME_409 scheme_change_strands_issues stranded={}", ex.strandedByStatus)
+        return problem(
+            status = HttpStatus.CONFLICT,
+            type = "scheme-change-strands-issues",
+            title = "Scheme Change Strands Issues",
+            errorCode = SchemeErrorCodes.SCHEME_CHANGE_STRANDS_ISSUES,
+            detail = ex.message,
+            additionalFields = mapOf("strandedByStatus" to ex.strandedByStatus),
+        )
+    }
+
     // ── 409 MAPPING_DUPLICATE ─────────────────────────────────────────────────
 
     /**
@@ -341,6 +365,7 @@ object SchemeErrorCodes {
     const val SCHEME_NOT_FOUND = "SCHEME_NOT_FOUND"
     const val SCHEME_STANDARD_NOT_DELETABLE = "SCHEME_STANDARD_NOT_DELETABLE"
     const val SCHEME_IN_USE = "SCHEME_IN_USE"
+    const val SCHEME_CHANGE_STRANDS_ISSUES = "SCHEME_CHANGE_STRANDS_ISSUES"
     const val MAPPING_DUPLICATE = "MAPPING_DUPLICATE"
     const val MAPPING_DEFAULT_DUPLICATE = "MAPPING_DEFAULT_DUPLICATE"
     const val WORKFLOW_NOT_FOUND = "WORKFLOW_NOT_FOUND"

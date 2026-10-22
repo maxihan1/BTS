@@ -111,6 +111,8 @@ class WorkflowStateCatalogImplTest {
                             every { ofScheme(any()) } returns WorkflowScope.Global
                             every { ofProjectId(any()) } returns WorkflowScope.Global
                         },
+                    // 스킴 변경 가드(WF-02-1)는 이 테스트의 경로가 아니다 — 불리면 strict mock 이 터진다.
+                    issueStatusUsagePort = mockk(),
                 )
 
             val workflowResolver =
