@@ -383,11 +383,9 @@ class YamlSeedService(
      * 출발·도착은 그 워크플로우의 `workflow_statuses.id` 다. GLOBAL·INITIAL 은 출발지가 없다
      * (V210 `ck_transition_kind_from`).
      *
-     * ### `display_order` 를 여기서 지정하지 않는 이유
-     * INITIAL 이 받아야 할 값은 0 이고
-     * (V207 ⑨ · [com.bts.workflow.repository.WorkflowWriteRepository.insertTransition]),
-     * 컬럼 DEFAULT 가 이미 0 이라 그대로 두면 맞는다. 시드가 심는 NORMAL 전환이 전부 0 으로 남는
-     * 것은 별개의 선재 결함(장부 후보)이며 이 함수의 변경이 그것을 늘리지 않는다.
+     * ### `display_order` — 기존 DB 의 V207 백필과 같은 규칙 (WF-05-4)
+     * INITIAL 은 컬럼 DEFAULT 0 그대로다 (V207 ⑨ · [com.bts.workflow.repository.WorkflowWriteRepository.insertTransition]).
+     * 나머지는 다 심은 뒤 [rankTransitionsLikeV207] 가 1..n 을 매긴다.
      *
      * @param dto 파싱·검증이 끝난 워크플로우 정의
      * @param workflowId 방금 삽입한 `workflows.id`
@@ -403,6 +401,35 @@ class YamlSeedService(
             insertValidators(transitionId, transition.validators)
             insertPostActions(transitionId, transition.postActions)
         }
+        rankTransitionsLikeV207(workflowId)
+    }
+
+    /**
+     * INITIAL 이 아닌 전환에 V207 ⑥ 과 **같은 식**(`row_number() ORDER BY created_at, name`)으로 1..n 을 매긴다.
+     *
+     * 기존 DB 는 그 백필로 순서를 받았다. 시드가 비워 두면 전부 0 이라 읽기(`DISPLAY_ORDER, ID`)가 UUID 순으로
+     * 떨어져 같은 표준 워크플로우의 화살표 순서가 설치마다 갈린다. 부팅 시드는 한 트랜잭션이라 `created_at`
+     * 이 동률 — 백필과 마찬가지로 사실상 이름순이다. 정렬을 Kotlin 이 아니라 SQL 에 두는 것은 이름 비교를
+     * 백필과 같은 DB collation 에 맡기기 위해서다.
+     *
+     * @param workflowId 방금 전환을 심은 `workflows.id`
+     */
+    private fun rankTransitionsLikeV207(workflowId: java.util.UUID) {
+        val rank =
+            DSL.rowNumber().over()
+                .orderBy(WORKFLOW_TRANSITIONS.CREATED_AT, WORKFLOW_TRANSITIONS.NAME)
+                .`as`("rank")
+        val ranked =
+            dsl.select(WORKFLOW_TRANSITIONS.ID, rank)
+                .from(WORKFLOW_TRANSITIONS)
+                .where(WORKFLOW_TRANSITIONS.WORKFLOW_ID.eq(workflowId))
+                .and(WORKFLOW_TRANSITIONS.KIND.ne(TransitionKind.INITIAL.name))
+                .asTable("ranked")
+        dsl.update(WORKFLOW_TRANSITIONS)
+            .set(WORKFLOW_TRANSITIONS.DISPLAY_ORDER, ranked.field(rank)!!.cast(Int::class.java))
+            .from(ranked)
+            .where(WORKFLOW_TRANSITIONS.ID.eq(ranked.field(WORKFLOW_TRANSITIONS.ID)))
+            .execute()
     }
 
     /**

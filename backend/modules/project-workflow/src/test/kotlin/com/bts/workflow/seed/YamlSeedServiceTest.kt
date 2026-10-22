@@ -631,6 +631,33 @@ class YamlSeedServiceTest {
     }
 
     /**
+     * WF-05-4 — 신규 설치의 전환 표시 순서가 기존 DB(V207 ⑥ 백필)와 같아야 한다.
+     *
+     * 기존 DB 의 전환은 `ORDER BY created_at, name` 의 1..n 을 받았고 INITIAL 은 ⑨ 에서 0 을 받았다.
+     * 시드는 한 트랜잭션이라 `created_at` 이 동률이므로 사실상 이름순이다. 시드가 순서를 비워 두면
+     * 전부 0 이 되어 읽기(`DISPLAY_ORDER, ID`)가 UUID 순 — 사람이 예측할 수 없는 순서로 떨어진다.
+     *
+     * 운영의 `@Transactional` 을 흉내 내 트랜잭션 안에서 시드한다. 밖에서 돌리면 문장마다 `NOW()` 가 달라
+     * 규칙이 YAML 순으로 바뀌고, 운영과 다른 조건을 검증하게 된다.
+     */
+    @Test
+    @Order(14)
+    fun `빈 스키마에 시드한 전환 표시 순서가 V207 백필 규칙과 같다 (WF-05-4)`() {
+        val dsl = dslFor(SharedPostgres.freshDatabase())
+
+        dsl.transaction { cfg -> seedServiceFor(cfg.dsl()).seedAll() }
+
+        assertThat(dsl.fetch(transitionOrderSql).filter { it.get(0) == "simple" }.map { it.rowText() })
+            .describedAs("운영 조건(한 트랜잭션)에서 백필 규칙은 이름순 — INITIAL 만 0")
+            .containsExactly("simple|이슈 생성|0", "simple|Complete|1", "simple|Reopen|2", "simple|Start|3")
+
+        assertThat(dsl.fetch(transitionOrderSql).map { it.rowText() })
+            .describedAs("시드한 전환 순서가 V207 ⑥·⑨ 규칙과 어긋나면 신규 설치와 기존 DB 의 화살표 순서가 갈린다")
+            .isNotEmpty
+            .isEqualTo(dsl.fetch(v207TransitionOrderRuleSql).map { it.rowText() })
+    }
+
+    /**
      * 그 워크플로우의 전환마다 (이름, kind, from key, to key) 를 읽는다. 비어 있는 컬럼은 NULL 로 남는다.
      *
      * @param workflowKey 대상 `workflows.key`
@@ -719,6 +746,31 @@ private val v207InitialTargetRuleSql =
       JOIN workflows w ON w.id = f.workflow_id
       JOIN statuses  s ON s.id = f.status_id
      ORDER BY w.key
+    """.trimIndent()
+
+/** 시드가 심은 전환의 (워크플로우|이름|표시순서). 아래 V207 재현 규칙과 대조할 좌변이다. */
+private val transitionOrderSql =
+    """
+    SELECT w.key, t.name, t.display_order
+      FROM workflow_transitions t
+      JOIN workflows w ON w.id = t.workflow_id
+     ORDER BY w.key, t.name
+    """.trimIndent()
+
+/**
+ * V207 ⑥(`created_at, name` 의 1..n)·⑨(INITIAL 은 0) 이 기존 DB 에 매긴 표시 순서를 **그대로 재현**한다.
+ * ⑥ 이 돌 때 INITIAL 행은 아직 없었으므로 1..n 은 INITIAL 을 뺀 전환끼리 센다.
+ */
+private val v207TransitionOrderRuleSql =
+    """
+    SELECT w.key, t.name,
+           CASE WHEN t.kind = 'INITIAL' THEN 0
+                ELSE row_number() OVER (PARTITION BY t.workflow_id, t.kind = 'INITIAL'
+                                        ORDER BY t.created_at, t.name)
+           END
+      FROM workflow_transitions t
+      JOIN workflows w ON w.id = t.workflow_id
+     ORDER BY w.key, t.name
     """.trimIndent()
 
 /** 접속 정보로 jOOQ DSLContext 를 만든다. */
