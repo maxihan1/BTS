@@ -140,6 +140,28 @@ describe('reorderStates', () => {
   })
 })
 
+describe('reorderTransitions', () => {
+  it('주어진 순서대로 전환을 다시 늘어놓고 저장 형태에도 그 순서가 실린다', () => {
+    // 배열 순서가 발행 때 display_order 가 되고, 이슈 화면 상태 메뉴가 그 순서를 따른다 (FR-WF-01 D9).
+    const before = loaded()
+    const ids = before.draft.transitions.map((t) => t.localId)
+
+    const state = draftReducer(before, { type: 'reorderTransitions', orderedLocalIds: [ids[2]!, ids[0]!, ids[1]!] })
+
+    expect(toWireDefinition(state.draft).transitions.map((t) => t.name)).toEqual(['완료', '이슈 생성', '작업 시작'])
+    expect(state.revision).toBe(before.revision + 1)
+  })
+
+  it('목록에 빠진 전환은 지우지 않고 뒤에 붙인다', () => {
+    const before = loaded()
+    const ids = before.draft.transitions.map((t) => t.localId)
+
+    const state = draftReducer(before, { type: 'reorderTransitions', orderedLocalIds: [ids[1]!] })
+
+    expect(state.draft.transitions.map((t) => t.name)).toEqual(['작업 시작', '이슈 생성', '완료'])
+  })
+})
+
 describe('전환 편집', () => {
   it('updateTransition 이 validators·postActions 를 보존한다', () => {
     // ★ 목록 편집기는 규칙을 편집하지 않는다(FR-WF-06 소관). 그런데 리듀서가 규칙을 버리면

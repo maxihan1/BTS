@@ -88,6 +88,13 @@ export type DraftAction =
   | { type: 'createTransition'; input: TransitionInput }
   | { type: 'updateTransition'; localId: string; input: TransitionInput }
   | { type: 'deleteTransition'; localId: string }
+  /**
+   * 전환 목록을 끌어 순서를 바꿨을 때 (FR-WF-01 D9).
+   *
+   * 배열 순서가 곧 발행 때의 `display_order` 이고(`WorkflowPublishRepository.insertTransitions`),
+   * 이슈 화면 상태 메뉴가 그 순서를 따른다.
+   */
+  | { type: 'reorderTransitions'; orderedLocalIds: string[] }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 초기값·변환
@@ -309,6 +316,17 @@ export function draftReducer(state: DraftEditorState, action: DraftAction): Draf
         t.localId === action.localId ? { ...t, ...normalizeInput(action.input) } : t,
       )
       return edited(state, { ...state.draft, transitions })
+    }
+
+    case 'reorderTransitions': {
+      const byId = new Map(state.draft.transitions.map((t) => [t.localId, t]))
+      const ordered = action.orderedLocalIds.flatMap((id) => {
+        const found = byId.get(id)
+        return found === undefined ? [] : [found]
+      })
+      // 목록에 없던 전환이 조용히 사라지지 않게 뒤에 붙인다 — reorderStates 와 같은 규칙.
+      const missing = state.draft.transitions.filter((t) => !action.orderedLocalIds.includes(t.localId))
+      return edited(state, { ...state.draft, transitions: [...ordered, ...missing] })
     }
 
     case 'deleteTransition':

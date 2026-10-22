@@ -298,6 +298,9 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
           setTransitionFormOpen(true)
         }}
         onRemoveTransition={setTransitionToRemove}
+        onReorderTransitions={(orderedLocalIds) => {
+          draft.dispatch({ type: 'reorderTransitions', orderedLocalIds })
+        }}
         {...diagramTab}
       />
 

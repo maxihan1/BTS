@@ -210,6 +210,10 @@ export const workflowEditorLabels = {
     kindGlobal: '모든 상태에서',
     /** 최초 전환 배지 */
     kindInitial: '이슈 생성 시',
+    /** 드래그 핸들 접두 — `${dragHandle} ${전환이름}` */
+    dragHandle: '전환 순서 변경',
+    /** 목록 위 안내 — 이 순서가 어디에 쓰이는지 */
+    orderHint: '이 순서대로 이슈 화면의 상태 메뉴에 나옵니다. 끌어서 바꿉니다.',
   },
 
   /**
