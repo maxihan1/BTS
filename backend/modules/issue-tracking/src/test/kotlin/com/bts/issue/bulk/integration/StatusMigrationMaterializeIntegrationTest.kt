@@ -16,8 +16,11 @@ import com.bts.issue.bulk.application.BulkItemExecutor
 import com.bts.issue.bulk.application.BulkItemFailureRecorder
 import com.bts.issue.bulk.application.BulkOperationProcessor
 import com.bts.issue.bulk.domain.BULK_OPERATION_MAX_SIZE
+import com.bts.issue.bulk.domain.BulkOperation
 import com.bts.issue.bulk.domain.BulkOperationId
+import com.bts.issue.bulk.domain.BulkOperationPayload
 import com.bts.issue.bulk.domain.BulkOperationStatus
+import com.bts.issue.bulk.domain.BulkOperationType
 import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.event.BulkOperationEnqueuePublisher
@@ -930,6 +933,67 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(stateOf(story)).isEqualTo("todo")
         assertThat(stateOf(task)).isEqualTo("in_review")
         assertThat(itemKeys(operationId)).containsExactlyInAnyOrder(bug, story)
+    }
+
+    /**
+     * M14 (WF-07-2) — 필터는 **자기 프로젝트에만** 걸린다.
+     *
+     * 프로젝트 2개에 서로 다른 필터를 준다. 워커가 프로젝트와 필터의 짝을 풀어
+     * `프로젝트 ∈ 전체 AND (필터1 OR 필터2)` 로 합치면 SCOPE 의 「모든 타입」이 OUT_OF_SCOPE 에도 걸려
+     * 거기 Task 가 옮겨진다 — 과다 이동이다. M12·M13 은 프로젝트가 하나라 그 회귀를 못 잡는다.
+     */
+    @Test
+    fun `M14 - 프로젝트마다 다른 필터는 그 프로젝트에만 걸린다`() {
+        val scopeTask = insertIssue(SCOPE_KEY, "in_review", typeKey = "task")
+        val otherBug = insertIssue(OUT_OF_SCOPE_KEY, "in_review", typeKey = "bug")
+        val otherTask = insertIssue(OUT_OF_SCOPE_KEY, "in_review", typeKey = "task")
+
+        val operationId =
+            port.enqueueStatusMigration(
+                StatusMigrationCommand(
+                    actorUserId = ACTOR_ID,
+                    projectScopes =
+                        mapOf(
+                            SCOPE_KEY to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true),
+                            OUT_OF_SCOPE_KEY to
+                                StatusMigrationTypeFilter(issueTypeIds = setOf(issueTypeId("bug")), exceptListed = false),
+                        ),
+                    mappings = listOf(StatusMigrationMapping("in_review", "in_progress")),
+                ),
+            )
+        worker.pollAndProcess()
+
+        assertThat(stateOf(scopeTask)).isEqualTo("in_progress")
+        assertThat(stateOf(otherBug)).isEqualTo("in_progress")
+        assertThat(stateOf(otherTask)).isEqualTo("in_review")
+        assertThat(itemKeys(operationId)).containsExactlyInAnyOrder(scopeTask, otherBug)
+    }
+
+    /**
+     * M15 (WF-07-2) — 범위가 빈 payload 는 아무것도 적재하지 않는다.
+     *
+     * 큐잉 어댑터(E5b)가 빈 범위를 막지만 옛 빈 payload(`{}` 폴백)는 그 문을 거치지 않는다. 빈 OR 이
+     * 「조건 없음」으로 렌더링되면 **사이트 전체의 그 상태 이슈가 옮겨진다** — 워커의 `falseCondition`
+     * 분기가 그것을 막는 유일한 자리다.
+     */
+    @Test
+    fun `M15 - 범위가 빈 payload 는 어느 프로젝트의 이슈도 적재하지 않는다`() {
+        val anywhere = insertIssue(OUT_OF_SCOPE_KEY, "in_review")
+        val operationId = BulkOperationId(UUID.randomUUID())
+        val payload = BulkOperationPayload.StatusMigration(mappings = mapOf("in_review" to "in_progress"), projectScopes = emptyMap())
+        bulkRepo.insert(
+            BulkOperation.create(
+                id = operationId,
+                actorId = ACTOR_ID,
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = emptyList(),
+                payload = payload,
+            ),
+        )
+
+        assertThat(bulkRepo.materializeStatusMigrationItems(operationId, payload)).isZero()
+        assertThat(itemKeys(operationId.value)).isEmpty()
+        assertThat(stateOf(anywhere)).isEqualTo("in_review")
     }
 
     // ── private helpers ────────────────────────────────────────────────────────

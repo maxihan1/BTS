@@ -404,6 +404,46 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
     }
 
     /**
+     * 저장된 STATUS_MIGRATION JSON 은 `projectScopes` 와 함께 `projectKeys` 배열을 **계속** 싣는다.
+     *
+     * 이 BC 밖의 두 소비자가 그 키를 직접 읽는다 — project-workflow `MigrationInFlightAdapter` 의 SQL
+     * (`payload -> 'projectKeys'`)과 apps/web 의 zod 스키마. 키가 사라지면 앞의 것은 「진행 중 이관 없음」
+     * 으로 fail-open 하고 뒤의 것은 진행률 폴링이 ZodError 로 멈춘다. 둘 다 이 모듈의 테스트로는 안 보이므로
+     * 여기서 **저장된 모양 그 자체**를 잰다.
+     */
+    @Test
+    fun `STATUS_MIGRATION payload JSON 은 projectKeys 배열을 함께 싣는다`() {
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = emptyList(),
+                payload =
+                    BulkOperationPayload.StatusMigration(
+                        mappings = mapOf("blocked" to "todo"),
+                        projectScopes =
+                            mapOf(
+                                "TPRJ" to StatusMigrationTypeFilter(issueTypeIds = setOf(1L), exceptListed = false),
+                                "OPRJ" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true),
+                            ),
+                    ),
+            )
+        bulkRepo.insert(op)
+
+        val keys =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "SELECT k FROM bulk_operations, jsonb_array_elements_text(payload -> 'projectKeys') AS k WHERE id = ?",
+                ).use { ps ->
+                    ps.setObject(1, op.id.value)
+                    ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.getString(1) else null }.toList() }
+                }
+            }
+        assertThat(keys).containsExactlyInAnyOrder("TPRJ", "OPRJ")
+    }
+
+    /**
      * WF-07-2 이전 payload(`projectKeys`)는 「그 프로젝트의 모든 타입」으로 읽힌다.
      *
      * 그 행들은 형제 워크플로우 가드(F11)를 지나야만 큐잉됐으므로 그것이 큐잉 당시의 뜻이다.
