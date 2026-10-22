@@ -149,6 +149,7 @@ class WorkflowController(
                 issueFields = body.fields,
                 actorRoles = body.actorRoles,
                 version = body.version,
+                transitionId = body.transitionId,
             )
 
         val plan = workflowApplicationService.planTransition(req)
@@ -322,6 +323,8 @@ class WorkflowController(
  * @property fromStateKey 이슈의 현재 상태 키
  * @property actorId 전환을 실행하는 사용자 ID
  * @property actorRoles 실행자의 역할 집합
+ * @property transitionId 계산할 전환을 지목하는 1급 식별자. 같은 상태쌍에 후보가 둘 이상이면 409 로
+ *   받은 후보 중 하나를 되실어 다시 부른다 (ADR `2026-08-18-workflow-transition-id-identity` §D3)
  */
 data class TransitionPlanRequestBody(
     val toStateKey: String,
@@ -331,6 +334,7 @@ data class TransitionPlanRequestBody(
     val fromStateKey: String,
     val actorId: String,
     val actorRoles: Set<String> = emptySet(),
+    val transitionId: UUID? = null,
 )
 
 /**

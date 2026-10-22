@@ -2951,7 +2951,14 @@ mock 테스트만 import) 라이브↔라이브 동시 편집은 원시 API 로�
 
 ---
 
-## ⬜ 워크플로우 — 전환 계획 미리보기에 `transitionId` 필드가 없어 409 왕복이 구조적으로 막힌다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — 전환 계획 미리보기에 `transitionId` 필드가 없어 409 왕복이 구조적으로 막힌다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-05-5.** 처방대로 `TransitionPlanRequestBody` 에 `transitionId: UUID? = null` 을 더하고
+컨트롤러가 손으로 조립하는 `TransitionRequest` 에 그대로 넘긴다. 엔진(`WorkflowEngine.resolveById`)은 이미 그 값을 읽는다.
+- 판별식 — `WorkflowControllerMvcTest` 「전환 계획 바디의 transitionId 가 엔진 요청까지 실린다」(red. `but was: null` → green).
+- 남는 것. 매핑 두 벌(`TransitionRequestDto.toDomain()`)은 아래 항목(WF-05-6)으로 그대로 남는다 — 이 PR 은 **실제로 도는**
+  손 조립 쪽에만 붙였다. 웹 `api/workflows.ts` 의 `planTransition` 도 안 고쳤다 — 그 함수를 부르는 화면이 0이다.
+
 
 **쉬운 말.** 「이 화살표를 타면 어떻게 되나」를 미리 계산해 주는 창구가 있는데, 화살표가 둘 이상이라 「어느 쪽이냐」고 되물으면 답을 실어 보낼 칸이 그 창구에는 없다.
 

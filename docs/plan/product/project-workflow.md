@@ -131,7 +131,7 @@
 - [x] D9. WF-05-2 전환 이름이 무검증이라 빈 문자열이 저장된다 (`TODOS.md`) (2026-10-22). *라이브 전환 CRUD(`resolveShape`)와 초안 저장·발행(`WorkflowDraftDefinition.toWorkflow`)이 공백 이름을 400 으로 거절한다 · DB `CHECK` 는 마이그레이션 항목으로 분리*
 - [x] D10. WF-05-3 INITIAL 전환에 붙인 규칙은 저장되지만 실행 경로가 없다 (`TODOS.md`) (#536 · #537, 2026-10-22). *Jira Create 전환과 같게 — 최초 전환의 실행 validator · post-action 이 이슈 생성 · 복제 때 돌고(`TransitionRequest.creation`), 조건(AVAILABILITY) validator 는 관문 400 · 실행 시 건너뜀 · 화면 안내*
 - [x] D11. WF-05-4 신규 설치와 기존 DB 의 전환 표시 순서가 갈린다 (`TODOS.md`) (2026-10-22). *시드가 전환을 심은 뒤 V207 ⑥ 과 같은 `row_number() ORDER BY created_at, name` 을 매긴다 — 시드는 한 트랜잭션이라 기존 DB 와 같은 이름순 · INITIAL 0 유지 · 마이그레이션 없음*
-- [ ] D12. WF-05-5 전환 계획 미리보기에 `transitionId` 가 없어 409 왕복이 막힌다 (`TODOS.md`)
+- [x] D12. WF-05-5 전환 계획 미리보기에 `transitionId` 가 없어 409 왕복이 막힌다 (`TODOS.md`) (2026-10-22). *계획 바디에 `transitionId` 를 더하고 엔진 요청까지 넘긴다 · `toDomain()` 두 벌은 D13 · 웹 클라이언트는 호출 화면 0 이라 그대로*
 - [ ] D13. WF-05-6 두 벌 정리 — `TransitionRequestDto.toDomain()` 매핑 · 시작 상태 규칙(프로덕션·테스트) (`TODOS.md`)
 - [ ] D14. WF-05-7 테스트 빈틈 — 최초 전환 수정 경로 미도달 · V207 백필 가드 미발화 (`TODOS.md`)
 
