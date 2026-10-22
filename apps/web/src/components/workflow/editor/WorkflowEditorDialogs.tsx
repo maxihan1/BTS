@@ -14,6 +14,7 @@ import { TransitionFormDialog } from './TransitionFormDialog'
 import { PublishDialog } from './PublishDialog'
 import { ResetToDefaultDialog } from './ResetToDefaultDialog'
 import type { PanelStatus } from './StatusListPanel'
+import type { PickedStatus } from './StatusCreateForm'
 
 /** 로컬 id 로 지목된 전환. 목록 패널이 `id` 자리에 로컬 id 를 돌려준다. */
 export interface TargetTransition {
@@ -31,7 +32,7 @@ interface WorkflowEditorDialogsProps {
   // 상태 편성
   pickerOpen: boolean
   onPickerOpenChange: (open: boolean) => void
-  onAddStatus: (statusId: string) => void
+  onAddStatus: (status: PickedStatus) => void
   statusToRemove: PanelStatus | null
   onStatusRemoveChange: (status: PanelStatus | null) => void
   onConfirmRemoveStatus: () => void

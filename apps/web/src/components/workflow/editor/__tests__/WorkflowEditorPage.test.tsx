@@ -135,6 +135,62 @@ describe('★ 편집은 배포가 아니다', () => {
   })
 })
 
+describe('새 상태 만들기 (WF-04-3 · 결함 B6)', () => {
+  /** 상태 선택 다이얼로그를 열고 만들기 폼으로 넘어가 값을 채운다 */
+  async function fillCreateForm(key: string, name: string) {
+    await userEvent.click(screen.getByRole('button', { name: L.statusPanel.add }))
+    const picker = screen.getByRole('dialog', { name: L.dialog.statusPicker })
+    await userEvent.click(within(picker).getByRole('button', { name: L.statusCreate.open }))
+    await userEvent.type(within(picker).getByRole('textbox', { name: L.statusCreate.key }), key)
+    await userEvent.type(within(picker).getByRole('textbox', { name: L.statusCreate.name }), name)
+    await userEvent.click(within(picker).getByRole('radio', { name: L.statusCreate.categoryInProgress }))
+    return picker
+  }
+
+  it('카탈로그에 만들고 곧바로 초안에 편성한다', async () => {
+    renderEditor()
+    await waitForLoaded()
+    const countBefore = statusNames().length
+
+    const picker = await fillCreateForm('in-review', '검토 중')
+    await userEvent.click(within(picker).getByRole('button', { name: L.statusCreate.open }))
+
+    await waitFor(() => {
+      expect(statusNames()).toHaveLength(countBefore + 1)
+    })
+    expect(statusNames().some((n) => n.includes('검토 중'))).toBe(true)
+    expect(screen.queryByRole('dialog', { name: L.dialog.statusPicker })).not.toBeInTheDocument()
+    const catalog = (await (await fetch('/api/v1/statuses')).json()) as { data: { key: string; category: string }[] }
+    expect(catalog.data.find((s) => s.key === 'in-review')?.category).toBe('IN_PROGRESS')
+  })
+
+  it('★ 만들기가 거부되면(프로젝트 관리자 403) 초안에 편성하지 않고 폼에 남는다', async () => {
+    server.use(
+      http.post('/api/v1/statuses', () =>
+        HttpResponse.json(
+          { error: { code: 'WORKFLOW_PERMISSION_DENIED', message: '권한 없음' } },
+          { status: 403 },
+        ),
+      ),
+    )
+    renderEditor()
+    await waitForLoaded()
+    const countBefore = statusNames().length
+
+    const picker = await fillCreateForm('in-review', '검토 중')
+    await userEvent.click(within(picker).getByRole('button', { name: L.statusCreate.open }))
+
+    const { toast } = await import('sonner')
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled()
+    })
+    expect(screen.getByRole('dialog', { name: L.dialog.statusPicker })).toBeInTheDocument()
+    // 열린 모달이 목록을 aria-hidden 으로 가린다 — 닫고 센다
+    await userEvent.keyboard('{Escape}')
+    expect(statusNames()).toHaveLength(countBefore)
+  })
+})
+
 describe('상태 편집', () => {
   it('편성된 상태를 displayOrder 순서로 보여준다', async () => {
     renderEditor()

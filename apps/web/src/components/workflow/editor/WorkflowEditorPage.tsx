@@ -17,6 +17,7 @@ import type { TransitionInput, EditableDraft, DraftAction } from '@/lib/workflow
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
 import { WorkflowMetaForm } from './WorkflowMetaForm'
 import type { PanelStatus } from './StatusListPanel'
+import type { PickedStatus } from './StatusCreateForm'
 import { DraftStatusBar } from './DraftStatusBar'
 import type { MigrationProgress } from './DraftStatusBar'
 import { DraftConflictBanner } from './DraftConflictBanner'
@@ -191,14 +192,8 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   })
 
   /** 고른 상태를 초안에 편성한다. 이름·카테고리는 **카탈로그 값 그대로** — 임의 값은 400 이다. */
-  const handleAddStatus = (statusId: string): void => {
-    const entry = catalogEntries.find((s) => s.id === statusId)
-    if (entry !== undefined) {
-      draft.dispatch({
-        type: 'addState',
-        entry: { key: entry.key, name: entry.name, category: entry.category },
-      })
-    }
+  const handleAddStatus = (entry: PickedStatus): void => {
+    draft.dispatch({ type: 'addState', entry })
   }
 
   /** 상태를 뺀다. 그 상태를 가리키는 전환도 리듀서가 함께 뺀다 — 남기면 저장이 400 이다. */
