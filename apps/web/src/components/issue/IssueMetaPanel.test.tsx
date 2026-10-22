@@ -455,13 +455,16 @@ describe('IssueMetaPanel — 접근성', () => {
 // IMP-11~17. 상태전환 컨트롤 — FR-IS-01 Task-4
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 상태 메뉴 트리거 — 접근성 이름이 「상태 전환 선택, <현재 상태>」다 (FR-WF-01 D9) */
+const TRANSITION_TRIGGER = new RegExp(`^${issueDetailStrings.transitionSelectLabel}`)
+
 describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
   /**
    * IMP-11: 가용전환 목록이 있으면 전환 셀렉터가 렌더된다.
    */
   it('IMP-11: 가용전환이 있을 때 전환 셀렉터가 렌더된다', () => {
     renderPanel()
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    const select = screen.getByRole('button', { name: TRANSITION_TRIGGER })
     expect(select).toBeInTheDocument()
   })
 
@@ -469,11 +472,11 @@ describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
    * IMP-12: 전환 셀렉터에 가용전환 name이 옵션으로 노출된다.
    * options: placeholder + "Start Work" + "Cancel"
    */
-  it('IMP-12: 전환 셀렉터에 가용전환 name 옵션이 모두 노출된다', () => {
+  it('IMP-12: 상태 메뉴를 열면 가용전환 name 항목이 모두 노출된다', async () => {
     renderPanel()
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    expect(within(select as HTMLElement).getByRole('option', { name: 'Start Work' })).toBeInTheDocument()
-    expect(within(select as HTMLElement).getByRole('option', { name: 'Cancel' })).toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: TRANSITION_TRIGGER }))
+    expect(screen.getByRole('button', { name: /^Start Work/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Cancel/ })).toBeInTheDocument()
   })
 
   /**
@@ -487,12 +490,8 @@ describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, onTransition)
     const user = userEvent.setup()
 
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
-    // ★값 문자열을 리터럴로 쓰지 않는다 — 형식은 `lib/transition-key.ts` 정본 소관이다.
-    await user.selectOptions(
-      select,
-      screen.getByRole('option', { name: transitionsFixture[0]!.name }),
-    )
+    await user.click(screen.getByRole('button', { name: TRANSITION_TRIGGER }))
+    await user.click(screen.getByRole('button', { name: new RegExp(`^${transitionsFixture[0]!.name}`) }))
 
     expect(onTransition).toHaveBeenCalledOnce()
     expect(onTransition).toHaveBeenCalledWith(transitionsFixture[0])
@@ -503,7 +502,7 @@ describe('IssueMetaPanel — 상태전환 컨트롤 렌더', () => {
    */
   it('IMP-14: isTransitioning=true 시 전환 셀렉터가 disabled가 된다', () => {
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), transitionsFixture, vi.fn(), true)
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    const select = screen.getByRole('button', { name: TRANSITION_TRIGGER })
     expect(select).toBeDisabled()
   })
 })
@@ -514,7 +513,7 @@ describe('IssueMetaPanel — 가용전환 0건 (종료상태 S6)', () => {
    */
   it('IMP-15: 가용전환 0건이면 전환 셀렉터가 렌더되지 않는다', () => {
     renderPanel(issueFixture, availableTypes, vi.fn(), vi.fn(), [])
-    expect(screen.queryByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: TRANSITION_TRIGGER })).not.toBeInTheDocument()
   })
 
   /**
@@ -629,7 +628,7 @@ describe('IssueMetaPanel — E5 미설정(no-workflow) vs 종료상태(terminal)
         />
       </QueryClientProvider>,
     )
-    expect(screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: TRANSITION_TRIGGER })).toBeInTheDocument()
   })
 })
 
@@ -639,7 +638,7 @@ describe('IssueMetaPanel — 전환 셀렉터 접근성 (WCAG AA)', () => {
    */
   it('IMP-17: 전환 셀렉터에 aria-label과 min-h-[44px] 클래스가 있다', () => {
     renderPanel()
-    const select = screen.getByRole('combobox', { name: issueDetailStrings.transitionSelectLabel })
+    const select = screen.getByRole('button', { name: TRANSITION_TRIGGER })
     expect(select).toHaveAttribute('aria-label')
     expect(select.className).toMatch(/min-h-\[44px\]/)
   })

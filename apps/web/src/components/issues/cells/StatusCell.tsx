@@ -6,16 +6,17 @@ import type { IssueResponse, IssueTransition } from '@/api/issues'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import { statusBadgeVariant } from '../issue-visuals'
 import type { StateCategory } from '../issue-visuals'
+import type { StatusMeta } from '../IssueTable'
 import { ResolutionModal } from '@/components/issue/ResolutionModal'
+import { TransitionMenuList } from '@/components/issue/meta/TransitionMenuList'
 import { useIssueTransitions } from '@/hooks/use-issue-transitions'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
 import { useIssueListCellField } from '@/hooks/use-issue-list-cell-field'
+import { useStatusMetaByKey } from '@/hooks/use-workflows'
 import { resolveTransitionUnavailableReason } from '@/lib/transition-availability'
-import { transitionElementKey } from '@/lib/transition-key'
-import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
+import { EditableCell } from './EditableCell'
 
 /**
  * 닫힌 상태에서 보이는 상태 배지.
@@ -59,6 +60,8 @@ export function StatusCellDisplay({
 export interface StatusCellEditorProps {
   /** 현재 상태에서 가용한 전환 목록 — props 파생, useState 초기화 금지 (stale state 회귀 방지) */
   transitions: IssueTransition[]
+  /** 상태 키 → 표시 이름·카테고리 — 도착 상태 배지의 출처 (상세 화면 메뉴와 같은 맵) */
+  statusMetaByKey: Map<string, StatusMeta>
   /** 전환 0건일 때의 사유 — 미설정(422)과 종료 상태(빈 배열)를 가른다 (스펙 E5) */
   unavailableReason: TransitionUnavailableReason
   /** 전환 권한 여부 — false 면 전 선택지 disabled (fail-closed) */
@@ -83,9 +86,9 @@ export interface StatusCellEditorProps {
 /**
  * popover 안에 뜨는 가용 전환 목록.
  *
- * 상세 화면의 `IssueStateTransition` 은 `min-h-[44px]` 네이티브 `<select>` 라 목록 셀
- * popover 안에서는 과하다. 안내 문구 정본(`transitionWorkflowNotConfiguredError` ·
- * `noTransitionsAvailable`)은 **같은 것을 쓰되** 표현만 목록에 맞춘다.
+ * 전환 목록 자체는 상세 화면 `IssueStateTransition` 과 **같은 컴포넌트**({@link TransitionMenuList})
+ * 다 — 두 경로가 같은 순서 · 같은 범주 색 · 같은 자기 루프 묶음을 보인다 (FR-WF-01 D9).
+ * 안내 문구 정본(`transitionWorkflowNotConfiguredError` · `noTransitionsAvailable`)도 같은 것을 쓴다.
  *
  * 조립(`EditableCell` 로 감싸기 + 조회 훅 배선 + `ResolutionModal`)은 다음 task 소관이다 —
  * 이 컴포넌트는 순수 프레젠테이션이라 조회 훅을 갖지 않는다.
@@ -95,6 +98,7 @@ export interface StatusCellEditorProps {
  */
 export function StatusCellEditor({
   transitions,
+  statusMetaByKey,
   unavailableReason,
   canTransition,
   isSaving,
@@ -123,22 +127,13 @@ export function StatusCellEditor({
       {!canTransition && (
         <p className="px-2 py-1 text-xs text-(--text-subtle)">전환 권한이 없습니다.</p>
       )}
-      {transitions.map((t, index) => (
-        <Button
-          // ★`t.key` 를 그대로 쓰지 않는다 — 같은 (from, to) 쌍의 전환 둘이 같은 문자열을
-          //   갖고, 서버 계약상 null 일 수도 있다. 정본은 `@/lib/transition-key`.
-          key={transitionElementKey(t, index)}
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={!canTransition || isSaving}
-          // 종료 전환은 결의안을 먼저 받는다 — 여기서 바로 전환하면 필수 입력이 빠진다(FR14)
-          onClick={() => (t.toCategory === 'DONE' ? onDoneTransition(t) : onTransition(t.toStateKey))}
-          className={CELL_OPTION_CLASS}
-        >
-          {t.name}
-        </Button>
-      ))}
+      <TransitionMenuList
+        transitions={transitions}
+        statusMetaByKey={statusMetaByKey}
+        disabled={!canTransition || isSaving}
+        // 종료 전환은 결의안을 먼저 받는다 — 여기서 바로 전환하면 필수 입력이 빠진다(FR14)
+        onSelect={(t) => (t.toCategory === 'DONE' ? onDoneTransition(t) : onTransition(t.toStateKey))}
+      />
     </div>
   )
 }
@@ -180,10 +175,12 @@ function StatusCellPopoverBody({
 }: StatusCellPopoverBodyProps): JSX.Element {
   const { data: transitions = [], isLoading, isError, error } = useIssueTransitions(issue.key)
   const permissions = useIssuePermissions(issue.key)
+  const statusMetaByKey = useStatusMetaByKey()
 
   return (
     <StatusCellEditor
       transitions={transitions}
+      statusMetaByKey={statusMetaByKey}
       // ★공용 헬퍼 — 422(워크플로우 미설정)와 200+빈 배열(종료 상태)을 가른다 (FR8·E16)
       unavailableReason={resolveTransitionUnavailableReason({
         isError,
