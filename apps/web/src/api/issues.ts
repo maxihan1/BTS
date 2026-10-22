@@ -272,7 +272,15 @@ export const issueTransitionSchema = z.object({
    * 목록 전체가 파싱 실패로 사라진다(전환 버튼이 통째로 증발하는 형태의 회귀).
    */
   kind: z.string().min(1).nullable().optional(),
+  /**
+   * 전환 화면 (FR-WF-01 D11) — 전환 때 대화상자로 받을 필드와 필수. 비면 대화상자 없이 바로 전환한다.
+   * 필수는 서버도 강제한다(409). `field` 를 enum 으로 좁히지 않는다 — 필드가 늘면 목록 전체가 파싱 실패로 사라진다.
+   */
+  screen: z.array(z.object({ field: z.string().min(1), required: z.boolean() })).optional(),
 })
+
+/** 전환 화면의 필드 한 칸 */
+export type TransitionScreenField = NonNullable<z.infer<typeof issueTransitionSchema>['screen']>[number]
 
 /** 이슈 전환 항목 타입 */
 export type IssueTransition = z.infer<typeof issueTransitionSchema>
@@ -356,7 +364,14 @@ export interface TransitionIssueInput {
    * `transitionId` 를 여기에 실어 재요청하는 것이 왕복의 두 번째 절반이다.
    */
   transitionId?: string
+  /** 전환 화면의 담당자 (FR-WF-01 D11). 미전달이면 담당자를 그대로 둔다. */
+  assigneeId?: string
+  /** 전환 화면의 코멘트. 전환과 한 트랜잭션에 코멘트로 남는다. */
+  comment?: string
 }
+
+/** 전환 화면 대화상자가 확정하는 값 — 전환 요청에 그대로 펼쳐 싣는다 (FR-WF-01 D11) */
+export type TransitionScreenValues = Pick<TransitionIssueInput, 'resolutionId' | 'assigneeId' | 'comment'>
 
 /** 이슈 단건 응답 타입 */
 export type IssueResponse = z.infer<typeof issueResponseSchema>

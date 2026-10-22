@@ -1,7 +1,7 @@
 // KanbanBoard 단위 테스트 — resolveDropAction 순수 헬퍼 + 컬럼 displayOrder 렌더 + onDragEnd 통합(Task 7)
 // + 필드변경 훅 배선 + 드래그 시각 힌트 통합(FR-UX-06 PR21b Task 5)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, act } from '@testing-library/react'
+import { render, screen, within, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DndContext } from '@dnd-kit/core'
 import type { Active, Announcements, DragEndEvent, DragOverEvent, DragStartEvent, Over } from '@dnd-kit/core'
@@ -40,6 +40,15 @@ vi.mock('@/hooks/use-change-card-field', () => ({
     return { mutate: changeCardFieldMutateSpy, isPending: false }
   },
 }))
+
+// 이슈 가용 전환 mock — 드롭 때 그 전환의 화면을 읽는다 (FR-WF-01 D11). 테스트마다 갈아끼운다.
+const { transitionsState } = vi.hoisted(() => ({
+  transitionsState: { current: [] as Array<Record<string, unknown>> },
+}))
+vi.mock('@/api/issues', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/issues')>()
+  return { ...actual, fetchIssueTransitions: () => Promise.resolve(transitionsState.current) }
+})
 
 // useResolutions mock
 vi.mock('@/hooks/use-resolutions', () => ({
@@ -448,6 +457,7 @@ describe('KanbanBoard — S4 onDragEnd 분기 (Task 7)', () => {
     changeCardFieldMutateSpy.mockClear()
     capturedOnDragEnd = undefined
     capturedAnnouncements = undefined
+    transitionsState.current = []
   })
 
   it('S4a: 같은 셀 내 순서변경(reorder)이면 useReorderCard.mutate가 이웃 issueKey와 함께 호출된다', () => {
@@ -465,11 +475,12 @@ describe('KanbanBoard — S4 onDragEnd 분기 (Task 7)', () => {
     expect(changeCardFieldMutateSpy).not.toHaveBeenCalled()
   })
 
-  it('S4b: 다른 컬럼(non-DONE)으로 이동(move)이면 기존대로 useMoveCard.mutate가 호출된다 (무회귀)', () => {
+  it('S4b: 화면 없는 전환의 컬럼으로 이동이면 기존대로 useMoveCard.mutate가 호출된다 (무회귀)', async () => {
     renderBoard()
 
     triggerDragEnd({ id: 'ATLAS-1', fromColumnId: COL_TODO }, COL_INPROGRESS)
 
+    await waitFor(() => expect(moveCardMutateSpy).toHaveBeenCalled())
     expect(moveCardMutateSpy).toHaveBeenCalledWith(
       {
         issueKey: 'ATLAS-1',
@@ -485,15 +496,28 @@ describe('KanbanBoard — S4 onDragEnd 분기 (Task 7)', () => {
     expect(changeCardFieldMutateSpy).not.toHaveBeenCalled()
   })
 
-  it('S4c: DONE 컬럼으로 이동이면 resolution 모달이 열리고 mutate는 아직 호출되지 않는다 (무회귀)', () => {
+  it('S4c: 그 전환에 화면이 있으면 전환 화면이 열리고 mutate는 아직 호출되지 않는다 (FR-WF-01 D11)', async () => {
+    transitionsState.current = [
+      { name: 'Resolve', fromStateKey: 'todo', toStateKey: 'done', screen: [{ field: 'resolution', required: true }] },
+    ]
     renderBoard()
 
     triggerDragEnd({ id: 'ATLAS-1', fromColumnId: COL_TODO }, COL_DONE)
 
+    expect(await screen.findByRole('dialog', { name: 'Resolve' })).toBeInTheDocument()
     expect(moveCardMutateSpy).not.toHaveBeenCalled()
     expect(reorderCardMutateSpy).not.toHaveBeenCalled()
     expect(changeCardFieldMutateSpy).not.toHaveBeenCalled()
-    expect(screen.getByText('해결 방안 선택')).toBeInTheDocument()
+  })
+
+  it('S4e: DONE 컬럼이어도 화면이 없는 전환이면 묻지 않고 이동한다 — 하드코딩 해결 모달 제거 (Maxi 2026-10-22)', async () => {
+    transitionsState.current = [{ name: 'Done', fromStateKey: 'todo', toStateKey: 'done', screen: [] }]
+    renderBoard()
+
+    triggerDragEnd({ id: 'ATLAS-1', fromColumnId: COL_TODO }, COL_DONE)
+
+    await waitFor(() => expect(moveCardMutateSpy).toHaveBeenCalled())
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('S4d: noop(제자리 드롭)이면 어떤 mutate도 호출되지 않는다', () => {

@@ -7,7 +7,7 @@
 **BTS (Project Atlas)** — 사내 1,000명 협업 워크스페이스. Atlas Issues + Atlas Wiki(v0.5).
 Kotlin/Spring + React 19 · Naver Cloud 단일 호스트 · Maxi 1인 + Claude Code.
 backend 9 BC + 배포 조립 `app` · 프론트 `apps/web` SPA.
-**진척** — 146 FR 중 FR-WF-01 만 D 단계 미완이다 — 2026-10-22 Maxi 가 승격한 WF-01-1(이슈 화면 전환 경험, D8~D11)이 남았다. 나머지 기능 후보(WF-04-7 · WF-06-4)는 기각했다. **D 단계 완료는 BC 완료 선언이 아니다** — §NFR 측정이 공통 관문이다. 정본 `docs/plan/README.md`.
+**진척** — 146 FR 전량이 D 단계를 마쳤다 — 마지막 WF-01-1(이슈 화면 전환 경험, FR-WF-01 D8~D11)이 2026-10-23 닫혔다. 기능 후보 WF-04-7 · WF-06-4 는 기각했다. **D 단계 완료는 BC 완료 선언이 아니다** — §NFR 측정이 공통 관문이다. 정본 `docs/plan/README.md`.
 
 ## 작업
 

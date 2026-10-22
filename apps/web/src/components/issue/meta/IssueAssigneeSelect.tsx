@@ -42,6 +42,11 @@ export interface IssueAssigneeSelectProps {
    * 스크린리더가 없는 단축키를 안내한다. "손잡이를 연결한 화면에만 단축키가 있다"가 규칙.
    */
   focusRef?: RefObject<HTMLInputElement | null>
+  /**
+   * 「해제」 버튼을 보일지 (기본 true). 전환 화면(FR-WF-01 D11)은 담당자를 비우는 요청을 표현하지 않아
+   * false 로 둔다 — 눌러도 서버가 담당자를 그대로 두는 버튼을 보이지 않는다.
+   */
+  allowClear?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,6 +73,7 @@ export function IssueAssigneeSelect({
   onAssigneeChange,
   canEdit,
   focusRef,
+  allowClear = true,
 }: IssueAssigneeSelectProps): JSX.Element {
   /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
   function getDisplayName(user: UserSummary): string {
@@ -95,7 +101,7 @@ export function IssueAssigneeSelect({
             : issueDetailStrings.assigneeUnassigned}
         </span>
         {/* 담당자 해제 버튼 — 할당된 경우에만 노출, canEdit=false이면 disabled (FR-PM-02) */}
-        {value !== null && (
+        {value !== null && allowClear && (
           <Button
             type="button"
             variant="ghost"

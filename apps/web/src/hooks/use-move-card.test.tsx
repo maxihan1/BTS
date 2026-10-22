@@ -7,8 +7,14 @@ import type { ReactNode } from 'react'
 
 // api/boards 전체 mock — 실제 HTTP 요청 없이 단위 테스트
 vi.mock('@/api/boards')
+vi.mock('@/api/issues', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/issues')>()
+  return { ...actual, transitionIssue: vi.fn() }
+})
 
 import { moveCard } from '@/api/boards'
+import { transitionIssue } from '@/api/issues'
+import type { IssueResponse } from '@/api/issues'
 import type { BoardDetail, MoveCardResult } from '@/api/boards'
 import { useMoveCard, moveCardInBoard, patchCardVersion } from './use-move-card'
 import { boardKeys } from './use-boards'
@@ -223,7 +229,7 @@ describe('useMoveCard', () => {
     )
   })
 
-  it('T-MC-5: resolutionId 전달 — moveCard 호출 인자에 resolutionId가 포함된다', async () => {
+  it('T-MC-5: 전환 화면의 해결 결과만 있으면 보드 이동 API 에 resolutionId 로 싣는다', async () => {
     vi.mocked(moveCard).mockResolvedValue(MOVE_RESULT)
 
     const { result } = renderHook(() => useMoveCard(BOARD_ID), {
@@ -236,7 +242,7 @@ describe('useMoveCard', () => {
         fromColumnId: COL_A_ID,
         toColumnId: COL_B_ID,
         toStateKey: 'moved',        expectedVersion: 1,
-        resolutionId: 'res-uuid-0000-0000-000000000001',
+        screenValues: { resolutionId: 'res-uuid-0000-0000-000000000001' },
       })
     })
 
@@ -245,6 +251,38 @@ describe('useMoveCard', () => {
       'ATLAS-1',
       expect.objectContaining({ resolutionId: 'res-uuid-0000-0000-000000000001' }),
     )
+    expect(transitionIssue).not.toHaveBeenCalled()
+  })
+
+  it('T-MC-6: 담당자 · 코멘트가 있으면 이슈 전환 API 로 보낸다 — 보드 이동 API 는 두 값을 못 싣는다 (FR-WF-01 D11)', async () => {
+    vi.mocked(transitionIssue).mockResolvedValue({
+      key: 'ATLAS-1',
+      currentStateKey: 'moved',
+      version: 2,
+    } as IssueResponse)
+
+    const { result } = renderHook(() => useMoveCard(BOARD_ID), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        issueKey: 'ATLAS-1',
+        fromColumnId: COL_A_ID,
+        toColumnId: COL_B_ID,
+        toStateKey: 'moved',
+        expectedVersion: 1,
+        screenValues: { resolutionId: 'res-1', comment: '확인함' },
+      })
+    })
+
+    expect(transitionIssue).toHaveBeenCalledWith('ATLAS-1', {
+      toStatusKey: 'moved',
+      expectedVersion: 1,
+      resolutionId: 'res-1',
+      comment: '확인함',
+    })
+    expect(moveCard).not.toHaveBeenCalled()
   })
 })
 

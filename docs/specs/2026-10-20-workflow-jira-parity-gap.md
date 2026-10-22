@@ -51,7 +51,7 @@
 | G8 | **조건 종류** — 사람 제한(담당자·보고자·역할·그룹·권한·사용자 필드), 필드 값 비교, 이전 상태 통과 여부, 하위 작업 상태, 직무 분리, 전원 차단 | `permission-check` · `not-status-category` (`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/DefaultWorkflowValidatorFactory.kt`) | [S20][S2] |
 | G9 | **검증기 종류** — 필수 필드(임의 필드), 필드 변경됨, 단일 값, 정규식, 날짜 비교·범위, 상위 항목 상태, 이전 상태 | `RequiredField`(B2 제약) · `permission-check` · `not-status-category`. 4 대 9 비교와 후속 FR 후보 2건은 이미 기록 — `docs/plans/2026-08-25-backend-workflow-transition-rule-crud.md` | [S20][S2] |
 | G10 | **후처리 종류** — 필드 갱신(해결 값 설정·비우기 포함), 담당자 지정, 필드 값 복사(상위 포함), 보안 수준, 웹훅, AI 에이전트 실행 | 엔진 5종 중 웹훅만 동작(B1). 화면에서 추가할 수 있는 것도 웹훅뿐(`PostActionFormDialog.tsx`) | [S20][S2][S14] |
-| G11 | **전환 화면** — 전환 때 필드 입력 대화상자(필수 표시), 「빈 필드 채우라고 알림」 | 없음. DONE 범주로 갈 때 해결 모달을 프론트가 하드코딩해 띄울 뿐이다(`routes/issues.$key.tsx`). **정의는 FR-WF-01 D10 이 닫았다** — 해결 결과 · 담당자 · 코멘트 + 필수(Maxi 2026-10-22). 실행은 D11 | [S2][S25][S20] |
+| G11 | **전환 화면** — 전환 때 필드 입력 대화상자(필수 표시), 「빈 필드 채우라고 알림」 | 없음. DONE 범주로 갈 때 해결 모달을 프론트가 하드코딩해 띄울 뿐이다(`routes/issues.$key.tsx`). **정의는 FR-WF-01 D10 이 닫았다** — 해결 결과 · 담당자 · 코멘트 + 필수(Maxi 2026-10-22). **실행은 D11 이 닫았다**(2026-10-23) — 전환 화면 대화상자가 하드코딩 모달을 대체하고 서버가 필수를 강제한다 | [S2][S25][S20] |
 | G12 | **개발 도구 트리거** — 브랜치·커밋·PR 이벤트가 전환을 일으킨다 | 없음 | [S8][S19] |
 | G13 | **규칙 순서** — 순서가 의미를 가진다(재오픈 때 해결 값 비우기 등) | `displayOrder` 필드뿐, 끌어서 바꾸기는 범위 밖으로 기록됨 | [S6] |
 
@@ -61,7 +61,7 @@
 |---|---|---|---|
 | G14 | **활성 스킴 편집 = 초안 스킴 → 발행 + 이슈 이관** | 매핑 추가·삭제가 즉시 반영, 이관 없음(B5) | [S37][S20] |
 | G15 | **비공유 워크플로우의 규칙도 「Edit workflows」 권한자가 고친다** | 규칙 화면이 SYSTEM_ADMIN 전용(B4) — FR-WF-08 의 「공유 여부가 기준」 불변식과 어긋난다 | [S39][S40] |
-| G16 | 해결(resolution) 필드를 **전환 규칙으로** 설정·비우고 전환별 허용 값을 제한한다 | DONE 범주면 프론트가 해결 모달을 띄우고, 백엔드는 시드 YAML 의 `RequiredField{resolution}` 으로 강제(ADR `2026-06-03-resolution-required-on-done-transition.md`) | [S42][S15] |
+| G16 | 해결(resolution) 필드를 **전환 규칙으로** 설정·비우고 전환별 허용 값을 제한한다 | DONE 범주면 프론트가 해결 모달을 띄우고, 백엔드는 시드 YAML 의 `RequiredField{resolution}` 으로 강제(ADR `2026-06-03-resolution-required-on-done-transition.md`). **FR-WF-01 D11(2026-10-23)** — 해결 결과는 전환 화면 필드가 되어 전환마다 설정 · 필수가 됐고 검증기는 걷었다. 전환별 허용 값 제한은 남는다 | [S42][S15] |
 
 ## 3. 사용성 차이 (U)
 
@@ -86,7 +86,7 @@
 | # | Jira Cloud | BTS | 출처 |
 |---|---|---|---|
 | U12 | 상태 드롭다운이 가능한 전환을 `opsbar-sequence` → 범주 순으로 보여 준다. 루프 전환은 별도 버튼 또는 「More actions」 | 네이티브 `<select>` 에 전환 이름. **고르는 즉시 실행**된다(`IssueStateTransition.tsx` · DONE 범주는 해결 모달을 거친다). 순서 지정 수단이 없다(G2) | [S25][S15] |
-| U13 | 전환 화면이 있으면 대화상자에서 필드를 받고 필수는 별표 | 해결 모달 하드코딩 1종(G11) | [S25] |
+| U13 | 전환 화면이 있으면 대화상자에서 필드를 받고 필수는 별표 | 해결 모달 하드코딩 1종(G11). **FR-WF-01 D11 이 닫았다**(2026-10-23) | [S25] |
 | U14 | 막힌 전환은 「Unable to transition … Check if all transition conditions are met.」, 성공·실패 토스트 | EXECUTION 실패 시 「현재 상태에서 허용되지 않는 전환입니다.」 일반 토스트 — **검증기가 준 메시지를 안 보여 준다**(`apps/web/src/hooks/use-issue-transitions.ts`) | [S25] |
 | U15 | 마지막 하위 작업이 Done 이 되면 상위 항목을 옮길지 묻는다 | 없음 | [S25] |
 

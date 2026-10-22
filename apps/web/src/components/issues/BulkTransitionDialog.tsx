@@ -20,9 +20,13 @@ import {
 import { fetchBulkAvailableTransitions } from '@/api/issues'
 import type { IssueTransition } from '@/api/issues'
 import { useSubmitBulkOperation } from '@/hooks/use-bulk-operation'
-import { useResolutions } from '@/hooks/use-resolutions'
 import { bulkOperationLabels } from '@/i18n/bulk-operation-labels'
-import { resolutionLabels } from '@/i18n/resolution-labels'
+import { TransitionScreenFields } from '@/components/issue/TransitionScreenDialog'
+import { initialScreenForm, isScreenComplete, toScreenValues } from '@/lib/transition-screen'
+import type { TransitionScreenForm } from '@/lib/transition-screen'
+
+/** 일괄 전환은 이슈가 여럿이라 미리 채우지 않는다 */
+const EMPTY_FORM = initialScreenForm({ resolutionId: null, assigneeId: null })
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -53,8 +57,9 @@ interface BulkTransitionDialogProps {
  * 5. transitions가 0건이고 unresolvedIssueKeys === issueKeys 전량이면 전량 실패 에러를 표시한다.
  * 6. 전환 선택 후 적용 시 issueKeys 전체를 백엔드에 전송한다.
  *    — 백엔드 best-effort가 개별 처리하므로 전체 목록을 그대로 보낸다.
- * 7. 선택한 전환의 toCategory가 'DONE'이면 resolution 드롭다운을 표시한다 (B14).
- *    — resolution 미선택 시 적용 버튼 비활성. 선택 시 transitionPayload.resolutionId 포함.
+ * 7. 선택한 전환에 화면이 있으면 그 칸(해결 결과 · 담당자 · 코멘트)을 표시한다 (FR-WF-01 D11).
+ *    — 필수 칸이 비면 적용 버튼 비활성. 값은 transitionPayload 에 실려 이슈마다 같게 적용된다.
+ *    이슈가 여럿이라 미리 채우지 않는다. 화면은 서버가 이슈별 화면을 합친 것이다(필수는 하나라도 필수면 필수).
  * 8. 성공 시 onSubmitted(bulkOperationId)와 onOpenChange(false)를 호출한다.
  *
  * @param issueKeys 일괄 전환 대상 이슈 키 목록
@@ -76,15 +81,14 @@ export function BulkTransitionDialog({
   const [hasTotalFailure, setHasTotalFailure] = useState(false)
   /** 선택된 toStateKey */
   const [selectedStateKey, setSelectedStateKey] = useState<string>('')
-  /** DONE 전환 시 선택된 결의안 ID */
-  const [selectedResolutionId, setSelectedResolutionId] = useState<string>('')
+  /** 전환 화면 입력 */
+  const [screenForm, setScreenForm] = useState<TransitionScreenForm>(EMPTY_FORM)
 
   const submitBulkOperation = useSubmitBulkOperation()
-  const { data: resolutions = [] } = useResolutions()
 
-  /** 현재 선택된 전환이 DONE 카테고리인지 여부 */
+  /** 현재 선택된 전환의 화면 */
   const selectedTransition = transitions.find((t) => t.toStateKey === selectedStateKey)
-  const isDoneTransition = selectedTransition?.toCategory === 'DONE'
+  const screen = selectedTransition?.screen ?? []
 
   /**
    * Dialog가 열릴 때 fetchBulkAvailableTransitions를 단일 호출한다.
@@ -100,7 +104,7 @@ export function BulkTransitionDialog({
     setHasPartialFailure(false)
     setHasTotalFailure(false)
     setSelectedStateKey('')
-    setSelectedResolutionId('')
+    setScreenForm(EMPTY_FORM)
 
     void fetchBulkAvailableTransitions(issueKeys).then((result) => {
       if (cancelled) return
@@ -125,18 +129,18 @@ export function BulkTransitionDialog({
    * 적용 버튼 활성 조건.
    * - 전량 실패 없음
    * - 전환이 있고 선택됨
-   * - DONE 전환이면 resolution도 선택됨
+   * - 전환 화면의 필수 칸이 다 참
    */
   const canSubmit =
     !hasTotalFailure &&
     selectedStateKey !== '' &&
     transitions.length > 0 &&
-    (!isDoneTransition || selectedResolutionId !== '')
+    isScreenComplete(screen, screenForm)
 
   function handleOpenChange(next: boolean): void {
     if (!next) {
       setSelectedStateKey('')
-      setSelectedResolutionId('')
+      setScreenForm(EMPTY_FORM)
       setTransitions([])
       setHasPartialFailure(false)
       setHasTotalFailure(false)
@@ -146,17 +150,12 @@ export function BulkTransitionDialog({
 
   function handleTransitionChange(value: string): void {
     setSelectedStateKey(value)
-    // 전환 변경 시 resolution 선택 초기화
-    setSelectedResolutionId('')
+    // 전환 변경 시 화면 입력 초기화
+    setScreenForm(EMPTY_FORM)
   }
 
   async function handleApply(): Promise<void> {
-    const transitionPayload: { toStateKey: string; resolutionId?: string } = {
-      toStateKey: selectedStateKey,
-    }
-    if (isDoneTransition && selectedResolutionId !== '') {
-      transitionPayload.resolutionId = selectedResolutionId
-    }
+    const transitionPayload = { toStateKey: selectedStateKey, ...toScreenValues(screen, screenForm) }
     try {
       const result = await submitBulkOperation.mutateAsync({
         operationType: 'BULK_TRANSITION',
@@ -225,29 +224,9 @@ export function BulkTransitionDialog({
                     </Select>
                   </div>
 
-                  {/* DONE 전환 선택 시 resolution 드롭다운 (B14) */}
-                  {isDoneTransition && (
-                    <div>
-                      <label htmlFor="bulk-transition-resolution" className="text-sm font-medium mb-1 block">
-                        결의안
-                      </label>
-                      <Select value={selectedResolutionId} onValueChange={setSelectedResolutionId}>
-                        <SelectTrigger
-                          id="bulk-transition-resolution"
-                          className="w-full"
-                          aria-label="결의안"
-                        >
-                          <SelectValue placeholder={resolutionLabels.selectPlaceholder} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {resolutions.map((resolution) => (
-                            <SelectItem key={resolution.id} value={resolution.id}>
-                              {resolution.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* 전환 화면 (FR-WF-01 D11) */}
+                  {screen.length > 0 && (
+                    <TransitionScreenFields screen={screen} form={screenForm} onChange={setScreenForm} />
                   )}
                 </div>
               )}

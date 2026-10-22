@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { QueryKey } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { changeAssignee, updateIssue, transitionIssue } from '@/api/issues'
-import type { IssueResponse } from '@/api/issues'
+import type { IssueResponse, TransitionScreenValues } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { extractErrorCode, extractErrorReason } from '@/lib/extract-error-code'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -68,12 +68,10 @@ export interface IssueCellFieldVars {
   /** field 가 'status' 일 때 목표 상태 키 */
   toStatusKey?: string
   /**
-   * field 가 'status' 이고 **종료(DONE) 전환**일 때 선택된 결의안 UUID (FR14).
-   *
-   * 해결 결과는 종료 전환의 필수 입력이라 `ResolutionModal` 이 확정한 값을 여기 싣는다.
-   * `TransitionIssueInput` 이 이미 받는 선택 필드이므로 그대로 통과시킨다.
+   * field 가 'status' 이고 전환에 화면이 있을 때 대화상자가 확정한 값 (FR-WF-01 D11).
+   * 해결 결과 · 담당자 · 코멘트를 `TransitionIssueInput` 에 그대로 펼쳐 싣는다.
    */
-  resolutionId?: string
+  screenValues?: TransitionScreenValues
   /** 낙관적 잠금(OCC)을 위한 현재 버전 번호 */
   expectedVersion: number
 }
@@ -114,8 +112,8 @@ function requestCellChange(vars: IssueCellFieldVars): Promise<IssueResponse> {
       return transitionIssue(vars.issueKey, {
         toStatusKey: vars.toStatusKey,
         expectedVersion: vars.expectedVersion,
-        // 종료 전환에만 실린다 — 비종료 전환은 undefined 라 body 에서 빠진다 (FR14)
-        resolutionId: vars.resolutionId,
+        // 화면이 없는 전환은 undefined 라 body 에서 빠진다 (D11)
+        ...vars.screenValues,
       })
     }
     default: {
