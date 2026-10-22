@@ -213,6 +213,21 @@ class WorkflowWriteRepository(
             .execute()
     }
 
+    /**
+     * 부모 워크플로우의 낙관적 락 버전과 수정 시각을 올린다. 전환 CRUD 가 부른다 (WF-05-1).
+     *
+     * 안 올리면 그 사이 뜬 초안의 발행 CAS(`bumpVersionIfMatches`)가 통과해, 발행의 전환 전량 교체가
+     * 이 편집을 말없이 지운다.
+     */
+    fun bumpVersion(workflowId: UUID) {
+        dsl
+            .update(WORKFLOWS)
+            .set(WORKFLOWS.VERSION, WORKFLOWS.VERSION.plus(1))
+            .set(WORKFLOWS.UPDATED_AT, OffsetDateTime.now())
+            .where(WORKFLOWS.ID.eq(workflowId))
+            .execute()
+    }
+
     /** 소프트 삭제. 행을 지우지 않고 `deleted_at` 만 채운다(`DATA.md §1.2`). */
     fun softDelete(workflowId: UUID) {
         dsl

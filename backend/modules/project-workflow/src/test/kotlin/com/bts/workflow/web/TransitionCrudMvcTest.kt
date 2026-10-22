@@ -14,6 +14,7 @@ import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.globalOnlyOwnershipScope
+import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import com.bts.workflow.testsupport.SharedPostgres
@@ -22,6 +23,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.containsString
+import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
 import org.junit.jupiter.api.AfterEach
@@ -39,6 +41,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -57,6 +60,7 @@ class TransitionCrudMvcTest {
     companion object {
         val postgres = SharedPostgres.freshDatabase()
 
+        lateinit var dsl: DSLContext
         lateinit var repository: WorkflowRepository
         lateinit var cache: WorkflowCache
         lateinit var commandService: WorkflowCommandService
@@ -68,7 +72,7 @@ class TransitionCrudMvcTest {
         @JvmStatic
         fun setup() {
             val dataSource = DriverManagerDataSource(postgres.jdbcUrl, postgres.username, postgres.password)
-            val dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
+            dsl = DSL.using(dataSource, SQLDialect.POSTGRES)
             repository = WorkflowRepository(dsl)
             cache = WorkflowCache(repository, dsl)
             commandService =
@@ -256,6 +260,36 @@ class TransitionCrudMvcTest {
             .isEmpty()
     }
 
+    // ── WF-05-1. 쓰기 3종 모두 부모 워크플로우의 버전·수정 시각을 올린다 ──────────
+
+    @Test
+    fun `전환 CRUD 3종이 워크플로우 version 과 updated_at 을 올린다`() {
+        createWorkflow("versioned-flow", "open", "done")
+
+        // 버전이 그대로면 그 사이 뜬 초안의 발행 CAS 가 통과해 이 편집을 말없이 덮어쓴다.
+        fun assertBumped(
+            before: Pair<Long, OffsetDateTime>,
+            action: String,
+        ): Pair<Long, OffsetDateTime> {
+            val after = versionOf("versioned-flow")
+            assertThat(after.first).describedAs("$action 경로가 version 을 올리지 않았다").isEqualTo(before.first + 1)
+            assertThat(after.second).describedAs("$action 경로가 updated_at 을 올리지 않았다").isAfter(before.second)
+            return after
+        }
+
+        var state = versionOf("versioned-flow")
+        val transitionId = createTransition("versioned-flow", body(from = "open", to = "done", name = "완료"))
+        state = assertBumped(state, "생성")
+
+        mockMvc.perform(putTransition("versioned-flow", transitionId, body(from = "open", to = "done", name = "완료됨")))
+            .andExpect(status().isOk)
+        state = assertBumped(state, "수정")
+
+        mockMvc.perform(delete("/api/v1/workflows/versioned-flow/transitions/$transitionId"))
+            .andExpect(status().isNoContent)
+        assertBumped(state, "삭제")
+    }
+
     // ── 헬퍼 ───────────────────────────────────────────────────────────────────
 
     /** 워크플로우 생성이 심는 최초 전환을 뺀, 이 테스트가 손으로 만든 전환. */
@@ -278,6 +312,20 @@ class TransitionCrudMvcTest {
                 projectKey = null,
             ),
         )
+    }
+
+    /** 살아 있는 워크플로우의 `version` · `updated_at`. */
+    private fun versionOf(key: String): Pair<Long, OffsetDateTime> {
+        val row =
+            requireNotNull(
+                dsl
+                    .select(WORKFLOWS.VERSION, WORKFLOWS.UPDATED_AT)
+                    .from(WORKFLOWS)
+                    .where(WORKFLOWS.KEY.eq(key))
+                    .and(WORKFLOWS.DELETED_AT.isNull)
+                    .fetchOne(),
+            )
+        return requireNotNull(row.value1()) to requireNotNull(row.value2())
     }
 
     /** 전환을 만들고 그 id 를 준다. 201 이 아니면 그 자리에서 실패한다. */

@@ -240,6 +240,7 @@ class WorkflowCommandService(
                 fromStatusId = shape.fromStatusId,
                 toStatusId = shape.toStatusId,
             )
+        writeRepository.bumpVersion(workflowId)
         workflowCache.invalidate(workflowKey)
         log.info("전환 생성 workflow={} kind={} id={}", workflowKey, shape.kind, transitionId)
         return command.toTransition(transitionId, shape.kind)
@@ -269,6 +270,7 @@ class WorkflowCommandService(
             fromStatusId = shape.fromStatusId,
             toStatusId = shape.toStatusId,
         )
+        writeRepository.bumpVersion(workflowId)
         workflowCache.invalidate(workflowKey)
         log.info("전환 수정 workflow={} id={}", workflowKey, transitionId)
         return command.toTransition(transitionId, shape.kind)
@@ -296,6 +298,7 @@ class WorkflowCommandService(
         }
 
         writeRepository.deleteTransition(transitionId)
+        writeRepository.bumpVersion(workflowId)
         workflowCache.invalidate(workflowKey)
         log.info("전환 삭제 workflow={} id={}", workflowKey, transitionId)
     }
