@@ -899,8 +899,9 @@ describe('PostActionConfigSection — 출발 상태가 없는 전환 (GLOBAL·IN
 
   /**
    * PACS-K4. INITIAL·GLOBAL 은 선택 가능하다.
-   * backend `PostActionTransitionResolver` 가 `KIND_TOKENS` 로 두 종류를 전환 id 로 해석하므로
+   * backend `TransitionKeyResolver` 가 `KIND_TOKENS` 로 두 종류를 전환 id 로 해석하므로
    * 규칙을 붙일 수 있는 대상이다 — 막으면 그 경로가 UI 에서 도달 불가가 된다.
+   * INITIAL 의 post-action 은 이슈 생성 때 돈다 — Jira Create 전환의 post function 과 같다 (WF-05-3).
    */
   it('PACS-K4: INITIAL·GLOBAL option 은 disabled 가 아니다', () => {
     renderSection({ transitions: kindTransitions })

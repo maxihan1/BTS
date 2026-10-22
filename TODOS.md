@@ -3400,7 +3400,21 @@ red 가 나는지 재는 짝을 세운다 — 정직하지만 자식 수만큼 �
 
 ---
 
-## ⬜ 워크플로우 — INITIAL 전환에 붙인 규칙은 저장되지만 실행 경로가 없다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — INITIAL 전환에 붙인 규칙은 저장되지만 실행 경로가 없다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-05-3 (#536 · #537 · 이 PR).** Maxi 결정 「Jira Cloud 와 같은 방식」으로 닫았다.
+Jira Create 전환은 Condition 을 받지 않고 Validator · Post function 은 생성 때 돈다.
+- **#536 project-workflow + shared-kernel** — `TransitionRequest.creation` 이면 엔진이 최초 전환만 후보로 보고
+  규칙을 돌린다. 리뷰가 BLOCKER 로 잡아 문자열 토큰(`fromStateKey = "INITIAL"`)을 명시 필드로 바꿨다 — 상태 키에
+  예약어 검사가 없어 `INITIAL` 이라는 실제 상태의 이슈가 갇혔다. 관문(`TransitionRuleGuard`)이 최초 전환의
+  AVAILABILITY validator 를 400 으로 거절하고, 실행 자리에서도 건너뛴다(종류 변경 · 이전 행 우회 차단).
+- **#537 issue-tracking** — `createIssue` · `cloneIssue` 가 insert 전에 그 계획을 받는다. validator 거절은 409,
+  post-action 이벤트는 insert 뒤 같은 트랜잭션에서 발행. 실 엔진 통합 S4(`IssueTransitionValidatorEndToEndIntegrationTest`).
+- **이 PR apps/web** — 규칙 대상으로 최초 전환을 고르면 「후보에서 감춤」 규칙을 걸 수 없다는 안내를 띄운다
+  (서버 거절은 일반 400 문구라 미리 알린다). 화면에 `type → phase` 표는 만들지 않았다. PACS-K4 KDoc 의 개명 전 클래스 이름도 고쳤다.
+
+**남은 것.** 전환 종류를 INITIAL 로 바꾸는 편집(`WorkflowCommandService.updateTransition`)은 이미 매달린 조건 행을
+다시 보지 않는다 — 실행은 건너뛰므로 피해는 없지만 그 행은 「저장되지만 안 도는」 채로 목록에 남는다.
 
 **쉬운 말.** 「이슈를 만들 때」 전환에 자동 규칙을 붙일 수 있게 화면이 열려 있는데, 그 규칙은 **절대 안 돈다.**
 저장도 되고 목록에도 뜨는데 실행만 안 된다.
