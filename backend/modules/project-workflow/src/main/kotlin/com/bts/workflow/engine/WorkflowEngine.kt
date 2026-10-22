@@ -9,6 +9,7 @@ import com.bts.shared.workflow.DomainEvent
 import com.bts.shared.workflow.FieldChange
 import com.bts.shared.workflow.TransitionPlan
 import com.bts.shared.workflow.TransitionRequest
+import com.bts.shared.workflow.TransitionScreenFieldView
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.Workflow
@@ -191,6 +192,7 @@ class WorkflowEngine(
         val transition = resolveTransition(req, workflow)
         val ctx = buildContext(req, workflow, transition)
 
+        enforceScreen(req, transition)
         runValidators(ctx, transition)
         val (fieldChanges, emitEvents) = runPostActions(ctx, transition)
 
@@ -250,6 +252,7 @@ class WorkflowEngine(
                     // 위에서 채운 fromStateKey 로 호출자가 재조립하면 GLOBAL 전환(`KIND__to`)에서
                     // 도메인과 이름이 갈리므로, 게터 결과를 손대지 않고 그대로 실어 보낸다.
                     key = transition.key,
+                    screen = transition.screen.map { TransitionScreenFieldView(it.field, it.required) },
                 )
             },
         )
@@ -431,6 +434,27 @@ class WorkflowEngine(
     }
 
     /**
+     * 전환 화면의 필수 칸을 강제한다 (FR-WF-01 D11). 필수의 정본은 화면이다(Maxi 2026-10-22).
+     *
+     * 호출자 BC 가 전환 **후** 값을 화면 필드 키 그대로 [TransitionRequest.issueFields] 에 싣는다 —
+     * 비었거나 공백뿐이면 거절한다. 검증기와 같은 예외라 호출자에게는 같은 409 로 간다.
+     */
+    private fun enforceScreen(
+        req: TransitionRequest,
+        transition: WorkflowTransition,
+    ) {
+        val missing =
+            transition.screen.firstOrNull { it.required && req.issueFields[it.field]?.toString().isNullOrBlank() }
+                ?: return
+        log.info("WorkflowEngine.plan: screen field '{}' required but blank", missing.field)
+        throw WorkflowValidatorFailureException(
+            SCREEN_GATE,
+            missing.field,
+            "'${SCREEN_LABELS[missing.field] ?: missing.field}' 항목을 채워야 이 전환을 할 수 있습니다.",
+        )
+    }
+
+    /**
      * Validator 를 순차 평가한다. 첫 Fail 즉시 예외를 던진다.
      *
      * plan 경로(전환 실행)에서만 호출된다. AVAILABILITY / EXECUTION 구분 없이 모든 phase 의
@@ -548,3 +572,9 @@ class WorkflowEngine(
         return true
     }
 }
+
+/** 화면 필수 거절이 [WorkflowValidatorFailureException.validatorType] 에 싣는 이름 — 사용자가 고르는 검증기 종류가 아니다. */
+private const val SCREEN_GATE = "TransitionScreen"
+
+/** 화면 필드 키 → 거절 문구에 쓰는 이름. 키는 [com.bts.workflow.domain.DraftScreenFieldDto.FIELDS] 와 같다. */
+private val SCREEN_LABELS = mapOf("resolution" to "해결 결과", "assignee" to "담당자", "comment" to "코멘트")

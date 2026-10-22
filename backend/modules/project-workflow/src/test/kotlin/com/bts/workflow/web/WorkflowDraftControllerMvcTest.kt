@@ -19,6 +19,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -107,7 +108,7 @@ class WorkflowDraftControllerMvcTest {
         open fun workflowDraftController(
             draft: WorkflowDraftService,
             publish: WorkflowPublishService,
-        ): WorkflowDraftController = WorkflowDraftController(draft, publish)
+        ): WorkflowDraftController = WorkflowDraftController(draft, publish, ObjectMapper().registerKotlinModule())
 
         @Bean
         open fun workflowExceptionHandler(): WorkflowExceptionHandler = WorkflowExceptionHandler()
@@ -213,6 +214,20 @@ class WorkflowDraftControllerMvcTest {
         )
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_ID)
+    fun `PUT draft — 전환에 screen 키가 없는 옛 편집기 본문은 400 이고 저장하지 않는다 (FR-WF-01 D11)`() {
+        val oldTabBody =
+            """{"baseVersion":0,"definition":{"key":"$KEY","name":"초안","states":[],""" +
+                """"transitions":[{"from":null,"to":"open","name":"이슈 생성","kind":"INITIAL",""" +
+                """"validators":[],"postActions":[]}]}}"""
+
+        mockMvc.perform(put("/api/v1/workflows/$KEY/draft").contentType(MediaType.APPLICATION_JSON).content(oldTabBody))
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error.code").value("WORKFLOW_INVALID_REQUEST"))
+        verify(exactly = 0) { draftService.save(any(), any(), any(), any()) }
     }
 
     // ── 폐기 ──────────────────────────────────────────────────────────────────
