@@ -172,6 +172,26 @@ export const workflowEditorLabels = {
     empty: '편성된 상태가 없습니다',
   },
 
+  /** 상태 선택 다이얼로그 안의 「새 상태 만들기」 (WF-04-3 · 결함 B6) */
+  statusCreate: {
+    /** 폼으로 넘어가는 버튼 · 폼 제출 버튼 */
+    open: '새 상태 만들기',
+    /** 고르기로 돌아가는 버튼 */
+    back: '목록에서 고르기',
+    /** 키 입력 — 만든 뒤에는 바꿀 수 없다 */
+    key: '상태 키',
+    keyPlaceholder: '예: in-review',
+    /** 이름 입력 */
+    name: '상태 이름',
+    /** 범주 라디오 그룹 이름 */
+    category: '상태 범주',
+    categoryTodo: '할 일',
+    categoryInProgress: '진행 중',
+    categoryDone: '완료',
+    /** 전역 카탈로그라는 사실과 권한을 미리 말한다 — 프로젝트 관리자는 403 을 받는다 */
+    hint: '새 상태는 모든 워크플로우가 함께 쓰는 카탈로그에 들어가고, 키는 만든 뒤 바꿀 수 없습니다. 시스템 관리자만 만들 수 있습니다.',
+  },
+
   /** 전환 패널 */
   transitionPanel: {
     /** 목록 aria-label */
