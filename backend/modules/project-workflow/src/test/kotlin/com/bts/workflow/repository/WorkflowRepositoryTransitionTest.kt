@@ -187,7 +187,6 @@ class WorkflowRepositoryTransitionTest {
             DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
                 compositionIds(conn, requireNotNull(writeRepository.findLiveIdByKey(workflowKey)))
             }
-
     }
 
     // ── RED 1. id · kind 매핑 ──────────────────────────────────────────────────

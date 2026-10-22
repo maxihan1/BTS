@@ -79,8 +79,7 @@ class V210MigrationTest {
                 )
 
         @JvmStatic
-        fun connect(jdbcUrl: String): Connection =
-            DriverManager.getConnection(jdbcUrl, postgres.username, postgres.password)
+        fun connect(url: String): Connection = DriverManager.getConnection(url, postgres.username, postgres.password)
 
         /** V201 의 cross-BC FK 대상. issue-tracking 마이그레이션이 만들지 않는 경로라 테스트가 직접 만든다. */
         @JvmStatic

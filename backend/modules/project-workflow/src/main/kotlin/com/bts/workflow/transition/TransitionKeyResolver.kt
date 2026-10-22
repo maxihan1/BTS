@@ -140,8 +140,7 @@ class TransitionKeyResolver(
     private fun toCondition(
         workflowId: UUID,
         toStateKey: String,
-    ): Condition? =
-        resolveStatusCompositionId(workflowId, toStateKey)?.let { WORKFLOW_TRANSITIONS.TO_STATUS_ID.eq(it) }
+    ): Condition? = resolveStatusCompositionId(workflowId, toStateKey)?.let { WORKFLOW_TRANSITIONS.TO_STATUS_ID.eq(it) }
 
     /**
      * 워크플로우 키 → id.
@@ -172,7 +171,6 @@ class TransitionKeyResolver(
             .on(STATUSES.ID.eq(WORKFLOW_STATUSES.STATUS_ID).and(STATUSES.DELETED_AT.isNull))
             .where(WORKFLOW_STATUSES.WORKFLOW_ID.eq(workflowId).and(STATUSES.KEY.eq(stateKey)))
             .fetchOne(WORKFLOW_STATUSES.ID)
-
 }
 
 /**

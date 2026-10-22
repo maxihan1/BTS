@@ -321,7 +321,6 @@ class TransitionCrudMvcTest {
         if (kind != null) fields["kind"] = kind
         return mapper.writeValueAsString(fields)
     }
-
 }
 
 /** 판정을 뒤집을 수 있는 권한 리졸버. 거부는 운영 리졸버와 같은 예외로 낸다. */
