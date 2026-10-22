@@ -222,6 +222,27 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
   })
 
   /**
+   * R2b. 실서버 조합 — 배정 조회와 목록 조회가 **둘 다** ASSIGN_SCHEME 이라 MEMBER 는 둘 다 403 이다.
+   * R2 는 배정 200 + 목록 403 이라는 실서버에 없는 조합이라, 배정 분기가 403 을 일반 오류로
+   * 묶어도 초록이었다(FR-WF-08 D7 실서버 눈확인 2026-10-22 에서 적발).
+   */
+  it('R2b: 배정 조회도 403 이면 일반 오류가 아니라 권한 안내를 보여준다', async () => {
+    const forbidden = () =>
+      HttpResponse.json({ code: 'workflow_scheme_access_denied', detail: '권한이 없습니다' }, { status: 403 })
+    server.use(
+      http.get('/api/v1/projects/:projectKey/workflow-scheme', forbidden),
+      http.get('/api/v1/projects/:projectKey/assignable-workflow-schemes', forbidden),
+    )
+
+    renderPage('ATLAS')
+
+    await waitFor(() => {
+      expect(screen.getByText(workflowSchemeLabels.assignment.forbiddenMessage)).toBeInTheDocument()
+    })
+    expect(screen.queryByText(workflowSchemeLabels.assignment.loadErrorTitle)).not.toBeInTheDocument()
+  })
+
+  /**
    * R3 (권장). 스킴 0건(200 + [])은 403과 다른 상태다 — 권한 안내가 뜨지 않고
    * Select는 정상 렌더(빈 옵션)된다. 같은 증상(빈 Select)의 두 원인이 실제로 구분됨을 못 박는다.
    */

@@ -380,13 +380,13 @@
 
 > 워크플로우·스킴이 전역 자원이라 CRUD 가 전부 SYSTEM_ADMIN 전용이고, 프로젝트 관리자는 이미 배정된 것을 고르기만 할 수 있다. 1,000명 워크스페이스에서 팀마다 다른 절차를 쓰려면 그 팀의 관리자가 자기 프로젝트 것을 직접 만들고 고쳐야 한다. Jira Cloud 도 같은 불변식을 쓴다 — **공유되지 않은 워크플로우만** 프로젝트 관리자가 편집하고, 공유된 것은 전역 관리자 몫이다. 스펙 `docs/specs/2026-09-08-project-owned-workflows.md`.
 
-- [ ] D1. 도메인 — 소유(`projectId: UUID?`)의 의미 · 전역(NULL)=공유 템플릿 · 표준 스킴 보호 불변 (책임. backend-engineer + Maxi)
-- [ ] D2. 명세 — 스코프 결정 규칙(소유 유무 → Global/Project) · 권한 매트릭스(CREATE·UPDATE·PUBLISH 허용, DELETE 불허) · 복제가 소유를 싣는 계약 (책임. backend-engineer)
-- [ ] D3. 마이그레이션 — `workflows`·`workflow_schemes` 에 `project_id` + 부분 유니크 재편 (책임. db-engineer)
-- [ ] D4. 백엔드 — 스코프 결정 · CRUD 판정 전환 · 목록 필터 · `duplicate` 가 소유를 싣는다 (책임. backend-engineer)
-- [ ] D5. 백엔드 테스트 — 자기 프로젝트 200 · 남의 프로젝트 403 · 전역 403 · 복제본 소유 확인 (책임. backend-engineer)
-- [ ] D6. 프론트 — 프로젝트 설정에 워크플로우·스킴 편집 (기존 `WorkflowEditorPage` 재사용, 신규 편집기 금지) (책임. frontend-engineer)
-- [ ] D7. E2E — 프로젝트 관리자가 만들고 고쳐 발행하고, 비-관리자 멤버는 403 안내를 본다 (책임. qa-engineer)
+- [x] D1. 도메인 — 소유(`projectId: UUID?`)의 의미 · 전역(NULL)=공유 템플릿 · 표준 스킴 보호 불변 (책임. backend-engineer + Maxi) (PR #477 · #478, 2026-09-10). *`Workflow.projectId` · `WorkflowScheme.projectId`(팩토리 기본값 없음) · 표준 스킴 잠금 유지. 체크 누락을 2026-10-22 실측으로 정합*
+- [x] D2. 명세 — 스코프 결정 규칙(소유 유무 → Global/Project) · 권한 매트릭스(CREATE·UPDATE·PUBLISH 허용, DELETE 불허) · 복제가 소유를 싣는 계약 (책임. backend-engineer) (PR #477 · #479, 2026-09-10). *스펙 `docs/specs/2026-09-08-project-owned-workflows.md` §4 D6 · ADR `docs/adr/2026-09-08-workflow-scope-shared-type.md` · 결정 지점 `WorkflowOwnershipScopeResolver`*
+- [x] D3. 마이그레이션 — `workflows`·`workflow_schemes` 에 `project_id` + 부분 유니크 재편 (책임. db-engineer) (PR #477, 2026-09-08). *V209 · `V209MigrationTest` 2026-10-22 재실행 green*
+- [x] D4. 백엔드 — 스코프 결정 · CRUD 판정 전환 · 목록 필터 · `duplicate` 가 소유를 싣는다 (책임. backend-engineer) (PR #478 · #479 · #502, 2026-09-15). *정의 권한 판정기 `IdentityAccessWorkflowDefinitionPermissionResolver` 는 `@Profile("prod")` — dev 는 AlwaysAllow 라 로컬 dev bootRun 으로는 403 이 안 보인다*
+- [x] D5. 백엔드 테스트 — 자기 프로젝트 200 · 남의 프로젝트 403 · 전역 403 · 복제본 소유 확인 (책임. backend-engineer) (PR #478 · #479, 2026-09-10). *2026-10-22 재실행 green — `WorkflowCrudIntegrationTest` · `ProjectWorkflowControllerTest` · `ProjectWorkflowSchemeControllerTest` · `WorkflowOwnershipScopeResolverTest` · `SchemeHandlerPermissionRuntimeMatrixTest` · `IdentityAccessWorkflowDefinitionPermissionResolverTest` · `IdentityAccessWorkflowSchemePermissionResolverIntegrationTest`*
+- [x] D6. 프론트 — 프로젝트 설정에 워크플로우·스킴 편집 (기존 `WorkflowEditorPage` 재사용, 신규 편집기 금지) (책임. frontend-engineer) (PR #480 · #483, 2026-09-10)
+- [x] D7. E2E — 프로젝트 관리자가 만들고 고쳐 발행하고, 비-관리자 멤버는 403 안내를 본다 (책임. qa-engineer) (2026-10-22). *E2E 금지 정책(2026-10-20)에 따라 실서버 눈확인으로 닫았다 — prod 프로필 bootRun + vite preview. PROJECT_ADMIN 은 전역 템플릿 복제 → 이름 수정 → 발행 통과, 전역 수정 · 소유분 삭제는 403. MEMBER 는 목록 · 편집기 · 스킴 세 화면 모두 403 안내. ★편집기와 스킴 화면은 서버 403 을 「불러오지 못했습니다」로 뭉개고 있어 이 PR 에서 메웠다(스킴 화면의 기존 403 테스트는 배정 200 + 목록 403 이라는 실서버에 없는 조합이었다)*
 - [x] D8. WF-08-1 전환 규칙 편집이 SYSTEM_ADMIN 전용이고 앱 안 링크가 없다 — 공유 안 된 워크플로우는 그 프로젝트 관리자가 고쳐야 한다 — 결함 B4 · G15 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1·§2) (PR #523, 2026-10-22). *화면 `isSystemAdmin` 게이트를 걷고 403 안내로 바꿨다 · 편집기에 규칙 화면 링크 · 초안이 열린 동안 규칙 쓰기는 409(발행이 초안 규칙으로 덮기 때문)*
 
 > **shared-kernel 공용 `WorkflowScope` 를 신설한다** (스펙 D8, Maxi 2026-09-08 확정). `WorkflowSchemeScope` 를 일반화하지 않는다 — 이름에 `Scheme` 이 남으면 `WorkflowDefinitionPermission` KDoc 이 경고한 개념 혼동을 그대로 일으키고, 그 경고 때문에 enum 은 이미 둘로 갈라져 있다. 정의 resolver 전용 스코프를 따로 두지도 않는다(두 목록이 서로를 검사하지 않게 된다). ⇒ **D4 를 담는 PR 이 shared-kernel 을 건드리므로 T3 이다.**
