@@ -2979,7 +2979,12 @@ mock 테스트만 import) 라이브↔라이브 동시 편집은 원시 API 로�
 
 ---
 
-## ⬜ 워크플로우 — `TransitionRequestDto.toDomain()` 이 죽고 같은 매핑이 두 벌이 됐다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — `TransitionRequestDto.toDomain()` 이 죽고 같은 매핑이 두 벌이 됐다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-05-6.** 처방 ㉮. `WorkflowController.plan` 의 손 조립을 지우고 `dto.toDomain(...)` 하나로 잇는다.
+`transitionId` 는 `toDomain` 인자가 아니라 DTO 필드로 옮겼다 — 바디에서 오는 값이고, 인자로 두면 6개가 되어 detekt `LongParameterList` 에 걸린다.
+- 판별식 — `WorkflowControllerMvcTest` 「전환 계획 바디의 transitionId 가 엔진 요청까지 실린다」. `toDomain` 에서 `transitionId` 를 빼면 red(실측).
+
 
 **쉬운 말.** 요청을 내부 형태로 옮기는 코드가 두 벌인데, 실제로 도는 것은 한 벌뿐이다. 나머지 한 벌은 아무도 안 쓰는데 남아 있다.
 
@@ -3395,7 +3400,14 @@ red 가 나는지 재는 짝을 세운다 — 정직하지만 자식 수만큼 �
 
 ---
 
-## ⬜ 워크플로우 — 시작 상태 규칙이 프로덕션과 테스트에 두 벌이고 서로를 안 검사한다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — 시작 상태 규칙이 프로덕션과 테스트에 두 벌이고 서로를 안 검사한다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-05-6.** 처방 ①·② 대신 사본을 없앴다. 규칙을 도메인 `Workflow.startState()` 한 자리로 올리고
+`WorkflowKeyResolverImpl.resolveStartState` 와 `WorkflowGraphClosedTest` 가 둘 다 그것을 부른다(`GraphVerifier.resolveInitialState` 삭제).
+대조할 두 벌이 없으니 차집합 판별식도 필요 없다.
+- 판별식 — `startState()` 의 INITIAL 분기를 지우는 뮤테이션 1회에 `WorkflowStartStateInitialTest`(프로덕션 경로) 2건과
+  `WorkflowGraphClosedTest` 「initial-not-lowest-order」 2건이 **함께** red(실측). 종전에는 이 둘이 서로 다른 코드를 봤다.
+
 
 **쉬운 말.** 「이슈를 만들면 어느 상태에서 시작하나」를 정하는 규칙이 실제 코드와 테스트 코드에 **따로**
 적혀 있다. 한쪽을 바꿔도 다른 쪽은 모른다.

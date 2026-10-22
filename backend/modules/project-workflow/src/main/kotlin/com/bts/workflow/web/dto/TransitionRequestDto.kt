@@ -7,6 +7,7 @@ import io.konform.validation.Validation
 import io.konform.validation.ValidationResult
 import io.konform.validation.jsonschema.minLength
 import io.konform.validation.jsonschema.minimum
+import java.util.UUID
 
 /**
  * Konform 검증 규칙 — 모듈 수준에서 한 번만 생성해 재사용한다.
@@ -34,11 +35,13 @@ private val transitionRequestDtoValidation: Validation<TransitionRequestDto> =
  * @property toStateKey 전환 목표 상태 키. 예: "IN_PROGRESS", "DONE".
  * @property fields 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다. 기본값 빈 Map.
  * @property version 낙관적 잠금(optimistic lock) 버전. 최솟값 1. 동시 수정 충돌 감지에 사용한다.
+ * @property transitionId 모호 응답(409)의 후보에서 고른 전환 id. 첫 호출은 null.
  */
 data class TransitionRequestDto(
     val toStateKey: String,
     val fields: Map<String, Any?> = emptyMap(),
     val version: Long,
+    val transitionId: UUID? = null,
 ) {
     /**
      * Konform DSL 로 필드 유효성을 검사한다.
@@ -74,5 +77,6 @@ data class TransitionRequestDto(
             issueFields = fields,
             actorRoles = actorRoles,
             version = version,
+            transitionId = transitionId,
         )
 }

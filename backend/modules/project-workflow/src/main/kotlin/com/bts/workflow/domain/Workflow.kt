@@ -34,6 +34,19 @@ data class Workflow private constructor(
      */
     val projectId: UUID? = null,
 ) {
+    /**
+     * 이슈 생성이 진입하는 시작 상태를 반환한다. 시작 상태 규칙의 유일한 정본이다.
+     *
+     * 1. [TransitionKind.INITIAL] 전환이 있으면 그 도착 상태 — 생성이 실제로 진입하는 자리라 표시 순서보다 우선한다.
+     * 2. 없으면 displayOrder 가 가장 낮은 상태.
+     *
+     * [of] 의 invariant 1·4 가 두 분기 모두 상태를 찾음을 보장한다.
+     */
+    fun startState(): WorkflowState =
+        transitions.firstOrNull { it.kind == TransitionKind.INITIAL }
+            ?.let { initial -> states.first { it.key == initial.toStateKey } }
+            ?: states.minBy { it.displayOrder }
+
     companion object {
         /**
          * Workflow 인스턴스 생성 factory.
