@@ -2654,7 +2654,14 @@ ADR `2026-07-28-fr-ux-07` §D2 · `2026-07-30-fr-ux-08` §D6 이 같은 오버�
 
 **처방.** 같은 마이그레이션에 문장 트리거를 한 벌 더 단다 — `BEFORE TRUNCATE ON workflow_publications FOR EACH STATEMENT EXECUTE FUNCTION reject_workflow_publication_mutation()`. 기존 함수가 이미 depth>1 DELETE 가 아닌 `TG_OP` 를 전부 거부하므로 함수 변경은 필요 없다. 부모 `workflows` 에도 함께 단다. `V208MigrationTest` 에 「TRUNCATE 가 거부된다」 케이스를 red-first 로 붙인다.
 
-## ⬜ 워크플로우 — 캐시 무효화가 **커밋 전**에 일어난다 (선재 · 미착수 · T2)
+## ✅ 워크플로우 — 캐시 무효화가 **커밋 전**에 일어난다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-04-6.** 처방을 `withWriteLock` 한 곳이 아니라 **`WorkflowCache.invalidate` 자체**에 걸었다 —
+직접 `invalidate` 를 부르는 쓰기 10곳(`WorkflowCommandService` · `WorkflowStatusCompositionService`)도 전부 호출부의
+`@Transactional` 안이라 같은 창이 열려 있었다. 트랜잭션 동기화가 활성이면 `afterCommit` 에 등록하고(롤백이면 안 지움),
+밖이면 즉시 지운다. `CacheInvalidationCoverageTest` 의 「직접 호출보다 강한 보장」 문구는 쓰기 직렬화 축으로 좁혔다.
+판별식은 `WorkflowCacheTest` 시나리오 6. **남은 창** — 커밋 전에 DB 를 읽기 시작한 리더가 커밋 뒤에 `putIfAbsent` 하는
+조회 1회 폭은 남는다(키별 세대 번호로 닫는다 · 코드에 `ponytail:` 표시).
 
 **쉬운 말.** 새 정의를 저장하기 직전에 캐시를 비우는데, 그 찰나에 다른 요청이 들어오면 **옛 정의를 다시 캐시에 채워 넣는다.**
 

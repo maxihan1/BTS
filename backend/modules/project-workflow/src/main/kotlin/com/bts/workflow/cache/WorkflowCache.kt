@@ -8,6 +8,8 @@ import org.jooq.DSLContext
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -69,9 +71,29 @@ class WorkflowCache(
      *
      * 다음 [findByKey] 호출 시 DB 에서 재적재된다.
      *
+     * ### 트랜잭션 안이면 커밋 **뒤**에 지운다 (WF-04-6)
+     * 커밋 전에 지우면 그 사이에 들어온 리더가 READ COMMITTED 로 **쓰기 전 정의**를 읽어
+     * [findByKey] 의 `putIfAbsent` 로 되돌려 놓고, 이후 재무효화가 없어 옛 정의가 계속 보인다.
+     * 롤백이면 지우지 않는다 — DB 가 그대로이니 캐시도 맞다. 트랜잭션 밖이면 즉시 지운다.
+     *
+     * ponytail: 커밋 **전**에 DB 를 읽기 시작한 리더가 커밋 뒤에 `putIfAbsent` 하는 창은 남는다(조회 1회 폭).
+     *   닫으려면 키별 세대 번호를 두고 적재 시작 세대와 다르면 put 하지 않는다.
+     *
      * @param key 무효화할 워크플로우 식별 키
      */
     fun invalidate(key: String) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(
+                object : TransactionSynchronization {
+                    override fun afterCommit() = remove(key)
+                },
+            )
+        } else {
+            remove(key)
+        }
+    }
+
+    private fun remove(key: String) {
         cache.remove(key)
         log.debug("WorkflowCache invalidated: key={}", key)
     }
@@ -80,7 +102,7 @@ class WorkflowCache(
      * Advisory lock 으로 보호되는 갱신 블록 실행 (예. YAML seed 재적용).
      *
      * `pg_try_advisory_xact_lock(lockKey)` 를 호출해 lock 을 시도한다.
-     * 획득 성공 시 [block] 을 실행하고 cache 를 무효화한다.
+     * 획득 성공 시 [block] 을 실행하고 cache 를 무효화한다(트랜잭션 안이면 커밋 뒤 — [invalidate]).
      * 획득 실패 시 최대 200ms 동안 20ms 간격으로 재시도하며, 그 후에도 실패하면
      * [WorkflowCacheLockTimeoutException] 을 던진다.
      *
