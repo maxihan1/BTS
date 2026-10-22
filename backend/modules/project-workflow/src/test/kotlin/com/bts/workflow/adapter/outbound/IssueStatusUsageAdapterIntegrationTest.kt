@@ -2,6 +2,7 @@
 
 package com.bts.workflow.adapter.outbound
 
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.workflow.application.port.IssueTypeStatusCount
 import org.assertj.core.api.Assertions.assertThat
 import org.flywaydb.core.Flyway
@@ -185,6 +186,40 @@ class IssueStatusUsageAdapterIntegrationTest {
     fun `소프트 삭제된 이슈는 세지 않는다`() {
         // 이 키에 달린 유일한 행은 deleted_at 이 채워져 있다 — 기존 계약의 회귀 방지다.
         assertThat(adapter.countIssuesInStatus(DELETED_ONLY_KEY, setOf(alpha))).isZero()
+    }
+
+    /**
+     * WF-07-2 — 같은 프로젝트 안에서도 이슈 타입 필터 밖은 세지 않는다.
+     *
+     * 알파의 TYPED_KEY 에는 task 1 · bug 1 이 있다. 포함 목록 · 제외 목록이 각각 정확히 한쪽만 세야
+     * 「타입 축을 무시하고 둘 다 센다」와 「필터를 뒤집어 읽는다」를 함께 잡는다.
+     */
+    @Test
+    fun `countIssuesInStatusWithin — 이슈 타입 필터 밖은 세지 않는다`() {
+        val onlyBug = StatusMigrationTypeFilter(issueTypeIds = setOf(bugType), exceptListed = false)
+        val exceptBug = StatusMigrationTypeFilter(issueTypeIds = setOf(bugType), exceptListed = true)
+        val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+
+        assertThat(adapter.countIssuesInStatusWithin(TYPED_KEY, mapOf(alpha to onlyBug))).isEqualTo(1L)
+        assertThat(adapter.countIssuesInStatusWithin(TYPED_KEY, mapOf(alpha to exceptBug))).isEqualTo(1L)
+        assertThat(adapter.countIssuesInStatusWithin(TYPED_KEY, mapOf(alpha to allTypes))).isEqualTo(2L)
+        assertThat(adapter.countIssuesInStatusWithin(TYPED_KEY, emptyMap()))
+            .describedAs("빈 범위를 「조건 없음」으로 흘리면 전체를 센다")
+            .isZero()
+    }
+
+    /**
+     * WF-07-2 — 필터는 **자기 프로젝트에만** 걸린다.
+     *
+     * 알파는 bug 만, 베타는 모든 타입. SHARED_KEY 의 이슈는 전부 task 라 알파 2건은 빠지고 베타 1건만
+     * 남아야 한다. 프로젝트와 필터의 짝을 풀어 합치면 알파 task 까지 세어 3 이 된다.
+     */
+    @Test
+    fun `countIssuesInStatusWithin — 프로젝트마다 다른 필터는 그 프로젝트에만 걸린다`() {
+        val onlyBug = StatusMigrationTypeFilter(issueTypeIds = setOf(bugType), exceptListed = false)
+        val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+
+        assertThat(adapter.countIssuesInStatusWithin(SHARED_KEY, mapOf(alpha to onlyBug, beta to allTypes))).isEqualTo(1L)
     }
 
     @Test

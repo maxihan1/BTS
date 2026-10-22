@@ -2,6 +2,7 @@
 
 package com.bts.workflow.scheme.repository
 
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import org.jooq.DSLContext
@@ -21,6 +22,20 @@ import java.util.UUID
 data class ProjectRef(
     val id: UUID,
     val key: String,
+)
+
+/**
+ * 이관이 건드릴 프로젝트 한 건과, 그 프로젝트에서 이 워크플로우가 맡는 이슈 타입.
+ *
+ * @property ref 프로젝트 참조.
+ * @property archived 아카이브 여부. 이관 범위에는 넣고 발행 차단 카운트에서는 뺀다(spec E7).
+ * @property typeFilter 이 프로젝트의 스킴에서 이 워크플로우가 맡는 이슈 타입. 계산 규칙은
+ *   [ProjectWorkflowSchemeAssignmentRepository.findMigrationScopesByWorkflowId].
+ */
+data class ProjectMigrationScope(
+    val ref: ProjectRef,
+    val archived: Boolean,
+    val typeFilter: StatusMigrationTypeFilter,
 )
 
 /**
@@ -63,17 +78,13 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     private val PROJECTS = DSL.table("projects")
     private val M_SCHEME_ID = DSL.field("workflow_scheme_issue_type_mappings.scheme_id", Long::class.java)
     private val M_WORKFLOW_ID = DSL.field("workflow_scheme_issue_type_mappings.workflow_id", UUID::class.java)
+    private val M_ISSUE_TYPE_ID = DSL.field("workflow_scheme_issue_type_mappings.issue_type_id", Long::class.java)
     private val A_SCHEME_ID = DSL.field("project_workflow_scheme_assignments.workflow_scheme_id", Long::class.java)
     private val A_PROJECT_ID = DSL.field("project_workflow_scheme_assignments.project_id", UUID::class.java)
     private val P_ID = DSL.field("projects.id", UUID::class.java)
     private val P_KEY = DSL.field("projects.key", String::class.java)
     private val P_DELETED_AT = DSL.field("projects.deleted_at", java.time.OffsetDateTime::class.java)
     private val P_ARCHIVED_AT = DSL.field("projects.archived_at", java.time.OffsetDateTime::class.java)
-
-    /** 형제 매핑을 자기 참조로 훑기 위한 별칭. 별칭이 없으면 서브쿼리와 바깥이 같은 테이블로 접힌다. */
-    private val SIBLING = DSL.table("workflow_scheme_issue_type_mappings").`as`("sibling")
-    private val S_SCHEME_ID = DSL.field("sibling.scheme_id", Long::class.java)
-    private val S_WORKFLOW_ID = DSL.field("sibling.workflow_id", UUID::class.java)
 
     private val SCHEMES = DSL.table("workflow_schemes")
     private val SC_ID = DSL.field("workflow_schemes.id", Long::class.java)
@@ -212,13 +223,14 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * @return 활성 프로젝트 참조 목록. 연결된 프로젝트가 없으면 빈 목록.
      */
     @Transactional(readOnly = true)
-    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
-        // 발행 차단 카운트용 — 아카이브 이슈는 영원히 안 옮겨지므로 세지 않는다.
-        return projectRefs(workflowId, excludeArchived = true)
-    }
+    fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> =
+        // 발행 차단 카운트용 — 아카이브 이슈는 영원히 안 옮겨지므로 세지 않는다. 같은 JOIN 을 두 벌 두지
+        // 않으려고 이관 범위 조회에서 거른다 — 두 집합이 소프트 삭제 규칙에서 어긋날 수 없다.
+        findMigrationScopesByWorkflowId(workflowId).filterNot { it.archived }.map { it.ref }
 
     /**
-     * 이관이 대상으로 삼을 프로젝트. [findProjectRefsByWorkflowId] 와 달리 **아카이브를 포함**한다.
+     * 이관이 대상으로 삼을 프로젝트와 각 프로젝트의 이슈 타입 필터. [findProjectRefsByWorkflowId] 와 달리
+     * **아카이브를 포함**한다 — 발행 차단 카운트는 [ProjectMigrationScope.archived] 로 걸러 쓴다.
      *
      * ## 왜 카운트와 다른 집합인가 (spec E7 · 게이트 1 I1)
      * 아카이브 프로젝트의 이슈는 워커의 아카이브 가드가 변경을 거부하므로 **영원히 안 옮겨진다.**
@@ -229,101 +241,102 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * `BulkItemExecutor` 가 그것을 `FailureReasonCode.PROJECT_ARCHIVED` 로 번역해
      * `bulk_operation_items` 에 **행으로 남긴다.** 그것이 셀 수 있는 형태다.
      *
-     * 반대로 **발행 차단 카운트에는 넣지 않는다**([findProjectRefsByWorkflowId] 가 계속 제외한다).
+     * 반대로 **발행 차단 카운트에는 넣지 않는다**(호출자가 [ProjectMigrationScope.archived] 로 뺀다).
      * 넣으면 영원히 안 옮겨지는 이슈가 카운트에 계속 잡혀 발행이 **관리자가 풀 수 없는 상태로**
      * 막힌다. 두 조회가 다른 집합인 것은 실수가 아니라 이 판정의 핵심이다.
+     *
+     * ## 스킴 소프트 삭제를 본다
+     * `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만 세우고 매핑·할당 행을 남긴다
+     * (V201 의 CASCADE 는 하드 삭제에만 걸린다). 그것을 안 보면 **지운 스킴에 붙어 있던 프로젝트가
+     * 계속 잡혀** 발행 차단 카운트가 과다 집계되고, 이관도 그 프로젝트를 범위에 싣는다.
+     *
+     * ## DISTINCT 가 필요한 이유
+     * 한 스킴이 default 매핑과 이슈 타입별 매핑으로 **같은 워크플로우를 여러 번** 가리킬 수 있다.
      *
      * ## 워커와 같은 축으로 거른다
      * 소프트 삭제만 제외하는 것은 워커의 대상 조회(`BulkOperationRepository.statusMigrationTargets`)
      * 가 `projects.deleted_at` 만 거는 것과 **일부러 맞춘 것**이다. 여기서 더 좁히면 서비스가 센
      * 상한과 워커가 실제로 담는 건수가 갈라진다.
      *
+     * ## 이슈 타입 필터 — 스킴은 `(scheme_id, issue_type_id) → workflow_id` 다 (WF-07-2)
+     * 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 WF1 이 빼는 상태가 WF2 에서는 살아 있을 수 있다.
+     * 프로젝트로만 좁히면 WF1 이관이 WF2 의 Task 까지 옮긴다. 그래서 프로젝트의 스킴 매핑에서
+     * 이 워크플로우가 맡는 타입을 계산한다 — 런타임 해석(`WorkflowResolver`: 명시 매핑 먼저, 없으면
+     * default)과 같은 규칙이다.
+     *
+     * - 이 워크플로우가 그 스킴의 **default** 면 「다른 워크플로우에 명시된 타입을 **뺀** 전부」.
+     * - 아니면 「이 워크플로우에 명시된 타입**만**」.
+     *
+     * 한 프로젝트는 스킴 하나에만 할당되므로(`project_id` PK) 프로젝트마다 필터는 하나다.
+     *
+     * ## 잔여 창 — 큐잉 뒤 스킴 매핑이 바뀌면
+     * 필터는 큐잉 시점의 매핑으로 굳는다. 큐잉과 워커 실행 사이에 형제 워크플로우에 타입별 매핑이
+     * 새로 붙으면 default 쪽 제외 목록에 그 타입이 없어 함께 옮겨진다. 워커는 큐잉 직후 돌므로 창은
+     * 짧고, 스킴 변경의 `requireNoStrandedIssues` 가 새 워크플로우에 없는 상태를 막는다. 닫지는 않았다.
+     *
      * @param workflowId 이관할 워크플로우 UUID.
-     * @return 소프트 삭제되지 않은 프로젝트 참조 목록(아카이브 포함). 연결이 없으면 빈 목록.
+     * @return 소프트 삭제되지 않은 프로젝트(아카이브 포함)와 필터. 연결이 없으면 빈 목록.
      */
     @Transactional(readOnly = true)
-    fun findMigrationScopeRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
-        // 이관 범위용 — 아카이브를 넣어야 워커가 PROJECT_ARCHIVED 로 흔적을 남긴다.
-        return projectRefs(workflowId, excludeArchived = false)
+    fun findMigrationScopesByWorkflowId(workflowId: UUID): List<ProjectMigrationScope> {
+        val projects =
+            dsl
+                .selectDistinct(M_SCHEME_ID, P_ID, P_KEY, P_ARCHIVED_AT)
+                .from(MAPPINGS)
+                .join(SCHEMES).on(SC_ID.eq(M_SCHEME_ID))
+                .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
+                .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
+                .where(M_WORKFLOW_ID.eq(workflowId))
+                .and(SC_DELETED_AT.isNull)
+                .and(P_DELETED_AT.isNull)
+                .fetch()
+        if (projects.isEmpty()) return emptyList()
+
+        val filters =
+            dsl
+                .select(M_SCHEME_ID, M_ISSUE_TYPE_ID, M_WORKFLOW_ID)
+                .from(MAPPINGS)
+                .where(M_SCHEME_ID.`in`(projects.map { it.get(M_SCHEME_ID) }.toSet()))
+                .fetch()
+                .groupBy { it.get(M_SCHEME_ID) }
+                .mapValues { (_, rows) ->
+                    typeFilterOf(workflowId, rows.map { it.get(M_ISSUE_TYPE_ID) to it.get(M_WORKFLOW_ID) })
+                }
+
+        return projects.map { record ->
+            ProjectMigrationScope(
+                ref =
+                    ProjectRef(
+                        id = record.get(P_ID) ?: error("projects.id is null — PK 제약 위반"),
+                        key = record.get(P_KEY) ?: error("projects.key is null — NOT NULL 제약 위반"),
+                    ),
+                archived = record.get(P_ARCHIVED_AT) != null,
+                typeFilter = filters[record.get(M_SCHEME_ID)] ?: error("스킴 매핑이 사라졌다 — 같은 트랜잭션에서 읽었다"),
+            )
+        }
     }
 
     /**
-     * 두 공개 조회의 공통 본문. 아카이브 축 하나만 다르므로 JOIN 을 복제하지 않는다.
-     *
-     * ### 스킴 소프트 삭제를 본다
-     * `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만 세우고 매핑·할당 행을 남긴다
-     * (V201 의 CASCADE 는 하드 삭제에만 걸린다). 그것을 안 보면 **지운 스킴에 붙어 있던 프로젝트가
-     * 계속 잡혀** 발행 차단 카운트가 과다 집계되고, 이관도 그 프로젝트를 범위에 싣는다.
-     * 세 조회(`findProjectRefsByWorkflowId` · `findMigrationScopeRefsByWorkflowId` ·
-     * [hasSiblingWorkflowInAssignedSchemes])가 **같은 규칙**을 써야 어느 하나만 조용히 어긋나지 않는다.
+     * 스킴 한 개의 매핑 `(issue_type_id, workflow_id)` 에서 [workflowId] 가 맡는 이슈 타입을 계산한다.
+     * 규칙은 [findMigrationScopesByWorkflowId] KDoc.
      */
-    private fun projectRefs(
+    private fun typeFilterOf(
         workflowId: UUID,
-        excludeArchived: Boolean,
-    ): List<ProjectRef> =
-        dsl
-            .selectDistinct(P_ID, P_KEY)
-            .from(MAPPINGS)
-            .join(SCHEMES).on(SC_ID.eq(M_SCHEME_ID))
-            .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
-            .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
-            .where(M_WORKFLOW_ID.eq(workflowId))
-            .and(SC_DELETED_AT.isNull)
-            .and(P_DELETED_AT.isNull)
-            .and(if (excludeArchived) P_ARCHIVED_AT.isNull else DSL.noCondition())
-            .fetch { record ->
-                ProjectRef(
-                    id = record.get(P_ID) ?: error("projects.id is null — PK 제약 위반"),
-                    key = record.get(P_KEY) ?: error("projects.key is null — NOT NULL 제약 위반"),
-                )
-            }
-
-    /**
-     * 이 워크플로우가 실린 스킴이 **다른 워크플로우도** 가리키는지 판정한다.
-     *
-     * ## 왜 이 판정이 필요한가 — 이관 워커가 이슈 타입 축을 안 본다
-     * 스킴은 `(scheme_id, issue_type_id) → workflow_id` 인데 이관 대상 조회
-     * (`BulkOperationRepository.statusMigrationTargets`)는 `current_state_key`·`deleted_at`·
-     * `project_id` 만 건다. 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 **WF1 이관이 WF2 이슈까지
-     * 옮긴다.** 과다 집계(읽기)는 안전하지만 과다 이동은 데이터 손상이다.
-     *
-     * 그 축을 포트에 더하는 것은 이 PR 의 범위 밖이라(shared-kernel 은 T3 표면) **조합 자체를
-     * 열지 않는다** — 형제가 있으면 이관을 거부한다. 장부 145 가 해소되면 이 가드를 걷는다.
-     *
-     * ## 왜 별칭이 필요한가
-     * 같은 표를 자기 자신과 대조하므로 별칭 없이 쓰면 서브쿼리 조건이 바깥 조건과 한 테이블로
-     * 접혀 **항상 거짓**이 된다(`workflow_id = X AND workflow_id <> X`).
-     *
-     * ## ★대상 스킴을 「살아 있고 실제로 쓰이는 것」으로 좁힌다
-     * 「이 워크플로우를 매핑한 모든 스킴」을 보면 예전에 만들었다 지운 스킴 하나가 이관을
-     * **영구히 400 으로** 막는다. `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만 세우고
-     * 매핑 행은 남기며(V201 의 CASCADE 는 하드 삭제에만 걸린다), 관리자가 손댈 수 있는 활성
-     * 스킴에는 형제가 없어 **화면에서 원인을 찾을 방법이 없다.**
-     *
-     * 좁혀도 안전성은 줄지 않는다. 이관이 옮기는 것은 **범위 프로젝트의 이슈**이고, 그 프로젝트가
-     * 붙은 스킴에서만 형제 워크플로우와 섞일 수 있다. 할당이 없는 스킴은 그 이슈가 0건이다.
-     *
-     * @param workflowId 이관하려는 워크플로우 UUID.
-     * @return 같은 스킴에 다른 워크플로우 매핑이 하나라도 있으면 true. 스킴에 안 붙어 있으면 false.
-     */
-    @Transactional(readOnly = true)
-    fun hasSiblingWorkflowInAssignedSchemes(workflowId: UUID): Boolean =
-        dsl.fetchExists(
-            DSL
-                .selectOne()
-                .from(SIBLING)
-                .where(
-                    S_SCHEME_ID.`in`(
-                        DSL
-                            .selectDistinct(M_SCHEME_ID)
-                            .from(MAPPINGS)
-                            .join(SCHEMES).on(SC_ID.eq(M_SCHEME_ID))
-                            .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
-                            .where(M_WORKFLOW_ID.eq(workflowId))
-                            .and(SC_DELETED_AT.isNull),
-                    ),
-                ).and(S_WORKFLOW_ID.ne(workflowId)),
-        )
+        mappings: List<Pair<Long?, UUID?>>,
+    ): StatusMigrationTypeFilter {
+        val isDefault = mappings.any { (typeId, wf) -> typeId == null && wf == workflowId }
+        return if (isDefault) {
+            StatusMigrationTypeFilter(
+                issueTypeIds = mappings.filter { (_, wf) -> wf != workflowId }.mapNotNull { it.first }.toSet(),
+                exceptListed = true,
+            )
+        } else {
+            StatusMigrationTypeFilter(
+                issueTypeIds = mappings.filter { (_, wf) -> wf == workflowId }.mapNotNull { it.first }.toSet(),
+                exceptListed = false,
+            )
+        }
+    }
 
     // ── 내부 변환 ─────────────────────────────────────────────────────────────
 

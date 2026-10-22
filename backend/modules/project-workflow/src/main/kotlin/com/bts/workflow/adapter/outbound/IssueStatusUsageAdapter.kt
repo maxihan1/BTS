@@ -2,8 +2,10 @@
 
 package com.bts.workflow.adapter.outbound
 
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.application.port.IssueTypeStatusCount
+import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
@@ -61,6 +63,42 @@ class IssueStatusUsageAdapter(
             .fetchOne(0, Long::class.java)
             ?: 0L
     }
+
+    /**
+     * [scopes] 의 (프로젝트, 이슈 타입) 범위 안에서 [statusKey] 를 쓰는 살아 있는 이슈를 센다.
+     *
+     * 같은 필터를 쓰는 프로젝트(= 같은 스킴)를 묶어 OR 항을 스킴 수만큼만 만든다 — issue-tracking 워커의
+     * `BulkOperationRepository.statusMigrationTargets` 와 같은 모양이다. 빈 스코프는 [countIssuesInStatus]
+     * 와 같은 이유로 조기에 0 이다(빈 OR 이 「조건 없음」으로 풀리면 전체를 센다).
+     */
+    @Transactional(readOnly = true)
+    override fun countIssuesInStatusWithin(
+        statusKey: String,
+        scopes: Map<UUID, StatusMigrationTypeFilter>,
+    ): Long {
+        if (scopes.isEmpty()) return 0L
+        val inScope =
+            scopes.entries
+                .groupBy({ it.value }, { it.key })
+                .map { (filter, projectIds) -> projectIdField.`in`(projectIds).and(typeCondition(filter)) }
+        return dsl
+            .selectCount()
+            .from(issuesTable)
+            .where(stateKeyField.eq(statusKey))
+            .and(deletedAtField.isNull)
+            .and(DSL.or(inScope))
+            .fetchOne(0, Long::class.java)
+            ?: 0L
+    }
+
+    /** `issues.type_id` 는 NOT NULL(V005)이라 `NOT IN` 이 NULL 에 삼켜지지 않는다. */
+    private fun typeCondition(filter: StatusMigrationTypeFilter): Condition =
+        when {
+            filter.exceptListed && filter.issueTypeIds.isEmpty() -> DSL.noCondition()
+            filter.exceptListed -> typeIdField.notIn(filter.issueTypeIds)
+            filter.issueTypeIds.isEmpty() -> DSL.falseCondition()
+            else -> typeIdField.`in`(filter.issueTypeIds)
+        }
 
     /** 빈 스코프는 [countIssuesInStatus] 와 같은 이유로 조기에 끊는다. */
     @Transactional(readOnly = true)

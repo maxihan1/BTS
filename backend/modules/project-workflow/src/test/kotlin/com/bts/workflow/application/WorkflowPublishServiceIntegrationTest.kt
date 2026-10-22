@@ -5,6 +5,7 @@ package com.bts.workflow.application
 import com.bts.shared.issue.IssueStatusMigrationPort
 import com.bts.shared.issue.StatusMigrationCommand
 import com.bts.shared.issue.StatusMigrationMapping
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
@@ -38,7 +39,7 @@ import com.bts.workflow.repository.WorkflowPublicationRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
-import com.bts.workflow.scheme.repository.ProjectRef
+import com.bts.workflow.scheme.repository.ProjectMigrationScope
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.testsupport.SharedPostgres
 import com.bts.workflow.testsupport.insertWorkflowStatus
@@ -104,6 +105,9 @@ class WorkflowPublishServiceIntegrationTest {
         /** 호출마다 받은 프로젝트 스코프. 호출 순서대로 쌓인다. */
         val receivedProjectIds = mutableListOf<Set<UUID>>()
 
+        /** 호출마다 받은 (프로젝트 → 이슈 타입 필터) 범위. [receivedProjectIds] 와 같은 순서다. */
+        val receivedScopes = mutableListOf<Map<UUID, StatusMigrationTypeFilter>>()
+
         /**
          * 상태별 **호출 순서** 응답. 앞에서부터 소비하고 바닥나면 [counts] 로 떨어진다.
          *
@@ -115,11 +119,18 @@ class WorkflowPublishServiceIntegrationTest {
         // 이 테스트는 스킴 변경을 재지 않는다 — 불렸다면 경로가 바뀐 것이다.
         override fun countByTypeAndStatus(projectIds: Set<UUID>) = error("스킴 변경 가드는 이 테스트의 경로가 아니다")
 
+        // 발행·이관은 타입 축으로 센다(WF-07-2) — 프로젝트만 보는 count 가 불렸다면 형제 워크플로우가 섞인다.
         override fun countIssuesInStatus(
             statusKey: String,
             projectIds: Set<UUID>,
+        ): Long = error("발행 경로는 countIssuesInStatusWithin 으로 센다")
+
+        override fun countIssuesInStatusWithin(
+            statusKey: String,
+            scopes: Map<UUID, StatusMigrationTypeFilter>,
         ): Long {
-            receivedProjectIds += projectIds
+            receivedProjectIds += scopes.keys
+            receivedScopes += scopes
             queued[statusKey]?.removeFirstOrNull()?.let { return it }
             return counts[statusKey] ?: 0
         }
@@ -181,9 +192,9 @@ class WorkflowPublishServiceIntegrationTest {
     private class CountingSchemeAssignments(dsl: DSLContext) : ProjectWorkflowSchemeAssignmentRepository(dsl) {
         var lookupCount = 0
 
-        override fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> {
+        override fun findMigrationScopesByWorkflowId(workflowId: UUID): List<ProjectMigrationScope> {
             lookupCount++
-            return super.findProjectRefsByWorkflowId(workflowId)
+            return super.findMigrationScopesByWorkflowId(workflowId)
         }
     }
 
@@ -628,28 +639,55 @@ class WorkflowPublishServiceIntegrationTest {
     /**
      * 이 워크플로우를 default 로 가리키면서 **형제 워크플로우도** 이슈 타입별로 가리키는 스킴.
      *
-     * F11 이 막아야 하는 조합 그 자체다 — 이관 워커가 이슈 타입 축을 안 보므로 이 스킴에서
-     * 이관을 허용하면 형제 워크플로우를 쓰는 이슈까지 함께 옮겨진다.
+     * 이관이 형제 워크플로우의 이슈를 옮기면 안 되는 조합 그 자체다(WF-07-2).
+     *
+     * @return 그 스킴에 붙은 프로젝트 id 와 형제가 가져간 이슈 타입 id.
      */
-    private fun attachSchemeWithSibling(workflowId: UUID) {
+    private fun attachSchemeWithSibling(workflowId: UUID): Pair<UUID, Long> {
         val scheme = insertScheme()
         insertDefaultMapping(scheme, workflowId)
+        val issueTypeId = insertIssueType()
+        insertTypeMapping(scheme, issueTypeId, insertBareWorkflow())
+        val project = insertProject()
+        insertAssignment(project, scheme)
+        return project to issueTypeId
+    }
 
+    /**
+     * default 는 다른 워크플로우이고 이 워크플로우는 **이슈 타입 하나에만** 실린 스킴.
+     *
+     * @return 그 스킴에 붙은 프로젝트 id 와 이 워크플로우가 맡는 이슈 타입 id.
+     */
+    private fun attachSchemeByTypeOnly(workflowId: UUID): Pair<UUID, Long> {
+        val scheme = insertScheme()
+        insertDefaultMapping(scheme, insertBareWorkflow())
+        val issueTypeId = insertIssueType()
+        insertTypeMapping(scheme, issueTypeId, workflowId)
+        val project = insertProject()
+        insertAssignment(project, scheme)
+        return project to issueTypeId
+    }
+
+    private fun insertIssueType(): Long {
         val typeKey = "BUG-${UUID.randomUUID().toString().take(6)}"
         dsl.execute("INSERT INTO issue_types (key, name) VALUES (?, ?)", typeKey, "버그")
-        val issueTypeId =
-            dsl.fetchOne("SELECT id FROM issue_types WHERE key = ?", typeKey)
-                ?.get("id", Long::class.java)
-                ?: error("issue_types INSERT 실패")
+        return dsl.fetchOne("SELECT id FROM issue_types WHERE key = ?", typeKey)
+            ?.get("id", Long::class.java)
+            ?: error("issue_types INSERT 실패")
+    }
 
+    private fun insertTypeMapping(
+        schemeId: Long,
+        issueTypeId: Long,
+        workflowId: UUID,
+    ) {
         dsl.execute(
             "INSERT INTO workflow_scheme_issue_type_mappings (scheme_id, issue_type_id, workflow_id)" +
                 " VALUES (?, ?, ?)",
-            scheme,
+            schemeId,
             issueTypeId,
-            insertBareWorkflow(),
+            workflowId,
         )
-        insertAssignment(insertProject(), scheme)
     }
 
     // ── ★ 이 FR 의 심장 ───────────────────────────────────────────────────────
@@ -1534,28 +1572,64 @@ class WorkflowPublishServiceIntegrationTest {
     }
 
     /**
-     * ★ F11 fail-closed — 스킴은 `(scheme_id, issue_type_id) → workflow_id` 인데 이관 워커는
-     * **이슈 타입 축을 통째로 무시한다**(`BulkOperationRepository.statusMigrationTargets` 가
-     * `current_state_key`·`deleted_at`·`project_id` 만 건다. 장부 145).
+     * ★ WF-07-2 — 스킴이 형제 워크플로우도 쓰면 **형제가 가져간 이슈 타입을 빼고** 큐잉한다.
      *
-     * 그래서 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 **WF1 이관이 WF2 이슈까지 옮긴다** —
-     * 과다 이동은 데이터 손상이다. 포트에 그 축이 없어(N3 충돌) 이 PR 에서 고칠 수 없으므로
-     * **조합 자체를 안 연다**. 스킴이 이 워크플로우 하나만 쓸 때만 이관을 허용한다.
+     * 예전에는 이관 워커가 이슈 타입 축을 안 봐서 이 조합 자체를 400 으로 막았다(F11). 이제 워커가 그
+     * 축을 보므로 조합을 열고, 대신 프로젝트마다 이 워크플로우가 맡는 타입을 정확히 실어야 한다 —
+     * 「모든 타입」 을 실으면 형제 워크플로우의 이슈까지 옮겨진다.
+     *
+     * 상한 카운트(F14)도 같은 범위로 세는지 함께 본다. 범위가 다르면 서비스가 센 건수와 워커가 담는
+     * 건수가 갈라진다.
      */
     @Test
-    fun `스킴이 다른 워크플로우도 매핑하면 거부한다`() {
+    fun `스킴이 다른 워크플로우도 매핑하면 형제 타입을 빼고 큐잉한다`() {
         val key = seedWorkflow()
         val id = workflowId(key)
-        attachSchemeWithSibling(id)
+        val (project, siblingType) = attachSchemeWithSibling(id)
         draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
 
-        assertThatThrownBy {
-            service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
-        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+        service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
 
-        assertThat(migrationPort.received)
-            .describedAs("이슈 타입 축이 없는 채로 큐잉하면 형제 워크플로우의 이슈까지 옮겨진다")
-            .isEmpty()
+        val expected = StatusMigrationTypeFilter(issueTypeIds = setOf(siblingType), exceptListed = true)
+        assertThat(migrationPort.received.single().projectScopes)
+            .describedAs("모든 타입을 실으면 형제 워크플로우의 이슈까지 옮겨진다")
+            .isEqualTo(mapOf(projectKey(project) to expected))
+        assertThat(issueUsage.receivedScopes.last())
+            .describedAs("상한 카운트가 다른 범위로 세면 서비스와 워커의 건수가 갈라진다")
+            .isEqualTo(mapOf(project to expected))
+    }
+
+    /** ★ WF-07-2 — 타입별 매핑으로만 실린 워크플로우는 **그 타입만** 옮긴다. default 쪽의 반대 극이다. */
+    @Test
+    fun `타입별 매핑으로만 실린 스킴은 그 타입만 큐잉한다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (project, ownType) = attachSchemeByTypeOnly(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
+
+        assertThat(migrationPort.received.single().projectScopes)
+            .isEqualTo(mapOf(projectKey(project) to StatusMigrationTypeFilter(issueTypeIds = setOf(ownType), exceptListed = false)))
+    }
+
+    /**
+     * ★ WF-07-2 — 발행 차단 카운트도 형제 타입을 뺀 범위로 센다.
+     *
+     * 프로젝트로만 세면 형제 워크플로우에 살아 있는 같은 상태의 이슈가 잡히는데, 이관은 그 이슈를
+     * 안 옮긴다. 그러면 이관을 끝내도 발행이 영원히 409 다 — 이 PR 이 연 기능이 출구 없이 막힌다.
+     */
+    @Test
+    fun `발행 차단 카운트도 형제 타입을 뺀 범위로 센다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (project, siblingType) = attachSchemeWithSibling(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        service.preview(ACTOR, key)
+
+        assertThat(issueUsage.receivedScopes.single())
+            .isEqualTo(mapOf(project to StatusMigrationTypeFilter(issueTypeIds = setOf(siblingType), exceptListed = true)))
     }
 
     /**

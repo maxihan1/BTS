@@ -2,6 +2,7 @@
 
 package com.bts.workflow.application.port
 
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import java.util.UUID
 
 /**
@@ -33,6 +34,22 @@ interface IssueStatusUsagePort {
     fun countIssuesInStatus(
         statusKey: String,
         projectIds: Set<UUID>,
+    ): Long
+
+    /**
+     * 이 상태 키를 현재 값으로 갖는 이슈 수. [scopes] 의 (프로젝트, 이슈 타입) 범위 안만 센다(WF-07-2).
+     *
+     * 한 프로젝트 안에서도 이슈 타입마다 워크플로우가 갈린다. 상태 이관 워커는 이 범위로 대상을 긁으므로
+     * 발행 차단과 이관 상한도 **같은 범위**로 세야 한다. 프로젝트로만 세면 형제 워크플로우의 이슈가 섞여
+     * 이관으로 풀 수 없는 차단이 남는다.
+     *
+     * @param statusKey 셀 상태 키.
+     * @param scopes 프로젝트 id → 그 프로젝트에서 셀 이슈 타입. **비어 있으면 0** 이다.
+     * @return 살아 있는 이슈 수.
+     */
+    fun countIssuesInStatusWithin(
+        statusKey: String,
+        scopes: Map<UUID, StatusMigrationTypeFilter>,
     ): Long
 
     /**

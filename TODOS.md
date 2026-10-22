@@ -1658,7 +1658,16 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
-## ⬜ project-workflow — 한 프로젝트가 워크플로우를 둘 이상 쓰면 상태 이관을 아예 못 쓴다 (신규 · 미착수 · T3)
+## ✅ project-workflow — 한 프로젝트가 워크플로우를 둘 이상 쓰면 상태 이관을 아예 못 쓴다 (**해소** · T3)
+
+**해소 — 2026-10-22 · WF-07-2 (#547 계약·워커 · 이 PR project-workflow).** 처방대로 이관 커맨드에 이슈 타입 축을 넣었다.
+- shared-kernel `StatusMigrationCommand.projectScopes` — 프로젝트 키 → `StatusMigrationTypeFilter(issueTypeIds, exceptListed)`. 워커(`statusMigrationTargets`)가 `issues.type_id` 조건을 건다.
+- project-workflow `findMigrationScopesByWorkflowId` 가 스킴 매핑에서 필터를 계산한다. 이 워크플로우가 default 면 「형제에 명시된 타입을 뺀 전부」이고, 아니면 「자기에게 명시된 타입만」 이다(런타임 해석과 같은 규칙).
+- 발행 차단 카운트와 이관 상한(F14)도 같은 범위로 센다(`countIssuesInStatusWithin`). 프로젝트로만 세면 형제의 이슈가 남아 이관을 끝내도 발행이 409 로 막힌다.
+- F11 형제 가드(`hasSiblingWorkflowInAssignedSchemes`)를 걷었다.
+- payload JSON 은 `projectKeys` 배열도 계속 싣는다. `MigrationInFlightAdapter` SQL 과 apps/web zod 스키마가 그 키를 직접 읽는다.
+- 남는 것 — 필터는 큐잉 시점의 매핑으로 굳는다. 큐잉과 워커 실행 사이에 형제에게 타입별 매핑이 새로 붙으면 그 타입이 함께 옮겨진다. 워커가 큐잉 직후 돌아 창이 짧고, 스킴 변경의 `requireNoStrandedIssues` 가 일부를 막는다. 닫지는 않았다.
+
 
 **쉬운 말.** 한 프로젝트 안에서 버그와 작업이 서로 다른 워크플로우를 쓰고 있으면, 상태 이관 기능이 그 프로젝트에서는 통째로 거부된다.
 
