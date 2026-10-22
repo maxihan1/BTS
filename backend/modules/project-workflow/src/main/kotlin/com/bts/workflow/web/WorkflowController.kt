@@ -4,7 +4,6 @@ package com.bts.workflow.web
 
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
-import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.application.WorkflowApplicationService
 import com.bts.workflow.application.WorkflowCommandService
 import com.bts.workflow.cache.WorkflowCache
@@ -132,6 +131,7 @@ class WorkflowController(
                 toStateKey = body.toStateKey,
                 fields = body.fields,
                 version = body.version,
+                transitionId = body.transitionId,
             )
         val validation = dto.validate()
         if (validation is Invalid) {
@@ -140,16 +140,12 @@ class WorkflowController(
         }
 
         val req =
-            TransitionRequest(
+            dto.toDomain(
                 workflowKey = key,
                 issueKey = body.issueKey,
                 fromStateKey = body.fromStateKey,
-                toStateKey = body.toStateKey,
                 actorId = body.actorId,
-                issueFields = body.fields,
                 actorRoles = body.actorRoles,
-                version = body.version,
-                transitionId = body.transitionId,
             )
 
         val plan = workflowApplicationService.planTransition(req)

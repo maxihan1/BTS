@@ -164,7 +164,7 @@ private fun globalOnlyReachableFixture(): Workflow =
  *
  * ### 왜 필요한가 — 표준 4개만으로는 INITIAL 분기가 공허하다
  * 표준 4 YAML 의 INITIAL 도착지는 모두 displayOrder 가 가장 작은 상태다(V207 ⑨ 백필과 같은 선택).
- * 그래서 [GraphVerifier.resolveInitialState] 의 INITIAL 분기를 지우고 displayOrder 폴백만 남겨도
+ * 그래서 [Workflow.startState] 의 INITIAL 분기를 지우고 displayOrder 폴백만 남겨도
  * **답이 항상 같다** — 구조적으로 판별이 불가능하다.
  *
  * 여기서는 이슈 생성이 `triage` 로 들어가고 `backlog` 는 displayOrder 만 앞선다. `backlog` 에서
@@ -227,7 +227,7 @@ class WorkflowGraphClosedTest : FunSpec({
 
     allWorkflows.forEach { workflow ->
         test("${workflow.key}: initial state 가 그래프에 존재한다") {
-            val initialState = GraphVerifier.resolveInitialState(workflow)
+            val initialState = workflow.startState()
             workflow.states.map { it.key }.contains(initialState.key) shouldBe true
         }
     }
@@ -285,7 +285,7 @@ class WorkflowGraphClosedTest : FunSpec({
         val workflow = initialNotLowestOrderFixture()
         val lowestOrderKey = workflow.states.minByOrNull { it.displayOrder }?.key
 
-        GraphVerifier.resolveInitialState(workflow).key shouldBe "triage"
+        workflow.startState().key shouldBe "triage"
         lowestOrderKey shouldBe "backlog"
     }
 })
@@ -302,38 +302,13 @@ class WorkflowGraphClosedTest : FunSpec({
  */
 object GraphVerifier {
     /**
-     * 워크플로우의 initial state 를 반환한다.
-     *
-     * 해석 순서.
-     * 1. [TransitionKind.INITIAL] 전환이 있으면 그 전환의 도착 상태가 시작점이다 — 이슈 생성이
-     *    실제로 진입하는 상태라 표시 순서보다 우선한다.
-     * 2. INITIAL 전환이 없으면 종전대로 displayOrder 가 가장 낮은 상태로 폴백한다.
-     *
-     * 표준 4 워크플로우는 둘의 답이 같아 이 분기를 판별하지 못한다.
-     * [initialNotLowestOrderFixture] 가 그 자리를 메운다 — 지우면 red 가 난다.
-     *
-     * @param workflow 시작점을 구할 워크플로우
-     * @return 시작 상태
-     */
-    fun resolveInitialState(workflow: Workflow): WorkflowState {
-        val initialTargetKey =
-            workflow.transitions.firstOrNull { it.kind == TransitionKind.INITIAL }?.toStateKey
-        if (initialTargetKey != null) {
-            return workflow.states.firstOrNull { it.key == initialTargetKey }
-                ?: error("${workflow.key}: INITIAL 전환의 도착 상태 '$initialTargetKey' 가 states 에 없음")
-        }
-        return workflow.states.minByOrNull { it.displayOrder }
-            ?: error("${workflow.key}: states 가 비어 있음 — Workflow.of 에서 이미 검증되므로 도달 불가")
-    }
-
-    /**
      * BFS 로 initial state 에서 도달 가능한 모든 상태 키 집합을 반환한다.
      *
      * @param workflow 검증 대상 워크플로우
      * @return initial state 에서 도달 가능한 상태 키 Set
      */
     fun bfsReachable(workflow: Workflow): Set<String> {
-        val initial = resolveInitialState(workflow)
+        val initial = workflow.startState()
         val adjacency = buildAdjacency(workflow)
 
         val visited = mutableSetOf<String>()
@@ -367,7 +342,7 @@ object GraphVerifier {
      * - [TransitionKind.GLOBAL] — 출발지가 없는 것이 「아무 데서나」라는 뜻이므로
      *   **모든 상태 → to** 간선. 자기 자신으로 가는 간선은 도달성에 아무것도 보태지 않아 제외한다.
      * - [TransitionKind.INITIAL] — 그래프 바깥(이슈 생성)에서 들어오는 진입점이라 간선이 아니다.
-     *   [resolveInitialState] 가 시작점을 정하는 데만 쓴다. 간선으로 세면 어떤 상태에서든
+     *   [Workflow.startState] 가 시작점을 정하는 데만 쓴다. 간선으로 세면 어떤 상태에서든
      *   시작 상태로 되돌아갈 수 있는 것처럼 보여 도달성이 부풀려진다.
      *
      * 표준 4 YAML 에는 GLOBAL 전환이 없어 이 확장을 지워도 표준 픽스처는 초록이다.

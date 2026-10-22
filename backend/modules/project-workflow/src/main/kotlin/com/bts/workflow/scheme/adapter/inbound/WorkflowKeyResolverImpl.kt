@@ -27,7 +27,7 @@ import com.bts.workflow.scheme.domain.ProjectKey as InternalProjectKey
  *   - [SharedProjectKey] → [InternalProjectKey] (값 동일, 타입 변환)
  *   - [com.bts.workflow.domain.Workflow] → [WorkflowStartState] (workflowKey + 시작 상태 키)
  *
- * ## 시작 상태 결정 규칙
+ * ## 시작 상태 결정 규칙 (정본 [com.bts.workflow.domain.Workflow.startState])
  * 1. [TransitionKind.INITIAL] 전환이 있으면 그 전환의 도착 상태가 시작 상태다.
  *    [com.bts.workflow.domain.Workflow.of] factory 가 INITIAL 은 워크플로우당 최대 1개이고
  *    `toStateKey` 가 `states` 집합 안에 있음을 보장한다.
@@ -126,25 +126,16 @@ class WorkflowKeyResolverImpl(
     /**
      * 워크플로우에서 시작 상태를 뽑아 [WorkflowStartState] 로 만든다.
      *
-     * 클래스 KDoc 의 「시작 상태 결정 규칙」을 구현하는 유일한 자리다.
+     * 클래스 KDoc 의 「시작 상태 결정 규칙」은 [Workflow.startState] 가 구현한다.
      * [resolveStart] 와 [resolveExisting] 이 각자 해석하던 것을 여기로 모았다 —
      * 두 경로가 갈라지면 쓰기 경로와 읽기 경로가 서로 다른 시작 상태를 말하게 된다.
      *
      * @param workflow 해석 대상 워크플로우.
      * @return workflowKey + startStateKey 를 담은 [WorkflowStartState].
      */
-    private fun resolveStartState(workflow: Workflow): WorkflowStartState {
-        val startStateKey =
-            workflow.transitions.firstOrNull { it.kind == TransitionKind.INITIAL }?.toStateKey
-                ?: workflow.states.minByOrNull { it.displayOrder }?.key
-                ?: error(
-                    "Workflow '${workflow.key}' 에 INITIAL 전환도 상태도 없습니다. " +
-                        "Workflow.of() factory invariant 위반 — 데이터 무결성 오류.",
-                )
-
-        return WorkflowStartState(
+    private fun resolveStartState(workflow: Workflow): WorkflowStartState =
+        WorkflowStartState(
             workflowKey = workflow.key,
-            startStateKey = startStateKey,
+            startStateKey = workflow.startState().key,
         )
-    }
 }
