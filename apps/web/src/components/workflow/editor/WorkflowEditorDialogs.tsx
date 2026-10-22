@@ -6,7 +6,7 @@ import { workflowPublishLabels as publishLabels } from '@/i18n/workflow-publish-
 import type { StatusCatalogEntry } from '@/api/workflows-admin'
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
 import type { WorkflowView } from '@/api/workflows'
-import type { PublishPreview } from '@/api/workflows-draft.types'
+import type { DraftScreenField, PublishPreview } from '@/api/workflows-draft.types'
 import type { EditableDraft } from '@/lib/workflow-draft'
 import type { PublishFlowDialog, UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { StatusPickerDialog } from './StatusPickerDialog'
@@ -45,7 +45,7 @@ interface WorkflowEditorDialogsProps {
   editingTransition: TargetTransition | null
   /** 다이어그램에서 끌어 만든 전환의 출발·도착 프리필 (FR-WF-07 D8). 수정 중에는 무시된다 */
   transitionPrefill?: { from: string; to: string } | null
-  onSubmitTransition: (input: TransitionDefinitionInput) => void
+  onSubmitTransition: (input: TransitionDefinitionInput, screen: DraftScreenField[]) => void
   transitionToRemove: TargetTransition | null
   onTransitionRemoveChange: (target: TargetTransition | null) => void
   onConfirmRemoveTransition: () => void
@@ -168,6 +168,7 @@ function WorkflowEditorDialogs({
             : (panelTransitions.find((t) => t.id === editingTransition.localId) ?? null)
         }
         prefill={transitionPrefill}
+        editingScreen={draft.transitions.find((t) => t.localId === editingTransition?.localId)?.screen}
         onSubmit={onSubmitTransition}
       />
 

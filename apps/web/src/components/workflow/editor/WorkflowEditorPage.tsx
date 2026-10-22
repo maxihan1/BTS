@@ -15,6 +15,7 @@ import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { publishBlockReason } from '@/lib/workflow-draft'
 import type { TransitionInput, EditableDraft, DraftAction } from '@/lib/workflow-draft'
 import type { TransitionDefinitionInput } from '@/api/workflows-admin'
+import type { DraftScreenField } from '@/api/workflows-draft.types'
 import { WorkflowMetaForm } from './WorkflowMetaForm'
 import type { PanelStatus } from './StatusListPanel'
 import type { PickedStatus } from './StatusCreateForm'
@@ -186,11 +187,12 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   const blockReason = publishBlockReason(editable)
 
   /** 폼이 돌려준 값을 리듀서 입력으로 옮긴다. 두 타입의 필드 이름이 다르다. */
-  const toTransitionInput = (input: TransitionDefinitionInput): TransitionInput => ({
+  const toTransitionInput = (input: TransitionDefinitionInput, screen: DraftScreenField[]): TransitionInput => ({
     from: input.fromStatusKey,
     to: input.toStatusKey,
     name: input.name,
     kind: input.kind,
+    screen,
   })
 
   /** 고른 상태를 초안에 편성한다. 이름·카테고리는 **카탈로그 값 그대로** — 임의 값은 400 이다. */
@@ -213,14 +215,14 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
     }
   }
 
-  const handleSubmitTransition = (input: TransitionDefinitionInput): void => {
+  const handleSubmitTransition = (input: TransitionDefinitionInput, screen: DraftScreenField[]): void => {
     if (editingTransition === null) {
-      draft.dispatch({ type: 'createTransition', input: toTransitionInput(input) })
+      draft.dispatch({ type: 'createTransition', input: toTransitionInput(input, screen) })
     } else {
       draft.dispatch({
         type: 'updateTransition',
         localId: editingTransition.localId,
-        input: toTransitionInput(input),
+        input: toTransitionInput(input, screen),
       })
     }
   }

@@ -44,8 +44,19 @@ export const draftStateSchema = z
   })
   .strict()
 
+/** 전환 화면에 올릴 수 있는 필드 — 백엔드 `DraftScreenFieldDto.FIELDS` · V212 CHECK 와 같은 목록 · 같은 순서. */
+export const SCREEN_FIELDS = ['resolution', 'assignee', 'comment'] as const
+
+/** 전환 화면의 필드 한 칸 (FR-WF-01 D10). 백엔드 `DraftScreenFieldDto` 와 1:1. 필수 여부의 정본이다. */
+export const draftScreenFieldSchema = z
+  .object({
+    field: z.enum(SCREEN_FIELDS),
+    required: z.boolean(),
+  })
+  .strict()
+
 /**
- * 초안의 전환 항목. 백엔드 `DraftTransitionDto` 6필드와 1:1.
+ * 초안의 전환 항목. 백엔드 `DraftTransitionDto` 7필드와 1:1.
  *
  * @property from 출발 상태 키. `GLOBAL`·`INITIAL` 은 null 이어야 한다 — 출발지가 없다는 것이
  *   그 두 종류의 정의다. **생략이 아니라 null 로 실린다.**
@@ -61,6 +72,8 @@ export const draftTransitionSchema = z
     kind: transitionKindSchema,
     validators: z.array(draftRuleSchema),
     postActions: z.array(draftRuleSchema),
+    /** 전환 화면 (FR-WF-01 D10). 비면 화면 없이 바로 전환한다. 서버가 늘 실어 보낸다. */
+    screen: z.array(draftScreenFieldSchema),
   })
   .strict()
 
@@ -123,6 +136,7 @@ export const migrateResponseSchema = z.object({ bulkOperationId: z.string().uuid
 
 export type DraftRule = z.infer<typeof draftRuleSchema>
 export type DraftState = z.infer<typeof draftStateSchema>
+export type DraftScreenField = z.infer<typeof draftScreenFieldSchema>
 export type DraftTransition = z.infer<typeof draftTransitionSchema>
 export type DraftDefinition = z.infer<typeof draftDefinitionSchema>
 export type DraftResponse = z.infer<typeof draftResponseSchema>

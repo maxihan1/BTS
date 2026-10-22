@@ -8,6 +8,7 @@ import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.domain.DraftRuleDto
+import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
@@ -395,6 +396,7 @@ private fun WorkflowYamlDto.toDraftDefinition(): WorkflowDraftDefinition =
                     kind = transition.kind,
                     validators = transition.validators.map { DraftRuleDto(type = it.type, config = it.config) },
                     postActions = transition.postActions.map { DraftRuleDto(type = it.type, config = it.config) },
+                    screen = transition.screen.map { DraftScreenFieldDto(field = it.field, required = it.required) },
                 )
             },
     )

@@ -18,6 +18,7 @@ transitions:
   - from: in_review
     to: done
     name: Approve
+    screen: [{ field: resolution, required: true }]
     validators:
       - type: RequiredField
         config:
@@ -26,6 +27,7 @@ transitions:
   - from: done
     to: closed
     name: Close
+    screen: [{ field: resolution, required: true }]
     validators:
       - type: RequiredField
         config:
@@ -33,6 +35,7 @@ transitions:
   - from: open
     to: closed
     name: Cancel
+    screen: [{ field: resolution, required: true }]
     validators:
       - type: RequiredField
         config:

@@ -7,6 +7,9 @@ import com.bts.shared.workflow.AvailableTransitionsResult
 import com.bts.shared.workflow.TransitionRequest
 import com.bts.workflow.adapter.AlwaysAllowPermissionResolver
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.DraftScreenFieldDto
+import com.bts.workflow.domain.StateCategory
+import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
 import com.bts.workflow.engine.DefaultWorkflowPostActionFactory
@@ -14,6 +17,7 @@ import com.bts.workflow.engine.DefaultWorkflowValidatorFactory
 import com.bts.workflow.engine.WorkflowEngine
 import com.bts.workflow.expression.SpelEvaluator
 import com.bts.workflow.repository.DefaultWorkflowDefinitionRepository
+import com.bts.workflow.repository.TransitionScreenRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.bts.workflow.testsupport.SharedPostgres
@@ -350,5 +354,35 @@ class DoneResolutionValidatorSeedTest {
             .contains("done")
 
         log.info("S3 통과 — availableTransitions 에 DONE 전환 포함 확인: toStateKeys={}", toStateKeys)
+    }
+
+    // ── S4. 전환 화면 (FR-WF-01 D10) — 빈 DB 도 V212 백필과 같은 화면을 갖는다 ──────────
+
+    /**
+     * 표준 4 워크플로우에서 DONE 범주로 들어가는 비-INITIAL 전환은 전부, 그리고 그것만 「해결 결과 필수」
+     * 화면을 갖는다. 기존 DB 는 V212 가 같은 규칙으로 채우므로 둘이 갈리면 설치마다 해결 모달이 다르게 뜬다.
+     */
+    @Test
+    @Order(10)
+    fun `S4 - DONE 으로 들어가는 전환만 해결 결과 필수 화면을 갖는다`() {
+        val screenRepository = TransitionScreenRepository(dsl)
+        listOf("software-default", "bug-tracking", "simple", "kanban-basic").forEach { key ->
+            val workflow = workflowRepository.findByKey(key) ?: error("시드된 워크플로우가 없다: $key")
+            val doneKeys = workflow.states.filter { it.category == StateCategory.DONE }.map { it.key }.toSet()
+            val screens =
+                screenRepository.findByWorkflowId(workflowRepository.findIdByKey(key) ?: error("id 없음: $key"))
+
+            workflow.transitions.forEach { transition ->
+                val expected =
+                    if (transition.kind != TransitionKind.INITIAL && transition.toStateKey in doneKeys) {
+                        listOf(DraftScreenFieldDto("resolution", required = true))
+                    } else {
+                        emptyList()
+                    }
+                assertThat(screens[transition.id].orEmpty())
+                    .`as`("$key '${transition.name}' 의 전환 화면")
+                    .isEqualTo(expected)
+            }
+        }
     }
 }

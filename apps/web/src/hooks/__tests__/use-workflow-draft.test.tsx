@@ -28,7 +28,7 @@ const DEFINITION: DraftDefinition = {
     { key: 'done', name: '완료', category: 'DONE', displayOrder: 2, layoutX: null, layoutY: null },
   ],
   transitions: [
-    { from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [] },
+    { from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [], screen: [] },
   ],
 }
 

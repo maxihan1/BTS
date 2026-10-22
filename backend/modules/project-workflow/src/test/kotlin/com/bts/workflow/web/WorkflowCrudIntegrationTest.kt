@@ -11,12 +11,14 @@ import com.bts.workflow.application.command.TransitionDefinitionCommand
 import com.bts.workflow.application.command.UpdateWorkflowCommand
 import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.cache.WorkflowCache
+import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.domain.exception.WorkflowInUseException
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
 import com.bts.workflow.domain.exception.WorkflowKeyConflictException
 import com.bts.workflow.domain.exception.WorkflowLockedException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
+import com.bts.workflow.repository.TransitionScreenRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowWriteRepository
 import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
@@ -343,6 +345,30 @@ class WorkflowCrudIntegrationTest {
             )
     }
 
+    @Test
+    fun `복제는 전환 화면도 복제본 전환으로 옮긴다`() {
+        // 복제가 주 사용 경로다. 화면을 빠뜨리면 사본의 DONE 전환이 해결 결과를 묻지 않는다 (FR-WF-01 D10).
+        create("screen-src", statuses = seeds("alpha", "beta", "gamma"))
+        addTransition("screen-src", "NORMAL", "시작", from = "alpha", to = "beta", displayOrder = 1)
+        addTransition("screen-src", "GLOBAL", "어디서든 완료", from = null, to = "gamma", displayOrder = 2)
+        addScreenField("screen-src", "시작", "comment", required = false)
+        addScreenField("screen-src", "어디서든 완료", "resolution", required = true)
+
+        service.duplicate(actor, "screen-src", newKey = "screen-copy", newName = "사본", targetProjectKey = null)
+
+        val copyId = repository.findIdByKey("screen-copy") ?: error("사본이 없다")
+        val copied = repository.findByKey("screen-copy") ?: error("사본이 없다")
+        val screens = TransitionScreenRepository(dsl).findByWorkflowId(copyId)
+        assertThat(copied.transitions.associate { it.name to screens[it.id].orEmpty() })
+            .containsExactlyInAnyOrderEntriesOf(
+                mapOf(
+                    "이슈 생성" to emptyList(),
+                    "시작" to listOf(DraftScreenFieldDto("comment", required = false)),
+                    "어디서든 완료" to listOf(DraftScreenFieldDto("resolution", required = true)),
+                ),
+            )
+    }
+
     // ── FR-WF-08 소유 프로젝트 ────────────────────────────────────────────────
     // ★ 복제가 주 사용 경로다. 사본이 소유를 못 실으면 전역 사본이 되어 프로젝트 관리자가 결국
     // 못 고친다 — Jira 가 권장 우회로로 명시하는 그 경로가 그 자리에서 죽는다.
@@ -551,6 +577,27 @@ class WorkflowCrudIntegrationTest {
                 stmt.setString(4, to)
                 stmt.setInt(5, displayOrder)
                 stmt.setString(6, workflowKey)
+                assertThat(stmt.executeUpdate()).isEqualTo(1)
+            }
+        }
+    }
+
+    private fun addScreenField(
+        workflowKey: String,
+        transitionName: String,
+        field: String,
+        required: Boolean,
+    ) {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "INSERT INTO workflow_transition_screen_fields (transition_id, field, required)" +
+                    " SELECT t.id, ?, ? FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id" +
+                    " WHERE w.key = ? AND w.deleted_at IS NULL AND t.name = ?",
+            ).use { stmt ->
+                stmt.setString(1, field)
+                stmt.setBoolean(2, required)
+                stmt.setString(3, workflowKey)
+                stmt.setString(4, transitionName)
                 assertThat(stmt.executeUpdate()).isEqualTo(1)
             }
         }

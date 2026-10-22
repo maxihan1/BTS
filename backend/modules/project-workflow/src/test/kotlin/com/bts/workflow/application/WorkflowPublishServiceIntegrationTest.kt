@@ -14,6 +14,7 @@ import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
+import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
@@ -34,6 +35,7 @@ import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.port.outbound.Scope
 import com.bts.workflow.postaction.PostActionRepository
+import com.bts.workflow.repository.TransitionScreenRepository
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublicationRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
@@ -300,6 +302,7 @@ class WorkflowPublishServiceIntegrationTest {
             PostActionRepository(dsl, objectMapper),
             WorkflowRepository(dsl),
             WorkflowStatusCompositionRepository(dsl),
+            TransitionScreenRepository(dsl),
         )
 
     /**
@@ -784,6 +787,39 @@ class WorkflowPublishServiceIntegrationTest {
 
         assertThat(first).containsExactly("이슈 생성", "완료하기", "바로 닫기")
         assertThat(second).containsExactly("바로 닫기", "이슈 생성", "완료하기")
+    }
+
+    /**
+     * 전환 화면(FR-WF-01 D10)의 왕복 — 발행이 심고, 초안을 새로 뜨면 되읽히고, 빼고 발행하면 사라진다.
+     *
+     * 쓰기만 재면 리더가 화면을 안 읽어도 초록이다. 그러면 편집기를 다시 여는 순간 화면이 비고, 그 초안을
+     * 발행하면 발행본 화면까지 지워진다.
+     */
+    @Test
+    fun `전환 화면이 발행되고 초안으로 되읽히며 빼고 발행하면 사라진다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val screen =
+            listOf(
+                DraftScreenFieldDto("resolution", required = true),
+                DraftScreenFieldDto("comment"),
+            )
+        val base = draftKeepingBoth(key)
+        val screened =
+            base.copy(transitions = base.transitions.map { if (it.kind == "INITIAL") it else it.copy(screen = screen) })
+
+        draftRepository.upsert(id, screened, 0, null)
+        service.publish(ACTOR, key, baseVersion = 0)
+        val reopened = definitionReader.read(key) ?: error("발행된 정의를 초안 형태로 읽지 못했다")
+
+        assertThat(reopened.transitions.single { it.name == "완료하기" }.screen).containsExactlyElementsOf(screen)
+        assertThat(reopened.transitions.single { it.kind == "INITIAL" }.screen).isEmpty()
+
+        draftRepository.upsert(id, base, 1, null)
+        service.publish(ACTOR, key, baseVersion = 1)
+
+        val republished = definitionReader.read(key) ?: error("재발행된 정의를 읽지 못했다")
+        assertThat(republished.transitions.flatMap { it.screen }).isEmpty()
     }
 
     // ── ★ 다이어그램 노드 좌표의 왕복 (FR-WF-07 D8) ──────────────────────────

@@ -2,6 +2,8 @@
 
 package com.bts.workflow.seed
 
+import com.bts.workflow.domain.DraftScreenFieldDto
+import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
@@ -11,6 +13,7 @@ import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
+import com.bts.workflow.repository.insertTransitionScreen
 import com.bts.workflow.repository.required
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -95,6 +98,7 @@ data class PostActionYamlDto(
  * @property kind 전환 종류. `NORMAL`(기본)·`GLOBAL`·`INITIAL`. 모르는 값이면 부팅을 막는다.
  * @property validators 전환 전 검증 게이트 목록. 미정의 시 빈 리스트.
  * @property postActions 전환 후 자동 처리 목록. YAML 키는 postActions (camelCase). 미정의 시 빈 리스트.
+ * @property screen 전환 화면 필드 (FR-WF-01 D10). 미정의 시 빈 리스트 — 화면 없이 바로 전환한다.
  */
 data class TransitionYamlDto(
     val from: String? = null,
@@ -103,6 +107,18 @@ data class TransitionYamlDto(
     val kind: String = TransitionKind.NORMAL.name,
     val validators: List<ValidatorYamlDto> = emptyList(),
     val postActions: List<PostActionYamlDto> = emptyList(),
+    val screen: List<ScreenFieldYamlDto> = emptyList(),
+)
+
+/**
+ * YAML 전환 화면 필드 DTO.
+ *
+ * @property field 필드 키 (resolution · assignee · comment). 모르는 값이면 V212 CHECK 가 부팅을 막는다.
+ * @property required 필수 여부. 미정의 시 false.
+ */
+data class ScreenFieldYamlDto(
+    val field: String = "",
+    val required: Boolean = false,
 )
 
 // ── Konform 검증 규칙 ────────────────────────────────────────────────────────
@@ -399,6 +415,11 @@ class YamlSeedService(
             val transitionId =
                 insertTransitionRow(dto, workflowId, transition, stateKeyToCompositionId)
             insertValidators(transitionId, transition.validators)
+            // 초안 저장과 같은 규칙으로 본다 — 여기서 통과시키면 그 정의를 초안으로 뜨는 순간 400 이고
+            // 편집기는 시작 전환의 화면 칸을 감춰 고칠 길이 없다.
+            val screen = transition.screen.map { DraftScreenFieldDto(field = it.field, required = it.required) }
+            DraftTransitionDto(name = transition.name, kind = transition.kind, screen = screen).checkScreen()
+            dsl.insertTransitionScreen(transitionId, screen)
             insertPostActions(transitionId, transition.postActions)
         }
         rankTransitionsLikeV207(workflowId)

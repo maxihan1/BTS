@@ -71,6 +71,7 @@ describe('TransitionFormDialog — 전환 종류', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ name: '강제 완료', kind: 'GLOBAL', fromStatusKey: null }),
+      [],
     )
   })
 
@@ -85,6 +86,7 @@ describe('TransitionFormDialog — 전환 종류', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'NORMAL', fromStatusKey: 'open', toStatusKey: 'done' }),
+      [],
     )
   })
 
@@ -104,5 +106,91 @@ describe('TransitionFormDialog — 전환 종류', () => {
     expect(
       screen.queryByRole('radiogroup', { name: labels.transitionForm.kind }),
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('TransitionFormDialog — 전환 화면 (FR-WF-01 D10)', () => {
+  const fieldLabels = labels.transitionForm.screenFields
+
+  it('필드를 넣기 전에는 필수를 고를 수 없다', () => {
+    renderDialog()
+
+    expect(screen.getByRole('checkbox', { name: fieldLabels.resolution })).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: labels.transitionForm.screenRequired(fieldLabels.resolution) }),
+    ).toBeDisabled()
+  })
+
+  it('★고른 필드와 필수가 고정 순서로 실린다 — 체크한 순서와 무관하다', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({ prefill: { from: 'open', to: 'done' } })
+
+    await user.type(screen.getByLabelText(labels.transitionForm.name), '완료 처리')
+    await user.click(screen.getByRole('checkbox', { name: fieldLabels.comment }))
+    await user.click(screen.getByRole('checkbox', { name: fieldLabels.resolution }))
+    await user.click(
+      screen.getByRole('checkbox', { name: labels.transitionForm.screenRequired(fieldLabels.resolution) }),
+    )
+    await user.click(screen.getByRole('button', { name: labels.transitionForm.submit }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ name: '완료 처리' }), [
+      { field: 'resolution', required: true },
+      { field: 'comment', required: false },
+    ])
+  })
+
+  it('수정이면 지금 화면을 채워 연다 — 안 채우면 저장이 화면을 지운다', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({
+      editing: {
+        key: 'open__done',
+        name: '완료',
+        fromStateKey: 'open',
+        toStateKey: 'done',
+        kind: 'NORMAL',
+      } as WorkflowView['transitions'][number],
+      editingScreen: [{ field: 'resolution', required: true }],
+    })
+
+    expect(
+      screen.getByRole('checkbox', { name: labels.transitionForm.screenRequired(fieldLabels.resolution) }),
+    ).toBeChecked()
+    await user.click(screen.getByRole('button', { name: labels.transitionForm.submit }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.anything(), [{ field: 'resolution', required: true }])
+  })
+
+  it('필드를 빼면 필수도 함께 빠진다', async () => {
+    const user = userEvent.setup()
+    const { onSubmit } = renderDialog({
+      editing: {
+        key: 'open__done',
+        name: '완료',
+        fromStateKey: 'open',
+        toStateKey: 'done',
+        kind: 'NORMAL',
+      } as WorkflowView['transitions'][number],
+      editingScreen: [{ field: 'resolution', required: true }],
+    })
+
+    await user.click(screen.getByRole('checkbox', { name: fieldLabels.resolution }))
+    await user.click(screen.getByRole('button', { name: labels.transitionForm.submit }))
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.anything(), [])
+  })
+
+  it('시작 전환에는 전환 화면 칸이 없다', () => {
+    renderDialog({
+      editing: {
+        key: 'INITIAL__open',
+        name: '이슈 생성',
+        fromStateKey: null,
+        toStateKey: 'open',
+        kind: 'INITIAL',
+      } as WorkflowView['transitions'][number],
+    })
+
+    expect(screen.queryByRole('group', { name: labels.transitionForm.screen })).not.toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: fieldLabels.resolution })).not.toBeInTheDocument()
   })
 })

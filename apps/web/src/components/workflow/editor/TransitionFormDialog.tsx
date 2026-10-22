@@ -1,7 +1,8 @@
-// 전환 정의 생성·수정 다이얼로그 — 이름 · 출발/도착 상태 · 종류
+// 전환 정의 생성·수정 다이얼로그 — 이름 · 출발/도착 상태 · 종류 · 전환 화면
 import * as React from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Combobox } from '@/components/ui/combobox'
@@ -9,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
 import type { WorkflowView } from '@/api/workflows'
 import type { TransitionDefinitionInput, TransitionKind } from '@/api/workflows-admin'
+import { SCREEN_FIELDS, type DraftScreenField } from '@/api/workflows-draft.types'
 
 interface TransitionFormDialogProps {
   open: boolean
@@ -25,9 +27,13 @@ interface TransitionFormDialogProps {
    * 수정은 기존 값이 정본이다.
    */
   prefill?: { from: string; to: string } | null
-  onSubmit: (input: TransitionDefinitionInput) => void
+  /** 수정 대상의 지금 전환 화면 (FR-WF-01 D10). 생성이면 비어 있다 */
+  editingScreen?: DraftScreenField[]
+  onSubmit: (input: TransitionDefinitionInput, screen: DraftScreenField[]) => void
   submitting?: boolean
 }
+
+const NO_SCREEN: DraftScreenField[] = []
 
 /**
  * 종류별 출발 상태 필요 여부 — 백엔드 규칙과 1:1.
@@ -75,10 +81,12 @@ function TransitionFormDialog({
   states,
   editing,
   prefill = null,
+  editingScreen = NO_SCREEN,
   onSubmit,
   submitting = false,
 }: TransitionFormDialogProps): React.JSX.Element {
   const [name, setName] = React.useState('')
+  const [screen, setScreen] = React.useState<DraftScreenField[]>(NO_SCREEN)
   const [kind, setKind] = React.useState<TransitionKind>('NORMAL')
   const [fromKey, setFromKey] = React.useState<string | null>(null)
   const [toKey, setToKey] = React.useState<string | null>(null)
@@ -94,7 +102,18 @@ function TransitionFormDialog({
     // 수정이면 기존 값이 정본이고, 생성이면 다이어그램에서 끌어 온 출발·도착을 먼저 쓴다.
     setFromKey(editing?.fromStateKey ?? prefill?.from ?? null)
     setToKey(editing?.toStateKey ?? prefill?.to ?? states[0]?.key ?? null)
-  }, [open, editing, prefill, states])
+    setScreen(editing === null ? NO_SCREEN : editingScreen)
+  }, [open, editing, prefill, states, editingScreen])
+
+  /** 필드를 화면에 넣거나 뺀다. 빼면 필수도 함께 사라진다 */
+  const toggleField = (field: DraftScreenField['field'], included: boolean): void => {
+    setScreen((current) =>
+      included ? [...current, { field, required: false }] : current.filter((f) => f.field !== field),
+    )
+  }
+  const toggleRequired = (field: DraftScreenField['field'], required: boolean): void => {
+    setScreen((current) => current.map((f) => (f.field === field ? { ...f, required } : f)))
+  }
 
   const stateOptions = states.map((s) => ({ value: s.key, label: s.name }))
   const title = editing === null ? labels.dialog.transitionCreate : labels.dialog.transitionEdit
@@ -201,6 +220,41 @@ function TransitionFormDialog({
               container={portalHost}
             />
           </div>
+
+          {/*
+            전환 화면 (FR-WF-01 D10). 시작 전환에는 감춘다 — 이슈 생성은 생성 폼이 화면이고,
+            백엔드가 400 이다. 필드 순서는 고정이라(해결 결과 → 담당자 → 코멘트) 끌어 바꾸지 않는다.
+          */}
+          {kind === 'INITIAL' ? null : (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">{labels.transitionForm.screen}</legend>
+              <span className="text-xs text-(--text-subtle)">{labels.transitionForm.screenDescription}</span>
+              {SCREEN_FIELDS.map((field) => {
+                const entry = screen.find((f) => f.field === field)
+                const fieldLabel = labels.transitionForm.screenFields[field]
+                return (
+                  <div key={field} className="flex items-center gap-4">
+                    <Label className="flex w-28 items-center gap-2 font-normal">
+                      <Checkbox
+                        checked={entry !== undefined}
+                        onCheckedChange={(checked) => toggleField(field, checked === true)}
+                      />
+                      {fieldLabel}
+                    </Label>
+                    <Label className="flex items-center gap-2 font-normal text-(--text-subtle)">
+                      <Checkbox
+                        aria-label={labels.transitionForm.screenRequired(fieldLabel)}
+                        checked={entry?.required ?? false}
+                        disabled={entry === undefined}
+                        onCheckedChange={(checked) => toggleRequired(field, checked === true)}
+                      />
+                      {labels.transitionForm.screenRequiredShort}
+                    </Label>
+                  </div>
+                )
+              })}
+            </fieldset>
+          )}
         </div>
 
         <DialogFooter>
@@ -213,12 +267,17 @@ function TransitionFormDialog({
               if (toKey === null) {
                 return
               }
-              onSubmit({
-                name: name.trim(),
-                kind,
-                toStatusKey: toKey,
-                fromStatusKey: needsFromState(kind) ? fromKey : null,
-              })
+              // 화면 필드는 고정 순서로 싣는다 — 체크한 순서가 저장 순서를 흔들지 않게.
+              const ordered = SCREEN_FIELDS.flatMap((field) => screen.filter((f) => f.field === field))
+              onSubmit(
+                {
+                  name: name.trim(),
+                  kind,
+                  toStatusKey: toKey,
+                  fromStatusKey: needsFromState(kind) ? fromKey : null,
+                },
+                ordered,
+              )
               onOpenChange(false)
             }}
           >

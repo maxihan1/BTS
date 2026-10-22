@@ -53,7 +53,7 @@ const DEFINITION = {
   name: '워크플로우',
   description: null,
   states: [{ key: 'open', name: '열림', category: 'TODO', displayOrder: 1, layoutX: null, layoutY: null }],
-  transitions: [{ from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [] }],
+  transitions: [{ from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [], screen: [] }],
 } satisfies DraftDefinition
 
 describe('getDraft', () => {
@@ -84,6 +84,7 @@ describe('getDraft', () => {
           kind: 'NORMAL',
           validators: [{ type: 'RequiredField', config: { field: 'assignee' } }],
           postActions: [{ type: 'SetField', config: { field: 'resolution', value: 'done' } }],
+          screen: [{ field: 'resolution', required: true }],
         },
       ],
     }
@@ -97,6 +98,7 @@ describe('getDraft', () => {
       { type: 'RequiredField', config: { field: 'assignee' } },
     ])
     expect(draft.definition.transitions[0]?.postActions).toHaveLength(1)
+    expect(draft.definition.transitions[0]?.screen).toEqual([{ field: 'resolution', required: true }])
   })
 
   it('경로 파라미터를 인코딩한다', async () => {

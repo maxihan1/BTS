@@ -51,7 +51,7 @@
 | G8 | **조건 종류** — 사람 제한(담당자·보고자·역할·그룹·권한·사용자 필드), 필드 값 비교, 이전 상태 통과 여부, 하위 작업 상태, 직무 분리, 전원 차단 | `permission-check` · `not-status-category` (`backend/modules/project-workflow/src/main/kotlin/com/bts/workflow/engine/DefaultWorkflowValidatorFactory.kt`) | [S20][S2] |
 | G9 | **검증기 종류** — 필수 필드(임의 필드), 필드 변경됨, 단일 값, 정규식, 날짜 비교·범위, 상위 항목 상태, 이전 상태 | `RequiredField`(B2 제약) · `permission-check` · `not-status-category`. 4 대 9 비교와 후속 FR 후보 2건은 이미 기록 — `docs/plans/2026-08-25-backend-workflow-transition-rule-crud.md` | [S20][S2] |
 | G10 | **후처리 종류** — 필드 갱신(해결 값 설정·비우기 포함), 담당자 지정, 필드 값 복사(상위 포함), 보안 수준, 웹훅, AI 에이전트 실행 | 엔진 5종 중 웹훅만 동작(B1). 화면에서 추가할 수 있는 것도 웹훅뿐(`PostActionFormDialog.tsx`) | [S20][S2][S14] |
-| G11 | **전환 화면** — 전환 때 필드 입력 대화상자(필수 표시), 「빈 필드 채우라고 알림」 | 없음. DONE 범주로 갈 때 해결 모달을 프론트가 하드코딩해 띄울 뿐이다(`routes/issues.$key.tsx`) | [S2][S25][S20] |
+| G11 | **전환 화면** — 전환 때 필드 입력 대화상자(필수 표시), 「빈 필드 채우라고 알림」 | 없음. DONE 범주로 갈 때 해결 모달을 프론트가 하드코딩해 띄울 뿐이다(`routes/issues.$key.tsx`). **정의는 FR-WF-01 D10 이 닫았다** — 해결 결과 · 담당자 · 코멘트 + 필수(Maxi 2026-10-22). 실행은 D11 | [S2][S25][S20] |
 | G12 | **개발 도구 트리거** — 브랜치·커밋·PR 이벤트가 전환을 일으킨다 | 없음 | [S8][S19] |
 | G13 | **규칙 순서** — 순서가 의미를 가진다(재오픈 때 해결 값 비우기 등) | `displayOrder` 필드뿐, 끌어서 바꾸기는 범위 밖으로 기록됨 | [S6] |
 

@@ -58,10 +58,16 @@ data class WorkflowDraftDefinition(
      * (WF-05-2). [Workflow.of] 에 넣지 않는 것은 그것이 조회 경로의 방어선이기도 해서다 — 이미 저장된
      * 빈 이름 행이 있는 DB 에서 조회가 500 이 된다.
      *
-     * @throws IllegalArgumentException [Workflow.of] 의 invariant 를 위반하거나 전환 이름이 비었을 때
+     * ### 전환 화면도 여기서 본다 (FR-WF-01 D10)
+     * 저장과 발행이 같은 검증을 써야 하는 이유는 위와 같다. DB CHECK(V212)도 필드를 막지만 그것은
+     * 발행 때에야 500 으로 터진다 — 저장 때 400 으로 알려 준다.
+     *
+     * @throws IllegalArgumentException [Workflow.of] 의 invariant 를 위반하거나 전환 이름이 비었거나
+     *   전환 화면이 [DraftTransitionDto.checkScreen] 규칙을 어길 때
      */
     fun toWorkflow(): Workflow {
         require(transitions.none { it.name.isBlank() }) { "이름이 빈 전환이 있습니다. 전환 이름을 입력해 주세요." }
+        transitions.forEach { it.checkScreen() }
         return Workflow.of(
             key = key,
             name = name,
@@ -139,6 +145,7 @@ data class DraftStateDto(
  * @property kind 전환 종류. NORMAL(기본) · GLOBAL · INITIAL.
  * @property validators 전환 전 검증 게이트.
  * @property postActions 전환 후 자동 처리.
+ * @property screen 전환 화면 — 전환 때 대화상자로 받을 필드. 비면 화면 없이 바로 전환한다 (FR-WF-01 D10).
  */
 data class DraftTransitionDto(
     val from: String? = null,
@@ -147,7 +154,30 @@ data class DraftTransitionDto(
     val kind: String = TransitionKind.NORMAL.name,
     val validators: List<DraftRuleDto> = emptyList(),
     val postActions: List<DraftRuleDto> = emptyList(),
+    val screen: List<DraftScreenFieldDto> = emptyList(),
 ) {
+    /**
+     * 전환 화면 규칙을 본다 — 아는 필드만 · 한 번씩만 · INITIAL 에는 화면이 없다.
+     *
+     * INITIAL 은 이슈 생성으로 실행되고 그때의 화면은 생성 폼이다. 여기에 화면을 받아 두면 아무도
+     * 띄우지 않는 필수 필드가 생긴다.
+     *
+     * @throws IllegalArgumentException 위 규칙을 어길 때
+     */
+    fun checkScreen() {
+        if (screen.isEmpty()) return
+        require(kind != TransitionKind.INITIAL.name) { "생성 전환 '$name' 에는 전환 화면을 둘 수 없습니다." }
+        screen.forEach {
+            require(it.field in DraftScreenFieldDto.FIELDS) {
+                "전환 '$name' 의 화면 필드 '${it.field}' 를 모른다. " +
+                    "쓸 수 있는 값. ${DraftScreenFieldDto.FIELDS.joinToString(" · ")}"
+            }
+        }
+        require(screen.distinctBy { it.field }.size == screen.size) {
+            "전환 '$name' 의 화면에 같은 필드가 두 번 있습니다."
+        }
+    }
+
     /**
      * 도메인 [WorkflowTransition] 으로 변환한다.
      *
@@ -186,3 +216,21 @@ data class DraftRuleDto(
     val type: String = "",
     val config: Map<String, Any?> = emptyMap(),
 )
+
+/**
+ * 전환 화면의 필드 한 칸 (FR-WF-01 D10).
+ *
+ * 필수 여부의 정본은 여기다 — 화면의 별표와 실행 때 서버의 거절이 같은 값을 본다(Maxi 2026-10-22).
+ *
+ * @property field 필드 키. [FIELDS] 중 하나 — DB CHECK(V212)와 같은 목록이다.
+ * @property required 비어 있으면 전환을 거절할지.
+ */
+data class DraftScreenFieldDto(
+    val field: String = "",
+    val required: Boolean = false,
+) {
+    companion object {
+        /** 화면에 올릴 수 있는 필드 — 해결 결과 · 담당자 · 코멘트(Maxi 2026-10-22). 그리는 순서이기도 하다. */
+        val FIELDS: List<String> = listOf("resolution", "assignee", "comment")
+    }
+}

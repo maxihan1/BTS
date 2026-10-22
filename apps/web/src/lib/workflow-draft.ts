@@ -1,6 +1,7 @@
 // 워크플로우 초안 편집 리듀서와 파생 셀렉터 — React 없는 순수 로직 (FR-WF-07 D6)
 import type {
   DraftDefinition,
+  DraftScreenField,
   DraftState,
   DraftTransition,
   StatusMappingInput,
@@ -36,12 +37,16 @@ export interface StatusCatalogChoice {
   category: DraftState['category']
 }
 
-/** 전환 폼이 돌려주는 입력. 규칙은 담지 않는다 — 목록 편집기는 규칙을 편집하지 않는다. */
+/**
+ * 전환 폼이 돌려주는 입력. 규칙은 담지 않는다 — 목록 편집기는 규칙을 편집하지 않는다.
+ * 전환 화면(FR-WF-01 D10)은 담는다 — 폼이 편집한다.
+ */
 export interface TransitionInput {
   from: string | null
   to: string
   name: string
   kind: DraftTransition['kind']
+  screen: DraftScreenField[]
 }
 
 /**
@@ -150,6 +155,7 @@ export function toWireDefinition(draft: EditableDraft): DraftDefinition {
       kind: t.kind,
       validators: t.validators,
       postActions: t.postActions,
+      screen: t.screen,
     })),
   }
 }
@@ -182,13 +188,17 @@ function isOriginless(kind: DraftTransition['kind']): boolean {
   return kind === 'GLOBAL' || kind === 'INITIAL'
 }
 
-/** 폼 입력을 전환 필드로 옮긴다. 출발지 없는 종류의 `from` 을 여기서 한 번에 지운다. */
+/**
+ * 폼 입력을 전환 필드로 옮긴다. 출발지 없는 종류의 `from` 을 여기서 한 번에 지운다.
+ * 시작 전환의 화면도 여기서 지운다 — 백엔드가 400 이다(이슈 생성은 생성 폼이 화면이다).
+ */
 function normalizeInput(input: TransitionInput): Omit<DraftTransition, 'validators' | 'postActions'> {
   return {
     from: isOriginless(input.kind) ? null : input.from,
     to: input.to,
     name: input.name,
     kind: input.kind,
+    screen: input.kind === 'INITIAL' ? [] : input.screen,
   }
 }
 

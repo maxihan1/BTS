@@ -1,5 +1,5 @@
 // 초안·발행 MSW 의 인메모리 저장소 — 초안 · 버전 · 상태별 잔여 이슈를 한 출처로 둔다
-import type { DraftDefinition } from '@/api/workflows-draft.types'
+import type { DraftDefinition, DraftScreenField } from '@/api/workflows-draft.types'
 import { resetBulkOperationState } from './bulk-operation-handlers'
 
 /**
@@ -41,6 +41,15 @@ export const pendingIssueStore = new Map<string, number>()
 export const publishedLayouts = new Map<string, Map<string, { x: number | null; y: number | null }>>()
 
 /**
+ * 발행본의 전환 화면 (FR-WF-01 D10) — 실서버 `workflow_transition_screen_fields` 자리.
+ *
+ * 키는 워크플로우 키, 값은 발행본 전환 순서대로의 화면. 한 번도 발행하지 않은 워크플로우는 없다 —
+ * 그때 핸들러는 V212 백필과 같은 규칙(DONE 도착 · 시작 전환 아님 → 해결 결과 필수)으로 채운다.
+ * 좌표와 같은 이유로 여기 두어 [resetWorkflowDraftStore] 가 비운다.
+ */
+export const publishedScreens = new Map<string, DraftScreenField[][]>()
+
+/**
  * 기본값 YAML 이 있는 워크플로우.
  *
  * 백엔드는 `origin='SEED'` 이고 classpath 에 YAML 이 있을 때만 복원을 허용한다. 목은 그 둘을
@@ -55,6 +64,7 @@ export function resetWorkflowDraftStore(): void {
   publicationStore.clear()
   pendingIssueStore.clear()
   publishedLayouts.clear()
+  publishedScreens.clear()
   // 이 파일의 `POST /publish/migrate` 핸들러가 `bulk-operation-handlers.ts` 의 스토어에 이관
   // 작업을 등록한다(registerStatusMigration) — `test/setup.ts` 는 그 스토어를 직접 모르므로
   // (resetBulkOperationState 는 전용 테스트 파일만 부른다) 여기서 함께 비워야 이관 작업 id 가
