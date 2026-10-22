@@ -95,9 +95,9 @@ class WorkflowEngineAmbiguousTest {
     @BeforeEach
     fun setUp() {
         engine = WorkflowEngine(mockCache, mockValidatorFactory, mockPostActionFactory, mockDefinitionRepo)
-        every { mockCache.findByKey("dup-fixture") } returns dupWorkflow
-        every { mockCache.findByKey("global-dup-fixture") } returns globalDupWorkflow
-        every { mockCache.findByKey("initial-fixture") } returns initialWorkflow
+        every { mockCache.findForTransition("dup-fixture") } returns dupWorkflow
+        every { mockCache.findForTransition("global-dup-fixture") } returns globalDupWorkflow
+        every { mockCache.findForTransition("initial-fixture") } returns initialWorkflow
         // validator·post-action 없음 → 어떤 전환이 골라졌는지만 순수하게 관측된다
         every { mockDefinitionRepo.findValidators(any(), any()) } returns emptyList()
         every { mockDefinitionRepo.findPostActions(any(), any()) } returns emptyList()

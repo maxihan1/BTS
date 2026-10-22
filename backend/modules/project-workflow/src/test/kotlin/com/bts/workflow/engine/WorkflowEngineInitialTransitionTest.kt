@@ -72,8 +72,8 @@ class WorkflowEngineInitialTransitionTest {
     @BeforeEach
     fun setUp() {
         engine = WorkflowEngine(cache, validatorFactory, postActionFactory, definitionRepo)
-        every { cache.findByKey("with-initial") } returns withInitial
-        every { cache.findByKey("without-initial") } returns withoutInitial
+        every { cache.findForTransition("with-initial") } returns withInitial
+        every { cache.findForTransition("without-initial") } returns withoutInitial
     }
 
     @Test

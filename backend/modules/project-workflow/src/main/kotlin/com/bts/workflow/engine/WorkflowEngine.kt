@@ -257,8 +257,9 @@ class WorkflowEngine(
 
     // ── private helpers ── //
 
+    // 캐시가 아니라 발행과 직렬화되는 조회 — 근거는 [WorkflowCache.findForTransition] (WF-07-1).
     private fun resolveWorkflow(req: TransitionRequest): Workflow =
-        cache.findByKey(req.workflowKey)
+        cache.findForTransition(req.workflowKey)
             ?: throw WorkflowNotFoundException(req.workflowKey)
 
     /**

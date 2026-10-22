@@ -121,7 +121,7 @@ class WorkflowEngineAvailabilityPhaseTest {
 
     @Test
     fun `S2 — plan 호출 시 resolution 없으면 WorkflowValidatorFailureException 을 던진다`() {
-        every { mockCache.findByKey("test-workflow") } returns workflow
+        every { mockCache.findForTransition("test-workflow") } returns workflow
         every {
             mockDefinitionRepo.findValidators("test-workflow", txOpenToClosed)
         } returns listOf(requiredResolutionConfig)

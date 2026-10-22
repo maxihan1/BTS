@@ -67,6 +67,31 @@ class WorkflowCache(
     }
 
     /**
+     * 전환 계획(`WorkflowEngine.plan`) 전용 조회 — [withKeyLock] 과 같은 키의 **공유** 잠금을 잡은 뒤
+     * 캐시를 거치지 않고 DB 에서 읽는다 (WF-07-1).
+     *
+     * ### 왜 잠그나
+     * 발행은 「빠지는 상태에 이슈가 없다」를 재카운트한 뒤 COMMIT 한다. 그 사이 옛 정의로 계획된 전환이
+     * 커밋되면 이슈가 새 정의에 없는 상태에 남는다. 이 잠금은 호출자(issue-tracking)의 트랜잭션 끝까지
+     * 유지되므로 — 포트가 `Propagation.MANDATORY` 로 그 트랜잭션에 합류한다 — 이슈 UPDATE 커밋 전까지
+     * 발행이 배타 잠금을 못 잡고, 발행이 쥐고 있으면 전환이 COMMIT 뒤까지 기다린다.
+     *
+     * ### 왜 캐시를 거치지 않나
+     * 발행의 캐시 무효화는 DB COMMIT **뒤** `afterCommit` 에서 일어난다. 잠금이 풀린 순간 깨어난 전환이
+     * 그 사이 캐시를 읽으면 옛 정의로 계획한다. 전환은 쓰기 경로라 조회 1회를 더 쓴다.
+     *
+     * ponytail: 발행의 `pg_try_advisory_xact_lock` 은 줄을 서지 않아, 같은 워크플로우 전환이 200ms 내내
+     *   겹치면 발행이 [WorkflowCacheLockTimeoutException] 으로 끝난다. 실측되면 발행을 대기형 잠금으로 바꾼다.
+     *
+     * @param key 워크플로우 식별 키
+     * @return 조회된 [Workflow], 부재 시 null
+     */
+    fun findForTransition(key: String): Workflow? {
+        dsl.fetchValue("SELECT pg_advisory_xact_lock_shared(?)", lockKeyOf(key))
+        return repo.findByKey(key)
+    }
+
+    /**
      * 지정 key 의 캐시 항목을 무효화한다.
      *
      * 다음 [findByKey] 호출 시 DB 에서 재적재된다.
@@ -148,7 +173,7 @@ class WorkflowCache(
         key: String,
         block: () -> T,
     ): T {
-        val lockKey = key.hashCode().toLong()
+        val lockKey = lockKeyOf(key)
 
         if (tryAcquireLock(lockKey)) {
             log.debug("WorkflowCache advisory lock acquired on first try: key={}", key)
@@ -179,6 +204,9 @@ class WorkflowCache(
     ) {
         cache[key] = workflow
     }
+
+    /** [withKeyLock] 과 [findForTransition] 이 같은 키 공간을 쓰는 근거 — 산출식은 이 한 곳에만 둔다. */
+    private fun lockKeyOf(key: String): Long = key.hashCode().toLong()
 
     @Suppress("MaxLineLength")
     private fun tryAcquireLock(lockKey: Long): Boolean = dsl.fetchValue("SELECT pg_try_advisory_xact_lock(?)", lockKey) as Boolean
