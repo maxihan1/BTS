@@ -9,7 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { fetchIssue, updateIssue, IssueRedirectError } from '@/api/issues'
 import { useRecentIssues } from '@/hooks/use-recent-issues'
-import type { IssueTransition, CustomFieldValues } from '@/api/issues'
+import type { IssueTransition, CustomFieldValues, TransitionScreenValues } from '@/api/issues'
 import { useUpdateIssueSummary, issueQueryKey } from '@/api/useUpdateIssueSummary'
 import { useChangeAssignee } from '@/api/useChangeAssignee'
 import { useDeleteIssue } from '@/api/useDeleteIssue'
@@ -44,7 +44,7 @@ import {
   useReportModalOpen,
 } from '@/components/keyboard-shortcuts/useOpenModalRegistry'
 import { useAuthUser } from '@/auth/authStore'
-import { ResolutionModal } from '@/components/issue/ResolutionModal'
+import { TransitionScreenDialog } from '@/components/issue/TransitionScreenDialog'
 import { CloneIssueDialog } from '@/components/issues/CloneIssueDialog'
 import { MoveIssueDialog } from '@/components/issues/MoveIssueDialog'
 import { issueDetailStrings, worklogStrings } from '@/i18n/ko'
@@ -285,9 +285,9 @@ export function IssueDetailPage({
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('')
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
 
-  // ── Resolution 모달 상태 ──────────────────────────────────────────────────
-  /** 현재 DONE 전환 대기 중인 전환 항목. null이면 모달 닫힘. */
-  const [pendingDoneTransition, setPendingDoneTransition] = useState<IssueTransition | null>(null)
+  // ── 전환 화면 대화상자 상태 (FR-WF-01 D11) ─────────────────────────────────
+  /** 화면 입력을 기다리는 전환. null이면 대화상자 닫힘. */
+  const [pendingScreenTransition, setPendingScreenTransition] = useState<IssueTransition | null>(null)
 
   // ── pane 전용 — 헤더 닫기/Escape/마운트 포커스 (FR-UX-06 PR20 Task 1) ───────
   const paneTitleRef = useRef<HTMLHeadingElement>(null)
@@ -648,7 +648,7 @@ export function IssueDetailPage({
    * 아니다 — 그래서 이 네 가지만 여기서 보고한다. 나머지 모달은 **자기가 보고한다**.
    */
   useReportModalOpen(
-    pendingDoneTransition !== null || cloneDialogOpen || moveDialogOpen || confirmDelete,
+    pendingScreenTransition !== null || cloneDialogOpen || moveDialogOpen || confirmDelete,
   )
 
   /**
@@ -917,46 +917,33 @@ export function IssueDetailPage({
   // ── 상태전환 핸들러 ───────────────────────────────────────────────────────
 
   /**
-   * 전환 선택 핸들러.
-   * - toCategory === 'DONE': Resolution 모달을 오픈하고 전환을 대기한다.
-   * - 그 외: 즉시 전환 실행 (resolutionId 없음).
+   * 전환 선택 핸들러 (FR-WF-01 D11).
+   * - 전환에 화면이 있으면 전환 화면 대화상자를 열고 입력을 기다린다.
+   * - 없으면 즉시 전환한다. 범주(DONE)로 가르지 않는다 — 화면 정의가 정본이다.
    *
    * @param transition 셀렉터가 고른 전환 — `toStateKey` 로 목록을 되훑지 않는다
    *   ({@link transitionIdOf} 가 식별 규칙의 정본). 되훑으면 같은 상태쌍의 첫 전환이 잡혀
-   *   사용자가 고른 것과 다른 전환의 `toCategory` 로 DONE 여부를 판단한다.
+   *   사용자가 고른 것과 다른 전환의 화면을 띄운다.
    */
   function handleTransition(transition: IssueTransition) {
     if (issue === undefined) return
-    if (transition.toCategory === 'DONE') {
-      // DONE 전환 → 모달 오픈 후 resolution 선택 대기
-      setPendingDoneTransition(transition)
+    if ((transition.screen ?? []).length > 0) {
+      setPendingScreenTransition(transition)
     } else {
-      // 비DONE 전환 → 즉시 실행
       transitionFlow.mutate({ toStatusKey: transition.toStateKey, expectedVersion: issue.version, transitionId: transitionIdOf(transition) })
     }
   }
 
-  /**
-   * Resolution 모달 확인 핸들러.
-   * 모달에서 선택된 resolutionId를 포함해 전환을 실행한다.
-   */
-  function handleResolutionConfirm(resolutionId: string) {
-    if (issue === undefined || pendingDoneTransition === null) return
+  /** 전환 화면 확인 — 입력값을 전환과 함께 보낸다(서버가 한 트랜잭션으로 저장). */
+  function handleScreenConfirm(values: TransitionScreenValues) {
+    if (issue === undefined || pendingScreenTransition === null) return
     transitionFlow.mutate({
-      toStatusKey: pendingDoneTransition.toStateKey,
+      toStatusKey: pendingScreenTransition.toStateKey,
       expectedVersion: issue.version,
-      resolutionId,
-      transitionId: transitionIdOf(pendingDoneTransition),
+      transitionId: transitionIdOf(pendingScreenTransition),
+      ...values,
     })
-    setPendingDoneTransition(null)
-  }
-
-  /**
-   * Resolution 모달 취소 핸들러.
-   * 대기 중인 전환을 취소하고 모달을 닫는다.
-   */
-  function handleResolutionCancel() {
-    setPendingDoneTransition(null)
+    setPendingScreenTransition(null)
   }
 
   // ── 삭제 핸들러 ───────────────────────────────────────────────────────────
@@ -1183,12 +1170,14 @@ export function IssueDetailPage({
         </div>
       </div>
 
-      {/* DONE 전환 시 Resolution 선택 모달 (B9) */}
-      <ResolutionModal
-        open={pendingDoneTransition !== null}
-        prefilledResolution={issue.resolution ?? null}
-        onConfirm={handleResolutionConfirm}
-        onCancel={handleResolutionCancel}
+      {/* 전환 화면 대화상자 (FR-WF-01 D11) — 하드코딩 DONE 해결 모달을 대체한다 */}
+      <TransitionScreenDialog
+        open={pendingScreenTransition !== null}
+        transitionName={pendingScreenTransition?.name ?? ''}
+        screen={pendingScreenTransition?.screen ?? []}
+        prefill={{ resolutionId: issue.resolution?.id ?? null, assigneeId: issue.assigneeId ?? null }}
+        onConfirm={handleScreenConfirm}
+        onCancel={() => setPendingScreenTransition(null)}
       />
 
       {/* 모호 전환(409 AMBIGUOUS_TRANSITION) 후보 선택 프롬프트 (ADR 2026-08-18 §D3) */}

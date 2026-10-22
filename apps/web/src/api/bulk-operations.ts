@@ -44,6 +44,10 @@ export const bulkTransitionPayloadSchema = z.object({
   toStateKey: z.string().min(1),
   /** DONE 전환 시 결의안 UUID. 비DONE 전환은 undefined. */
   resolutionId: z.string().uuid().optional(),
+  /** 전환 화면의 담당자 (FR-WF-01 D11) */
+  assigneeId: z.string().uuid().nullable().optional(),
+  /** 전환 화면의 코멘트 — 이슈마다 같은 본문으로 남는다 */
+  comment: z.string().nullable().optional(),
 })
 
 /**
@@ -133,6 +137,10 @@ export interface BulkTransitionPayloadInput {
   toStateKey: string
   /** DONE 전환 시 결의안 UUID. 비DONE 전환은 생략 가능. */
   resolutionId?: string
+  /** 전환 화면의 담당자 (FR-WF-01 D11). 생략하면 담당자를 그대로 둔다. */
+  assigneeId?: string
+  /** 전환 화면의 코멘트 — 이슈마다 같은 본문으로 남는다. */
+  comment?: string
 }
 
 /**

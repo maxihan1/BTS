@@ -53,7 +53,7 @@ const MODAL_OWNER_MARKERS: readonly RegExp[] = [
  * 부패한 예외 목록을 차단한다.
  */
 const ROUTE_REPORTED_MODALS: ReadonlyMap<string, string> = new Map([
-  ['components/issue/ResolutionModal.tsx', 'pendingDoneTransition'],
+  ['components/issue/TransitionScreenDialog.tsx', 'pendingScreenTransition'],
   ['components/issues/CloneIssueDialog.tsx', 'cloneDialogOpen'],
   ['components/issues/MoveIssueDialog.tsx', 'moveDialogOpen'],
 ])

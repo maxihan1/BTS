@@ -17,7 +17,7 @@ import { StatusCell, StatusCellDisplay, StatusCellEditor } from './StatusCell'
 // 그래서 `runTransition(pendingDone.toStateKey)` 로 `resolutionId` 인자를 빠뜨려도 전
 // 테스트가 초록이었다 — 결의안을 고르고 확인했는데 서버에는 안 실려 가는 상태다.
 //
-// `ResolutionModal` 자체는 자체 테스트(`issue/__tests__/ResolutionModal.test.tsx`)가 덮으므로
+// `TransitionScreenDialog` 자체는 자체 테스트(`issue/__tests__/TransitionScreenDialog.test.tsx`)가 덮으므로
 // 여기서는 stub 으로 갈아끼우고 **StatusCell 의 이음매**만 잰다. Radix Select 를 jsdom 에서
 // 조작하는 60줄짜리 mock 을 복제하지 않는 이유이기도 하다.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,6 +29,7 @@ const { RESOLUTION_ID, DONE_TRANSITION, PLAIN_TRANSITION, transitionState } = vi
     fromStateKey: 'open',
     toStateKey: 'DONE',
     toCategory: 'DONE',
+    screen: [{ field: 'resolution', required: true }],
   }
   return {
     RESOLUTION_ID: '99999999-9999-4999-8999-999999999999',
@@ -77,20 +78,20 @@ vi.mock('@/hooks/use-issue-permissions', async (importOriginal) => {
   }
 })
 
-vi.mock('@/components/issue/ResolutionModal', async () => {
+vi.mock('@/components/issue/TransitionScreenDialog', async () => {
   const { Button } = await vi.importActual<typeof import('@/components/ui/button')>(
     '@/components/ui/button',
   )
   return {
-    ResolutionModal: ({
+    TransitionScreenDialog: ({
       onConfirm,
       onCancel,
     }: {
-      onConfirm: (resolutionId: string) => void
+      onConfirm: (values: { resolutionId?: string }) => void
       onCancel: () => void
     }) => (
       <>
-        <Button type="button" onClick={() => onConfirm(RESOLUTION_ID)}>
+        <Button type="button" onClick={() => onConfirm({ resolutionId: RESOLUTION_ID })}>
           결의안 확인(stub)
         </Button>
         <Button type="button" onClick={onCancel}>
@@ -169,7 +170,7 @@ describe('StatusCellEditor', () => {
         isSaving={false}
         isLoading={false}
         onTransition={onTransition}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 
@@ -188,7 +189,7 @@ describe('StatusCellEditor', () => {
         isSaving={false}
         isLoading={false}
         onTransition={vi.fn()}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 
@@ -208,7 +209,7 @@ describe('StatusCellEditor', () => {
         isSaving={false}
         isLoading={false}
         onTransition={vi.fn()}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 
@@ -228,7 +229,7 @@ describe('StatusCellEditor', () => {
         isSaving={false}
         isLoading={false}
         onTransition={vi.fn()}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 
@@ -245,7 +246,7 @@ describe('StatusCellEditor', () => {
         isSaving
         isLoading={false}
         onTransition={vi.fn()}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 
@@ -262,22 +263,23 @@ describe('StatusCellEditor', () => {
         isSaving={false}
         isLoading
         onTransition={vi.fn()}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 
     expect(screen.queryByText(issueDetailStrings.noTransitionsAvailable)).not.toBeInTheDocument()
   })
 
-  it('종료 전환(toCategory=DONE)는 즉시 전환하지 않고 결의안 요청을 올린다 (FR14)', async () => {
+  it('화면이 있는 전환은 즉시 전환하지 않고 전환 화면 요청을 올린다 (FR-WF-01 D11)', async () => {
     const onTransition = vi.fn()
-    const onDoneTransition = vi.fn()
+    const onScreenTransition = vi.fn()
     const doneTransition: IssueTransition = {
       key: 'finish',
       name: '완료',
       fromStateKey: 'IN_PROGRESS',
       toStateKey: 'DONE',
       toCategory: 'DONE',
+      screen: [{ field: 'resolution', required: true }],
     }
 
     render(
@@ -289,14 +291,14 @@ describe('StatusCellEditor', () => {
         isSaving={false}
         isLoading={false}
         onTransition={onTransition}
-        onDoneTransition={onDoneTransition}
+        onScreenTransition={onScreenTransition}
       />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: /^완료/ }))
 
-    expect(onDoneTransition).toHaveBeenCalledWith(doneTransition)
-    // ★결의안 없이 전환하지 않는다 — 해결 결과는 종료 전환의 필수 입력이다
+    expect(onScreenTransition).toHaveBeenCalledWith(doneTransition)
+    // ★화면 입력 없이 전환하지 않는다 — 필수 칸이 빠진다
     expect(onTransition).not.toHaveBeenCalled()
   })
 })
@@ -417,7 +419,7 @@ describe('StatusCellEditor — 같은 상태쌍 전환 둘 (장부 「목록 인
         isSaving={false}
         isLoading={false}
         onTransition={vi.fn()}
-        onDoneTransition={vi.fn()}
+        onScreenTransition={vi.fn()}
       />,
     )
 

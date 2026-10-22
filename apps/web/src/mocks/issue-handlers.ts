@@ -1283,6 +1283,8 @@ interface MockTransitionItem {
   toCategory: string | null
   transitionId: string
   kind: string
+  /** 전환 화면 (FR-WF-01 D11) — 백엔드 V212 백필과 같은 규칙: DONE 범주 도착 전환은 「해결 결과 필수」 */
+  screen: { field: string; required: boolean }[]
 }
 
 /**
@@ -1305,6 +1307,7 @@ function getAvailableTransitions(currentStateKey: string): MockTransitionItem[] 
       toCategory: stateMap.get(t.toStateKey) ?? null,
       transitionId: t.id,
       kind: t.kind,
+      screen: stateMap.get(t.toStateKey) === 'DONE' ? [{ field: 'resolution', required: true }] : [],
     }))
 }
 
@@ -1397,6 +1400,7 @@ function getAvailableTransitionsForIssue(
       name: MOCK_AMBIGUOUS_TRANSITION_NAME,
       fromStateKey: 'open',
       toStateKey: 'in_progress',
+      screen: [],
       toCategory: 'IN_PROGRESS',
       transitionId: MOCK_AMBIGUOUS_TRANSITION_ID,
       kind: 'NORMAL',
@@ -1470,6 +1474,8 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     expectedVersion?: number
     resolutionId?: string
     transitionId?: string
+    assigneeId?: string
+    comment?: string
   }
   const toStatusKey = body.toStatusKey ?? ''
 
@@ -1518,13 +1524,27 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
     )
   }
 
+  // (3-d) 전환 화면 필수 — 백엔드 WorkflowEngine.enforceScreen 과 같은 규칙(전환 후 값이 비면 409)
+  const target = candidates.find((t) => body.transitionId === undefined || t.transitionId === body.transitionId)
+  const postValues: Record<string, string | null | undefined> = {
+    resolution: body.resolutionId,
+    assignee: body.assigneeId ?? found.assigneeId,
+    comment: body.comment,
+  }
+  const missing = target?.screen.find((f) => f.required && (postValues[f.field] ?? '').trim() === '')
+  if (missing !== undefined) {
+    const label = ({ resolution: '해결 결과', assignee: '담당자', comment: '코멘트' } as Record<string, string>)[missing.field]
+    return HttpResponse.json(
+      { errorCode: 'TRANSITION_NOT_ALLOWED', reason: `'${label}' 항목을 채워야 이 전환을 할 수 있습니다.` },
+      { status: 409 },
+    )
+  }
+
   // (4) 성공 — currentStateKey 갱신 + version+1 + resolutionId stateful 보관
   // resolutionId가 있으면 resolution 객체를 찾아 채움 (invalidateQueries refetch 롤백 방지).
-  const stateMap = new Map(softwareDefaultFixture.states.map((s) => [s.key, s.category]))
-  const toCategory = stateMap.get(toStatusKey) ?? null
-  // DONE 전환 시 resolution 영속, 비DONE 전환 시 resolution clear
-  let updatedResolution: IssueResponse['resolution'] = found.resolution
-  if (toCategory === 'DONE' && body.resolutionId) {
+  // 해결 결과는 요청 값이 정본 — 실리면 영속, 안 실리면 비운다(백엔드 applyTransition 과 같다, D11)
+  let updatedResolution: IssueResponse['resolution'] = null
+  if (body.resolutionId) {
     // resolution-handlers.ts의 표준 5종 seed UUID → name 매핑
     const resolutionSeedMap: Record<string, { id: string; key: string; name: string }> = {
       '00000000-0000-4000-8000-000000000001': { id: '00000000-0000-4000-8000-000000000001', key: 'fixed', name: 'Fixed' },
@@ -1534,15 +1554,14 @@ const transitionHandler = http.post('/api/v1/issues/:key/transition', async ({ p
       '00000000-0000-4000-8000-000000000005': { id: '00000000-0000-4000-8000-000000000005', key: 'done', name: 'Done' },
     }
     updatedResolution = resolutionSeedMap[body.resolutionId] ?? null
-  } else if (toCategory !== 'DONE') {
-    // 비DONE 전환 시 resolution clear
-    updatedResolution = null
   }
 
   const updated: IssueResponse = {
     ...found,
     currentStateKey: toStatusKey,
     resolution: updatedResolution,
+    // 전환 화면의 담당자 — 안 실리면 그대로 둔다(D11). 코멘트는 목업이 저장하지 않는다.
+    assigneeId: body.assigneeId ?? found.assigneeId,
     version: found.version + 1,
     updatedAt: new Date().toISOString(),
   }

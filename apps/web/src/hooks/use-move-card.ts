@@ -2,6 +2,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { moveCard } from '@/api/boards'
 import type { BoardDetail, BoardCardFilterParams, MoveCardResult } from '@/api/boards'
+import { transitionIssue } from '@/api/issues'
+import type { TransitionScreenValues } from '@/api/issues'
 import { boardKeys } from './use-boards'
 import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
@@ -89,8 +91,34 @@ export interface MoveCardVars {
   toStateKey: string
   /** 낙관적 잠금(OCC) 버전 — 409 충돌 감지용 */
   expectedVersion: number
-  /** 결의안 UUID — DONE 카테고리 이동 시 필요. 생략 가능 */
-  resolutionId?: string
+  /** 전환 화면 값 (FR-WF-01 D11). 화면이 없는 이동은 생략한다 */
+  screenValues?: TransitionScreenValues
+}
+
+/**
+ * 서버 요청 — 보드 이동 API 는 해결 결과만 싣는다(agile-planning → issue-tracking 포트).
+ * 담당자 · 코멘트가 있으면 이슈 전환 API 로 보낸다. 둘 다 issue-tracking 의 같은 전환(`transitionIssue`)으로
+ * 모여 한 트랜잭션에 저장된다. 보드 포트를 넓히지 않으려는 것이다(한 PR = 한 BC).
+ */
+function requestMove(boardId: string, vars: MoveCardVars): Promise<MoveCardResult> {
+  const screen = vars.screenValues
+  if (screen?.assigneeId !== undefined || screen?.comment !== undefined) {
+    return transitionIssue(vars.issueKey, {
+      toStatusKey: vars.toStateKey,
+      expectedVersion: vars.expectedVersion,
+      ...screen,
+    }).then((issue) => ({
+      issueKey: issue.key,
+      currentStateKey: issue.currentStateKey,
+      version: issue.version,
+      columnId: vars.toColumnId,
+    }))
+  }
+  return moveCard(boardId, vars.issueKey, {
+    toStateKey: vars.toStateKey,
+    expectedVersion: vars.expectedVersion,
+    resolutionId: screen?.resolutionId,
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,12 +143,7 @@ export function useMoveCard(boardId: string, filter?: BoardCardFilterParams) {
   const queryKey = boardKeys.detail(boardId, filter)
 
   return useMutation<MoveCardResult, unknown, MoveCardVars, { snapshot: BoardDetail | undefined }>({
-    mutationFn: (vars) =>
-      moveCard(boardId, vars.issueKey, {
-        toStateKey: vars.toStateKey,
-        expectedVersion: vars.expectedVersion,
-        resolutionId: vars.resolutionId,
-      }),
+    mutationFn: (vars) => requestMove(boardId, vars),
 
     onMutate: async (vars) => {
       // 드래그 중 refetch가 낙관적 상태를 덮어쓰지 않도록 진행 중 쿼리를 취소한다

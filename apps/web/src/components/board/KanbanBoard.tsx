@@ -1,10 +1,15 @@
 // 칸반 보드 루트 컴포넌트 — DndContext + 컬럼 배치 + 드래그 이동 오케스트레이션 (FR-BD-01)
 import type { JSX } from 'react'
 import { useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { Announcements, DragEndEvent, DragStartEvent, DragOverEvent } from '@dnd-kit/core'
 import { toast } from 'sonner'
 import type { BoardDetail, BoardCardFilterParams } from '@/api/boards'
+import { fetchIssueTransitions } from '@/api/issues'
+import type { IssueTransition, TransitionScreenValues } from '@/api/issues'
+import { issueTransitionKeys } from '@/hooks/use-issue-transitions'
+import { TransitionScreenDialog } from '@/components/issue/TransitionScreenDialog'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
@@ -16,7 +21,6 @@ import { useBoardDragSensors } from './board-drag-sensors'
 import { BoardColumn } from './BoardColumn'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
-import { ResolutionPickerModal } from './ResolutionPickerModal'
 import { resolveDropAction } from './board-drop'
 import type { DragActiveMin, DragOverMin, DropAction } from './board-drop'
 
@@ -29,13 +33,13 @@ export type { DragActiveMin, DragOverMin, DropAction } from './board-drop'
 // KanbanBoard — 대기 이동 정보 타입
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** resolution 선택 모달이 열린 동안 보관하는 이동 정보 */
+/** 다른 컬럼으로의 이동 정보 — 전환 화면 대화상자가 열린 동안에도 보관한다 */
 interface PendingMove {
   issueKey: string
   fromColumnId: string
   /** 낙관적 캐시 이동용. 서버 요청이 지목하는 것은 [toStateKey] 다. */
   toColumnId: string
-  /** 서버가 읽는 대상 상태 키(R6·R12). 이 상태의 category 가 DONE 이라 모달이 열렸다(R13). */
+  /** 서버가 읽는 대상 상태 키(R6·R12). */
   toStateKey: string
   expectedVersion: number
 }
@@ -417,7 +421,8 @@ interface DropActionDeps {
   moveCardMutate: MoveCardMutate
   reorderCardMutate: ReorderCardMutate
   changeCardFieldMutate: ChangeCardFieldMutate
-  setPendingMove: (move: PendingMove) => void
+  /** 다른 컬럼으로의 이동 — 전환 화면이 있으면 대화상자를 먼저 연다 (FR-WF-01 D11) */
+  requestMove: (move: PendingMove) => void
 }
 
 /** 카드를 다른 컬럼으로 이동한다(useMoveCard.mutate). 409 등 에러는 toast로 안내한다. */
@@ -472,8 +477,9 @@ function executeChangeField(
  *
  * - `noop` → 아무 것도 하지 않는다.
  * - `reorder` → executeReorder(useReorderCard.mutate 즉시 호출) — 셀 내 순서변경.
- * - `needs-resolution` → pendingMove를 채워 ResolutionPickerModal을 연다(확인 시 executeMutate).
- * - `move` → executeMutate(useMoveCard.mutate 즉시 호출) — 다른 컬럼(non-DONE)으로 이동.
+ * - `needs-resolution` · `move` → requestMove — 그 전환에 화면이 있으면 TransitionScreenDialog 를 열고
+ *   (확인 시 executeMutate), 없으면 바로 executeMutate. 범주(DONE)로 가르지 않는다 — 화면 정의가 정본이다
+ *   (FR-WF-01 D11). 두 타입은 접근성 공지 · 하이라이트 판정에서만 갈린다.
  * - `field-change` → executeChangeField(useChangeCardField.mutate 즉시 호출) — 스윔레인 그룹
  *   간 드롭으로 담당자·우선순위·에픽을 변경(FR-UX-06 PR21b Task 5).
  *
@@ -488,25 +494,14 @@ function dispatchDropAction(action: DropAction, deps: DropActionDeps): void {
       executeReorder(action, deps.reorderCardMutate)
       return
     case 'needs-resolution':
-      deps.setPendingMove({
+    case 'move':
+      deps.requestMove({
         issueKey: action.issueKey,
         fromColumnId: action.fromColumnId,
         toColumnId: action.toColumnId,
         toStateKey: action.toStateKey,
         expectedVersion: action.expectedVersion,
       })
-      return
-    case 'move':
-      executeMutate(
-        {
-          issueKey: action.issueKey,
-          fromColumnId: action.fromColumnId,
-          toColumnId: action.toColumnId,
-          toStateKey: action.toStateKey,
-          expectedVersion: action.expectedVersion,
-        },
-        deps.moveCardMutate,
-      )
       return
     case 'field-change':
       executeChangeField(action, deps.changeCardFieldMutate)
@@ -530,8 +525,7 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  * - DndContext 안에 컬럼들을 displayOrder asc 정렬로 가로 배치한다.
  * - DragOverlay로 드래그 중 카드 미리보기를 제공한다.
  * - onDragEnd에서 resolveDropAction을 호출해 이동 유형을 판단하고 dispatchDropAction에 위임한다.
- *   - move → useMoveCard.mutate 즉시 호출
- *   - needs-resolution → ResolutionPickerModal 오픈, 확인 시 mutate
+ *   - move · needs-resolution → 그 전환에 화면이 있으면 TransitionScreenDialog, 확인 시 mutate (D11)
  *   - reorder → useReorderCard.mutate 즉시 호출(셀 내 순서변경)
  *   - field-change → useChangeCardField.mutate 즉시 호출(스윔레인 그룹 간 담당자·우선순위·에픽 변경, FR-UX-06 PR21b)
  *   - noop → 아무 동작 없음
@@ -545,7 +539,11 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
-  const [pendingMove, setPendingMove] = useState<PendingMove | null>(null)
+  /** 전환 화면 입력을 기다리는 이동 */
+  const [pendingMove, setPendingMove] = useState<
+    (PendingMove & { transition: IssueTransition; assigneeId: string | null }) | null
+  >(null)
+  const queryClient = useQueryClient()
 
   // filter-aware useMoveCard/useReorderCard/useChangeCardField — filter와 동일한 queryKey를
   // 공유해 낙관적 업데이트 정합 (field-change는 FR-UX-06 PR21b Task 5)
@@ -631,17 +629,38 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
       moveCardMutate: moveCard.mutate,
       reorderCardMutate: reorderCard.mutate,
       changeCardFieldMutate: changeCardField.mutate,
-      setPendingMove,
+      requestMove: (move) => void requestMove(move),
     })
   }
 
-  function handleResolutionConfirm(resolutionId: string): void {
-    if (pendingMove === null) return
-    executeMutate({ ...pendingMove, resolutionId }, moveCard.mutate)
-    setPendingMove(null)
+  /**
+   * 다른 컬럼으로의 이동 — 그 이슈의 가용 전환에서 대상 상태로 가는 전환을 찾아 화면이 있으면 대화상자를 연다.
+   *
+   * 보드는 컬럼만 알고 전환을 모른다 — 화면은 전환에 붙어 있어 드롭 때 읽는다. 늘 새로 읽는다(staleTime 0):
+   * 직전 이동으로 출발 상태가 바뀌었을 수 있다. 읽기에 실패하면 화면 없이 보낸다 — 필수가 있으면 서버가 409 로
+   * 막고 기존 충돌 안내가 뜬다.
+   */
+  async function requestMove(move: PendingMove): Promise<void> {
+    const transitions = await queryClient
+      .fetchQuery({
+        queryKey: issueTransitionKeys.list(move.issueKey),
+        queryFn: () => fetchIssueTransitions(move.issueKey),
+        staleTime: 0,
+      })
+      .catch((): IssueTransition[] => [])
+    const transition = transitions.find((t) => t.toStateKey === move.toStateKey && (t.screen ?? []).length > 0)
+    if (transition === undefined) {
+      executeMutate(move, moveCard.mutate)
+      return
+    }
+    const card = board.columns.flatMap((c) => c.cards).find((c) => c.issueKey === move.issueKey)
+    setPendingMove({ ...move, transition, assigneeId: card?.assigneeId ?? null })
   }
 
-  function handleResolutionCancel(): void {
+  function handleScreenConfirm(screenValues: TransitionScreenValues): void {
+    if (pendingMove === null) return
+    const { issueKey, fromColumnId, toColumnId, toStateKey, expectedVersion } = pendingMove
+    executeMutate({ issueKey, fromColumnId, toColumnId, toStateKey, expectedVersion, screenValues }, moveCard.mutate)
     setPendingMove(null)
   }
 
@@ -690,11 +709,15 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
         </DragOverlay>
       </DndContext>
 
-      {/* DONE 컬럼 이동 시 resolution 선택 모달 */}
-      <ResolutionPickerModal
+      {/* 전환 화면 대화상자 (FR-WF-01 D11) — 하드코딩 DONE 해결 모달을 대체한다.
+          보드 카드는 해결 결과를 들고 있지 않아 담당자만 미리 채운다. */}
+      <TransitionScreenDialog
         open={pendingMove !== null}
-        onConfirm={handleResolutionConfirm}
-        onCancel={handleResolutionCancel}
+        transitionName={pendingMove?.transition.name ?? ''}
+        screen={pendingMove?.transition.screen ?? []}
+        prefill={{ resolutionId: null, assigneeId: pendingMove?.assigneeId ?? null }}
+        onConfirm={handleScreenConfirm}
+        onCancel={() => setPendingMove(null)}
       />
     </>
   )

@@ -139,7 +139,7 @@ export function IssueStateTransition({
  *
  * 안내 본문은 **서버가 준 문구**를 그대로 쓴다(후보 개수가 들어 있어 여기서 다시 조립하면
  * 서버와 갈린다). 여기 있는 것은 서버가 주지 않는 껍데기 라벨뿐이다.
- * 같은 화면의 `ResolutionModal` 이 쓰는 방식과 같다.
+ * 같은 화면의 `TransitionScreenDialog` 이 쓰는 방식과 같다.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- 다이얼로그 접근성 이름을 유닛 테스트가 정본으로 참조한다. 문자열만 별도 파일로 빼면 이 파일과 갈라질 자리가 하나 더 생긴다 (IssueMetaPanel.tsx 의 isFieldHidden 공개 선례 동형)
 export const ambiguousTransitionStrings = {
@@ -175,7 +175,7 @@ export interface AmbiguousTransitionDialogProps {
  *
  * - 후보는 버튼 목록이다 — 이름 말고 가를 근거가 없어 `<select>` 로 감추면 비교가 어렵다
  * - WCAG AA: 후보 버튼 `min-h-[44px]` 터치 타깃
- * - 열림 상태는 부모가 마운트로 제어한다 (`ResolutionModal` 과 같은 계약)
+ * - 열림 상태는 부모가 마운트로 제어한다 (`TransitionScreenDialog` 과 같은 계약)
  *
  * @param props 후보 전량 · 안내 문구 · 진행 상태 · 선택/취소 콜백
  * @returns 후보 선택 다이얼로그

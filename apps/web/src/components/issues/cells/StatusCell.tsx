@@ -2,14 +2,14 @@
 import type { JSX } from 'react'
 import { useState } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
-import type { IssueResponse, IssueTransition } from '@/api/issues'
+import type { IssueResponse, IssueTransition, TransitionScreenValues } from '@/api/issues'
 import type { TransitionUnavailableReason } from '@/components/issue/IssueMetaPanel'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Badge } from '@/components/ui/badge'
 import { statusBadgeVariant } from '../issue-visuals'
 import type { StateCategory } from '../issue-visuals'
 import type { StatusMeta } from '../IssueTable'
-import { ResolutionModal } from '@/components/issue/ResolutionModal'
+import { TransitionScreenDialog } from '@/components/issue/TransitionScreenDialog'
 import { TransitionMenuList } from '@/components/issue/meta/TransitionMenuList'
 import { useIssueTransitions } from '@/hooks/use-issue-transitions'
 import { useIssuePermissions } from '@/hooks/use-issue-permissions'
@@ -70,17 +70,16 @@ export interface StatusCellEditorProps {
   isSaving: boolean
   /** 전환 조회 진행 중 — true 면 "전환 없음" 을 띄우지 않는다 (AssigneeCellEditor 와 동일 판단) */
   isLoading: boolean
-  /** 비종료 전환 — 즉시 실행. toStateKey 전달 (IssueStateTransition 과 동일 시그니처) */
+  /** 화면 없는 전환 — 즉시 실행. toStateKey 전달 (IssueStateTransition 과 동일 시그니처) */
   onTransition: (toStateKey: string) => void
   /**
-   * ★종료 전환(`toCategory === 'DONE'`) — 즉시 실행하지 않고 결의안 선택을 요청한다.
+   * ★화면이 있는 전환(`screen` 이 비지 않음) — 즉시 실행하지 않고 전환 화면 입력을 요청한다 (FR-WF-01 D11).
    *
-   * 해결 결과는 종료 상태 전환의 **필수** 입력이다(glossary 「해결 결과」). 상세 화면
-   * `issues.$key.tsx` 의 `handleTransition` 이 같은 분기로 `ResolutionModal` 을 띄운다 (FR14).
-   * 선택(optional)으로 두면 호출자가 빠뜨렸을 때 종료 전환이 조용히 아무 일도 하지 않으므로
+   * 상세 화면 `issues.$key.tsx` 의 `handleTransition` 이 같은 분기로 `TransitionScreenDialog` 를 띄운다.
+   * 선택(optional)으로 두면 호출자가 빠뜨렸을 때 화면 있는 전환이 조용히 아무 일도 하지 않으므로
    * **필수**로 둔다.
    */
-  onDoneTransition: (transition: IssueTransition) => void
+  onScreenTransition: (transition: IssueTransition) => void
 }
 
 /**
@@ -90,7 +89,7 @@ export interface StatusCellEditorProps {
  * 다 — 두 경로가 같은 순서 · 같은 범주 색 · 같은 자기 루프 묶음을 보인다 (FR-WF-01 D9).
  * 안내 문구 정본(`transitionWorkflowNotConfiguredError` · `noTransitionsAvailable`)도 같은 것을 쓴다.
  *
- * 조립(`EditableCell` 로 감싸기 + 조회 훅 배선 + `ResolutionModal`)은 다음 task 소관이다 —
+ * 조립(`EditableCell` 로 감싸기 + 조회 훅 배선 + `TransitionScreenDialog`)은 {@link StatusCell} 소관이다 —
  * 이 컴포넌트는 순수 프레젠테이션이라 조회 훅을 갖지 않는다.
  *
  * @param props 전환 목록 · 불가 사유 · 권한/저장/조회 상태 · 전환 콜백 2종
@@ -104,7 +103,7 @@ export function StatusCellEditor({
   isSaving,
   isLoading,
   onTransition,
-  onDoneTransition,
+  onScreenTransition,
 }: StatusCellEditorProps): JSX.Element {
   // ★조회 중에는 "전환 없음" 을 띄우지 않는다 — 아직 모르는 것을 없다고 말하면 거짓이다.
   // 로딩과 빈 결과는 서로 다른 상태다 (AssigneeCellEditor 와 같은 처방).
@@ -131,8 +130,8 @@ export function StatusCellEditor({
         transitions={transitions}
         statusMetaByKey={statusMetaByKey}
         disabled={!canTransition || isSaving}
-        // 종료 전환은 결의안을 먼저 받는다 — 여기서 바로 전환하면 필수 입력이 빠진다(FR14)
-        onSelect={(t) => (t.toCategory === 'DONE' ? onDoneTransition(t) : onTransition(t.toStateKey))}
+        // 화면이 있는 전환은 입력을 먼저 받는다 — 여기서 바로 전환하면 필수 입력이 빠진다(D11)
+        onSelect={(t) => ((t.screen ?? []).length > 0 ? onScreenTransition(t) : onTransition(t.toStateKey))}
       />
     </div>
   )
@@ -155,7 +154,7 @@ interface StatusCellPopoverBodyProps {
   issue: IssueResponse
   isSaving: boolean
   onTransition: (toStateKey: string) => void
-  onDoneTransition: (transition: IssueTransition) => void
+  onScreenTransition: (transition: IssueTransition) => void
 }
 
 /**
@@ -171,7 +170,7 @@ function StatusCellPopoverBody({
   issue,
   isSaving,
   onTransition,
-  onDoneTransition,
+  onScreenTransition,
 }: StatusCellPopoverBodyProps): JSX.Element {
   const { data: transitions = [], isLoading, isError, error } = useIssueTransitions(issue.key)
   const permissions = useIssuePermissions(issue.key)
@@ -192,16 +191,16 @@ function StatusCellPopoverBody({
       isLoading={isLoading || permissions.isLoading}
       isSaving={isSaving}
       onTransition={onTransition}
-      onDoneTransition={onDoneTransition}
+      onScreenTransition={onScreenTransition}
     />
   )
 }
 
 /**
- * 상태 셀 조립 — 배지(닫힘) + 전환 목록(열림) + 종료 전환 결의안 모달.
+ * 상태 셀 조립 — 배지(닫힘) + 전환 목록(열림) + 전환 화면 대화상자.
  *
  * mutation 훅은 popover **밖**(이 컴포넌트)에 둔다. 저장은 popover 를 닫은 뒤 시작하고
- * 종료 전환은 popover 가 닫힌 뒤 모달에서 확정되므로, 훅이 popover 안에 있으면 관찰자가
+ * 화면 있는 전환은 popover 가 닫힌 뒤 대화상자에서 확정되므로, 훅이 popover 안에 있으면 관찰자가
  * 이미 언마운트된 상태가 된다. `useMutation` 은 네트워크를 유발하지 않으므로 밖에 두어도
  * FR12(조회 지연)와 무관하다.
  *
@@ -210,42 +209,42 @@ function StatusCellPopoverBody({
  */
 export function StatusCell({ issue, listQueryKey, statusName, category }: StatusCellProps): JSX.Element {
   const [open, setOpen] = useState(false)
-  const [pendingDone, setPendingDone] = useState<IssueTransition | null>(null)
+  const [pendingScreen, setPendingScreen] = useState<IssueTransition | null>(null)
   const mutation = useIssueListCellField(listQueryKey)
 
   /**
-   * 전환 실행 — 종료 전환이면 `resolutionId` 를 함께 싣는다.
+   * 전환 실행 — 화면이 있던 전환이면 대화상자 값을 함께 싣는다.
    *
    * @param toStateKey 목표 상태 키
-   * @param resolutionId 종료 전환의 결의안 UUID. 비종료 전환이면 undefined
+   * @param screenValues 전환 화면 값. 화면 없는 전환이면 undefined
    */
-  function runTransition(toStateKey: string, resolutionId?: string): void {
+  function runTransition(toStateKey: string, screenValues?: TransitionScreenValues): void {
     mutation.mutate({
       issueKey: issue.key,
       field: 'status',
       toStatusKey: toStateKey,
       expectedVersion: issue.version,
-      resolutionId,
+      screenValues,
     })
   }
 
-  /** 비종료 전환 — 먼저 닫고 저장한다. 낙관적 patch 라 닫아도 결과가 배지에 즉시 보인다 */
+  /** 화면 없는 전환 — 먼저 닫고 저장한다. 낙관적 patch 라 닫아도 결과가 배지에 즉시 보인다 */
   function handleTransition(toStateKey: string): void {
     setOpen(false)
     runTransition(toStateKey)
   }
 
-  /** 종료 전환 선택 — popover 를 닫고 결의안 모달로 넘긴다 (FR14·E14) */
-  function handleDoneTransition(transition: IssueTransition): void {
+  /** 화면 있는 전환 선택 — popover 를 닫고 전환 화면으로 넘긴다 (D11) */
+  function handleScreenTransition(transition: IssueTransition): void {
     setOpen(false)
-    setPendingDone(transition)
+    setPendingScreen(transition)
   }
 
-  /** 결의안 확정 — resolutionId 를 실어 전환한다 */
-  function handleResolutionConfirm(resolutionId: string): void {
-    if (pendingDone === null) return
-    runTransition(pendingDone.toStateKey, resolutionId)
-    setPendingDone(null)
+  /** 전환 화면 확정 — 입력값을 실어 전환한다 */
+  function handleScreenConfirm(values: TransitionScreenValues): void {
+    if (pendingScreen === null) return
+    runTransition(pendingScreen.toStateKey, values)
+    setPendingScreen(null)
   }
 
   return (
@@ -270,22 +269,24 @@ export function StatusCell({ issue, listQueryKey, statusName, category }: Status
           issue={issue}
           isSaving={mutation.isPending}
           onTransition={handleTransition}
-          onDoneTransition={handleDoneTransition}
+          onScreenTransition={handleScreenTransition}
         />
       </EditableCell>
 
-      {pendingDone !== null && (
+      {pendingScreen !== null && (
         // ★행 클릭 전파 차단. 모달은 portal 로 행 밖에 그려지지만 React 합성 이벤트는 **트리
         //   기준**으로 버블링하므로, 모달 안 클릭이 `<TableRow onClick>` 까지 올라가 상세로
         //   튄다. `EditableCell` 의 `PopoverContent` 와 같은 처방이다.
         //   `contents` = 이 래퍼가 박스를 만들지 않게 해 셀 레이아웃을 건드리지 않는다.
         <div className="contents" onClick={(event) => event.stopPropagation()}>
-          <ResolutionModal
+          <TransitionScreenDialog
             open
-            // DONE→DONE 재전환이면 기존 결의안으로 pre-fill (상세 화면과 같은 계약)
-            prefilledResolution={issue.resolution ?? null}
-            onConfirm={handleResolutionConfirm}
-            onCancel={() => setPendingDone(null)}
+            transitionName={pendingScreen.name}
+            screen={pendingScreen.screen ?? []}
+            // 이슈의 현재 값으로 미리 채운다 (상세 화면과 같은 계약)
+            prefill={{ resolutionId: issue.resolution?.id ?? null, assigneeId: issue.assigneeId ?? null }}
+            onConfirm={handleScreenConfirm}
+            onCancel={() => setPendingScreen(null)}
           />
         </div>
       )}

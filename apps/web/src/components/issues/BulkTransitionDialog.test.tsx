@@ -393,11 +393,11 @@ describe('BulkTransitionDialog', () => {
   // ─── B14: DONE 전환 시 resolution 드롭다운 ────────────────────────────────
 
   // (g) toCategory=DONE 전환 선택 시 resolution 드롭다운 표시 + 미선택 시 적용 비활성
-  it('(g) toCategory=DONE 전환을 선택하면 resolution 드롭다운이 나타나고 미선택 시 적용 버튼이 비활성이다', async () => {
+  it('(g) 해결 결과 필수 화면의 전환을 선택하면 resolution 드롭다운이 나타나고 미선택 시 적용 버튼이 비활성이다', async () => {
     mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
       transitions: [
         { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS', toCategory: 'IN_PROGRESS' },
-        { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE', toCategory: 'DONE' },
+        { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE', toCategory: 'DONE', screen: [{ field: 'resolution', required: true }] },
       ],
       unresolvedIssueKeys: [],
     })
@@ -412,7 +412,7 @@ describe('BulkTransitionDialog', () => {
     await user.click(doneOption)
 
     // resolution 드롭다운이 나타나야 한다
-    const resolutionSelect = await screen.findByRole('combobox', { name: /결의안/i })
+    const resolutionSelect = await screen.findByRole('combobox', { name: /해결 결과/ })
     expect(resolutionSelect).toBeInTheDocument()
 
     // resolution 미선택 상태에서 적용 버튼은 비활성
@@ -427,7 +427,7 @@ describe('BulkTransitionDialog', () => {
 
     mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
       transitions: [
-        { key: 't1', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE', toCategory: 'DONE' },
+        { key: 't1', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE', toCategory: 'DONE', screen: [{ field: 'resolution', required: true }] },
       ],
       unresolvedIssueKeys: [],
     })
@@ -442,7 +442,7 @@ describe('BulkTransitionDialog', () => {
     await user.click(doneOption)
 
     // resolution 드롭다운이 나타난 뒤 'Fixed' 선택
-    const resolutionSelect = await screen.findByRole('combobox', { name: /결의안/i })
+    const resolutionSelect = await screen.findByRole('combobox', { name: /해결 결과/ })
     await user.click(resolutionSelect)
     const fixedOption = await screen.findByRole('option', { name: /Fixed/i })
     await user.click(fixedOption)
@@ -495,7 +495,7 @@ describe('BulkTransitionDialog', () => {
     await user.click(inProgressOption)
 
     // resolution 드롭다운이 없어야 한다
-    expect(screen.queryByRole('combobox', { name: /결의안/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /해결 결과/ })).not.toBeInTheDocument()
 
     // 적용 버튼이 활성화된다
     const applyButton = screen.getByRole('button', { name: /적용/i })
@@ -517,7 +517,7 @@ describe('BulkTransitionDialog', () => {
     mockFetchBulkAvailableTransitions.mockResolvedValueOnce({
       transitions: [
         { key: 't1', name: '진행 중', fromStateKey: 'TODO', toStateKey: 'IN_PROGRESS', toCategory: 'IN_PROGRESS' },
-        { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE', toCategory: 'DONE' },
+        { key: 't2', name: '완료', fromStateKey: 'TODO', toStateKey: 'DONE', toCategory: 'DONE', screen: [{ field: 'resolution', required: true }] },
       ],
       unresolvedIssueKeys: [],
     })
@@ -529,12 +529,12 @@ describe('BulkTransitionDialog', () => {
     const transitionSelect = await screen.findByRole('combobox', { name: /전환 상태/i })
     await user.click(transitionSelect)
     await user.click(await screen.findByRole('option', { name: /완료/i }))
-    expect(await screen.findByRole('combobox', { name: /결의안/i })).toBeInTheDocument()
+    expect(await screen.findByRole('combobox', { name: /해결 결과/ })).toBeInTheDocument()
 
     // '진행 중'으로 변경 → resolution 드롭다운 사라짐
     await user.click(screen.getByRole('combobox', { name: /전환 상태/i }))
     await user.click(await screen.findByRole('option', { name: /진행 중/i }))
-    expect(screen.queryByRole('combobox', { name: /결의안/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /해결 결과/ })).not.toBeInTheDocument()
   })
 })
 
