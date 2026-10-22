@@ -302,7 +302,8 @@ class PostActionE2EIntegrationTest {
         /** 전환 하나에 post-action 을 만들고(201) 같은 경로로 다시 읽는다(200 · 1건). */
         private fun assertPostActionRoundTrip(transitionKey: String) {
             val path = "/api/v1/workflows/$WORKFLOW_KEY/transitions/$transitionKey/post-actions"
-            val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://example.com/hook","method":"POST"},"displayOrder":0}"""
+            val config = """{"url":"https://example.com/hook","method":"POST"}"""
+            val body = """{"type":"CALL_WEBHOOK","config":$config,"displayOrder":0}"""
 
             mockMvc.perform(
                 post(path)
@@ -397,7 +398,8 @@ class PostActionE2EIntegrationTest {
             path: String,
             marker: String,
         ) {
-            val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://example.com/$marker","method":"POST"},"displayOrder":0}"""
+            val config = """{"url":"https://example.com/$marker","method":"POST"}"""
+            val body = """{"type":"CALL_WEBHOOK","config":$config,"displayOrder":0}"""
 
             mockMvc.perform(
                 post(path)

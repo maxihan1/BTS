@@ -79,16 +79,6 @@ class TransitionRuleGuard(
         type: String,
         config: Map<String, Any?>,
     ) {
-        if (type == CALL_WEBHOOK) {
-            val url = config["url"] as? String ?: ""
-            if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                throw TransitionRuleRejected(
-                    TransitionRuleRejected.Reason.UNSUPPORTED,
-                    "CALL_WEBHOOK url 은 http:// 또는 https:// 로 시작해야 합니다: '$url'",
-                )
-            }
-        }
-
         try {
             postActionFactory.create(type, config)
         } catch (ex: IllegalArgumentException) {
@@ -99,11 +89,17 @@ class TransitionRuleGuard(
             )
         }
 
-        if (type !in RUNTIME_CONSUMED_POST_ACTIONS) {
-            throw TransitionRuleRejected(
-                TransitionRuleRejected.Reason.UNSUPPORTED,
-                "post-action '$type' 은 아직 전환 때 실행하는 곳이 없어 저장할 수 없다 — 지금은 $CALL_WEBHOOK 만 동작한다",
-            )
+        val url = config["url"] as? String ?: ""
+        val rejection =
+            when {
+                type !in RUNTIME_CONSUMED_POST_ACTIONS ->
+                    "post-action '$type' 은 아직 전환 때 실행하는 곳이 없어 저장할 수 없다 — 지금은 $CALL_WEBHOOK 만 동작한다"
+                type == CALL_WEBHOOK && !url.startsWith("http://") && !url.startsWith("https://") ->
+                    "CALL_WEBHOOK url 은 http:// 또는 https:// 로 시작해야 합니다: '$url'"
+                else -> null
+            }
+        if (rejection != null) {
+            throw TransitionRuleRejected(TransitionRuleRejected.Reason.UNSUPPORTED, rejection)
         }
     }
 
