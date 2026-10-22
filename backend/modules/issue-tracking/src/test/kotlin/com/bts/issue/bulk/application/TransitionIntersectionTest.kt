@@ -3,6 +3,7 @@
 package com.bts.issue.bulk.application
 
 import com.bts.shared.workflow.AvailableTransitionView
+import com.bts.shared.workflow.TransitionScreenFieldView
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -147,5 +148,29 @@ class TransitionIntersectionTest {
             TransitionIntersection.intersect(listOf(issue1, issue2))
 
         assertEquals(listOf("done", "in-progress", "closed"), result.map { it.toStateKey })
+    }
+
+    @Test
+    @DisplayName("같은 도착 상태의 전환 화면은 합집합이고 한 이슈라도 필수면 필수다 (FR-WF-01 D11)")
+    fun `전환 화면 합치기`() {
+        val issue1 =
+            listOf(view("open", "done").copy(screen = listOf(TransitionScreenFieldView("resolution", false))))
+        val issue2 =
+            listOf(
+                view("open", "done").copy(
+                    screen =
+                        listOf(
+                            TransitionScreenFieldView("resolution", true),
+                            TransitionScreenFieldView("comment", true),
+                        ),
+                ),
+            )
+
+        val result = TransitionIntersection.intersect(listOf(issue1, issue2))
+
+        assertEquals(
+            listOf(TransitionScreenFieldView("resolution", true), TransitionScreenFieldView("comment", true)),
+            result.single().screen,
+        )
     }
 }

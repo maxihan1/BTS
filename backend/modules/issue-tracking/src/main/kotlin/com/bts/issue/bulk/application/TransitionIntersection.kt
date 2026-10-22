@@ -3,6 +3,7 @@
 package com.bts.issue.bulk.application
 
 import com.bts.shared.workflow.AvailableTransitionView
+import com.bts.shared.workflow.TransitionScreenFieldView
 
 /**
  * 여러 이슈의 가용 전환 교집합 연산 객체.
@@ -36,11 +37,27 @@ object TransitionIntersection {
         val nonNullSets = restSets as List<Set<String>>
 
         val seen = mutableSetOf<String>()
-        return first.filter { transition ->
-            val key = transition.toStateKey
-            // dedup — 첫 번째 이슈 내에 동일 toStateKey 가 여러 번 등장하면 첫 번째만 취한다.
-            // 모든 나머지 이슈의 Set 에 이 toStateKey 가 존재해야 교집합 원소다.
-            seen.add(key) && nonNullSets.all { key in it }
-        }
+        return first
+            .filter { transition ->
+                val key = transition.toStateKey
+                // dedup — 첫 번째 이슈 내에 동일 toStateKey 가 여러 번 등장하면 첫 번째만 취한다.
+                // 모든 나머지 이슈의 Set 에 이 toStateKey 가 존재해야 교집합 원소다.
+                seen.add(key) && nonNullSets.all { key in it }
+            }.map { it.copy(screen = mergedScreen(perIssue, it.toStateKey)) }
     }
+
+    /**
+     * 같은 도착 상태로 가는 각 이슈의 전환 화면을 합친다 (FR-WF-01 D11) — 이슈마다 워크플로우가 달라 화면이
+     * 다를 수 있다. 첫 이슈 화면만 보이면 다른 이슈의 필수 칸을 대화상자가 안 묻고 그 항목이 409 로 떨어진다.
+     * 칸은 합집합, 필수는 한 이슈라도 필수면 필수다.
+     */
+    private fun mergedScreen(
+        perIssue: List<List<AvailableTransitionView>>,
+        toStateKey: String,
+    ): List<TransitionScreenFieldView> =
+        perIssue
+            .mapNotNull { transitions -> transitions.firstOrNull { it.toStateKey == toStateKey } }
+            .flatMap { it.screen }
+            .groupBy { it.field }
+            .map { (field, fields) -> TransitionScreenFieldView(field, fields.any { it.required }) }
 }
