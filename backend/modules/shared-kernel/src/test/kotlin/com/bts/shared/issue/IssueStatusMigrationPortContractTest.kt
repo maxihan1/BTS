@@ -1,4 +1,4 @@
-// 상태 이관 큐잉 cross-BC 쓰기 포트 계약 검증 — fail-closed · 매핑 목록(J7) · projectKeys 범위 강제
+// 상태 이관 큐잉 cross-BC 쓰기 포트 계약 검증 — fail-closed · 매핑 목록(J7) · 프로젝트·이슈 타입 범위 강제
 package com.bts.shared.issue
 
 import org.assertj.core.api.Assertions.assertThat
@@ -15,7 +15,8 @@ import kotlin.reflect.jvm.jvmErasure
  * 검증 항목.
  * - [IssueStatusMigrationPort] 에 default 구현이 0개다(fail-closed) — 어댑터 미결선이면 부팅이 실패해야 한다.
  * - [StatusMigrationCommand] 는 단일 `(from, to)` 쌍이 아니라 **매핑 목록**을 갖는다(J7).
- * - [StatusMigrationCommand] 는 대상 프로젝트 범위 [StatusMigrationCommand.projectKeys] 없이 만들 수 없다(F3).
+ * - [StatusMigrationCommand] 는 대상 범위 [StatusMigrationCommand.projectScopes] 없이 만들 수 없고, 그 범위는
+ *   프로젝트마다 이슈 타입 필터를 갖는다(F3 · WF-07-2).
  */
 class IssueStatusMigrationPortContractTest {
     // ── fail-closed — default 구현 0개 (F1) ──────────────────────────────────
@@ -51,7 +52,7 @@ class IssueStatusMigrationPortContractTest {
         val cmd =
             StatusMigrationCommand(
                 actorUserId = UUID.randomUUID(),
-                projectKeys = setOf("PROJ"),
+                projectScopes = mapOf("PROJ" to ALL_TYPES),
                 mappings =
                     listOf(
                         StatusMigrationMapping(fromStatusKey = "in_review", toStatusKey = "in_progress"),
@@ -68,29 +69,41 @@ class IssueStatusMigrationPortContractTest {
             .doesNotContain("fromStatusKey", "toStatusKey")
     }
 
-    // ── 대상 프로젝트 범위 강제 (F3 · G4) ────────────────────────────────────
+    // ── 대상 범위 강제 (F3 · G4 · WF-07-2) ──────────────────────────────────
 
     @Test
-    fun `StatusMigrationCommand 는 projectKeys 범위 없이 만들 수 없다`() {
+    fun `StatusMigrationCommand 는 프로젝트별 이슈 타입 범위 없이 만들 수 없다`() {
         val ctor = StatusMigrationCommand::class.primaryConstructor
         assertThat(ctor).isNotNull
         val params = ctor?.parameters.orEmpty()
 
-        assertThat(params.map { it.name }).containsExactly("actorUserId", "projectKeys", "mappings")
+        assertThat(params.map { it.name }).containsExactly("actorUserId", "projectScopes", "mappings")
 
-        val projectKeys = params.single { it.name == "projectKeys" }
-        assertThat(projectKeys.isOptional)
+        val projectScopes = params.single { it.name == "projectScopes" }
+        assertThat(projectScopes.isOptional)
             .`as`("기본값이 있으면 범위를 생략한 채 부를 수 있다 — 상태 키가 전역이라 남의 프로젝트 이슈가 함께 옮겨진다")
             .isFalse()
-        assertThat(projectKeys.type.jvmErasure.java).isEqualTo(Set::class.java)
+        assertThat(projectScopes.type.jvmErasure.java)
+            .`as`("키가 프로젝트인 Map 이어야 한 프로젝트에 필터가 둘 실리지 않는다")
+            .isEqualTo(Map::class.java)
+
+        val filterParams = StatusMigrationTypeFilter::class.primaryConstructor?.parameters.orEmpty()
+        assertThat(filterParams.map { it.name }).containsExactly("issueTypeIds", "exceptListed")
+        assertThat(filterParams.none { it.isOptional })
+            .`as`("WF-07-2 — 기본값이 있으면 타입 축을 빠뜨린 채 「전체 타입」으로 부를 수 있다. 그것이 고치려던 과다 이동이다")
+            .isTrue()
 
         val cmd =
             StatusMigrationCommand(
                 actorUserId = UUID.randomUUID(),
-                projectKeys = setOf("ALPHA", "BETA"),
+                projectScopes =
+                    mapOf(
+                        "ALPHA" to StatusMigrationTypeFilter(issueTypeIds = setOf(1L), exceptListed = false),
+                        "BETA" to ALL_TYPES,
+                    ),
                 mappings = listOf(StatusMigrationMapping(fromStatusKey = "done", toStatusKey = "todo")),
             )
-        assertThat(cmd.projectKeys).containsExactlyInAnyOrder("ALPHA", "BETA")
+        assertThat(cmd.projectScopes.keys).containsExactlyInAnyOrder("ALPHA", "BETA")
     }
 
     // ── 판별기 ───────────────────────────────────────────────────────────────
@@ -108,4 +121,9 @@ class IssueStatusMigrationPortContractTest {
     /** 주 생성자 파라미터 이름 목록. 주 생성자가 없으면 빈 목록. */
     private fun primaryConstructorParameterNames(type: Class<*>): List<String> =
         type.kotlin.primaryConstructor?.parameters?.mapNotNull { it.name }.orEmpty()
+
+    private companion object {
+        /** 「제외 목록이 빈」 필터 = 모든 타입. 형제 워크플로우가 없는 스킴의 모양이다. */
+        val ALL_TYPES = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+    }
 }

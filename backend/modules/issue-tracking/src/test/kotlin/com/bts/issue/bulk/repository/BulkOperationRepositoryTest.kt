@@ -12,6 +12,7 @@ import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
@@ -352,7 +353,11 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         val payload =
             BulkOperationPayload.StatusMigration(
                 mappings = mapOf("in_review" to "in_progress", "blocked" to "todo"),
-                projectKeys = setOf("TPRJ"),
+                projectScopes =
+                    mapOf(
+                        "TPRJ" to StatusMigrationTypeFilter(issueTypeIds = setOf(1L, 2L), exceptListed = false),
+                        "OPRJ" to StatusMigrationTypeFilter(issueTypeIds = setOf(3L), exceptListed = true),
+                    ),
             )
         val op =
             BulkOperation.create(
@@ -380,7 +385,7 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
                 payload =
                     BulkOperationPayload.StatusMigration(
                         mappings = mapOf("blocked" to "todo"),
-                        projectKeys = setOf("TPRJ"),
+                        projectScopes = mapOf("TPRJ" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)),
                     ),
             )
         bulkRepo.insert(op)
@@ -395,7 +400,85 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
 
         val found = bulkRepo.findById(op.id)
         assertThat(found?.payload)
-            .isEqualTo(BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectKeys = emptySet()))
+            .isEqualTo(BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectScopes = emptyMap()))
+    }
+
+    /**
+     * 저장된 STATUS_MIGRATION JSON 은 `projectScopes` 와 함께 `projectKeys` 배열을 **계속** 싣는다.
+     *
+     * 이 BC 밖의 두 소비자가 그 키를 직접 읽는다 — project-workflow `MigrationInFlightAdapter` 의 SQL
+     * (`payload -> 'projectKeys'`)과 apps/web 의 zod 스키마. 키가 사라지면 앞의 것은 「진행 중 이관 없음」
+     * 으로 fail-open 하고 뒤의 것은 진행률 폴링이 ZodError 로 멈춘다. 둘 다 이 모듈의 테스트로는 안 보이므로
+     * 여기서 **저장된 모양 그 자체**를 잰다.
+     */
+    @Test
+    fun `STATUS_MIGRATION payload JSON 은 projectKeys 배열을 함께 싣는다`() {
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = emptyList(),
+                payload =
+                    BulkOperationPayload.StatusMigration(
+                        mappings = mapOf("blocked" to "todo"),
+                        projectScopes =
+                            mapOf(
+                                "TPRJ" to StatusMigrationTypeFilter(issueTypeIds = setOf(1L), exceptListed = false),
+                                "OPRJ" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true),
+                            ),
+                    ),
+            )
+        bulkRepo.insert(op)
+
+        val keys =
+            DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+                conn.prepareStatement(
+                    "SELECT k FROM bulk_operations, jsonb_array_elements_text(payload -> 'projectKeys') AS k WHERE id = ?",
+                ).use { ps ->
+                    ps.setObject(1, op.id.value)
+                    ps.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.getString(1) else null }.toList() }
+                }
+            }
+        assertThat(keys).containsExactlyInAnyOrder("TPRJ", "OPRJ")
+    }
+
+    /**
+     * WF-07-2 이전 payload(`projectKeys`)는 「그 프로젝트의 모든 타입」으로 읽힌다.
+     *
+     * 그 행들은 형제 워크플로우 가드(F11)를 지나야만 큐잉됐으므로 그것이 큐잉 당시의 뜻이다.
+     * 못 읽으면 지난 작업의 진행률 조회가 500 이 된다.
+     */
+    @Test
+    fun `STATUS_MIGRATION 의 WF-07-2 이전 payload 는 프로젝트별 모든 타입 범위로 복원된다`() {
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = listOf(BulkOperationItem(issueKey = IssueKey("TPRJ-3"), status = ItemStatus.PENDING)),
+                payload = BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectScopes = emptyMap()),
+            )
+        bulkRepo.insert(op)
+
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "UPDATE bulk_operations SET payload = " +
+                    """'{"mappings":{"blocked":"todo"},"projectKeys":["TPRJ","OPRJ"]}'::jsonb WHERE id = ?""",
+            ).use { ps ->
+                ps.setObject(1, op.id.value)
+                assertThat(ps.executeUpdate()).isEqualTo(1)
+            }
+        }
+
+        val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+        assertThat(bulkRepo.findById(op.id)?.payload)
+            .isEqualTo(
+                BulkOperationPayload.StatusMigration(
+                    mappings = mapOf("blocked" to "todo"),
+                    projectScopes = mapOf("TPRJ" to allTypes, "OPRJ" to allTypes),
+                ),
+            )
     }
 
     // ── 진단 가능한 실패 사유 (완료기준 14 · C-4) ───────────────

@@ -3,6 +3,8 @@
 
 package com.bts.issue.bulk.domain
 
+import com.bts.shared.issue.StatusMigrationTypeFilter
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import java.util.UUID
 
 /**
@@ -49,14 +51,31 @@ sealed class BulkOperationPayload {
      *
      * 워크플로우에서 빠지는 상태에 남은 이슈를 어디로 옮길지 정의한다.
      * 대상 이슈 목록은 큐잉 시점에 확정되지 않는다 — 워커가 실행 시점에
-     * [mappings] 의 출발 상태와 [projectKeys] 로 이슈를 다시 조회한다.
+     * [mappings] 의 출발 상태와 [projectScopes] 로 이슈를 다시 조회한다.
      *
      * @property mappings 출발 상태 키 → 대상 상태 키. 항목의 현재 상태로 조회해 대상을 정한다.
-     * @property projectKeys 이관 대상 프로젝트 키 범위. 상태 키는 전역이라 이 범위가 없으면
-     *   다른 프로젝트의 이슈까지 함께 옮겨진다.
+     * @property projectScopes 이관 대상 프로젝트 키 → 그 프로젝트에서 옮길 이슈 타입. 상태 키는 전역이라
+     *   프로젝트 범위가 없으면 남의 프로젝트 이슈까지, 타입 범위가 없으면 같은 프로젝트의 다른
+     *   워크플로우 이슈까지 함께 옮겨진다(WF-07-2). 계약은 [StatusMigrationTypeFilter] KDoc 이 정본이다.
      */
+    @JsonIgnoreProperties(value = ["projectKeys"], allowGetters = true)
     data class StatusMigration(
         val mappings: Map<String, String>,
-        val projectKeys: Set<String>,
-    ) : BulkOperationPayload()
+        val projectScopes: Map<String, StatusMigrationTypeFilter>,
+    ) : BulkOperationPayload() {
+        /**
+         * [projectScopes] 의 키. **직렬화 전용**이다 — JSON 에만 실리고 읽을 때는 버린다.
+         *
+         * ### ★지우면 두 소비자가 조용히 깨진다
+         * WF-07-2 이전 payload 모양(`projectKeys` 배열)을 직접 읽는 곳이 이 BC 밖에 둘 있다.
+         * - project-workflow `MigrationInFlightAdapter` — `payload -> 'projectKeys'` 를 SQL 로 읽는다. 키가
+         *   없으면 NULL → 0행 → 「진행 중 이관 없음」이 되어 모순되는 이관 2건이 함께 큐에 얹힌다(fail-open).
+         * - apps/web `statusMigrationPayloadSchema` — `projectKeys` 가 필수라 없으면 진행률 폴링이 ZodError 로 멈춘다.
+         *
+         * 이 필드가 그 둘을 이 BC 안에서 지킨다. `BulkOperationRepositoryTest` 가 저장된 JSON 에 이 키가
+         * 있는지 잰다.
+         */
+        val projectKeys: Set<String>
+            get() = projectScopes.keys
+    }
 }

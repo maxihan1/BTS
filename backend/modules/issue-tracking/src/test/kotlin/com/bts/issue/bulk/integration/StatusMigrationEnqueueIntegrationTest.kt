@@ -18,6 +18,7 @@ import com.bts.issue.testsupport.insertWorkflowStatus
 import com.bts.shared.issue.IssueStatusMigrationPort
 import com.bts.shared.issue.StatusMigrationCommand
 import com.bts.shared.issue.StatusMigrationMapping
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -134,6 +135,9 @@ class StatusMigrationEnqueueIntegrationTest {
         private const val PROJECT_KEY = "MIG"
         private const val OTHER_PROJECT_KEY = "OTHER"
 
+        /** 「제외 목록이 빈」 필터 = 모든 타입. 형제 워크플로우가 없는 스킴의 모양이다. */
+        private val ALL_TYPES = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+
         /** 어디에도 심지 않는 프로젝트 키 — 발행 요청의 오타를 흉내낸다 (E18). */
         private const val UNKNOWN_PROJECT_KEY = "NOPE"
 
@@ -221,7 +225,9 @@ class StatusMigrationEnqueueIntegrationTest {
         assertThat(payload.mappings).containsExactlyInAnyOrderEntriesOf(
             mapOf("in_review" to "in_progress", "blocked" to "todo"),
         )
-        assertThat(payload.projectKeys).containsExactlyInAnyOrder(PROJECT_KEY, OTHER_PROJECT_KEY)
+        assertThat(payload.projectScopes).containsExactlyInAnyOrderEntriesOf(
+            mapOf(PROJECT_KEY to ALL_TYPES, OTHER_PROJECT_KEY to ALL_TYPES),
+        )
     }
 
     // ── T3~T7. 구조 검증 5종 거부 ──────────────────────────────────────────────
@@ -258,10 +264,28 @@ class StatusMigrationEnqueueIntegrationTest {
      * 운영자는 「이관 완료」를 보고 상태를 지우는데 **아무것도 안 옮겨졌다**.
      */
     @Test
-    fun `T6 - 거부 - projectKeys 가 비어 있으면 큐잉하지 않는다`() {
+    fun `T6 - 거부 - projectScopes 가 비어 있으면 큐잉하지 않는다`() {
         assertRejected(
             command(projectKeys = emptySet()),
-            expectedMessagePart = "projectKeys must not be empty",
+            expectedMessagePart = "projectScopes must not be empty",
+        )
+    }
+
+    /**
+     * T6b (E19 · WF-07-2) — 포함 목록이 빈 타입 필터는 그 프로젝트에서 아무것도 고르지 않는다.
+     * T6 과 같은 실패 양식(0건 → `COMPLETED` → 운영자가 상태를 지운다)이고 트리거만 다르다.
+     */
+    @Test
+    fun `T6b - 거부 - 아무 타입도 고르지 않는 필터가 있으면 큐잉하지 않는다`() {
+        assertRejected(
+            command(
+                projectScopes =
+                    mapOf(
+                        PROJECT_KEY to ALL_TYPES,
+                        OTHER_PROJECT_KEY to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = false),
+                    ),
+            ),
+            expectedMessagePart = "select no issue type for: [$OTHER_PROJECT_KEY]",
         )
     }
 
@@ -410,7 +434,7 @@ class StatusMigrationEnqueueIntegrationTest {
                 actorId = ACTOR_ID,
                 type = BulkOperationType.STATUS_MIGRATION,
                 items = emptyList(),
-                payload = BulkOperationPayload.StatusMigration(emptyMap(), emptySet()),
+                payload = BulkOperationPayload.StatusMigration(emptyMap(), emptyMap()),
             )
 
         assertThat(operation.items).isEmpty()
@@ -459,7 +483,8 @@ class StatusMigrationEnqueueIntegrationTest {
                 StatusMigrationMapping("in_review", "in_progress"),
                 StatusMigrationMapping("blocked", "todo"),
             ),
-    ): StatusMigrationCommand = StatusMigrationCommand(actorUserId = ACTOR_ID, projectKeys = projectKeys, mappings = mappings)
+        projectScopes: Map<String, StatusMigrationTypeFilter> = projectKeys.associateWith { ALL_TYPES },
+    ): StatusMigrationCommand = StatusMigrationCommand(actorUserId = ACTOR_ID, projectScopes = projectScopes, mappings = mappings)
 
     /**
      * 거부 시나리오 공통 단언 — 예외 메시지로 **어느 가드가 발동했는지** 구분하고,
