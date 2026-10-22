@@ -44,6 +44,8 @@ sealed class BulkOperationPayload {
     data class Transition(
         val toStateKey: String,
         val resolutionId: UUID? = null,
+        val assigneeId: UUID? = null,
+        val comment: String? = null,
     ) : BulkOperationPayload()
 
     /**

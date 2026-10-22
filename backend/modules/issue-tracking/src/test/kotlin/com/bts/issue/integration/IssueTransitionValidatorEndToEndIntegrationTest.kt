@@ -7,6 +7,8 @@ import com.bts.issue.adapter.inbound.rest.IssueController
 import com.bts.issue.adapter.inbound.rest.IssueExceptionHandler
 import com.bts.issue.adapter.outbound.AlwaysAllowIssuePermissionResolver
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.comment.application.CommentApplicationService
+import com.bts.issue.comment.repository.CommentRepository
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.resolution.repository.ResolutionRepository
@@ -58,6 +60,7 @@ import org.springframework.core.io.DefaultResourceLoader
 import org.springframework.http.MediaType
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
@@ -149,9 +152,11 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
         open fun transactionManager(dataSource: DriverManagerDataSource): PlatformTransactionManager =
             DataSourceTransactionManager(dataSource)
 
+        // 트랜잭션 커넥션을 jOOQ 가 재사용하게 감싼다 — 날 DataSource 면 문장마다 즉시 커밋돼 S7(한 트랜잭션 롤백)을
+        // 잴 수 없다. 프로덕션 JooqAutoConfiguration 이 하는 보정과 같다(IssueImportAdapterTest 선례).
         @Bean
-        @Suppress("MaxLineLength")
-        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext = DSL.using(dataSource, SQLDialect.POSTGRES)
+        open fun dslContext(dataSource: DriverManagerDataSource): DSLContext =
+            DSL.using(TransactionAwareDataSourceProxy(dataSource), SQLDialect.POSTGRES)
 
         @Bean
         open fun objectMapper(): ObjectMapper =
@@ -344,6 +349,7 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
             workflowKeyResolver: WorkflowKeyResolverImpl,
             userLookupPort: UserLookupPort,
             clock: Clock,
+            dsl: DSLContext,
         ): IssueApplicationService =
             IssueApplicationService(
                 repo = repo,
@@ -359,6 +365,17 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
                 versionRepository = mockk(relaxed = true),
                 clock = clock,
                 historyRecorder = io.mockk.mockk(relaxed = true),
+                // 전환 화면 코멘트(D11) — 실 저장소로 같은 트랜잭션에 남는지 잰다.
+                commentService =
+                    CommentApplicationService(
+                        commentRepository = CommentRepository(dsl),
+                        issueRepository = repo,
+                        permissionResolver = permissionResolver,
+                        eventPublisher = eventPublisher,
+                        archiveGuard = mockk(relaxed = true),
+                        historyRecorder = mockk(relaxed = true),
+                        clock = clock,
+                    ),
             )
 
         @Bean
@@ -399,6 +416,8 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
          * meomry zod-v4-uuid-fixture-strictness — 4번째 그룹이 8로 시작해야 한다.
          */
         private val FIXED_RESOLUTION_ID: UUID = UUID.fromString("00000000-0000-4000-8000-000000000001")
+
+        private val SCREEN_ASSIGNEE: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
     }
 
     @BeforeAll
@@ -600,6 +619,139 @@ class IssueTransitionValidatorEndToEndIntegrationTest {
         val created = service.createIssue(actor, request)
         check(created.currentStateKey.isNotBlank()) { "규칙을 지운 뒤에는 생성돼야 한다" }
     }
+
+    // ── S5~S7. 전환 화면 실행 (FR-WF-01 D11) ─────────────────────────────────────
+
+    @Test
+    fun `S5 — 화면의 필수 코멘트가 없으면 409 이고 상태는 그대로다`() {
+        val issueKey = insertIssue(PROJECT_KEY, "전환 화면 S5", "in_review")
+
+        withApproveScreen {
+            mockMvc.perform(
+                post("/api/v1/issues/$issueKey/transition")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsString(approveBody(comment = "  "))),
+            )
+                .andExpect(status().isConflict)
+                .andExpect(jsonPath("$.reason").value("'코멘트' 항목을 채워야 이 전환을 할 수 있습니다."))
+        }
+
+        check(stateOf(issueKey) == "in_review") { "상태가 바뀌면 안 된다" }
+    }
+
+    @Test
+    fun `S6 — 해결 결과 · 담당자 · 코멘트가 전환과 함께 저장된다`() {
+        val issueKey = insertIssue(PROJECT_KEY, "전환 화면 S6", "in_review")
+
+        withApproveScreen {
+            mockMvc.perform(
+                post("/api/v1/issues/$issueKey/transition")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsString(approveBody(comment = "확인했습니다"))),
+            ).andExpect(status().isOk)
+        }
+
+        check(stateOf(issueKey) == "done") { "전환이 안 됐다" }
+        check(queryResolutionId(issueKey) == FIXED_RESOLUTION_ID) { "해결 결과가 안 남았다" }
+        check(queryOne("SELECT assignee_id::text FROM issues WHERE key = ?", issueKey) == SCREEN_ASSIGNEE.toString()) {
+            "담당자가 안 바뀌었다"
+        }
+        check(
+            queryOne(
+                "SELECT c.body FROM comments c JOIN issues i ON i.id = c.issue_id WHERE i.key = ?",
+                issueKey,
+            ) == "확인했습니다",
+        ) { "코멘트가 안 남았다" }
+    }
+
+    @Test
+    fun `S7 — 코멘트가 거절되면 전환 · 담당자도 함께 되돌아간다 (한 트랜잭션)`() {
+        val issueKey = insertIssue(PROJECT_KEY, "전환 화면 S7", "in_review")
+        val tooLong = "가".repeat(CommentApplicationService.MAX_BODY_LENGTH + 1)
+
+        val service = webApplicationContext.getBean(IssueApplicationService::class.java)
+        val request =
+            com.bts.issue.application.TransitionIssueRequest(
+                toStateKey = "done",
+                expectedVersion = 1L,
+                resolutionId = FIXED_RESOLUTION_ID,
+                assigneeId = SCREEN_ASSIGNEE,
+                comment = tooLong,
+            )
+
+        withApproveScreen {
+            // 서비스 경로(일괄 · 보드)는 REST 의 길이 검사를 거치지 않는다 — 코멘트 서비스가 마지막에 거절한다.
+            try {
+                service.transitionIssue(
+                    com.bts.issue.domain.ActorId(SCREEN_ASSIGNEE),
+                    com.bts.issue.domain.IssueKey(issueKey),
+                    request,
+                )
+                error("코멘트 길이 초과가 거절돼야 한다")
+            } catch (ex: com.bts.issue.comment.domain.CommentBodyTooLongException) {
+                log.info("S7 거절 확인: {}", ex.message)
+            }
+            // REST 는 서비스 전에 400 으로 막는다 — 코멘트 예외 처리기가 CommentController 전용이라 500 이 되지 않게.
+            mockMvc.perform(
+                post("/api/v1/issues/$issueKey/transition")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(mapper.writeValueAsString(approveBody(comment = tooLong))),
+            ).andExpect(status().isBadRequest)
+        }
+
+        check(stateOf(issueKey) == "in_review") { "전환이 남았다" }
+        check(queryOne("SELECT assignee_id::text FROM issues WHERE key = ?", issueKey) == null) { "담당자가 남았다" }
+    }
+
+    private fun approveBody(comment: String) =
+        mapOf(
+            "toStatusKey" to "done",
+            "expectedVersion" to 1,
+            "resolutionId" to FIXED_RESOLUTION_ID.toString(),
+            "assigneeId" to SCREEN_ASSIGNEE.toString(),
+            "comment" to comment,
+        )
+
+    /** software-default 의 Approve(in_review→done) 화면에 담당자 · 필수 코멘트를 잠시 더한다 — 시드 화면은 해결 결과 필수뿐이다. */
+    private fun withApproveScreen(block: () -> Unit) {
+        val transitionSql =
+            "SELECT t.id FROM workflow_transitions t JOIN workflows w ON w.id = t.workflow_id " +
+                "WHERE w.key = 'software-default' AND w.deleted_at IS NULL AND t.name = 'Approve'"
+        withConnection { conn ->
+            conn.createStatement().use {
+                it.execute(
+                    "INSERT INTO workflow_transition_screen_fields (transition_id, field, required) " +
+                        "SELECT id, 'assignee', FALSE FROM ($transitionSql) t UNION ALL " +
+                        "SELECT id, 'comment', TRUE FROM ($transitionSql) t",
+                )
+            }
+        }
+        try {
+            block()
+        } finally {
+            withConnection { conn ->
+                conn.createStatement().use {
+                    it.execute(
+                        "DELETE FROM workflow_transition_screen_fields " +
+                            "WHERE field IN ('assignee', 'comment') AND transition_id IN ($transitionSql)",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun stateOf(issueKey: String) = queryOne("SELECT current_state_key FROM issues WHERE key = ?", issueKey)
+
+    private fun queryOne(
+        sql: String,
+        param: String,
+    ): String? =
+        withConnection { conn ->
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, param)
+                stmt.executeQuery().use { rs -> if (rs.next()) rs.getString(1) else null }
+            }
+        }
 
     private fun <T> withConnection(block: (java.sql.Connection) -> T): T =
         DriverManager.getConnection(

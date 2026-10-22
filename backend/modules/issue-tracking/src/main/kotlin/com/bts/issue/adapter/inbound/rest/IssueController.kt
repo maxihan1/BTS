@@ -473,6 +473,8 @@ class IssueController(
                 expectedVersion = request.expectedVersion,
                 resolutionId = request.resolutionId,
                 transitionId = request.transitionId,
+                assigneeId = request.assigneeId,
+                comment = request.comment,
             )
         val response = service.transitionIssue(actor, issueKey, appRequest)
         return ResponseEntity.ok(DataResponse(data = response))

@@ -185,6 +185,11 @@ class BulkOperationApplicationService(
         require(payload.toStateKey.isNotBlank()) {
             "transitionPayload.toStateKey must not be blank"
         }
-        return BulkOperationPayload.Transition(toStateKey = payload.toStateKey, resolutionId = payload.resolutionId)
+        return BulkOperationPayload.Transition(
+            toStateKey = payload.toStateKey,
+            resolutionId = payload.resolutionId,
+            assigneeId = payload.assigneeId,
+            comment = payload.comment,
+        )
     }
 }

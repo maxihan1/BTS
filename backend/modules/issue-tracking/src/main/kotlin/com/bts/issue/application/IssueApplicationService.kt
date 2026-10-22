@@ -6,6 +6,7 @@ import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.adapter.inbound.rest.cursor.CursorCodec
 import com.bts.issue.adapter.inbound.rest.cursor.CursorPosition
 import com.bts.issue.adapter.outbound.AlwaysAllowIssueSecurityDirectory
+import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.domain.CustomFieldValueValidator
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
@@ -185,6 +186,9 @@ class IssueApplicationService(
     // **절대 배치하지 않는다** — 그 공유 helper 안에 넣으면 목록조회까지 409 가 되어 EC-3(읽기 생존)이
     // 파괴된다(guard-handler-matrix-blindfold 회귀 방지, IssueApplicationServiceArchiveGuardTest 참조).
     private val projectArchiveGuard: ProjectArchiveGuard? = null,
+    // 전환 화면의 코멘트를 전환과 한 트랜잭션에 남긴다 (FR-WF-01 D11). null 이면 코멘트를 남기지 않는다
+    // (기존 단위 테스트 호환용 fallback — projectArchiveGuard 패턴 동형). Spring 컨텍스트에서는 Bean 이 주입된다.
+    private val commentService: CommentApplicationService? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -788,10 +792,17 @@ class IssueApplicationService(
         val validatedResolutionId = reqResolutionId
 
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
+        val newAssigneeId = request.assigneeId?.takeIf { it != issue.assigneeId?.value }
+        if (newAssigneeId != null) requireAssignable(actor, key, newAssigneeId)
         val resolvedWorkflow = resolveWorkflowKey(key)
-        // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
+        // 전환 화면 필드는 전환 **후** 값을 화면 필드 키 그대로 싣는다 — 엔진이 화면의 필수를 이 값으로 본다 (D11).
         val issueFieldsForTransition =
-            mapOf("summary" to issue.summary, "resolution" to validatedResolutionId?.toString())
+            mapOf(
+                "summary" to issue.summary,
+                "resolution" to validatedResolutionId?.toString(),
+                "assignee" to (request.assigneeId ?: issue.assigneeId?.value)?.toString(),
+                "comment" to request.comment,
+            )
         val transitionReq =
             TransitionRequest(
                 workflowKey = resolvedWorkflow.workflowKey,
@@ -829,12 +840,15 @@ class IssueApplicationService(
         )
         publishTransitionEvents(plan)
         // after 는 전환 결과를 issue.copy 로 구성 — 재조회 대신 in-memory 구성하여 쿼리를 줄인다.
-        val afterTransitioned =
+        val transitioned =
             issue.copy(
                 currentStateKey = plan.toStateKey,
                 resolutionId = validatedResolutionId,
             )
+        val afterTransitioned = newAssigneeId?.let { applyScreenAssignee(actor, transitioned, it) } ?: transitioned
         recordHistory(before = issue, after = afterTransitioned, actor = actor, projectId = issue.projectId)
+        // 같은 트랜잭션 — 코멘트가 거절되면(공백 · 길이 · 권한) 전환도 함께 되돌아간다.
+        request.comment?.takeIf { it.isNotBlank() }?.let { commentService?.create(actor, key, it) }
         log.info(
             "issue_transitioned key={} from={} to={} actor={}",
             key.value,
@@ -843,6 +857,39 @@ class IssueApplicationService(
             actor.value,
         )
         return (repo.findByKeyWithType(key) ?: throw IssueNotFoundException(key)).withSingleDetail()
+    }
+
+    /**
+     * 전환 화면에서 담당자를 바꿀 수 있는지 본다 — [changeAssignee] 와 같은 관문(UPDATE · 필드 편집 · 사용자 실재).
+     * 전환 권한만으로 담당자 관문을 건너뛰지 못하게 한다.
+     */
+    private fun requireAssignable(
+        actor: ActorId,
+        key: IssueKey,
+        assigneeId: UUID,
+    ) {
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(key.value))
+        assertEditableOrForbidden(actor, key, setOf(FieldRef(FieldKind.CORE, "assigneeId")))
+        if (!userLookupPort.exists(assigneeId)) throw AssigneeNotFoundException(assigneeId)
+    }
+
+    /**
+     * 전환 화면의 담당자를 영속한다. 전환이 이미 version 을 올렸으므로 한 번 더 올리지 않는다 —
+     * [IssueRepository.setAssignee] 는 version 을 건드리지 않고, 행은 [transitionIssue] 의 비관락 아래에 있다.
+     *
+     * @return 담당자를 반영한 이력용 after.
+     */
+    private fun applyScreenAssignee(
+        actor: ActorId,
+        transitioned: Issue,
+        assigneeId: UUID,
+    ): Issue {
+        repo.setAssignee(transitioned.id.value, assigneeId)
+        autoWatch(transitioned.id.value, listOf(assigneeId))
+        eventPublisher.publish(
+            IssueAssigned(issueKey = transitioned.key, actorId = actor, occurredAt = Instant.now(clock)),
+        )
+        return transitioned.assignTo(ActorId(assigneeId))
     }
 
     /**

@@ -227,12 +227,17 @@ data class UpdateIssueRequest(
  *   2개 이상이면 `409 AMBIGUOUS_TRANSITION` 이다.
  *   **기본값 null 을 지우지 마라** — `BulkItemApplier` · `IssueTransitionAdapter` 등
  *   이 DTO 를 만드는 기존 지점이 전부 컴파일 실패한다.
+ * @param assigneeId 전환 화면의 담당자 (FR-WF-01 D11). null 이면 담당자를 그대로 둔다 —
+ *   화면에서 담당자를 비우는 것은 이 경로로 표현하지 않는다.
+ * @param comment 전환 화면의 코멘트. 비어 있지 않으면 전환과 같은 트랜잭션에 코멘트를 남긴다.
  */
 data class TransitionIssueRequest(
     val toStateKey: String,
     val expectedVersion: Long,
     val resolutionId: UUID? = null,
     val transitionId: UUID? = null,
+    val assigneeId: UUID? = null,
+    val comment: String? = null,
 )
 
 /**

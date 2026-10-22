@@ -3,6 +3,7 @@
 package com.bts.issue.adapter.inbound.rest
 
 import com.bts.shared.workflow.AvailableTransitionView
+import com.bts.shared.workflow.TransitionScreenFieldView
 import java.util.UUID
 
 /**
@@ -64,6 +65,8 @@ data class AvailableTransitionsResponse(
  *   null 은 「전환 ID 가 없다」가 아니라 **미계산**이다 — 실 API 응답은 항상 non-null.
  * @property kind 전환 종류 문자열. `"NORMAL"`(출발 상태 지정) · `"GLOBAL"`(어느 상태에서나).
  *   `"INITIAL"`(이슈 생성 진입 전용)은 이 목록에 나오지 않는다. null 은 미계산 상태다.
+ * @property screen 전환 화면 — 전환 때 대화상자로 받을 필드(`resolution` · `assignee` · `comment`)와 필수
+ *   (FR-WF-01 D11). 비면 대화상자 없이 바로 전환한다. 필수는 서버도 강제한다.
  */
 data class TransitionItem(
     val fromStateKey: String,
@@ -73,6 +76,7 @@ data class TransitionItem(
     val toCategory: String?,
     val transitionId: UUID?,
     val kind: String?,
+    val screen: List<TransitionScreenFieldView> = emptyList(),
 ) {
     companion object {
         /**
@@ -101,6 +105,7 @@ data class TransitionItem(
                 toCategory = view.toCategory,
                 transitionId = view.transitionId,
                 kind = view.kind,
+                screen = view.screen,
             )
     }
 }

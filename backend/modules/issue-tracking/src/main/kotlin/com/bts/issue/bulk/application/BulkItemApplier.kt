@@ -111,6 +111,8 @@ class BulkItemApplier(
                         toStateKey = payload.toStateKey,
                         expectedVersion = existing.version,
                         resolutionId = payload.resolutionId,
+                        assigneeId = payload.assigneeId,
+                        comment = payload.comment,
                     ),
                 )
             }

@@ -53,8 +53,12 @@ data class BulkEditPayload(
  * @property toStateKey 전환할 대상 상태 키. 비어 있으면 [BulkOperationApplicationService] 에서 거부.
  * @property resolutionId DONE 상태로 전환할 때 지정하는 해결책 UUID.
  *   null 이면 resolution_id clear. 전체 일괄에 동일하게 적용된다.
+ * @property assigneeId 전환 화면의 담당자 (FR-WF-01 D11). null 이면 담당자를 그대로 둔다.
+ * @property comment 전환 화면의 코멘트. 비어 있지 않으면 이슈마다 같은 본문의 코멘트를 남긴다.
  */
 data class BulkTransitionPayload(
     val toStateKey: String,
     val resolutionId: UUID? = null,
+    val assigneeId: UUID? = null,
+    val comment: String? = null,
 )

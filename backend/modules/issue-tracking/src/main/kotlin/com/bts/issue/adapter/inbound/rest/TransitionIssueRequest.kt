@@ -2,8 +2,10 @@
 
 package com.bts.issue.adapter.inbound.rest
 
+import com.bts.issue.domain.IssueTextConstraints
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Size
 import java.util.UUID
 
 /**
@@ -25,6 +27,8 @@ import java.util.UUID
  * @property transitionId 실행할 전환의 1급 식별자. null 이면 ([toStatusKey]) 로 후보를 찾아
  *   **정확히 1개일 때만** 실행한다. 하위호환을 위해 기본값 null 이며 **지우지 마라** —
  *   `transitionId` 를 모르는 기존 클라이언트가 전부 400 으로 떨어진다.
+ * @property assigneeId 전환 화면의 담당자 (FR-WF-01 D11). null 이면 담당자를 그대로 둔다.
+ * @property comment 전환 화면의 코멘트. 비어 있지 않으면 전환과 한 트랜잭션에 코멘트를 남긴다.
  */
 data class TransitionIssueRequest(
     @field:NotBlank(message = "toStatusKey는 비어 있을 수 없습니다.")
@@ -33,4 +37,8 @@ data class TransitionIssueRequest(
     val expectedVersion: Long,
     val resolutionId: UUID? = null,
     val transitionId: UUID? = null,
+    val assigneeId: UUID? = null,
+    // 코멘트 예외 처리기는 CommentController 전용이라 서비스까지 가면 500 이다 — 길이는 여기서 400 으로 막는다.
+    @field:Size(max = IssueTextConstraints.COMMENT_BODY_MAX, message = "comment가 너무 깁니다.")
+    val comment: String? = null,
 )
