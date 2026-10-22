@@ -2843,7 +2843,17 @@ ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 
 
 ---
 
-## ⬜ 워크플로우 — 전환 CRUD 가 워크플로우의 수정 시각·버전을 안 올려 낙관적 잠금이 없다 (신규 · 미착수 · T2)
+## ✅ 워크플로우 — 전환 CRUD 가 워크플로우의 수정 시각·버전을 안 올려 낙관적 잠금이 없다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-05-1.** 처방 ①만 했다 — `WorkflowWriteRepository.bumpVersion` 을 전환 CRUD 3종
+(`WorkflowCommandService.createTransition` · `updateTransition` · `deleteTransition`)이 같은 트랜잭션에서 부른다.
+**①만으로 실제 피해 경로는 닫힌다.** 편집 화면은 라이브 전환 CRUD 가 아니라 초안(`WorkflowDraftService`)을 쓰고,
+초안의 `base_version` 이 발행 CAS(`bumpVersionIfMatches`)의 기준이다. 버전이 오르면 그 사이 뜬 초안의 발행이
+409 로 거절돼 「발행의 전환 전량 교체가 라이브 편집을 말없이 지우기」가 막힌다. 재현 테스트는
+`TransitionCrudMvcTest` 의 WF-05-1 케이스(red `expected: 1L but was: 0L` → green).
+**② `expectedVersion` 은 보류** — 라이브 전환 CRUD 를 부르는 화면이 0 이라(`api/workflows-admin.ts` 의 클라이언트 함수는
+mock 테스트만 import) 라이브↔라이브 동시 편집은 원시 API 로만 난다. 트리거는 「라이브 전환 CRUD 를 부르는 화면이 생길 때」.
+같은 빈틈이 상태 편성 쪽에도 있다 — 아래 별도 항목.
 
 **쉬운 말.** 화살표를 고쳐도 그 워크플로우의 「마지막으로 고친 시각」과 「몇 번째 판인가」가 그대로다. 두 사람이 동시에 고치면 나중 사람이 앞사람 작업을 조용히 덮어쓴다.
 
@@ -2862,6 +2872,19 @@ ORDER BY created_at, name)` 로 1..n 을 채운다. 신규 설치는 그 UPDATE 
 
 **처방 후보.** ① 전환 CRUD 가 `workflows.version`·`updated_at` 을 함께 올린다.
 ② 전환 편집 요청에 `expectedVersion` 을 받아 불일치면 409. ①만 하면 감지는 되지만 거절은 못 한다.
+
+---
+
+## ⬜ 워크플로우 — 상태 편성 CRUD 가 워크플로우의 수정 시각·버전을 안 올린다 (신규 · 미착수 · T2)
+
+**쉬운 말.** 워크플로우에 상태를 넣고 빼고 순서를 바꿔도 「몇 번째 판인가」가 그대로다. 그 사이 뜬 초안을 발행하면 그 편집이 말없이 사라진다.
+
+**무엇.** WF-05-1 이 전환 CRUD 에 `WorkflowWriteRepository.bumpVersion` 을 붙였다. 같은 라이브 쓰기인
+`WorkflowStatusCompositionService.addStatus` · `removeStatus` · `reorder` 는 `workflow_statuses` 만 건드리고
+부모 `workflows.version` 을 올리지 않는다. 발행은 상태 편성도 초안 것으로 교체하므로 같은 덮어쓰기가 난다.
+
+**처방.** 세 함수가 같은 트랜잭션에서 `bumpVersion(workflowId)` 를 부른다. `WorkflowStatusCompositionIntegrationTest` 에
+「3종이 version 을 올린다」를 red-first 로 붙인다.
 
 ---
 
