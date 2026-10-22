@@ -180,18 +180,8 @@ class WorkflowRepositoryTest {
     /**
      * ### 이 테스트가 D1 이관의 본질이다
      *
-     * PR 2 는 쓰기(시드)를 전역 카탈로그로 옮겼지만 **읽기는 구형 `workflow_states` 그대로** 두었다.
-     * 그래서 카탈로그에만 편성된 상태는 조회 결과에 나타나지 않는다.
-     *
-     * ```
-     *   statuses ── workflow_statuses ──┐
-     *                                    ├─ 여기서 읽어야 한다 (PR 3)
-     *   workflows ───────────────────────┘
-     *        └── workflow_states  ← 지금 읽는 곳 (구형)
-     * ```
-     *
-     * 일부러 **구형 테이블을 건드리지 않고** 카탈로그에만 심는다. 공용 픽스처는 양쪽에 심으므로
-     * 여기서는 쓰지 않는다 — 그러면 전환 없이도 이 갭이 드러나지 않는다.
+     * 상태 목록은 `statuses` + `workflow_statuses` 2단 카탈로그에서 읽는다(PR 3). 구형
+     * `workflow_states` 는 V210 이 지웠다. 카탈로그에만 편성된 상태가 조회 결과에 나타나는지 본다.
      */
     @Test
     fun `카탈로그에만 편성된 상태도 조회 결과에 나타난다`() {
@@ -204,7 +194,7 @@ class WorkflowRepositoryTest {
 
             assertThat(workflow).describedAs("카탈로그 전용 워크플로우를 못 읽었다").isNotNull()
             assertThat(workflow!!.states.map { it.key })
-                .describedAs("읽기 경로가 아직 구형 workflow_states 를 본다 — statuses + workflow_statuses 2단으로 옮겨야 한다")
+                .describedAs("읽기 경로가 statuses + workflow_statuses 2단 카탈로그를 보지 않는다")
                 .containsExactly("blocked")
         } finally {
             cleanupCatalogOnly()

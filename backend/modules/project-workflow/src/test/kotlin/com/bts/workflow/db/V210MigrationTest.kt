@@ -217,32 +217,61 @@ class V210MigrationTest {
 
     @Test
     fun `편성에서 빠진 상태를 가리키는 구 컬럼 전환이 있으면 마이그레이션이 이름을 들고 실패한다`() {
-        connect(postgres.jdbcUrl).use { it.createStatement().use { s -> s.execute("CREATE DATABASE v210_guard") } }
-        val url = postgres.jdbcUrl.replace("/${postgres.databaseName}", "/v210_guard")
+        val message =
+            guardFailureMessage("v210_guard_unmapped") { conn ->
+                // 도착 상태를 편성에서 뺀다 — 구 컬럼은 여전히 가리키지만 신 컬럼으로 옮길 곳이 없다.
+                conn.createStatement().use {
+                    it.execute(
+                        "DELETE FROM workflow_transitions WHERE name <> '구 컬럼만';" +
+                            " DELETE FROM workflow_statuses" +
+                            " WHERE status_id = (SELECT id FROM statuses WHERE key = 'x_done')",
+                    )
+                }
+            }
+
+        assertThat(message).contains("신 컬럼으로 옮기지 못한 전환").contains("구 컬럼만")
+    }
+
+    @Test
+    fun `출발지가 없는 NORMAL 전환이 있으면 마이그레이션이 이름을 들고 실패한다`() {
+        val message =
+            guardFailureMessage("v210_guard_kind") { conn ->
+                // V209 에는 kind/from CHECK 가 없어 이 모양이 들어간다. ⑤ 의 CHECK 가 원인 없이 죽기 전에 ② 가 막아야 한다.
+                conn.createStatement().use {
+                    it.execute(
+                        "INSERT INTO workflow_transitions (workflow_id, kind, name, to_status_id)" +
+                            " SELECT w.id, 'NORMAL', '출발 없는 보통', " + COMPOSITION_OF.format("x_done") + WF_X_FROM,
+                    )
+                }
+            }
+
+        assertThat(message).contains("신 컬럼으로 옮기지 못한 전환").contains("출발 없는 보통")
+    }
+
+    /**
+     * 격리 DB 를 V209 까지 올리고 픽스처 + [breakFixture] 를 적용한 뒤 V210 실패 메시지를 돌려준다.
+     *
+     * 가드는 마이그레이션을 실패시키므로 메인 체인 DB 를 쓰면 다른 테스트가 무너진다. 컨테이너는 그대로 두고 DB 만 가른다.
+     */
+    private fun guardFailureMessage(
+        dbName: String,
+        breakFixture: (Connection) -> Unit,
+    ): String {
+        connect(postgres.jdbcUrl).use { it.createStatement().use { s -> s.execute("CREATE DATABASE $dbName") } }
+        val url = postgres.jdbcUrl.replace("/${postgres.databaseName}", "/$dbName")
         migrateTo(url, "200")
         createIssueTypes(url)
         migrateTo(url, "209")
         connect(url).use { conn ->
             seedFixture(conn)
-            // 도착 상태를 편성에서 뺀다 — 구 컬럼은 여전히 가리키지만 신 컬럼으로 옮길 곳이 없다.
-            conn.createStatement().use {
-                it.execute(
-                    "DELETE FROM workflow_transitions WHERE name <> '구 컬럼만';" +
-                        " DELETE FROM workflow_statuses" +
-                        " WHERE status_id = (SELECT id FROM statuses WHERE key = 'x_done')",
-                )
-            }
+            breakFixture(conn)
         }
-
-        val message =
-            try {
-                flyway(url).load().migrate()
-                error("V210 가드가 옮기지 못한 전환을 막아야 하는데 마이그레이션이 성공했다")
-            } catch (ex: FlywayException) {
-                generateSequence<Throwable>(ex) { it.cause }.mapNotNull { it.message }.joinToString(" | ")
-            }
-
-        assertThat(message).contains("V210").contains("구 컬럼만")
+        try {
+            flyway(url).load().migrate()
+        } catch (ex: FlywayException) {
+            return generateSequence<Throwable>(ex) { it.cause }.mapNotNull { it.message }.joinToString(" | ")
+        }
+        error("V210 가드가 옮기지 못한 전환을 막아야 하는데 마이그레이션이 성공했다: $dbName")
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────

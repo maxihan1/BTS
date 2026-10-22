@@ -566,13 +566,17 @@ class YamlSeedServiceTest {
         val rows = fetchTransitionStateKeys("software-default")
         val normalRows = rows.filter { it[1] == "NORMAL" }
 
+        // NULL 은 NOT NULL · CHECK 가 막으므로 「올바른 상태를 가리키는가」를 YAML 원문과 대조한다.
         assertThat(normalRows)
-            .describedAs("software-default 의 보통 전환 6건을 읽지 못했다 — 사전조건이 깨졌다 (비-공허 확인)")
-            .hasSize(6)
-        assertThat(normalRows).allSatisfy { row ->
-            assertThat(row[2]).describedAs("전환 '%s' 의 from_status_id 가 비었다", row[0]).isNotNull()
-            assertThat(row[3]).describedAs("전환 '%s' 의 to_status_id 가 비었다", row[0]).isNotNull()
-        }
+            .describedAs("software-default 의 보통 전환 — (이름, kind, from, to) 가 software-default.yaml 과 같아야 한다")
+            .containsExactlyInAnyOrder(
+                listOf("Start Work", "NORMAL", "open", "in_progress"),
+                listOf("Submit for Review", "NORMAL", "in_progress", "in_review"),
+                listOf("Approve", "NORMAL", "in_review", "done"),
+                listOf("Request Changes", "NORMAL", "in_review", "in_progress"),
+                listOf("Close", "NORMAL", "done", "closed"),
+                listOf("Cancel", "NORMAL", "open", "closed"),
+            )
 
         assertThat(rows.filter { it[1] == "INITIAL" })
             .describedAs("INITIAL — (이름, kind, from, to)")

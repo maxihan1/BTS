@@ -15,6 +15,8 @@
 -- V207 ⑤ 는 「그 시점에 있던 행」만 옮겼다. 그 뒤 구 컬럼으로만 쓰던 경로가 넣은 행은 신 컬럼이
 -- NULL 이다. 같은 다리(workflow_states.key → statuses.key → 그 워크플로우의 workflow_statuses)로 잇는다.
 -- 신 컬럼이 이미 찬 행은 건드리지 않는다 — 그쪽이 정본이다.
+-- kind 는 거르지 않는다. GLOBAL·INITIAL 인데 구 from_state_id 가 남은 행은 여기서 from_status_id 를
+-- 얻어 ② 에 걸린다 — 운영 쓰기 경로로는 생기지 않는 모양이라 조용히 고치지 않고 배포를 멈추게 둔다.
 UPDATE workflow_transitions t
    SET from_status_id = ws.id
   FROM workflow_states st
