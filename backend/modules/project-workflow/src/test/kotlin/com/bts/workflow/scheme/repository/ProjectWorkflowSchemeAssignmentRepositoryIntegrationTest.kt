@@ -445,6 +445,7 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         assertThat(refs).containsExactlyInAnyOrder(
             ProjectRef(reverseProjectAlpha, "R001"),
             ProjectRef(reverseProjectBeta, "R002"),
+            ProjectRef(reverseProjectArchived, "R005"),
         )
     }
 
@@ -471,36 +472,32 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
         assertThat(refs.map { it.id }).doesNotContain(reverseProjectDeleted)
     }
 
+    /**
+     * 상태 제거 차단 카운트에 아카이브 이슈를 넣는다 (WF-07-4). 이관이 아카이브 프로젝트의 이슈도
+     * 옮기므로 세어도 풀 수 있고, 빼면 그 이슈가 워크플로우에 없는 상태로 남는다.
+     */
     @Test
-    fun `아카이브된 프로젝트는 제외한다`() {
+    fun `아카이브된 프로젝트도 포함한다`() {
         val refs = repository.findProjectRefsByWorkflowId(reverseWorkflowA)
 
-        // Epsilon 은 스킴 A 에 할당돼 있지만 archived_at 이 채워져 있다 (스펙 E7).
-        assertThat(refs.map { it.id }).doesNotContain(reverseProjectArchived)
+        // Epsilon 은 스킴 A 에 할당돼 있고 archived_at 이 채워져 있다.
+        assertThat(refs.map { it.id }).contains(reverseProjectArchived)
     }
 
     // ── 이관 범위 조회 (E7 제3의 길) ────────────────────────────────────────────
 
     /**
-     * ★ 이관 **범위**는 아카이브를 포함한다 — 카운트와 다른 집합이다 (spec E7 · 게이트 1 I1).
+     * ★ 이관 **범위**는 아카이브를 포함한다 (WF-07-4).
      *
-     * ### 왜 범위에는 넣는가
-     * 범위에서까지 빼면 워커가 그 프로젝트를 아예 안 보고, 그 이슈들은 **흔적 없이 사라진다.**
-     * 넣어 두면 워커의 `BulkItemApplier` 가 아카이브 가드에 걸려 `bulk_operation_items` 에
-     * `PROJECT_ARCHIVED` 로 남기므로(`BulkItemExecutor` 의 `ProjectArchivedException` 매핑)
-     * 관리자가 「몇 건이 왜 안 옮겨졌는지」를 셀 수 있다.
-     *
-     * ### 왜 카운트에는 안 넣는가
-     * 아카이브 이슈는 영원히 안 옮겨진다. 발행 차단 카운트에 넣으면 발행이 **관리자가 풀 수 없는
-     * 상태로** 막힌다. 그래서 [ProjectWorkflowSchemeAssignmentRepository.findProjectRefsByWorkflowId]
-     * 는 지금처럼 아카이브를 계속 제외한다 — 두 조회는 일부러 다른 집합이다.
+     * 범위에서 빼면 워커가 그 프로젝트를 안 보고, 그 이슈들은 워크플로우에 없는 상태로 남는다.
+     * 워커는 아카이브 프로젝트의 이슈도 옮긴다(`BulkItemApplier` 가 이관에서는 아카이브 가드를 건너뛴다).
      */
     @Test
     fun `이관 범위 조회는 아카이브된 프로젝트를 포함한다`() {
         val refs = repository.findMigrationScopesByWorkflowId(reverseWorkflowA).map { it.ref }
 
         assertThat(refs.map { it.id })
-            .describedAs("범위에서 빠지면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이 사라진다")
+            .describedAs("범위에서 빠지면 워커가 그 프로젝트를 안 보고 이슈가 워크플로우 밖에 남는다")
             .contains(reverseProjectArchived)
         assertThat(refs.map { it.id }).contains(reverseProjectAlpha, reverseProjectBeta)
     }
@@ -554,8 +551,6 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
 
         assertThat(scopes.map { it.typeFilter }.toSet())
             .containsExactly(StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true))
-        assertThat(scopes.single { it.ref.id == reverseProjectArchived }.archived).isTrue()
-        assertThat(scopes.single { it.ref.id == reverseProjectAlpha }.archived).isFalse()
     }
 
     /**

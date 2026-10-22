@@ -575,8 +575,8 @@ class WorkflowPublishServiceIntegrationTest {
     /**
      * 이 워크플로우가 이미 붙어 있는 스킴에 **아카이브된** 프로젝트를 하나 더 단다.
      *
-     * E7 판정용이다 — 이관 범위에는 들어가고(워커가 `PROJECT_ARCHIVED` 로 남길 수 있게)
-     * 발행 차단 카운트에서는 빠져야 한다(영원히 안 옮겨질 이슈가 발행을 영구히 막지 않게).
+     * WF-07-4 판정용이다 — 이관 범위에도 발행 차단 카운트에도 들어가야 한다(워커가 아카이브
+     * 프로젝트의 이슈도 옮기므로, 빼면 그 이슈가 워크플로우에 없는 상태로 남는다).
      */
     private fun attachArchivedProject(workflowId: UUID): UUID {
         val schemeId =
@@ -1285,17 +1285,13 @@ class WorkflowPublishServiceIntegrationTest {
             .isInstanceOf(WorkflowPublishMappingRequiredException::class.java)
     }
 
-    // ── 아카이브 범위 (E7 제3의 길 · 게이트 2 BLOCKER 처방) ────────────────────
+    // ── 아카이브 범위 (WF-07-4) ────────────────────────────────────────────────
 
     /**
-     * ★ 아카이브 프로젝트는 **이관 범위에는 들어간다.**
+     * ★ 아카이브 프로젝트는 **이관 범위에 들어간다.**
      *
-     * 범위에서까지 빼면 워커가 그 프로젝트를 아예 안 보고 그 이슈들은 **흔적 없이 사라진다** —
-     * 관리자가 「몇 건이 왜 안 옮겨졌는지」를 셀 수단이 0 이 된다. 범위에 넣어 두면 워커의
-     * 아카이브 가드가 `bulk_operation_items` 에 `PROJECT_ARCHIVED` 로 **행을 남긴다.**
-     *
-     * 게이트 1 이 채택한 I1/E7 이 이것이고, 같은 PR 의 장부 151 과 제품 문서도 이 계약을 적는다.
-     * 코드가 반대로 가면 다음 사람이 **없는 행을 세게 된다.**
+     * 범위에서 빼면 워커가 그 프로젝트를 안 보고 그 이슈들은 워크플로우에 없는 상태로 남는다.
+     * 워커는 아카이브 프로젝트의 이슈도 옮긴다(`BulkItemApplier`).
      */
     @Test
     fun `아카이브된 프로젝트도 이관 범위에 실린다`() {
@@ -1308,18 +1304,18 @@ class WorkflowPublishServiceIntegrationTest {
         service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
 
         assertThat(migrationPort.received.single().projectScopes.keys)
-            .describedAs("범위에서 빠지면 그 프로젝트 이슈가 흔적 없이 사라진다")
+            .describedAs("범위에서 빠지면 그 프로젝트 이슈가 워크플로우 밖에 남는다")
             .containsExactlyInAnyOrder(projectKey(alpha), projectKey(beta), projectKey(archived))
     }
 
     /**
-     * ★ 같은 아카이브 프로젝트가 **발행 차단 카운트에서는 빠진다** — 두 집합은 일부러 다르다.
+     * ★ 같은 아카이브 프로젝트가 **발행 차단 카운트에도 들어간다** (WF-07-4).
      *
-     * 카운트에 넣으면 영원히 안 옮겨지는 이슈가 계속 잡혀 발행이 **관리자가 풀 수 없는 상태로**
-     * 막힌다. 이 판정이 없으면 「범위에 넣자」는 처방이 카운트까지 넓어져도 아무도 모른다.
+     * 빼면 아카이브 이슈만 남은 상태는 0건으로 세어져 이관 없이 발행되고, 그 이슈들은 워크플로우에
+     * 없는 상태로 남는다. 이관이 그 이슈도 옮기므로 세어도 관리자가 풀 수 있다.
      */
     @Test
-    fun `아카이브된 프로젝트 이슈는 발행 차단 카운트에서 빠진다`() {
+    fun `아카이브된 프로젝트 이슈도 발행 차단 카운트에 들어간다`() {
         val key = seedWorkflow()
         val id = workflowId(key)
         attachTwoProjects(id)
@@ -1329,8 +1325,8 @@ class WorkflowPublishServiceIntegrationTest {
         service.publish(ACTOR, key, baseVersion = 0)
 
         assertThat(issueUsage.receivedProjectIds.flatten())
-            .describedAs("아카이브를 카운트에 넣으면 발행이 영영 막힌다")
-            .doesNotContain(archived)
+            .describedAs("아카이브를 카운트에서 빼면 그 이슈가 이관 없이 워크플로우 밖에 남는다")
+            .contains(archived)
     }
 
     /**

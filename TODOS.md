@@ -1705,7 +1705,12 @@ KDoc 이 적은 대로 「교집합 항목의 **필드값은 첫 번째 이슈 �
 
 ---
 
-## ⬜ project-workflow — 아카이브된 프로젝트의 이슈가 워크플로우에 없는 상태로 남는다 (신규 · 미착수 · T2)
+## ✅ project-workflow — 아카이브된 프로젝트의 이슈가 워크플로우에 없는 상태로 남는다 (**해소** · T2)
+
+**해소 — 2026-10-22 · WF-07-4 (#550 + 후속).** 처방(아카이브 해제 시점 재이관 · 알림) 대신 **이관이 아카이브 가드를 건너뛴다** (Maxi 결정). 해제 시점 재이관은 근거 데이터가 없다 — 일괄작업 기록은 30일 뒤 지워지고, 아카이브 이슈만 빠지는 상태에 있으면 카운트가 0이라 이관 자체가 안 돌았다.
+- issue-tracking — `BulkItemApplier.migrateStatus` 가 `ProjectArchiveGuard` 를 부르지 않는다. 사용자 쓰기(Edit/Transition)의 아카이브 잠금은 그대로다. spec E14 · D3 ② 개정.
+- project-workflow — 발행 차단 카운트(`pendingIssueCounts`)와 라이브 상태 제거 카운트(`findProjectRefsByWorkflowId`)가 아카이브 프로젝트도 센다. 이관 범위와 같은 집합이다.
+- 남는 것 — 스킴 매핑 변경(`requireNoStrandedIssues` · `findActiveProjectIdsBySchemeId`)은 이관 경로가 없어 아카이브를 계속 뺀다. 아카이브 프로젝트의 이슈 타입을 다른 워크플로우로 돌리면 그 이슈는 여전히 워크플로우 밖 상태로 남을 수 있다.
 
 **쉬운 말.** 보관 처리한 프로젝트의 이슈는 상태 이관에서 옮겨지지 않는다. 나중에 그 프로젝트를 다시 열면 그 이슈들은 지금 워크플로우에 없는 상태를 가리키고 있다.
 
