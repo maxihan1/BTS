@@ -310,6 +310,7 @@ class WorkflowDraftServiceIntegrationTest {
     fun `최초 전환에 조건 validator 를 담은 초안은 저장 단계에서 막힌다`() {
         val key = seedWorkflow()
         val base = validDraft(key)
+
         fun withValidator(rule: DraftRuleDto) =
             base.copy(transitions = base.transitions.map { it.copy(validators = listOf(rule)) })
 
@@ -323,7 +324,8 @@ class WorkflowDraftServiceIntegrationTest {
         }.isInstanceOf(WorkflowInvalidRequestException::class.java)
 
         // 비-공허 짝. 같은 최초 전환에 실행 validator 는 저장돼야 위 거절이 「조건」 때문이다.
-        service.save(ACTOR, key, withValidator(DraftRuleDto("RequiredField", mapOf("field" to "summary"))), baseVersion = 0)
+        val execution = withValidator(DraftRuleDto("RequiredField", mapOf("field" to "summary")))
+        service.save(ACTOR, key, execution, baseVersion = 0)
     }
 
     // ── ★ 다이어그램 노드 좌표 (FR-WF-07 D8) ─────────────────────────────────

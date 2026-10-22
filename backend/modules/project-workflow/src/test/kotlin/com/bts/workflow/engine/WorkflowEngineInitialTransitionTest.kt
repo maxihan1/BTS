@@ -1,4 +1,4 @@
-// WorkflowEngine.plan — 이슈 생성 토큰으로 최초(INITIAL) 전환의 validator · post-action 을 돌리는 단위 테스트 (WF-05-3)
+// WorkflowEngine.plan — 이슈 생성 요청(creation)으로 최초(INITIAL) 전환의 validator · post-action 을 돌리는 단위 테스트 (WF-05-3)
 
 package com.bts.workflow.engine
 
@@ -13,6 +13,7 @@ import com.bts.workflow.domain.WorkflowTransition
 import com.bts.workflow.domain.dto.PostActionPlan
 import com.bts.workflow.domain.dto.TransitionContext
 import com.bts.workflow.domain.exception.WorkflowValidatorFailureException
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.domain.spi.ValidatorResult
 import com.bts.workflow.domain.spi.WorkflowPostAction
 import com.bts.workflow.domain.spi.WorkflowValidator
@@ -26,10 +27,11 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 /**
- * 이슈 생성 경로가 [TransitionRequest.INITIAL_FROM_STATE_KEY] 로 [WorkflowEngine.plan] 을 부르면
+ * 이슈 생성 경로가 [TransitionRequest.creation] 으로 [WorkflowEngine.plan] 을 부르면
  * 최초 전환에 붙은 규칙이 돈다 — Jira Create 전환의 validator · post function 과 같은 자리다.
  *
- * 픽스처에 GLOBAL 을 섞는다. 생성 토큰이 GLOBAL 후보를 열면 모호 409 가 나므로 그 분리를 함께 잰다.
+ * 픽스처에 GLOBAL 을 섞는다. 생성 요청이 GLOBAL 후보를 열면 모호 409 가 나므로 그 분리를 함께 잰다.
+ * `INITIAL` 이라는 **이름의 실제 상태**도 둔다 — 생성 판정을 상태 키로 하면 그 상태의 이슈가 갇힌다.
  */
 class WorkflowEngineInitialTransitionTest {
     private val cache = mockk<WorkflowCache>()
@@ -41,17 +43,19 @@ class WorkflowEngineInitialTransitionTest {
 
     private val openState = WorkflowState("open", "Open", StateCategory.TODO, 1)
     private val doneState = WorkflowState("done", "Done", StateCategory.DONE, 2)
+    private val initialNamedState = WorkflowState("INITIAL", "Initial", StateCategory.TODO, 3)
 
     private val txInitial = WorkflowTransition(null, "open", "Create", kind = TransitionKind.INITIAL)
     private val txGlobalOpen = WorkflowTransition(null, "open", "Reopen Anytime", kind = TransitionKind.GLOBAL)
     private val txResolve = WorkflowTransition("open", "done", "Resolve")
+    private val txLeaveInitialState = WorkflowTransition("INITIAL", "done", "Leave")
 
     private val withInitial =
         Workflow.of(
             key = "with-initial",
             name = "최초 전환 픽스처",
-            states = listOf(openState, doneState),
-            transitions = listOf(txInitial, txGlobalOpen, txResolve),
+            states = listOf(openState, doneState, initialNamedState),
+            transitions = listOf(txInitial, txGlobalOpen, txResolve, txLeaveInitialState),
         )
 
     private val withoutInitial =
@@ -73,17 +77,44 @@ class WorkflowEngineInitialTransitionTest {
     }
 
     @Test
-    fun `생성 토큰은 shared-kernel 상수와 TransitionKind INITIAL 이름이 같다`() {
-        // 두 BC 가 같은 문자열을 서로 다른 곳에서 든다 — 갈리면 생성 경로가 조용히 규칙 0개가 된다
-        assertThat(TransitionRequest.INITIAL_FROM_STATE_KEY).isEqualTo(TransitionKind.INITIAL.name)
+    fun `INITIAL 이라는 이름의 상태에 있는 이슈는 일반 전환으로 나가고 최초 전환이 끼지 않는다`() {
+        every { definitionRepo.findValidators(any(), any()) } returns emptyList()
+        every { definitionRepo.findPostActions(any(), any()) } returns emptyList()
+
+        val leave = createRequest("with-initial").copy(fromStateKey = "INITIAL", toStateKey = "done", creation = false)
+        val plan = engine.plan(leave)
+
+        assertThat(plan.toStateKey).isEqualTo("done")
+        verify(exactly = 1) { definitionRepo.findPostActions("with-initial", txLeaveInitialState) }
+        verify(exactly = 0) { definitionRepo.findPostActions(any(), txInitial) }
     }
 
     @Test
-    fun `생성 토큰이면 최초 전환의 validator 와 post-action 이 돌고 출발 상태 없이 평가된다`() {
+    fun `최초 전환의 조건 validator 는 생성에서 건너뛴다`() {
+        // 관문이 새로 붙이는 것은 막지만 종류 변경 · 이전 행은 관문을 안 거친다 — 실행 자리에서 거른다
+        val condition =
+            mockk<WorkflowValidator> {
+                every { type } returns "permission-check"
+                every { phase } returns ValidatorPhase.AVAILABILITY
+            }
+        val conditionConfig = ValidatorConfig("permission-check", mapOf("permission" to "TRANSITION_ISSUE"))
+        every { definitionRepo.findValidators("with-initial", txInitial) } returns listOf(conditionConfig)
+        every { definitionRepo.findPostActions("with-initial", txInitial) } returns emptyList()
+        every { validatorFactory.create("permission-check", conditionConfig.config) } returns condition
+
+        val plan = engine.plan(createRequest("with-initial"))
+
+        assertThat(plan.toStateKey).isEqualTo("open")
+        verify(exactly = 0) { condition.validate(any()) }
+    }
+
+    @Test
+    fun `생성 요청이면 최초 전환의 validator 와 post-action 이 돌고 출발 상태 없이 평가된다`() {
         val seen = slot<TransitionContext>()
         val validator =
             mockk<WorkflowValidator> {
                 every { type } returns "RequiredField"
+                every { phase } returns ValidatorPhase.EXECUTION
                 every { validate(capture(seen)) } returns ValidatorResult.Pass
             }
         val event = DomainEvent("WebhookRequested", mapOf("url" to "https://example.com/hook"))
@@ -112,6 +143,7 @@ class WorkflowEngineInitialTransitionTest {
         val validator =
             mockk<WorkflowValidator> {
                 every { type } returns "RequiredField"
+                every { phase } returns ValidatorPhase.EXECUTION
                 every { validate(any()) } returns ValidatorResult.Fail("summary", "summary is required")
             }
         every { definitionRepo.findValidators("with-initial", txInitial) } returns listOf(validatorConfig)
@@ -136,11 +168,12 @@ class WorkflowEngineInitialTransitionTest {
         TransitionRequest(
             workflowKey = workflowKey,
             issueKey = "ATLAS-1",
-            fromStateKey = TransitionRequest.INITIAL_FROM_STATE_KEY,
+            fromStateKey = "open",
             toStateKey = "open",
             actorId = "user-1",
             issueFields = mapOf("summary" to "새 이슈"),
             actorRoles = emptySet(),
             version = 1L,
+            creation = true,
         )
 }

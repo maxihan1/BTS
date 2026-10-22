@@ -108,6 +108,7 @@ class ValidatorAdminServiceTest {
         assertThatThrownBy {
             service.create(workflowKey, transitionKey, "not-status-category", mapOf("category" to "DONE"), 0)
         }.isInstanceOf(ValidatorValidationException::class.java)
+            .hasMessageContaining("최초")
 
         verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
     }
