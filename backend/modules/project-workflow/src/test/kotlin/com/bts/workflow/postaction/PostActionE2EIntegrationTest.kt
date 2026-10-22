@@ -302,7 +302,7 @@ class PostActionE2EIntegrationTest {
         /** 전환 하나에 post-action 을 만들고(201) 같은 경로로 다시 읽는다(200 · 1건). */
         private fun assertPostActionRoundTrip(transitionKey: String) {
             val path = "/api/v1/workflows/$WORKFLOW_KEY/transitions/$transitionKey/post-actions"
-            val body = """{"type":"SET_FIELD","config":{"field":"assignee","value":"me"},"displayOrder":0}"""
+            val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://example.com/hook","method":"POST"},"displayOrder":0}"""
 
             mockMvc.perform(
                 post(path)
@@ -314,7 +314,7 @@ class PostActionE2EIntegrationTest {
             mockMvc.perform(get(path))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].type").value("SET_FIELD"))
+                .andExpect(jsonPath("$.data[0].type").value("CALL_WEBHOOK"))
         }
 
         /**
@@ -392,12 +392,12 @@ class PostActionE2EIntegrationTest {
             return "/api/v1/workflows/$DUP_WORKFLOW_KEY/transitions/$transitionRef/post-actions"
         }
 
-        /** 경로 하나에 SET_FIELD 규칙을 만들고(201) 그 경로에 그 규칙 1건만 보이는지 본다. */
+        /** 경로 하나에 웹훅 규칙을 만들고(201) 그 경로에 그 규칙 1건만 보이는지 본다. */
         private fun assertRuleIsolatedTo(
             path: String,
-            fieldName: String,
+            marker: String,
         ) {
-            val body = """{"type":"SET_FIELD","config":{"field":"$fieldName","value":"me"},"displayOrder":0}"""
+            val body = """{"type":"CALL_WEBHOOK","config":{"url":"https://example.com/$marker","method":"POST"},"displayOrder":0}"""
 
             mockMvc.perform(
                 post(path)
@@ -409,7 +409,7 @@ class PostActionE2EIntegrationTest {
             mockMvc.perform(get(path))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].config.field").value(fieldName))
+                .andExpect(jsonPath("$.data[0].config.url").value("https://example.com/$marker"))
         }
     }
 
@@ -625,7 +625,7 @@ class PostActionE2EIntegrationTest {
             mockMvc.perform(get(firstPath))
                 .andExpect(status().isOk)
                 .andExpect(jsonPath("$.data.length()").value(1))
-                .andExpect(jsonPath("$.data[0].config.field").value("assignee"))
+                .andExpect(jsonPath("$.data[0].config.url").value("https://example.com/assignee"))
         }
     }
 

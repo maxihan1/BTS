@@ -146,6 +146,21 @@ class PostActionAdminServiceTest {
     }
 
     @Test
+    fun `create - 실행하는 곳이 없는 type 은 팩토리를 통과해도 400 이고 저장하지 않는다`() {
+        // WF-03-1(B1) — 이 넷은 저장 200 뒤 전환 때 아무 일도 일어나지 않았다.
+        listOf("SET_FIELD", "NOTIFY", "ADD_WATCHER", "RUN_AUTOMATION").forEach { type ->
+            val config = mapOf<String, Any?>("field" to "assignee")
+            every { factory.create(type, config) } returns mockk()
+
+            assertThatThrownBy {
+                service.create(workflowKey, transitionKey, type, config, 0)
+            }.isInstanceOf(PostActionValidationException::class.java)
+                .hasMessageContaining(type)
+        }
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
+    }
+
+    @Test
     fun `create - 필수 config 키 누락이면 PostActionValidationException(400) 발생`() {
         val config = mapOf("url" to "https://x.com") // method 누락
         every { factory.create("CALL_WEBHOOK", config) } throws
