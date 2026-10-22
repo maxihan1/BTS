@@ -5,7 +5,6 @@ package com.bts.workflow.repository
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
-import com.bts.workflow.jooq.tables.WorkflowTransitionScreenFields.Companion.WORKFLOW_TRANSITION_SCREEN_FIELDS
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.DSLContext
@@ -209,13 +208,7 @@ class WorkflowPublishRepository(
                     .returning(WORKFLOW_TRANSITIONS.ID)
                     .fetchOne(WORKFLOW_TRANSITIONS.ID)
                     ?: error("workflow_transitions INSERT 가 id 를 돌려주지 않았다")
-            transition.screen.forEach { field ->
-                dsl.insertInto(WORKFLOW_TRANSITION_SCREEN_FIELDS)
-                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID, id)
-                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD, field.field)
-                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED, field.required)
-                    .execute()
-            }
+            dsl.insertTransitionScreen(id, transition.screen)
             index to id
         }
 }

@@ -10,7 +10,24 @@ import org.springframework.stereotype.Repository
 import java.util.UUID
 
 /**
- * `workflow_transition_screen_fields` 읽기. 쓰기는 발행([WorkflowPublishRepository])과 시드가 한다.
+ * 전환 하나의 화면 행을 심는다 — 발행([WorkflowPublishRepository])과 YAML 시드가 같은 SQL 을 쓰게 한 벌로 둔다.
+ * 호출부의 트랜잭션 안에서 돈다.
+ */
+fun DSLContext.insertTransitionScreen(
+    transitionId: UUID,
+    fields: List<DraftScreenFieldDto>,
+) {
+    fields.forEach { field ->
+        insertInto(WORKFLOW_TRANSITION_SCREEN_FIELDS)
+            .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID, transitionId)
+            .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD, field.field)
+            .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED, field.required)
+            .execute()
+    }
+}
+
+/**
+ * `workflow_transition_screen_fields` 읽기. 쓰기는 [insertTransitionScreen] 이 한다.
  *
  * 워크플로우 단위로 한 번에 읽는다 — 규칙처럼 전환마다 읽으면 편집기를 열 때 전환 수만큼 쿼리가 늘어난다.
  */

@@ -77,8 +77,12 @@ class V212MigrationTest {
               {"to":"v212_done","name":"생성","kind":"INITIAL"},
               {"from":"v212_todo","to":"v212_done","name":"Complete","kind":"NORMAL"},
               {"to":"v212_done","name":"Close","kind":"GLOBAL"},
-              {"from":"v212_done","to":"v212_todo","name":"Reopen","kind":"NORMAL"}]}
+              {"from":"v212_done","to":"v212_todo","name":"Reopen","kind":"NORMAL"},
+              {"from":"v212_todo","to":"v212_done","name":"NoKind"}]}
             """.trimIndent()
+
+        /** 전환이 빈 초안 — `jsonb_agg` 가 NULL 을 내는 자리. 막지 않으면 NOT NULL 위반으로 Flyway 가 멈춘다. */
+        private const val EMPTY_DRAFT_JSON = """{"key":"v212_empty","name":"빈","states":[],"transitions":[]}"""
 
         @JvmStatic
         private fun seedFixture() {
@@ -95,6 +99,9 @@ class V212MigrationTest {
                 transitionSql("Reopen", "NORMAL", "v212_done", "v212_todo"),
                 "INSERT INTO workflow_drafts (workflow_id, definition, base_version) " +
                     "SELECT id, '$DRAFT_JSON'::jsonb, 0 FROM workflows WHERE key = 'v212'",
+                "INSERT INTO workflows (key, name) VALUES ('v212_empty', '빈')",
+                "INSERT INTO workflow_drafts (workflow_id, definition, base_version) " +
+                    "SELECT id, '$EMPTY_DRAFT_JSON'::jsonb, 0 FROM workflows WHERE key = 'v212_empty'",
             )
         }
 
@@ -156,7 +163,19 @@ class V212MigrationTest {
             """Complete=[{"field": "resolution", "required": true}]""",
             """Close=[{"field": "resolution", "required": true}]""",
             "Reopen=null",
+            // kind 가 없는 옛 초안 전환은 NORMAL 로 읽힌다(DraftTransitionDto 기본값) — 같은 규칙을 받는다.
+            """NoKind=[{"field": "resolution", "required": true}]""",
         )
+    }
+
+    @Test
+    fun `전환이 빈 초안은 그대로 남는다 — 정의가 NULL 이 되지 않는다`() {
+        assertThat(
+            strings(
+                "SELECT d.definition -> 'transitions' FROM workflow_drafts d " +
+                    "JOIN workflows w ON w.id = d.workflow_id WHERE w.key = 'v212_empty'",
+            ),
+        ).containsExactly("[]")
     }
 
     @Test

@@ -2,16 +2,18 @@
 
 package com.bts.workflow.seed
 
+import com.bts.workflow.domain.DraftScreenFieldDto
+import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
-import com.bts.workflow.jooq.tables.WorkflowTransitionScreenFields.Companion.WORKFLOW_TRANSITION_SCREEN_FIELDS
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
+import com.bts.workflow.repository.insertTransitionScreen
 import com.bts.workflow.repository.required
 import com.bts.workflow.scheme.repository.SchemeIssueTypeMappingRepository
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -413,13 +415,11 @@ class YamlSeedService(
             val transitionId =
                 insertTransitionRow(dto, workflowId, transition, stateKeyToCompositionId)
             insertValidators(transitionId, transition.validators)
-            transition.screen.forEach {
-                dsl.insertInto(WORKFLOW_TRANSITION_SCREEN_FIELDS)
-                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID, transitionId)
-                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD, it.field)
-                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED, it.required)
-                    .execute()
-            }
+            // 초안 저장과 같은 규칙으로 본다 — 여기서 통과시키면 그 정의를 초안으로 뜨는 순간 400 이고
+            // 편집기는 시작 전환의 화면 칸을 감춰 고칠 길이 없다.
+            val screen = transition.screen.map { DraftScreenFieldDto(field = it.field, required = it.required) }
+            DraftTransitionDto(name = transition.name, kind = transition.kind, screen = screen).checkScreen()
+            dsl.insertTransitionScreen(transitionId, screen)
             insertPostActions(transitionId, transition.postActions)
         }
         rankTransitionsLikeV207(workflowId)

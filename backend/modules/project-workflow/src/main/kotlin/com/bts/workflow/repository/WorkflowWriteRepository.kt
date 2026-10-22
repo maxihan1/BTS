@@ -6,6 +6,7 @@ import com.bts.workflow.application.command.WorkflowStatusSeed
 import com.bts.workflow.domain.TransitionKind
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
+import com.bts.workflow.jooq.tables.WorkflowTransitionScreenFields.Companion.WORKFLOW_TRANSITION_SCREEN_FIELDS
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.DSLContext
@@ -385,13 +386,59 @@ class WorkflowWriteRepository(
             ).execute()
     }
 
-    /** 원본의 전환을 복사한다. 상태 편성은 [copyStatusComposition] 이 먼저 해 둬야 한다. */
+    /**
+     * 원본의 전환과 그 전환 화면(FR-WF-01 D10)을 복사한다. 상태 편성은 [copyStatusComposition] 이 먼저
+     * 해 둬야 한다. 화면을 빠뜨리면 복제본(주 사용 경로)의 DONE 전환이 해결 결과를 묻지 않게 된다.
+     */
     fun copyTransitions(
         sourceId: UUID,
         targetId: UUID,
     ) {
         dsl.copyTransitions(sourceId, targetId)
+        dsl.copyTransitionScreens(sourceId, targetId)
     }
+}
+
+/**
+ * 원본 전환의 화면을 복제본 전환으로 옮긴다.
+ *
+ * `INSERT … SELECT` 로 복사한 전환은 옛 id ↔ 새 id 짝이 남지 않는다. 그래서 복사가 보존하는 값 —
+ * 종류 · 이름 · 표시 순서 · 출발/도착의 카탈로그 `status_id` — 로 짝을 다시 찾는다. 그 다섯이 모두 같은
+ * 전환 둘은 구분할 수 없고 화면도 같아야 하므로 `ON CONFLICT DO NOTHING` 으로 한 벌만 남긴다.
+ */
+private fun DSLContext.copyTransitionScreens(
+    sourceId: UUID,
+    targetId: UUID,
+) {
+    val screen = WORKFLOW_TRANSITION_SCREEN_FIELDS
+    val source = WORKFLOW_TRANSITIONS.`as`("src")
+    val target = WORKFLOW_TRANSITIONS.`as`("tgt")
+    val sourceFrom = WORKFLOW_STATUSES.`as`("src_from")
+    val targetFrom = WORKFLOW_STATUSES.`as`("tgt_from")
+    val sourceTo = WORKFLOW_STATUSES.`as`("src_to")
+    val targetTo = WORKFLOW_STATUSES.`as`("tgt_to")
+
+    insertInto(screen)
+        .columns(screen.TRANSITION_ID, screen.FIELD, screen.REQUIRED)
+        .select(
+            select(target.ID, screen.FIELD, screen.REQUIRED)
+                .from(screen)
+                .join(source).on(source.ID.eq(screen.TRANSITION_ID))
+                .join(sourceTo).on(sourceTo.ID.eq(source.TO_STATUS_ID))
+                .leftJoin(sourceFrom).on(sourceFrom.ID.eq(source.FROM_STATUS_ID))
+                .join(target)
+                .on(
+                    target.WORKFLOW_ID.eq(targetId)
+                        .and(target.KIND.eq(source.KIND))
+                        .and(target.NAME.eq(source.NAME))
+                        .and(target.DISPLAY_ORDER.eq(source.DISPLAY_ORDER)),
+                ).join(targetTo)
+                .on(targetTo.ID.eq(target.TO_STATUS_ID).and(targetTo.STATUS_ID.eq(sourceTo.STATUS_ID)))
+                .leftJoin(targetFrom).on(targetFrom.ID.eq(target.FROM_STATUS_ID))
+                .where(source.WORKFLOW_ID.eq(sourceId))
+                .and(targetFrom.STATUS_ID.isNotDistinctFrom(sourceFrom.STATUS_ID)),
+        ).onConflictDoNothing()
+        .execute()
 }
 
 /**

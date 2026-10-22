@@ -27,11 +27,12 @@ WHERE s.category = 'DONE'
 -- ③ 초안 JSONB 도 같은 규칙으로 채운다. 안 채우면 이 마이그레이션 전에 뜬 초안을 발행하는 순간
 --    ② 가 심은 화면이 지워진다. 도착 상태의 범주는 초안 자신의 states 에서 읽는다.
 --    발행 이력(workflow_publications)은 append-only 라 손대지 않는다.
+--    전환이 빈 초안은 jsonb_agg 가 NULL 을 내고 jsonb_set 이 정의 전체를 NULL 로 만든다 — COALESCE 로 막는다.
 UPDATE workflow_drafts d
 SET definition = jsonb_set(
         d.definition,
         '{transitions}',
-        (SELECT jsonb_agg(
+        COALESCE((SELECT jsonb_agg(
                     CASE
                         WHEN COALESCE(t ->> 'kind', 'NORMAL') <> 'INITIAL'
                             AND NOT t ? 'screen'
@@ -43,6 +44,5 @@ SET definition = jsonb_set(
                         ELSE t
                         END
                     ORDER BY x.ord)
-         FROM jsonb_array_elements(d.definition -> 'transitions') WITH ORDINALITY AS x(t, ord)))
-WHERE jsonb_typeof(d.definition -> 'transitions') = 'array'
-  AND jsonb_array_length(d.definition -> 'transitions') > 0;
+         FROM jsonb_array_elements(d.definition -> 'transitions') WITH ORDINALITY AS x(t, ord)), '[]'::jsonb))
+WHERE jsonb_typeof(d.definition -> 'transitions') = 'array';
