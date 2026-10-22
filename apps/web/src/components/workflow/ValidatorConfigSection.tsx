@@ -362,6 +362,10 @@ export function ValidatorConfigSection({
         </select>
       </div>
 
+      {transitions.find((t) => t.id === selectedTxId)?.kind === 'INITIAL' && (
+        <p className="text-xs text-muted-foreground">{validatorLabels.list.initialTransitionNotice}</p>
+      )}
+
       {selectedTxId !== '' && (
         <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
           <ValidatorListArea

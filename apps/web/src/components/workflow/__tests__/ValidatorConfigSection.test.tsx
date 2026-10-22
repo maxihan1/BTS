@@ -133,6 +133,23 @@ describe('ValidatorConfigSection — 권한은 백엔드가 가른다 (WF-08-1)'
 // 목록 — 로딩/에러/빈/표
 // ─────────────────────────────────────────────────────────────────────────────
 
+describe('ValidatorConfigSection — 최초 전환 (WF-05-3)', () => {
+  it('T6-12: 이슈 생성 전환을 고르면 조건은 걸 수 없다는 안내가 뜨고 일반 전환에서는 안 뜬다', () => {
+    const initial = softwareDefaultFixture.transitions.find((t) => t.kind === 'INITIAL')
+    if (initial === undefined) {
+      throw new Error('software-default 픽스처에 최초 전환이 없다 — 안내를 잴 자리가 사라졌다.')
+    }
+    renderSection()
+
+    selectTransition(initial.id)
+    expect(screen.getByText(validatorLabels.list.initialTransitionNotice)).toBeInTheDocument()
+
+    // 비-공허 짝 — 안내가 늘 떠 있으면 위 단언은 아무것도 재지 않는다.
+    selectTransition(TX_ID)
+    expect(screen.queryByText(validatorLabels.list.initialTransitionNotice)).not.toBeInTheDocument()
+  })
+})
+
 describe('ValidatorConfigSection — 목록', () => {
   it('T6-2: 전환을 고르면 규칙 목록이 뜬다', async () => {
     renderSection()
