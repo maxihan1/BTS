@@ -763,6 +763,29 @@ class WorkflowPublishServiceIntegrationTest {
         assertThat(validators).isEqualTo(1)
     }
 
+    @Test
+    fun `초안의 전환 순서가 발행 뒤 런타임 전환 순서가 된다`() {
+        // 편집기에서 끌어 정한 순서가 이슈 화면 상태 메뉴의 순서다 (FR-WF-01 D9). 정본은 배열 위치 →
+        // display_order 이고, 두 번 뒤집어 발행해 이름순·id 순 같은 우연한 정렬과 가른다.
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val initial = DraftTransitionDto(from = null, to = "open", name = "이슈 생성", kind = "INITIAL")
+        val finish = DraftTransitionDto(from = "open", to = "done", name = "완료하기")
+        val close = DraftTransitionDto(from = "open", to = "done", name = "바로 닫기")
+        val base = draftKeepingBoth(key)
+
+        draftRepository.upsert(id, base.copy(transitions = listOf(initial, finish, close)), 0, null)
+        service.publish(ACTOR, key, baseVersion = 0)
+        val first = cache.findByKey(key)!!.transitions.map { it.name }
+
+        draftRepository.upsert(id, base.copy(transitions = listOf(close, initial, finish)), 1, null)
+        service.publish(ACTOR, key, baseVersion = 1)
+        val second = cache.findByKey(key)!!.transitions.map { it.name }
+
+        assertThat(first).containsExactly("이슈 생성", "완료하기", "바로 닫기")
+        assertThat(second).containsExactly("바로 닫기", "이슈 생성", "완료하기")
+    }
+
     // ── ★ 다이어그램 노드 좌표의 왕복 (FR-WF-07 D8) ──────────────────────────
 
     @Test

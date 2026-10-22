@@ -34,6 +34,8 @@ interface WorkflowEditorTabsProps {
   onAddTransition: () => void
   onEditTransition: (target: TargetTransition) => void
   onRemoveTransition: (target: TargetTransition) => void
+  /** 전환 목록을 끌어 바꾼 순서 — 로컬 id 전체 목록 (FR-WF-01 D9) */
+  onReorderTransitions: (orderedLocalIds: string[]) => void
 
   // ── 다이어그램 탭 (FR-WF-07 D8) ────────────────────────────────────────────
   /** 초안 상태 — 좌표를 포함한다. 목록 탭의 `statuses` 와 달리 캔버스 계산용이다 */
@@ -72,6 +74,7 @@ function WorkflowEditorTabs({
   onAddTransition,
   onEditTransition,
   onRemoveTransition,
+  onReorderTransitions,
   canvasStates,
   canvasTransitions,
   locked,
@@ -110,6 +113,7 @@ function WorkflowEditorTabs({
           onRemove={(transition) => {
             onRemoveTransition({ localId: transition.id, name: transition.name })
           }}
+          onReorder={onReorderTransitions}
         />
       </TabsContent>
 
