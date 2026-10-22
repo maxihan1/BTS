@@ -6,16 +6,19 @@ import com.bts.shared.permission.WorkflowDefinitionAccessDeniedException
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.shared.permission.WorkflowScope
+import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.domain.DraftRuleDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.domain.exception.WorkflowInvalidRequestException
+import com.bts.workflow.domain.exception.WorkflowMigrationInFlightException
 import com.bts.workflow.domain.exception.WorkflowNotFoundException
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowVersionRow
 import com.bts.workflow.scheme.application.WorkflowOwnershipScopeResolver
+import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
 import com.bts.workflow.seed.StandardWorkflowDefaults
 import com.bts.workflow.seed.WorkflowYamlDto
 import org.springframework.stereotype.Service
@@ -41,9 +44,15 @@ import java.util.UUID
  * [com.bts.workflow.repository.WorkflowDraftRepository.upsert] 가 `DO UPDATE` 에서 그 컬럼을
  * 빼는 것으로 SQL 이 강제한다.
  *
- * @suppress LongParameterList — 협력자 7개다. 초안 왕복에 필요한 저장소 3(초안·발행·현재정의) +
- * 기본값 카탈로그 1 + 규칙 기록 1 + 권한 판정 2(판정기 · 소유 스코프 결정)로, 묶을 만한 응집이
- * 없다. 억지로 파라미터 객체를 만들면 이름만 있고 의미가 없는 상자가 하나 는다. 전역 임계값은
+ * ### 이관이 끝나기 전에는 초안을 바꿀 수 없다 (WF-07-3)
+ * 이관 접수는 이 BC 에 흔적을 남기지 않고 초안 저장은 앵커 버전을 올리지 않아, 이관을 예약한 뒤
+ * 초안을 고쳐도 아무 검사도 그것을 보지 못한다 — 예약한 이관이 고친 초안과 상관없이 이슈를
+ * 옮긴다. 그래서 저장 · 폐기 · 복원이 [requireNoMigrationInFlight] 를 지난다. 지라는 매핑과
+ * 발행이 한 조작이라 이 창이 없고, BTS 가 둘로 나눈 결과 생긴 창이다.
+ *
+ * @suppress LongParameterList — 협력자 9개다. 초안 왕복에 필요한 저장소 3(초안·발행·현재정의) +
+ * 기본값 카탈로그 1 + 규칙 기록 1 + 권한 판정 2(판정기 · 소유 스코프 결정) + 진행 중 이관 판정 2
+ * (스킴 할당 · 이관 조회)로, 묶을 만한 응집이 없다. 억지로 파라미터 객체를 만들면 이름만 있고 의미가 없는 상자가 하나 는다. 전역 임계값은
  * 건드리지 않는다.
  */
 @Suppress("LongParameterList")
@@ -56,6 +65,8 @@ class WorkflowDraftService(
     private val permissionResolver: WorkflowDefinitionPermissionResolver,
     private val ruleWriter: DraftRuleWriter,
     private val scopeResolver: WorkflowOwnershipScopeResolver,
+    private val schemeAssignmentRepository: ProjectWorkflowSchemeAssignmentRepository,
+    private val migrationInFlightPort: MigrationInFlightPort,
 ) {
     /**
      * 초안을 돌려준다. 없으면 지금 발행된 정의를 초안 형태로 돌려준다(저장하지는 않는다).
@@ -102,6 +113,7 @@ class WorkflowDraftService(
      *   초안 행이 새로 생길 때만 앵커로 기록된다(이미 있으면 그 행의 값이 그대로 남는다).
      * @throws WorkflowInvalidRequestException 정의가 invariant 를 어겼을 때, 또는 편집기가 아직
      *   존재하지 않는 미래 버전을 앵커로 주장할 때
+     * @throws WorkflowMigrationInFlightException 끝나지 않은 상태 이관이 있을 때
      */
     @Transactional
     fun save(
@@ -127,6 +139,7 @@ class WorkflowDraftService(
             definition,
             publishRepository.findCatalogStatuses(definition.states.map { it.key }),
         )
+        requireNoMigrationInFlight(key, workflow.id)
 
         draftRepository.upsert(workflow.id, definition.copy(key = key), baseVersion, actorId)
     }
@@ -157,7 +170,9 @@ class WorkflowDraftService(
             WorkflowDefinitionPermission.UPDATE,
             WorkflowDefinitionPermission.PUBLISH,
         )
-        return draftRepository.deleteByWorkflowId(requireLive(key).id)
+        val workflowId = requireLive(key).id
+        requireNoMigrationInFlight(key, workflowId)
+        return draftRepository.deleteByWorkflowId(workflowId)
     }
 
     /**
@@ -201,6 +216,7 @@ class WorkflowDraftService(
         validate(key, definition)
         // 복원도 편집의 일종이라 앵커 규칙이 같다 — 요청이 실어 온 값을 그대로 넘긴다.
         requireAnchorNotAhead(key, baseVersion, workflow.version)
+        requireNoMigrationInFlight(key, workflow.id)
         draftRepository.upsert(workflow.id, definition, baseVersion, actorId)
 
         // 저장된 행을 다시 읽어 응답을 만든다 — 두 번째 트랜잭션으로 나가면 그 사이 폐기된 초안을
@@ -259,6 +275,27 @@ class WorkflowDraftService(
             }
         }
         throw first ?: error("권한 후보가 비어 있다 — 호출부가 최소 하나를 넘겨야 한다")
+    }
+
+    /**
+     * 끝나지 않은 상태 이관이 이 워크플로우의 프로젝트에 걸려 있으면 초안을 바꾸지 못하게 한다.
+     *
+     * 초안 행을 먼저 잠그고 나서 묻는다 — 접수(`WorkflowPublishService.migrate`)가 같은 행을 잠근 채
+     * 큐잉하므로, 잠금을 얻은 뒤의 조회는 막 커밋된 이관까지 본다. 묻고 나서 잠그면 그 사이 커밋된
+     * 이관을 놓친다.
+     *
+     * ponytail: 범위가 프로젝트 단위라 같은 프로젝트를 쓰는 형제 워크플로우의 이관도 이 초안을 막는다.
+     * 접수 쪽 F15 가드와 같은 축이고 이관이 끝나면 풀린다. 이관 payload 에 워크플로우 키가 실리면 좁힌다.
+     */
+    private fun requireNoMigrationInFlight(
+        key: String,
+        workflowId: UUID,
+    ) {
+        draftRepository.lockForUpdate(workflowId)
+        val projectKeys = schemeAssignmentRepository.findMigrationScopesByWorkflowId(workflowId).map { it.ref.key }
+        if (migrationInFlightPort.hasInFlightMigration(projectKeys.toSet())) {
+            throw WorkflowMigrationInFlightException(key)
+        }
     }
 
     /**

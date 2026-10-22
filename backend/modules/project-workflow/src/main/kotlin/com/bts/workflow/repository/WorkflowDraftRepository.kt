@@ -110,6 +110,21 @@ class WorkflowDraftRepository(
         )
 
     /**
+     * 초안 행을 호출자 트랜잭션 끝까지 잠근다(`FOR UPDATE`). 행이 없으면 아무것도 잠그지 않는다.
+     *
+     * 이관 접수와 초안 변경이 이 행에서 줄을 선다(WF-07-3) — 이관이 읽은 초안이 커밋 전에
+     * 바뀌지 않고, 초안 변경은 막 커밋된 이관을 보고 나서 판정한다. 행이 없을 때 잠글 것이
+     * 없어도 되는 이유는 이관이 초안 없이는 접수되지 않아서다.
+     */
+    fun lockForUpdate(workflowId: UUID) {
+        dsl.select(WORKFLOW_DRAFTS.WORKFLOW_ID)
+            .from(WORKFLOW_DRAFTS)
+            .where(WORKFLOW_DRAFTS.WORKFLOW_ID.eq(workflowId))
+            .forUpdate()
+            .fetch()
+    }
+
+    /**
      * 초안을 폐기한다.
      *
      * @return 지운 행이 있으면 true. 호출부가 204 와 404 를 가르는 근거다 — 없는 것을 지웠다고

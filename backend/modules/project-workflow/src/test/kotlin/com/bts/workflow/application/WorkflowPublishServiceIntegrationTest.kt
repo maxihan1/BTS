@@ -1384,8 +1384,8 @@ class WorkflowPublishServiceIntegrationTest {
      * ★ 끝나지 않은 이관이 있는데 또 큐잉하면 **모순되는 작업 2건**이 나란히 돈다 (F15 · E13).
      *
      * ### 막는 것은 유령이 아니다
-     * `migrate` 는 F4 대로 project-workflow 에 흔적을 남기지 않아 그 사이 초안 편집을 막지 못한다.
-     * 그래도 **유령은 안 생긴다** — 되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 이 막는다.
+     * 그 사이 초안 편집은 WF-07-3 이 초안 서비스에서 막는다(`WorkflowDraftServiceIntegrationTest`).
+     * 막지 않더라도 **유령은 안 생긴다** — 되살린 상태는 발행 시 다시 `removed` 에 들어가 F10 이 막는다.
      * 남는 실제 피해는 「done→open」과 「done→closed」가 동시에 큐잉돼 **워커 실행 순서가 결과를
      * 정하는** 것이고, 이 가드가 그것을 막는다.
      *

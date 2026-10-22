@@ -208,30 +208,40 @@ class WorkflowPublishService(
             WorkflowDefinitionPermission.PUBLISH,
             scopeResolver.ofWorkflow(key),
         )
-        val (workflowId, definition) = prepareDraft(key, baseVersion)
-
-        // 편성 조회는 한 번만 한다 — `removed` 와 F16 의 도착지 판정이 같은 집합을 근거로 삼는다.
-        val live = publishRepository.findComposedStatusKeys(workflowId)
-        val removed = live - definition.states.map { it.key }.toSet()
-
-        // ★이관 범위는 **아카이브를 포함**한다 — 발행 차단 카운트(findProjectRefsByWorkflowId)와
-        //   일부러 다른 집합이다. 범위에서 빼면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이
-        //   사라지고, 넣어 두면 bulk_operation_items 에 PROJECT_ARCHIVED 로 남아 셀 수 있다(E7).
-        //   프로젝트마다 이 워크플로우가 맡는 이슈 타입을 함께 싣는다 — 형제 워크플로우의 이슈를 옮기지
-        //   않기 위해서다(WF-07-2).
-        val scope = schemeAssignmentRepository.findMigrationScopesByWorkflowId(workflowId)
-        val projectKeys = scope.map { it.ref.key }.toSet()
-
-        requireSoundMappings(key, definition, live, removed, scope.associate { it.ref.id to it.typeFilter }, mappings)
-
         // ★F15 는 검사-후-사용이라 직렬화 없이는 동시 요청 둘이 모두 통과한다. 발행과 **같은 키
         //   공간**의 advisory lock 을 잡아 발행↔이관 경합까지 함께 닫는다. 캐시는 건드리지 않는다 —
         //   이관은 정의를 바꾸지 않으므로 무효화할 항목이 없다.
-        val bulkOperationId =
-            cache.withKeyLock(key) {
-                if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
-                    throw WorkflowMigrationInFlightException(key)
-                }
+        // ★초안은 락 안에서 행을 잠근 **뒤에** 읽는다(WF-07-3). 초안 저장은 이 키 락을 잡지 않고
+        //   같은 행 잠금으로 줄을 서므로, 락 밖에서 읽으면 그 사이 바뀐 초안 대신 옛 초안대로 큐잉된다.
+        return cache.withKeyLock(key) {
+            draftRepository.lockForUpdate(requireLive(key).id)
+            val (workflowId, definition) = prepareDraft(key, baseVersion)
+
+            // 편성 조회는 한 번만 한다 — `removed` 와 F16 의 도착지 판정이 같은 집합을 근거로 삼는다.
+            val live = publishRepository.findComposedStatusKeys(workflowId)
+            val removed = live - definition.states.map { it.key }.toSet()
+
+            // ★이관 범위는 **아카이브를 포함**한다 — 발행 차단 카운트(findProjectRefsByWorkflowId)와
+            //   일부러 다른 집합이다. 범위에서 빼면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이
+            //   사라지고, 넣어 두면 bulk_operation_items 에 PROJECT_ARCHIVED 로 남아 셀 수 있다(E7).
+            //   프로젝트마다 이 워크플로우가 맡는 이슈 타입을 함께 싣는다 — 형제 워크플로우의 이슈를
+            //   옮기지 않기 위해서다(WF-07-2).
+            val scope = schemeAssignmentRepository.findMigrationScopesByWorkflowId(workflowId)
+            val projectKeys = scope.map { it.ref.key }.toSet()
+
+            requireSoundMappings(
+                key,
+                definition,
+                live,
+                removed,
+                scope.associate { it.ref.id to it.typeFilter },
+                mappings,
+            )
+
+            if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
+                throw WorkflowMigrationInFlightException(key)
+            }
+            val bulkOperationId =
                 issueStatusMigrationPort.enqueueStatusMigration(
                     StatusMigrationCommand(
                         actorUserId = actorId,
@@ -239,17 +249,17 @@ class WorkflowPublishService(
                         mappings = mappings,
                     ),
                 )
-            }
 
-        log.info(
-            "상태 이관 큐잉. key={} bulkOperationId={} removed={} projects={} mappings={}",
-            key,
-            bulkOperationId,
-            removed,
-            projectKeys.size,
-            mappings.size,
-        )
-        return bulkOperationId
+            log.info(
+                "상태 이관 큐잉. key={} bulkOperationId={} removed={} projects={} mappings={}",
+                key,
+                bulkOperationId,
+                removed,
+                projectKeys.size,
+                mappings.size,
+            )
+            bulkOperationId
+        }
     }
 
     // ── 내부 ──────────────────────────────────────────────────────────────────
