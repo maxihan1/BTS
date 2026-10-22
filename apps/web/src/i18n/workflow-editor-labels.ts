@@ -251,6 +251,16 @@ export const workflowEditorLabels = {
     kindGlobal: '모든 상태에서',
     /** GLOBAL 설명 */
     kindGlobalDescription: '이슈가 어느 상태에 있든 쓸 수 있습니다',
+    /** 전환 화면 묶음 이름 (FR-WF-01 D10) */
+    screen: '전환 화면',
+    /** 전환 화면 설명 — 무엇을 정하는지 */
+    screenDescription: '전환할 때 대화상자에서 입력받을 필드입니다. 필수는 비워 두면 전환할 수 없습니다',
+    /** 필드 표시명 — `SCREEN_FIELDS` 와 1:1. 이슈 화면 라벨(`ko.ts`)과 같은 말을 쓴다 */
+    screenFields: { resolution: '해결 결과', assignee: '담당자', comment: '코멘트' },
+    /** 필수 체크박스 옆에 보이는 글자 */
+    screenRequiredShort: '필수',
+    /** 필드별 필수 체크박스의 이름 — 「해결 결과 필수」처럼 읽힌다 */
+    screenRequired: (field: string): string => `${field} 필수`,
   },
 
   /**

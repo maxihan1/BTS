@@ -13,6 +13,7 @@ import {
   seedWorkflowKeys,
   versionOf,
   publishedLayouts,
+  publishedScreens,
 } from './workflow-draft-fixtures'
 
 /** 백엔드와 같은 중첩 봉투로 실패를 돌려준다. */
@@ -43,6 +44,8 @@ function keyOf(params: Record<string, unknown>): string {
 /** 발행된 정의를 초안 형태로 옮긴다. `GET /draft` 가 초안 없을 때 주는 값이다. */
 function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
   const layouts = publishedLayouts.get(workflow.key)
+  const screens = publishedScreens.get(workflow.key)
+  const doneKeys = new Set(workflow.states.filter((s) => s.category === 'DONE').map((s) => s.key))
   return {
     key: workflow.key,
     name: workflow.name,
@@ -56,7 +59,7 @@ function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
       layoutX: layouts?.get(s.key)?.x ?? null,
       layoutY: layouts?.get(s.key)?.y ?? null,
     })),
-    transitions: workflow.transitions.map((t) => ({
+    transitions: workflow.transitions.map((t, index) => ({
       from: t.fromStateKey,
       to: t.toStateKey,
       name: t.name,
@@ -64,6 +67,10 @@ function toDraftDefinition(workflow: WorkflowView): DraftDefinition {
       // 서버는 규칙을 함께 싣는다. 목이 빈 목록만 주면 「규칙을 왕복시키는가」를 잴 수 없다.
       validators: [],
       postActions: [],
+      // 발행한 적 없으면 V212 백필 규칙 — DONE 도착 · 시작 전환 아님 → 해결 결과 필수.
+      screen:
+        screens?.[index] ??
+        (t.kind !== 'INITIAL' && doneKeys.has(t.toStateKey) ? [{ field: 'resolution', required: true }] : []),
     })),
   }
 }
@@ -75,6 +82,11 @@ function toWorkflowView(definition: DraftDefinition): WorkflowView {
   publishedLayouts.set(
     definition.key,
     new Map(definition.states.map((s) => [s.key, { x: s.layoutX, y: s.layoutY }])),
+  )
+  // 전환 화면도 같은 자리에서 내려쓴다 — 실서버 `insertTransitions` 가 화면 행을 함께 심는다.
+  publishedScreens.set(
+    definition.key,
+    definition.transitions.map((t) => t.screen),
   )
   return {
     key: definition.key,

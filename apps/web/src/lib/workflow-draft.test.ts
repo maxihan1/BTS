@@ -31,7 +31,7 @@ function definition(): DraftDefinition {
     description: null,
     states: [OPEN, DOING, DONE],
     transitions: [
-      { from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [] },
+      { from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', validators: [], postActions: [], screen: [] },
       {
         from: 'open',
         to: 'doing',
@@ -39,8 +39,9 @@ function definition(): DraftDefinition {
         kind: 'NORMAL',
         validators: [{ type: 'RequiredField', config: { field: 'assignee' } }],
         postActions: [{ type: 'AddWatcher', config: {} }],
+        screen: [{ field: 'comment', required: true }],
       },
-      { from: 'doing', to: 'done', name: '완료', kind: 'NORMAL', validators: [], postActions: [] },
+      { from: 'doing', to: 'done', name: '완료', kind: 'NORMAL', validators: [], postActions: [], screen: [] },
     ],
   }
 }
@@ -173,7 +174,7 @@ describe('전환 편집', () => {
     const state = draftReducer(before, {
       type: 'updateTransition',
       localId: target.localId,
-      input: { from: 'open', to: 'doing', name: '착수', kind: 'NORMAL' },
+      input: { from: 'open', to: 'doing', name: '착수', kind: 'NORMAL', screen: [] },
     })
     const updated = state.draft.transitions.find((t) => t.localId === target.localId)
 
@@ -185,7 +186,7 @@ describe('전환 편집', () => {
   it('createTransition 은 규칙 없이 시작한다', () => {
     const state = draftReducer(loaded(), {
       type: 'createTransition',
-      input: { from: 'done', to: 'open', name: '재열기', kind: 'NORMAL' },
+      input: { from: 'done', to: 'open', name: '재열기', kind: 'NORMAL', screen: [] },
     })
     const created = state.draft.transitions.at(-1)
 
@@ -193,10 +194,37 @@ describe('전환 편집', () => {
     expect(created?.validators).toEqual([])
   })
 
+  it('폼이 준 전환 화면이 전환에 실린다', () => {
+    const before = loaded()
+    const target = before.draft.transitions.find((t) => t.name === '완료')!
+    const screen = [{ field: 'resolution' as const, required: true }]
+
+    const state = draftReducer(before, {
+      type: 'updateTransition',
+      localId: target.localId,
+      input: { from: 'doing', to: 'done', name: '완료', kind: 'NORMAL', screen },
+    })
+
+    expect(state.draft.transitions.find((t) => t.localId === target.localId)?.screen).toEqual(screen)
+  })
+
+  it('시작 전환에는 화면이 실리지 않는다 — 백엔드가 400 이다', () => {
+    const before = loaded()
+    const initial = before.draft.transitions.find((t) => t.kind === 'INITIAL')!
+
+    const state = draftReducer(before, {
+      type: 'updateTransition',
+      localId: initial.localId,
+      input: { from: null, to: 'open', name: '이슈 생성', kind: 'INITIAL', screen: [{ field: 'comment', required: false }] },
+    })
+
+    expect(state.draft.transitions.find((t) => t.localId === initial.localId)?.screen).toEqual([])
+  })
+
   it('GLOBAL·INITIAL 전환은 from 이 null 이다', () => {
     const state = draftReducer(loaded(), {
       type: 'createTransition',
-      input: { from: 'open', to: 'done', name: '어디서나 완료', kind: 'GLOBAL' },
+      input: { from: 'open', to: 'done', name: '어디서나 완료', kind: 'GLOBAL', screen: [] },
     })
 
     // 출발지가 없다는 것이 GLOBAL 의 정의다. from 을 실어 보내면 백엔드가 400 이다.
@@ -208,7 +236,7 @@ describe('전환 편집', () => {
 
     const state = draftReducer(before, {
       type: 'createTransition',
-      input: { from: null, to: 'done', name: '또 다른 시작', kind: 'INITIAL' },
+      input: { from: null, to: 'done', name: '또 다른 시작', kind: 'INITIAL', screen: [] },
     })
 
     // 발행 경계가 「정확히 1개」를 요구한다. 로컬에서 막으면 저장 왕복 없이 즉시 안다.
@@ -240,7 +268,7 @@ describe('revision', () => {
     const before = loaded()
     const state = draftReducer(before, {
       type: 'createTransition',
-      input: { from: null, to: 'done', name: '또 다른 시작', kind: 'INITIAL' },
+      input: { from: null, to: 'done', name: '또 다른 시작', kind: 'INITIAL', screen: [] },
     })
 
     expect(state.revision).toBe(before.revision)
@@ -268,6 +296,12 @@ describe('toWireDefinition', () => {
 
     expect(wire.transitions[1]).not.toHaveProperty('localId')
     expect(wire.transitions[1]?.validators).toHaveLength(1)
+  })
+
+  it('★전환 화면을 그대로 싣는다 — 버리면 발행이 화면을 지운다 (FR-WF-01 D10)', () => {
+    const wire = toWireDefinition(loaded().draft)
+
+    expect(wire.transitions[1]?.screen).toEqual([{ field: 'comment', required: true }])
   })
 
   it('스키마가 통과시키는 형태다', async () => {
