@@ -117,6 +117,8 @@ export const issueDetailStrings = {
   transitionVersionConflictError: '다른 사용자가 이미 이 이슈를 수정했습니다. 페이지를 새로고침해 최신 상태를 확인해 주세요.',
   /** 422 workflow_not_configured 에러 메시지 (S5) */
   transitionWorkflowNotConfiguredError: '이 이슈에 워크플로우가 설정되지 않아 상태를 변경할 수 없습니다.',
+  /** 사유를 모르는 전환 실패(네트워크 등) — 「허용되지 않는 전환」이라고 단정하지 않는다 */
+  transitionGenericError: '상태 변경 중 문제가 발생했습니다. 다시 시도해 주세요.',
 
   // ── 본문(description) 버튼 ─────────────────────────────────────────
   //

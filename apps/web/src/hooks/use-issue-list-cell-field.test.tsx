@@ -175,6 +175,23 @@ describe('useIssueListCellField', () => {
     expect(firstMessage).not.toBe(secondMessage)
   })
 
+  it('409 TRANSITION_NOT_ALLOWED 에 reason 이 있으면 그 문장을 띄운다 (WF-01-1a)', async () => {
+    const reason = "'해결 결과' 항목을 채워야 이 전환을 할 수 있습니다."
+    vi.mocked(transitionIssue).mockRejectedValueOnce(
+      new ApiError(409, { errorCode: 'TRANSITION_NOT_ALLOWED', reason }),
+    )
+
+    const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
+      wrapper: createWrapper(queryClient),
+    })
+    await act(async () => {
+      result.current.mutate({ issueKey: 'ATLAS-1', field: 'status', toStatusKey: 'DONE', expectedVersion: 1 })
+    })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+
+    expect(vi.mocked(toast.error).mock.calls.at(-1)?.[0]).toBe(reason)
+  })
+
   // ───────────────────────────────────────────────────────────────────────────
   // C1 — 상세 캐시 무효화
   //
@@ -260,12 +277,14 @@ describe('useIssueListCellField', () => {
   it.each([
     ['assignee', issueDetailStrings.assigneeChangeError],
     ['priority', issueDetailStrings.priorityChangeError],
+    ['status', issueDetailStrings.transitionGenericError],
   ] as const)(
     '%s 일반 실패는 i18n 정본 문구를 쓴다 (리뷰 C5)',
     async (field, expected) => {
       // 409/422 가 아닌 일반 실패 — 사유별 분기가 아니라 fallback 경로를 탄다
       vi.mocked(updateIssue).mockRejectedValue(new Error('network down'))
       vi.mocked(changeAssignee).mockRejectedValue(new Error('network down'))
+      vi.mocked(transitionIssue).mockRejectedValue(new Error('network down'))
 
       const { result } = renderHook(() => useIssueListCellField(LIST_KEY), {
         wrapper: createWrapper(queryClient),
@@ -277,6 +296,7 @@ describe('useIssueListCellField', () => {
           field,
           toAssigneeId: null,
           toPriority: 1,
+          toStatusKey: 'DONE',
           expectedVersion: 1,
         })
       })

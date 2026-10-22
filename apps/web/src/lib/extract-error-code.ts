@@ -21,3 +21,18 @@ export function extractErrorCode(body: unknown): string | null {
   const code = b['errorCode'] ?? b['error']
   return typeof code === 'string' ? code : null
 }
+
+/**
+ * 막힌 전환의 409 본문에서 서버가 준 거부 사유 문장을 꺼낸다 (WF-01-1a).
+ *
+ * issue-tracking 이 검증기 사유를 ProblemDetail 의 `reason` 에 싣는다 — `detail` 은 영어 로그
+ * 틀이라 화면에 쓰지 않는다. 이슈 상세 · 목록 셀이 같은 규칙으로 읽도록 여기 한 벌만 둔다.
+ *
+ * @param body ApiError.body (unknown)
+ * @returns 비어 있지 않은 사유 문장, 없으면 null
+ */
+export function extractErrorReason(body: unknown): string | null {
+  if (body === null || typeof body !== 'object') return null
+  const reason = (body as Record<string, unknown>)['reason']
+  return typeof reason === 'string' && reason.trim() !== '' ? reason : null
+}

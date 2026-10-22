@@ -10,6 +10,7 @@ import {
 } from '@/api/issues'
 import type { AmbiguousTransitionCandidate, TransitionIssueInput } from '@/api/issues'
 import { ApiError } from '@/api/client'
+import { extractErrorReason } from '@/lib/extract-error-code'
 import { issueDetailStrings } from '@/i18n/ko'
 import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 
@@ -159,7 +160,9 @@ function notifyTransitionFailure(error: unknown, invalidate: () => void): void {
       //   전환을 계속 내밀어 그 이슈는 **새로고침 전까지 상태를 못 바꾼다.**
       //   아래 VERSION_CONFLICT 분기가 같은 이유로 이미 같은 것을 한다.
       invalidate()
-      toast.error(issueDetailStrings.transitionNotAllowedError)
+      // 검증기가 막았으면 그 사유를 그대로 말한다 (WF-01-1a). 낡은 transitionId 처럼 사유가
+      //   없는 경우만 고정 문구로 돌아간다.
+      toast.error(extractErrorReason(body) ?? issueDetailStrings.transitionNotAllowedError)
       return
     }
     // VERSION_CONFLICT(S4) — 최신 데이터 + 전환 목록 재조회 유도
@@ -171,7 +174,7 @@ function notifyTransitionFailure(error: unknown, invalidate: () => void): void {
     toast.error(issueDetailStrings.transitionWorkflowNotConfiguredError)
     return
   }
-  toast.error(issueDetailStrings.transitionNotAllowedError)
+  toast.error(issueDetailStrings.transitionGenericError)
 }
 
 /** {@link useIssueTransitionFlow} 반환값 — 화면이 필요한 전환 배선 전부. */

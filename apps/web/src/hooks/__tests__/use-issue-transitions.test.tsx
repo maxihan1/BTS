@@ -1,16 +1,21 @@
 // 이슈 가용전환 조회 + 전환 실행 TanStack Query 훅 테스트 — RED phase
 import { renderHook, waitFor, act } from '@testing-library/react'
+import { vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import type { IssueTransition, TransitionIssueInput } from '@/api/issues'
 import { ApiError } from '@/api/client'
+import { toast } from 'sonner'
+import { issueDetailStrings } from '@/i18n/ko'
 import {
   useIssueTransitions,
   useTransitionIssue,
   useAmbiguousTransition,
   useIssueTransitionFlow,
 } from '../use-issue-transitions'
+
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 function createWrapper() {
   const client = new QueryClient({
@@ -514,5 +519,47 @@ describe('useIssueTransitionFlow', () => {
     //   으로 던지고 그것이 이 코드로 온다. 목록을 재조회하지 않으면 드롭다운이 사라진 전환을
     //   계속 내밀어, 그 이슈는 **새로고침 전까지 상태를 못 바꾼다.**
     expect(client.getQueryState(['issue-transitions', 'ATLAS-1'])?.isInvalidated).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WF-01-1a — 막힌 전환은 서버가 준 사유를 그대로 말한다 (U14)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('useIssueTransitionFlow — 실패 안내 문구 (WF-01-1a)', () => {
+  async function failWith(response: Response | Error) {
+    vi.mocked(toast.error).mockClear()
+    server.use(
+      http.post('/api/v1/issues/ATLAS-1/transition', () =>
+        response instanceof Error ? HttpResponse.error() : response,
+      ),
+    )
+    const { wrapper } = createWrapper()
+    const { result } = renderHook(() => useIssueTransitionFlow('ATLAS-1'), { wrapper })
+    await act(async () => {
+      result.current.mutate({ toStatusKey: 'done', expectedVersion: 1 })
+    })
+    await waitFor(() => expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1))
+    return vi.mocked(toast.error).mock.calls[0]?.[0]
+  }
+
+  it('409 TRANSITION_NOT_ALLOWED 에 reason 이 있으면 그 문장을 띄운다', async () => {
+    const reason = "'해결 결과' 항목을 채워야 이 전환을 할 수 있습니다."
+    const shown = await failWith(
+      HttpResponse.json({ errorCode: 'TRANSITION_NOT_ALLOWED', reason }, { status: 409 }),
+    )
+    expect(shown).toBe(reason)
+  })
+
+  it('reason 이 없으면 기존 고정 문구로 돌아간다', async () => {
+    const shown = await failWith(
+      HttpResponse.json({ errorCode: 'TRANSITION_NOT_ALLOWED' }, { status: 409 }),
+    )
+    expect(shown).toBe(issueDetailStrings.transitionNotAllowedError)
+  })
+
+  it('네트워크 실패를 「허용되지 않는 전환」이라고 말하지 않는다', async () => {
+    const shown = await failWith(new Error('network'))
+    expect(shown).toBe(issueDetailStrings.transitionGenericError)
   })
 })
