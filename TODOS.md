@@ -3495,7 +3495,15 @@ enum `.name` · 보간 `"WORKFLOW_${ex.scope}_QUOTA"` · **밑줄 없는 단어*
 
 ---
 
-## ⬜ 워크플로우 — 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (선재 · 미착수 · T2)
+## ✅ 워크플로우 — 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (선재 · **해소** · T2)
+
+**해소 — 2026-10-22 · WF-04-5.** 원인이 둘이었다 — `@Valid` 부재와 **모듈에 검증 구현체가 없음**(API jar 만).
+`spring-boot-starter-validation` 을 모듈에 선언하고(app 런타임에는 이미 실려 있었다) 애노테이션을 단 바디 6곳
+(`WorkflowController` 생성·수정·복제 · `WorkflowStatusCompositionController` 순서 · `StatusController` 생성·수정)에
+`@Valid` 를 걸었다. 워크플로우 key 는 생성·복제 모두 `[A-Za-z0-9_-]+` 다. 실패는 컨트롤러로 범위를 좁힌
+`RequestValidationExceptionHandler` 가 400 `WORKFLOW_INVALID_REQUEST` 로 낸다 — 전역 advice 에 두면 다른 BC 의
+검증 응답을 빼앗는다. 판별식은 `RequestValidationMvcTest`(`@Valid` 없이 5/6 red 를 먼저 봤다).
+도메인 invariant(`Workflow.of()`)로는 올리지 않았다 — 저장된 행을 읽을 때도 지나는 길이라 기존 key 가 형식에 어긋나면 조회가 죽는다.
 
 **쉬운 말.** 서버가 받는 값에 「비어 있으면 안 된다」 같은 규칙을 붙여 놨는데, 그 규칙을 실제로 검사하라는 지시가 빠져 있어 아무 효과가 없다.
 

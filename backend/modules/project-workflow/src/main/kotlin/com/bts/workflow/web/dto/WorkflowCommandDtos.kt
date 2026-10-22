@@ -14,6 +14,12 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import java.util.UUID
 
+/**
+ * 워크플로우 key 형식. 영문·숫자·`_`·`-` 만 — key 는 URL 경로 조각이라 `/`·`.` 이 들어가면
+ * 링크가 엉뚱한 곳을 가리킨다(`../../users`). 시드 key(`bug-tracking`)와 복제 기본값(`*-copy`)이 통과한다.
+ */
+private const val WORKFLOW_KEY_PATTERN = "[A-Za-z0-9_-]+"
+
 /** 새 워크플로우에 처음 편성할 상태. `key` 가 카탈로그에 있으면 재사용한다. */
 data class WorkflowStatusSeedRequest(
     @field:NotBlank
@@ -36,6 +42,7 @@ data class WorkflowStatusSeedRequest(
 data class CreateWorkflowRequest(
     @field:NotBlank
     @field:Size(max = 100)
+    @field:Pattern(regexp = WORKFLOW_KEY_PATTERN)
     val key: String,
     @field:NotBlank
     @field:Size(max = 200)
@@ -77,6 +84,7 @@ data class UpdateWorkflowRequest(
 data class DuplicateWorkflowRequest(
     @field:NotBlank
     @field:Size(max = 100)
+    @field:Pattern(regexp = WORKFLOW_KEY_PATTERN)
     val key: String,
     @field:NotBlank
     @field:Size(max = 200)
@@ -95,10 +103,9 @@ data class DuplicateWorkflowRequest(
  * 전환 정의 요청. 생성(`POST`)과 수정(`PUT`)이 같은 바디를 쓴다 — `PUT` 은 표현 전체 교체다.
  *
  * ### 왜 `@field:NotBlank` 가 없는가
- * 이 모듈에는 `jakarta.validation-api` 만 있고 **구현체(hibernate-validator)가 없다**. 어노테이션을
- * 달아도 아무도 읽지 않아 「검증하는 것처럼 보이는」 장식이 된다(MEMORY
- * `decorative-annotation-copied-from-sibling`). 실제 판정은 `WorkflowCommandService` 가 지고,
- * 위반은 `WORKFLOW_INVALID_REQUEST`(400)로 나간다.
+ * 컨트롤러가 이 바디에 `@Valid` 를 걸지 않는다. 애노테이션만 달면 아무도 읽지 않아 「검증하는 것처럼
+ * 보이는」 장식이 된다(MEMORY `decorative-annotation-copied-from-sibling`). 실제 판정은
+ * `WorkflowCommandService` 가 지고, 위반은 `WORKFLOW_INVALID_REQUEST`(400)로 나간다.
  *
  * @property fromStatusKey 출발 상태 키. `kind` 가 `GLOBAL`·`INITIAL` 이면 **보내지 않는다**
  * @property toStatusKey 도착 상태 키

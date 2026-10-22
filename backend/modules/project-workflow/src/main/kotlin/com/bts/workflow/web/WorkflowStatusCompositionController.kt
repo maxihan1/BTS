@@ -6,6 +6,7 @@ import com.bts.workflow.application.WorkflowStatusCompositionService
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.AddWorkflowStatusRequest
 import com.bts.workflow.web.dto.ReorderWorkflowStatusesRequest
+import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -69,7 +70,7 @@ class WorkflowStatusCompositionController(
     @PutMapping("/order")
     fun reorder(
         @PathVariable key: String,
-        @RequestBody request: ReorderWorkflowStatusesRequest,
+        @Valid @RequestBody request: ReorderWorkflowStatusesRequest,
     ): DataResponse<Nothing?> {
         val actor = CurrentActor.current()
         log.info("WorkflowStatusCompositionController.reorder workflow={} count={}", key, request.statusIds.size)

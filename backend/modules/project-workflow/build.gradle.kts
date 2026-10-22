@@ -59,8 +59,9 @@ dependencies {
     implementation("org.springframework:spring-web")
     // Servlet API — spring-webmvc 가 참조. 실제 구현은 런타임 컨테이너(Tomcat 등)가 제공
     compileOnly("jakarta.servlet:jakarta.servlet-api")
-    // Jakarta Validation API — @Valid, @NotBlank 등 (Task 24 WorkflowSchemeController 에서 사용)
-    implementation("jakarta.validation:jakarta.validation-api")
+    // Bean Validation — API 와 구현체(Hibernate Validator). 구현체가 없으면 @Valid 가 아무것도 안 읽어
+    //   DTO 의 @NotBlank 등이 장식이 된다(WF-04-5). issue-tracking · identity-access 와 같은 선언이다.
+    implementation("org.springframework.boot:spring-boot-starter-validation")
 
     // @PreAuthorize + method security
     implementation("org.springframework.security:spring-security-core")

@@ -109,7 +109,7 @@
 - [x] D9. WF-04-2 지운 key 를 다시 쓰면 `key` 조회 2곳이 소프트 삭제를 안 걸러 500 · 부팅 실패 (`TODOS.md` 같은 제목) (2026-10-22). *규칙 조회는 `deleted_at`, 부팅 시 표준 매핑 수리는 「전역 + 살아 있는 행」으로 좁힌다*
 - [x] D10. WF-04-3 새 상태를 만드는 화면이 없다(`useCreateStatus` 호출 0) — 결함 B6 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1) (2026-10-22). *편집기 상태 선택 다이얼로그의 「새 상태 만들기」가 키·이름·범주로 카탈로그에 만들고 곧바로 초안에 편성한다. 권한은 그대로 전역 `CREATE` — 프로젝트 관리자는 403 토스트, 안내문이 미리 말한다*
 - [x] D11. WF-04-4 구형 `workflow_states` 가 신형 카탈로그와 나란히 살아 있다 — T3 (`TODOS.md`) (2026-10-22). *V210 이 구 컬럼만 찬 전환을 재백필한 뒤 `workflow_states` · 구 컬럼을 지우고 이연된 `to_status_id NOT NULL` · `ck_transition_kind_from` 을 건다. 선행 #528(issue-tracking 픽스처)*
-- [ ] D12. WF-04-5 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (`TODOS.md`)
+- [x] D12. WF-04-5 요청 DTO 의 검증 애노테이션이 `@Valid` 부재로 장식이다 (`TODOS.md`) (2026-10-22). *모듈에 검증 구현체를 선언하고 쓰기 바디 6곳에 `@Valid` · 워크플로우 key 는 `[A-Za-z0-9_-]+`. 실패는 컨트롤러 한정 advice 가 400 `WORKFLOW_INVALID_REQUEST`*
 - [ ] D13. WF-04-6 캐시 무효화가 커밋 전에 일어난다 (`TODOS.md`)
 - [ ] D14. WF-04-7 상태·워크플로우 사용처 표시 — 기능 후보, FR 승격은 Maxi 결정 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-8)
 - [ ] D15. WF-04-8 테스트 빈틈 — 복제 전환 복사 0행 · 마이그레이션 테스트 컬럼 수 (`TODOS.md`)
