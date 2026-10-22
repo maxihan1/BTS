@@ -183,6 +183,11 @@ class WorkflowEngine(
         )
 
         val workflow = resolveWorkflow(req)
+        // 이슈 생성인데 최초 전환이 없는 워크플로우 — `WorkflowKeyResolverImpl` 이 displayOrder 로 폴백한 시작
+        // 상태라 돌릴 규칙이 없다. toStateKey 는 그 resolver 가 정한 값이고 클라이언트 입력이 아니다.
+        if (req.creation && workflow.transitions.none { it.kind == TransitionKind.INITIAL }) {
+            return TransitionPlan(req.toStateKey, emptyList(), emptyList())
+        }
         val transition = resolveTransition(req, workflow)
         val ctx = buildContext(req, workflow, transition)
 
@@ -266,7 +271,7 @@ class WorkflowEngine(
      *
      * 1. **먼저 후보를 만든다** — [candidatesFor] 로 얻은 목록을 [TransitionRequest.toStateKey] 로 좁힌다.
      *    **열거(버튼 목록)와 실행(클릭)이 같은 함수를 쓴다** — 두 벌로 두면 「목록에는 보이는데
-     *    눌러도 안 되는 버튼」이 생긴다. INITIAL 제외도 그 함수가 이미 처리한다.
+     *    눌러도 안 되는 버튼」이 생긴다. 생성 요청과 일반 전환의 INITIAL 분리도 그 함수가 이미 처리한다.
      * 2. [TransitionRequest.transitionId] 가 오면 **그 후보 목록 안에서** 지목한다 ([resolveById]).
      *    지목은 후보를 **좁히는** 수단이지 후보 판정을 **건너뛰는** 수단이 아니다 — 순서를 뒤집어
      *    지목을 먼저 처리하면 위 규칙 전부가 지목 경로에서만 무력화된다.
@@ -289,7 +294,7 @@ class WorkflowEngine(
         workflow: Workflow,
     ): WorkflowTransition {
         val candidates =
-            candidatesFor(workflow, req.fromStateKey).filter { it.toStateKey == req.toStateKey }
+            candidatesFor(workflow, req.fromStateKey, req.creation).filter { it.toStateKey == req.toStateKey }
         req.transitionId?.let { return resolveById(req, candidates, it) }
 
         return when (candidates.size) {
@@ -313,7 +318,8 @@ class WorkflowEngine(
      * - 남의 워크플로우 전환 ID (spec FR-WF-05 E9)
      * - 출발 상태가 다른 [TransitionKind.NORMAL] 전환
      * - 도착지가 현재 상태인 [TransitionKind.GLOBAL] 자기 전환 (열거에서도 빠지는 조합이다)
-     * - 이슈 생성 진입 전용인 [TransitionKind.INITIAL] 전환
+     * - 생성 요청([TransitionRequest.creation])이 아닌데 지목된 [TransitionKind.INITIAL] 전환 — 거꾸로
+     *   생성 요청에서 지목된 NORMAL·GLOBAL 전환도 같다
      * - 요청이 선언한 [TransitionRequest.toStateKey] 와 도착지가 다른 전환.
      *   호출자는 [TransitionPlan.toStateKey] 를 그대로 영속하므로, 통과시키면 이슈가 요청이
      *   선언하지 않은 상태로 간다.
@@ -376,23 +382,27 @@ class WorkflowEngine(
      * - [TransitionKind.NORMAL] — 출발 상태가 [fromStateKey] 와 같을 때만 후보다.
      * - [TransitionKind.GLOBAL] — 현재 상태와 무관하게 항상 후보다. 단 도착지가 [fromStateKey] 와 같으면
      *   자기 자신으로 가는 전환이므로 제외한다 (spec 2026-08-20-backend-workflow-transition-id-multi-global E1).
-     * - [TransitionKind.INITIAL] — 이슈 생성 진입에만 쓰이며 전환 후보가 아니다.
+     * - [TransitionKind.INITIAL] — 이슈 생성 진입에만 쓰인다. [creation] 이 참일 때 **그것만** 후보다 (WF-05-3).
+     *   생성에서 NORMAL·GLOBAL 이 섞이면 GLOBAL 전부가 후보가 되어 모호 409 가 난다.
+     *   판정이 상태 키가 아니라 명시 플래그라 `INITIAL` 이라는 이름의 실제 상태와 부딪히지 않는다.
      *
      * 열거 경로([availableTransitions])와 실행 경로([resolveTransition])의 후보 산출이 갈라지면
      * 「목록에는 보이는데 실행은 안 되는」 전환이 생긴다. 두 경로 모두 이 함수를 거쳐야 한다.
      *
      * @param workflow 후보를 고를 대상 워크플로우 정의
      * @param fromStateKey 이슈의 현재 상태 키
+     * @param creation 이슈 생성 요청인가. 열거 경로는 늘 false 다 — 생성에는 버튼 목록이 없다.
      */
     private fun candidatesFor(
         workflow: Workflow,
         fromStateKey: String,
+        creation: Boolean = false,
     ): List<WorkflowTransition> =
         workflow.transitions.filter { transition ->
             when (transition.kind) {
-                TransitionKind.NORMAL -> transition.fromStateKey == fromStateKey
-                TransitionKind.GLOBAL -> transition.toStateKey != fromStateKey
-                TransitionKind.INITIAL -> false
+                TransitionKind.NORMAL -> !creation && transition.fromStateKey == fromStateKey
+                TransitionKind.GLOBAL -> !creation && transition.toStateKey != fromStateKey
+                TransitionKind.INITIAL -> creation
             }
         }
 
@@ -401,9 +411,14 @@ class WorkflowEngine(
         workflow: Workflow,
         transition: WorkflowTransition,
     ): TransitionContext {
-        val fromState: WorkflowState =
-            workflow.states.find { it.key == req.fromStateKey }
-                ?: throw WorkflowNotFoundException("${req.workflowKey}::state::${req.fromStateKey}")
+        // 이슈 생성에는 출발 상태가 없다 — 최초 전환은 출발지 없이 도착 상태로만 들어간다.
+        val fromState: WorkflowState? =
+            if (transition.kind == TransitionKind.INITIAL) {
+                null
+            } else {
+                workflow.states.find { it.key == req.fromStateKey }
+                    ?: throw WorkflowNotFoundException("${req.workflowKey}::state::${req.fromStateKey}")
+            }
         val issueView =
             DefaultIssueView(
                 key = req.issueKey,
@@ -421,6 +436,10 @@ class WorkflowEngine(
      * validator 를 평가한다. EXECUTION 페이즈 게이트(RequiredField 등)도 이 경로에서 차단한다.
      * availableTransitions 경로에서는 이 함수를 호출하지 않고 passesValidators 를 사용한다.
      *
+     * 단 최초(INITIAL) 전환은 AVAILABILITY(조건)를 건너뛴다 (WF-05-3). Jira Create 전환에 Condition 이 없는
+     * 것과 같다 — 숨길 버튼도 출발 상태도 없다. 관문(`TransitionRuleGuard`)이 새로 붙이는 것은 막지만
+     * 전환 종류를 바꾸는 편집 · 이 PR 이전 행은 관문을 거치지 않으므로 실행 자리에서 한 번 더 거른다.
+     *
      * ctx.request.workflowKey 를 definitionRepo 에 전달해 같은 (from, to) 를 공유하는
      * 다른 워크플로우의 validator 가 오매칭되지 않도록 한다.
      */
@@ -430,6 +449,9 @@ class WorkflowEngine(
     ) {
         for (cfg in definitionRepo.findValidators(ctx.request.workflowKey, transition)) {
             val validator = validatorFactory.create(cfg.type, cfg.config)
+            if (transition.kind == TransitionKind.INITIAL && validator.phase == ValidatorPhase.AVAILABILITY) {
+                continue
+            }
             val result = validator.validate(ctx)
             if (result is ValidatorResult.Fail) {
                 log.info(

@@ -3440,6 +3440,13 @@ red 가 나는지 재는 짝을 세운다 — 정직하지만 자식 수만큼 �
 ② INITIAL 에는 규칙을 못 붙이게 막고 위 두 테스트를 「거절된다」로 뒤집는다.
 **③ 지금처럼 「붙일 수 있다」만 단언해 두는 것이 제일 나쁘다** — 어느 쪽으로 갈지는 Maxi 확인 사항이다.
 
+**★ 2026-10-22 Maxi 결정 — 「Jira Cloud 와 같은 방식」.** Jira Create 전환은 Condition 을 받지 않고
+Validator · Post function 은 받아 생성 때 돈다. 그래서 ① 로 가되 조건만 막는다. PR 3개로 나눈다 —
+**PR1 project-workflow**(엔진이 `TransitionRequest.creation` 이면 최초 전환 규칙을 돌리고,
+관문이 최초 전환의 AVAILABILITY validator 를 400 으로 거절) · **PR2 issue-tracking**(`createIssue` 가
+insert 전에 그 계획을 받아 validator 실패면 생성 거절 · post-action 이벤트 발행) ·
+**PR3 apps/web**(최초 전환에서 조건 종류 선택지 disabled · PACS-K4 KDoc 정정).
+
 
 ## ⬜ 도구 — 줄수 래칫이 한 줄 욱여넣기를 수치로 보상한다 (신규 · 미착수 · T1)
 

@@ -91,6 +91,39 @@ class ValidatorAdminServiceTest {
         every {
             transitionResolver.resolveTransitionIds(workflowKey, "open", "in_progress")
         } returns listOf(transitionId)
+        every { transitionResolver.isInitial(transitionId) } returns false
+    }
+
+    // ── 최초(INITIAL) 전환에는 조건이 없다 (WF-05-3) ─────────────────────────────
+
+    @Test
+    fun `최초 전환에 조건 validator 를 붙이면 400 이고 DB 에 쓰지 않는다`() {
+        // Jira Create 전환이 Condition 을 받지 않는 것과 같다 — 생성에는 숨길 버튼도 출발 상태도 없다.
+        every { transitionResolver.isInitial(transitionId) } returns true
+
+        assertThatThrownBy {
+            service.create(workflowKey, transitionKey, "permission-check", mapOf("permission" to "TRANSITION_ISSUE"), 0)
+        }.isInstanceOf(ValidatorValidationException::class.java)
+            .hasMessageContaining("최초")
+        assertThatThrownBy {
+            service.create(workflowKey, transitionKey, "not-status-category", mapOf("category" to "DONE"), 0)
+        }.isInstanceOf(ValidatorValidationException::class.java)
+            .hasMessageContaining("최초")
+
+        verify(exactly = 0) { repository.insert(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `최초 전환에도 실행 validator(RequiredField) 는 붙는다`() {
+        every { transitionResolver.isInitial(transitionId) } returns true
+        val config = mapOf<String, Any?>("field" to "summary")
+        every {
+            repository.insert(transitionId, "RequiredField", config, 0)
+        } returns ValidatorRow(validatorId, transitionId, "RequiredField", config, 0)
+
+        service.create(workflowKey, transitionKey, "RequiredField", config, 0)
+
+        verify(exactly = 1) { repository.insert(transitionId, "RequiredField", config, 0) }
     }
 
     // ── 초안이 열린 동안의 쓰기 (WF-08-1) ─────────────────────────────────────

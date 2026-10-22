@@ -57,6 +57,7 @@ import java.util.UUID
  * 2. (update / delete) id 가 그 전환 소속인지 확인 → 아니면 [ValidatorNotFoundException] (IDOR 차단).
  * 3. [WorkflowValidatorFactory.create] dry-run → [ValidatorValidationException].
  * 4. 생성된 인스턴스가 편집 허용 목록 밖이면 [ValidatorTypeNotEditableException].
+ * 5. 최초(INITIAL) 전환에 조건(AVAILABILITY) validator 면 [ValidatorValidationException] (WF-05-3).
  *
  * @param repository validator CRUD jOOQ 리포지토리.
  * @param guard 전환 규칙 관문. 발행 경로([com.bts.workflow.application.DraftRuleWriter])와 **같은
@@ -115,7 +116,7 @@ class ValidatorAdminService(
     ): ValidatorRow {
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
         draftRepository.requireNoOpenDraft(workflowKey)
-        validateConfig(type, config)
+        validateConfig(type, config, transitionId)
         val row = repository.insert(transitionId, type, config, displayOrder)
         log.info(
             "ValidatorAdminService.create id={} workflowKey={} transitionKey={} type={}",
@@ -157,7 +158,7 @@ class ValidatorAdminService(
         val transitionId = resolveOrThrow(workflowKey, transitionKey)
         draftRepository.requireNoOpenDraft(workflowKey)
         ensureValidatorBelongsToTransition(id, transitionId)
-        validateConfig(type, config)
+        validateConfig(type, config, transitionId)
         val row = repository.update(id, type, config, displayOrder)
         log.info(
             "ValidatorAdminService.update id={} workflowKey={} transitionKey={} type={}",
@@ -251,9 +252,10 @@ class ValidatorAdminService(
     private fun validateConfig(
         type: String,
         config: Map<String, Any?>,
+        transitionId: UUID,
     ) {
         try {
-            guard.checkValidator(type, config)
+            guard.checkValidator(type, config, transitionResolver.isInitial(transitionId))
         } catch (ex: TransitionRuleRejected) {
             // 판정은 관문 한 벌이 하고, 이 API 의 **에러 코드 계약**만 여기서 입힌다.
             // 화면이 「미지원」과 「편집 불가」에 다른 안내를 주므로 둘을 합치지 않는다.

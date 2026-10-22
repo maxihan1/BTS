@@ -39,7 +39,7 @@ private val transitionRequestValidation: Validation<TransitionRequest> =
  *
  * @param workflowKey 적용할 워크플로우의 고유 키. 예: "DEFAULT", "BUGFIX".
  * @param issueKey 전환 대상 이슈의 키. 예: "BTS-1".
- * @param fromStateKey 현재 이슈 상태 키. 예: "TODO".
+ * @param fromStateKey 현재 이슈 상태 키. 예: "TODO". [creation] 이면 엔진이 읽지 않는다 — 시작 상태 키를 싣는다.
  * @param toStateKey 전환 목표 상태 키. 예: "IN_PROGRESS".
  * @param actorId 전환을 실행하는 사용자 ID.
  * @param issueFields 현재 이슈의 커스텀 필드 스냅샷. Validator/PostAction 평가에 사용한다.
@@ -49,6 +49,11 @@ private val transitionRequestValidation: Validation<TransitionRequest> =
  *   ([fromStateKey], [toStateKey]) 로 후보를 찾는다.
  *   **기본값 null 을 지우지 마라** — issue-tracking 등 다른 BC 의 기존 호출부가 전부 컴파일 실패한다
  *   (spec FR-WF-05 N2 — cross-BC 프로덕션 0줄). `TransitionRequestTest` 의 8파라미터 호출문이 그 가드다.
+ * @param creation 이슈 생성 요청인가 (WF-05-3). 참이면 project-workflow 가 그 워크플로우의 최초(INITIAL)
+ *   전환 규칙을 돌린다 — Jira Create 전환의 validator · post function 과 같은 자리다. 이슈가 아직 없으므로
+ *   출발 상태도 없다. **문자열 토큰으로 [fromStateKey] 를 겸용하지 않는다** — 상태 키에는 예약어 검사가
+ *   없어서 `INITIAL` 이라는 실제 상태와 부딪히면 그 상태의 이슈가 갇힌다. 기본값 false 는 위
+ *   [transitionId] 와 같은 이유로 지우지 마라.
  */
 data class TransitionRequest(
     val workflowKey: String,
@@ -60,6 +65,7 @@ data class TransitionRequest(
     val actorRoles: Set<String>,
     val version: Long,
     val transitionId: UUID? = null,
+    val creation: Boolean = false,
 ) {
     /**
      * Konform DSL 로 필드 유효성을 검사한다.

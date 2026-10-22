@@ -3,6 +3,7 @@
 package com.bts.workflow.application
 
 import com.bts.workflow.domain.exception.TransitionConflictException
+import com.bts.workflow.domain.spi.ValidatorPhase
 import com.bts.workflow.engine.WorkflowPostActionFactory
 import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.repository.WorkflowDraftRepository
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Component
  * 발행」 두 번으로 통째로 우회된다. 그것이 PR #411 리뷰가 BLOCKER 로 잡은 결함이고, 사본을
  * 두 벌 두면 다음에 관문이 하나 늘 때 같은 우회가 다시 살아난다.
  *
- * ### 다섯 관문
+ * ### 여섯 관문
  * 1. **팩토리 dry-run** — 미지원 type 과 필수 config 키 누락을 거른다. 이것이 없으면 오타 하나가
  *    저장 200 · 발행 200 을 통과한 뒤 **그 전환을 처음 시도한 이슈**에서야 터진다.
  * 2. **`CALL_WEBHOOK` url 스킴** — `http://` · `https://` 만 받는다. 없으면 `file://` ·
@@ -34,6 +35,10 @@ import org.springframework.stereotype.Component
  *    (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6-5) — 소비처가 생기면 여기 한 줄을 더한다.
  * 5. **`RequiredField` 필드 허용목록** — 엔진이 값을 받는 필드([RequiredFieldValidator.ENGINE_FIELDS])만
  *    받는다(WF-03-2). 다른 필드명은 값이 늘 null 이라 저장 200 뒤 그 전환이 영영 막힌다.
+ * 6. **최초 전환에는 조건이 없다** — [ValidatorPhase.AVAILABILITY] validator(버튼을 숨기는 조건)는
+ *    최초(INITIAL) 전환에 받지 않는다(WF-05-3). Jira Create 전환이 Condition 을 받지 않는 것과 같다 —
+ *    이슈가 아직 없으니 숨길 버튼도, 볼 출발 상태도 없다. Validator(EXECUTION) 와 post-action 은 받고
+ *    이슈 생성 때 돈다.
  *
  * ### 거절 사유를 왜 나눠 던지나
  * 호출부마다 응답 계약이 다르다 — 편집 API 는 「미지원」과 「편집 불가」에 서로 다른 에러 코드를
@@ -48,11 +53,14 @@ class TransitionRuleGuard(
     /**
      * validator 하나가 저장 가능한지 본다.
      *
-     * @throws TransitionRuleRejected 미지원 type · config 누락 · 편집 불가 타입 · 엔진이 받지 않는 필드일 때
+     * @param onInitial 붙일 전환이 최초(INITIAL) 전환인가. 참이면 조건(AVAILABILITY) validator 를 거절한다.
+     * @throws TransitionRuleRejected 미지원 type · config 누락 · 편집 불가 타입 · 엔진이 받지 않는 필드 ·
+     *   최초 전환에 붙인 조건일 때
      */
     fun checkValidator(
         type: String,
         config: Map<String, Any?>,
+        onInitial: Boolean,
     ) {
         val instance =
             try {
@@ -77,6 +85,11 @@ class TransitionRuleGuard(
                         TransitionRuleRejected.Reason.UNSUPPORTED,
                         "RequiredField 는 아직 '${instance.field}' 필드를 검사할 수 없다 — " +
                             "지금은 ${RequiredFieldValidator.ENGINE_FIELDS.joinToString()} 만 동작한다",
+                    )
+                onInitial && instance.phase == ValidatorPhase.AVAILABILITY ->
+                    TransitionRuleRejected(
+                        TransitionRuleRejected.Reason.UNSUPPORTED,
+                        "validator '$type' 은 조건이라 이슈 생성(최초) 전환에 붙일 수 없다 — 생성에는 숨길 버튼이 없다",
                     )
                 else -> null
             }

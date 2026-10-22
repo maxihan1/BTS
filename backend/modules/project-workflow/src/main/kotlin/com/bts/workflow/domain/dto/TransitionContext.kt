@@ -19,7 +19,7 @@ import com.bts.workflow.domain.expression.IssueView
  *
  * @param request 원본 전환 요청 DTO (호출자 BC 가 제공).
  * @param workflow 현재 적용 중인 워크플로우 aggregate.
- * @param fromState 전환 출발 상태.
+ * @param fromState 전환 출발 상태. 이슈 생성(최초 전환)이면 출발 상태가 없어 null 이다 (WF-05-3).
  * @param transition 실행되는 전환 정의.
  * @param issueView 이슈 필드를 SpEL(Spring Expression Language) 평가용으로 래핑한 읽기 전용 뷰.
  * @param actorView 실행자 정보를 SpEL 평가용으로 래핑한 읽기 전용 뷰.
@@ -27,7 +27,7 @@ import com.bts.workflow.domain.expression.IssueView
 data class TransitionContext(
     val request: TransitionRequest,
     val workflow: Workflow,
-    val fromState: WorkflowState,
+    val fromState: WorkflowState?,
     val transition: WorkflowTransition,
     val issueView: IssueView,
     val actorView: ActorView,
