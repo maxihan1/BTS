@@ -18,7 +18,6 @@ import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.history.IssueHistoryRecorder
-import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.repository.IssueRepository
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Propagation
@@ -45,29 +44,10 @@ import java.time.Instant
  *   Edit/Transition 가지는 [IssueApplicationService] 안에서 이미 발행하므로 여기서 쓰지 않는다.
  * @param historyRecorder STATUS_MIGRATION 이 상태 변경 이력을 남기는 facade. 위와 같은 이유로
  *   Edit/Transition 가지에서는 쓰지 않는다.
- * @param projectArchiveGuard 아카이브 프로젝트 쓰기 잠금 가드. **non-null 필수**다.
- *
- *   ## 왜 형제와 다른가 (게이트 2 리뷰 ①)
- *   [IssueApplicationService] 의 동명 파라미터는 nullable 이다. 그쪽은 가드가 없어도 쓰기 9종이
- *   **각각 자기 진입부에서** 가드를 부르는 구조라 한 곳이 비어도 나머지가 남는다. 여기는 다르다 —
- *   STATUS_MIGRATION 은 `issueService` 쓰기 초크포인트 **밖**에서 상태를 재작성하는 유일한 경로이고,
- *   그 경로에서 아카이브 잠금을 거는 자리는 [migrateStatus] 의 이 한 줄뿐이다. 의존도가 다르므로
- *   기본값도 다르다.
- *
- *   nullable 기본값은 「불명 = 허용」이다. Spring 의 Kotlin optional 파라미터 해석은 해결하지 못한
- *   인자를 **부팅 실패가 아니라 생략**으로 처리하므로, 결선이 끊겨도 아무도 모른 채 fail-open 이 된다.
- *   실제로 이 PR 의 통합 컨텍스트 3곳이 가드를 생략한 채 이관을 돌렸다. 불명은 **거부**가 기본이다.
  * @param clock 이벤트 `occurredAt` 의 시각원. [IssueApplicationService] 의 동명 파라미터와 같은
  *   fallback 형태다 — `Instant.now()` 직접 호출은 주입한 시각원을 우회해, 같은 BC 안에서
  *   시각을 고정한 테스트와 형제 발행부([IssueApplicationService] `Instant.now(clock)`)가 갈린다.
- *
- * `LongParameterList` 억제 이유. 협력자 7개는 전부 이 클래스가 **직접 부르는** 대상이고 묶을 축이 없다 —
- * 쓰기 3종(`issueService`·`issueRepository`·`bulkRepo`)과 부수효과 2종(`eventPublisher`·`historyRecorder`)은
- * 서로 다른 트랜잭션 의미를 가지며, `projectArchiveGuard` 는 non-null 이어야 하고(위 §), `clock` 은 기본값
- * fallback 이다. [IssueApplicationService] 가 같은 사유로 같은 국소 억제를 쓴다 — 전역 detekt 임계값이나
- * `detekt-baseline.xml` 은 건드리지 않는다.
  */
-@Suppress("LongParameterList")
 @Component
 class BulkItemApplier(
     private val issueService: IssueApplicationService,
@@ -75,9 +55,6 @@ class BulkItemApplier(
     private val issueRepository: IssueRepository,
     private val eventPublisher: IssueEventPublisher,
     private val historyRecorder: IssueHistoryRecorder,
-    // STATUS_MIGRATION 은 issueService 쓰기 초크포인트를 우회하므로 이 가지가 직접 가드를 부른다.
-    // Edit/Transition 가지는 issueService 안에서 이미 통과하므로 여기서 중복 호출하지 않는다.
-    private val projectArchiveGuard: ProjectArchiveGuard,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     /**
@@ -154,8 +131,8 @@ class BulkItemApplier(
      * - **우회** — ① per-issue TRANSITION 권한(위조 차단은 호출자의 발행 권한 책임 · 편차 X4) ·
      *   ⑤ 워크플로우 엔진 `plan()`(이관 대상은 유효한 전환이 0이다 · Jira J8) ·
      *   ⑧ 후처리(`plan.emitEvents`)는 plan 자체가 없어 N/A.
-     * - **유지** — ② 아카이브 가드([ProjectArchiveGuard.checkByIssue]) ·
-     *   ③ [IssueRepository.findByKeyForUpdate] 의 비관락 ·
+     *   ② 아카이브 가드(WF-07-4, 아래 §).
+     * - **유지** — ③ [IssueRepository.findByKeyForUpdate] 의 비관락 ·
      *   ⑥ [IssueRepository.applyTransition] 의 OCC 와 해결책 · ⑦ [IssueTransitioned] 발행.
      *
      * ## 대상은 항목마다 다르다 (F7 · J7)
@@ -195,12 +172,10 @@ class BulkItemApplier(
      * [IssueApplicationService.transitionIssue] 와 같은 형태로 [IssueVersionConflictException] 을 던지고,
      * [BulkItemExecutor] 가 이를 [FailureReasonCode.VERSION_CONFLICT] 로 기록한다.
      *
-     * ## 아카이브 프로젝트는 이관도 예외가 아니다 (E14 · D3 ②)
-     * 이 가지는 [IssueApplicationService] 의 쓰기 초크포인트를 우회하므로 가드가 함께 빠진다.
-     * 그래서 여기서 직접 [ProjectArchiveGuard.checkByIssue] 를 부른다 — 다른 모든 쓰기가 거부하는 일을
-     * 이관만 조용히 해내면 아카이브가 잠금이 아니게 된다. 호출 순서는 D-ORDER 를 지켜
-     * `findByKey`(BROWSE 권한 검증) 뒤 · 비관락 획득 **앞**에 온다 — 권한보다 락이 앞서면 미인가
-     * 사용자가 행을 잠글 수 있다.
+     * ## 아카이브 프로젝트의 이슈도 옮긴다 (WF-07-4 · E14 개정)
+     * 이관은 사용자 쓰기가 아니라 공유 워크플로우가 바뀐 데 따른 정합 작업이다. 아카이브 가드로 막으면
+     * 그 이슈는 워크플로우에 없는 상태로 남아, 아카이브를 해제해도 어떤 전환도 계산할 수 없다.
+     * 해제 시점에 되살리려 해도 일괄작업 기록은 30일 뒤 지워진다(`BulkOperationCleanupWorker`).
      *
      * ## 매핑에 없는 상태는 밀지 않는다 (E8 · F21)
      * 항목 적재 이후 누군가 그 이슈를 옮겼다는 뜻이다. 임의 대상으로 밀어 넣지 않고
@@ -236,13 +211,12 @@ class BulkItemApplier(
      * @param actor 이관을 수행한 행위자. 이벤트와 이력에 그대로 실린다.
      * @param issueKey 이관 대상 이슈 키.
      * @param mappings 출발 상태 키 → 대상 상태 키.
-     * @throws com.bts.issue.project.archive.ProjectArchivedException 이슈의 프로젝트가 아카이브 상태일 때.
      * @throws StateNotInMigrationMappingException 현재 상태가 [mappings] 에 없을 때.
      * @throws IssueNotFoundException 비관락 획득 시점에 이슈가 없거나 소프트 삭제됐을 때.
      * @throws IssueVersionConflictException OCC 충돌로 0행이 갱신됐을 때.
      *
      * `ThrowsCount` 억제 이유. 세 예외는 각각 **다른 실패 코드**로 번역된다 —
-     * `PROJECT_ARCHIVED` · `STATE_NOT_IN_MAPPING` · `VERSION_CONFLICT`. 하나로 합치면
+     * `NOT_FOUND` · `STATE_NOT_IN_MAPPING` · `VERSION_CONFLICT`. 하나로 합치면
      * [BulkItemExecutor] 가 구분할 수단을 잃고 F21 이 되살리려던 `UNKNOWN` 뭉갬으로 되돌아간다.
      * [IssueApplicationService.transitionIssue] 가 같은 사유로 같은 국소 억제를 쓴다 —
      * 전역 detekt 임계값이나 `detekt-baseline.xml` 은 건드리지 않는다.
@@ -253,8 +227,6 @@ class BulkItemApplier(
         issueKey: IssueKey,
         mappings: Map<String, String>,
     ) {
-        projectArchiveGuard.checkByIssue(issueKey)
-
         // 비관락 + 락 뒤 재조회. 이 한 번의 읽기가 상태·버전·해결책과 이력 before 스냅샷의 단일 출처다.
         // 이력이 도메인 Issue 를 받는 것(projectId 가 REST DTO 에 없다)도 같은 읽기로 함께 해결된다.
         val before = issueRepository.findByKeyForUpdate(issueKey) ?: throw IssueNotFoundException(issueKey)

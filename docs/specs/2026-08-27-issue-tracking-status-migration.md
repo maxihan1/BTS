@@ -142,7 +142,7 @@ FR-WF-07 의 D2·D4·D5 중 **issue-tracking + shared-kernel 몫**이다.
 |---|---|---|
 | ⓪ `BulkItemApplier.findByKey` → `assertViewIssueOrNotFound` (VIEW · 지라의 BROWSE 축) | **유지** | ★게이트 2 리뷰. `transitionIssue` 8단계 **밖**이지만 이관도 이 검사를 탄다 — `BulkItemApplier.applyAndRecordSuccess` 가 payload 종류와 무관하게 `issueService.findByKey(actor, issueKey)` 를 먼저 부르고(`existing.version` 을 얻는 단일 진입), 그 안에서 VIEW 권한을 검사하기 때문이다. 이 PR 은 그 배선을 바꾸지 않는다 — 남는 한계는 표 아래에 적는다 |
 | ① `assertPermission(TRANSITION, Issue)` | **우회** | 남기면 관리자가 못 건드리는 이슈가 사라진 상태를 가리킨 채 남는다 — 이 기능이 막으려던 유령 상태를 이 기능이 만든다. 위조 차단은 호출자(PR 7b 발행 경로)의 `PUBLISH` 권한 책임 (`IssueMutationPort` 신뢰 모델). **편차 X4 로 기록** |
-| ② `projectArchiveGuard` | **유지** | 아카이브 프로젝트는 쓰기 초크포인트가 이미 막는다. 이관만 예외를 둘 이유가 없다 |
+| ② `projectArchiveGuard` | **우회** (WF-07-4, 2026-10-22 개정) | 이관은 공유 워크플로우 변경에 따른 정합 작업이다. 막으면 그 이슈가 워크플로우 밖 상태로 남고 일괄작업 기록은 30일 뒤 지워져 해제 시점에 되살릴 근거도 없다 |
 | ③ `findByKeyForUpdate` (비관락) | **유지** | 동시 편집과의 경합을 그대로 막는다 |
 | ④ `WorkflowKeyResolver` | **불필요** | 워크플로우를 찾을 필요가 없다 |
 | ⑤ `workflowPort.plan()` (엔진) | **우회** | 유효한 전환이 없다. Jira **J8** 과 동일 |
@@ -297,7 +297,7 @@ data class StatusMigration(
 | E15 | **이관 완료 이후** 정의 교체 전에 또 들어옴 | **여전히 남는 창이다.** 발행 경로가 「이관 → 재확인 → 교체」 루프를 돌아야 닫히고 그 루프는 project-workflow 소관이라 **PR 7b** 다. 부채 **143** 은 그때 완전히 닫힌다. 숨기지 않고 KDoc 에 적는다 |
 | E16 | 워커가 items 를 채우다 죽고 재시작 | `UNIQUE (bulk_operation_id, issue_key)` 로 재적재가 멱등이다 (F16). 중복 항목이 생기지 않는다 |
 | E13 | 어댑터가 결선되지 않은 채 부팅 | **부팅 실패** (F1 fail-closed). silent-drop 보다 낫다 |
-| E14 | 아카이브된 프로젝트의 이슈가 대상에 섞임 | `projectArchiveGuard` 가 막아 그 건만 FAILED (D3 ②) |
+| E14 | 아카이브된 프로젝트의 이슈가 대상에 섞임 | 함께 이관한다 (WF-07-4 개정 · D3 ②) |
 
 ## 제약 조건
 
@@ -341,7 +341,7 @@ data class StatusMigration(
     0건 이관과 부분 이관. ★**deviation** — REST 응답으로는 판정할 수 없다. 사유가 `bulk_operations` 에도
     `BulkOperationResponse` 에도 없기 때문이다 (F19 의 deviation)
 13. `failed_count > 0` 으로 끝나면 **로그·메트릭에 드러난다** (C-3 · F20)
-14. 매핑에 없는 상태는 `STATE_NOT_IN_MAPPING`, 아카이브 프로젝트는 `PROJECT_ARCHIVED` 로
+14. 매핑에 없는 상태는 `STATE_NOT_IN_MAPPING` 으로
     기록된다 — **`UNKNOWN` 이 아니다** (C-4 · F21)
 15. V038 이 `NOT VALID` → `VALIDATE` 2단계이고 롤백 절차가 파일 주석에 있다 (C-6)
 
