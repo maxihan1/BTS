@@ -15,6 +15,7 @@ transitions:
   - from: doing
     to: done
     name: Complete
+    screen: [{ field: resolution, required: true }]
     validators:
       - type: RequiredField
         config:

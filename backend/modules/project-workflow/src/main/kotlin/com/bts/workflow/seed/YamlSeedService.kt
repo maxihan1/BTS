@@ -8,6 +8,7 @@ import com.bts.workflow.engine.WorkflowValidatorFactory
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowPostActions.Companion.WORKFLOW_POST_ACTIONS
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
+import com.bts.workflow.jooq.tables.WorkflowTransitionScreenFields.Companion.WORKFLOW_TRANSITION_SCREEN_FIELDS
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.WorkflowValidators.Companion.WORKFLOW_VALIDATORS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
@@ -95,6 +96,7 @@ data class PostActionYamlDto(
  * @property kind 전환 종류. `NORMAL`(기본)·`GLOBAL`·`INITIAL`. 모르는 값이면 부팅을 막는다.
  * @property validators 전환 전 검증 게이트 목록. 미정의 시 빈 리스트.
  * @property postActions 전환 후 자동 처리 목록. YAML 키는 postActions (camelCase). 미정의 시 빈 리스트.
+ * @property screen 전환 화면 필드 (FR-WF-01 D10). 미정의 시 빈 리스트 — 화면 없이 바로 전환한다.
  */
 data class TransitionYamlDto(
     val from: String? = null,
@@ -103,6 +105,18 @@ data class TransitionYamlDto(
     val kind: String = TransitionKind.NORMAL.name,
     val validators: List<ValidatorYamlDto> = emptyList(),
     val postActions: List<PostActionYamlDto> = emptyList(),
+    val screen: List<ScreenFieldYamlDto> = emptyList(),
+)
+
+/**
+ * YAML 전환 화면 필드 DTO.
+ *
+ * @property field 필드 키 (resolution · assignee · comment). 모르는 값이면 V212 CHECK 가 부팅을 막는다.
+ * @property required 필수 여부. 미정의 시 false.
+ */
+data class ScreenFieldYamlDto(
+    val field: String = "",
+    val required: Boolean = false,
 )
 
 // ── Konform 검증 규칙 ────────────────────────────────────────────────────────
@@ -399,6 +413,13 @@ class YamlSeedService(
             val transitionId =
                 insertTransitionRow(dto, workflowId, transition, stateKeyToCompositionId)
             insertValidators(transitionId, transition.validators)
+            transition.screen.forEach {
+                dsl.insertInto(WORKFLOW_TRANSITION_SCREEN_FIELDS)
+                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID, transitionId)
+                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD, it.field)
+                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED, it.required)
+                    .execute()
+            }
             insertPostActions(transitionId, transition.postActions)
         }
         rankTransitionsLikeV207(workflowId)

@@ -188,3 +188,11 @@ CREATE INDEX idx_workflow_publications_published_at
 -- **의도적으로 미러하지 않는다.** jOOQ codegen 은 information_schema 의 테이블·컬럼·제약만 읽어
 -- 상수를 만들고 트리거는 생성물에 나타나지 않는다. 미러가 마이그레이션보다 **느슨한** 방향이라
 -- 코드젠 DB 에서만 통과하는 쿼리가 생기지 않는다(엄격한 쪽이 위험하다).
+
+-- ── workflow_transition_screen_fields (V212) ──────────────────────────────────
+CREATE TABLE workflow_transition_screen_fields (
+    transition_id UUID    NOT NULL REFERENCES workflow_transitions (id) ON DELETE CASCADE,
+    field         TEXT    NOT NULL CHECK (field IN ('resolution', 'assignee', 'comment')),
+    required      BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (transition_id, field)
+);

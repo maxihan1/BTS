@@ -4,17 +4,20 @@ package com.bts.workflow.application
 
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
+import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.postaction.PostActionRepository
 import com.bts.workflow.repository.StatusLayout
+import com.bts.workflow.repository.TransitionScreenRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.transition.TransitionRuleRow
 import com.bts.workflow.validator.ValidatorRepository
 import org.springframework.stereotype.Component
+import java.util.UUID
 
 /**
  * 현재 발행된 정의를 [WorkflowDraftDefinition] 으로 옮긴다.
@@ -45,6 +48,7 @@ class CurrentDefinitionReader(
     private val postActionRepository: PostActionRepository,
     private val workflowRepository: WorkflowRepository,
     private val compositionRepository: WorkflowStatusCompositionRepository,
+    private val screenRepository: TransitionScreenRepository,
 ) {
     /**
      * 지금 정의를 초안 형태로 돌려준다. 워크플로우가 없으면 null.
@@ -56,16 +60,18 @@ class CurrentDefinitionReader(
         // 좌표는 aggregate 에 없어 편성 테이블에서 따로 읽는다. id 를 못 찾는 경우는 캐시를 읽은
         // 직후 그 워크플로우가 지워진 경합뿐이고, 그때는 좌표 없이 그리는 편이 낫다 —
         // 편집기가 자동 배치로 떨어질 뿐 편집 자체는 이어진다.
-        val layouts =
-            workflowRepository.findIdByKey(key)
-                ?.let { compositionRepository.findLayouts(it) }
-                ?: emptyMap()
-        return toDefinition(workflow, layouts)
+        // 전환 화면(FR-WF-01 D10)도 같은 이유로 aggregate 밖에서 읽는다. 빠뜨리면 초안을 뜨는 순간
+        // 화면이 비고, 그 초안을 발행하면 발행본의 화면까지 지워진다.
+        val workflowId = workflowRepository.findIdByKey(key)
+        val layouts = workflowId?.let { compositionRepository.findLayouts(it) } ?: emptyMap()
+        val screens = workflowId?.let { screenRepository.findByWorkflowId(it) } ?: emptyMap()
+        return toDefinition(workflow, layouts, screens)
     }
 
     private fun toDefinition(
         workflow: Workflow,
         layouts: Map<String, StatusLayout>,
+        screens: Map<UUID, List<DraftScreenFieldDto>>,
     ): WorkflowDraftDefinition =
         WorkflowDraftDefinition(
             key = workflow.key,
@@ -91,6 +97,7 @@ class CurrentDefinitionReader(
                         kind = transition.kind.name,
                         validators = validatorRepository.findByTransitionId(transition.id).map { it.toDraftRule() },
                         postActions = postActionRepository.findByTransitionId(transition.id).map { it.toDraftRule() },
+                        screen = screens[transition.id].orEmpty(),
                     )
                 },
         )

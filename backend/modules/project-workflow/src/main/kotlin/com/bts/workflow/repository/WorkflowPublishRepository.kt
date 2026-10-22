@@ -5,6 +5,7 @@ package com.bts.workflow.repository
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.bts.workflow.jooq.tables.Statuses.Companion.STATUSES
 import com.bts.workflow.jooq.tables.WorkflowStatuses.Companion.WORKFLOW_STATUSES
+import com.bts.workflow.jooq.tables.WorkflowTransitionScreenFields.Companion.WORKFLOW_TRANSITION_SCREEN_FIELDS
 import com.bts.workflow.jooq.tables.WorkflowTransitions.Companion.WORKFLOW_TRANSITIONS
 import com.bts.workflow.jooq.tables.Workflows.Companion.WORKFLOWS
 import org.jooq.DSLContext
@@ -182,7 +183,10 @@ class WorkflowPublishRepository(
         }
 
     /**
-     * 전환을 심는다.
+     * 전환과 그 전환 화면(FR-WF-01 D10)을 심는다.
+     *
+     * 화면은 규칙과 달리 여기서 함께 심는다 — 규칙처럼 따로 쓰는 리포지토리가 없고, 전환 행과 같은 생애를
+     * 산다(FK `ON DELETE CASCADE`). 빠뜨리면 발행할 때마다 화면이 지워진다.
      */
     private fun insertTransitions(
         workflowId: UUID,
@@ -205,6 +209,13 @@ class WorkflowPublishRepository(
                     .returning(WORKFLOW_TRANSITIONS.ID)
                     .fetchOne(WORKFLOW_TRANSITIONS.ID)
                     ?: error("workflow_transitions INSERT 가 id 를 돌려주지 않았다")
+            transition.screen.forEach { field ->
+                dsl.insertInto(WORKFLOW_TRANSITION_SCREEN_FIELDS)
+                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.TRANSITION_ID, id)
+                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.FIELD, field.field)
+                    .set(WORKFLOW_TRANSITION_SCREEN_FIELDS.REQUIRED, field.required)
+                    .execute()
+            }
             index to id
         }
 }

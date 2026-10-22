@@ -215,6 +215,61 @@ class WorkflowDraftDefinitionTest {
             .hasMessageContaining("AUTO")
     }
 
+    // ── 전환 화면 (FR-WF-01 D10) ──────────────────────────────────────────────
+
+    private fun screened(
+        kind: String,
+        vararg fields: DraftScreenFieldDto,
+    ) = draft(
+        states = listOf(state("open"), state("done", category = "DONE", order = 1)),
+        transitions =
+            listOf(
+                DraftTransitionDto(
+                    from = if (kind == "NORMAL") "open" else null,
+                    to = "done",
+                    name = "완료",
+                    kind = kind,
+                    screen = fields.toList(),
+                ),
+            ),
+    )
+
+    @Test
+    fun `아는 필드로 만든 전환 화면은 통과한다`() {
+        val definition =
+            screened(
+                "NORMAL",
+                DraftScreenFieldDto("resolution", required = true),
+                DraftScreenFieldDto("assignee"),
+                DraftScreenFieldDto("comment"),
+            )
+
+        assertThat(definition.toWorkflow().transitions).hasSize(1)
+    }
+
+    @Test
+    fun `모르는 화면 필드는 거부한다`() {
+        assertThatThrownBy { screened("NORMAL", DraftScreenFieldDto("priority")).toWorkflow() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("priority")
+    }
+
+    @Test
+    fun `같은 화면 필드가 두 번이면 거부한다`() {
+        val twice = screened("GLOBAL", DraftScreenFieldDto("comment"), DraftScreenFieldDto("comment", required = true))
+
+        assertThatThrownBy { twice.toWorkflow() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("두 번")
+    }
+
+    @Test
+    fun `생성 전환에는 화면을 둘 수 없다`() {
+        assertThatThrownBy { screened("INITIAL", DraftScreenFieldDto("resolution")).toWorkflow() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("생성 전환")
+    }
+
     // ── 저장된 초안과의 호환 ──────────────────────────────────────────────────
 
     @Test
@@ -234,5 +289,8 @@ class WorkflowDraftDefinitionTest {
         assertThat(DraftStateDto().layoutY).isNull()
         assertThat(DraftTransitionDto().kind).isEqualTo(TransitionKind.NORMAL.name)
         assertThat(DraftRuleDto().config).isEmpty()
+        // 전환 화면은 FR-WF-01 D10 이 더했다. V212 가 DONE 도착 전환만 채우므로 나머지는 키가 없다.
+        assertThat(DraftTransitionDto().screen).isEmpty()
+        assertThat(DraftScreenFieldDto().required).isFalse()
     }
 }

@@ -7,6 +7,7 @@ import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.workflow.application.port.MigrationInFlightPort
 import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.DraftRuleDto
+import com.bts.workflow.domain.DraftScreenFieldDto
 import com.bts.workflow.domain.DraftStateDto
 import com.bts.workflow.domain.DraftTransitionDto
 import com.bts.workflow.domain.WorkflowDraftDefinition
@@ -22,11 +23,13 @@ import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.PermissionResolver
 import com.bts.workflow.port.outbound.Scope
 import com.bts.workflow.postaction.PostActionRepository
+import com.bts.workflow.repository.TransitionScreenRepository
 import com.bts.workflow.repository.WorkflowDraftRepository
 import com.bts.workflow.repository.WorkflowPublishRepository
 import com.bts.workflow.repository.WorkflowRepository
 import com.bts.workflow.repository.WorkflowStatusCompositionRepository
 import com.bts.workflow.scheme.repository.ProjectWorkflowSchemeAssignmentRepository
+import com.bts.workflow.seed.ScreenFieldYamlDto
 import com.bts.workflow.seed.StandardWorkflowDefaults
 import com.bts.workflow.seed.StateYamlDto
 import com.bts.workflow.seed.TransitionYamlDto
@@ -122,6 +125,7 @@ class WorkflowDraftServiceIntegrationTest {
                     PostActionRepository(dsl, objectMapper),
                     WorkflowRepository(dsl),
                     WorkflowStatusCompositionRepository(dsl),
+                    TransitionScreenRepository(dsl),
                 ),
             standardDefaults = defaults,
             permissionResolver = permissions,
@@ -626,6 +630,33 @@ class WorkflowDraftServiceIntegrationTest {
         val restored = service.resetToDefault(ACTOR, key, baseVersion = 0)
 
         assertThat(restored.definition.states.single().name).isEqualTo("열림 $key")
+    }
+
+    @Test
+    fun `기본값 복원은 YAML 의 전환 화면을 초안에 싣는다`() {
+        // 빠지면 「기본값으로 되돌리기」 뒤 발행하는 순간 표준 워크플로우의 해결 결과 화면이 지워진다 (FR-WF-01 D10).
+        val key = seedWorkflow(origin = "SEED")
+        defaults.yaml =
+            WorkflowYamlDto(
+                key = key,
+                name = "YAML 원본 이름",
+                states = listOf(StateYamlDto(key = "open", name = "열림 $key", category = "TODO", displayOrder = 0)),
+                transitions =
+                    listOf(
+                        TransitionYamlDto(to = "open", name = "이슈 생성", kind = "INITIAL"),
+                        TransitionYamlDto(
+                            from = "open",
+                            to = "open",
+                            name = "메모 남기기",
+                            screen = listOf(ScreenFieldYamlDto(field = "comment", required = true)),
+                        ),
+                    ),
+            )
+
+        val restored = service.resetToDefault(ACTOR, key, baseVersion = 0)
+
+        assertThat(restored.definition.transitions.single { it.name == "메모 남기기" }.screen)
+            .containsExactly(DraftScreenFieldDto(field = "comment", required = true))
     }
 
     @Test
