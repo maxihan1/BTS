@@ -217,10 +217,12 @@ class WorkflowPublishService(
         // ★이관 범위는 **아카이브를 포함**한다 — 발행 차단 카운트(findProjectRefsByWorkflowId)와
         //   일부러 다른 집합이다. 범위에서 빼면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이
         //   사라지고, 넣어 두면 bulk_operation_items 에 PROJECT_ARCHIVED 로 남아 셀 수 있다(E7).
-        val scope = schemeAssignmentRepository.findMigrationScopeRefsByWorkflowId(workflowId)
-        val projectKeys = scope.map { it.key }.toSet()
+        //   프로젝트마다 이 워크플로우가 맡는 이슈 타입을 함께 싣는다 — 형제 워크플로우의 이슈를 옮기지
+        //   않기 위해서다(WF-07-2).
+        val scope = schemeAssignmentRepository.findMigrationScopesByWorkflowId(workflowId)
+        val projectKeys = scope.map { it.ref.key }.toSet()
 
-        requireSoundMappings(key, workflowId, definition, live, removed, scope.map { it.id }.toSet(), mappings)
+        requireSoundMappings(key, definition, live, removed, scope.associate { it.ref.id to it.typeFilter }, mappings)
 
         // ★F15 는 검사-후-사용이라 직렬화 없이는 동시 요청 둘이 모두 통과한다. 발행과 **같은 키
         //   공간**의 advisory lock 을 잡아 발행↔이관 경합까지 함께 닫는다. 캐시는 건드리지 않는다 —
@@ -230,12 +232,10 @@ class WorkflowPublishService(
                 if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
                     throw WorkflowMigrationInFlightException(key)
                 }
-                // 모든 타입 — F11 이 형제 워크플로우를 거부했으므로 이 프로젝트들의 이슈는 전부 이 워크플로우 소관이다.
-                val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
                 issueStatusMigrationPort.enqueueStatusMigration(
                     StatusMigrationCommand(
                         actorUserId = actorId,
-                        projectScopes = projectKeys.associateWith { allTypes },
+                        projectScopes = scope.associate { it.ref.key to it.typeFilter },
                         mappings = mappings,
                     ),
                 )
@@ -414,9 +414,11 @@ class WorkflowPublishService(
     /**
      * 빠지는 상태별 잔여 이슈 수. 0건인 상태는 담지 않는다 — 막을 이유가 없다.
      *
-     * ### 세는 범위는 이 워크플로우를 쓰는 프로젝트로 좁힌다
+     * ### 세는 범위는 이 워크플로우를 쓰는 (프로젝트, 이슈 타입)으로 좁힌다
      * 상태 키는 전역이라 키만으로 세면 **다른 워크플로우를 쓰는 이슈까지** 잡혀 발행이 과하게
-     * 막힌다. 스킴 할당을 거슬러 프로젝트 id 를 얻어 그 범위 안에서만 센다.
+     * 막힌다. 한 프로젝트 안에서도 이슈 타입마다 워크플로우가 갈리므로(WF-07-2) 타입까지 좁힌다 —
+     * 이관 워커가 옮기는 범위와 같아야 「이관하고 나면 발행된다」가 성립한다. 프로젝트로만 세면 형제
+     * 워크플로우의 이슈가 남아 이관으로 풀 수 없는 409 가 된다. 아카이브 프로젝트는 뺀다(spec E7).
      *
      * ### 조회는 한 번뿐이다 (NFR N1)
      * 아래 `associateWith` 는 빠지는 상태 수만큼 돈다. 그 안에서 프로젝트를 되물으면 상태마다
@@ -426,9 +428,13 @@ class WorkflowPublishService(
         workflowId: UUID,
         removed: Set<String>,
     ): Map<String, Long> {
-        val projectIds = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.id }.toSet()
+        val scopes =
+            schemeAssignmentRepository
+                .findMigrationScopesByWorkflowId(workflowId)
+                .filterNot { it.archived }
+                .associate { it.ref.id to it.typeFilter }
         return removed
-            .associateWith { issueStatusUsagePort.countIssuesInStatus(it, projectIds) }
+            .associateWith { issueStatusUsagePort.countIssuesInStatusWithin(it, scopes) }
             .filterValues { it > 0 }
     }
 
@@ -469,21 +475,21 @@ class WorkflowPublishService(
      * 성립하지 않는다. 그래서 이 함수가 통과하기 전에는 포트에 아무것도 닿지 않는다.
      *
      * ### 순서가 load-bearing 이다
-     * 값싼 판정(목록 모양)을 먼저 태우고 DB 를 읽는 것(F11 형제 조회 · F14 건수)을 뒤에 둔다.
+     * 값싼 판정(목록 모양)을 먼저 태우고 DB 를 읽는 것(F14 건수)을 뒤에 둔다.
      * 뒤집으면 빈 목록 하나에도 3단 JOIN 과 상태별 COUNT 가 나간다.
      *
      * @param live 지금 편성에 있는 상태 키. 도착지가 발행 전에도 실재하는지 재는 근거다.
      * @param removed 이 초안이 빼는 상태 키. 출발지로 허용되는 유일한 집합이다.
-     * @param projectIds 이관 범위. 비면 어댑터의 `require` 가 500 으로 나가므로 여기서 400 을 낸다.
+     * @param scopes 이관 범위 — 프로젝트 id → 이슈 타입 필터. 비면 어댑터의 `require` 가 500 으로 나가므로
+     *   여기서 400 을 낸다.
      * @throws WorkflowMigrationInvalidMappingException 어느 축이든 어겼을 때. 축은 메시지가 싣는다.
      */
     private fun requireSoundMappings(
         key: String,
-        workflowId: UUID,
         definition: WorkflowDraftDefinition,
         live: Set<String>,
         removed: Set<String>,
-        projectIds: Set<UUID>,
+        scopes: Map<UUID, StatusMigrationTypeFilter>,
         mappings: List<StatusMigrationMapping>,
     ) {
         fun reject(reason: String): Nothing = throw WorkflowMigrationInvalidMappingException(key, reason)
@@ -525,24 +531,15 @@ class WorkflowPublishService(
         }
 
         // F13 — 범위가 비면 어댑터의 `require` 가 터지고, 이 BC 에 IAE advice 가 없어 500 이 된다.
-        if (projectIds.isEmpty()) {
+        if (scopes.isEmpty()) {
             // 범위는 아카이브를 포함하므로(E7) 여기 오는 것은 「스킴 미연결」이거나 「전부 소프트
             // 삭제」다. 둘 다 관리자가 스킴·프로젝트 상태를 봐야 풀린다.
             reject("이 워크플로우를 쓰는 프로젝트가 없다. 스킴 연결과 프로젝트 삭제 여부를 확인할 것")
         }
 
-        // F11 — 이관 워커가 이슈 타입 축을 안 본다(장부 145). 형제가 있으면 그 워크플로우의 이슈까지
-        //       옮겨지므로 조합 자체를 열지 않는다. fail-closed.
-        if (schemeAssignmentRepository.hasSiblingWorkflowInAssignedSchemes(workflowId)) {
-            reject(
-                "이 워크플로우를 쓰는 스킴이 다른 워크플로우도 함께 쓴다. " +
-                    "이관이 그 워크플로우의 이슈까지 옮기므로 허용하지 않는다",
-            )
-        }
-
         // F14 — 상한 초과는 출구 없는 막다른 길이다. 워커가 아무것도 적재하지 않고 FAILED 로 끝나
         //       이슈는 한 건도 안 옮겨졌는데 발행은 계속 409 다.
-        val targets = mappings.sumOf { issueStatusUsagePort.countIssuesInStatus(it.fromStatusKey, projectIds) }
+        val targets = mappings.sumOf { issueStatusUsagePort.countIssuesInStatusWithin(it.fromStatusKey, scopes) }
         if (targets > STATUS_MIGRATION_MAX_TARGETS) {
             reject(
                 "옮길 이슈가 $targets 건으로 한 번에 처리할 수 있는 $STATUS_MIGRATION_MAX_TARGETS 건을 넘는다. " +

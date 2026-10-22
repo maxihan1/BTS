@@ -2,6 +2,7 @@
 
 package com.bts.workflow.scheme.repository
 
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.testsupport.SharedPostgres
@@ -496,7 +497,7 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
      */
     @Test
     fun `이관 범위 조회는 아카이브된 프로젝트를 포함한다`() {
-        val refs = repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA)
+        val refs = repository.findMigrationScopesByWorkflowId(reverseWorkflowA).map { it.ref }
 
         assertThat(refs.map { it.id })
             .describedAs("범위에서 빠지면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이 사라진다")
@@ -515,7 +516,7 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
     fun `소프트 삭제된 스킴에 할당된 프로젝트는 카운트에도 범위에도 안 나온다`() {
         assertThat(repository.findProjectRefsByWorkflowId(reverseWorkflowA).map { it.id })
             .doesNotContain(reverseProjectOnDeletedScheme)
-        assertThat(repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA).map { it.id })
+        assertThat(repository.findMigrationScopesByWorkflowId(reverseWorkflowA).map { it.ref }.map { it.id })
             .describedAs("지운 스킴의 프로젝트를 범위에 실으면 남의 이슈를 옮긴다")
             .doesNotContain(reverseProjectOnDeletedScheme)
     }
@@ -523,7 +524,7 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
     /** 소프트 삭제는 범위에서도 뺀다 — 죽은 프로젝트의 이슈를 옮길 이유가 없다. */
     @Test
     fun `이관 범위 조회도 소프트 삭제된 프로젝트는 제외한다`() {
-        val refs = repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA)
+        val refs = repository.findMigrationScopesByWorkflowId(reverseWorkflowA).map { it.ref }
 
         assertThat(refs.map { it.id }).doesNotContain(reverseProjectDeleted)
     }
@@ -531,58 +532,41 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
     /** 다른 스킴만 쓰는 프로젝트는 범위에도 안 들어간다 — 스코프 판정이 공허해지지 않게 한다. */
     @Test
     fun `이관 범위 조회도 다른 스킴에만 있는 프로젝트는 안 나온다`() {
-        val refs = repository.findMigrationScopeRefsByWorkflowId(reverseWorkflowA)
+        val refs = repository.findMigrationScopesByWorkflowId(reverseWorkflowA).map { it.ref }
 
         assertThat(refs.map { it.id }).doesNotContain(reverseProjectOtherScheme)
     }
 
-    // ── 형제 워크플로우 판정 범위 (F11 과차단 방지) ────────────────────────────
+    // ── 이관 범위의 이슈 타입 필터 (WF-07-2) ───────────────────────────────────
 
     /**
-     * ★ 형제 판정은 **살아 있고 실제로 쓰이는 스킴**만 본다.
+     * ★ 스킴이 이 워크플로우만 쓰면 「제외 목록이 빈」 필터 = 모든 타입이다.
      *
-     * 이 판정이 「매핑이 있는 모든 스킴」을 보면, 예전에 만들었다 지운 스킴 하나가 그 워크플로우의
-     * 이관을 **영구히 400 으로** 막는다. `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만
-     * 세우고 매핑 행은 남기며(V201 의 CASCADE 는 하드 삭제에만 걸린다), 관리자가 손댈 수 있는
-     * 활성 스킴에는 형제가 없어 **화면에서 원인을 찾을 방법이 없다.**
+     * 스킴 A 는 default 와 이슈 타입 매핑 **둘 다** workflowA 다. 같은 워크플로우의 명시 매핑을 제외
+     * 목록에 넣으면 그 타입의 이슈가 이관에서 빠져 유령 상태로 남는다.
      *
-     * 안전성은 줄지 않는다 — 이관이 옮기는 것은 **범위 프로젝트의 이슈**이고, 그 프로젝트가 붙은
-     * 스킴에서만 형제 워크플로우와 섞일 수 있다.
+     * 소프트 삭제된 스킴·미할당 스킴은 workflowA 의 형제(workflowB)를 매핑하지만, 그 스킴들은 범위
+     * 프로젝트의 스킴이 아니므로 필터에 섞이면 안 된다.
      */
     @Test
-    fun `소프트 삭제된 스킴의 잔존 매핑은 형제로 세지 않는다`() {
-        assertThat(repository.hasSiblingWorkflowInAssignedSchemes(reverseWorkflowA))
-            .describedAs("지운 스킴 하나가 이관을 영구히 막으면 출구가 없다")
-            .isFalse()
+    fun `스킴이 이 워크플로우만 쓰면 이관 필터는 모든 타입이다`() {
+        val scopes = repository.findMigrationScopesByWorkflowId(reverseWorkflowA)
+
+        assertThat(scopes.map { it.typeFilter }.toSet())
+            .containsExactly(StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true))
+        assertThat(scopes.single { it.ref.id == reverseProjectArchived }.archived).isTrue()
+        assertThat(scopes.single { it.ref.id == reverseProjectAlpha }.archived).isFalse()
     }
 
     /**
-     * ★ 프로젝트에 할당되지 않은 스킴도 형제로 세지 않는다.
+     * ★ default 워크플로우는 「형제에 명시된 타입을 뺀 전부」, 형제는 「자기에게 명시된 타입만」이다.
      *
-     * 할당이 없으면 그 스킴을 쓰는 이슈가 하나도 없다 — 이관이 그 워크플로우의 이슈를 건드릴
-     * 경로 자체가 없으므로 막을 이유가 없다.
-     *
-     * 이 판정과 위 판정은 **다른 축**이다(활성 여부 · 할당 여부). 하나만 두면 다른 쪽 구멍이
-     * 조용히 남는다.
+     * 한 스킴의 두 워크플로우가 같은 프로젝트를 정확히 나눠 가져야 한다 — 겹치면 이관이 남의 이슈를
+     * 옮기고, 비면 그 타입의 이슈가 어느 이관에도 안 잡혀 유령 상태로 남는다.
      */
     @Test
-    fun `프로젝트에 할당되지 않은 스킴의 매핑은 형제로 세지 않는다`() {
-        assertThat(repository.hasSiblingWorkflowInAssignedSchemes(reverseWorkflowA)).isFalse()
-    }
-
-    /**
-     * ★비-공허 짝 — 좁히기가 판정을 통째로 죽이지 않았는지 반대 방향으로 확인한다.
-     *
-     * 이것이 없으면 `hasSiblingWorkflowInAssignedSchemes` 가 **항상 false** 를 돌려줘도 위 두
-     * 테스트가 초록이다. F11 fail-closed 가 통째로 사라지는데 아무도 모르는 형태가 된다.
-     */
-    @Test
-    fun `할당된 활성 스킴에 형제가 있으면 참이다`() {
-        // Gamma 가 붙은 스킴 B 에 형제를 끼운다 — B 는 활성이고 할당도 있다.
-        //
-        // ★`issue_type_id` 를 NULL 로 넣으면 안 된다. `ix_scheme_default_mapping` partial UNIQUE 가
-        //   스킴당 default 를 1건으로 막아 INSERT 가 조용히 무시되고, 형제가 안 들어간 채 판정만
-        //   false 가 된다 — 실제로 이 픽스처가 그렇게 한 번 헛돌았고 비-공허 짝이 그것을 잡았다.
+    fun `스킴이 형제 워크플로우도 쓰면 default 는 형제 타입을 빼고 형제는 그 타입만 맡는다`() {
+        // Gamma 가 붙은 스킴 B(default → workflowB)에 타입 하나를 orphan 워크플로우로 끼운다.
         val siblingTypeId =
             dsl
                 .fetchOne("SELECT id FROM issue_types ORDER BY id LIMIT 1")
@@ -596,9 +580,13 @@ class ProjectWorkflowSchemeAssignmentRepositoryIntegrationTest {
             reverseWorkflowOrphan,
         )
         try {
-            assertThat(repository.hasSiblingWorkflowInAssignedSchemes(reverseWorkflowB))
-                .describedAs("좁히기가 과해 판정이 통째로 죽으면 F11 fail-closed 가 사라진다")
-                .isTrue()
+            assertThat(repository.findMigrationScopesByWorkflowId(reverseWorkflowB).single().typeFilter)
+                .isEqualTo(StatusMigrationTypeFilter(issueTypeIds = setOf(siblingTypeId), exceptListed = true))
+
+            val sibling = repository.findMigrationScopesByWorkflowId(reverseWorkflowOrphan).single()
+            assertThat(sibling.ref.id).isEqualTo(reverseProjectOtherScheme)
+            assertThat(sibling.typeFilter)
+                .isEqualTo(StatusMigrationTypeFilter(issueTypeIds = setOf(siblingTypeId), exceptListed = false))
         } finally {
             dsl.execute(
                 "DELETE FROM workflow_scheme_issue_type_mappings WHERE scheme_id = ? AND workflow_id = ?",

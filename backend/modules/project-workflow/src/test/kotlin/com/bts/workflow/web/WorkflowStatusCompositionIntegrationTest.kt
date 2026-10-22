@@ -146,6 +146,12 @@ class WorkflowStatusCompositionIntegrationTest {
         // 이 테스트는 스킴 변경을 재지 않는다 — 불렸다면 경로가 바뀐 것이다.
         override fun countByTypeAndStatus(projectIds: Set<UUID>) = error("스킴 변경 가드는 이 테스트의 경로가 아니다")
 
+        // 타입 축 count 는 발행·이관 경로의 것이다 — 편성 제거 가드가 불렀다면 경로가 바뀐 것이다.
+        override fun countIssuesInStatusWithin(
+            statusKey: String,
+            scopes: Map<UUID, com.bts.shared.issue.StatusMigrationTypeFilter>,
+        ) = error("편성 제거 가드는 이 테스트의 경로가 아니다")
+
         override fun countIssuesInStatus(
             statusKey: String,
             projectIds: Set<UUID>,
