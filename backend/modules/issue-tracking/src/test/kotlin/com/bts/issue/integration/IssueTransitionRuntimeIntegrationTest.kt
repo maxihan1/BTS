@@ -318,7 +318,7 @@ class IssueTransitionRuntimeIntegrationTest {
                     }
                 }
 
-            // workflow_states 가 없으면 시드 (open, in_progress, in_review, done)
+            // 상태가 없으면 시드 (open, in_progress, in_review, done)
             fun insertStateIfAbsent(
                 key: String,
                 name: String,
@@ -338,10 +338,10 @@ class IssueTransitionRuntimeIntegrationTest {
                 name: String,
             ) {
                 conn.prepareStatement(
-                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
+                    "INSERT INTO workflow_transitions (workflow_id, from_status_id, to_status_id, name) " +
                         "SELECT ?, ?, ?, ? WHERE NOT EXISTS (" +
                         "SELECT 1 FROM workflow_transitions " +
-                        "WHERE workflow_id = ? AND from_state_id = ? AND to_state_id = ?)",
+                        "WHERE workflow_id = ? AND from_status_id = ? AND to_status_id = ?)",
                 ).use { stmt ->
                     stmt.setObject(1, wfId)
                     stmt.setObject(2, fromId)
