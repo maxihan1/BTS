@@ -19,6 +19,7 @@ import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.project.archive.ProjectArchivedException
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
 import io.kotest.core.spec.style.DescribeSpec
@@ -215,7 +216,7 @@ class BulkItemExecutorTest : DescribeSpec({
                 val payload =
                     BulkOperationPayload.StatusMigration(
                         mappings = mapOf("in_review" to "in_progress"),
-                        projectKeys = setOf("ATLAS"),
+                        projectScopes = mapOf("ATLAS" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)),
                     )
                 val operation = makeOperation(payload)
                 val item = pendingItem()
@@ -235,7 +236,7 @@ class BulkItemExecutorTest : DescribeSpec({
                 val payload =
                     BulkOperationPayload.StatusMigration(
                         mappings = mapOf("in_review" to "in_progress"),
-                        projectKeys = setOf("ATLAS"),
+                        projectScopes = mapOf("ATLAS" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)),
                     )
                 val operation = makeOperation(payload)
                 val item = pendingItem()

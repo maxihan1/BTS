@@ -48,7 +48,8 @@ import java.util.UUID
  *
  * 대상 건수도 상한 초과 여부도 이 시점에는 알 수 없다(위 문단). 그러므로 두 가지만 본다.
  *
- * **구조** — E5(빈 매핑) · E5b(빈 범위) · E7(같은 출발 중복) · E1(출발 == 대상) · E17(연쇄 매핑).
+ * **구조** — E5(빈 매핑) · E5b(빈 범위) · E19(아무 타입도 안 고르는 필터) · E7(같은 출발 중복) ·
+ * E1(출발 == 대상) · E17(연쇄 매핑).
  * **실재** — E2(대상이 상태 카탈로그에 없음) · E18(범위 프로젝트가 없거나 소프트 삭제됨).
  *
  * 상한 초과 판정은 실행 시점 몫이다(E4). 각 가드는 **서로 다른 메시지**를 던진다.
@@ -147,7 +148,7 @@ class WorkflowStatusMigrationAdapter(
      *
      * @param cmd 이관 커맨드. actor · 대상 프로젝트 범위 · 상태별 매핑 목록.
      * @return 생성된 일괄작업 id.
-     * @throws IllegalArgumentException 검증(E5 · E5b · E7 · E1 · E17 · E2 · E18) 중 하나라도 위반일 때.
+     * @throws IllegalArgumentException 검증(E5 · E5b · E19 · E7 · E1 · E17 · E2 · E18) 중 하나라도 위반일 때.
      *   메시지가 어느 가드인지 밝힌다.
      */
     @Transactional
@@ -161,7 +162,7 @@ class WorkflowStatusMigrationAdapter(
                 actorId = cmd.actorUserId,
                 type = BulkOperationType.STATUS_MIGRATION,
                 items = emptyList(),
-                payload = BulkOperationPayload.StatusMigration(mappings = mappings, projectKeys = cmd.projectKeys),
+                payload = BulkOperationPayload.StatusMigration(mappings = mappings, projectScopes = cmd.projectScopes),
             )
 
         repo.insert(operation)
@@ -172,7 +173,7 @@ class WorkflowStatusMigrationAdapter(
             operationId.value,
             cmd.actorUserId,
             mappings.size,
-            cmd.projectKeys.size,
+            cmd.projectScopes.size,
         )
         return operationId.value
     }
@@ -187,7 +188,7 @@ class WorkflowStatusMigrationAdapter(
      *
      * 순수 판정(구조)을 먼저 다 끝내고 DB 를 읽는다(실재). 커맨드가 앞뒤가 안 맞으면 조회할 것도 없다.
      *
-     * @throws IllegalArgumentException E5 · E5b · E7 · E1 · E17 · E2 · E18 중 하나 위반 시.
+     * @throws IllegalArgumentException E5 · E5b · E19 · E7 · E1 · E17 · E2 · E18 중 하나 위반 시.
      */
     private fun validateAndBuildMappings(cmd: StatusMigrationCommand): Map<String, String> {
         requireSoundStructure(cmd)
@@ -196,13 +197,19 @@ class WorkflowStatusMigrationAdapter(
     }
 
     /**
-     * DB 를 읽지 않는 구조 판정 — E5 · E5b · E7 · E1 · E17.
+     * DB 를 읽지 않는 구조 판정 — E5 · E5b · E19 · E7 · E1 · E17.
      *
-     * @throws IllegalArgumentException 다섯 중 하나 위반 시. 각각 다른 메시지다.
+     * @throws IllegalArgumentException 여섯 중 하나 위반 시. 각각 다른 메시지다.
      */
     private fun requireSoundStructure(cmd: StatusMigrationCommand) {
         require(cmd.mappings.isNotEmpty()) { "statusMigration mappings must not be empty" }
-        require(cmd.projectKeys.isNotEmpty()) { "statusMigration projectKeys must not be empty" }
+        require(cmd.projectScopes.isNotEmpty()) { "statusMigration projectScopes must not be empty" }
+
+        // E19 — 포함 목록이 비면 그 프로젝트에서 0건을 긁어 「이관 완료」가 된다. E18 과 같은 실패 양식이다.
+        val selectsNothing = cmd.projectScopes.filterValues { !it.exceptListed && it.issueTypeIds.isEmpty() }.keys
+        require(selectsNothing.isEmpty()) {
+            "statusMigration projectScopes select no issue type for: $selectsNothing"
+        }
 
         val sources = cmd.mappings.map { it.fromStatusKey }
         val duplicated = sources.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
@@ -237,7 +244,7 @@ class WorkflowStatusMigrationAdapter(
             "statusMigration toStatusKey not found in status catalog: $missingTargets"
         }
 
-        val missingProjects = cmd.projectKeys - findKnownProjectKeys(cmd.projectKeys)
+        val missingProjects = cmd.projectScopes.keys - findKnownProjectKeys(cmd.projectScopes.keys)
         require(missingProjects.isEmpty()) {
             "statusMigration projectKeys not found or deleted: $missingProjects"
         }

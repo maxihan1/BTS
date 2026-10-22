@@ -24,6 +24,7 @@ import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.ProjectArchivedException
 import com.bts.issue.repository.IssueRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -120,7 +121,7 @@ class BulkItemApplierStatusMigrationTest : DescribeSpec({
     val payload =
         BulkOperationPayload.StatusMigration(
             mappings = mapOf("in_review" to "in_progress", "blocked" to "todo"),
-            projectKeys = setOf("ATLAS"),
+            projectScopes = mapOf("ATLAS" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)),
         )
 
     fun issueResponse(

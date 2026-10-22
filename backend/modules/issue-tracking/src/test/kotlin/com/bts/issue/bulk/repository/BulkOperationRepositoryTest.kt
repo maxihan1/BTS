@@ -12,6 +12,7 @@ import com.bts.issue.bulk.domain.FailureReasonCode
 import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.repository.IssueTestcontainersBase
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.MethodOrderer
@@ -352,7 +353,11 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
         val payload =
             BulkOperationPayload.StatusMigration(
                 mappings = mapOf("in_review" to "in_progress", "blocked" to "todo"),
-                projectKeys = setOf("TPRJ"),
+                projectScopes =
+                    mapOf(
+                        "TPRJ" to StatusMigrationTypeFilter(issueTypeIds = setOf(1L, 2L), exceptListed = false),
+                        "OPRJ" to StatusMigrationTypeFilter(issueTypeIds = setOf(3L), exceptListed = true),
+                    ),
             )
         val op =
             BulkOperation.create(
@@ -380,7 +385,7 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
                 payload =
                     BulkOperationPayload.StatusMigration(
                         mappings = mapOf("blocked" to "todo"),
-                        projectKeys = setOf("TPRJ"),
+                        projectScopes = mapOf("TPRJ" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)),
                     ),
             )
         bulkRepo.insert(op)
@@ -395,7 +400,45 @@ class BulkOperationRepositoryTest : IssueTestcontainersBase() {
 
         val found = bulkRepo.findById(op.id)
         assertThat(found?.payload)
-            .isEqualTo(BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectKeys = emptySet()))
+            .isEqualTo(BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectScopes = emptyMap()))
+    }
+
+    /**
+     * WF-07-2 이전 payload(`projectKeys`)는 「그 프로젝트의 모든 타입」으로 읽힌다.
+     *
+     * 그 행들은 형제 워크플로우 가드(F11)를 지나야만 큐잉됐으므로 그것이 큐잉 당시의 뜻이다.
+     * 못 읽으면 지난 작업의 진행률 조회가 500 이 된다.
+     */
+    @Test
+    fun `STATUS_MIGRATION 의 WF-07-2 이전 payload 는 프로젝트별 모든 타입 범위로 복원된다`() {
+        val op =
+            BulkOperation.create(
+                id = BulkOperationId(UUID.randomUUID()),
+                actorId = UUID.randomUUID(),
+                type = BulkOperationType.STATUS_MIGRATION,
+                items = listOf(BulkOperationItem(issueKey = IssueKey("TPRJ-3"), status = ItemStatus.PENDING)),
+                payload = BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectScopes = emptyMap()),
+            )
+        bulkRepo.insert(op)
+
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.prepareStatement(
+                "UPDATE bulk_operations SET payload = " +
+                    """'{"mappings":{"blocked":"todo"},"projectKeys":["TPRJ","OPRJ"]}'::jsonb WHERE id = ?""",
+            ).use { ps ->
+                ps.setObject(1, op.id.value)
+                assertThat(ps.executeUpdate()).isEqualTo(1)
+            }
+        }
+
+        val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+        assertThat(bulkRepo.findById(op.id)?.payload)
+            .isEqualTo(
+                BulkOperationPayload.StatusMigration(
+                    mappings = mapOf("blocked" to "todo"),
+                    projectScopes = mapOf("TPRJ" to allTypes, "OPRJ" to allTypes),
+                ),
+            )
     }
 
     // ── 진단 가능한 실패 사유 (완료기준 14 · C-4) ───────────────

@@ -16,6 +16,7 @@ import com.bts.issue.bulk.domain.ItemStatus
 import com.bts.issue.bulk.repository.BulkOperationRepository
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueKey
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.shared.workflow.AvailableTransitionView
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -522,7 +523,7 @@ class BulkOperationControllerTest {
                 payload =
                     BulkOperationPayload.StatusMigration(
                         mappings = mapOf("legacy_open" to "open"),
-                        projectKeys = setOf("ATLAS"),
+                        projectScopes = mapOf("ATLAS" to StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)),
                     ),
                 items = emptyList(),
                 totalCount = 0,

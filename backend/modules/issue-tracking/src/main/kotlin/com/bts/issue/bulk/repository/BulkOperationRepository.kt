@@ -17,10 +17,13 @@ import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.ISSUES
 import com.bts.issue.jooq.tables.references.PROJECTS
+import com.bts.shared.issue.StatusMigrationTypeFilter
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.jooq.Condition
 import org.jooq.DSLContext
 import org.jooq.JSONB
+import org.jooq.impl.DSL
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -91,8 +94,8 @@ class BulkOperationRepository(
      * `total_count` 를 확정한다.
      *
      * 대상은 `current_state_key` ∈ [BulkOperationPayload.StatusMigration.mappings] 의 출발 상태 ∩
-     * 프로젝트 ∈ [BulkOperationPayload.StatusMigration.projectKeys] 다. 상태 키는 사이트 전역이라
-     * 범위가 없으면 남의 프로젝트 이슈까지 함께 옮겨진다.
+     * [BulkOperationPayload.StatusMigration.projectScopes] 의 (프로젝트, 이슈 타입) 범위다. 상태 키는
+     * 사이트 전역이라 범위가 없으면 남의 프로젝트 이슈까지 함께 옮겨진다.
      *
      * ### 왜 큐잉이 아니라 여기인가 (F15)
      * 큐잉 시점에 대상을 굳히면 큐잉 → 실행 사이에 그 상태로 들어온 이슈를 통째로 버린다.
@@ -466,25 +469,50 @@ class BulkOperationRepository(
     }
 
     /**
-     * 이관 대상 조건 — 출발 상태 ∩ 프로젝트 범위 ∩ 살아 있는 행.
+     * 이관 대상 조건 — 출발 상태 ∩ (프로젝트 · 이슈 타입) 범위 ∩ 살아 있는 행.
      *
      * V029 에 `idx_issues_project_state_active (project_id, current_state_key) WHERE deleted_at IS NULL`
      * 이 있고 이 조건은 그 세 열을 그대로 쓴다. **실행 계획을 이 PR 이 EXPLAIN 으로 확인하지는 않았다** —
      * 대응 인덱스가 있다는 사실 진술이지 「전역 스캔으로 흐르지 않는다」는 보장이 아니다.
      * 프로젝트는 키로 받으므로 서브쿼리로 id 를 좁힌다 — JOIN 이 아니라 서브쿼리인 이유는 이슈 1행이
      * 프로젝트 1행에 대응해도 조인 결과를 세는 순간 실수하기 쉽기 때문이다(learnings: jOOQ-cartesian-product).
+     *
+     * ### 이슈 타입 축 (WF-07-2)
+     * 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면 WF1 이 빼는 상태가 WF2 에서는 살아 있을 수 있다.
+     * 프로젝트로만 좁히면 WF2 의 Task 까지 옮겨진다. 같은 스킴을 쓰는 프로젝트는 필터가 같으므로
+     * **필터별로 묶어** 프로젝트 수가 아니라 스킴 수만큼의 OR 항만 만든다.
+     *
+     * ### ★빈 범위는 거짓이다 — `DSL.or()` 에 맡기지 않는다
+     * 범위가 비면 「아무것도 안 옮긴다」여야 한다. 빈 OR 이 무엇으로 렌더링되는지에 기대면 그것이
+     * 「조건 없음」으로 풀리는 순간 **사이트 전체의 그 상태 이슈가 옮겨진다.** 큐잉 어댑터가 빈 범위를
+     * 거부하지만, 옛 빈 payload(`{}` 폴백)도 이 경로로 온다.
      */
-    private fun statusMigrationTargets(payload: BulkOperationPayload.StatusMigration): Condition =
-        ISSUES.CURRENT_STATE_KEY.`in`(payload.mappings.keys)
+    private fun statusMigrationTargets(payload: BulkOperationPayload.StatusMigration): Condition {
+        val scopes =
+            payload.projectScopes.entries
+                .groupBy({ it.value }, { it.key })
+                .map { (filter, projectKeys) -> inLiveProjects(projectKeys).and(issueTypeCondition(filter)) }
+        return ISSUES.CURRENT_STATE_KEY.`in`(payload.mappings.keys)
             .and(ISSUES.DELETED_AT.isNull)
-            .and(
-                ISSUES.PROJECT_ID.`in`(
-                    dsl.select(PROJECTS.ID)
-                        .from(PROJECTS)
-                        .where(PROJECTS.KEY.`in`(payload.projectKeys))
-                        .and(PROJECTS.DELETED_AT.isNull),
-                ),
-            )
+            .and(if (scopes.isEmpty()) DSL.falseCondition() else DSL.or(scopes))
+    }
+
+    private fun inLiveProjects(projectKeys: Collection<String>): Condition =
+        ISSUES.PROJECT_ID.`in`(
+            dsl.select(PROJECTS.ID)
+                .from(PROJECTS)
+                .where(PROJECTS.KEY.`in`(projectKeys))
+                .and(PROJECTS.DELETED_AT.isNull),
+        )
+
+    /** `issues.type_id` 는 NOT NULL(V005)이라 `NOT IN` 이 NULL 에 삼켜지지 않는다. */
+    private fun issueTypeCondition(filter: StatusMigrationTypeFilter): Condition =
+        when {
+            filter.exceptListed && filter.issueTypeIds.isEmpty() -> DSL.noCondition()
+            filter.exceptListed -> ISSUES.TYPE_ID.notIn(filter.issueTypeIds)
+            filter.issueTypeIds.isEmpty() -> DSL.falseCondition()
+            else -> ISSUES.TYPE_ID.`in`(filter.issueTypeIds)
+        }
 
     /**
      * 이관 대상 키를 PENDING 항목으로 배치 INSERT 한다. 이미 있는 키는 건너뛴다.
@@ -555,7 +583,7 @@ class BulkOperationRepository(
                 BulkOperationType.BULK_EDIT -> BulkOperationPayload.Edit(priority = null, impact = null)
                 BulkOperationType.BULK_TRANSITION -> BulkOperationPayload.Transition(toStateKey = "")
                 BulkOperationType.STATUS_MIGRATION ->
-                    BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectKeys = emptySet())
+                    BulkOperationPayload.StatusMigration(mappings = emptyMap(), projectScopes = emptyMap())
             }
         }
         return when (type) {
@@ -563,12 +591,33 @@ class BulkOperationRepository(
                 objectMapper.readValue(json, BulkOperationPayload.Edit::class.java)
             BulkOperationType.BULK_TRANSITION ->
                 objectMapper.readValue(json, BulkOperationPayload.Transition::class.java)
-            BulkOperationType.STATUS_MIGRATION ->
-                objectMapper.readValue(json, BulkOperationPayload.StatusMigration::class.java)
+            BulkOperationType.STATUS_MIGRATION -> readStatusMigration(json)
         }
     }
 
+    /**
+     * STATUS_MIGRATION payload 를 읽는다. WF-07-2 이전 모양(`projectKeys`)도 읽는다.
+     *
+     * 옛 행은 프로젝트 키 집합만 갖는다. 그 행들은 발행 경로의 형제 워크플로우 가드(F11)가 「스킴이 이
+     * 워크플로우 하나만 쓴다」를 확인한 뒤에만 큐잉됐으므로, 「그 프로젝트의 **모든 타입**」으로 읽는
+     * 것이 큐잉 당시의 뜻 그대로다. 못 읽으면 지난 작업의 진행률 조회가 500 이 된다.
+     */
+    private fun readStatusMigration(json: String): BulkOperationPayload.StatusMigration {
+        val node = objectMapper.readTree(json)
+        val legacyProjectKeys = node.get("projectKeys")
+        if (legacyProjectKeys == null || node.has("projectScopes")) {
+            return objectMapper.treeToValue(node, BulkOperationPayload.StatusMigration::class.java)
+        }
+        val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
+        return BulkOperationPayload.StatusMigration(
+            mappings = objectMapper.convertValue(node.get("mappings"), STRING_MAP),
+            projectScopes = legacyProjectKeys.map { it.asText() }.associateWith { allTypes },
+        )
+    }
+
     companion object {
+        private val STRING_MAP = object : TypeReference<Map<String, String>>() {}
+
         /**
          * stale RUNNING 작업 재청 기준 (초).
          *

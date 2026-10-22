@@ -5,6 +5,7 @@ package com.bts.workflow.application
 import com.bts.shared.issue.IssueStatusMigrationPort
 import com.bts.shared.issue.StatusMigrationCommand
 import com.bts.shared.issue.StatusMigrationMapping
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.shared.permission.WorkflowDefinitionPermission
 import com.bts.shared.permission.WorkflowDefinitionPermissionResolver
 import com.bts.workflow.application.port.IssueStatusUsagePort
@@ -177,7 +178,7 @@ class WorkflowPublishService(
      * 그래서 이 메서드는 **project-workflow 를 읽기만 하고** `bulk_operations` 에만 쓴다. 관리자는
      * 202 로 받은 id 로 진행률을 보고, 끝난 뒤 [publish] 를 다시 부른다.
      *
-     * ### ★[StatusMigrationCommand.projectKeys] 는 요청에서 받지 않는다
+     * ### ★[StatusMigrationCommand.projectScopes] 는 요청에서 받지 않는다
      * 이 메서드가 스킴 할당을 거슬러 **직접 조회해** 채운다. 범위를 요청이 정하게 두면 워크플로우
      * 하나에 발행 권한을 가진 사람이 남의 프로젝트 이슈를 통째로 옮길 수 있다 —
      * [IssueStatusMigrationPort] KDoc 이 「호출자의 범위 의무」로 못박은 계약이다.
@@ -229,8 +230,14 @@ class WorkflowPublishService(
                 if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
                     throw WorkflowMigrationInFlightException(key)
                 }
+                // 모든 타입 — F11 이 형제 워크플로우를 거부했으므로 이 프로젝트들의 이슈는 전부 이 워크플로우 소관이다.
+                val allTypes = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true)
                 issueStatusMigrationPort.enqueueStatusMigration(
-                    StatusMigrationCommand(actorUserId = actorId, projectKeys = projectKeys, mappings = mappings),
+                    StatusMigrationCommand(
+                        actorUserId = actorId,
+                        projectScopes = projectKeys.associateWith { allTypes },
+                        mappings = mappings,
+                    ),
                 )
             }
 

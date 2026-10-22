@@ -49,9 +49,9 @@ import java.util.UUID
  * PUBLISH 를 가진 호출자가 임의의 프로젝트와 살아 있는 임의의 출발 상태(예: `done→todo`)를 실어
  * 보낼 수 있기 때문이다. 그래서 호출자는 다음 둘을 지켜야 한다 — 계약이지 권고가 아니다.
  *
- * 1. **[StatusMigrationCommand.projectKeys] 는 발행 대상 워크플로우에 연결된 프로젝트여야 한다.**
- *    사용자 입력을 그대로 실으면 안 된다. 호출자가 자기 발행 트랜잭션 안에서 그 워크플로우의
- *    연결 프로젝트를 **직접 조회해** 채운다.
+ * 1. **[StatusMigrationCommand.projectScopes] 는 발행 대상 워크플로우에 연결된 프로젝트와, 그
+ *    프로젝트에서 이 워크플로우가 맡는 이슈 타입이어야 한다.** 사용자 입력을 그대로 실으면 안 된다.
+ *    호출자가 자기 발행 트랜잭션 안에서 스킴 매핑을 **직접 조회해** 채운다.
  * 2. **[StatusMigrationMapping.fromStatusKey] 는 이번 발행이 제거하는 상태와 정확히 일치해야 한다.**
  *    제거되지 않는 상태를 실으면 살아 있는 상태의 이슈가 통째로 옮겨진다. 구현체는 출발 상태를
  *    의도적으로 검증하지 **않으므로**(사라지는 중이라 카탈로그에 이미 없을 수 있다) 이 축의 방어는
@@ -70,7 +70,8 @@ import java.util.UUID
  *
  * ### 계약 타입 — 원시 타입 전용
  *
- * 파라미터는 `String`·`UUID`·`Set`·`List` 뿐이고 반환은 `UUID` 다. shared-kernel 은 순수 계약
+ * 파라미터는 `String`·`Long`·`Boolean`·`UUID`·`Set`·`List`·`Map` 과 그것만 담은 이 파일의 VO 뿐이고
+ * 반환은 `UUID` 다. shared-kernel 은 순수 계약
  * 모듈이라 `BulkOperationId` 같은 BC 내부 타입을 노출하지 않는다 — 노출하면 소비 BC 가 issue-tracking
  * 도메인에 결합돼 순환 의존이 재발한다.
  *
@@ -88,7 +89,7 @@ interface IssueStatusMigrationPort {
      *
      * 구현체는 일괄작업 1건을 만들어 pgmq 큐에 넣기까지만 한다. **대상 이슈는 이 시점에 확정되지
      * 않는다** — 워커가 실행 시점에 [StatusMigrationCommand.mappings] 의 출발 상태 키와
-     * [StatusMigrationCommand.projectKeys] 범위로 이슈를 다시 긁는다. 큐잉과 실행 사이에 그 상태로
+     * [StatusMigrationCommand.projectScopes] 범위로 이슈를 다시 긁는다. 큐잉과 실행 사이에 그 상태로
      * 들어온 이슈도 대상이 된다(「세고 나서 옮긴다」가 아니라 「옮기면서 센다」).
      *
      * 이 포트는 권한을 판단하지 않는다 — per-issue 전환 권한 우회와 그 신뢰 모델은 이 인터페이스의
@@ -107,33 +108,58 @@ interface IssueStatusMigrationPort {
  *
  * project-workflow 발행 경로가 [IssueStatusMigrationPort.enqueueStatusMigration] 호출 시 전달한다.
  *
- * ### projectKeys — 범위가 없으면 남의 프로젝트를 옮긴다
+ * ### projectScopes — 범위가 없으면 남의 프로젝트를 옮긴다
  *
  * 상태 키는 전역이다. 범위를 생략할 수 있게 두면 같은 상태 키를 쓰는 다른 프로젝트의 이슈까지
  * 함께 옮겨진다. 과다 집계(읽기)는 안전하지만 **과다 이동은 데이터 손상**이므로 범위를 기본값 없는
  * 필수 파라미터로 못박는다.
  *
- * ### mappings — 단일 쌍이 아니라 목록
+ * ### ★프로젝트만으로는 범위가 안 된다 — 이슈 타입 축 (WF-07-2)
  *
- * 사라지는 상태마다 옮길 곳을 **각각** 고른다. 한 번의 발행에서 여러 상태가 동시에 빠질 수 있고,
- * 그 각각의 대상이 다르기 때문이다. 단일 `(from, to)` 쌍으로 좁히면 이 선택이 표현되지 않는다.
+ * 스킴은 `(scheme_id, issue_type_id) → workflow_id` 다. 한 프로젝트가 Bug→WF1 · Task→WF2 를 쓰면
+ * WF1 발행이 빼는 상태가 WF2 에서는 멀쩡히 살아 있을 수 있다. 프로젝트로만 좁히면 WF1 이관이
+ * **WF2 의 Task 까지 옮긴다.** 그래서 프로젝트마다 [StatusMigrationTypeFilter] 를 붙인다.
+ * 키가 프로젝트인 `Map` 이라 한 프로젝트에 필터가 둘 실리는 모순은 타입이 막는다.
  *
  * @property actorUserId 실행 주체 UUID. 워크플로우 정의를 발행한 관리자.
- * @property projectKeys 대상 프로젝트 키 집합. 비우면 안 된다(구현체가 거부).
+ * @property projectScopes 대상 프로젝트 키 → 그 프로젝트에서 옮길 이슈 타입. 비우면 안 된다(구현체가 거부).
  * @property mappings 빠지는 상태마다 옮길 곳. 여기 없는 상태의 이슈는 이관 대상이 아니다.
  * @see IssueStatusMigrationPort.enqueueStatusMigration
  */
 data class StatusMigrationCommand(
     val actorUserId: UUID,
-    val projectKeys: Set<String>,
+    val projectScopes: Map<String, StatusMigrationTypeFilter>,
     val mappings: List<StatusMigrationMapping>,
+)
+
+/**
+ * 한 프로젝트 안에서 이관이 건드릴 이슈 타입(`issues.type_id`) VO.
+ *
+ * 스킴 매핑의 두 모양을 그대로 옮긴다.
+ *
+ * - 워크플로우가 **타입별 매핑**으로만 실렸으면 그 타입들**만** — `issueTypeIds = {Bug}`,
+ *   `exceptListed = false`.
+ * - 워크플로우가 **default 매핑**(`issue_type_id IS NULL`)이면 「다른 워크플로우에 명시된 타입을 **뺀**
+ *   전부」 — `issueTypeIds = {Task}`, `exceptListed = true`. 형제가 없으면 `issueTypeIds` 가 비고, 그것이
+ *   「모든 타입」이다.
+ *
+ * default 쪽을 「전체 타입을 나열」로 바꾸지 않는 이유 — 큐잉과 실행 사이에 새 타입이 생기면 그 타입의
+ * 이슈는 default 워크플로우 소관인데도 나열에서 빠져 **유령 상태로 남는다.** 제외 목록은 그 창이 없다.
+ *
+ * @property issueTypeIds `issue_types.id` 집합. [exceptListed] 에 따라 포함 목록이거나 제외 목록이다.
+ * @property exceptListed true 면 [issueTypeIds] 를 **뺀** 모든 타입, false 면 [issueTypeIds] 만.
+ *   false 인데 [issueTypeIds] 가 비면 아무것도 고르지 않는다 — 구현체가 거부한다.
+ */
+data class StatusMigrationTypeFilter(
+    val issueTypeIds: Set<Long>,
+    val exceptListed: Boolean,
 )
 
 /**
  * 상태 1개의 이관 대상 매핑 VO.
  *
  * 상태 키는 워크플로우 정의의 상태 키이며 프로젝트별 id 가 아니다 — 범위는
- * [StatusMigrationCommand.projectKeys] 가 따로 좁힌다.
+ * [StatusMigrationCommand.projectScopes] 가 따로 좁힌다.
  *
  * @property fromStatusKey 정의에서 사라지는 상태 키. 이 상태에 남은 이슈가 이관 대상이다.
  * @property toStatusKey 옮겨 갈 상태 키. 새 정의에 존재해야 한다(구현체 검증).

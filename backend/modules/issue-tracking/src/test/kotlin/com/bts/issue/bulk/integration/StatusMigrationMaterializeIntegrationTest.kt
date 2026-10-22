@@ -29,6 +29,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.jooq.tables.references.BULK_OPERATIONS
 import com.bts.issue.jooq.tables.references.BULK_OPERATION_ITEMS
 import com.bts.issue.jooq.tables.references.ISSUES
+import com.bts.issue.jooq.tables.references.ISSUE_TYPES
 import com.bts.issue.jooq.tables.references.PROJECTS
 import com.bts.issue.project.archive.ProjectArchiveGuard
 import com.bts.issue.project.archive.repository.ProjectArchiveStateRepository
@@ -39,6 +40,7 @@ import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueStatusMigrationPort
 import com.bts.shared.issue.StatusMigrationCommand
 import com.bts.shared.issue.StatusMigrationMapping
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.shared.user.UserLookupPort
 import com.bts.workflow.adapter.inbound.WorkflowTransitionAdapter
 import com.bts.workflow.cache.WorkflowCache
@@ -880,14 +882,80 @@ class StatusMigrationMaterializeIntegrationTest {
         assertThat(countIssuesInState(SCOPE_KEY, "in_progress")).isEqualTo(BULK_OPERATION_MAX_SIZE)
     }
 
+    // ── M12 · M13. 이슈 타입 축 (WF-07-2) ─────────────────────────────────────
+
+    /**
+     * M12 (WF-07-2) — 워크플로우가 **타입별 매핑**(Bug→WF1)으로만 실렸으면 그 타입만 옮긴다.
+     *
+     * 같은 프로젝트의 Task 는 다른 워크플로우 소관이고, 거기서는 같은 상태가 살아 있을 수 있다.
+     * 뮤테이션 짝 — 워커 조건에서 타입 축을 지우면 Task 가 옮겨져 **이 테스트가** red 다.
+     */
+    @Test
+    fun `M12 - 포함 목록이면 그 타입 이슈만 옮기고 같은 프로젝트의 다른 타입은 무변경이다`() {
+        val bug = insertIssue(SCOPE_KEY, "in_review", typeKey = "bug")
+        val task = insertIssue(SCOPE_KEY, "in_review", typeKey = "task")
+
+        val operationId =
+            enqueue(
+                projectKeys = setOf(SCOPE_KEY),
+                typeFilter = StatusMigrationTypeFilter(issueTypeIds = setOf(issueTypeId("bug")), exceptListed = false),
+            )
+        worker.pollAndProcess()
+
+        assertThat(stateOf(bug)).isEqualTo("in_progress")
+        assertThat(stateOf(task)).isEqualTo("in_review")
+        assertThat(itemKeys(operationId)).containsExactly(bug)
+    }
+
+    /**
+     * M13 (WF-07-2) — 워크플로우가 **default 매핑**이면 「다른 워크플로우에 명시된 타입을 뺀 전부」를 옮긴다.
+     *
+     * 포함 목록(M12)과 반대 극이다. 제외 목록에 없는 두 타입(Bug · Story)이 모두 옮겨져야 「나열한 것만」
+     * 으로 잘못 읽는 구현을 잡는다.
+     */
+    @Test
+    fun `M13 - 제외 목록이면 나열한 타입만 남기고 나머지 타입은 전부 옮긴다`() {
+        val bug = insertIssue(SCOPE_KEY, "in_review", typeKey = "bug")
+        val story = insertIssue(SCOPE_KEY, "blocked", typeKey = "story")
+        val task = insertIssue(SCOPE_KEY, "in_review", typeKey = "task")
+
+        val operationId =
+            enqueue(
+                projectKeys = setOf(SCOPE_KEY),
+                typeFilter = StatusMigrationTypeFilter(issueTypeIds = setOf(issueTypeId("task")), exceptListed = true),
+            )
+        worker.pollAndProcess()
+
+        assertThat(stateOf(bug)).isEqualTo("in_progress")
+        assertThat(stateOf(story)).isEqualTo("todo")
+        assertThat(stateOf(task)).isEqualTo("in_review")
+        assertThat(itemKeys(operationId)).containsExactlyInAnyOrder(bug, story)
+    }
+
     // ── private helpers ────────────────────────────────────────────────────────
 
-    /** 기준 커맨드로 이관을 큐잉한다. 매핑은 2개 — 범위와 시점만 테스트마다 흔든다. */
-    private fun enqueue(projectKeys: Set<String>): UUID =
+    /** 시드된 이슈 타입의 id. 타입 필터는 키가 아니라 `issues.type_id` 축으로 받는다. */
+    private fun issueTypeId(typeKey: String): Long =
+        requireNotNull(
+            dsl.select(ISSUE_TYPES.ID)
+                .from(ISSUE_TYPES)
+                .where(ISSUE_TYPES.KEY.eq(typeKey))
+                .and(ISSUE_TYPES.DELETED_AT.isNull)
+                .fetchOne(ISSUE_TYPES.ID),
+        ) { "이슈 타입 없음: $typeKey" }
+
+    /**
+     * 기준 커맨드로 이관을 큐잉한다. 매핑은 2개 — 범위와 시점만 테스트마다 흔든다.
+     * 타입 필터를 안 주면 「모든 타입」이다(형제 워크플로우가 없는 스킴의 모양).
+     */
+    private fun enqueue(
+        projectKeys: Set<String>,
+        typeFilter: StatusMigrationTypeFilter = StatusMigrationTypeFilter(issueTypeIds = emptySet(), exceptListed = true),
+    ): UUID =
         port.enqueueStatusMigration(
             StatusMigrationCommand(
                 actorUserId = ACTOR_ID,
-                projectKeys = projectKeys,
+                projectScopes = projectKeys.associateWith { typeFilter },
                 mappings =
                     listOf(
                         StatusMigrationMapping("in_review", "in_progress"),
@@ -1066,6 +1134,7 @@ class StatusMigrationMaterializeIntegrationTest {
     private fun insertIssue(
         projectKey: String,
         stateKey: String,
+        typeKey: String = "task",
     ): String =
         DriverManager.getConnection(
             TestConfig.postgres.jdbcUrl,
@@ -1087,13 +1156,14 @@ class StatusMigrationMaterializeIntegrationTest {
             conn.prepareStatement(
                 "INSERT INTO issues (key, project_id, summary, reporter_id, current_state_key, version, type_id) " +
                     "SELECT ?::text, p.id, ?::text, ?::uuid, ?::text, 1, t.id FROM projects p, issue_types t " +
-                    "WHERE p.key = ?::text AND t.key = 'task' AND t.deleted_at IS NULL",
+                    "WHERE p.key = ?::text AND t.key = ?::text AND t.deleted_at IS NULL",
             ).use { stmt ->
                 stmt.setString(1, issueKey)
                 stmt.setString(2, "이관 대상 $issueKey")
                 stmt.setObject(3, ACTOR_ID)
                 stmt.setString(4, stateKey)
                 stmt.setString(5, projectKey)
+                stmt.setString(6, typeKey)
                 check(stmt.executeUpdate() == 1) { "이슈 삽입 실패: $issueKey" }
             }
             conn.commit()

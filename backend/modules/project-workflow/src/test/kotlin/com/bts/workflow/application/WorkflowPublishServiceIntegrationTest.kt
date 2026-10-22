@@ -1129,7 +1129,7 @@ class WorkflowPublishServiceIntegrationTest {
             controller.migrate(key, webMapper.readValue(body, MigrateRequest::class.java))
         }
 
-        assertThat(migrationPort.received.single().projectKeys)
+        assertThat(migrationPort.received.single().projectScopes.keys)
             .describedAs("「HACKED 가 없다」로 약하게 재면 조회 결과가 통째로 비어도 통과한다")
             .containsExactlyInAnyOrder(projectKey(alpha), projectKey(beta))
     }
@@ -1269,7 +1269,7 @@ class WorkflowPublishServiceIntegrationTest {
 
         service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
 
-        assertThat(migrationPort.received.single().projectKeys)
+        assertThat(migrationPort.received.single().projectScopes.keys)
             .describedAs("범위에서 빠지면 그 프로젝트 이슈가 흔적 없이 사라진다")
             .containsExactlyInAnyOrder(projectKey(alpha), projectKey(beta), projectKey(archived))
     }
