@@ -221,10 +221,8 @@ class WorkflowPublishService(
             val live = publishRepository.findComposedStatusKeys(workflowId)
             val removed = live - definition.states.map { it.key }.toSet()
 
-            // ★이관 범위는 **아카이브를 포함**한다 — 발행 차단 카운트(findProjectRefsByWorkflowId)와
-            //   일부러 다른 집합이다. 범위에서 빼면 워커가 그 프로젝트를 안 보고 이슈가 흔적 없이
-            //   사라지고, 넣어 두면 bulk_operation_items 에 PROJECT_ARCHIVED 로 남아 셀 수 있다(E7).
-            //   프로젝트마다 이 워크플로우가 맡는 이슈 타입을 함께 싣는다 — 형제 워크플로우의 이슈를
+            // ★이관 범위는 **아카이브를 포함**한다 — 빼면 그 이슈가 워크플로우에 없는 상태로 남는다
+            //   (WF-07-4). 발행 차단 카운트도 같은 범위로 센다. 프로젝트마다 이 워크플로우가 맡는 이슈 타입을 함께 싣는다 — 형제 워크플로우의 이슈를
             //   옮기지 않기 위해서다(WF-07-2).
             val scope = schemeAssignmentRepository.findMigrationScopesByWorkflowId(workflowId)
             val projectKeys = scope.map { it.ref.key }.toSet()
@@ -428,7 +426,8 @@ class WorkflowPublishService(
      * 상태 키는 전역이라 키만으로 세면 **다른 워크플로우를 쓰는 이슈까지** 잡혀 발행이 과하게
      * 막힌다. 한 프로젝트 안에서도 이슈 타입마다 워크플로우가 갈리므로(WF-07-2) 타입까지 좁힌다 —
      * 이관 워커가 옮기는 범위와 같아야 「이관하고 나면 발행된다」가 성립한다. 프로젝트로만 세면 형제
-     * 워크플로우의 이슈가 남아 이관으로 풀 수 없는 409 가 된다. 아카이브 프로젝트는 뺀다(spec E7).
+     * 워크플로우의 이슈가 남아 이관으로 풀 수 없는 409 가 된다. 아카이브 프로젝트도 센다 — 빼면
+     * 아카이브 이슈만 남은 상태가 이관 없이 발행돼 그 이슈가 워크플로우 밖에 남는다(WF-07-4).
      *
      * ### 조회는 한 번뿐이다 (NFR N1)
      * 아래 `associateWith` 는 빠지는 상태 수만큼 돈다. 그 안에서 프로젝트를 되물으면 상태마다
@@ -441,7 +440,6 @@ class WorkflowPublishService(
         val scopes =
             schemeAssignmentRepository
                 .findMigrationScopesByWorkflowId(workflowId)
-                .filterNot { it.archived }
                 .associate { it.ref.id to it.typeFilter }
         return removed
             .associateWith { issueStatusUsagePort.countIssuesInStatusWithin(it, scopes) }

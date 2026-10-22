@@ -28,13 +28,11 @@ data class ProjectRef(
  * 이관이 건드릴 프로젝트 한 건과, 그 프로젝트에서 이 워크플로우가 맡는 이슈 타입.
  *
  * @property ref 프로젝트 참조.
- * @property archived 아카이브 여부. 이관 범위에는 넣고 발행 차단 카운트에서는 뺀다(spec E7).
  * @property typeFilter 이 프로젝트의 스킴에서 이 워크플로우가 맡는 이슈 타입. 계산 규칙은
  *   [ProjectWorkflowSchemeAssignmentRepository.findMigrationScopesByWorkflowId].
  */
 data class ProjectMigrationScope(
     val ref: ProjectRef,
-    val archived: Boolean,
     val typeFilter: StatusMigrationTypeFilter,
 )
 
@@ -165,8 +163,9 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * 스킴에 할당된 프로젝트 중 살아 있고 아카이브되지 않은 것의 id.
      *
      * 매핑을 고칠 때 이슈가 새 워크플로우에 없는 상태에 남는지 세는 범위다(WF-02-1). 아카이브를
-     * 빼는 이유는 발행 차단 카운트([findProjectRefsByWorkflowId])와 같다 — 아카이브 이슈는 옮길 수
-     * 없으므로 넣으면 매핑 변경이 **관리자가 풀 수 없게** 막힌다.
+     * 빼는 이유 — 매핑 변경에는 상태 이관 경로가 없어 아카이브 이슈는 해제 전에는 옮길 수 없으므로,
+     * 넣으면 매핑 변경이 **관리자가 풀 수 없게** 막힌다. 그 대가로 아카이브 이슈가 워크플로우에 없는
+     * 상태로 남을 수 있다(WF-07-4 잔여). 발행 · 상태 제거 카운트는 이관이 있어 아카이브를 넣는다.
      *
      * @param schemeId 조회할 스킴.
      * @return 프로젝트 id 집합. 할당이 없으면 빈 집합.
@@ -216,34 +215,25 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
      * 한 스킴이 default 매핑과 이슈 타입별 매핑으로 **같은 워크플로우를 여러 번** 가리킬 수 있다.
      * 그러면 프로젝트 한 건이 매핑 수만큼 중복돼 나오므로 DISTINCT 로 접는다.
      *
-     * 소프트 삭제(`deleted_at`)·아카이브(`archived_at`) 된 프로젝트는 제외한다. 이관 대상이 아닌
-     * 프로젝트를 실으면 죽은 프로젝트의 이슈까지 상태가 옮겨진다.
+     * 소프트 삭제(`deleted_at`)된 프로젝트는 제외하고 아카이브는 **포함**한다(WF-07-4). 상태 제거
+     * 차단 카운트가 이 범위로 세는데, 아카이브 이슈를 빼면 그 이슈만 남은 상태가 빠져 워크플로우에
+     * 없는 상태로 남는다. 이관이 아카이브 이슈도 옮기므로 세어도 관리자가 풀 수 있다.
      *
      * @param workflowId 조회할 워크플로우 UUID.
-     * @return 활성 프로젝트 참조 목록. 연결된 프로젝트가 없으면 빈 목록.
+     * @return 소프트 삭제되지 않은 프로젝트(아카이브 포함) 참조 목록. 연결된 프로젝트가 없으면 빈 목록.
      */
     @Transactional(readOnly = true)
     fun findProjectRefsByWorkflowId(workflowId: UUID): List<ProjectRef> =
-        // 발행 차단 카운트용 — 아카이브 이슈는 영원히 안 옮겨지므로 세지 않는다. 같은 JOIN 을 두 벌 두지
-        // 않으려고 이관 범위 조회에서 거른다 — 두 집합이 소프트 삭제 규칙에서 어긋날 수 없다.
-        findMigrationScopesByWorkflowId(workflowId).filterNot { it.archived }.map { it.ref }
+        // 같은 JOIN 을 두 벌 두지 않으려고 이관 범위 조회를 그대로 쓴다 — 두 집합이 어긋날 수 없다.
+        findMigrationScopesByWorkflowId(workflowId).map { it.ref }
 
     /**
-     * 이관이 대상으로 삼을 프로젝트와 각 프로젝트의 이슈 타입 필터. [findProjectRefsByWorkflowId] 와 달리
-     * **아카이브를 포함**한다 — 발행 차단 카운트는 [ProjectMigrationScope.archived] 로 걸러 쓴다.
+     * 이관이 대상으로 삼을 프로젝트와 각 프로젝트의 이슈 타입 필터. **아카이브를 포함**한다.
      *
-     * ## 왜 카운트와 다른 집합인가 (spec E7 · 게이트 1 I1)
-     * 아카이브 프로젝트의 이슈는 워커의 아카이브 가드가 변경을 거부하므로 **영원히 안 옮겨진다.**
-     * 그렇다고 이관 범위에서까지 빼면 워커가 그 프로젝트를 아예 안 보고, 그 이슈들은 **흔적 없이
-     * 사라진다** — 관리자가 「몇 건이 왜 안 옮겨졌는지」를 셀 수단이 0 이 된다.
-     *
-     * 범위에 넣어 두면 `BulkItemApplier` 가 `ProjectArchivedException` 을 던지고
-     * `BulkItemExecutor` 가 그것을 `FailureReasonCode.PROJECT_ARCHIVED` 로 번역해
-     * `bulk_operation_items` 에 **행으로 남긴다.** 그것이 셀 수 있는 형태다.
-     *
-     * 반대로 **발행 차단 카운트에는 넣지 않는다**(호출자가 [ProjectMigrationScope.archived] 로 뺀다).
-     * 넣으면 영원히 안 옮겨지는 이슈가 카운트에 계속 잡혀 발행이 **관리자가 풀 수 없는 상태로**
-     * 막힌다. 두 조회가 다른 집합인 것은 실수가 아니라 이 판정의 핵심이다.
+     * ## 왜 아카이브를 넣는가 (WF-07-4)
+     * 범위에서 빼면 워커가 그 프로젝트를 안 보고 그 이슈들이 워크플로우에 없는 상태로 남는다.
+     * 워커(`BulkItemApplier`)는 이관에서 아카이브 가드를 건너뛰어 그 이슈도 옮긴다. 발행 차단
+     * 카운트도 같은 범위로 센다 — 「이관하고 나면 발행된다」가 성립하려면 두 집합이 같아야 한다.
      *
      * ## 스킴 소프트 삭제를 본다
      * `WorkflowSchemeRepository.softDelete` 는 `deleted_at` 만 세우고 매핑·할당 행을 남긴다
@@ -281,7 +271,7 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
     fun findMigrationScopesByWorkflowId(workflowId: UUID): List<ProjectMigrationScope> {
         val projects =
             dsl
-                .selectDistinct(M_SCHEME_ID, P_ID, P_KEY, P_ARCHIVED_AT)
+                .selectDistinct(M_SCHEME_ID, P_ID, P_KEY)
                 .from(MAPPINGS)
                 .join(SCHEMES).on(SC_ID.eq(M_SCHEME_ID))
                 .join(TABLE).on(A_SCHEME_ID.eq(M_SCHEME_ID))
@@ -310,7 +300,6 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
                         id = record.get(P_ID) ?: error("projects.id is null — PK 제약 위반"),
                         key = record.get(P_KEY) ?: error("projects.key is null — NOT NULL 제약 위반"),
                     ),
-                archived = record.get(P_ARCHIVED_AT) != null,
                 typeFilter = filters[record.get(M_SCHEME_ID)] ?: error("스킴 매핑이 사라졌다 — 같은 트랜잭션에서 읽었다"),
             )
         }
