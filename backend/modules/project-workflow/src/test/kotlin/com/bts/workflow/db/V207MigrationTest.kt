@@ -3,6 +3,7 @@
 package com.bts.workflow.db
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -601,5 +602,48 @@ class V207MigrationTest {
                 .describedAs("워크플로우 '%s' 안에서 display_order 가 중복됐다", workflowKey)
                 .doesNotHaveDuplicates()
         }
+    }
+
+    // ── V207 ④. 백필 가드 ─────────────────────────────────────────────────────
+
+    /**
+     * 대응하는 `workflow_statuses` 행이 없는 전환이 있으면 V207 이 멈춘다.
+     *
+     * 메인 체인 DB 는 이미 V209 까지 지나갔으므로 같은 컨테이너에 DB 를 하나 더 만들어 V206 까지만
+     * 태운다. 그 뒤에 심은 상태는 V204 카탈로그 백필이 보지 못했으니 짝이 없다 — 가드가 잡을 자리다.
+     */
+    @Test
+    fun `대응 workflow_statuses 가 없는 전환이 있으면 V207 이 멈춘다`() {
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { it.execute("CREATE DATABASE v207_guard") }
+        }
+        val guardUrl = postgres.jdbcUrl.replace("/bts_test", "/v207_guard")
+        migrateTo(guardUrl, "200")
+        createIssueTypes(guardUrl)
+        migrateTo(guardUrl, "203")
+        DriverManager.getConnection(guardUrl, postgres.username, postgres.password).use { conn ->
+            seedFixture(conn)
+        }
+        migrateTo(guardUrl, "206")
+        DriverManager.getConnection(guardUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    "INSERT INTO workflow_states (workflow_id, key, name, category, display_order) " +
+                        "SELECT id, 'a_ghost', 'Alpha Ghost', 'DONE', 4 FROM workflows WHERE key = 'wf-alpha'",
+                )
+                stmt.execute(
+                    "INSERT INTO workflow_transitions (workflow_id, from_state_id, to_state_id, name) " +
+                        "SELECT w.id, f.id, t.id, '유령 전환' FROM workflows w " +
+                        " JOIN workflow_states f ON f.workflow_id = w.id AND f.key = 'a_open' " +
+                        " JOIN workflow_states t ON t.workflow_id = w.id AND t.key = 'a_ghost' " +
+                        " WHERE w.key = 'wf-alpha'",
+                )
+            }
+        }
+
+        assertThatThrownBy { migrateTo(guardUrl, "207") }
+            .describedAs("짝 없는 전환을 두고 V207 이 진행되면 그 전환이 조용히 끊어진다")
+            .hasMessageContaining("대응하는 workflow_statuses 행이 없다")
+            .hasMessageContaining("유령 전환")
     }
 }

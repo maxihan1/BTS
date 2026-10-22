@@ -210,6 +210,28 @@ class TransitionCrudMvcTest {
             .andExpect(jsonPath("$.error.message", containsString("워크플로우당 하나")))
     }
 
+    @Test
+    fun `INITIAL 전환을 PUT 으로 고치면 200 이고 조회에 반영된다`() {
+        createWorkflow("initial-edit", "open", "done")
+        val initialId =
+            requireNotNull(repository.findByKey("initial-edit"))
+                .transitions
+                .single { it.kind == TransitionKind.INITIAL }
+                .id
+
+        // 중복 판정이 자기 자신을 빼지 않으면(excludingId) 이 PUT 은 항상 409 다 — 최초 전환을 고칠 수 없게 된다.
+        mockMvc.perform(putTransition("initial-edit", initialId, body(to = "done", name = "바로 완료", kind = "INITIAL")))
+            .andExpect(status().isOk)
+
+        val initial =
+            requireNotNull(repository.findByKey("initial-edit"))
+                .transitions
+                .single { it.kind == TransitionKind.INITIAL }
+        assertThat(initial.id).isEqualTo(initialId)
+        assertThat(initial.name).isEqualTo("바로 완료")
+        assertThat(initial.toStateKey).isEqualTo("done")
+    }
+
     // ── E9. 소속 대조 ──────────────────────────────────────────────────────────
 
     @Test
