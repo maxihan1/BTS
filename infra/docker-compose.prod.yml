@@ -123,8 +123,8 @@ services:
     mem_limit: 1536m
 
   bts-web:
-    # React SPA (nginx) + 백엔드 리버스 프록시. 호스트 포트를 열지 않는다 —
-    # 공개 진입점은 앞단 bts-caddy 이고 이 컨테이너는 bts-net 내부에서만 닿는다.
+    # React SPA (nginx) + 백엔드 리버스 프록시. 공개 입구(80/443 · TLS)는 compose 밖 host Caddy 이고
+    # (Auth_platform infra/edge/Caddyfile · OPS-F2-03), 이 컨테이너는 host 루프백으로만 받는다.
     build:
       context: ..
       dockerfile: infra/prod/Dockerfile.web
@@ -133,30 +133,12 @@ services:
     restart: unless-stopped
     depends_on:
       - bts-backend
+    ports:
+      # 127.0.0.1 만 — 바깥에서는 host Caddy 를 거쳐야 닿는다. host Caddy 가 bts.maxihan.com 을 여기로 넘긴다.
+      - "127.0.0.1:18080:80"
     networks:
       - bts-net
     mem_limit: 128m
-
-  bts-caddy:
-    # TLS 종단 — Let's Encrypt 자동 발급·갱신 후 bts-web 으로 프록시. 유일한 호스트 공개 진입점.
-    # nginx.conf 의 로그 마스킹 계약을 건드리지 않으려고 종단을 분리했다 (infra/prod/Caddyfile 주석).
-    image: caddy:2.8-alpine
-    container_name: bts-caddy
-    restart: unless-stopped
-    depends_on:
-      - bts-web
-    ports:
-      # ACG 가 열어 둔 포트와 짝. 80 은 ACME HTTP-01 챌린지 + https 리다이렉트에 쓴다 — 닫으면 발급이 실패한다.
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./prod/Caddyfile:/etc/caddy/Caddyfile:ro
-      # 발급받은 인증서가 여기 남는다. 지우면 재발급이 일어나 Let's Encrypt 발급 한도를 소모한다.
-      - bts-caddy-data:/data
-      - bts-caddy-config:/config
-    networks:
-      - bts-net
-    mem_limit: 256m
 
 networks:
   bts-net:
@@ -168,7 +150,7 @@ volumes:
     name: bts-pg-data
   bts-minio-data:
     name: bts-minio-data
+  # 옛 bts-caddy 의 인증서. 쓰는 서비스는 없지만 남긴다 — cutover.sh 가 host Caddy 로 복사하고,
+  # 되돌릴 때 compose 밖에 남은 bts-caddy 가 다시 쓴다.
   bts-caddy-data:
     name: bts-caddy-data
-  bts-caddy-config:
-    name: bts-caddy-config

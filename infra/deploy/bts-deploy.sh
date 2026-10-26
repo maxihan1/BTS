@@ -293,7 +293,8 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
 #   `✅ 배포 명령 완료` 가 찍힌다. **롤백을 시작할 신호 자체가 안 뜬다** —
 #   이 저장소가 이름 붙인 「실패가 아니라 침묵」 그대로다.
 #
-#   ★Caddy 인증서만 비-치명으로 남긴다. 첫 요청 때 발급되므로 여기서 없는 것이 정상이다.
+#   ★host Caddy 확인만 비-치명으로 남긴다. 공개 입구는 compose 밖이라 이 배포가 띄우지 않고,
+#     전환(Auth_platform infra/edge/cutover.sh) 전에는 꺼져 있는 것이 정상이다.
 # ★\$ 를 전부 이스케이프한다. 이 블록은 `run_on_target <<REMOTE` 안이고 delimiter 에
 #   따옴표가 없어, 안 하면 **로컬 셸이 먼저 풀어** 대상에 빈 값이 간다.
 #   같은 이유로 기존 코드도 `STAMP=\$(date ...)` 처럼 적혀 있다.
@@ -311,16 +312,19 @@ wait_for() {
   return 1
 }
 
-# 호스트 포트로 확인하지 않는다. 앞단 bts-caddy 는 도메인(SNI)으로만 사이트를 매칭하므로
-# localhost 요청은 사이트에 닿지 않는다 — 그 결과를 프론트 장애로 오독하게 된다.
-wait_for "프론트(nginx) 응답" 'docker exec bts-web wget -qO- http://127.0.0.1/'
+# host Caddy 가 넘겨 주는 바로 그 포트로 본다 — 이 publish 가 빠지면 공개 입구가 502 다.
+wait_for "프론트(nginx) 127.0.0.1:18080 응답" 'curl -fsS http://127.0.0.1:18080/'
 # 백엔드 health 는 nginx 가 /actuator 를 프록시하지 않으므로(SPA fallback 가짜그린 방지)
 # 백엔드 컨테이너 내부에서 직접 확인한다.
 wait_for "백엔드 health UP" 'docker exec bts-backend curl -fsS http://localhost:8080/actuator/health'
-# 인증서는 첫 요청 때 발급된다(수십 초). 여기서 실패해도 배포 실패가 아니다.
-docker logs bts-caddy 2>&1 | grep -qE "certificate obtained|certificate.*renew|serving initial configuration" \
-  && echo "✅ Caddy 기동 (인증서 발급 로그 확인)" \
-  || echo "ℹ️  Caddy 인증서 발급 진행 중일 수 있음 — 'docker logs bts-caddy' 확인"
+# 공개 입구(host Caddy). 여기서 실패해도 배포 실패가 아니다.
+if systemctl is-active --quiet caddy; then
+  curl -fsS -o /dev/null --resolve bts.maxihan.com:443:127.0.0.1 https://bts.maxihan.com/ \
+    && echo "✅ host Caddy → https://bts.maxihan.com 응답" \
+    || echo "ℹ️  host Caddy 는 떠 있으나 https 응답이 없다 — 'journalctl -u caddy' 확인"
+else
+  echo "ℹ️  host Caddy 미기동 — 전환(Auth_platform infra/edge/cutover.sh) 전이면 정상이다"
+fi
 REMOTE
 
 echo "✅ 배포 명령 완료 (health 는 기동까지 수십 초 소요될 수 있음)"

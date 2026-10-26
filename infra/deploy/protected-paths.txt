@@ -26,3 +26,4 @@ backups                     # DB 덤프. 이것이 사라지면 되돌릴 수단
 infra/deploy/config.sh      # 배포 자신의 설정(SERVER·REMOTE_DIR). gitignored 라 rsync 소스에 없다
 infra/prod/.env             # 운영 환경변수
 infra/secrets               # JWT 서명키 등
+infra/prod/Caddyfile        # 저장소에서는 지웠다(OPS-F2-03 · Auth_platform infra/edge/Caddyfile 로 이전). compose 밖에 남은 옛 bts-caddy 가 재시작·되돌리기 때 이 파일을 다시 마운트한다 — 'docker rm bts-caddy' 뒤 이 줄을 뺀다

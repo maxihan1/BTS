@@ -16,6 +16,11 @@
 | Docker publish | `bts-caddy` 만 `0.0.0.0:80`·`0.0.0.0:443`. `bts-backend` 의 8080 은 컨테이너 내부 전용 |
 | `DOCKER-USER` 체인 | `-j RETURN` 하나 — **비어 있음** |
 
+> 2026-10-27~ (OPS-F2-03) 80/443 은 `bts-caddy` 대신 **host Caddy** 가 받는다 — 설정은 Auth_platform
+> `infra/edge/` (Caddyfile · cutover.sh). Docker publish 는 `bts-web` `127.0.0.1:18080` 과 MinIO 콘솔
+> `127.0.0.1:19001` 뿐이다. host Caddy 는 `INPUT` 으로 받으므로 전환 뒤 §3 의 `dport 80`·`dport 443`
+> 카운터는 멈추는 것이 정상이다.
+
 **즉 방어가 ACG 한 겹뿐이었다.** 8080 이 안 열린 것은 backend 컨테이너를 publish 하지
 않았기 때문이고, 그 판단이 다음에도 지켜진다는 보장은 어디에도 없었다.
 
