@@ -26,7 +26,11 @@ function readNotice(): Notice | null {
   const search = new URLSearchParams(window.location.search)
   if (search.has('error')) return 'error'
   if (search.has('logged_out')) return 'loggedOut'
-  if (Date.now() - Number(sessionStorage.getItem(AUTO_SSO_AT_KEY)) < AUTO_SSO_LOOP_MS) return 'error'
+  try {
+    if (Date.now() - Number(sessionStorage.getItem(AUTO_SSO_AT_KEY)) < AUTO_SSO_LOOP_MS) return 'error'
+  } catch {
+    // 저장소가 막힌 브라우저 — 고리 판정만 잃고 화면은 산다
+  }
   return null
 }
 
@@ -38,8 +42,14 @@ export const LoginPage = () => {
 
   useEffect(() => {
     if (autoHref === null) return
-    sessionStorage.setItem(AUTO_SSO_AT_KEY, String(Date.now()))
-    window.location.assign(autoHref)
+    try {
+      sessionStorage.setItem(AUTO_SSO_AT_KEY, String(Date.now()))
+    } catch {
+      // 저장소가 막힌 브라우저 — 위 readNotice 와 같다
+    }
+    // 🛑 assign 이 아니라 replace — `/login` 을 방문 기록에 남기면 Auth 화면에서 뒤로가기가
+    //    빈 바탕(bfcache 복원)이나 30초 고리 판정의 가짜 오류 카드로 돌아온다
+    window.location.replace(autoHref)
   }, [autoHref])
 
   // 로그인 라우트는 `_shell`(ShellLayout) 밖 rootRoute 직속이라 ShellLayout의 <main>을
@@ -65,6 +75,7 @@ export const LoginPage = () => {
  * (Maxi 2026-10-27 — 세 앱이 같은 로그인 화면). 세션 만료 dialog 는 BTS 모양 그대로다.
  *
  * 주 버튼은 `<a href>` — 누르면 풀 네비게이션으로 SSO 를 시작한다(`OidcIdpButtons` 의 `location.assign` 과 같은 효과).
+ * 이건 사용자가 고른 이동이라 카드가 방문 기록에 남아도 된다.
  */
 const SsoLoginCard = ({ entry, notice }: { entry: SsoOnlyEntry; notice: Notice }) => (
   <section

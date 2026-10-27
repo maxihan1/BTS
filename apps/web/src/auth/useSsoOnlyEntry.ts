@@ -38,7 +38,9 @@ export function useSsoOnlyEntry(enabled = true): SsoOnlyEntry | null | undefined
   const oidc = useQuery({ ...oidcProvidersQuery, enabled })
 
   if (providers.isPending || saml.isPending || oidc.isPending) return undefined
-  if (providers.isError || providers.data.length > 0) return null
+  // `isError` 가 아니라 data 로 판정한다 — 백그라운드 refetch 가 실패하면 data 를 쥔 채 isError 가
+  // 켜져, 보던 로그아웃 카드가 쓸 수 없는 비밀번호 dialog 로 바뀐다
+  if (providers.data === undefined || providers.data.length > 0) return null
 
   const entries: SsoOnlyEntry[] = [
     ...(saml.data ?? []).map((idp) => ({

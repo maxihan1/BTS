@@ -7,14 +7,14 @@ import { server } from '@/test/server'
 import { useSsoOnlyEntry } from '@/auth/useSsoOnlyEntry'
 import { AUTO_SSO_AT_KEY, LoginPage } from './login'
 
-const assignMock = vi.fn()
+const replaceMock = vi.fn()
 
-/** 주소창 쿼리를 정하고 `location.assign` 을 관측 가능한 스텁으로 바꾼다 */
+/** 주소창 쿼리를 정하고 `location.replace` 를 관측 가능한 스텁으로 바꾼다 */
 function setLocation(search: string) {
   vi.spyOn(window, 'location', 'get').mockReturnValue({
     ...window.location,
     search,
-    assign: assignMock,
+    replace: replaceMock,
   } as unknown as Location)
 }
 
@@ -51,7 +51,7 @@ function useSsoOnlyInstall() {
 }
 
 beforeEach(() => {
-  assignMock.mockClear()
+  replaceMock.mockClear()
   window.sessionStorage.clear()
   setLocation('')
   // 테스트 서버에는 로그인 수단 기본 핸들러가 없다 — 비밀번호(Local)만 있는 설치를 기본으로 둔다
@@ -85,7 +85,7 @@ describe('LoginPage — main 랜드마크 (C3, _shell 밖이라 자체 main 필�
     await waitForVerdict('dialog')
     expect(screen.queryByLabelText('비밀번호')).toBeNull()
     expect(screen.queryByRole('button', { name: '로그인' })).toBeNull()
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 })
 
@@ -95,13 +95,17 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
 
     renderPage()
 
-    await vi.waitFor(() => expect(assignMock).toHaveBeenCalledWith('/oauth2/authorization/auth'))
+    await vi.waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth'))
     expect(screen.queryByRole('link')).toBeNull()
+    // 고리 차단의 「쓰기」 절반 — 이 시각이 없으면 다음 방문의 고리 판정이 늘 비어 있다
+    expect(Number(window.sessionStorage.getItem(AUTO_SSO_AT_KEY))).toBeGreaterThan(Date.now() - 5_000)
   })
 
   it('로그아웃 직후(?logged_out)는 넘기지 않고 카드를 보인다 — 넘기면 Auth 세션으로 곧장 다시 로그인된다', async () => {
     useSsoOnlyInstall()
     setLocation('?logged_out=true')
+    // 방금 넘긴 시각이 있어도 로그아웃 표시가 먼저다 — 오류 카드가 아니라 로그아웃 카드
+    window.sessionStorage.setItem(AUTO_SSO_AT_KEY, String(Date.now() - 1_000))
 
     renderPage()
 
@@ -112,7 +116,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
       '/oauth2/authorization/auth',
     )
     expect(screen.queryByRole('alert')).toBeNull()
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('SSO 실패(?error)로 돌아오면 넘기지 않고 오류 카드를 보인다 — 고리 금지', async () => {
@@ -124,7 +128,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
     expect(await screen.findByRole('heading', { name: '로그인하지 못했습니다' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('통합계정 로그인을 마치지 못했습니다')
     expect(screen.getByRole('link', { name: 'QA Hub 통합계정으로 로그인' })).toBeInTheDocument()
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('방금 바로 넘겼는데 또 오면 다시 넘기지 않는다 — Auth 는 통과했는데 세션을 못 이어받은 고리', async () => {
@@ -134,7 +138,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: '로그인하지 못했습니다' })).toBeInTheDocument()
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('넘긴 지 오래됐으면 다시 바로 넘긴다 (대조군)', async () => {
@@ -143,7 +147,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
 
     renderPage()
 
-    await vi.waitFor(() => expect(assignMock).toHaveBeenCalledWith('/oauth2/authorization/auth'))
+    await vi.waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth'))
   })
 
   it('SSO 가 둘이면 바로 넘기지 않는다 — 어느 쪽인지 사용자가 고른다', async () => {
@@ -158,7 +162,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
 
     // 판정이 끝나도 배경만 남는다 — 폼은 LoginDialog 몫
     await waitForVerdict('dialog')
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
     expect(screen.queryByRole('link')).toBeNull()
   })
 })
