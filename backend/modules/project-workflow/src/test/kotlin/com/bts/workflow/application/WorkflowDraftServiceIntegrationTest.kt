@@ -284,6 +284,7 @@ class WorkflowDraftServiceIntegrationTest {
     fun `이름이 공백뿐인 전환을 담은 초안은 저장 단계에서 막는다`() {
         // 발행되면 후보 409 에 이름 없는 전환이 섞여 프론트 후보 다이얼로그가 안 뜬다 (WF-05-2).
         val key = seedWorkflow()
+
         fun withTransitionName(name: String) =
             WorkflowDraftDefinition(
                 key = key,
@@ -328,8 +329,7 @@ class WorkflowDraftServiceIntegrationTest {
         val key = seedWorkflow()
         val base = validDraft(key)
 
-        fun withValidator(rule: DraftRuleDto) =
-            base.copy(transitions = base.transitions.map { it.copy(validators = listOf(rule)) })
+        fun withValidator(rule: DraftRuleDto) = base.copy(transitions = base.transitions.map { it.copy(validators = listOf(rule)) })
 
         assertThatThrownBy {
             service.save(
