@@ -37,9 +37,7 @@ import { verifyMfa } from '@/api/mfa'
 import { ApiError, apiGet } from '@/api/client'
 import { ApiErrorResponseSchema, WhoamiResponseSchema } from '@/api/schemas'
 import { useAuthStore } from './authStore'
-import { fetchSamlIdps } from '@/api/saml'
-import { fetchOidcProviders } from '@/api/oidc'
-import { fetchProviders } from '@/api/providers'
+import { loginProvidersQuery, oidcProvidersQuery, samlIdpsQuery } from './useSsoOnlyEntry'
 import { authenticateWithSecurityKey } from '@/api/webauthn'
 import { browserSupportsWebAuthn } from '@simplewebauthn/browser'
 import type { SamlIdp } from '@/api/saml'
@@ -710,11 +708,7 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     data: providers,
     isLoading: isProvidersLoading,
     isError: isProvidersError,
-  } = useQuery<ProviderEntry[]>({
-    queryKey: ['auth', 'providers'],
-    queryFn: fetchProviders,
-    staleTime: 60_000,
-  })
+  } = useQuery(loginProvidersQuery)
 
   const effectiveProviders = useMemo<readonly ProviderEntry[]>(
     () =>
@@ -722,17 +716,9 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     [isProvidersError, providers],
   )
 
-  const { data: samlIdps, isLoading: isSamlLoading } = useQuery<SamlIdp[]>({
-    queryKey: ['saml', 'idps'],
-    queryFn: fetchSamlIdps,
-    staleTime: 60_000,
-  })
+  const { data: samlIdps, isLoading: isSamlLoading } = useQuery(samlIdpsQuery)
 
-  const { data: oidcProviders, isLoading: isOidcLoading } = useQuery<OidcProvider[]>({
-    queryKey: ['oidc', 'providers'],
-    queryFn: fetchOidcProviders,
-    staleTime: 60_000,
-  })
+  const { data: oidcProviders, isLoading: isOidcLoading } = useQuery(oidcProvidersQuery)
 
   /** MFA 챌린지 수신 시 MFA step으로 전환한다. 챌린지 토큰은 메모리에만 보관 */
   function handleMfaRequired(challengeToken: string) {
@@ -762,8 +748,9 @@ export const LoginForm = ({ onSuccess }: LoginFormProps) => {
     return (
       <div className="space-y-4">
         {noSso && <p role="alert" className="text-sm text-muted-foreground">{loginStrings.noLoginMethod}</p>}
-        <SamlIdpButtons idps={samlIdps ?? []} />
-        <OidcIdpButtons providers={oidcProviders ?? []} />
+        {/* 위에 비밀번호 칸이 없으니 첫 목록 위의 「또는」은 뺀다. SAML 뒤 OIDC 사이의 「또는」만 남는다 */}
+        <SamlIdpButtons idps={samlIdps ?? []} divider={false} />
+        <OidcIdpButtons providers={oidcProviders ?? []} divider={(samlIdps?.length ?? 0) > 0} />
       </div>
     )
   }

@@ -71,8 +71,8 @@ describe('LoginForm — SAML IdP 버튼', () => {
     renderLoginForm()
     await waitForCredentialsForm()
 
-    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
-    await screen.findByRole('button', { name: 'Azure AD 로 로그인' })
+    await screen.findByRole('button', { name: 'Okta SSO로 로그인' })
+    await screen.findByRole('button', { name: 'Azure AD로 로그인' })
   })
 
   it('IdP가 0개이면 SAML 버튼 영역이 렌더되지 않는다', async () => {
@@ -109,7 +109,7 @@ describe('LoginForm — SAML IdP 버튼', () => {
     renderLoginForm()
     await waitForCredentialsForm()
 
-    const btn = await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+    const btn = await screen.findByRole('button', { name: 'Okta SSO로 로그인' })
     await user.click(btn)
 
     await waitFor(() => {

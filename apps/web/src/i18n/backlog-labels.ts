@@ -454,8 +454,7 @@ export const backlogLabels = {
   //
   // 조사(助詞) 계산이 필요 없도록 가변 부분 뒤에 항상 고정 명사를 붙였다.
   // 「스프린트」·「백로그」는 종성이 없어 항상 `스프린트로`·`백로그로` 다 — 받침 판별이
-  // **원리적으로** 불필요하다. 따라서 `KanbanBoard.tsx` 의 비-export `josaEuro` 를
-  // 공용 모듈로 끌어내는 리팩터를 하지 않는다 (무관한 파일 무변경).
+  // **원리적으로** 불필요하다. 따라서 `lib/josa.ts` 의 `josaEuro` 를 쓰지 않는다.
 
   /** dnd-kit `accessibility.announcements` 에 들어가는 한국어 공지 */
   announce: {

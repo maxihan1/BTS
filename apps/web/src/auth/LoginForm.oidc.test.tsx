@@ -71,8 +71,8 @@ describe('LoginForm — OIDC provider 버튼', () => {
     renderLoginForm()
     await waitForCredentialsForm()
 
-    await screen.findByRole('button', { name: 'Google 로 로그인' })
-    await screen.findByRole('button', { name: 'GitHub 로 로그인' })
+    await screen.findByRole('button', { name: 'Google로 로그인' })
+    await screen.findByRole('button', { name: 'GitHub로 로그인' })
   })
 
   it('provider가 0개이면 OIDC 버튼 영역이 렌더되지 않는다', async () => {
@@ -109,7 +109,7 @@ describe('LoginForm — OIDC provider 버튼', () => {
     renderLoginForm()
     await waitForCredentialsForm()
 
-    const btn = await screen.findByRole('button', { name: 'Google 로 로그인' })
+    const btn = await screen.findByRole('button', { name: 'Google로 로그인' })
     await user.click(btn)
 
     await waitFor(() => {

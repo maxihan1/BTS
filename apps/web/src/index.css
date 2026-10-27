@@ -4,6 +4,20 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/* 로그인 남는 화면(B안) 전용 글꼴 — 세 앱 공통 시안. 그 화면이 그릴 때만 받는다 (S21) */
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/IBMPlexSansKR-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Sans KR';
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/IBMPlexSansKR-SemiBold.woff2') format('woff2');
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme {
