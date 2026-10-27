@@ -2,8 +2,8 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.pat.PatUserResolver
 import com.atlas.bts.identity.pat.PersonalAccessToken
-import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.permission.PermissionSchemeRepository
 import com.atlas.bts.identity.project.ProjectDirectory
 import com.atlas.bts.identity.project.ProjectMembershipRepository
@@ -40,7 +40,7 @@ import java.util.UUID
  *
  * ## 인증 방식 분기
  * - **JWT**: [Jwt] principal에서 subject(UUID)를 추출한다.
- * - **PAT**: `pat_` prefix Bearer 토큰을 [PersonalAccessTokenService.verify]로 검증한다.
+ * - **PAT**: `pat_` prefix Bearer 토큰의 주인을 [PatUserResolver.resolvePatUserId]로 찾는다(BTS PAT 먼저, 없으면 Auth).
  * - 미인증: 401 [ResponseStatusException]을 던진다.
  *
  * ## 상태 코드 경계
@@ -81,7 +81,7 @@ class MyProjectPermissionController(
     private val projectDirectory: ProjectDirectory,
     private val membershipRepository: ProjectMembershipRepository,
     private val permissionSchemeRepository: PermissionSchemeRepository,
-    private val personalAccessTokenService: PersonalAccessTokenService,
+    private val patUserResolver: PatUserResolver,
 ) {
     companion object {
         /**
@@ -242,9 +242,8 @@ class MyProjectPermissionController(
         val rawToken = extractBearerToken(request)
 
         if (rawToken != null && rawToken.startsWith(PersonalAccessToken.TOKEN_PREFIX)) {
-            val result = personalAccessTokenService.verify(rawToken)
-            if (result.isFailure) throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-            return result.getOrThrow().userId
+            return patUserResolver.resolvePatUserId(rawToken)
+                ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         }
 
         if (jwt != null) {

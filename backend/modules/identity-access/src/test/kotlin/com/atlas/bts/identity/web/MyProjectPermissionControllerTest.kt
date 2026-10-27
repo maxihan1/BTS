@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.pat.PatUserResolver
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.permission.PermissionSchemeRepository
 import com.atlas.bts.identity.project.ProjectDirectory
@@ -84,7 +85,7 @@ class MyProjectPermissionControllerTest {
                 projectDirectory = projectDirectory,
                 membershipRepository = membershipRepository,
                 permissionSchemeRepository = permissionSchemeRepository,
-                personalAccessTokenService = personalAccessTokenService,
+                patUserResolver = PatUserResolver(personalAccessTokenService, null),
             )
 
         // CREATE/UPDATE(이슈)·MANAGE_COMPONENTS·MANAGE_VERSIONS 는 본 테스트 관심사가 아니므로 false 로 고정.

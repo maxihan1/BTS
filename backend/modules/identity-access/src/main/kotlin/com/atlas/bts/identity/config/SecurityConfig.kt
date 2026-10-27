@@ -3,6 +3,8 @@
 package com.atlas.bts.identity.config
 
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
+import com.atlas.bts.identity.pat.AuthPlatformPatVerifier
+import com.atlas.bts.identity.pat.PatUserResolver
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.web.PatAuthenticationFilter
@@ -88,14 +90,25 @@ class SecurityConfig(
     private val sidRevokeJwtConverter: SidRevokeJwtConverter,
     private val corsConfigurationSource: CorsConfigurationSource,
     private val personalAccessTokenService: PersonalAccessTokenService,
+    private val authPlatformPatVerifier: AuthPlatformPatVerifier?,
 ) {
+    /**
+     * PAT 주인 찾기의 단일 진입점 (FR-API-04). WebMvcTest 슬라이스들이 이 설정을 import 하므로 여기서 만든다 —
+     * Auth 확인기 빈이 없는 슬라이스에서는 BTS DB 만 본다.
+     */
+    @Bean
+    fun patUserResolver(): PatUserResolver = PatUserResolver(personalAccessTokenService, authPlatformPatVerifier)
+
     // LongMethod 억제 — 단일 SecurityFilterChain DSL 빌더는 필터 등록 순서 의존성 때문에 한 메서드에
     // 응집돼야 하며, csrf/authorizeHttpRequests 설정을 임의 헬퍼로 분해하면 가독성과 순서 보장이 깨진다.
     // FR-MF-01 에서 verify 를 CSRF-ignore + permitAll 양쪽에 등록(BLOCKER-1)하며 임계(60)를 1줄 넘었다.
     @Suppress("LongMethod")
     @Bean
     @Order(API_CHAIN_ORDER)
-    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+    fun securityFilterChain(
+        http: HttpSecurity,
+        patUserResolver: PatUserResolver,
+    ): SecurityFilterChain {
         // CookieCsrfTokenRepository 설정
         // withHttpOnlyFalse(): SPA가 Cookie 토큰 읽어 X-XSRF-TOKEN 헤더로 전송하므로 JS 접근 허용.
         // setCookieCustomizer: SameSite=Strict (DEVELOPMENT.md §1.5, ADR csrf-cookie-mode).
@@ -298,7 +311,7 @@ class SecurityConfig(
             }
             // PAT Bearer 필터: JWT 필터보다 먼저 실행하여 pat_ prefix 토큰을 SecurityContext 에 설정
             .addFilterBefore(
-                PatAuthenticationFilter(personalAccessTokenService),
+                PatAuthenticationFilter(patUserResolver),
                 BearerTokenAuthenticationFilter::class.java,
             )
             // FR-MF-04: MFA 등록 게이트 — 인증 필터(BearerToken·PAT) 뒤에 등록해 principal 이 가용할 때 동작.

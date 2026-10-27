@@ -1,4 +1,4 @@
-// WhoamiController 슬라이스 테스트 — 401 미인증 / 200 JWT / 200 PAT / PAT 만료·revoke → 401 / PAT_USED 감사 이벤트 검증
+// WhoamiController 슬라이스 테스트 — 401 미인증 / 200 JWT / 200 PAT(BTS·Auth) / PAT 만료·revoke → 401 / PAT_USED 감사 이벤트 검증
 
 package com.atlas.bts.identity.web
 
@@ -12,6 +12,7 @@ import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.jwt.SidRevokeJwtConverter
 import com.atlas.bts.identity.ooo.OutOfOfficeRepository
+import com.atlas.bts.identity.pat.AuthPlatformPatVerifier
 import com.atlas.bts.identity.pat.PatVerificationException
 import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
@@ -90,6 +91,10 @@ class WhoamiControllerTest {
         @Bean
         fun personalAccessTokenService(): PersonalAccessTokenService = mockk()
 
+        // Auth_platform PAT 확인기 (FR-API-04) — 공급하면 SecurityConfig 가 PatUserResolver 에 넣는다.
+        @Bean
+        fun authPlatformPatVerifier(): AuthPlatformPatVerifier = mockk()
+
         @Bean
         fun authAuditLogService(): AuthAuditLogService = mockk(relaxed = true)
 
@@ -132,6 +137,9 @@ class WhoamiControllerTest {
     lateinit var personalAccessTokenService: PersonalAccessTokenService
 
     @Autowired
+    lateinit var authPlatformPatVerifier: AuthPlatformPatVerifier
+
+    @Autowired
     lateinit var authAuditLogService: AuthAuditLogService
 
     @Autowired
@@ -158,6 +166,8 @@ class WhoamiControllerTest {
     @BeforeEach
     fun clearAuditRecordedCalls() {
         clearMocks(authAuditLogService)
+        // BTS 가 모르는 PAT 는 Auth 로 넘어간다 — 기본은 Auth 도 모르는 토큰.
+        every { authPlatformPatVerifier.resolveUserId(any()) } returns null
     }
 
     // ── 기존 JWT 케이스 (PR #2 회귀 방지) ─────────────────────────────────────
@@ -252,6 +262,21 @@ class WhoamiControllerTest {
             // PAT 분기는 비밀번호/시스템역할 컨텍스트를 노출하지 않으므로 둘 다 false 고정
             .andExpect(jsonPath("$.mustChangePassword").value(false))
             .andExpect(jsonPath("$.isSystemAdmin").value(false))
+    }
+
+    @Test
+    fun `whoami returns 200 with Auth_platform PAT as the SSO-linked BTS user`() {
+        every { personalAccessTokenService.verify(RAW_PAT) } returns
+            Result.failure(PatVerificationException("PAT not found"))
+        every { authPlatformPatVerifier.resolveUserId(RAW_PAT) } returns PAT_USER_ID
+
+        mockMvc.perform(
+            get("/api/v1/users/me/whoami")
+                .header("Authorization", "Bearer $RAW_PAT"),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.userId").value(PAT_USER_ID.toString()))
+            .andExpect(jsonPath("$.authMethod").value("pat"))
     }
 
     @Test

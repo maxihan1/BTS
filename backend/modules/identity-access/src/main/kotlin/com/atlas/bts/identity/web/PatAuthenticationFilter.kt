@@ -2,8 +2,8 @@
 
 package com.atlas.bts.identity.web
 
+import com.atlas.bts.identity.pat.PatUserResolver
 import com.atlas.bts.identity.pat.PersonalAccessToken
-import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -15,8 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 /**
  * PAT Bearer 토큰 인증 필터 (FR-AU-09 Task 24).
  *
- * `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PersonalAccessTokenService.verify] 로 검증하고,
- * 검증 성공 시 [SecurityContextHolder] 에 인증 정보를 설정한다.
+ * `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PatUserResolver.resolvePatUserId] 로 PAT 주인
+ * (BTS PAT 먼저, 없으면 Auth_platform PAT — FR-API-04)을 찾고, 찾으면 [SecurityContextHolder] 에 인증 정보를 설정한다.
  *
  * Spring Security JWT 필터보다 먼저 실행되어야 한다. SecurityConfig 에서
  * `addFilterBefore(patAuthenticationFilter, BearerTokenAuthenticationFilter::class.java)` 로 등록.
@@ -28,7 +28,7 @@ import org.springframework.web.filter.OncePerRequestFilter
  * - 검증 실패 원인은 외부에 노출하지 않는다 (내부 로깅 한정).
  */
 class PatAuthenticationFilter(
-    private val personalAccessTokenService: PersonalAccessTokenService,
+    private val patUserResolver: PatUserResolver,
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -39,11 +39,10 @@ class PatAuthenticationFilter(
         val rawToken = extractPatToken(request)
 
         if (rawToken != null) {
-            val result = personalAccessTokenService.verify(rawToken)
-            if (result.isSuccess) {
-                val pat = result.getOrThrow()
+            val userId = patUserResolver.resolvePatUserId(rawToken)
+            if (userId != null) {
                 val auth = UsernamePasswordAuthenticationToken(
-                    pat.userId.toString(),
+                    userId.toString(),
                     null,
                     listOf(SimpleGrantedAuthority("ROLE_PAT")),
                 )
