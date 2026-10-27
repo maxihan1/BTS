@@ -20,7 +20,7 @@ import java.util.UUID
  * ## 여기에 두는 것과 두지 않는 것
  * - 둔다. actor 추출 실패 401 · 전역 비관리자 403 · JWT/PAT actor 추출 · SYSTEM_ADMIN 게이트.
  * - 두지 않는다. `PAT_FORBIDDEN_RESPONSE`(AuthController · MfaController · TrustedDeviceController ·
- *   PersonalAccessTokenController · AccountLinkController · SsoAccountLinkController ·
+ *   AccountLinkController · SsoAccountLinkController ·
  *   LinkableProvidersController · CalendarFeedController). 이름만 비슷할 뿐 **별개 상수**다 —
  *   error 코드가 `session_management_requires_interactive_login` / `account_linking_...` /
  *   `calendar_feed_...` 3종으로 갈리고 CalendarFeedController 는 타입도 다르다. 합치면 프론트가
