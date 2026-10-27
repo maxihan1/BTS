@@ -82,6 +82,7 @@ beforeEach(() => {
 
 afterEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
+  vi.unstubAllEnvs()
 })
 
 describe('AccountMenu', () => {
@@ -241,5 +242,30 @@ describe('AccountMenu', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith({ to: '/login' })
     })
+  })
+})
+
+describe('AccountMenu — Personal Access Token (FR-API-04 S20, PAT 는 Auth_platform 이 발급)', () => {
+  const ACCOUNT_URL = 'https://auth.example.test/account'
+
+  it('VITE_AUTH_ACCOUNT_URL 이 있으면 Auth 계정 화면으로 가는 바깥 링크를 보인다', async () => {
+    vi.stubEnv('VITE_AUTH_ACCOUNT_URL', ACCOUNT_URL)
+    const user = userEvent.setup()
+    renderAccountMenu()
+
+    await user.click(screen.getByRole('button', { name: /계정 메뉴/ }))
+
+    expect(await screen.findByRole('menuitem', { name: 'Personal Access Token' })).toHaveAttribute('href', ACCOUNT_URL)
+  })
+
+  it('VITE_AUTH_ACCOUNT_URL 이 비면 항목을 숨긴다', async () => {
+    vi.stubEnv('VITE_AUTH_ACCOUNT_URL', '')
+    const user = userEvent.setup()
+    renderAccountMenu()
+
+    await user.click(screen.getByRole('button', { name: /계정 메뉴/ }))
+
+    await screen.findByText('모든 설정')
+    expect(screen.queryByRole('menuitem', { name: 'Personal Access Token' })).not.toBeInTheDocument()
   })
 })

@@ -46,7 +46,6 @@ import { PasswordSettingsRouteAdapter } from './routes/settings.password'
 import { AccountLinksSettingsRouteAdapter } from './routes/settings.account-links'
 import { MfaSettingsRouteAdapter } from './routes/settings.mfa'
 import { NotificationSettingsRouteAdapter } from './routes/settings.notifications'
-import { SettingsPatsRouteAdapter } from './routes/settings.pats'
 import { SettingsIndexRouteAdapter } from './routes/settings.index'
 import { ProfileSettingsRouteAdapter } from './routes/settings.profile'
 import { PreferencesSettingsRouteAdapter } from './routes/settings.preferences'
@@ -901,16 +900,7 @@ const settingsAccountLinksRoute = createRoute({
   }),
 })
 
-/** Personal Access Token 셀프서비스 관리 라우트 — /settings/pats, requireAuth (settings.sessions/notifications/account-links 동급 가드) (FR-API-04) */
-const settingsPatsRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/settings/pats',
-  component: SettingsPatsRouteAdapter,
-  staticData: { requireAuth: true },
-  beforeLoad: requireAuthAndPasswordChanged,
-})
-
-/** 개인 설정 허브 인덱스 라우트 — /settings, requireAuthAndPasswordChanged (settings.sessions/notifications/pats와 동일 가드). 정확매칭이라 /settings/* 하위 11개 라우트와 충돌 없음(FR-UX-06 PR13 Task 4, PL-4) */
+/** 개인 설정 허브 인덱스 라우트 — /settings, requireAuthAndPasswordChanged (settings.sessions/notifications와 동일 가드). 정확매칭이라 /settings/* 하위 10개 라우트와 충돌 없음(FR-UX-06 PR13 Task 4, PL-4) */
 const settingsIndexRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings',
@@ -937,7 +927,7 @@ const settingsPreferencesRoute = createRoute({
   beforeLoad: requireAuth,
 })
 
-/** 단축키 커스터마이즈 설정 라우트 — /settings/keymap, requireAuthAndPasswordChanged (settings.sessions/notifications/pats와 동일 가드) (FR-PF-03 Task 9) */
+/** 단축키 커스터마이즈 설정 라우트 — /settings/keymap, requireAuthAndPasswordChanged (settings.sessions/notifications와 동일 가드) (FR-PF-03 Task 9) */
 const settingsKeymapRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/settings/keymap',
@@ -996,7 +986,7 @@ const calendarRoute = createRoute({
  *   · /projects/:projectKey/reports/worklog · /projects/:projectKey/reports/velocity · /projects/:projectKey/reports/cfd
  *   · /projects/:projectKey/reports/cycle-time
  *   · /settings/sessions · /settings/password · /settings/account-links · /settings/mfa
- *   · /settings/notifications · /settings/pats · /settings · /settings/profile · /settings/preferences · /settings/keymap
+ *   · /settings/notifications · /settings · /settings/profile · /settings/preferences · /settings/keymap
  *   · /settings/calendar · /settings/slack
  *   · /calendar
  * requireAuth 라우트: /dashboard · /inbox · /dashboards · /dashboards/* · /search · /issues · /issues/* · /admin/* · /projects/* · /settings/* · /calendar
@@ -1107,8 +1097,6 @@ export const routeTree = rootRoute.addChildren([
     settingsMfaRoute,
     // notification BC — 사용자 알림 구독 설정 (FR-NT-04)
     settingsNotificationsRoute,
-    // identity-access BC — Personal Access Token 셀프서비스 관리 (FR-API-04)
-    settingsPatsRoute,
     // identity-access BC — 개인 설정 허브 인덱스 (FR-UX-06 PR13 Task 4, PL-4)
     settingsIndexRoute,
     // identity-access BC — 사용자 프로필(이름/아바타/타임존/부서) 편집 (FR-PR-01 D6)

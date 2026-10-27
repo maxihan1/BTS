@@ -88,7 +88,6 @@ const ROUTE_CLASS = new Map<string, GuardClass>([
     '/_shell/settings/sessions',
     '/_shell/settings/notifications',
     '/_shell/settings/account-links',
-    '/_shell/settings/pats',
     '/_shell/settings/keymap',
     '/_shell/settings/calendar',
     '/_shell/settings/slack',
@@ -298,8 +297,9 @@ describe('라우트 가드 행렬 — 나머지 클래스', () => {
   it.each([
     // 40 → 41(부채 177 보드 설정) → 44(J5-12 편차 X9 폐기 — 프로젝트 스코프 이슈·캘린더·대시보드)
     // → 45(JR-2 리포트 착지 `/projects/$projectKey/reports`)
-    // → 47(FR-WF-08 프로젝트 워크플로우 목록·편집기 2종).
-    ['PROTECTED_3', 47],
+    // → 47(FR-WF-08 프로젝트 워크플로우 목록·편집기 2종)
+    // → 46(FR-API-04 S20 — `/settings/pats` 삭제, PAT 는 Auth_platform 이 발급).
+    ['PROTECTED_3', 46],
     ['AUTH_ONLY', 5],
     ['LOGIN', 1],
     ['INDEX_ALWAYS_REDIRECT', 1],
