@@ -165,7 +165,7 @@ class GlobalPermissionGrantControllerTest {
     /**
      * mock @Bean 은 Spring 컨텍스트 캐싱 때문에 **테스트 메서드 간 공유**되며 호출 기록이 누적된다.
      * 초기화하지 않으면 `verify(exactly = 0)` 이 다른 테스트의 호출을 보고 실패하고, 반대로
-     * `verify(exactly = 1)` 이 누적 호출로 통과해 **판별력을 잃는다**. 선례 `PersonalAccessTokenControllerTest:106`.
+     * `verify(exactly = 1)` 이 누적 호출로 통과해 **판별력을 잃는다**.
      */
     @BeforeEach
     fun resetMocks() {
