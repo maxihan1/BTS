@@ -285,19 +285,21 @@ docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env build
 docker compose -f infra/docker-compose.prod.yml --env-file infra/prod/.env up -d
 # ★★기동을 **기다리고**, 안 뜨면 **죽는다** (2026-09-11 수정).
 #
-#   종전은 `sleep 10` 뒤 `cmd && echo ✅ || echo ⚠️` 였다. 두 가지가 문제였다.
+#   종전은 「sleep 10」 뒤 「cmd && echo ✅ || echo ⚠️」 였다. 두 가지가 문제였다.
 #     ① 10초는 스프링 부팅보다 짧다 — 정상 배포도 ⚠️ 가 뜬다
-#     ② `|| echo` 는 **종료 코드를 0 으로 만든다** — 스택이 죽어도 배포가 초록이다
+#     ② 「|| echo」 는 **종료 코드를 0 으로 만든다** — 스택이 죽어도 배포가 초록이다
 #
 #   ②가 치명적이다. 마이그레이션이 실패하든 컨테이너가 크래시 루프를 돌든
-#   `✅ 배포 명령 완료` 가 찍힌다. **롤백을 시작할 신호 자체가 안 뜬다** —
+#   「✅ 배포 명령 완료」 가 찍힌다. **롤백을 시작할 신호 자체가 안 뜬다** —
 #   이 저장소가 이름 붙인 「실패가 아니라 침묵」 그대로다.
 #
 #   ★host Caddy 확인만 비-치명으로 남긴다. 공개 입구는 compose 밖이라 이 배포가 띄우지 않고,
 #     전환(Auth_platform infra/edge/cutover.sh) 전에는 꺼져 있는 것이 정상이다.
-# ★\$ 를 전부 이스케이프한다. 이 블록은 `run_on_target <<REMOTE` 안이고 delimiter 에
+# ★\$ 를 전부 이스케이프한다. 이 블록은 「run_on_target <<REMOTE」 안이고 delimiter 에
 #   따옴표가 없어, 안 하면 **로컬 셸이 먼저 풀어** 대상에 빈 값이 간다.
-#   같은 이유로 기존 코드도 `STAMP=\$(date ...)` 처럼 적혀 있다.
+#   같은 이유로 기존 코드도 「STAMP=\$(date ...)」 처럼 적혀 있다.
+#   ★주석 안이라도 백틱을 쓰지 않는다 — 맥에서 명령으로 실행된다(2026-10-27 배포에서
+#   sleep · date · 빈 입력 SSH 가 맥에서 돌았다). 계약. scripts/workflow/deploy-remote-heredoc.test.ts
 wait_for() {
   local what="\$1" probe="\$2"
   local deadline=\$(( SECONDS + 180 ))
