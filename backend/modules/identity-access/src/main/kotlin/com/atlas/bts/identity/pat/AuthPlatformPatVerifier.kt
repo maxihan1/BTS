@@ -12,10 +12,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpHeaders
 import org.springframework.stereotype.Component
-import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import java.time.Duration
+import java.util.Optional
 import java.util.UUID
 
 /**
@@ -34,7 +34,7 @@ import java.util.UUID
 @Component
 class AuthPlatformPatVerifier(
     private val externalAccountRepository: ExternalAccountRepository,
-    @param:Value("\${bts.auth-platform.issuer-uri:}") issuerUri: String,
+    @Value("\${bts.auth-platform.issuer-uri:}") issuerUri: String,
     private val restClient: RestClient = OutboundHttpClientConfig().outboundHttpRestClient(),
 ) {
     private val log = LoggerFactory.getLogger(AuthPlatformPatVerifier::class.java)
@@ -51,24 +51,29 @@ class AuthPlatformPatVerifier(
     fun resolveUserId(raw: String): UUID? {
         val uri = whoamiUri ?: return null
         val key = sha256Hex(raw)
-        accepted.getIfPresent(key)?.let { return it }
-        if (rejected.getIfPresent(key) != null) return null
+        return if (rejected.getIfPresent(key) != null) null else accepted.getIfPresent(key) ?: lookup(uri, raw, key)
+    }
 
+    private fun lookup(
+        uri: String,
+        raw: String,
+        key: String,
+    ): UUID? {
         val subject =
             try {
                 fetchSubject(uri, raw)
-            } catch (e: HttpClientErrorException) {
-                null
             } catch (e: RestClientException) {
                 // ponytail: Auth 장애는 기억하지 않고 401 — 클라이언트가 재시도와 거절을 구분해야 하면 503 으로 바꾼다
                 log.warn("Auth PAT 확인 실패 — {}", e.javaClass.simpleName)
                 return null
             }
-        val userId = subject?.let { externalAccountRepository.findByProviderIdAndExternalSubject(OIDC_PROVIDER_ID, it)?.userId }
+        val userId =
+            subject?.let { externalAccountRepository.findByProviderIdAndExternalSubject(OIDC_PROVIDER_ID, it)?.userId }
         if (userId == null) rejected.put(key, true) else accepted.put(key, userId)
         return userId
     }
 
+    /** Auth 의 답 — 4xx 는 거절(null), 2xx 는 `authMethod=pat` 일 때 `userId`, 그 밖(5xx · 3xx)은 장애로 던진다. */
     private fun fetchSubject(
         uri: String,
         raw: String,
@@ -76,11 +81,20 @@ class AuthPlatformPatVerifier(
         restClient.get()
             .uri(uri)
             .header(HttpHeaders.AUTHORIZATION, "Bearer $raw")
-            .retrieve()
-            .body(JsonNode::class.java)
-            ?.takeIf { it.path("authMethod").asText() == "pat" }
-            ?.path("userId")
-            ?.textValue()
+            .exchange { _, response ->
+                val status = response.statusCode
+                when {
+                    status.is4xxClientError -> Optional.empty()
+                    !status.is2xxSuccessful -> throw RestClientException("Auth whoami ${status.value()}")
+                    else ->
+                        Optional.ofNullable(
+                            response.bodyTo(JsonNode::class.java)
+                                ?.takeIf { it.path("authMethod").asText() == "pat" }
+                                ?.path("userId")
+                                ?.textValue(),
+                        )
+                }
+            }.orElse(null)
 
     private companion object {
         const val WHOAMI_PATH = "/api/v1/users/me/whoami"

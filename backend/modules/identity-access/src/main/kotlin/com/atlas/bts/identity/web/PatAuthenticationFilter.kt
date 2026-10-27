@@ -41,11 +41,12 @@ class PatAuthenticationFilter(
         if (rawToken != null) {
             val userId = patUserResolver.resolvePatUserId(rawToken)
             if (userId != null) {
-                val auth = UsernamePasswordAuthenticationToken(
-                    userId.toString(),
-                    null,
-                    listOf(SimpleGrantedAuthority("ROLE_PAT")),
-                )
+                val auth =
+                    UsernamePasswordAuthenticationToken(
+                        userId.toString(),
+                        null,
+                        listOf(SimpleGrantedAuthority("ROLE_PAT")),
+                    )
                 SecurityContextHolder.getContext().authentication = auth
             }
         }

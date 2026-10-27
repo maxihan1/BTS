@@ -52,8 +52,9 @@ class AuthPlatformPatVerifierTest {
         server.stop(0)
     }
 
-    private fun verifier(issuer: String = "http://127.0.0.1:${server.address.port}/") =
-        AuthPlatformPatVerifier(externalAccounts, issuer)
+    private fun verifier(issuer: String = stubIssuer()) = AuthPlatformPatVerifier(externalAccounts, issuer)
+
+    private fun stubIssuer() = "http://127.0.0.1:${server.address.port}/"
 
     @Test
     fun `Auth 가 pat 로 확인하면 SSO 로 연결된 BTS 사용자 id 를 돌려준다`() {
