@@ -67,6 +67,59 @@ const SELECTABLE_KINDS = [
 ] as const satisfies readonly { value: TransitionKind; label: string; description: string }[]
 
 /**
+ * 전환 화면 (FR-WF-01 D10) — 전환 때 물을 필드와 그 필수 여부.
+ * 필드 순서는 고정이라(해결 결과 → 담당자 → 코멘트) 끌어 바꾸지 않는다.
+ */
+function TransitionScreenFieldset({
+  screen,
+  onScreenChange,
+}: {
+  screen: DraftScreenField[]
+  onScreenChange: React.Dispatch<React.SetStateAction<DraftScreenField[]>>
+}): React.JSX.Element {
+  /** 필드를 화면에 넣거나 뺀다. 빼면 필수도 함께 사라진다 */
+  const toggleField = (field: DraftScreenField['field'], included: boolean): void => {
+    onScreenChange((current) =>
+      included ? [...current, { field, required: false }] : current.filter((f) => f.field !== field),
+    )
+  }
+  const toggleRequired = (field: DraftScreenField['field'], required: boolean): void => {
+    onScreenChange((current) => current.map((f) => (f.field === field ? { ...f, required } : f)))
+  }
+
+  return (
+    <fieldset className="flex flex-col gap-2">
+      <legend className="text-sm font-medium">{labels.transitionForm.screen}</legend>
+      <span className="text-xs text-(--text-subtle)">{labels.transitionForm.screenDescription}</span>
+      {SCREEN_FIELDS.map((field) => {
+        const entry = screen.find((f) => f.field === field)
+        const fieldLabel = labels.transitionForm.screenFields[field]
+        return (
+          <div key={field} className="flex items-center gap-4">
+            <Label className="flex w-28 items-center gap-2 font-normal">
+              <Checkbox
+                checked={entry !== undefined}
+                onCheckedChange={(checked) => toggleField(field, checked === true)}
+              />
+              {fieldLabel}
+            </Label>
+            <Label className="flex items-center gap-2 font-normal text-(--text-subtle)">
+              <Checkbox
+                aria-label={labels.transitionForm.screenRequired(fieldLabel)}
+                checked={entry?.required ?? false}
+                disabled={entry === undefined}
+                onCheckedChange={(checked) => toggleRequired(field, checked === true)}
+              />
+              {labels.transitionForm.screenRequiredShort}
+            </Label>
+          </div>
+        )
+      })}
+    </fieldset>
+  )
+}
+
+/**
  * 전환을 만들거나 고친다.
  *
  * ★ `GLOBAL`·`INITIAL` 은 출발 상태 입력을 **감춘다**. 보이면 사용자가 고를 수 있고, 실으면
@@ -104,16 +157,6 @@ function TransitionFormDialog({
     setToKey(editing?.toStateKey ?? prefill?.to ?? states[0]?.key ?? null)
     setScreen(editing === null ? NO_SCREEN : editingScreen)
   }, [open, editing, prefill, states, editingScreen])
-
-  /** 필드를 화면에 넣거나 뺀다. 빼면 필수도 함께 사라진다 */
-  const toggleField = (field: DraftScreenField['field'], included: boolean): void => {
-    setScreen((current) =>
-      included ? [...current, { field, required: false }] : current.filter((f) => f.field !== field),
-    )
-  }
-  const toggleRequired = (field: DraftScreenField['field'], required: boolean): void => {
-    setScreen((current) => current.map((f) => (f.field === field ? { ...f, required } : f)))
-  }
 
   const stateOptions = states.map((s) => ({ value: s.key, label: s.name }))
   const title = editing === null ? labels.dialog.transitionCreate : labels.dialog.transitionEdit
@@ -221,40 +264,8 @@ function TransitionFormDialog({
             />
           </div>
 
-          {/*
-            전환 화면 (FR-WF-01 D10). 시작 전환에는 감춘다 — 이슈 생성은 생성 폼이 화면이고,
-            백엔드가 400 이다. 필드 순서는 고정이라(해결 결과 → 담당자 → 코멘트) 끌어 바꾸지 않는다.
-          */}
-          {kind === 'INITIAL' ? null : (
-            <fieldset className="flex flex-col gap-2">
-              <legend className="text-sm font-medium">{labels.transitionForm.screen}</legend>
-              <span className="text-xs text-(--text-subtle)">{labels.transitionForm.screenDescription}</span>
-              {SCREEN_FIELDS.map((field) => {
-                const entry = screen.find((f) => f.field === field)
-                const fieldLabel = labels.transitionForm.screenFields[field]
-                return (
-                  <div key={field} className="flex items-center gap-4">
-                    <Label className="flex w-28 items-center gap-2 font-normal">
-                      <Checkbox
-                        checked={entry !== undefined}
-                        onCheckedChange={(checked) => toggleField(field, checked === true)}
-                      />
-                      {fieldLabel}
-                    </Label>
-                    <Label className="flex items-center gap-2 font-normal text-(--text-subtle)">
-                      <Checkbox
-                        aria-label={labels.transitionForm.screenRequired(fieldLabel)}
-                        checked={entry?.required ?? false}
-                        disabled={entry === undefined}
-                        onCheckedChange={(checked) => toggleRequired(field, checked === true)}
-                      />
-                      {labels.transitionForm.screenRequiredShort}
-                    </Label>
-                  </div>
-                )
-              })}
-            </fieldset>
-          )}
+          {/* 시작 전환에는 전환 화면을 감춘다 — 이슈 생성은 생성 폼이 화면이고, 백엔드가 400 이다. */}
+          {kind === 'INITIAL' ? null : <TransitionScreenFieldset screen={screen} onScreenChange={setScreen} />}
         </div>
 
         <DialogFooter>
