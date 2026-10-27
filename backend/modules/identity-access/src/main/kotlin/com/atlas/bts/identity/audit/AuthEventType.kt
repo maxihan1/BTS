@@ -28,7 +28,9 @@ package com.atlas.bts.identity.audit
  * - [TRUSTED_DEVICE_ADDED]: 신뢰 디바이스 등록 (MFA 통과 후 30일 면제 동의)
  * - [TRUSTED_DEVICE_REVOKED]: 신뢰 디바이스 취소 (수동 단건/전체 + 비번변경·TOTP비활성 자동 폐기)
  * - [PAT_ISSUED]: Personal Access Token 발급 (신규 토큰 생성 — token 원문/hash 미포함)
+ *   발급 · 폐기는 Auth_platform. 과거 감사 행 표시용으로만 남긴다 (2026-10-27 S20 · FR-API-04).
  * - [PAT_REVOKED]: Personal Access Token 폐기 (사용자 본인/관리자 취소)
+ *   발급 · 폐기는 Auth_platform. 과거 감사 행 표시용으로만 남긴다 (2026-10-27 S20 · FR-API-04).
  */
 enum class AuthEventType {
     LOGIN_SUCCESS,

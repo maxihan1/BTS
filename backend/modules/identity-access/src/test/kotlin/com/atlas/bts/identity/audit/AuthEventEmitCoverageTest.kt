@@ -1,4 +1,4 @@
-// 이벤트 누락 0 커버리지 캡스톤 — AuthEventType 24종 전부 main 소스 emit 배선 회귀 가드 (FR-AU-10 + FR-MF-01/02/05 + FR-API-04)
+// 이벤트 누락 0 커버리지 캡스톤 — 은퇴 이벤트를 뺀 AuthEventType 전부 main 소스 emit 배선 회귀 가드 (FR-AU-10 + FR-MF-01/02/05 + FR-API-04)
 
 package com.atlas.bts.identity.audit
 
@@ -28,11 +28,36 @@ import java.nio.file.Paths
  * ## 새 AuthEventType 추가 시 (이 테스트가 fail 한다면)
  * 1. 해당 이벤트를 발생시키는 production 코드에서 `auditLog.record(... AuthEventType.<NEW> ...)` 로 emit 배선.
  * 2. 배선 후 본 테스트는 자동으로 새 이벤트를 커버 대상에 포함한다(테스트 코드 수정 불필요).
+ *
+ * ## 은퇴한 이벤트 ([RETIRED])
+ * 더는 emit 하지 않지만 과거 감사 행 · web 라벨 표시용으로 enum 값을 남긴 이벤트다. 배선 검사에서 빼는 대신
+ * main 소스에 다시 emit 되면 fail 한다 — 다시 쓰기 시작했다면 [RETIRED] 에서 빼라(목록이 썩지 않게).
  */
 class AuthEventEmitCoverageTest {
+    companion object {
+        // 2026-10-27 S20 · FR-API-04 — PAT 발급 · 폐기는 Auth_platform 으로 옮겼다.
+        private val RETIRED = setOf(AuthEventType.PAT_ISSUED, AuthEventType.PAT_REVOKED)
+    }
+
+    @Test
+    fun `은퇴한 AuthEventType 은 main 소스에 emit 되지 않아야 한다`() {
+        val mainSourceFiles = collectMainSourceKtFiles()
+        val reEmitted =
+            RETIRED.map { it.name }.filter { name ->
+                mainSourceFiles.any { file -> emitsEvent(file, name) }
+            }
+
+        assertThat(reEmitted)
+            .withFailMessage(
+                "은퇴한 AuthEventType 이 main 소스에서 다시 emit 됩니다: %s. 다시 쓰는 것이면 RETIRED 에서 빼세요.",
+                reEmitted,
+            )
+            .isEmpty()
+    }
+
     @Test
     fun `모든 AuthEventType 은 main 소스에 emit 배선이 존재해야 한다`() {
-        val eventNames = AuthEventType.entries.map { it.name }
+        val eventNames = (AuthEventType.entries - RETIRED).map { it.name }
 
         val mainSourceFiles = collectMainSourceKtFiles()
         val unwired =
