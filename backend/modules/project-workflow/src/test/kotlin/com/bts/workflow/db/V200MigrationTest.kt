@@ -73,6 +73,8 @@ class V200MigrationTest {
                 }
             }
 
+            // V210 이 workflow_states 와 전환 구 컬럼(인덱스 _from · _to 포함)을 지운다. 이 클래스는 V200 이
+            // 만든 모양을 보므로 그 앞에서 멈춘다. DROP 뒤의 계약은 V210MigrationTest 가 본다.
             Flyway.configure()
                 .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
                 .placeholderReplacement(false)
@@ -80,6 +82,7 @@ class V200MigrationTest {
                     "classpath:db/migration/issue-tracking",
                     "classpath:db/migration/project-workflow",
                 )
+                .target("209")
                 .load()
                 .migrate()
         }
