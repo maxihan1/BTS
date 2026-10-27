@@ -223,7 +223,7 @@ describe('AccountMenu', () => {
     await user.click(logoutItem)
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/login' })
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/login', search: { logged_out: true } })
     })
   })
 
@@ -240,7 +240,7 @@ describe('AccountMenu', () => {
       expect(useAuthStore.getState().accessToken).toBeNull()
     })
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith({ to: '/login' })
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/login', search: { logged_out: true } })
     })
   })
 })
