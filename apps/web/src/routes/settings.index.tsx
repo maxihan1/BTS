@@ -4,6 +4,7 @@ import { Link } from '@tanstack/react-router'
 import { PageLayout } from '@/components/layout/PageLayout'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { authAccountUrl } from '@/lib/auth-account-url'
 import { PAT_ACCOUNT_LINK, SETTINGS_HUB_LINKS, type SettingsHubLink } from '@/lib/settings-hub-links'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ import { PAT_ACCOUNT_LINK, SETTINGS_HUB_LINKS, type SettingsHubLink } from '@/li
  * @see SETTINGS_HUB_LINKS 카드 목록 단일 출처
  */
 export function SettingsIndexPage(): JSX.Element {
-  const authAccountUrl: string | undefined = import.meta.env['VITE_AUTH_ACCOUNT_URL'] || undefined
+  const accountUrl = authAccountUrl()
   return (
     <PageLayout>
       <PageHeader title="설정" description="개인 설정을 관리합니다" />
@@ -36,9 +37,9 @@ export function SettingsIndexPage(): JSX.Element {
             </Link>
           </li>
         ))}
-        {authAccountUrl !== undefined && (
+        {accountUrl !== undefined && (
           <li>
-            <a href={authAccountUrl} className={CARD_LINK_CLASS}>
+            <a href={accountUrl} className={CARD_LINK_CLASS}>
               <HubCard {...PAT_ACCOUNT_LINK} />
             </a>
           </li>

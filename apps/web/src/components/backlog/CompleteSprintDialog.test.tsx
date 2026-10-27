@@ -21,7 +21,7 @@ import type { CompleteSprintDialogProps } from './CompleteSprintDialog'
 // ─────────────────────────────────────────────────────────────────────────────
 // Radix/shadcn Select → 네이티브 <select> mock
 // jsdom 에서 hasPointerCapture 제약으로 Radix Select 클릭 인터랙션이 불가하므로
-// 네이티브 select 로 대체한다 (PatCreateForm.test.tsx 정본 템플릿 · ResolutionPickerModal 동형).
+// 네이티브 select 로 대체한다 (settings/PreferencesForm.test.tsx · ResolutionPickerModal 동형).
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('@/components/ui/select', async () => {

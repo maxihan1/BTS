@@ -78,6 +78,8 @@ describe('SettingsIndexPage', () => {
     await screen.findByRole('heading', { level: 1, name: '설정' })
     const links = screen.getAllByRole('link')
     expect(links).toHaveLength(EXPECTED_SETTINGS_CHILD_PATHS.length)
+    // href 없는 <a> 는 link role 이 아니라 위 개수로는 「카드가 남았다」를 못 잡는다 — 글자로 직접 본다
+    expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument()
   })
 
   it('VITE_AUTH_ACCOUNT_URL 이 있으면 Auth 계정 화면으로 가는 Personal Access Token 카드를 덧붙인다 (FR-API-04 S20)', async () => {

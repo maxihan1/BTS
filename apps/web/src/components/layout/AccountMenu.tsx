@@ -1,6 +1,7 @@
 // 계정 아바타 드롭다운 — Header.tsx 계정 메뉴 로직 재현(FR-UX-06 PR11 Task 6, TopBar 서브컴포넌트)
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { authAccountUrl } from '@/lib/auth-account-url'
 import type { WhoamiResponse } from '@/api/schemas'
 import { useAuthUser, useAuthStore } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
@@ -63,7 +64,7 @@ export function AccountMenu() {
 
   const accountLabel = resolveAccountLabel(user)
   // Auth_platform 계정 화면(빌드 env) — PAT 발급은 그쪽에 있다. 비면 PAT 항목을 숨긴다.
-  const authAccountUrl: string | undefined = import.meta.env['VITE_AUTH_ACCOUNT_URL'] || undefined
+  const accountUrl = authAccountUrl()
 
   return (
     <>
@@ -145,9 +146,9 @@ export function AccountMenu() {
             <Link to="/settings/mfa">2단계 인증</Link>
           </DropdownMenuItem>
           {/* PAT 는 Auth_platform 이 발급한다(FR-API-04 S20) — 계정 화면 바깥 링크, env 가 비면 숨긴다 */}
-          {authAccountUrl !== undefined && (
+          {accountUrl !== undefined && (
             <DropdownMenuItem asChild>
-              <a href={authAccountUrl}>Personal Access Token</a>
+              <a href={accountUrl}>Personal Access Token</a>
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />

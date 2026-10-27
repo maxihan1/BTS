@@ -55,7 +55,7 @@ export interface ProjectSettingsNavGroup {
  * 사이드바는 「권한이 없다」가 아니라 「고장났다」로 읽힌다.
  *
  * 아이콘이 필수인 이유는 접힘 레일(64px)이다 — 라벨을 `sr-only` 로 숨기면 시각 앵커가 없는
- * 항목 10개가 **구분 불가능한 빈 행**이 된다. `lib/settings-hub-links.ts` 가 개인 설정 11개에
+ * 항목 10개가 **구분 불가능한 빈 행**이 된다. `lib/settings-hub-links.ts` 가 개인 설정 10개에
  * 쓰는 `Icon: LucideIcon` 패턴을 그대로 재사용한다(새 추상화 아님).
  *
  * ### `settings/details` 의 라벨은 `'상세정보'` 다 — Jira 원문이 Details 다 (JI-1)
