@@ -2,6 +2,12 @@
 # base application.yml 위에 병합된다. identity-access application-prod.yml 의 prod 정책을 조립 앱으로 중앙화.
 
 server:
+  # 운영 경로는 host Caddy(TLS 종단) → nginx(http) → backend. 이것이 없으면 nginx 가 넘긴 X-Forwarded-Proto 를
+  # 무시해 {baseUrl} 이 http 가 된다 — OIDC redirect_uri · SAML ACS 가 http 로 나가 IdP 가 거절한다.
+  # native = Tomcat RemoteIpValve — 사설 대역 · 루프백(nginx 컨테이너)에서 온 X-Forwarded-* 만 믿는다.
+  # 영향. request.remoteAddr 가 nginx IP 대신 실 클라이언트 IP 가 된다(로그인 감사 로그 ip_address · 세션 IP).
+  # IP 로 세는 속도 제한은 backend 에 없다(MFA 시도 제한은 userId 기준, /ws 상한은 nginx 가 센다).
+  forward-headers-strategy: native
   servlet:
     session:
       cookie:
