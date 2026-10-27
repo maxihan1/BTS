@@ -1,6 +1,7 @@
 // 비밀번호 · MFA 를 Auth_platform 이 맡을 때 BTS 설정 화면 대신 보이는 안내 — VITE_AUTH_ACCOUNT_URL 이 있을 때만
 import type { JSX, ReactNode } from 'react'
 import { externalAccountStrings } from '@/i18n/ko'
+import { authAccountUrl } from '@/lib/auth-account-url'
 
 interface ExternalAccountNoticeProps {
   message: string
@@ -16,7 +17,7 @@ interface ExternalAccountNoticeProps {
 
 /** 빌드 env `VITE_AUTH_ACCOUNT_URL` 이 있으면 children 대신(강제 이동이면 함께) Auth 계정 화면 링크를 보인다 */
 export function ExternalAccountNotice({ message, hint, keepForm = false, children }: ExternalAccountNoticeProps): JSX.Element {
-  const url: string | undefined = import.meta.env['VITE_AUTH_ACCOUNT_URL'] || undefined
+  const url = authAccountUrl()
   if (url === undefined) return <>{children}</>
   return (
     <div className="space-y-6">

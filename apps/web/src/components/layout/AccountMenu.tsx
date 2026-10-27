@@ -1,6 +1,7 @@
 // 계정 아바타 드롭다운 — Header.tsx 계정 메뉴 로직 재현(FR-UX-06 PR11 Task 6, TopBar 서브컴포넌트)
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { authAccountUrl } from '@/lib/auth-account-url'
 import type { WhoamiResponse } from '@/api/schemas'
 import { useAuthUser, useAuthStore } from '@/auth/authStore'
 import { useLogoutMutation } from '@/auth/useLogoutMutation'
@@ -62,6 +63,8 @@ export function AccountMenu() {
   }
 
   const accountLabel = resolveAccountLabel(user)
+  // Auth_platform 계정 화면(빌드 env) — PAT 발급은 그쪽에 있다. 비면 PAT 항목을 숨긴다.
+  const accountUrl = authAccountUrl()
 
   return (
     <>
@@ -115,7 +118,7 @@ export function AccountMenu() {
           {/* 🛑 이 항목을 지우지 마라 — 모바일에서 설정 허브로 가는 **유일한** 길이다.
               상단바 설정 톱니는 `max-md:hidden` 이고, 사이드바에는 관리 메뉴가 **없다**
               (J9 로 상단바 관리 허브 링크로 옮겼고, 그것도 `/settings` 루트를 링크하지 않는다).
-              아래 개별 링크는 허브 11개 중 7개만 덮으므로, 이 줄이 없으면
+              아래 개별 링크는 허브 10개 중 6개만 덮으므로, 이 줄이 없으면
               `notifications`·`sessions`·`password`·`account-links` 가 좁은 폭에서 도달
               불가가 된다(비밀번호 변경·세션 종료는 보안 기능이다).
               목록 맨 앞에 두는 것도 의도다 — 모바일에서는 이것이 4개 페이지의 유일한 경로라
@@ -142,9 +145,12 @@ export function AccountMenu() {
           <DropdownMenuItem asChild>
             <Link to="/settings/mfa">2단계 인증</Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link to="/settings/pats">Personal Access Token</Link>
-          </DropdownMenuItem>
+          {/* PAT 는 Auth_platform 이 발급한다(FR-API-04 S20) — 계정 화면 바깥 링크, env 가 비면 숨긴다 */}
+          {accountUrl !== undefined && (
+            <DropdownMenuItem asChild>
+              <a href={accountUrl}>Personal Access Token</a>
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"

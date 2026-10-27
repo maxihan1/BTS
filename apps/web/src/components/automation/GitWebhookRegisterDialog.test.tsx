@@ -9,7 +9,7 @@ import type { GitProvider } from '@/api/automation-git-webhooks.types'
 // ─────────────────────────────────────────────────────────────────────────────
 // Radix/shadcn Select → 네이티브 <select> mock
 // jsdom에서 hasPointerCapture 제약으로 Radix Select 클릭 인터랙션이 불가하므로
-// 네이티브 select 엘리먼트로 대체한다 (PatCreateForm.test.tsx 동형 선례, 정본 템플릿).
+// 네이티브 select 엘리먼트로 대체한다 (settings/PreferencesForm.test.tsx 동형).
 // ─────────────────────────────────────────────────────────────────────────────
 
 vi.mock('@/components/ui/select', async () => {
