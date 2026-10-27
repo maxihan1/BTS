@@ -49,7 +49,9 @@ export function useLogoutMutation() {
       // 성공·실패 무관하게 반드시 클라이언트 세션 정리 — 사용자 로그아웃 의도 우선
       clearSession()
       // 이어서 /login 으로 옮긴다. 여기서 하지 않으면 아무도 하지 않는다(위 KDoc).
-      void navigate({ to: '/login' })
+      // 🛑 `logged_out` 표시를 떼지 마라. SSO 하나뿐인 설치의 `/login` 은 표시가 없으면 Auth 로
+      //    바로 넘기는데, BTS 로그아웃은 Auth 세션을 끝내지 않아 곧장 다시 로그인된다 (S21).
+      void navigate({ to: '/login', search: { logged_out: true } })
     },
   })
 }

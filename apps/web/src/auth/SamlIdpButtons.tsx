@@ -7,6 +7,8 @@ import type { SamlIdp } from '@/api/saml'
 interface SamlIdpButtonsProps {
   /** 표시할 SAML IdP 목록 — 빈 배열이면 아무것도 렌더하지 않음 */
   idps: SamlIdp[]
+  /** 위에 다른 로그인 수단이 없으면 false — 아무것도 없는 위에 「또는」을 그리지 않는다 */
+  divider?: boolean
 }
 
 /**
@@ -19,18 +21,20 @@ interface SamlIdpButtonsProps {
  *
  * @param idps 활성 SAML IdP 배열
  */
-export const SamlIdpButtons = ({ idps }: SamlIdpButtonsProps) => {
+export const SamlIdpButtons = ({ idps, divider = true }: SamlIdpButtonsProps) => {
   if (idps.length === 0) return null
 
   return (
     <div className="space-y-2">
-      <div className="relative flex items-center py-1">
-        <div className="flex-grow border-t border-border" />
-        <span className="mx-3 flex-shrink text-xs text-muted-foreground">
-          {loginStrings.samlDividerText}
-        </span>
-        <div className="flex-grow border-t border-border" />
-      </div>
+      {divider && (
+        <div className="relative flex items-center py-1">
+          <div className="flex-grow border-t border-border" />
+          <span className="mx-3 flex-shrink text-xs text-muted-foreground">
+            {loginStrings.samlDividerText}
+          </span>
+          <div className="flex-grow border-t border-border" />
+        </div>
+      )}
       {idps.map((idp) => (
         <Button
           key={idp.registrationId}

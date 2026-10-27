@@ -454,16 +454,49 @@ describe('LoginForm — 폼 로그인', () => {
     server.use(
       http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
       http.get('/api/v1/auth/oidc/providers', () =>
-        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'maxihan 계정' }] }),
+        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'QA Hub 통합계정' }] }),
       ),
     )
 
     renderLoginForm()
 
-    await screen.findByRole('button', { name: 'maxihan 계정 로 로그인' })
+    await screen.findByRole('button', { name: 'QA Hub 통합계정으로 로그인' })
     expect(screen.queryByLabelText('비밀번호')).toBeNull()
     expect(screen.queryByLabelText('사용자명')).toBeNull()
     expect(screen.queryByRole('button', { name: '로그인' })).toBeNull()
+  })
+
+  it('SSO 버튼만 있으면 그 위에 빈 「또는」 구분선을 그리지 않는다 (S21)', async () => {
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/saml/idps', () => HttpResponse.json({ idps: [] })),
+      http.get('/api/v1/auth/oidc/providers', () =>
+        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'QA Hub 통합계정' }] }),
+      ),
+    )
+
+    renderLoginForm()
+
+    await screen.findByRole('button', { name: 'QA Hub 통합계정으로 로그인' })
+    expect(screen.queryByText('또는')).toBeNull()
+  })
+
+  it('SSO 만 있어도 SAML 과 OIDC 버튼 사이의 「또는」은 남긴다 (대조군)', async () => {
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/saml/idps', () =>
+        HttpResponse.json({ idps: [{ registrationId: 'okta', displayName: 'Okta SSO' }] }),
+      ),
+      http.get('/api/v1/auth/oidc/providers', () =>
+        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'QA Hub 통합계정' }] }),
+      ),
+    )
+
+    renderLoginForm()
+
+    await screen.findByRole('button', { name: 'QA Hub 통합계정으로 로그인' })
+    await screen.findByRole('button', { name: 'Okta SSO로 로그인' })
+    expect(screen.getAllByText('또는')).toHaveLength(1)
   })
 
   it('비밀번호 방식도 SSO 도 없으면 빈 화면 대신 안내를 보인다', async () => {
@@ -1228,7 +1261,7 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
     await user.type(screen.getByLabelText('사용자명'), 'alice@okta.com')
     await user.tab()
 
-    expect(await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Okta SSO로 로그인' })).toBeInTheDocument()
     // 트리거가 blur 라는 수동적 이벤트이므로 풀 네비게이션을 걸면 안 된다(C7).
     expect(assignMock).not.toHaveBeenCalled()
   })
@@ -1251,7 +1284,7 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
     await user.type(screen.getByLabelText('사용자명'), 'alice@corp.com')
     await user.tab()
 
-    await screen.findByRole('button', { name: 'Keycloak 로 로그인' })
+    await screen.findByRole('button', { name: 'Keycloak로 로그인' })
     // 매칭 도메인에 LOCAL/LDAP 계정이 공존할 수 있다 — 끊긴 라우트가 사용자를 막지 않는다.
     expect(screen.getByRole('button', { name: '로그인' })).toBeEnabled()
   })
@@ -1275,7 +1308,7 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
     await user.type(screen.getByLabelText('사용자명'), 'alice@okta.com')
     await user.tab()
 
-    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+    await screen.findByRole('button', { name: 'Okta SSO로 로그인' })
     expect(screen.getByLabelText('비밀번호')).toHaveValue('secret1234')
   })
 
@@ -1345,7 +1378,7 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
     await user.click(identifier)
     await user.tab()
 
-    expect(await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Okta SSO로 로그인' })).toBeInTheDocument()
   })
 
   it('식별자에서 @ 를 지우면 SSO 버튼이 사라진다 (stale 매칭 금지)', async () => {
@@ -1368,14 +1401,14 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
     const identifier = screen.getByLabelText('사용자명')
     await user.type(identifier, 'alice@okta.com')
     await user.tab()
-    await screen.findByRole('button', { name: 'Okta SSO 로 로그인' })
+    await screen.findByRole('button', { name: 'Okta SSO로 로그인' })
 
     await user.clear(identifier)
     await user.type(identifier, 'alice')
     await user.tab()
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Okta SSO 로 로그인' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Okta SSO로 로그인' })).toBeNull()
     })
   })
 })

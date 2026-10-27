@@ -7,6 +7,9 @@ import { LoginDialog } from './LoginDialog'
 import { useAuthStore } from './authStore'
 import { useLoginPromptStore } from './loginPromptStore'
 import { makeWhoami } from '@/mocks/auth-fixtures'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/server'
+import { useSsoOnlyEntry } from './useSsoOnlyEntry'
 
 // 라우터 의존은 pathname 읽기와 navigate 두 가지뿐이라 통째로 대체한다.
 // vi.mock 팩토리는 호이스팅되므로 외부 변수를 참조할 수 없다 — vi.hoisted 로 먼저 만든다.
@@ -56,6 +59,17 @@ beforeEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
   useLoginPromptStore.getState().reset()
   setLocationSearch('')
+  // `/login` 의 열림은 로그인 수단 판정을 기다린다(S21). 테스트 서버엔 기본 핸들러가 없어
+  // 비밀번호(Local)만 있는 설치를 기본으로 둔다 — 이 설치는 지금처럼 dialog 를 연다.
+  server.use(
+    http.get('/api/v1/auth/providers', () =>
+      HttpResponse.json({
+        providers: [{ id: 'local', type: 'LOCAL', displayName: 'Local', priority: 0, available: true }],
+      }),
+    ),
+    http.get('/api/v1/auth/saml/idps', () => HttpResponse.json({ idps: [] })),
+    http.get('/api/v1/auth/oidc/providers', () => HttpResponse.json({ providers: [] })),
+  )
 })
 
 afterEach(() => {
@@ -233,5 +247,45 @@ describe('LoginDialog — 세션 만료 재로그인은 이동 없이 화면을 
     await user.click(screen.getByRole('button', { name: '성공 트리거' }))
 
     expect(useLoginPromptStore.getState().sessionExpired).toBe(false)
+  })
+})
+
+describe('LoginDialog — SSO 하나뿐인 설치 (S21)', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/auth/providers', () => HttpResponse.json({ providers: [] })),
+      http.get('/api/v1/auth/saml/idps', () => HttpResponse.json({ idps: [] })),
+      http.get('/api/v1/auth/oidc/providers', () =>
+        HttpResponse.json({ providers: [{ registrationId: 'auth', displayName: 'QA Hub 통합계정' }] }),
+      ),
+    )
+  })
+
+  /** 같은 판정을 화면에 적는 탐침 — 「판정이 끝났는데도 안 열렸다」를 보려면 끝난 시점이 필요하다 */
+  const Probe = () => {
+    const entry = useSsoOnlyEntry()
+    return <p>{entry === undefined ? '판정 중' : entry === null ? 'dialog' : 'sso'}</p>
+  }
+
+  it('/login 에서는 dialog 를 열지 않는다 — LoginPage 가 바로 넘기거나 카드를 그린다', async () => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LoginDialog />
+        <Probe />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByText('sso')
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('세션 만료는 /login 밖에서 지금처럼 dialog 로 연다 — 보던 화면을 날리지 않는다', async () => {
+    routerMocks.pathname.current = '/issues/ATLAS-1'
+    useLoginPromptStore.getState().promptSessionExpired()
+
+    renderDialog()
+
+    expect(await screen.findByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
   })
 })

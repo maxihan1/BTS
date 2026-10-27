@@ -12,13 +12,15 @@ import { LoginForm } from '@/auth/LoginForm'
 import { useAuthStore, useIsAuthenticated } from './authStore'
 import { useLoginPromptStore } from './loginPromptStore'
 import { resolvePostLoginNav } from './routeGuard'
+import { useSsoOnlyEntry } from './useSsoOnlyEntry'
 import { loginPageStrings } from '@/i18n/ko'
 
 /**
  * 앱 전역에 하나만 마운트되는 로그인 모달(`RootLayout` 소유).
  *
  * 열림 조건은 두 갈래이고 **모달은 배경을 만들지 않는다**.
- * - 미인증 + `/login` — `requireAuth` 가 이미 보냈고, 배경은 `routes/login.tsx` 의 `AuthBackdrop`
+ * - 미인증 + `/login` — `requireAuth` 가 이미 보냈고, 배경은 `routes/login.tsx` 의 `AuthBackdrop`.
+ *   단 SSO 하나뿐인 설치에서는 열지 않는다 — `routes/login.tsx` 가 바로 넘기거나 카드를 그린다 (S21)
  * - 미인증 + 세션 만료 플래그 — 라우트 이동 없이 사용자가 보던 진짜 화면이 배경
  *
  * 닫기 3경로(ESC · 오버레이 · X)를 전부 봉인한다. 첫 진입에서 닫으면 배경만 남는 막다른 골목이고,
@@ -37,7 +39,11 @@ export const LoginDialog = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  const open = !isAuthenticated && (pathname === '/login' || sessionExpired)
+  // `/login` 은 로그인 수단을 다 받은 뒤에 연다. SSO 하나뿐인 설치면 dialog 대신 `LoginPage` 가
+  // 바로 넘기거나 남는 카드를 그린다(S21). 세션 만료(`/login` 밖)는 판정 없이 지금 그대로 연다.
+  const onLoginPage = pathname === '/login'
+  const ssoOnly = useSsoOnlyEntry(!isAuthenticated && onLoginPage)
+  const open = !isAuthenticated && (onLoginPage ? ssoOnly === null : sessionExpired)
 
   /**
    * 로그인 성공 후 목적지. 만료 재로그인은 **이동하지 않는다** — 사용자가 보던 화면을

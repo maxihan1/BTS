@@ -45,13 +45,16 @@ describe('useLogoutMutation', () => {
    * 그 컴포넌트를 언마운트해 콜백이 통째로 버려졌다. 소유를 훅으로 옮긴 것이 처방이므로
    * 판별식도 훅에 둔다 — 호출자에 두면 다음에 호출자가 바뀔 때 같이 사라진다.
    */
-  it('성공하면 /login 으로 이동한다', async () => {
+  it('성공하면 로그아웃 표시를 단 /login 으로 이동한다', async () => {
+    // ★`logged_out` 이 빠지면 SSO 하나뿐인 설치에서 Auth 로 바로 넘어가 곧장 다시 로그인된다 (S21)
     server.use(http.post('/api/v1/auth/logout', () => new HttpResponse(null, { status: 204 })))
 
     const { result } = renderHook(() => useLogoutMutation(), { wrapper: createWrapper() })
     result.current.mutate()
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ to: '/login' }))
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/login', search: { logged_out: true } }),
+    )
   })
 
   it('서버가 실패해도 /login 으로 이동한다 — 사용자 로그아웃 의도 우선', async () => {
@@ -62,7 +65,9 @@ describe('useLogoutMutation', () => {
     const { result } = renderHook(() => useLogoutMutation(), { wrapper: createWrapper() })
     result.current.mutate()
 
-    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ to: '/login' }))
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/login', search: { logged_out: true } }),
+    )
     expect(useAuthStore.getState().accessToken).toBeNull()
   })
 

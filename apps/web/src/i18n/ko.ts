@@ -1,4 +1,5 @@
 // 한국어 UI 문자열 상수 — 모든 사용자 노출 텍스트를 이 파일에서 관리
+import { josaEuro } from '@/lib/josa'
 
 /** 로그인 폼 관련 문자열 */
 export const loginStrings = {
@@ -27,12 +28,12 @@ export const loginStrings = {
   errorUnknownProvider: '지원하지 않는 로그인 방식입니다. 다시 시도해 주세요.',
   errorDefault: '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 
-  /** SAML SSO 버튼 */
-  samlLoginButtonLabel: (displayName: string) => `${displayName} 로 로그인`,
+  /** SAML SSO 버튼 — 조사는 받침으로 고른다(「QA Hub 통합계정으로」 · 「Okta SSO로」) */
+  samlLoginButtonLabel: (displayName: string) => `${displayName}${josaEuro(displayName)} 로그인`,
   samlDividerText: '또는',
 
-  /** OIDC SSO 버튼 */
-  oidcLoginButtonLabel: (displayName: string) => `${displayName} 로 로그인`,
+  /** OIDC SSO 버튼 — 조사는 받침으로 고른다 */
+  oidcLoginButtonLabel: (displayName: string) => `${displayName}${josaEuro(displayName)} 로그인`,
   oidcDividerText: '또는',
   /** 비밀번호 방식도 SSO 도 하나 없을 때 (설정 누락) */
   noLoginMethod: '사용할 수 있는 로그인 방식이 없습니다. 관리자에게 문의하세요.',
@@ -50,6 +51,18 @@ export const loginPageStrings = {
   description: '계정 정보를 입력해 로그인하세요.',
   /** 세션 만료로 열린 모달의 설명문 — 이동 없이 현재 화면 위에 뜬다 */
   sessionExpiredDescription: '세션이 만료되었습니다. 다시 로그인하면 보던 화면으로 돌아갑니다.',
+} as const
+
+/**
+ * SSO 하나뿐인 설치에서 `/login` 에 남는 화면 (S21 B안 ④) — 로그아웃 직후 · SSO 실패 때만 보인다.
+ * 문구는 세 앱(BTS · QA Hub · Device Farm) 공통 시안 그대로다.
+ */
+export const ssoLoginScreenStrings = {
+  appName: 'BTS',
+  loggedOutHeading: '로그아웃했습니다',
+  loggedOutDescription: '다시 들어가려면 로그인하세요',
+  errorHeading: '로그인하지 못했습니다',
+  errorMessage: '통합계정 로그인을 마치지 못했습니다. 다시 시도하고, 계속되면 관리자에게 문의하세요.',
 } as const
 
 /** 이슈 상세 페이지 관련 문자열 */
