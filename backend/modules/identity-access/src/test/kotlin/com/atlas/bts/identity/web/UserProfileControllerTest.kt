@@ -62,7 +62,7 @@ import java.util.UUID
  * - GET  /{userId}/avatar — 200 + Content-Type/nosniff/inline 헤더 / 미존재 404.
  * - DELETE /me/profile/avatar — 204.
  *
- * ## 의존성 모킹 전략 ([PersonalAccessTokenControllerTest] 선례)
+ * ## 의존성 모킹 전략
  * [UserProfileService] 는 companion object 가 없는 평범한 클래스라 MockK 로 안전하게 Spring
  * `@Bean` 등록이 가능하다(ByteBuddy `$Companion` 문제 없음). SecurityConfig 필수 Bean 은
  * `@TestConfiguration` + MockK 로 공급한다.

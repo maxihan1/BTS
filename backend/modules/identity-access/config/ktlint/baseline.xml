@@ -180,7 +180,6 @@
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/web/PatAuthenticationFilter.kt">
         <error line="33" column="1" source="standard:no-empty-first-line-in-class-body" />
-        <error line="45" column="28" source="standard:multiline-expression-wrapping" />
     </file>
     <file name="src/main/kotlin/com/atlas/bts/identity/web/ProjectMemberController.kt">
         <error line="76" column="1" source="standard:no-empty-first-line-in-class-body" />

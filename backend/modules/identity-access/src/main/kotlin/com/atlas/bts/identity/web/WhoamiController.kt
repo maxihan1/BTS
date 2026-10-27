@@ -9,8 +9,8 @@ import com.atlas.bts.identity.credential.StoredPasswordCredentialRepository
 import com.atlas.bts.identity.dto.WhoamiResponse
 import com.atlas.bts.identity.jwt.JwtIssuer
 import com.atlas.bts.identity.ooo.OutOfOfficeRepository
+import com.atlas.bts.identity.pat.PatUserResolver
 import com.atlas.bts.identity.pat.PersonalAccessToken
-import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.preferences.UserPreferences
 import com.atlas.bts.identity.preferences.UserPreferencesService
 import com.atlas.bts.identity.profile.UserProfileRepository
@@ -55,8 +55,8 @@ import java.util.UUID
  *   귀결하므로 항상 값이 채워진다(null 없음). 시작 페이지 view-layer(FR-PF-02)로 `startPage`(동일
  *   [UserPreferencesService.getPreferences] 파생, 기본값 dashboards)도 노출한다.
  *
- * - **PAT**: `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PersonalAccessTokenService.verify] 로
- *   검증한다. 검증 성공 시 `authMethod = "pat"` + `userId` 를 반환하고,
+ * - **PAT**: `Authorization: Bearer pat_xxx` 형식의 요청을 감지하여 [PatUserResolver.resolvePatUserId] 로
+ *   주인을 찾는다(BTS PAT 먼저, 없으면 Auth_platform PAT). 찾으면 `authMethod = "pat"` + `userId` 를 반환하고,
  *   [AuthEventType.PAT_USED] 감사 이벤트를 기록한다.
  *   검증 실패(만료·revoke·미존재) 시 401 을 반환한다.
  *   강제 변경·시스템 관리자·프로젝트 생성 권한(`canCreateProject`)·MFA 강제 등록 플래그는 봇 컨텍스트(PAT)와
@@ -79,7 +79,7 @@ import java.util.UUID
 @RestController
 @Suppress("LongParameterList") // whoami view-layer 집약점 — 인증(PAT/JWT)·감사·프로필/상태/부재중 뷰레이어 협력자를 한 곳에서 조립
 class WhoamiController(
-    private val personalAccessTokenService: PersonalAccessTokenService,
+    private val patUserResolver: PatUserResolver,
     private val authAuditLogService: AuthAuditLogService,
     private val userRepository: UserRepository,
     private val storedPasswordCredentialRepository: StoredPasswordCredentialRepository,
@@ -174,18 +174,14 @@ class WhoamiController(
      * @return PAT 인증 성공 응답 (authMethod="pat", userId)
      */
     private fun handlePat(rawToken: String): WhoamiResponse {
-        val result = personalAccessTokenService.verify(rawToken)
-
-        if (result.isFailure) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
-        }
-
-        val pat = result.getOrThrow()
+        val userId =
+            patUserResolver.resolvePatUserId(rawToken)
+                ?: throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
 
         // AuthAuditLog.PAT_USED — PAT 사용 감사 이벤트 기록 (Task 36 enum)
         authAuditLogService.record(
             AuthAuditLog(
-                userId = pat.userId,
+                userId = userId,
                 eventType = AuthEventType.PAT_USED,
                 providerId = "pat",
             ),
@@ -199,7 +195,7 @@ class WhoamiController(
             username = "",
             email = "",
             authMethod = "pat",
-            userId = pat.userId,
+            userId = userId,
             mustChangePassword = false,
             isSystemAdmin = false,
             // FR-PJ-01/FR-PM-10: 봇 컨텍스트(PAT)는 프로젝트 생성 UI 를 쓰지 않으므로 조회 없이 false 고정.

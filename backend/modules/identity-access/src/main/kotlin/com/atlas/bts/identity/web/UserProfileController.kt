@@ -71,7 +71,7 @@ import java.util.UUID
  * 선례와 동일 원칙). [InputStreamResource] 는 Spring MVC 가 응답 바디 복사 완료 후 자동 close 한다.
  *
  * ## 예외 → HTTP 매핑 (catch-all 변질 가드)
- * 모듈에 전역 `@RestControllerAdvice` 가 없으므로([PersonalAccessTokenController] 선례) 도메인 예외를
+ * 모듈에 전역 `@RestControllerAdvice` 가 없으므로 도메인 예외를
  * **이 컨트롤러 로컬 [ExceptionHandler]** 로만 상태 매핑한다. [ProfileUserNotFoundException] 의 원본
  * 메시지는 userId 를 포함하므로 노출하지 않고 고정 일반 메시지로 치환한다([handleProfileNotFound]).
  * [DisplayNameNotLdapLinkedException] 도 내부 사정(연결 여부/정책)을 감추기 위해 고정 일반 메시지로
