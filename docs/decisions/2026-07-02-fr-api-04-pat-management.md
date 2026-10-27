@@ -3,7 +3,7 @@
 # ADR — FR-API-04 Personal Access Token 관리 정책
 
 **일자.** 2026-07-02
-**상태.** Accepted
+**상태.** Accepted — 셀프서비스 발급 · 목록 · 취소는 2026-10-27 [Auth_platform 으로 옮김](2026-10-27-fr-api-04-pat-auth-platform.md)
 **관련 PR.** #215 (`auth/fr-api-04-pat`)
 **작성자.** security-engineer (주도) + Maxi 결정
 **선행.** [session-pat-schema](2026-05-20-session-pat-schema.md)(V006 스키마·scope JSONB·EC-27 무기한 허용)

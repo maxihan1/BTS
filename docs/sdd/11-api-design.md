@@ -93,9 +93,10 @@
 - RS256 서명
 
 ### 11.4.2 Personal Access Token (PAT, FR-API-04)
-- 사용자가 직접 생성 (CLI/스크립트용)
+- 사용자가 Auth_platform `/account` 에서 직접 생성 (CLI/스크립트용, 2026-10-27~ — 이전엔 BTS 가 발급)
 - 만료일 + 스코프 제한
 - DB에 SHA-256 해시 저장 (원본 노출은 생성 시 1회만)
+- BTS 는 `Authorization: Bearer pat_…` 를 BTS DB 먼저, 없으면 Auth whoami 로 확인해 SSO 로 연결된 BTS 사용자로 인증한다 (ADR `2026-10-27-fr-api-04-pat-auth-platform`)
 
 ## 11.5 WebSocket (STOMP)
 
