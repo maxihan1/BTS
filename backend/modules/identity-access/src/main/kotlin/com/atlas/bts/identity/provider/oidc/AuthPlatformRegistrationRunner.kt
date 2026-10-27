@@ -21,6 +21,7 @@ import java.util.UUID
  *
  * 콜백은 `{baseUrl}/login/oauth2/code/auth` — Auth_platform 에 이 주소를 redirect URI 로 등록한다.
  * `enabled` 는 새 행에만 true 로 넣고 갱신하지 않는다 — 관리자가 SQL 로 끈 SSO(kill switch)를 재기동이 되살리지 않게.
+ * `display_name` 은 [DISPLAY_NAME] 이 정본이라 갱신한다 — SQL 로 바꾼 이름은 다음 재기동에 되돌아간다.
  * secret 은 로그에 남기지 않는다.
  */
 @Component

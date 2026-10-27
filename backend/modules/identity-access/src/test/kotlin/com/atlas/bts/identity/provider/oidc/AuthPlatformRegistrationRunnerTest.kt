@@ -90,7 +90,7 @@ class AuthPlatformRegistrationRunnerTest {
 
         run("http://localhost:9000")
 
-        assertThat(repo.findByRegistrationId("auth")!!.displayName).isEqualTo("QA Hub 통합계정")
+        assertThat(checkNotNull(repo.findByRegistrationId("auth")).displayName).isEqualTo("QA Hub 통합계정")
     }
 
     @Test
