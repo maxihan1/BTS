@@ -40,9 +40,9 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   `IssueReporterRow` 와 맞추며 **296** 이 됐다(같은 화면에 UUID·이름 두 모양이 나오던 자리다).
   //   어느 PR 의 값도 아니고 매번 **실측**이다 — 양쪽 값을 그대로 고르면 둘 다 틀린다.
   //   여전히 200 위라 줄을 지우지 않는다. 200 밑으로 내리는 것은 #453 몫이라는 위 문단 그대로다.
-  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 296,
+  //   ★2026-10-27 296 → 276. #562(상태 메뉴 범주 색 배지)가 줄였는데 장부를 안 낮춰 배포 관문에서 드러났다.
+  "src/components/issue/IssueMetaPanel.tsx::Function 'IssueMetaPanel'": 276,
   "src/components/issue/mention/use-mention-autocomplete.ts::Function 'useMentionAutocomplete'": 272,
-  "src/components/issues/BulkTransitionDialog.tsx::Function 'BulkTransitionDialog'": 212,
   "src/components/issues/MoveIssueDialog.tsx::Function 'MoveIssueDialog'": 311,
   "src/components/issues/NodeMappingSection.tsx::Function 'NodeMappingSection'": 232,
   "src/components/search/ExportDialog.tsx::Function 'ExportForm'": 334,
@@ -60,7 +60,9 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   그 층을 `IssueDetailHeader` 로 떼어냈다(구조가 달라진 자리라 파일도 갈랐다).
   //   리뷰 반영(lg 게이팅 · 거짓 주석 교정 · aria-label 경고)으로 929 → 944 로 되올랐다.
   //   전부 주석과 클래스이고 로직 증가는 0 이다. 착수 시점 1003 대비로는 여전히 상환이다.
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 944,
+  // ★2026-10-27 944 → 933. #566(전환 화면 대화상자)이 줄였는데 장부를 안 낮춰 배포 관문에서 드러났다.
+  //   같은 PR 이 `BulkTransitionDialog`(212)를 200 밑으로 내려 그 줄은 지웠다 — 갚은 것이다.
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 933,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
   //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다
