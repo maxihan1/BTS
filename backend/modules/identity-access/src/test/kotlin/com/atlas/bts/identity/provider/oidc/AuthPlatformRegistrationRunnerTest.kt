@@ -84,6 +84,16 @@ class AuthPlatformRegistrationRunnerTest {
     }
 
     @Test
+    fun `다시 돌면 이미 있는 행의 표시 이름도 코드 값으로 고친다 (운영 행의 옛 이름이 남지 않게)`() {
+        run("http://localhost:9000")
+        jdbc.update("UPDATE oidc_provider_configs SET display_name = 'maxihan 계정'", emptyMap<String, Any>())
+
+        run("http://localhost:9000")
+
+        assertThat(checkNotNull(repo.findByRegistrationId("auth")).displayName).isEqualTo("QA Hub 통합계정")
+    }
+
+    @Test
     fun `issuer 는 있는데 secret 이 비면 기동을 멈춘다 (로그인 때 invalid_client 로 늦게 알게 되지 않게)`() {
         assertThatThrownBy { run("http://localhost:9000", secret = "") }
             .hasMessageContaining("BTS_AUTH_PLATFORM_CLIENT_SECRET")

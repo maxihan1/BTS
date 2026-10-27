@@ -21,6 +21,7 @@ import java.util.UUID
  *
  * 콜백은 `{baseUrl}/login/oauth2/code/auth` — Auth_platform 에 이 주소를 redirect URI 로 등록한다.
  * `enabled` 는 새 행에만 true 로 넣고 갱신하지 않는다 — 관리자가 SQL 로 끈 SSO(kill switch)를 재기동이 되살리지 않게.
+ * `display_name` 은 [DISPLAY_NAME] 이 정본이라 갱신한다 — SQL 로 바꾼 이름은 다음 재기동에 되돌아간다.
  * secret 은 로그에 남기지 않는다.
  */
 @Component
@@ -43,6 +44,7 @@ class AuthPlatformRegistrationRunner(
                 (id, registration_id, display_name, issuer_uri, client_id, client_secret_encrypted, scopes, authn_provider_id)
             VALUES (:id, :reg, :name, :issuer, :clientId, :secret, 'openid,profile,email', :providerId)
             ON CONFLICT (registration_id) DO UPDATE SET
+                display_name = EXCLUDED.display_name,
                 issuer_uri = EXCLUDED.issuer_uri, client_id = EXCLUDED.client_id,
                 client_secret_encrypted = EXCLUDED.client_secret_encrypted, updated_at = NOW()
             """.trimIndent(),
@@ -62,7 +64,9 @@ class AuthPlatformRegistrationRunner(
     internal companion object {
         /** 이 provider 만 preferred_username 을 BTS username 으로 믿는다 ([OidcAuthenticationSuccessHandler]) */
         const val REGISTRATION_ID = "auth"
-        const val DISPLAY_NAME = "maxihan 계정"
+
+        /** 로그인 버튼 「QA Hub 통합계정으로 로그인」의 앞말 — 세 앱이 같은 문구를 쓴다 (S21) */
+        const val DISPLAY_NAME = "QA Hub 통합계정"
 
         /** V011 이 넣은 OIDC authn_providers seed 행 */
         val OIDC_PROVIDER_ID: UUID = UUID.fromString("00000000-0000-4a04-8000-000000000004")
