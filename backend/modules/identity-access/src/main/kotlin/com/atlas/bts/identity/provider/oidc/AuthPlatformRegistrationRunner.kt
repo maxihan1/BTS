@@ -63,6 +63,7 @@ class AuthPlatformRegistrationRunner(
     internal companion object {
         /** 이 provider 만 preferred_username 을 BTS username 으로 믿는다 ([OidcAuthenticationSuccessHandler]) */
         const val REGISTRATION_ID = "auth"
+
         /** 로그인 버튼 「QA Hub 통합계정으로 로그인」의 앞말 — 세 앱이 같은 문구를 쓴다 (S21) */
         const val DISPLAY_NAME = "QA Hub 통합계정"
 
