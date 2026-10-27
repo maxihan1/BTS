@@ -11,7 +11,7 @@ import java.nio.file.Paths
  * FR-AU-10 Task 11 — "이벤트 누락 0" 커버리지 캡스톤 (회귀 가드).
  *
  * ## 목적
- * [AuthEventType] enum 24종 **전부**가 production(main) 소스에서 1개 이상 emit 경로를 가지는지
+ * [AuthEventType] enum 에서 [RETIRED] 를 뺀 **전부**가 production(main) 소스에서 1개 이상 emit 경로를 가지는지
  * 검증한다. 누군가 새 이벤트 유형을 enum 에 추가하고 emit 배선을 빠뜨리면 — 즉 감사 로그에
  * 절대 기록되지 않는 "유령 이벤트"가 생기면 — 이 테스트가 **fail** 하여 누락을 막는다.
  *
@@ -21,7 +21,7 @@ import java.nio.file.Paths
  * 단어 경계(`\b`)로 묶어 `LOGOUT` 과 `LOGOUT_ALL_DEVICES` 같은 접두 충돌을 정확히 구분한다.
  *
  * ## vacuous(공허한 통과) 회피
- * 24종이 모두 이미 배선된 상태라 단순히 두면 항상 통과해 가드 역할을 못 한다.
+ * 검사 대상이 모두 이미 배선된 상태라 단순히 두면 항상 통과해 가드 역할을 못 한다.
  * 본 테스트는 enum 에 미배선 값을 추가하면 즉시 fail 하도록 설계됐다 — 구현 시 임시 더미 enum
  * 값을 넣어 fail 을 실측 확인했다(`archunit-vacuous-rule-silent-pass` 회귀 방지).
  *
@@ -30,8 +30,9 @@ import java.nio.file.Paths
  * 2. 배선 후 본 테스트는 자동으로 새 이벤트를 커버 대상에 포함한다(테스트 코드 수정 불필요).
  *
  * ## 은퇴한 이벤트 ([RETIRED])
- * 더는 emit 하지 않지만 과거 감사 행 · web 라벨 표시용으로 enum 값을 남긴 이벤트다. 배선 검사에서 빼는 대신
- * main 소스에 다시 emit 되면 fail 한다 — 다시 쓰기 시작했다면 [RETIRED] 에서 빼라(목록이 썩지 않게).
+ * 더는 emit 하지 않지만 enum 값은 남긴 이벤트다 — 과거 감사 행을 `AuthEventType.valueOf` 로 읽어서 지우면
+ * 그 행 조회가 깨진다. 배선 검사에서 빼는 대신 main 소스에 `AuthEventType.<NAME>` 참조가 다시 나타나면 fail 한다
+ * (텍스트 스캔이라 주석 · `when` 분기도 잡는다). 다시 emit 하는 것이면 [RETIRED] 에서 빼라(목록이 썩지 않게).
  */
 class AuthEventEmitCoverageTest {
     companion object {
@@ -49,7 +50,9 @@ class AuthEventEmitCoverageTest {
 
         assertThat(reEmitted)
             .withFailMessage(
-                "은퇴한 AuthEventType 이 main 소스에서 다시 emit 됩니다: %s. 다시 쓰는 것이면 RETIRED 에서 빼세요.",
+                "은퇴한 AuthEventType 참조가 main 소스에 있습니다: %s. " +
+                    "실제 record(...) emit 이면 RETIRED 에서 빼세요. " +
+                    "주석 · when 분기 같은 표시용 참조면 형태를 바꾸세요(주석은 [PAT_ISSUED] 같은 KDoc 링크로).",
                 reEmitted,
             )
             .isEmpty()
