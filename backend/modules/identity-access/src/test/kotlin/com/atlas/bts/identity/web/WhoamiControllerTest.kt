@@ -277,6 +277,9 @@ class WhoamiControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.userId").value(PAT_USER_ID.toString()))
             .andExpect(jsonPath("$.authMethod").value("pat"))
+        verify(exactly = 1) {
+            authAuditLogService.record(match { it.userId == PAT_USER_ID && it.eventType == AuthEventType.PAT_USED })
+        }
     }
 
     @Test

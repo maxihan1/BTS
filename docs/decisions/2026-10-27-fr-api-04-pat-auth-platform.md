@@ -22,14 +22,19 @@ Maxi 결정 — 「통합계정인데 각각 PAT 가 있는 게 더 이상하다
 3. **Auth 확인.** `GET {bts.auth-platform.issuer-uri}/api/v1/users/me/whoami` + `Authorization: Bearer <raw>`.
    200 · `authMethod=pat` 이면 `userId`(= Auth OIDC `sub`)로 `user_external_accounts(provider=OIDC seed, external_subject=sub)` 를 찾는다.
    SSO 로그인이 사용자를 찾는 행과 같아서 새 신원 연결은 생기지 않는다. **연결 행이 없으면 401** — 새 계정은 만들지 않는다.
-4. **캐시.** Caffeine, key `sha256Hex(raw)`, 성공 5분 · 거절 1분(Device Farm identity-bts 와 같은 값). Auth 가 whoami 마다 감사 1줄을 남긴다.
-   Auth 장애(5xx · 망 오류)는 기억하지 않고 401 이다 — 재시도와 거절을 구분할 필요가 생기면 503 으로 바꾼다.
-5. **기존 BTS PAT 는 만료까지 산다.** `verify` · 표 · 검사 경로는 남는다. 급히 끊을 BTS PAT 는 SQL 로 폐기한다.
+4. **캐시.** Caffeine, key `sha256Hex(raw)`, 성공 5분 · 거절(Auth 401·403 · 연결 없음) 1분(Device Farm identity-bts 와 같은 값).
+   Auth 가 whoami 마다 감사 1줄을 남긴다. 그 밖의 응답(3xx · 404 · 429 · 5xx)과 망 오류는 기억하지 않고 401 이다 —
+   재시도와 거절을 구분할 필요가 생기면 503 으로 바꾼다.
+5. **막는 장치.** SSO kill switch(`oidc_provider_configs(registration_id=auth).enabled=false`)가 Auth PAT 도 막는다(캐시보다 먼저 본다).
+   인증 없는 요청도 이 길을 타므로 형식(`pat_` + base62 48자)이 맞을 때만, 동시 8개까지만 Auth 를 부른다 — 넘치면 기다리지 않고 401.
+6. **기존 BTS PAT 는 만료까지 산다.** `verify` · 표 · 검사 경로는 남는다. 급히 끊을 BTS PAT 는 SQL 로 폐기한다.
    표와 검사 경로는 활성 BTS PAT 가 0 이 된 뒤 따로 지운다.
-6. principal 은 지금처럼 BTS 사용자 UUID 문자열 + `ROLE_PAT` 이다. `PAT_USED` 감사도 그대로 남긴다.
+7. principal 은 지금처럼 BTS 사용자 UUID 문자열 + `ROLE_PAT` 이다. `PAT_USED` 감사도 그대로 남긴다.
 
 ## 결과
 
 - 발급 정책(scope 카탈로그 · 1..365일 · 활성 20개 상한)은 이제 Auth_platform 의 몫이다. BTS 의 `PatScopeCatalog` 와 발급 전용 repository 함수는 지웠다.
 - Auth PAT 폐기가 BTS 에 닿기까지 최대 5분 걸린다(성공 캐시).
 - `bts.auth-platform.issuer-uri` 가 비면 Auth 확인이 꺼진다 — 로컬 · test 는 BTS PAT 만 본다.
+- 연결 행은 OIDC seed provider 하나(`…0004`)를 모든 OIDC 등록이 같이 쓴다 — SSO 로그인과 같은 한계를 물려받는다. Auth `sub` 가 UUID 라 다른 IdP sub 와 겹칠 위험은 낮다.
+- 감사는 BTS PAT 와 Auth PAT 모두 `PAT_USED`(providerId `pat`)다 — 둘을 가려야 하면 그때 나눈다.

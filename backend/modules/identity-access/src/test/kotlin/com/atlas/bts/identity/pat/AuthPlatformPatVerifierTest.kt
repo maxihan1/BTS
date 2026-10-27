@@ -1,10 +1,12 @@
-// AuthPlatformPatVerifier 단위 테스트 — loopback stub Auth whoami 로 연결 · 거절 · 캐시 · 장애 경로 확인 (FR-API-04)
+// AuthPlatformPatVerifier 단위 테스트 — loopback stub Auth whoami 로 연결 · 거절 · 캐시 · 장애 · kill switch 경로 확인 (FR-API-04)
 
 package com.atlas.bts.identity.pat
 
 import com.atlas.bts.identity.provider.ldap.ExternalAccount
 import com.atlas.bts.identity.provider.ldap.ExternalAccountRepository
 import com.atlas.bts.identity.provider.oidc.AuthPlatformRegistrationRunner.Companion.OIDC_PROVIDER_ID
+import com.atlas.bts.identity.provider.oidc.OidcProviderConfig
+import com.atlas.bts.identity.provider.oidc.OidcProviderConfigReader
 import com.sun.net.httpserver.HttpServer
 import io.mockk.every
 import io.mockk.mockk
@@ -30,6 +32,7 @@ class AuthPlatformPatVerifierTest {
 
     private lateinit var server: HttpServer
     private val externalAccounts: ExternalAccountRepository = mockk()
+    private val ssoConfigs: OidcProviderConfigReader = mockk()
 
     @BeforeEach
     fun startServer() {
@@ -45,6 +48,7 @@ class AuthPlatformPatVerifierTest {
         server.start()
         every { externalAccounts.findByProviderIdAndExternalSubject(any(), any()) } returns null
         every { externalAccounts.findByProviderIdAndExternalSubject(OIDC_PROVIDER_ID, AUTH_SUB) } returns linked()
+        every { ssoConfigs.findEnabledByRegistrationId("auth") } returns mockk<OidcProviderConfig>()
     }
 
     @AfterEach
@@ -52,7 +56,7 @@ class AuthPlatformPatVerifierTest {
         server.stop(0)
     }
 
-    private fun verifier(issuer: String = stubIssuer()) = AuthPlatformPatVerifier(externalAccounts, issuer)
+    private fun verifier(issuer: String = stubIssuer()) = AuthPlatformPatVerifier(externalAccounts, ssoConfigs, issuer)
 
     private fun stubIssuer() = "http://127.0.0.1:${server.address.port}/"
 
@@ -114,6 +118,32 @@ class AuthPlatformPatVerifierTest {
     }
 
     @Test
+    fun `401·403 이 아닌 4xx(배포 중 404 등)는 거절이 아니라 장애 — 기억하지 않는다`() {
+        stubStatus = 404
+        val verifier = verifier()
+
+        verifier.resolveUserId(RAW)
+        assertThat(verifier.resolveUserId(RAW)).isNull()
+        assertThat(hits.get()).isEqualTo(2)
+    }
+
+    @Test
+    fun `SSO 를 끄면(kill switch) 캐시에 있던 토큰도 HTTP 없이 null`() {
+        val verifier = verifier()
+        verifier.resolveUserId(RAW)
+        every { ssoConfigs.findEnabledByRegistrationId("auth") } returns null
+
+        assertThat(verifier.resolveUserId(RAW)).isNull()
+        assertThat(hits.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun `PAT 형식이 아니면 HTTP 없이 null`() {
+        assertThat(verifier().resolveUserId("pat_short")).isNull()
+        assertThat(hits.get()).isZero()
+    }
+
+    @Test
     fun `issuer 설정이 없으면 HTTP 없이 null`() {
         assertThat(verifier(issuer = "").resolveUserId(RAW)).isNull()
         assertThat(hits.get()).isZero()
@@ -134,7 +164,7 @@ class AuthPlatformPatVerifierTest {
         )
 
     private companion object {
-        const val RAW = "pat_authPlatformToken000000000000000000000000000"
+        val RAW = "pat_" + "A1b2".repeat(12)
         const val AUTH_SUB = "11111111-1111-4111-8111-111111111111"
         val BTS_USER_ID: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
     }
