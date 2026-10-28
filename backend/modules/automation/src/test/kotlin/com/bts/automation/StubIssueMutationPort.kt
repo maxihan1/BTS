@@ -81,7 +81,6 @@ class StubIssueMutationPort : IssueMutationPort {
         return successResult(cmd.issueKey, cmd.dryRun)
     }
 
-    /** 이후 모든 호출이 [exception] 을 던지도록 설정한다(호출 기록은 예외 발생 전에 여전히 남는다). */
     override fun transition(cmd: TransitionIssueCommand): MutationResult {
         transitionCalls += cmd
         failure?.let { throw it }
@@ -107,6 +106,7 @@ class StubIssueMutationPort : IssueMutationPort {
         return MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
     }
 
+    /** 이후 모든 호출이 [exception] 을 던지도록 설정한다(호출 기록은 예외 발생 전에 여전히 남는다). */
     fun failNextCallsWith(exception: RuntimeException) {
         failure = exception
     }

@@ -38,8 +38,9 @@ import org.springframework.transaction.support.TransactionTemplate
 /**
  * [IssueMutationPort] prod 구현체 (FR-AT-02 Task 7).
  *
- * automation BC 의 자동화 액션(필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정)을 issue-tracking 의 기존
- * [IssueApplicationService]/[CommentApplicationService] 유스케이스에 위임한다. 도메인
+ * automation BC 의 자동화 액션(필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정 · R9 단계 C 의 전환/생성/연결/관찰자)을
+ * issue-tracking 의 기존 [IssueApplicationService]/[CommentApplicationService]/[LinkApplicationService]/[IssueWatcherService]
+ * 유스케이스에 위임한다. 도메인
  * repository 를 직접 호출하지 않으므로 권한 검증([IssueApplicationService.assertPermission] 계열)·
  * 필드 검증·OCC(낙관적 동시성 제어)·이벤트 발행이 모두 기존 경로 그대로 강제된다
  * (PATCH 도메인 우회 금지, DEVELOPMENT.md §회귀 방지).
@@ -73,7 +74,7 @@ import org.springframework.transaction.support.TransactionTemplate
  *
  * ### dryRun — 실행 후 롤백으로 "진실한 미리보기"
  *
- * [SetFieldCommand.dryRun]/[AssignCommand.dryRun]/[AddCommentCommand.dryRun] 이 true 이면
+ * 각 커맨드의 `dryRun` 이 true 이면
  * [TransactionTemplate] 이 제공하는 [org.springframework.transaction.TransactionStatus] 에
  * `setRollbackOnly()` 를 호출해 커밋을 막는다. 위임 대상 서비스 호출 자체는 그대로 수행되므로
  * 권한 검증·필드 검증·OCC 버전 검사가 실제 경로와 동일하게 작동한다("진실한 미리보기") — 커밋과
