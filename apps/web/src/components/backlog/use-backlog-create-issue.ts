@@ -36,8 +36,9 @@ export interface BacklogCreateIssue {
  * - 그렇다고 **ref 를 닫힘과 함께 비우면 더 확실히 깨진다** — ref 는 동기라 뒤이은
  *   `onCreated` 가 이미 `null` 을 읽는다 (2026-08-03 E2E 가 이 실수를 즉시 잡았다).
  *
- * 그래서 **닫힘은 상태만 끄고, 대상은 `onCreated` 가 읽은 뒤에 비운다.**
- * 취소로 닫혔을 때 대상이 남지만 무해하다 — `onCreated` 는 생성 성공에만 불리고 다시 열 때 덮어쓴다.
+ * 그래서 **닫힘은 상태만 끄고, 대상(ref)은 비우지 않는다.**
+ * 닫힌 뒤 대상이 남지만 무해하다 — `onCreated` 는 생성 성공에만 불리고 다시 열 때 덮어쓴다.
+ * 연속 생성(JA-C-2)은 모달이 열린 채 `onCreated` 가 여러 번 불리므로 대상이 남아 있어야 한다.
  *
  * @param projectKey 백로그 조회·무효화 대상 프로젝트 키
  */
@@ -82,9 +83,9 @@ export function useBacklogCreateIssue(projectKey: string): BacklogCreateIssue {
    * 선례 — `backlogLabels.rerankFailedWarning`(이동은 됐고 순서만 실패)이 같은 형태다.
    */
   const onCreated = useCallback((issueKey: string): void => {
+    // ★여기서 대상을 비우지 않는다 — 「다른 항목 만들기」(JA-C-2)면 모달이 열린 채 같은 칸에
+    //   다음 건을 만든다. 닫힘은 모달의 `onOpenChange(false)` → `close` 가 맡는다.
     const current = targetRef.current
-    targetRef.current = null
-    setTarget(null)
 
     // 백로그 칸이면 배정할 것이 없다 — 스프린트 미지정이 곧 백로그다.
     //

@@ -7,7 +7,7 @@ import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
  * router.ts 에 등록되는 라우트 어댑터 컴포넌트.
  *
  * ### 왜 라우트가 모달을 여는가 (FR-11, design 리뷰 D3)
- * `/issues/new` 는 **딥링크 계약**이라 유지해야 한다(북마크·공유 링크·`c` 단축키·커맨드 팔레트가
+ * `/issues/new` 는 **딥링크 계약**이라 유지해야 한다(북마크·공유 링크·커맨드 팔레트가
  * 이 주소로 이동한다). 동시에 같은 기능의 입력 화면이 두 벌 생기면 필드를 추가할 때마다
  * 두 곳을 고쳐야 하고, 한쪽만 고치면 **사용자가 들어온 경로에 따라 다른 결과**를 얻는다.
  * → 주소는 살리되 **같은 모달**을 열린 상태로 렌더한다.
@@ -41,7 +41,9 @@ export function IssueCreateRouteAdapter(): JSX.Element {
     }
   }
 
-  function handleCreated(key: string): void {
+  function handleCreated(key: string, { createAnother }: { createAnother: boolean }): void {
+    // 연속 생성(JA-C-2) 중이면 모달이 다음 건을 받고 있다 — 이동하면 모달이 사라진다.
+    if (createAnother) return
     void navigate({ to: '/issues/$key', params: { key } })
   }
 

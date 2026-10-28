@@ -9,6 +9,7 @@ export const LEADER_TIMEOUT_MS = 1000
  * keydown 해석 결과 — 판별 유니온.
  *
  * - `navigate`: 라우터로 `to` 경로 이동
+ * - `open-create-issue`: 보던 화면 위에 이슈 생성 모달을 연다(URL 유지, JA-C-1)
  * - `toggle-help`: 단축키 도움말 모달 열림/닫힘 토글
  * - `set-leader`: leader-key 대기 상태 진입(또는 재시작)
  * - `reset`: leader-key 대기 상태 해제(무효 키 입력)
@@ -16,6 +17,7 @@ export const LEADER_TIMEOUT_MS = 1000
  */
 export type ShortcutAction =
   | { kind: 'navigate'; to: string }
+  | { kind: 'open-create-issue' }
   | { kind: 'toggle-help' }
   | { kind: 'set-leader'; leader: string }
   | { kind: 'reset' }
@@ -85,7 +87,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
     action: 'create-issue',
     keys: ['c'],
     description: '새 이슈 생성',
-    effect: { kind: 'navigate', to: '/issues/new' },
+    effect: { kind: 'open-create-issue' },
   },
   {
     action: 'search',

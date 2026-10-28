@@ -15,6 +15,7 @@ import { navLabels } from '@/i18n/nav-labels'
 import { useAuthUser } from '@/auth/authStore'
 import { useSidebarToggle, useSidebarShown } from '@/hooks/use-sidebar-drawer'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
+import { useCreateIssueDialogStore } from '@/components/issue/createIssueDialogStore'
 import { toast } from 'sonner'
 import { issueCreateStrings } from '@/i18n/ko'
 import { InboxBell } from '@/components/inbox/InboxBell'
@@ -75,8 +76,9 @@ function AdminHubLink(): JSX.Element | null {
  * 화면에 나타나지 않는다 — 클릭해도 아무 동작을 하지 않는 죽은 버튼을 방지한다.
  */
 export function TopBar({ onHelpClick }: TopBarProps) {
-  // FR-12 — 생성 모달을 제자리에서 연다 (URL 불변)
-  const [createOpen, setCreateOpen] = useState(false)
+  // FR-12 — 생성 모달을 제자리에서 연다 (URL 불변). `c` 단축키도 같은 스토어로 연다 (JA-C-1)
+  const createOpen = useCreateIssueDialogStore((s) => s.open)
+  const setCreateOpen = useCreateIssueDialogStore((s) => s.setOpen)
   const navigate = useNavigate()
   const openIssueDetailModal = useIssueDetailModalStore((s) => s.open)
   // 🛑 `useSidebarCollapsed().toggle` 직접 사용 금지 — 모바일에서 무동작 버튼이 된다.

@@ -15,6 +15,7 @@ import {
   sanitizeInitialSummary,
 } from '@/components/issue/create/issue-create-schema'
 import type { IssueCreateFormValues } from '@/components/issue/create/issue-create-schema'
+import { isBlankHtml } from '@/components/editor/rich-text-empty'
 import { useComponents } from '@/hooks/use-components'
 import { useCustomFields } from '@/hooks/use-custom-fields'
 import { useProjects } from '@/hooks/use-projects'
@@ -40,6 +41,8 @@ export interface IssueCreateFormStateOptions {
 export interface IssueCreateFormState {
   /** react-hook-form 인스턴스. 제목·본문·프로젝트키는 여기가 쥔다 */
   form: UseFormReturn<IssueCreateFormValues>
+  /** 사용자가 값을 하나라도 넣었는지 — 닫을 때 버릴지 묻는 기준 (JA-C-3) */
+  hasInput: boolean
   /** 현재 선택된 프로젝트 키 — 프로젝트 종속 조회와 CREATE 게이트의 입력 */
   projectKey: string
   isProjectKeyFilled: boolean
@@ -113,6 +116,8 @@ export function useIssueCreateFormState(
 
   const projectKey = form.watch('projectKey')
   const isProjectKeyFilled = projectKey.trim() !== ''
+  const summary = form.watch('summary')
+  const descriptionHtml = form.watch('descriptionHtml')
 
   // ── FR-3 프로젝트 셀렉터 / FR-4 이슈 유형 — 기본값은 훅이 채운다 ──────────
   const { data: projects = [], isLoading: isProjectsLoading } = useProjects()
@@ -155,8 +160,20 @@ export function useIssueCreateFormState(
     if (customFieldRequiredError) setCustomFieldRequiredError(false)
   }
 
+  // 프로젝트 · 유형은 기본값이 자동으로 채워지므로 「입력」으로 치지 않는다.
+  const hasInput =
+    summary.trim() !== '' ||
+    !isBlankHtml(descriptionHtml) ||
+    assignee.intent !== undefined ||
+    priority !== DEFAULT_PRIORITY ||
+    labels.length > 0 ||
+    selectedComponentIds.length > 0 ||
+    securityLevelId !== null ||
+    Object.keys(customFieldValues).length > 0
+
   return {
     form,
+    hasInput,
     projectKey,
     isProjectKeyFilled,
     projects,

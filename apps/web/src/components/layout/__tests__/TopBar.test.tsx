@@ -1,5 +1,5 @@
 // TopBar 컴포넌트 단위 테스트 — 토글/로고/전역 검색/만들기/알림/도움말/설정/계정 드롭다운 계약 (FR-UX-06 PR11 Task 6, FR-UX-12 F13)
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -9,6 +9,7 @@ import { navLabels } from '@/i18n/nav-labels'
 import { issueCreateStrings } from '@/i18n/ko'
 import { inboxLabels } from '@/i18n/inbox-labels'
 import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
+import { useCreateIssueDialogStore } from '@/components/issue/createIssueDialogStore'
 import { TopBar } from '../TopBar'
 
 // TanStack Router useNavigate + Link 모킹 — 라우터 컨텍스트 없이 단위 테스트 가능 (Header.test.tsx 동일 패턴)
@@ -82,6 +83,7 @@ function renderTopBar(props: { onHelpClick?: () => void } = {}) {
 beforeEach(() => {
   // 모달 스토어는 모듈 전역이라 테스트 간에 새지 않도록 매번 닫는다.
   useIssueDetailModalStore.setState({ openKey: null })
+  useCreateIssueDialogStore.setState({ open: false })
   mockNavigate.mockReset()
   mockToggle.mockReset()
   mockUseSidebarCollapsed.mockReset()
@@ -208,6 +210,18 @@ describe('TopBar', () => {
     expect(
       await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
     ).toBeInTheDocument()
+  })
+
+  it('`c` 단축키가 스토어를 열면 같은 생성 모달이 제자리에서 열린다 (JA-C-1)', async () => {
+    renderTopBar()
+
+    // `useKeyboardShortcuts` 의 `open-create-issue` 가 하는 일 그대로
+    act(() => { useCreateIssueDialogStore.getState().setOpen(true) })
+
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
+    ).toBeInTheDocument()
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 
   it('사이드바가 펼쳐진 상태(collapsed=false)면 토글 버튼 aria-label이 "사이드바 접기"다', async () => {

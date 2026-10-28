@@ -236,3 +236,96 @@ describe('CreateIssueDialog — 프로젝트 명시 전달 (F3 FR-7)', () => {
     })
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JA-C-3 · JCB-22 — 입력 중 닫기 확인 / JA-C-2 — 연속 생성 (Jira 실물 REA 2026-10-28)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 프로젝트 목록이 채워질 때까지 기다린다 — 기본 프로젝트가 잡혀야 제출이 통과한다. */
+async function waitForProjects(): Promise<void> {
+  await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle })
+  await waitFor(() => {
+    const sel = screen.getByLabelText(issueCreateStrings.projectKeyLabel) as HTMLSelectElement
+    expect(sel.querySelectorAll('option').length).toBeGreaterThan(1)
+  })
+}
+
+describe('CreateIssueDialog — 입력 중 닫기 확인 (JA-C-3 · JCB-22)', () => {
+  it('제목을 입력한 뒤 취소하면 바로 닫히지 않고 버릴지 묻는다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    renderDialog({ open: true, onOpenChange })
+    await waitForProjects()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '쓰다 만 이슈')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.cancelButton }))
+
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.discardTitle }),
+    ).toBeInTheDocument()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it('입력 중 Esc 도 버릴지 묻고, 「뒤로 가기」면 입력이 그대로 남는다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    renderDialog({ open: true, onOpenChange })
+    await waitForProjects()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '쓰다 만 이슈')
+    await user.keyboard('{Escape}')
+    await user.click(
+      await screen.findByRole('button', { name: issueCreateStrings.discardBackButton }),
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: issueCreateStrings.discardTitle })).toBeNull()
+    })
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(screen.getByLabelText(issueCreateStrings.summaryLabel)).toHaveValue('쓰다 만 이슈')
+  })
+
+  it('「버리기」를 누르면 그제서야 닫힌다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    renderDialog({ open: true, onOpenChange })
+    await waitForProjects()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '쓰다 만 이슈')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.cancelButton }))
+    await user.click(
+      await screen.findByRole('button', { name: issueCreateStrings.discardConfirmButton }),
+    )
+
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+describe('CreateIssueDialog — 연속 생성 (JA-C-2)', () => {
+  it('「다른 항목 만들기」를 켜면 제출 뒤에도 열려 있고 제목만 비우며 만든 건수를 보여 준다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    const onCreated = vi.fn()
+    renderDialog({ open: true, onOpenChange, onCreated, initialProjectKey: 'MIDDLE' })
+    await waitForProjects()
+    const project = screen.getByLabelText(issueCreateStrings.projectKeyLabel)
+    await waitFor(() => { expect(project).toHaveValue('MIDDLE') })
+
+    await user.click(screen.getByRole('checkbox', { name: issueCreateStrings.createAnotherLabel }))
+    const summary = screen.getByLabelText(issueCreateStrings.summaryLabel)
+    await user.type(summary, '첫 번째')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByText(issueCreateStrings.createdCount(1))).toBeInTheDocument()
+    expect(onCreated).toHaveBeenCalledWith(expect.any(String), { createAnother: true })
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    await waitFor(() => { expect(summary).toHaveValue('') })
+    expect(project).toHaveValue('MIDDLE')
+
+    await user.type(summary, '두 번째')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByText(issueCreateStrings.createdCount(2))).toBeInTheDocument()
+    expect(onCreated).toHaveBeenCalledTimes(2)
+  })
+})

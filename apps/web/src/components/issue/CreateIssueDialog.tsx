@@ -9,6 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { IssueCreateForm } from '@/components/issue/IssueCreateForm'
 import { issueCreateStrings } from '@/i18n/ko'
 
@@ -19,7 +21,10 @@ const CREATE_ISSUE_FORM_ID = 'create-issue-form'
 export interface CreateIssueDialogProps {
   /** 모달 열림 여부 (controlled) */
   open: boolean
-  /** 열림 상태 변경 콜백 — 취소·Esc·바깥 클릭·생성 성공에서 발화 */
+  /**
+   * 열림 상태 변경 콜백 — 취소·Esc·바깥 클릭·생성 성공에서 발화.
+   * 입력이 있으면 닫기 경로는 「버리기」 확인을 거친 뒤에만 `false` 를 보낸다 (JA-C-3).
+   */
   onOpenChange: (open: boolean) => void
   /**
    * 생성 성공 콜백 — 생성된 이슈 키를 전달한다.
@@ -27,8 +32,11 @@ export interface CreateIssueDialogProps {
    * ★**이동은 이 컴포넌트가 정하지 않는다** (FR-16, design 리뷰 D8).
    * 딥링크 라우트는 상세로 navigate 하고, 상단바는 제자리에 머물며 토스트를 띄운다.
    * 진입 경로가 다르면 끝난 뒤 기대도 다르기 때문이다.
+   *
+   * `createAnother` 가 참이면 모달이 **열린 채** 다음 건을 받는 중이다 (JA-C-2) —
+   * 화면을 옮기는 진입점(딥링크)은 이때 이동하면 모달이 사라진다.
    */
-  onCreated?: (key: string) => void
+  onCreated?: (key: string, options: { createAnother: boolean }) => void
   /** 접근 가능한 프로젝트가 0개일 때 빈 상태의 「프로젝트 만들기」 콜백 (FR-17) */
   onCreateProject?: () => void
   /** 제목 프리필 — 명령 팔레트 `/issue <제목>`(FR-UX-04 FR7) */
@@ -64,6 +72,11 @@ export interface CreateIssueDialogProps {
  *
  * ### 폼 초기화 (E3)
  * Radix `DialogContent` 는 닫히면 언마운트된다 — 다시 열면 폼이 새로 마운트돼 값이 남지 않는다.
+ *
+ * ### 연속 생성 · 닫기 확인 (Jira 패리티 R1 — JA-C-2 · JA-C-3 · JCB-22)
+ * 「다른 항목 만들기」를 켜면 성공 뒤에도 닫지 않는다 — 폼이 제목만 비우고 프로젝트·유형은 남는다.
+ * 값이 하나라도 있으면 X · Esc · 바깥 클릭 · 취소가 바로 닫지 않고 「버리기」를 묻는다.
+ * 최소화(dock)는 아직 없다.
  */
 export function CreateIssueDialog({
   open,
@@ -78,14 +91,32 @@ export function CreateIssueDialog({
    * `setSubmitting` 은 참조가 안정적이라 폼의 알림 effect 가 헛돌지 않는다.
    */
   const [submitting, setSubmitting] = useState(false)
+  const [hasInput, setHasInput] = useState(false)
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false)
+  const [createAnother, setCreateAnother] = useState(false)
+  const [createdCount, setCreatedCount] = useState(0)
+
+  /** 실제로 닫는다 — 이번 열림의 건수는 다음 열림에 남기지 않는다. */
+  function close(): void {
+    setCreatedCount(0)
+    setHasInput(false)
+    onOpenChange(false)
+  }
+
+  /** 사용자의 닫기 요청 — 입력이 있으면 버릴지 먼저 묻는다 (JA-C-3). */
+  function requestClose(): void {
+    if (hasInput) setConfirmDiscardOpen(true)
+    else close()
+  }
 
   function handleSuccess(key: string): void {
-    onOpenChange(false)
-    onCreated?.(key)
+    if (createAnother) setCreatedCount((n) => n + 1)
+    else close()
+    onCreated?.(key, { createAnother })
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => { if (next) onOpenChange(true); else requestClose() }}>
       <DialogContent
         className="max-w-2xl max-h-[80vh] flex flex-col"
         aria-describedby={undefined}
@@ -112,11 +143,24 @@ export function CreateIssueDialog({
             onSuccess={handleSuccess}
             onCreateProject={onCreateProject}
             onPendingChange={setSubmitting}
+            onHasInputChange={setHasInput}
           />
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="sm:items-center">
+          {createdCount > 0 && (
+            <p role="status" className="mr-auto text-sm text-muted-foreground">
+              {issueCreateStrings.createdCount(createdCount)}
+            </p>
+          )}
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={createAnother}
+              onCheckedChange={(checked) => { setCreateAnother(checked === true) }}
+            />
+            {issueCreateStrings.createAnotherLabel}
+          </label>
+          <Button type="button" variant="outline" onClick={requestClose}>
             {issueCreateStrings.cancelButton}
           </Button>
           {/* 폼 밖에서 제출한다 — `form` 속성이 id 로 폼을 가리킨다 (NFR-2) */}
@@ -125,6 +169,20 @@ export function CreateIssueDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <ConfirmDialog
+        open={confirmDiscardOpen}
+        onOpenChange={setConfirmDiscardOpen}
+        title={issueCreateStrings.discardTitle}
+        description={issueCreateStrings.discardDescription}
+        cancelLabel={issueCreateStrings.discardBackButton}
+        confirmLabel={issueCreateStrings.discardConfirmButton}
+        destructive
+        onConfirm={() => {
+          setConfirmDiscardOpen(false)
+          close()
+        }}
+      />
     </Dialog>
   )
 }

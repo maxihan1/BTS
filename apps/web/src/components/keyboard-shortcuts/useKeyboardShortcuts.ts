@@ -13,6 +13,7 @@ import {
 } from './shortcuts'
 import { resolveContextKeydown } from './context-shortcuts'
 import { dispatchContextAction, readContextSnapshot } from './useContextShortcuts'
+import { useCreateIssueDialogStore } from '@/components/issue/createIssueDialogStore'
 
 /** useKeyboardShortcuts 반환값 */
 interface UseKeyboardShortcutsResult {
@@ -76,7 +77,7 @@ function armLeader(leader: LeaderState, key: string): void {
 /**
  * `resolveKeydown`이 판별한 단축키 액션을 실제 부수효과로 옮긴다.
  *
- * 실제로 처리하는 액션(navigate/toggle-help/set-leader)에서만
+ * 실제로 처리하는 액션(navigate/open-create-issue/toggle-help/set-leader)에서만
  * `preventDefault`를 호출한다 — `reset`/`none`은 무효 입력이므로 브라우저
  * 기본 동작을 막지 않고 그대로 흘려보낸다.
  *
@@ -89,6 +90,11 @@ function dispatchAction(action: ShortcutAction, e: KeyboardEvent, ctx: DispatchC
     case 'navigate':
       e.preventDefault()
       void ctx.navigate({ to: action.to })
+      clearLeader(ctx.leader)
+      return
+    case 'open-create-issue':
+      e.preventDefault()
+      useCreateIssueDialogStore.getState().setOpen(true)
       clearLeader(ctx.leader)
       return
     case 'toggle-help':
