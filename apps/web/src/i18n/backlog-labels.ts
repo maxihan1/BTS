@@ -230,6 +230,10 @@ export const backlogLabels = {
    */
   createIssueInSprint: (sprintName: string): string => `${sprintName} 스프린트에 이슈 추가`,
 
+  /** 섹션 끝 인라인 생성(JB-L-1) 「+ 만들기」의 이름 — 헤더 아이콘 버튼(모달)과 달라야 한다 */
+  inlineCreateInBacklog: '백로그에 바로 만들기',
+  inlineCreateInSprint: (sprintName: string): string => `${sprintName} 스프린트에 바로 만들기`,
+
   // ── FR-UX-13 F15 — 섹션 접기/펼치기 (FR-2) ──────────────────────────────
 
   /**

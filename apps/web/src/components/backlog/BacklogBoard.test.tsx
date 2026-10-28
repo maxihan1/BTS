@@ -432,6 +432,10 @@ import { NO_EPIC, emptyBacklogFilter, filterToSearch, searchToFilter } from '@/l
 import type { BacklogFilter, BacklogFilterSearch } from '@/lib/backlog-filter'
 import { useBacklogCollapsedStore } from '@/hooks/use-backlog-collapsed'
 import { server } from '@/test/server'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { createdIssueFixture } from '@/mocks/issue-handlers'
+import { taskIssueTypeFixture } from '@/mocks/issue-type-fixtures'
+import { issueCreateStrings } from '@/i18n/ko'
 import type { UserSummary } from '@/api/users'
 import type { BacklogIssue, BacklogView } from '@/api/backlog'
 
@@ -1633,6 +1637,66 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
     })
     // 빨간 실패 토스트는 「안 만들어졌다」로 읽혀 재시도 → 중복 이슈를 부른다
     expect(toast.error).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Jira 패리티 R2 — 섹션 끝 인라인 생성 (JB-L-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogBoard — 섹션 끝 인라인 생성 (JB-L-1)', () => {
+  let createdBodies: unknown[]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    createdBodies = []
+    server.use(
+      ...issueTypeHandlers,
+      http.post('/api/v1/issues', async ({ request }) => {
+        createdBodies.push(await request.json())
+        return HttpResponse.json({ data: createdIssueFixture }, { status: 201 })
+      }),
+    )
+  })
+
+  it('스프린트 섹션 끝에서 Enter 로 만들면 그 스프린트로 배정하고 입력 행은 열린 채 남는다', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(screen.getByRole('button', { name: backlogLabels.inlineCreateInSprint('스프린트 1') }))
+    const input = screen.getByRole('textbox', { name: issueCreateStrings.inlineSummaryLabel })
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: issueCreateStrings.inlineTypeLabel })).toHaveValue(
+        String(taskIssueTypeFixture.id),
+      ),
+    )
+    await user.type(input, '한 줄 이슈{Enter}')
+
+    await waitFor(() => {
+      expect(mockAssignMutate).toHaveBeenCalledWith(
+        { sprintId: PLANNED_SPRINT_ID, issueKey: createdIssueFixture.key },
+        expect.anything(),
+      )
+    })
+    expect(createdBodies[0]).toMatchObject({ projectKey: 'ATLAS', summary: '한 줄 이슈', typeId: taskIssueTypeFixture.id })
+    expect(input).toHaveValue('')
+  })
+
+  it('백로그 섹션 끝에서 만들면 배정을 걸지 않는다', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(screen.getByRole('button', { name: backlogLabels.inlineCreateInBacklog }))
+    await user.type(screen.getByRole('textbox', { name: issueCreateStrings.inlineSummaryLabel }), '백로그 한 줄{Enter}')
+
+    await waitFor(() => expect(createdBodies).toHaveLength(1))
+    expect(mockAssignMutate).not.toHaveBeenCalled()
+  })
+
+  it('★CREATE 권한이 없으면 「+ 만들기」가 없다 (fail-closed)', () => {
+    renderBoard('ATLAS', { canCreateIssue: false })
+    expect(screen.queryByRole('button', { name: backlogLabels.inlineCreateInBacklog })).toBeNull()
+    expect(screen.queryByRole('button', { name: backlogLabels.inlineCreateInSprint('스프린트 1') })).toBeNull()
   })
 })
 

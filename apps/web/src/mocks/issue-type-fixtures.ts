@@ -44,6 +44,7 @@ export const epicIssueTypeFixture: IssueTypeFixture = {
   name: '에픽',
   description: '대형 작업 묶음',
   iconName: 'epic',
+  hierarchyLevel: 1,
 }
 
 /** Sub-task — 다른 이슈의 하위 작업 */

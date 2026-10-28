@@ -11,6 +11,8 @@ import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { SprintColumnHeader } from './SprintColumnHeader'
 import { BacklogCard } from './BacklogCard'
+import { InlineCreateIssue } from '@/components/issue/InlineCreateIssue'
+import { issueCreateStrings } from '@/i18n/ko'
 
 /** 상태 맵 미전달 기본값 — 모듈 상수라 memo 비교가 깨지지 않는다 */
 const EMPTY_STATUS_META: Map<string, StatusMeta> = new Map()
@@ -84,6 +86,11 @@ export interface SprintColumnProps {
    */
   canCreateIssue?: boolean
   /**
+   * 섹션 끝 인라인 생성(JB-L-1)이 만든 이슈를 이 칸에 놓는 콜백 (참조 안정).
+   * **미전달이거나 `canCreateIssue=false` 면 「+ 만들기」를 그리지 않는다.**
+   */
+  onInlineCreated?: (issueKey: string) => void
+  /**
    * 스프린트 관리 권한(CREATE) — 헤더 `⋯` 메뉴(편집·삭제)의 게이트 (FR-5).
    *
    * `canCreateIssue` 와 값의 출처는 같지만(`permissions.CREATE`) **이름을 분리한다** —
@@ -111,6 +118,7 @@ function SprintColumnInner({
   onComplete,
   onCreateIssue,
   canCreateIssue = false,
+  onInlineCreated,
   canManageSprint = false,
 }: SprintColumnProps) {
   const isCompleted = sprint.status === 'COMPLETED'
@@ -195,6 +203,16 @@ function SprintColumnInner({
             })
           )}
         </div>
+      )}
+      {/* 섹션 끝 한 줄 생성 — 드롭 영역 밖이라 드래그 앤 드롭에 영향이 없다 */}
+      {onInlineCreated !== undefined && canCreateIssue && !isCompleted && !collapsed && (
+        <InlineCreateIssue
+          projectKey={projectKey}
+          openLabel={backlogLabels.inlineCreateInSprint(sprint.name)}
+          placeholder={issueCreateStrings.inlineBacklogPlaceholder}
+          defaultTypeKey="task"
+          onCreated={(issue) => { onInlineCreated(issue.key) }}
+        />
       )}
     </div>
   )

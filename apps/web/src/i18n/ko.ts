@@ -923,6 +923,18 @@ export const issueCreateStrings = {
    */
   sprintAssignFailed: (key: string): string =>
     `${key} 이슈는 만들었지만 스프린트에 넣지 못했습니다. 백로그에서 확인해 주세요.`,
+
+  // ── Jira 패리티 R2 — 보드 컬럼 · 백로그 섹션 인라인 생성 (JB-B-1 · JB-L-1) ──
+  inlineOpen: '+ 만들기',
+  inlineSubmit: '만들기 ⏎',
+  inlineTypeLabel: '유형',
+  inlineSummaryLabel: '요약',
+  inlineBoardPlaceholder: '무엇을 완료해야 합니까?',
+  inlineBacklogPlaceholder: '해야 할 일을 설명하세요',
+  inlineCreateFailed: '이슈를 만들지 못했습니다.',
+  /** 만든 뒤 그 컬럼 상태로의 전환만 실패 — 부분 성공이라 경고 톤 (`sprintAssignFailed` 와 같은 이유) */
+  columnMoveFailed: (key: string, columnName: string): string =>
+    `${key} 이슈는 만들었지만 「${columnName}」 열로 옮기지 못했습니다. 카드를 끌어 옮겨 주세요.`,
 } as const
 
 /**

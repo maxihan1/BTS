@@ -270,6 +270,9 @@ export const boardLabels = {
     ariaLabel: (name: string, count: number): string =>
       `${name} 컬럼, ${count}개 카드`,
 
+    /** 컬럼 끝 「+ 만들기」의 접근성 이름 — 컬럼마다 달라야 조회가 strict mode 로 깨지지 않는다 (JB-B-1) */
+    inlineCreate: (name: string): string => `${name} 열에 만들기`,
+
     /**
      * 카드 수 배지 aria-label 생성 함수.
      * @param count 카드 수
