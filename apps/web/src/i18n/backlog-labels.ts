@@ -80,12 +80,24 @@ export const backlogLabels = {
   /** 백로그 칸 헤더 */
   backlogTitle: BACKLOG_SECTION_NAME,
 
-  /** 스프린트 상태 배지 라벨 */
+  /** 스프린트 상태 배지 라벨 — enum 원문 대신 한국어 (R3b · JB-L-3) */
   status: {
-    PLANNED: 'PLANNED',
-    ACTIVE: 'ACTIVE',
-    COMPLETED: 'COMPLETED',
+    PLANNED: '예정',
+    ACTIVE: '진행 중',
+    COMPLETED: '완료',
+  } as Record<string, string>,
+
+  /**
+   * 헤더의 상태 카테고리별 추정 합 배지 (R3b · JB-L-3 — Jira 의 스토리 포인트 배지 3개).
+   * BTS 에는 스토리 포인트가 없어 카드가 보여 주는 최초 추정 시간을 더한다.
+   * 카테고리 이름은 워크플로 편집기(`categoryTodo` 등)와 같은 말을 쓴다.
+   */
+  estimateCategory: {
+    TODO: '할 일',
+    IN_PROGRESS: '진행 중',
+    DONE: '완료',
   },
+  estimateSumAriaLabel: (category: string, formatted: string) => `${category} 추정 합계 ${formatted}`,
 
   /** 시작 버튼 */
   startSprint: '스프린트 시작',

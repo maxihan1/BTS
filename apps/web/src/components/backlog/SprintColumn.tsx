@@ -143,6 +143,8 @@ function SprintColumnInner({
         boardId={boardId}
         sprint={sprint}
         issueCount={issueCount}
+        issues={issues}
+        statusMetaByKey={statusMetaByKey}
         collapsed={collapsed}
         onToggleCollapsed={() => { toggle(droppableId) }}
         onStart={onStart}

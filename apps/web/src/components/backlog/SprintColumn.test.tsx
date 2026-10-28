@@ -168,25 +168,86 @@ describe('SprintColumn — S1 헤더 렌더', () => {
     expect(screen.getByText('스프린트 1')).toBeInTheDocument()
   })
 
-  it('S1b: PLANNED 상태 배지를 표시한다', () => {
+  // 상태 배지는 enum 원문 대신 한국어 라벨이다 (R3b · JB-L-3)
+  it('S1b: PLANNED 상태 배지를 「예정」으로 표시한다', () => {
     renderSprintColumn(plannedSprint)
-    expect(screen.getByText('PLANNED')).toBeInTheDocument()
+    expect(screen.getByText('예정')).toBeInTheDocument()
+    expect(screen.queryByText('PLANNED')).toBeNull()
   })
 
-  it('S1c: ACTIVE 상태 배지를 표시한다', () => {
+  it('S1c: ACTIVE 상태 배지를 「진행 중」으로 표시한다', () => {
     renderSprintColumn(activeSprint)
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument()
+    expect(screen.getByLabelText('스프린트 상태: 진행 중')).toHaveTextContent('진행 중')
+    expect(screen.queryByText('ACTIVE')).toBeNull()
   })
 
-  it('S1d: COMPLETED 상태 배지를 표시한다', () => {
+  it('S1d: COMPLETED 상태 배지를 「완료」로 표시한다', () => {
     renderSprintColumn(completedSprint, [])
-    expect(screen.getByText('COMPLETED')).toBeInTheDocument()
+    expect(screen.getByText('완료')).toBeInTheDocument()
+    expect(screen.queryByText('COMPLETED')).toBeNull()
   })
 
   it('S1e: 카드 수를 헤더에 표시한다', () => {
     renderSprintColumn(plannedSprint, [issue1])
     // 이슈 1개
     expect(screen.getByText('1')).toBeInTheDocument()
+  })
+
+  it('S1f: 스프린트 기간을 헤더에 표시한다 — 없으면 그리지 않는다', () => {
+    const { unmount } = renderSprintColumn(activeSprint)
+    expect(screen.getByText('2026-06-01 ~ 2026-06-14')).toBeInTheDocument()
+    unmount()
+
+    renderSprintColumn(plannedSprint)
+    expect(screen.queryByText(/~/)).toBeNull()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S1g. 상태 카테고리별 추정 합 배지 3개 (R3b · JB-L-3 — Jira 의 포인트 배지)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SprintColumn — S1g 상태 카테고리별 추정 합 배지', () => {
+  const statusMetaByKey = new Map([
+    ['todo', { name: '할 일', category: 'TODO' as const }],
+    ['doing', { name: '진행 중', category: 'IN_PROGRESS' as const }],
+    ['done', { name: '완료', category: 'DONE' as const }],
+  ])
+
+  function renderWithEstimates(issues: BacklogIssue[]) {
+    return render(
+      <DndContext>
+        <SprintColumn
+          projectKey="ATLAS"
+          boardId={BOARD_ID}
+          sprint={activeSprint}
+          issues={issues}
+          assigneeNames={new Map()}
+          issueTypesByKey={new Map()}
+          statusMetaByKey={statusMetaByKey}
+        />
+      </DndContext>,
+      { wrapper: withQueryClient },
+    )
+  }
+
+  it('카테고리마다 originalEstimate 를 더한다 — 미추정(null)은 0, 상태를 모르면 어느 쪽에도 넣지 않는다', () => {
+    renderWithEstimates([
+      { ...issue1, key: 'ATLAS-1', currentStateKey: 'todo', originalEstimateSeconds: 3600 },
+      { ...issue1, key: 'ATLAS-2', currentStateKey: 'todo', originalEstimateSeconds: 1800 },
+      { ...issue1, key: 'ATLAS-3', currentStateKey: 'doing', originalEstimateSeconds: null },
+      { ...issue1, key: 'ATLAS-4', currentStateKey: 'done', originalEstimateSeconds: 7200 },
+      { ...issue1, key: 'ATLAS-5', currentStateKey: 'unknown', originalEstimateSeconds: 9999 },
+    ])
+
+    expect(screen.getByRole('img', { name: '할 일 추정 합계 1h 30m' })).toHaveTextContent('1h 30m')
+    expect(screen.getByRole('img', { name: '진행 중 추정 합계 0m' })).toHaveTextContent('0m')
+    expect(screen.getByRole('img', { name: '완료 추정 합계 2h 0m' })).toHaveTextContent('2h 0m')
+  })
+
+  it('이슈가 없어도 배지 3개는 0 으로 남는다', () => {
+    renderWithEstimates([])
+    expect(screen.getAllByRole('img', { name: /추정 합계 0m$/ })).toHaveLength(3)
   })
 })
 
@@ -532,7 +593,7 @@ describe('SprintColumn — 섹션 접기/펼치기 (F15 FR-2)', () => {
     expect(screen.queryByText('ATLAS-5')).toBeNull()
     // 헤더는 전부 남는다 — 이름·상태 배지·개수·시작 버튼·번다운 링크
     expect(screen.getByText(plannedSprint.name)).toBeInTheDocument()
-    expect(screen.getByLabelText('스프린트 상태: PLANNED')).toBeInTheDocument()
+    expect(screen.getByLabelText('스프린트 상태: 예정')).toBeInTheDocument()
     expect(screen.getByLabelText('이슈 1개')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: backlogLabels.startSprint })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /번다운/ })).toBeInTheDocument()
@@ -614,7 +675,7 @@ describe('SprintColumn — 섹션 접기/펼치기 (F15 FR-2)', () => {
     await user.click(toggle)
 
     expect(document.querySelector('[data-droppable-disabled="true"]')).toBeNull()
-    expect(screen.getByText('COMPLETED')).toBeInTheDocument()
+    expect(screen.getByText('완료')).toBeInTheDocument()
   })
 
   it('저장된 접힘 상태를 첫 렌더에서 복원한다 — 새로고침해도 접힌 채', () => {

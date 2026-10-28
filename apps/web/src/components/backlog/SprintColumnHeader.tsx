@@ -1,4 +1,4 @@
-// 스프린트 칸 헤더 — 제목 행(이름·상태·개수·생성 진입점) + 액션 슬롯(시작/완료·번다운)
+// 스프린트 칸 헤더 — 제목 행(이름·기간·상태·개수·추정 합·생성 진입점) + 액션 슬롯(시작/완료·번다운)
 import type { JSX } from 'react'
 import { Link } from '@tanstack/react-router'
 import { ChevronDown, ChevronRight } from 'lucide-react'
@@ -6,9 +6,12 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { burndownLabels } from '@/i18n/burndown-labels'
-import type { SprintMeta } from '@/api/backlog'
+import type { BacklogIssue, SprintMeta } from '@/api/backlog'
+import type { StatusMeta } from '@/components/issues/IssueTable'
+import { formatSprintPeriod } from '@/components/board/ActiveSprintSummary'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { SprintActionsMenu } from './SprintActionsMenu'
+import { SprintEstimateBadges } from './SprintEstimateBadges'
 
 /**
  * 헤더 액션 버튼/링크 공통 베이스 클래스 (시작·완료·번다운 3종이 공유).
@@ -45,6 +48,9 @@ export interface SprintColumnHeaderProps {
   boardId: string | undefined
   sprint: SprintMeta
   issueCount: number
+  /** 추정 합 배지의 재료 — [SprintColumn] 의 같은 이름 prop (R3b · JB-L-3) */
+  issues: readonly BacklogIssue[]
+  statusMetaByKey: ReadonlyMap<string, StatusMeta>
   /** 이 섹션이 접혀 있는지. 헤더는 아이콘과 `aria-expanded` 만 바꾼다 (F15 FR-2) */
   collapsed: boolean
   /** 접기 토글 클릭 콜백. 접힘 상태의 소유자는 [SprintColumn] 이다 */
@@ -86,6 +92,8 @@ export function SprintColumnHeader({
   boardId,
   sprint,
   issueCount,
+  issues,
+  statusMetaByKey,
   collapsed,
   onToggleCollapsed,
   onStart,
@@ -95,6 +103,8 @@ export function SprintColumnHeader({
   canManageSprint = false,
 }: SprintColumnHeaderProps): JSX.Element {
   const isCompleted = sprint.status === 'COMPLETED'
+  const period = formatSprintPeriod(sprint.startDate, sprint.endDate)
+  const statusLabel = backlogLabels.status[sprint.status] ?? sprint.status
 
   return (
     <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-lg bg-(--bg-neutral-solid) px-3 py-2">
@@ -117,14 +127,15 @@ export function SprintColumnHeader({
         {collapsed ? <ChevronRight /> : <ChevronDown />}
       </Button>
       <span className="text-sm font-semibold text-foreground">{sprint.name}</span>
+      {period !== null && <span className="text-xs text-muted-foreground">{period}</span>}
       <span
         className={cn(
           'rounded-sm px-1.5 py-0.5 text-xs font-medium',
           statusBadgeClass(sprint.status),
         )}
-        aria-label={`스프린트 상태: ${sprint.status}`}
+        aria-label={`스프린트 상태: ${statusLabel}`}
       >
-        {sprint.status}
+        {statusLabel}
       </span>
       <span
         className="rounded-sm bg-background px-1.5 py-0.5 text-xs text-muted-foreground"
@@ -133,6 +144,7 @@ export function SprintColumnHeader({
         {issueCount}
       </span>
       <div className="flex-1" />
+      <SprintEstimateBadges issues={issues} statusMetaByKey={statusMetaByKey} />
       {onCreateIssue !== undefined && !isCompleted && (
         <CreateIssueEntryButton
           label={backlogLabels.createIssueInSprint(sprint.name)}

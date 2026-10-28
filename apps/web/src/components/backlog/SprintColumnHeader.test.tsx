@@ -98,6 +98,8 @@ function renderHeader(opts: RenderHeaderOptions = {}) {
         sprint={sprint}
         boardId={BOARD_ID}
         issueCount={issueCount}
+        issues={[]}
+        statusMetaByKey={new Map()}
         collapsed={false}
         onToggleCollapsed={() => {
           /* 이 파일의 관심사가 아니다 — 접힘은 SprintColumn.test 가 잰다 */
