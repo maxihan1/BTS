@@ -1,5 +1,5 @@
 // 백로그·스프린트 카드 컴포넌트 — 이슈 요약 표시 + @dnd-kit 드래그/드롭 핸들
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
@@ -10,6 +10,7 @@ import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
+import { IssueActionsMenu } from '@/components/issue/IssueActionsMenu'
 import { CardExtraFields } from '@/components/board/BoardCard'
 import type { CardCustomFieldValues } from '@/components/board/BoardCard'
 import type { BacklogIssue } from '@/api/backlog'
@@ -176,6 +177,8 @@ function BacklogCardInner({
 }: BacklogCardProps) {
   const openIssueDetail = useOpenIssueDetail()
   const resolvedSprintId = sprintId ?? null
+  // 작업 메뉴 — `⋯` 와 우클릭이 같은 메뉴를 연다 (JCB-17)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const dragData: BacklogDragData = {
     issueKey: issue.key,
@@ -226,8 +229,12 @@ function BacklogCardInner({
       data-card-droppable={droppableId}
       aria-roledescription={backlogLabels.draggableCard}
       aria-label={backlogLabels.cardAriaLabel(issue.key, issue.summary)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setMenuOpen(true)
+      }}
       className={cn(
-        'flex flex-col gap-2 rounded-lg border border-border bg-card p-3 shadow-sm',
+        'group flex flex-col gap-2 rounded-lg border border-border bg-card p-3 shadow-sm',
         'cursor-grab active:cursor-grabbing',
         isDragging && 'opacity-50',
       )}
@@ -287,6 +294,14 @@ function BacklogCardInner({
           {/* 추정 배지 — 미추정(null)이면 DOM 자체가 없다 (`CardEstimateBadge` FR10) */}
           <CardEstimateBadge seconds={issue.originalEstimateSeconds} />
           <AssigneeSlot assigneeId={issue.assigneeId} assigneeName={assigneeName} />
+          <IssueActionsMenu
+            issueKey={issue.key}
+            version={issue.version}
+            priority={issue.priority}
+            assigneeId={issue.assigneeId}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+          />
         </div>
       </div>
     </div>

@@ -1,7 +1,8 @@
 // BacklogCard 컴포넌트 단위 테스트 — 이슈 정보 표시·드래그 affordance·이슈 상세 링크
 import { describe, it, expect } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue } from '@/api/backlog'
 import { backlogLabels } from '@/i18n/backlog-labels'
@@ -244,5 +245,32 @@ describe('BacklogCard — S5 유형·라벨·추정 (F14 Task 4)', () => {
 
     expect(screen.getByText('P2')).toBeInTheDocument() // 기존 유지
     expect(screen.getByText('2h 30m')).toBeInTheDocument() // 신규 · E10
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S6. 행 작업 메뉴 (JCB-17) — 항목 동작은 `IssueActionsMenu.test.tsx` 가 잰다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('BacklogCard — S6 작업 메뉴', () => {
+  it('S6a: 우클릭이 브라우저 메뉴 대신 이슈 작업 메뉴를 연다', () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <DndContext>
+          <BacklogCard issue={baseIssue} context="backlog" typeIconName={null} typeName="task" />
+        </DndContext>
+      </QueryClientProvider>,
+    )
+    const card = document.querySelector('[data-drag-context="backlog"]')
+    if (card === null) throw new Error('카드 루트가 없다')
+
+    // fireEvent 는 「기본 동작이 막혔으면」 false 를 돌려준다 — 브라우저 메뉴가 안 뜬다는 뜻
+    expect(fireEvent.contextMenu(card)).toBe(false)
+    expect(screen.getByRole('menuitem', { name: '키 복사' })).toBeInTheDocument()
+  })
+
+  it('S6b: `⋯` 버튼은 이슈 키를 이름에 싣는다 (행이 여러 개라 strict mode 충돌 방지)', () => {
+    renderCard()
+    expect(screen.getByRole('button', { name: 'ATLAS-10 작업' })).toBeInTheDocument()
   })
 })

@@ -1,7 +1,8 @@
 // KanbanBoard 단위 테스트 — resolveDropAction 순수 헬퍼 + 컬럼 displayOrder 렌더 + onDragEnd 통합(Task 7)
 // + 필드변경 훅 배선 + 드래그 시각 힌트 통합(FR-UX-06 PR21b Task 5)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, within, act, waitFor } from '@testing-library/react'
+import { render, screen, within, act, waitFor, fireEvent } from '@testing-library/react'
+import { userEvent } from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DndContext } from '@dnd-kit/core'
 import type { Active, Announcements, DragEndEvent, DragOverEvent, DragStartEvent, Over } from '@dnd-kit/core'
@@ -964,5 +965,40 @@ describe('KanbanBoard — S9 드래그 고스트 카드 issueTypesByKey (E9)', (
 
     const overlay = screen.getByTestId('drag-overlay')
     expect(within(overlay).getByRole('img', { name: 'task' })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S10. 카드 작업 메뉴의 이동 (JB-B-2) — 컬럼 안 순서를 드래그와 같은 reorder 로 보낸다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('KanbanBoard — S10 카드 작업 메뉴 이동', () => {
+  beforeEach(() => {
+    reorderCardMutateSpy.mockClear()
+  })
+
+  it('S10a: 우클릭 → 이동 ▸ 맨 아래로 = 같은 컬럼 마지막 카드 뒤로 reorder', async () => {
+    const todo = boardFixture.columns[0]
+    if (todo === undefined) throw new Error('픽스처에 할 일 컬럼이 없다')
+    const second = { ...todo.cards[0], issueKey: 'ATLAS-4', summary: '네 번째 이슈' } as (typeof todo.cards)[number]
+    renderBoard({
+      ...boardFixture,
+      columns: [{ ...todo, cards: [...todo.cards, second] }, ...boardFixture.columns.slice(1)],
+    })
+    const user = userEvent.setup()
+
+    fireEvent.contextMenu(screen.getByLabelText('ATLAS-1 — 첫 번째 이슈'))
+    // 하위 메뉴는 키보드로 연다 — jsdom 은 크기가 0 이라 포인터를 옮기면 하위 메뉴가 닫힌다
+    screen.getByRole('menuitem', { name: '이동' }).focus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('menuitem', { name: '맨 위로' })).toHaveAttribute('aria-disabled', 'true')
+    await user.click(screen.getByRole('menuitem', { name: '맨 아래로' }))
+
+    expect(reorderCardMutateSpy).toHaveBeenCalledWith({
+      issueKey: 'ATLAS-1',
+      columnId: COL_TODO,
+      previousIssueKey: 'ATLAS-4',
+      nextIssueKey: undefined,
+    })
   })
 })
