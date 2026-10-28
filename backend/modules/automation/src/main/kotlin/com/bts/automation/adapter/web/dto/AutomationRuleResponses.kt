@@ -192,6 +192,10 @@ private fun actionTypeOf(action: Action): ActionType =
         is Action.AddCommentAction -> ActionType.ADD_COMMENT
         is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
         is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
+        is Action.TransitionAction -> ActionType.TRANSITION
+        is Action.CreateIssueAction -> ActionType.CREATE_ISSUE
+        is Action.LinkIssueAction -> ActionType.LINK_ISSUE
+        is Action.AddWatcherAction -> ActionType.ADD_WATCHER
     }
 
 /** [Action] 서브타입 → 설정 맵 매핑(HTTP 응답 전용, [ActionRequest.config] 필드명과 대칭). */
@@ -208,6 +212,16 @@ private fun actionConfigOf(action: Action): Map<String, Any?> =
                 "body" to action.body,
             )
         is Action.SetFixVersionsAction -> mapOf("versionIds" to action.versionIds.map(UUID::toString))
+        is Action.TransitionAction -> mapOf("toState" to action.toState)
+        is Action.CreateIssueAction ->
+            mapOf(
+                "summary" to action.summary,
+                "issueTypeKey" to action.issueTypeKey,
+                "asSubtask" to action.asSubtask,
+            )
+        is Action.LinkIssueAction ->
+            mapOf("linkTypeCode" to action.linkTypeCode, "targetIssueKey" to action.targetIssueKey)
+        is Action.AddWatcherAction -> mapOf("userId" to action.userId?.toString(), "fromField" to action.fromField)
     }
 
 /**

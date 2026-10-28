@@ -10,13 +10,17 @@ import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.Condition
 import com.bts.shared.issue.AddCommentCommand
+import com.bts.shared.issue.AddWatcherCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.CreateIssueCommand
 import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshot
 import com.bts.shared.issue.IssueSnapshotPort
+import com.bts.shared.issue.LinkIssueCommand
 import com.bts.shared.issue.SetFieldCommand
 import com.bts.shared.issue.SetFixVersionsCommand
+import com.bts.shared.issue.TransitionIssueCommand
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -27,8 +31,9 @@ import java.util.UUID
 /**
  * 자동화 룰([AutomationRule])의 액션 리스트를 position 순으로 실행하는 디스패처 (FR-AT-02 Task 9).
  *
- * 이슈 변경 4종([Action.SetFieldAction]/[Action.AssignAction]/[Action.AddCommentAction]/
- * [Action.SetFixVersionsAction])은 [IssueMutationPort] 로, 아웃바운드 웹훅([Action.CallWebhookAction])은
+ * 이슈 변경 액션([Action.SetFieldAction]/[Action.AssignAction]/[Action.AddCommentAction]/
+ * [Action.SetFixVersionsAction] 과 R9 단계 C 의 전환 · 생성 · 연결 · 관찰자)은 [IssueMutationPort] 로,
+ * 아웃바운드 웹훅([Action.CallWebhookAction])은
  * [WebhookActionClient] 로 위임한다. 룰 actor([AutomationRule.actorUserId]) 권한으로 실행되며(각 커맨드의
  * `actorUserId`), best-effort 로 동작한다 — 한 액션의 실패가 나머지 액션 실행을 막지 않는다.
  *
@@ -109,6 +114,7 @@ import java.util.UUID
  * 다 상태 없는 Kotlin object 싱글턴이고 아무 테스트도 대체 구현을 주입하지 않으므로(생성자 파라미터
  * 수 제약, `LongParameterList`), 값처럼 고정 참조한다.
  */
+@Suppress("TooManyFunctions") // R9 단계 C 액션 4종의 실행 헬퍼 — 액션 종류마다 위임 함수 하나라 분리할 단위가 없다
 @Component
 class ActionExecutor(
     private val issueMutationPort: IssueMutationPort,
@@ -156,7 +162,7 @@ class ActionExecutor(
                 ActionExecutionResult(ActionExecutionStatus.SUCCESS, emptyList())
             }
             else -> {
-                val env = ExecutionEnv(rule.actorUserId, buildContext(rule, triggerEvent), dryRun)
+                val env = ExecutionEnv(rule.actorUserId, rule.projectKey, buildContext(rule, triggerEvent), dryRun)
                 val outcomes =
                     actions.mapIndexed { position, action -> dispatchAction(position, action, issueKey, env) }
                 log.info(
@@ -242,6 +248,20 @@ class ActionExecutor(
                             SetFixVersionsCommand(env.actorId, key, action.versionIds, env.dryRun),
                         )
                     }
+                is Action.TransitionAction ->
+                    attemptIssueMutation(issueKey) { key ->
+                        issueMutationPort.transition(
+                            TransitionIssueCommand(env.actorId, key, action.toState, env.dryRun),
+                        )
+                    }
+                is Action.CreateIssueAction ->
+                    if (action.asSubtask) {
+                        attemptIssueMutation(issueKey) { key -> createIssue(action, key, env) }
+                    } else {
+                        attemptPortCall(issueKey) { createIssue(action, null, env) }
+                    }
+                is Action.LinkIssueAction -> attemptIssueMutation(issueKey) { key -> linkIssue(action, key, env) }
+                is Action.AddWatcherAction -> attemptIssueMutation(issueKey) { key -> addWatcher(action, key, env) }
             }
         if (error != null) {
             log.warn("automation_action_failed position={} type={} reason={}", position, actionTypeOf(action), error)
@@ -256,8 +276,17 @@ class ActionExecutor(
         block: (String) -> Unit,
     ): String? {
         if (issueKey == null) return FAILURE_ISSUE_KEY_MISSING
+        return attemptPortCall(issueKey) { block(issueKey) }
+    }
+
+    /** [block] 을 시도해 포트 예외를 실패 사유 문자열로 흡수한다. [issueKey] 는 로그용(이슈 없는 액션이면 null). */
+    @Suppress("TooGenericExceptionCaught") // IssueMutationPort 계약상 RuntimeException 만 노출(KDoc 참조)
+    private fun attemptPortCall(
+        issueKey: String?,
+        block: () -> Unit,
+    ): String? {
         return try {
-            block(issueKey)
+            block()
             null
         } catch (e: RuntimeException) {
             val reason = classifyPortFailure(e)
@@ -270,6 +299,58 @@ class ActionExecutor(
             )
             reason
         }
+    }
+
+    /** 룰 프로젝트에 이슈를 만든다(R9 단계 C). [parentKey] 가 있으면 그 이슈의 하위 작업. 요약은 템플릿 치환. */
+    private fun createIssue(
+        action: Action.CreateIssueAction,
+        parentKey: String?,
+        env: ExecutionEnv,
+    ) {
+        val summary = templateRenderer.render(action.summary, env.context)
+        issueMutationPort.createIssue(
+            CreateIssueCommand(env.actorId, env.projectKey, action.issueTypeKey, summary, parentKey, env.dryRun),
+        )
+    }
+
+    /**
+     * [issueKey] 를 템플릿 치환한 대상 키와 연결한다(R9 단계 C). 대상도 룰 프로젝트 소속이어야 한다 — 템플릿이
+     * triggerEvent(웹훅 등 신뢰 불가 입력)에서 키를 끌어올 수 있어, 클래스 KDoc 「프로젝트 경계 게이트」를 대상
+     * 키에도 건다. 위반이면 포트를 부르지 않고 실패한다.
+     */
+    private fun linkIssue(
+        action: Action.LinkIssueAction,
+        issueKey: String,
+        env: ExecutionEnv,
+    ) {
+        val target = templateRenderer.render(action.targetIssueKey, env.context).trim()
+        check(!isCrossProjectIssueKey(env.projectKey, target)) {
+            "LINK_ISSUE 대상 이슈가 룰 프로젝트 소속이 아닙니다: projectKey=${env.projectKey} target=$target"
+        }
+        issueMutationPort.linkIssues(LinkIssueCommand(env.actorId, issueKey, target, action.linkTypeCode, env.dryRun))
+    }
+
+    /**
+     * [issueKey] 에 관찰자를 추가한다(R9 단계 C). `fromField` 면 룰 actor 가시성으로 최신 스냅샷을 읽어 보고자 ·
+     * 담당자 id 를 얻는다 — 스냅샷을 못 읽으면 실패, 그 필드가 비어 있으면(미배정) 아무 일도 하지 않고 성공.
+     */
+    private fun addWatcher(
+        action: Action.AddWatcherAction,
+        issueKey: String,
+        env: ExecutionEnv,
+    ) {
+        val watcherId = action.userId ?: personFieldOf(action.fromField, issueKey, env) ?: return
+        issueMutationPort.addWatcher(AddWatcherCommand(env.actorId, issueKey, watcherId, env.dryRun))
+    }
+
+    /** [issueKey] 최신 스냅샷의 보고자 · 담당자 id. 스냅샷을 못 읽으면 예외(→ 그 액션 실패). */
+    private fun personFieldOf(
+        fromField: String?,
+        issueKey: String,
+        env: ExecutionEnv,
+    ): UUID? {
+        val snapshot = checkNotNull(issueSnapshotPort.fetch(env.actorId, issueKey)) { "이슈 스냅샷을 읽을 수 없습니다: $issueKey" }
+        return if (fromField == Action.AddWatcherAction.FROM_REPORTER) snapshot.reporterId else snapshot.assigneeId
     }
 
     /** url/body 를 템플릿 치환한 뒤 [webhookActionClient] 로 호출한다. 이슈 컨텍스트가 불필요하다. */
@@ -322,6 +403,10 @@ class ActionExecutor(
             is Action.AddCommentAction -> ActionType.ADD_COMMENT
             is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
             is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
+            is Action.TransitionAction -> ActionType.TRANSITION
+            is Action.CreateIssueAction -> ActionType.CREATE_ISSUE
+            is Action.LinkIssueAction -> ActionType.LINK_ISSUE
+            is Action.AddWatcherAction -> ActionType.ADD_WATCHER
         }
 
     /** 성공 0건이면 FAILED, 전부 성공이면 SUCCESS, 그 외엔 PARTIAL. */
@@ -426,9 +511,10 @@ private fun IssueSnapshot.toConditionContext(): ConditionContext =
         ),
     )
 
-/** [ActionExecutor.execute] 실행 1회에 걸쳐 모든 액션에 공통으로 전달되는 값(actor·템플릿 컨텍스트·dryRun). */
+/** [ActionExecutor.execute] 실행 1회에 걸쳐 모든 액션에 공통으로 전달되는 값(actor·룰 프로젝트·템플릿 컨텍스트·dryRun). */
 private data class ExecutionEnv(
     val actorId: UUID,
+    val projectKey: String,
     val context: Map<String, Any?>,
     val dryRun: Boolean,
 )

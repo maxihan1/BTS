@@ -117,6 +117,14 @@ private const val FIELD_URL = "url"
 private const val FIELD_METHOD = "method"
 private const val FIELD_HEADERS = "headers"
 private const val FIELD_VERSION_IDS = "versionIds"
+private const val FIELD_TO_STATE = "toState"
+private const val FIELD_SUMMARY = "summary"
+private const val FIELD_ISSUE_TYPE_KEY = "issueTypeKey"
+private const val FIELD_AS_SUBTASK = "asSubtask"
+private const val FIELD_LINK_TYPE_CODE = "linkTypeCode"
+private const val FIELD_TARGET_ISSUE_KEY = "targetIssueKey"
+private const val FIELD_USER_ID = "userId"
+private const val FIELD_FROM_FIELD = "fromField"
 
 /**
  * 자동화 규칙을 YAML로 직렬화/역직렬화하는 순수 codec(FR-AT-06 GitOps).
@@ -248,6 +256,10 @@ object AutomationYamlCodec {
             is Action.AddCommentAction -> ActionType.ADD_COMMENT
             is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
             is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
+            is Action.TransitionAction -> ActionType.TRANSITION
+            is Action.CreateIssueAction -> ActionType.CREATE_ISSUE
+            is Action.LinkIssueAction -> ActionType.LINK_ISSUE
+            is Action.AddWatcherAction -> ActionType.ADD_WATCHER
         }
 
     /**
@@ -272,6 +284,17 @@ object AutomationYamlCodec {
                     FIELD_BODY to action.body,
                 )
             is Action.SetFixVersionsAction -> mapOf(FIELD_VERSION_IDS to action.versionIds.map(UUID::toString))
+            is Action.TransitionAction -> mapOf(FIELD_TO_STATE to action.toState)
+            is Action.CreateIssueAction ->
+                mapOf(
+                    FIELD_SUMMARY to action.summary,
+                    FIELD_ISSUE_TYPE_KEY to action.issueTypeKey,
+                    FIELD_AS_SUBTASK to action.asSubtask,
+                )
+            is Action.LinkIssueAction ->
+                mapOf(FIELD_LINK_TYPE_CODE to action.linkTypeCode, FIELD_TARGET_ISSUE_KEY to action.targetIssueKey)
+            is Action.AddWatcherAction ->
+                mapOf(FIELD_USER_ID to action.userId?.toString(), FIELD_FROM_FIELD to action.fromField)
         }
 
     /** JSON 문자열을 YAML 객체로 방출하기 위한 제네릭 맵으로 변환한다. */

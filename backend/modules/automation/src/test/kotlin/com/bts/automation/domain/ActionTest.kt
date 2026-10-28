@@ -1,4 +1,4 @@
-// ActionType 5종 + Action.fromJson/ActionConfig.validate 형식 검증 단위 테스트
+// ActionType 9종 + Action.fromJson/ActionConfig.validate 형식 검증 단위 테스트
 
 package com.bts.automation.domain
 
@@ -13,12 +13,8 @@ import java.util.UUID
 
 class ActionTest : DescribeSpec({
 
-    describe("ActionType — enum 5종") {
-        it("5종 모두 정의된다") {
-            ActionType.entries.size shouldBe 5
-        }
-
-        it("SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS 을 포함한다") {
+    describe("ActionType — enum 9종") {
+        it("기존 5종 + R9 단계 C 4종을 정확히 포함한다") {
             ActionType.entries.toSet() shouldBe
                 setOf(
                     ActionType.SET_FIELD,
@@ -26,7 +22,61 @@ class ActionTest : DescribeSpec({
                     ActionType.ADD_COMMENT,
                     ActionType.CALL_WEBHOOK,
                     ActionType.SET_FIX_VERSIONS,
+                    ActionType.TRANSITION,
+                    ActionType.CREATE_ISSUE,
+                    ActionType.LINK_ISSUE,
+                    ActionType.ADD_WATCHER,
                 )
+        }
+    }
+
+    describe("Action.fromJson — R9 단계 C") {
+        it("TRANSITION toState 를 파싱하고, 없거나 비면 거부한다") {
+            Action.fromJson(ActionType.TRANSITION, """{"toState":"done"}""") shouldBe Action.TransitionAction("done")
+            shouldThrow<ActionConfigInvalidException> { Action.fromJson(ActionType.TRANSITION, "{}") }
+            shouldThrow<ActionConfigInvalidException> { Action.fromJson(ActionType.TRANSITION, """{"toState":" "}""") }
+        }
+
+        it("CREATE_ISSUE 는 asSubtask 기본 false, 유형 키 형식 · boolean 을 검사한다") {
+            Action.fromJson(ActionType.CREATE_ISSUE, """{"summary":"요약","issueTypeKey":"task"}""") shouldBe
+                Action.CreateIssueAction("요약", "task", asSubtask = false)
+            Action.fromJson(
+                ActionType.CREATE_ISSUE,
+                """{"summary":"요약","issueTypeKey":"subtask","asSubtask":true}""",
+            ) shouldBe Action.CreateIssueAction("요약", "subtask", asSubtask = true)
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.CREATE_ISSUE, """{"summary":"요약","issueTypeKey":"Task"}""")
+            }
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.CREATE_ISSUE, """{"summary":"요약","issueTypeKey":"task","asSubtask":"y"}""")
+            }
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.CREATE_ISSUE, """{"issueTypeKey":"task"}""")
+            }
+        }
+
+        it("LINK_ISSUE 는 linkTypeCode · targetIssueKey 가 모두 필요하다") {
+            Action.fromJson(ActionType.LINK_ISSUE, """{"linkTypeCode":"blocks","targetIssueKey":"PROJ-2"}""") shouldBe
+                Action.LinkIssueAction("blocks", "PROJ-2")
+            shouldThrow<ActionConfigInvalidException> {
+                Action.fromJson(ActionType.LINK_ISSUE, """{"linkTypeCode":"blocks"}""")
+            }
+        }
+
+        it("ADD_WATCHER 는 userId 또는 fromField 중 정확히 하나만 받는다") {
+            val userId = UUID.randomUUID()
+            Action.fromJson(ActionType.ADD_WATCHER, """{"userId":"$userId"}""") shouldBe
+                Action.AddWatcherAction(userId, null)
+            Action.fromJson(ActionType.ADD_WATCHER, """{"userId":null,"fromField":"reporter"}""") shouldBe
+                Action.AddWatcherAction(null, "reporter")
+            listOf(
+                "{}",
+                """{"userId":"not-uuid"}""",
+                """{"fromField":"creator"}""",
+                """{"userId":"$userId","fromField":"assignee"}""",
+            ).forEach { config ->
+                shouldThrow<ActionConfigInvalidException> { Action.fromJson(ActionType.ADD_WATCHER, config) }
+            }
         }
     }
 

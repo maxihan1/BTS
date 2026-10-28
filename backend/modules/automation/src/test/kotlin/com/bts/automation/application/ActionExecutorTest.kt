@@ -647,6 +647,127 @@ class ActionExecutorTest : DescribeSpec({
             issueMutationPort.setFieldCalls.shouldBeEmpty()
         }
     }
+
+    describe("E-r9c R9 단계 C 액션 4종") {
+        it("TRANSITION 은 actor·이슈키·toState 로 transition 을 호출한다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns listOf(Action.TransitionAction("done"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"), dryRun = true)
+
+            result.outcomes shouldBe listOf(ActionOutcome(0, ActionType.TRANSITION, success = true, error = null))
+            val cmd = issueMutationPort.transitionCalls.single()
+            cmd.actorUserId shouldBe rule.actorUserId
+            cmd.issueKey shouldBe "PROJ-1"
+            cmd.toStateKey shouldBe "done"
+            cmd.dryRun shouldBe true
+        }
+
+        it("CREATE_ISSUE 하위 작업은 룰 프로젝트에 트리거 이슈를 부모로, 요약을 템플릿 치환해 만든다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.CreateIssueAction("후속: {{ issue.summary }}", "subtask", asSubtask = true))
+
+            executor.execute(rule, issueEvent("PROJ-1", summary = "로그인 오류"))
+
+            val cmd = issueMutationPort.createIssueCalls.single()
+            cmd.projectKey shouldBe "PROJ"
+            cmd.issueTypeKey shouldBe "subtask"
+            cmd.summary shouldBe "후속: 로그인 오류"
+            cmd.parentKey shouldBe "PROJ-1"
+        }
+
+        it("CREATE_ISSUE 는 하위 작업이 아니면 트리거 이슈 없이도(SCHEDULED 빈 payload) 룰 프로젝트에 만든다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns listOf(Action.CreateIssueAction("주간 점검", "task"))
+
+            val result = executor.execute(rule, objectMapper.readTree("{}"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            val cmd = issueMutationPort.createIssueCalls.single()
+            cmd.projectKey shouldBe "PROJ"
+            cmd.parentKey shouldBe null
+        }
+
+        it("CREATE_ISSUE 하위 작업인데 트리거 이슈가 없으면 ISSUE_KEY_MISSING 실패") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.CreateIssueAction("후속", "subtask", asSubtask = true))
+
+            val result = executor.execute(rule, objectMapper.readTree("{}"))
+
+            result.outcomes.single().error shouldBe "ISSUE_KEY_MISSING"
+            issueMutationPort.createIssueCalls.shouldBeEmpty()
+        }
+
+        it("LINK_ISSUE 는 같은 프로젝트 대상과 연결한다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns listOf(Action.LinkIssueAction("blocks", "PROJ-7"))
+
+            executor.execute(rule, issueEvent("PROJ-1"))
+
+            val cmd = issueMutationPort.linkIssuesCalls.single()
+            cmd.issueKey shouldBe "PROJ-1"
+            cmd.targetIssueKey shouldBe "PROJ-7"
+            cmd.linkTypeCode shouldBe "blocks"
+        }
+
+        it("LINK_ISSUE 대상이 템플릿으로 다른 프로젝트 키가 되면 포트를 부르지 않고 실패한다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.LinkIssueAction("relates", "{{ issue.summary }}"))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1", summary = "OTHER-9"))
+
+            result.outcomes shouldBe listOf(ActionOutcome(0, ActionType.LINK_ISSUE, success = false, error = "FAILED"))
+            issueMutationPort.linkIssuesCalls.shouldBeEmpty()
+        }
+
+        it("ADD_WATCHER userId 는 그 사용자를 관찰자로 추가한다") {
+            val rule = newRule()
+            val watcher = UUID.randomUUID()
+            every { actionRepository.findByRuleId(rule.id) } returns listOf(Action.AddWatcherAction(watcher, null))
+
+            executor.execute(rule, issueEvent("PROJ-1"))
+
+            issueMutationPort.addWatcherCalls.single().watcherUserId shouldBe watcher
+        }
+
+        it("ADD_WATCHER fromField=assignee 는 룰 actor 가시성 스냅샷의 담당자를 추가한다") {
+            val rule = newRule()
+            val assignee = UUID.randomUUID()
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(assigneeId = assignee))
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_ASSIGNEE))
+
+            executor.execute(rule, issueEvent("PROJ-1"))
+
+            issueMutationPort.addWatcherCalls.single().watcherUserId shouldBe assignee
+        }
+
+        it("ADD_WATCHER fromField=assignee 인데 미배정이면 아무것도 하지 않고 성공한다") {
+            val rule = newRule()
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(assigneeId = null))
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_ASSIGNEE))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.SUCCESS
+            issueMutationPort.addWatcherCalls.shouldBeEmpty()
+        }
+
+        it("ADD_WATCHER fromField 인데 스냅샷을 못 읽으면 실패한다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_REPORTER))
+
+            val result = executor.execute(rule, issueEvent("PROJ-1"))
+
+            result.status shouldBe ActionExecutionStatus.FAILED
+            issueMutationPort.addWatcherCalls.shouldBeEmpty()
+        }
+    }
 })
 
 /**

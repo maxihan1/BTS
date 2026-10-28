@@ -1,4 +1,4 @@
-// 자동화 액션 타입 5종 — 필드 설정/담당자 지정/댓글 추가/웹훅 호출/수정 예정 버전 설정
+// 자동화 액션 타입 9종 — 필드 설정/담당자/댓글/웹훅/수정 예정 버전/전환/이슈 생성/연결/관찰자
 
 package com.bts.automation.domain
 
@@ -20,4 +20,8 @@ enum class ActionType {
     ADD_COMMENT,
     CALL_WEBHOOK,
     SET_FIX_VERSIONS,
+    TRANSITION,
+    CREATE_ISSUE,
+    LINK_ISSUE,
+    ADD_WATCHER,
 }
