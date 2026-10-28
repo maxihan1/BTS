@@ -1680,6 +1680,13 @@ describe('IssueDetailPage — Task F5 (변경 이력 섹션 통합)', () => {
     setupIssueFoundHandler(issueAtlas1Fixture)
   })
 
+  /** 기본 탭은 댓글(J3)이고 Radix 가 비활성 탭을 언마운트하므로, 이력 섹션은 이력 탭을 열어야 보인다 */
+  async function openHistoryTab(): Promise<void> {
+    await userEvent.setup().click(
+      await screen.findByRole('tab', { name: issueDetailStrings.activityHistoryTabLabel }),
+    )
+  }
+
   /**
    * TF5-1: 이슈 상세 페이지 로드 시 하단에 "변경 이력" 섹션이 렌더된다.
    * IssueChangelog 컴포넌트가 aria-label="변경 이력" section으로 마운트되어야 한다.
@@ -1690,6 +1697,7 @@ describe('IssueDetailPage — Task F5 (변경 이력 섹션 통합)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+    await openHistoryTab()
 
     await waitFor(() => {
       expect(
@@ -1709,6 +1717,7 @@ describe('IssueDetailPage — Task F5 (변경 이력 섹션 통합)', () => {
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument(),
     )
+    await openHistoryTab()
 
     await waitFor(() => {
       const changelogSection = screen.getByRole('region', {
@@ -2857,15 +2866,17 @@ describe('IssueDetailPage — 댓글 딥링크 (인박스 알림)', () => {
     expect(commentTab).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('focusCommentId 가 없으면 기존대로 이력 탭에서 시작한다 (회귀 고정)', async () => {
+  it('focusCommentId 가 없어도 댓글 탭에서 시작한다 (J3 · Jira Cloud 기본 탭)', async () => {
+    // ★#447 이 J3 「댓글 기본탭」을 컴포넌트 defaultValue 에만 넣었는데, 라우트가 value 를
+    //   쥐고 있어 먹지 않았다. 이 테스트는 한때 그 상태를 「이력 탭 회귀 고정」으로 박아 뒀다.
     setupIssueFoundHandler()
 
     renderWithFocus()
 
-    const historyTab = await screen.findByRole('tab', {
-      name: issueDetailStrings.activityHistoryTabLabel,
+    const commentTab = await screen.findByRole('tab', {
+      name: issueDetailStrings.activityCommentTabLabel,
     })
-    expect(historyTab).toHaveAttribute('aria-selected', 'true')
+    expect(commentTab).toHaveAttribute('aria-selected', 'true')
   })
 })
 
