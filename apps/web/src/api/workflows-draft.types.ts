@@ -114,6 +114,8 @@ export const draftResponseSchema = z
  *   ★ **앵커로 쓰지 마라.** 이 값을 되실어 보내면 락이 풀린다.
  * @property removedStatusKeys 발행하면 이 워크플로우에서 빠지는 상태 키.
  * @property pendingIssueCounts 그중 이슈가 남은 상태와 건수. 비어 있지 않으면 발행이 막힌다.
+ * @property scopes 이 워크플로우를 쓰는 프로젝트와 거기서 맡는 업무 유형 — 이관 예외 선택지(R11C).
+ *   `exceptListed` 가 참이면 `issueTypeIds` **밖의** 유형 전부다(스킴 기본 매핑).
  */
 export const publishPreviewSchema = z
   .object({
@@ -121,14 +123,24 @@ export const publishPreviewSchema = z
     currentVersion: z.number().int().nonnegative(),
     removedStatusKeys: z.array(z.string()),
     pendingIssueCounts: z.record(z.string(), z.number()),
+    scopes: z.array(
+      z
+        .object({ projectKey: z.string(), issueTypeIds: z.array(z.number().int()), exceptListed: z.boolean() })
+        .strict(),
+    ),
   })
   .strict()
 
 /** `POST /publish` 응답. `versionNo` 는 이 워크플로우 안에서 1 부터 증가하는 발행 회차. */
 export const publishResponseSchema = z.object({ versionNo: z.number().int().positive() }).strict()
 
-/** `POST /publish/migrate` 202 응답. 이 id 로 `GET /api/v1/bulk-operations/{id}` 를 폴링한다. */
-export const migrateResponseSchema = z.object({ bulkOperationId: z.string().uuid() }).strict()
+/**
+ * `POST /publish/migrate` 202 응답. 이 id 들로 `GET /api/v1/bulk-operations/{id}` 를 폴링한다.
+ * 예외가 있으면 (프로젝트, 유형)마다 작업이 하나씩 늘어난다(R11C). `bulkOperationId` 는 첫 id 다.
+ */
+export const migrateResponseSchema = z
+  .object({ bulkOperationId: z.string().uuid(), bulkOperationIds: z.array(z.string().uuid()).min(1) })
+  .strict()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 추론 타입
@@ -154,4 +166,10 @@ export type MigrateAccepted = z.infer<typeof migrateResponseSchema>
 export interface StatusMappingInput {
   fromStatusKey: string
   toStatusKey: string
+}
+
+/** 이관 예외 — 이 (프로젝트, 업무 유형)의 `fromStatusKey` 이슈는 기본 대상 대신 `toStatusKey` 로 간다(R11C). */
+export interface StatusMappingExceptionInput extends StatusMappingInput {
+  projectKey: string
+  issueTypeId: number
 }

@@ -1,6 +1,6 @@
 // 일괄 작업 접수 mutation + 진행률 폴링 query 훅
 import { useEffect, useRef } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { ZodError } from 'zod'
 import { ApiError } from '@/api/client'
@@ -217,5 +217,74 @@ export function useBulkOperationPolling(id: string | null, enabled: boolean) {
   return {
     ...query,
     progressRatio: calculateProgressRatio(query.data),
+  }
+}
+
+/**
+ * 여러 작업을 한 작업처럼 합친다 — 하나라도 안 끝났으면 진행 중, 다 끝났으면 실패가 하나라도 있으면 FAILED.
+ * 건수는 더하고 항목은 잇는다. 하나라도 아직 응답이 없으면 undefined.
+ */
+export function combineBulkOperations(
+  operations: readonly (BulkOperationResponse | undefined)[],
+): BulkOperationResponse | undefined {
+  const ops = operations.filter((op): op is BulkOperationResponse => op !== undefined)
+  const [first] = ops
+  if (first === undefined || ops.length !== operations.length) return undefined
+  const statuses = ops.map((op) => op.status)
+  const settled = statuses.every((s) => TERMINAL_STATUSES.has(s))
+  const pending = statuses.every((s) => s === 'PENDING')
+  const status: BulkOperationResponse['status'] = settled
+    ? statuses.includes('FAILED') ? 'FAILED' : 'COMPLETED'
+    : pending ? 'PENDING' : 'RUNNING'
+  const sum = (pick: (op: BulkOperationResponse) => number) => ops.reduce((acc, op) => acc + pick(op), 0)
+  return {
+    ...first,
+    status,
+    totalCount: sum((op) => op.totalCount),
+    processedCount: sum((op) => op.processedCount),
+    succeededCount: sum((op) => op.succeededCount),
+    failedCount: sum((op) => op.failedCount),
+    items: ops.flatMap((op) => op.items),
+  }
+}
+
+/**
+ * 작업 여러 건의 진행률 폴링 — 상태 이관 예외로 작업이 (프로젝트, 유형)마다 나뉠 때 쓴다 (R11C).
+ *
+ * 작업마다 [useBulkOperationPolling] 과 같은 쿼리(같은 queryKey · 재시도 · 정지 조건)를 띄우고
+ * [combineBulkOperations] 로 합친다. 이슈 화면 무효화는 합친 결과가 끝났을 때 한 번이다.
+ *
+ * @param ids 폴링할 작업 id. 비면 아무것도 조회하지 않는다.
+ */
+export function useBulkOperationsPolling(ids: readonly string[]) {
+  const queryClient = useQueryClient()
+  const queries = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: bulkOperationQueryKey(id),
+      queryFn: () => fetchBulkOperation(id),
+      retry: shouldRetryPoll,
+      retryDelay: POLL_INTERVAL_MS,
+      refetchInterval: computeRefetchInterval,
+    })),
+  })
+  const data = combineBulkOperations(queries.map((q) => q.data))
+  const failed = queries.find((q) => q.isError)
+
+  const settledRef = useRef<string | null>(null)
+  const idsKey = ids.join(',')
+  const status = data?.status
+  useEffect(() => {
+    if (idsKey === '' || status === undefined || !TERMINAL_STATUSES.has(status)) return
+    if (settledRef.current === idsKey) return
+    settledRef.current = idsKey
+    void invalidateIssueViews(queryClient)
+  }, [idsKey, status, queryClient])
+
+  return {
+    data,
+    isError: failed !== undefined,
+    error: failed?.error ?? null,
+    refetch: () => Promise.all(queries.filter((q) => q.isError).map((q) => q.refetch())),
+    progressRatio: calculateProgressRatio(data),
   }
 }

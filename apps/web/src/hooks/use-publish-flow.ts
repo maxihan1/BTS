@@ -5,14 +5,19 @@ import { ZodError } from 'zod'
 import { ApiError } from '@/api/client'
 import { WorkflowAdminApiError, WorkflowPublishMappingRequiredError } from '@/api/workflows-admin.http'
 import { migrateStatuses } from '@/api/workflows-draft'
-import type { PublishPreview, DraftDefinition, StatusMappingInput } from '@/api/workflows-draft.types'
+import type {
+  PublishPreview,
+  DraftDefinition,
+  StatusMappingInput,
+  StatusMappingExceptionInput,
+} from '@/api/workflows-draft.types'
 import type { WorkflowView } from '@/api/workflows'
 import type { BulkOperationResponse } from '@/api/bulk-operations'
 import type { MigrationSelection } from '@/lib/workflow-migration'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import { notifyWorkflowAdminError, mapWorkflowAdminError, DEFAULT_WORKFLOW_ADMIN_ERROR_MESSAGE } from './workflow-admin-error'
 import { useWorkflowDetail } from './use-workflows-admin'
-import { useBulkOperationPolling } from './use-bulk-operation'
+import { useBulkOperationsPolling } from './use-bulk-operation'
 import type { UseWorkflowPublishResult } from './use-workflow-publish'
 import type { UseWorkflowDraftResult } from './use-workflow-draft'
 
@@ -102,6 +107,12 @@ export function usePublishFlow(
       // ★ 저장이 먼저다. 초안이 없으면 미리보기가 400 이다.
       await draft.flush()
       const result = await publish.preview()
+      // R11C — 옮길 이슈가 없으면 묻지 않고 바로 반영한다(Jira 「워크플로 업데이트」 한 번).
+      if (Object.keys(result.pendingIssueCounts).length === 0) {
+        const published = await publish.publish(result.baseVersion)
+        toast.success(`${labels.publish.successPrefix} (${String(published.versionNo)})`)
+        return
+      }
       setPreview(result)
       setDialog('publish')
     })
@@ -161,6 +172,32 @@ export function usePublishFlow(
   }
 }
 
+/**
+ * 이관이 전부 성공하면(COMPLETED · 실패 0) 사용자가 다시 누르지 않아도 발행한다 — R11C 「워크플로 업데이트」 한 번.
+ *
+ * 다이얼로그가 열려 있을 때만이다. 새로고침으로 URL 에서 진행률만 되살아난 경우(다이얼로그 없음)에는 부르지 않고,
+ * 사용자가 다시 누르면 미리보기가 남은 이슈 0 을 보고 바로 발행한다. 성공한 작업 묶음마다 한 번만 부른다.
+ * 실패가 섞이면 부르지 않는다 — 이어지는 발행이 409 라 사용자가 누르지 않은 조작의 실패를 보게 된다.
+ */
+export function useAutoPublishAfterMigration(
+  migration: Pick<UseMigrationWizardResult, 'operation'>,
+  flow: Pick<UsePublishFlowResult, 'dialog' | 'confirmPublish'>,
+): void {
+  const operation = migration.operation
+  const succeeded = operation?.status === 'COMPLETED' && operation.failedCount === 0
+  const firedRef = React.useRef(false)
+  const { dialog, confirmPublish } = flow
+  React.useEffect(() => {
+    if (!succeeded) {
+      firedRef.current = false
+      return
+    }
+    if (firedRef.current || dialog !== 'publish') return
+    firedRef.current = true
+    confirmPublish()
+  }, [succeeded, dialog, confirmPublish])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 상태 이관 마법사 — 발행 다이얼로그의 한 단계 (FR-WF-07 D6b)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,8 +211,8 @@ export interface UseMigrationWizardResult {
   /** 사라지는 상태 키 → 옮겨 갈 상태 키 */
   selection: MigrationSelection
   onSelectionChange: (removedKey: string, targetKey: string) => void
-  /** 이관 시작 — 202 수신 뒤 폴링을 붙인다(F6) */
-  onStartMigration: (mappings: StatusMappingInput[]) => void
+  /** 이관 시작 — 202 수신 뒤 폴링을 붙인다(F6). 예외는 (프로젝트, 유형)마다 작업을 하나씩 늘린다(R11C) */
+  onStartMigration: (mappings: StatusMappingInput[], exceptions: StatusMappingExceptionInput[]) => void
   /** 이관 접수 요청 전송 중 */
   starting: boolean
   /** 접수 실패 사유. 서버 문장을 한국어로 옮긴 것 */
@@ -254,8 +291,9 @@ const MIGRATION_QUERY_KEY = 'migration'
  * 파싱)을 쓴다. `@tanstack/history` 는 `window.history.pushState/replaceState` 를 몽키패치해
  * 두므로, 여기서 raw 로 호출해도 실제 라우터가 떠 있을 때는 그 내부 상태와 어긋나지 않는다.
  */
-function readMigrationIdFromUrl(): string | null {
-  return new URLSearchParams(window.location.search).get(MIGRATION_QUERY_KEY)
+function readMigrationIdsFromUrl(): string[] {
+  const raw = new URLSearchParams(window.location.search).get(MIGRATION_QUERY_KEY)
+  return raw === null || raw === '' ? [] : raw.split(',')
 }
 
 /**
@@ -264,14 +302,14 @@ function readMigrationIdFromUrl(): string | null {
  * `replaceState` 를 쓴다 — 접수·종료마다 히스토리를 쌓으면 뒤로가기 한 번으로 편집기를 못
  * 벗어난다(`routes/issues.index.tsx` 의 `moveCursorTo` 가 같은 이유로 같은 선택을 했다).
  *
- * @param id 새 이관 작업 id. null 이면 쿼리에서 제거한다(종료 상태 정리)
+ * @param ids 새 이관 작업 id 들(쉼표로 잇는다). 비면 쿼리에서 제거한다(종료 상태 정리)
  */
-function writeMigrationIdToUrl(id: string | null): void {
+function writeMigrationIdsToUrl(ids: readonly string[]): void {
   const params = new URLSearchParams(window.location.search)
-  if (id === null) {
+  if (ids.length === 0) {
     params.delete(MIGRATION_QUERY_KEY)
   } else {
-    params.set(MIGRATION_QUERY_KEY, id)
+    params.set(MIGRATION_QUERY_KEY, ids.join(','))
   }
   const query = params.toString()
   const url = `${window.location.pathname}${query.length > 0 ? `?${query}` : ''}`
@@ -302,12 +340,13 @@ async function submitMigration(
   workflowKey: string,
   baseVersion: number,
   mappings: StatusMappingInput[],
-  onAccepted: (bulkOperationId: string) => void,
+  exceptions: StatusMappingExceptionInput[],
+  onAccepted: (bulkOperationIds: string[]) => void,
   onError: (message: string) => void,
 ): Promise<void> {
   try {
-    const accepted = await migrateStatuses(workflowKey, baseVersion, mappings)
-    onAccepted(accepted.bulkOperationId)
+    const accepted = await migrateStatuses(workflowKey, baseVersion, mappings, exceptions)
+    onAccepted(accepted.bulkOperationIds)
   } catch (error) {
     onError(
       error instanceof WorkflowAdminApiError
@@ -352,7 +391,7 @@ export function useMigrationWizard(
   const [selection, setSelection] = React.useState<MigrationSelection>({})
   // URL 에 남은 이관 id 를 그대로 이어받는다(G-2) — 새로고침·링크 공유로 재진입해도 그 id 로
   // 폴링이 다시 붙는다.
-  const [operationId, setOperationId] = React.useState<string | null>(() => readMigrationIdFromUrl())
+  const [operationIds, setOperationIds] = React.useState<string[]>(() => readMigrationIdsFromUrl())
   const [starting, setStarting] = React.useState(false)
   const [startError, setStartError] = React.useState<string | null>(null)
 
@@ -365,14 +404,14 @@ export function useMigrationWizard(
       return
     }
     setSelection({})
-    setOperationId(null)
+    setOperationIds([])
     setStartError(null)
     // 지우는 operationId 가 URL 에도 남아 있을 수 있다(예: 폴링 중 다이얼로그를 닫았다 다시
     // 열어 새 preview 를 받은 경우) — 메모리 상태와 URL 을 같이 정리한다(G-2).
-    writeMigrationIdToUrl(null)
+    writeMigrationIdsToUrl([])
   }, [preview])
 
-  const poll = useBulkOperationPolling(operationId, operationId !== null)
+  const poll = useBulkOperationsPolling(operationIds)
   const { refetch: refetchPoll } = poll
   const operationStatus = poll.data?.status
   // 폴링이 멈췄는가. `useBulkOperationPolling` 은 재시도 예산을 다 쓴 뒤에만 `error` 로 넘어가므로
@@ -394,7 +433,7 @@ export function useMigrationWizard(
   //   버튼에 닿을 수 없어 편집기가 영구히 잠긴다(직전 BLOCKER).
   React.useEffect(() => {
     if (isMigrationSettled(operationStatus) || (pollStopped && !pollRetryable)) {
-      writeMigrationIdToUrl(null)
+      writeMigrationIdsToUrl([])
     }
   }, [operationStatus, pollStopped, pollRetryable])
 
@@ -403,7 +442,7 @@ export function useMigrationWizard(
   }, [])
 
   const onStartMigration = React.useCallback(
-    (mappings: StatusMappingInput[]) => {
+    (mappings: StatusMappingInput[], exceptions: StatusMappingExceptionInput[]) => {
       if (preview === null) {
         return
       }
@@ -413,10 +452,11 @@ export function useMigrationWizard(
         workflowKey,
         preview.baseVersion,
         mappings,
-        (id) => {
-          setOperationId(id)
+        exceptions,
+        (ids) => {
+          setOperationIds(ids)
           // 접수 즉시 URL 에 싣는다(G-2) — 폴링 첫 응답을 기다리지 않는다.
-          writeMigrationIdToUrl(id)
+          writeMigrationIdsToUrl(ids)
         },
         setStartError,
       ).finally(() => {
@@ -444,6 +484,6 @@ export function useMigrationWizard(
     pollRetryable,
     retryPoll,
     discardDisabled:
-      operationId !== null && !isMigrationSettled(operationStatus) && !pollStopped,
+      operationIds.length > 0 && !isMigrationSettled(operationStatus) && !pollStopped,
   }
 }

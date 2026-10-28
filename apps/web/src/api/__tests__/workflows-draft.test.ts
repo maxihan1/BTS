@@ -151,7 +151,7 @@ describe('previewPublish', () => {
   it('빠지는 상태와 상태별 잔여 건수를 언랩한다', async () => {
     fetchMock.mockResolvedValue(
       reply(200, {
-        data: { baseVersion: 4, currentVersion: 4, removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } },
+        data: { baseVersion: 4, currentVersion: 4, removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 }, scopes: [] },
       }),
     )
 
@@ -223,7 +223,7 @@ describe('publishDraft', () => {
 
 describe('migrateStatuses', () => {
   it('202 의 bulkOperationId 를 언랩하고 매핑을 목록으로 싣는다', async () => {
-    fetchMock.mockResolvedValue(reply(202, { data: { bulkOperationId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301' } }))
+    fetchMock.mockResolvedValue(reply(202, { data: { bulkOperationId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301', bulkOperationIds: ['3f2504e0-4f89-41d3-9a0c-0305e82c3301'] } }))
 
     const accepted = await migrateStatuses('wf', 4, [{ fromStatusKey: 'done', toStatusKey: 'open' }])
 
@@ -231,14 +231,26 @@ describe('migrateStatuses', () => {
     expect(lastBody()).toEqual({
       baseVersion: 4,
       mappings: [{ fromStatusKey: 'done', toStatusKey: 'open' }],
+      exceptions: [],
     })
+  })
+
+  it('예외를 싣고 작업 id 를 전부 돌려준다 (R11C)', async () => {
+    const ids = ['3f2504e0-4f89-41d3-9a0c-0305e82c3301', '3f2504e0-4f89-41d3-9a0c-0305e82c3302']
+    fetchMock.mockResolvedValue(reply(202, { data: { bulkOperationId: ids[0], bulkOperationIds: ids } }))
+    const exception = { projectKey: 'ALPHA', issueTypeId: 7, fromStatusKey: 'done', toStatusKey: 'review' }
+
+    const accepted = await migrateStatuses('wf', 4, [{ fromStatusKey: 'done', toStatusKey: 'open' }], [exception])
+
+    expect(accepted.bulkOperationIds).toEqual(ids)
+    expect(lastBody()).toMatchObject({ exceptions: [exception] })
   })
 
   it('projectKeys 를 보내지 않는다', async () => {
     // ★ 범위를 요청이 정하게 두면 워크플로우 하나에 발행 권한을 가진 사람이 남의 프로젝트
     //   이슈를 통째로 옮길 수 있다. 백엔드가 스킴을 거슬러 직접 채우므로 필드가 없는 것이
     //   그 방어다 — 화면이 친절을 부려 실어 보내면 안 된다.
-    fetchMock.mockResolvedValue(reply(202, { data: { bulkOperationId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301' } }))
+    fetchMock.mockResolvedValue(reply(202, { data: { bulkOperationId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301', bulkOperationIds: ['3f2504e0-4f89-41d3-9a0c-0305e82c3301'] } }))
 
     await migrateStatuses('wf', 4, [{ fromStatusKey: 'done', toStatusKey: 'open' }])
 

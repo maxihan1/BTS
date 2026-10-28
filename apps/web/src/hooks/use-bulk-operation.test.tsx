@@ -16,6 +16,7 @@ import {
   computeRefetchInterval,
   shouldRetryPoll,
   calculateProgressRatio,
+  combineBulkOperations,
   MAX_ERROR_RETRIES,
   POLL_INTERVAL_MS,
 } from './use-bulk-operation'
@@ -502,5 +503,28 @@ describe('calculateProgressRatio', () => {
 
   it('T-BULK-RATIO-3: totalCount 가 0 이면 null 이다 (0 으로 나누기 방지)', () => {
     expect(calculateProgressRatio(buildResponse({ totalCount: 0, processedCount: 0 }))).toBeNull()
+  })
+})
+
+describe('combineBulkOperations — 이관 예외로 나뉜 작업 합산 (R11C)', () => {
+  const base = (over: Partial<BulkOperationResponse>): BulkOperationResponse =>
+    ({ id: 'a', status: 'RUNNING', totalCount: 2, processedCount: 1, succeededCount: 1, failedCount: 0, items: [], ...over }) as BulkOperationResponse
+
+  it('하나라도 응답이 없으면 undefined 다', () => {
+    expect(combineBulkOperations([base({}), undefined])).toBeUndefined()
+    expect(combineBulkOperations([])).toBeUndefined()
+  })
+
+  it('건수는 더하고, 하나라도 안 끝났으면 진행 중이다', () => {
+    const merged = combineBulkOperations([base({ status: 'COMPLETED', processedCount: 2 }), base({ status: 'PENDING' })])
+    expect(merged?.status).toBe('RUNNING')
+    expect(merged?.processedCount).toBe(3)
+    expect(merged?.totalCount).toBe(4)
+  })
+
+  it('다 끝났으면 실패가 하나라도 있을 때만 FAILED 다', () => {
+    expect(combineBulkOperations([base({ status: 'COMPLETED' }), base({ status: 'COMPLETED' })])?.status).toBe('COMPLETED')
+    expect(combineBulkOperations([base({ status: 'COMPLETED' }), base({ status: 'FAILED', failedCount: 1 })])).toMatchObject({ status: 'FAILED', failedCount: 1 })
+    expect(combineBulkOperations([base({ status: 'PENDING' }), base({ status: 'PENDING' })])?.status).toBe('PENDING')
   })
 })

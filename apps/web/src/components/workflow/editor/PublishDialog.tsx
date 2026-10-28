@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import { workflowEditorLabels } from '@/i18n/workflow-editor-labels'
 import { DEFAULT_WORKFLOW_ADMIN_ERROR_MESSAGE } from '@/hooks/workflow-admin-error'
+import { useIssueTypes } from '@/hooks/use-issue-types'
 import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import type { EditableDraft } from '@/lib/workflow-draft'
 import type { PublishPreview } from '@/api/workflows-draft.types'
@@ -46,12 +47,18 @@ interface MigrationSectionProps {
   readonly draft: EditableDraft
   readonly migration: UseMigrationWizardResult
   readonly pendingIssueCounts: Record<string, number>
+  readonly scopes: PublishPreview['scopes']
 }
 
 /**
  * 이관 마법사 자리. 상태 3종(로딩·에러·본문)은 발행본 조회와 폴링 각각을 따로 본다.
  */
-function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSectionProps): React.JSX.Element {
+function MigrationSection({ draft, migration, pendingIssueCounts, scopes }: MigrationSectionProps): React.JSX.Element {
+  const { data: issueTypes = [] } = useIssueTypes()
+  const operation = migration.operation
+  // 이동이 끝났는데 실패가 섞이면 자동 업데이트를 하지 않는다 — 그 이유를 여기서 말한다(R11C C5).
+  const autoPublishSkipped =
+    operation !== null && (operation.status === 'FAILED' || (operation.status === 'COMPLETED' && operation.failedCount > 0))
   if (migration.published === null) {
     return migration.publishedFailed ? (
       <p role="alert" className="text-destructive text-sm">
@@ -87,6 +94,11 @@ function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSec
           {migration.startError}
         </p>
       ) : null}
+      {autoPublishSkipped ? (
+        <p role="alert" className="text-destructive text-sm">
+          {labels.migration.autoPublishSkipped}
+        </p>
+      ) : null}
       <MigrationWizard
         draft={draft}
         published={migration.published}
@@ -97,6 +109,8 @@ function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSec
         starting={migration.starting}
         operation={migration.operation}
         progressRatio={migration.progressRatio}
+        scopes={scopes}
+        issueTypes={issueTypes}
       />
     </div>
   )
@@ -110,10 +124,10 @@ function MigrationSection({ draft, migration, pendingIssueCounts }: MigrationSec
  * 사용자가 받아야 알게 되므로, 미리보기가 알려 준 사실을 화면이 먼저 반영한다. 이관이 필요하면
  * 이 다이얼로그 **안에서** 마법사 단계로 들어간다(별도 다이얼로그가 아니다 — 즉사 계약 §2).
  *
- * ### ★ 이관 완료가 발행 버튼을 자동으로 되살리지 않는다(G-1)
- * 이관이 `COMPLETED` 이고 `failedCount === 0` 이어야 발행 버튼이 다시 보인다. 이관이 끝나도
- * **사용자가 다시 눌러야** 발행이 나간다 — 자동으로 이어 부르면 일부 실패가 섞였을 때 사용자가
- * 자기가 누르지 않은 조작의 실패(409)를 보게 된다.
+ * ### 이관이 전부 성공하면 자동으로 업데이트한다 (R11C — G-1 을 대체)
+ * 이관이 `COMPLETED` 이고 `failedCount === 0` 이면 `WorkflowEditorPage` 가 발행을 이어 부른다 —
+ * 사용자에게는 「워크플로 업데이트」 한 번이다. 실패가 섞이면 자동으로 부르지 않고 이유를 보인다
+ * (자기가 누르지 않은 조작의 409 를 보지 않게). 성공 뒤 자동 발행이 실패할 때를 위해 버튼은 남긴다.
  */
 function PublishDialog({
   open,
@@ -177,7 +191,7 @@ function PublishDialog({
           ) : null}
 
           {needsMigration ? (
-            <MigrationSection draft={draft} migration={migration} pendingIssueCounts={pending} />
+            <MigrationSection draft={draft} migration={migration} pendingIssueCounts={pending} scopes={preview.scopes} />
           ) : null}
 
           {blockReason !== null ? (
