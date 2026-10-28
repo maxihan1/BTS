@@ -27,6 +27,8 @@ let capturedGridTiles: unknown[] | null = null
 let capturedGridCanEdit: boolean | null = null
 let capturedGridOnLayoutChange: ((tiles: unknown[]) => void) | null = null
 let capturedGridOnDeleteTile: ((id: string) => void) | null = null
+let capturedGridOnConfigure: ((id: string) => void) | null = null
+let capturedGridOnAccentChange: ((id: string, accent: string | undefined) => void) | null = null
 
 // GadgetCatalogModal mock — open 시 "Text Widget 추가" 버튼 하나만 렌더, onAdd 직접 트리거
 vi.mock('@/components/dashboard/GadgetCatalogModal', () => ({
@@ -50,6 +52,20 @@ vi.mock('@/components/dashboard/GadgetCatalogModal', () => ({
       </div>
     )
   },
+  // 구성 모달 mock — 받은 config 를 보여 주고, 「구성 저장」이 고친 config 로 onSave 를 부른다 (JD-19)
+  GadgetReconfigureModal: (props: {
+    gadgetType: string
+    config: Record<string, unknown>
+    onSave: (config: Record<string, unknown>) => void
+    onClose: () => void
+  }) => (
+    <div role="dialog" data-testid="gadget-reconfigure-modal">
+      <span>{`${props.gadgetType}:${JSON.stringify(props.config)}`}</span>
+      <button type="button" onClick={() => props.onSave({ markdown: '고친 내용' })}>
+        구성 저장
+      </button>
+    </div>
+  ),
 }))
 
 // ShareDashboardModal mock — open 시 dashboardId/visibility props를 캡처, onClose로 닫기 트리거 (FR-DB-03 D6/D7 Task 6)
@@ -83,11 +99,15 @@ vi.mock('@/components/dashboard/DashboardGrid', () => ({
     onLayoutChange: (tiles: unknown[]) => void
     onDeleteTile: (id: string) => void
     onEditTitle: (id: string, title: string) => void
+    onConfigure?: (id: string) => void
+    onAccentChange?: (id: string, accent: string | undefined) => void
   }) => {
     capturedGridTiles = props.tiles
     capturedGridCanEdit = props.canEdit
     capturedGridOnLayoutChange = props.onLayoutChange
     capturedGridOnDeleteTile = props.onDeleteTile
+    capturedGridOnConfigure = props.onConfigure ?? null
+    capturedGridOnAccentChange = props.onAccentChange ?? null
     return (
       <div data-testid="dashboard-grid" data-can-edit={String(props.canEdit)}>
         {(props.tiles as Array<{ i: string; title: string }>).map((t) => (
@@ -233,6 +253,8 @@ beforeEach(() => {
   capturedGridCanEdit = null
   capturedGridOnLayoutChange = null
   capturedGridOnDeleteTile = null
+  capturedGridOnConfigure = null
+  capturedGridOnAccentChange = null
   capturedFavTargetType = null
   capturedFavTargetId = null
   capturedShareDashboardId = null
@@ -409,6 +431,63 @@ describe('타일 추가·삭제', () => {
     // onDeleteTile 콜백을 직접 호출
     capturedGridOnDeleteTile?.('tile-1')
     await waitFor(() => expect(capturedGridTiles?.length).toBe(0))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 가젯 구성 · 강조 색 (JD-19)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('가젯 구성 · 강조 색 (Jira 패리티 JD-19)', () => {
+  const DASHBOARD_WITH_GADGET: Dashboard = {
+    ...DASHBOARD_OWNED,
+    layout: JSON.stringify([
+      { i: 'tile-g', x: 0, y: 0, w: 4, h: 3, title: '', gadgetType: 'text_widget', config: { markdown: '원래' } },
+    ]),
+  }
+
+  /** 저장을 눌러 PATCH 로 나간 layout 을 돌려준다 */
+  async function saveAndReadLayout(user: ReturnType<typeof userEvent.setup>) {
+    await waitFor(() => expect(screen.getByRole('button', { name: /저장/i })).not.toBeDisabled())
+    await user.click(screen.getByRole('button', { name: /저장/i }))
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalled())
+    const body = (mockMutateAsync.mock.calls[0]?.[0] as { body: { layout: string } }).body
+    return JSON.parse(body.layout) as Array<Record<string, unknown>>
+  }
+
+  it('★구성 → 그 타일의 config 로 모달이 열리고, 저장하면 config 만 바뀐 채 PATCH 된다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_WITH_GADGET, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(capturedGridOnConfigure).not.toBeNull())
+
+    capturedGridOnConfigure?.('tile-g')
+    expect(
+      await screen.findByText('text_widget:{"markdown":"원래"}'),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '구성 저장' }))
+
+    // 모달이 닫힌다
+    await waitFor(() => expect(screen.queryByTestId('gadget-reconfigure-modal')).not.toBeInTheDocument())
+    const layout = await saveAndReadLayout(user)
+    expect(layout).toEqual([
+      { i: 'tile-g', x: 0, y: 0, w: 4, h: 3, title: '', gadgetType: 'text_widget', config: { markdown: '고친 내용' } },
+    ])
+  })
+
+  it('강조 색을 고르면 accent 가 저장되고, 흰색이면 키가 빠진다', async () => {
+    const user = userEvent.setup()
+    mockUseDashboard.mockReturnValue({ data: DASHBOARD_WITH_GADGET, isLoading: false, isError: false })
+    await renderDetailPage()
+    await waitFor(() => expect(capturedGridOnAccentChange).not.toBeNull())
+
+    capturedGridOnAccentChange?.('tile-g', 'red')
+    await waitFor(() =>
+      expect((capturedGridTiles as Array<{ accent?: string }>)[0]?.accent).toBe('red'),
+    )
+    capturedGridOnAccentChange?.('tile-g', undefined)
+    const layout = await saveAndReadLayout(user)
+    expect(layout[0]).not.toHaveProperty('accent')
   })
 })
 

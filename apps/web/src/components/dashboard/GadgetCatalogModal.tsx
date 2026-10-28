@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { cn } from '@/lib/utils'
 import { fetchGadgetCatalog, type GadgetCatalogEntry } from '@/api/gadget-catalog'
 import { GadgetConfigForm } from './GadgetConfigForm'
+import { dashboardModeLabels } from '@/i18n/dashboard-labels'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -163,6 +164,68 @@ export function GadgetCatalogModal({ open, onAdd, onClose }: GadgetCatalogModalP
             onAdd={handleAdd}
             onBack={handleBack}
           />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** GadgetReconfigureModal 컴포넌트 props */
+export interface GadgetReconfigureModalProps {
+  /** 다시 설정할 타일의 가젯 종류 */
+  gadgetType: string
+  /** 타일의 현재 config — 폼 초기값 */
+  config: Record<string, unknown>
+  /** 검증을 통과한 새 config */
+  onSave: (config: Record<string, unknown>) => void
+  onClose: () => void
+}
+
+/**
+ * 만든 가젯의 설정을 다시 여는 모달 (Jira 가젯 `⋯` → 구성, JD-19).
+ *
+ * 카탈로그 단계 없이 그 가젯의 `GadgetConfigForm` 을 현재 config 로 채워 연다.
+ * 검증 규칙은 추가와 같다 — 폼을 그대로 쓰기 때문이다. 열려 있을 때만 마운트한다.
+ */
+export function GadgetReconfigureModal({
+  gadgetType,
+  config,
+  onSave,
+  onClose,
+}: GadgetReconfigureModalProps): JSX.Element {
+  const { data: entries = [], isLoading } = useQuery({
+    queryKey: ['gadget-catalog'],
+    queryFn: fetchGadgetCatalog,
+    staleTime: 5 * 60_000,
+  })
+  const entry = entries.find((e) => e.type === gadgetType)
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
+      <DialogContent className="max-w-2xl" aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>
+            {`${dashboardModeLabels.configureTitle} — ${entry?.label ?? gadgetType}`}
+          </DialogTitle>
+        </DialogHeader>
+        {entry !== undefined ? (
+          <GadgetConfigForm
+            entry={entry}
+            initialConfig={config}
+            submitLabel={dashboardModeLabels.configureSave}
+            backLabel={dashboardModeLabels.configureCancel}
+            onAdd={onSave}
+            onBack={onClose}
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {isLoading ? '카탈로그를 불러오는 중...' : '이 가젯은 더 이상 설정할 수 없습니다.'}
+          </p>
         )}
       </DialogContent>
     </Dialog>

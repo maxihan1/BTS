@@ -59,6 +59,12 @@ export interface GadgetConfigFormProps {
   onAdd: (config: Record<string, unknown>) => void
   /** 뒤로 가기 콜백 — 카탈로그 선택 단계로 복귀 */
   onBack: () => void
+  /** 이미 만든 가젯의 설정 — 주면 그 값으로 채운 채 연다 (JD-19 구성). 없으면 빈 폼 */
+  initialConfig?: Record<string, unknown>
+  /** 제출 버튼 문구 (기본 「추가」) */
+  submitLabel?: string
+  /** 뒤로 버튼 문구 (기본 「뒤로」) */
+  backLabel?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -274,20 +280,34 @@ function FieldRow({
  * - 추가 시 validateGadgetConfig(entry, config)를 호출해 위반 메시지를 인라인 표시한다.
  * - 부모(GadgetCatalogModal)가 key={entry.type}을 부여해 가젯 종류 변경 시 자동 재마운트된다.
  */
-export function GadgetConfigForm({ entry, onAdd, onBack }: GadgetConfigFormProps): JSX.Element {
+export function GadgetConfigForm({
+  entry,
+  onAdd,
+  onBack,
+  initialConfig,
+  submitLabel = '추가',
+  backLabel = '뒤로',
+}: GadgetConfigFormProps): JSX.Element {
   const baseId = useId()
 
-  // 비ARRAY 필드 값 (초기: 빈 문자열)
+  // 비ARRAY 필드 값 (초기: initialConfig 값 또는 빈 문자열)
   const [strVals, setStrVals] = useState<Record<string, string>>(() =>
-    Object.fromEntries(entry.configFields.map((f) => [f.key, ''])),
+    Object.fromEntries(
+      entry.configFields.map((f) => {
+        const v = initialConfig?.[f.key]
+        return [f.key, v === undefined || v === null ? '' : String(v)]
+      }),
+    ),
   )
 
-  // ARRAY 필드 값 (초기: 1행)
+  // ARRAY 필드 값 (초기: initialConfig 의 행 또는 빈 1행)
   const [arrVals, setArrVals] = useState<Record<string, Array<Record<string, string>>>>(() =>
     Object.fromEntries(
       entry.configFields
         .filter((f) => f.type === 'ARRAY')
         .map((f) => {
+          const saved = initialConfig?.[f.key]
+          if (Array.isArray(saved)) return [f.key, saved as Array<Record<string, string>>]
           const emptyRow: Record<string, string> = Object.fromEntries(
             (f.itemSchema ?? []).map((sf) => [sf.key, '']),
           )
@@ -368,7 +388,7 @@ export function GadgetConfigForm({ entry, onAdd, onBack }: GadgetConfigFormProps
           onClick={onBack}
           className="rounded-md px-4"
         >
-          뒤로
+          {backLabel}
         </Button>
         <Button
           type="button"
@@ -377,7 +397,7 @@ export function GadgetConfigForm({ entry, onAdd, onBack }: GadgetConfigFormProps
           onClick={handleSubmit}
           className="rounded-md px-4 hover:bg-primary/90"
         >
-          추가
+          {submitLabel}
         </Button>
       </div>
     </div>

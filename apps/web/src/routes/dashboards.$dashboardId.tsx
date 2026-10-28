@@ -12,7 +12,7 @@ import { dashboardLabels } from '@/i18n/dashboard-labels'
 import { DashboardGrid } from '@/components/dashboard/DashboardGrid'
 import { DashboardDetailHeader } from '@/components/dashboard/DashboardDetailHeader'
 import { DashboardForm } from '@/components/dashboard/DashboardForm'
-import { GadgetCatalogModal } from '@/components/dashboard/GadgetCatalogModal'
+import { GadgetCatalogModal, GadgetReconfigureModal } from '@/components/dashboard/GadgetCatalogModal'
 import { ShareDashboardModal } from '@/components/dashboard/ShareDashboardModal'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -174,6 +174,8 @@ export function DashboardDetailPage({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [catalogOpen, setCatalogOpen] = useState(false)
+  /** 「구성」으로 설정을 다시 여는 타일 id (JD-19). null = 닫힘 */
+  const [configuringTileId, setConfiguringTileId] = useState<string | null>(null)
   const [shareOpen, setShareOpen] = useState(false)
   /**
    * 편집 모드 — 권한(`editable`)과 다른 축이다 (Jira 패리티 JD-1).
@@ -203,6 +205,7 @@ export function DashboardDetailPage({
   const editable = canEditDashboard(dashboard, currentUserId)
   /** 현재 서버 버전 — OCC 잠금에 사용. closures에서 직접 접근하도록 지역 변수로 캡처 */
   const serverVersion: number = dashboard.version
+  const configuringTile = tiles.find((t) => t.i === configuringTileId)
 
   // ─── 타일 조작 핸들러 ───────────────────────────────────────────────────
 
@@ -246,6 +249,29 @@ export function DashboardDetailPage({
       setDirty(true)
       return [...prev, copy]
     })
+  }
+
+  /**
+   * 가젯 구성 저장 — 그 타일의 config 만 바꾼다 (JD-19). 위치 · 크기 · 색은 그대로다.
+   * 다른 조작과 같이 로컬 tiles 에만 반영하고 헤더 「저장」으로 PATCH 한다.
+   */
+  function handleConfigureSave(id: string, config: Record<string, unknown>): void {
+    setTiles((prev) => prev.map((t) => (t.i === id ? { ...t, config } : t)))
+    setDirty(true)
+    setConfiguringTileId(null)
+  }
+
+  /** 강조 색 변경 (JD-19) — `undefined` 면 키를 지운다(흰색) */
+  function handleAccentChange(id: string, accent: string | undefined): void {
+    setTiles((prev) =>
+      prev.map((t) => {
+        if (t.i !== id) return t
+        const next = { ...t, accent }
+        if (accent === undefined) delete next.accent
+        return next
+      }),
+    )
+    setDirty(true)
   }
 
   /** 타일 삭제 */
@@ -372,6 +398,8 @@ export function DashboardDetailPage({
           onDeleteTile={handleDeleteTile}
           onEditTitle={handleEditTitle}
           onDuplicate={handleDuplicateTile}
+          onConfigure={setConfiguringTileId}
+          onAccentChange={handleAccentChange}
           onAddTile={editable && isEditing ? () => setCatalogOpen(true) : undefined}
         />
       </div>
@@ -403,6 +431,16 @@ export function DashboardDetailPage({
           open={catalogOpen}
           onAdd={handleAddGadgetTile}
           onClose={() => setCatalogOpen(false)}
+        />
+      )}
+
+      {/* 가젯 구성 모달 — 「구성」을 누른 가젯 타일이 있을 때만 마운트 (JD-19) */}
+      {editable && configuringTile?.gadgetType !== undefined && (
+        <GadgetReconfigureModal
+          gadgetType={configuringTile.gadgetType}
+          config={configuringTile.config ?? {}}
+          onSave={(config) => handleConfigureSave(configuringTile.i, config)}
+          onClose={() => setConfiguringTileId(null)}
         />
       )}
 
