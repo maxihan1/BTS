@@ -122,7 +122,7 @@ F18~F25 Tier 3 마감.
 | **R3 행 조작** — 카드 메뉴 · 백로그 행 메뉴 · 행 상태 드롭다운 · 행 밀도 · 보드에서 스프린트 완료 · 보드 텍스트 검색 | JB-B-2 · JCB-17 · JB-L-2 · JV-12 · JB-B-3 · JB-B-4 | FR-UX-13 · FR-UX-14 · FR-BD-02 · FR-BL-01 | web 2~3 | 카드/행 공용 메뉴 하나 · F9 `StatusCell` · 백로그 완료 다이얼로그 | 없음 | ✅ **#583 · #584 · #585** |
 | **R3b 스프린트 헤더** — 상태별 포인트 합 · 예정 스프린트 날짜 | JB-L-3 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `ActiveSprintResponse`(활성만 날짜 보유) | 없음 | ⬜ |
 | **R4 검색** — `/search` 결과를 표로 · 검색창 포커스 패널 | JC-L-1 · JC-N-1 | FR-UX-12 | web 2 | `IssueTable` · `use-recent-issues` · `use-recent-projects` | AQL 응답 스키마 확인 | ✅ **#586 · #587 · #588 · #589** |
-| **R5 알림 팝오버** | JN-1 | FR-UX-03 · FR-NT-01 | web 1 | inbox API · `InboxBell` | 없음 | ⬜ |
+| **R5 알림 팝오버** | JN-1 | FR-UX-03 · FR-NT-01 | web 1 | inbox API · `InboxBell` | 없음 | ✅ **#590** |
 | **R6 가젯 재설정** | JD-19 | FR-DB-02 | web 1 | `GadgetConfigForm` | 저장 API 확인 | ⬜ |
 | **R9 Automation 카탈로그** — 트리거(상태 전환 · 할당 · 필드 변경 · 수동 · 스프린트/버전) · 액션(전환 · 생성 · 연결 · 관찰자 · 이메일) | JAU-5 · JAU-6 | FR-AT-01 · FR-AT-02 | automation N — 트리거 · 액션 하나씩 | pgmq 이벤트 구독 | 스펙 · 이벤트 계약(위험 경로 가능) | ⬜ |
 | **R10 스프린트 완료 판정 = 맨 오른쪽 열** | JCB-5 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `lib/backlog-completion.ts` | **D3 결정 완료** | ⬜ |
