@@ -381,17 +381,33 @@ vi.mock('@/hooks/use-components', () => ({
 // 그 판정은 실제 MSW 를 쓰는 E2E(T8, `issue-create-entry-points.spec.ts`)가 갖는다.
 const STUB_CREATED_KEY = 'ATLAS-42'
 vi.mock('@/components/issue/CreateIssueDialog', () => ({
+  // 진짜 모달과 같은 순서로 부른다 — 닫힘(`onOpenChange(false)`) 다음 `onCreated`.
+  // 「연속 생성」은 닫지 않고 `onCreated` 만 부른다 (JA-C-2).
   CreateIssueDialog: ({
     open,
+    onOpenChange,
     onCreated,
   }: {
     open: boolean
-    onCreated?: (key: string) => void
+    onOpenChange: (open: boolean) => void
+    onCreated?: (key: string, options: { createAnother: boolean }) => void
   }) =>
     open ? (
       <div role="dialog" aria-label="이슈 생성 모달 스텁">
-        <button type="button" onClick={() => onCreated?.(STUB_CREATED_KEY)}>
+        <button
+          type="button"
+          onClick={() => {
+            onOpenChange(false)
+            onCreated?.(STUB_CREATED_KEY, { createAnother: false })
+          }}
+        >
           스텁 생성 완료
+        </button>
+        <button
+          type="button"
+          onClick={() => { onCreated?.(STUB_CREATED_KEY, { createAnother: true }) }}
+        >
+          스텁 연속 생성
         </button>
       </div>
     ) : null,
@@ -1541,6 +1557,26 @@ describe('BacklogBoard — 스프린트 칸에서 만든 이슈의 배정 (F3 FR
         expect.anything(),
       )
     })
+  })
+
+  it('연속 생성이면 모달이 열린 채 같은 스프린트로 매번 배정한다 (JA-C-2)', async () => {
+    const user = userEvent.setup()
+    renderBoard('ATLAS', { canCreateIssue: true })
+
+    await user.click(
+      screen.getByRole('button', {
+        name: backlogLabels.createIssueInSprint('스프린트 1'),
+      }),
+    )
+    await screen.findByRole('dialog')
+    await user.click(screen.getByRole('button', { name: '스텁 연속 생성' }))
+    await user.click(screen.getByRole('button', { name: '스텁 연속 생성' }))
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    await waitFor(() => { expect(mockAssignMutate).toHaveBeenCalledTimes(2) })
+    for (const call of mockAssignMutate.mock.calls) {
+      expect(call[0]).toEqual(expect.objectContaining({ sprintId: PLANNED_SPRINT_ID }))
+    }
   })
 
   it('백로그 칸에서 만들면 배정을 걸지 않는다 (기본 동작이 곧 백로그)', async () => {

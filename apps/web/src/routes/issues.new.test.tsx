@@ -624,4 +624,28 @@ describe('IssueCreateRouteAdapter — 딥링크가 모달을 연다 (FR-11)', ()
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues' }))
   })
+
+  it('연속 생성 중에는 상세로 이동하지 않는다 — 이동하면 다음 건을 받을 모달이 사라진다 (JA-C-2)', async () => {
+    const user = userEvent.setup()
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateRouteAdapter />
+      </QueryClientProvider>,
+    )
+
+    await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle })
+    await waitFor(() => {
+      const sel = screen.getByLabelText(issueCreateStrings.projectKeyLabel) as HTMLSelectElement
+      expect(sel.querySelectorAll('option').length).toBeGreaterThan(1)
+    })
+    await user.click(screen.getByRole('checkbox', { name: issueCreateStrings.createAnotherLabel }))
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '연속 생성 첫 건')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    expect(await screen.findByText(issueCreateStrings.createdCount(1))).toBeInTheDocument()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
 })

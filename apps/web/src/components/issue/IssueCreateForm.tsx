@@ -1,5 +1,5 @@
 // 이슈 생성 폼 — 라우터 비의존 제어 컴포넌트 (FR-UX-09 F2 로 모달·라우트가 공유)
-import type { JSX } from 'react'
+import { useEffect, type JSX } from 'react'
 import { Form } from '@/components/ui/form'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
@@ -52,6 +52,11 @@ interface IssueCreateFormProps {
    * 상단바·딥링크 2경로는 이 값을 넘기지 않으므로 동작이 바뀌지 않는다.
    */
   initialProjectKey?: string
+  /**
+   * 입력 여부 변경 콜백 — 모달이 닫힐 때 버릴지 물을지 정한다 (JA-C-3).
+   * `onPendingChange` 와 같은 이유로 setState 함수를 그대로 넘긴다.
+   */
+  onHasInputChange?: (hasInput: boolean) => void
 }
 
 /**
@@ -76,8 +81,23 @@ export function IssueCreateForm({
   formId,
   onPendingChange,
   initialProjectKey,
+  onHasInputChange,
 }: IssueCreateFormProps = {}): JSX.Element {
   const state = useIssueCreateFormState({ initialSummary, initialProjectKey })
+
+  useEffect(() => {
+    onHasInputChange?.(state.hasInput)
+  }, [state.hasInput, onHasInputChange])
+
+  /**
+   * 성공하면 제목만 비우고 제목에 포커스를 둔다 — 연속 생성(JA-C-2)은 모달이 남아 다음 건을 받는다.
+   * 프로젝트 · 유형 · 나머지 값은 그대로 둔다(Jira 동작). 모달이 닫히는 경우엔 폼이 언마운트되니 무해하다.
+   */
+  function handleSuccess(key: string): void {
+    state.form.resetField('summary', { defaultValue: '' })
+    state.form.setFocus('summary')
+    onSuccess?.(key)
+  }
 
   // 선택된 프로젝트의 CREATE 게이트. 판정식의 근거(미지 ≠ 거부)는 훅 KDoc 에 있다.
   // ★이 import 는 이 파일에 남아 있어야 한다 — 「로딩 프레임 계약」 레지스트리(부채 매핑 15)가
@@ -86,7 +106,7 @@ export function IssueCreateForm({
 
   const submit = useIssueCreateSubmit(state, {
     isCreateExplicitlyDenied,
-    onSuccess,
+    onSuccess: handleSuccess,
     onPendingChange,
   })
 

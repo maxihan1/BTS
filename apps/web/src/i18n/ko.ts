@@ -902,6 +902,17 @@ export const issueCreateStrings = {
   /** 생성 성공 토스트의 보기 액션 */
   createdToastAction: '보기',
 
+  // ── Jira 패리티 R1 — 연속 생성(JA-C-2) · 입력 중 닫기 확인(JA-C-3 · JCB-22) ──────
+  /** 푸터 체크박스 — 켜면 제출 뒤에도 모달이 남는다 */
+  createAnotherLabel: '다른 항목 만들기',
+  /** 연속 생성 중 만든 건수 */
+  createdCount: (count: number): string => `✓ ${count}개의 이슈를 만들었습니다`,
+  /** 확인 다이얼로그 제목 — role="dialog" 의 고유 접근성 이름이 된다 */
+  discardTitle: '변경 사항이 저장되지 않습니다',
+  discardDescription: '지금 닫으면 입력한 내용이 사라집니다.',
+  discardBackButton: '뒤로 가기',
+  discardConfirmButton: '버리기',
+
   // ── FR-UX-09 F3 — 스프린트 배정 부분 성공 ───────────────────────────────
   /**
    * 이슈는 만들어졌지만 스프린트 배정만 실패했을 때의 안내 (ADR 2026-08-03 D-2).

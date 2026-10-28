@@ -41,7 +41,9 @@ export function IssueCreateRouteAdapter(): JSX.Element {
     }
   }
 
-  function handleCreated(key: string): void {
+  function handleCreated(key: string, { createAnother }: { createAnother: boolean }): void {
+    // 연속 생성(JA-C-2) 중이면 모달이 다음 건을 받고 있다 — 이동하면 모달이 사라진다.
+    if (createAnother) return
     void navigate({ to: '/issues/$key', params: { key } })
   }
 
