@@ -171,6 +171,7 @@ class IssueController(
         ApiResponse(responseCode = "400", description = "요청 형식 오류 (projectKey 누락 등)", content = [Content()]),
         ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
         ApiResponse(responseCode = "403", description = "이슈 생성 권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "422", description = "Subtask 유형인데 parentKey 없음", content = [Content()]),
     )
     @SecurityRequirement(name = BEARER_AUTH_SCHEME)
     @PostMapping
@@ -198,6 +199,7 @@ class IssueController(
                 // ADR D-5 — IssueAssigned 는 REST 생성 경로에서만 발행한다.
                 // Import 어댑터는 기본값(false)을 그대로 쓰므로 반입 시 알림이 늘지 않는다.
                 notifyAssignment = true,
+                parentKey = request.parentKey?.let { IssueKey(it) },
             )
         val issue = service.createIssue(actor, appRequest)
         // createIssue 는 Issue 도메인 객체를 반환하므로, type 요약 포함 응답을 위해 findByKey 재조회한다.

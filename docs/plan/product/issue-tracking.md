@@ -61,6 +61,8 @@
 - [x] D6. 프론트 UI — 타입 셀렉터 + 아이콘 + 이슈 타입 변경 backend(PATCH typeId + 활성 검증 + OCC) (PR #39)
 - [x] D7. E2E — 타입 변경 Playwright 시나리오 (PR #42 — S1 버그→스토리 타입/아이콘 갱신 + S2 표준 5종 셀렉터 옵션. MSW PATCH stateful 오버라이드 영속화로 refetch 롤백 방지. 회귀 E2E 12/12, unit 410/410 그린)
 
+> **보강 (2026-10-28, 갭 JA-C-4)**. `POST /api/v1/issues` 가 `parentKey` 를 받고, Subtask(hierarchyLevel=-1) 유형을 부모 없이 만들면 422 `SUBTASK_PARENT_REQUIRED`. Import 는 원본에 부모 정보가 없어 강제하지 않는다. 복제 · 유형 변경 · 부모 해제로 생기는 고아 Subtask 는 여전히 막지 않는다.
+
 #### §2.1.3 FR-IS-03 — 담당자 (Reporter 1 / Assignee 1 / Watchers N)
 
 **우선순위**. 필수 | **선행**. §2.1.1, §4.3.1 (Watcher) | **Plan slug**. `issue/assignees`

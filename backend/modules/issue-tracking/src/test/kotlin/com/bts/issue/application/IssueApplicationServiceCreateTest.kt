@@ -9,6 +9,7 @@ import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueProjectNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.domain.SubtaskParentRequiredException
 import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
@@ -263,6 +264,90 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 shouldThrow<com.bts.issue.type.domain.IssueTypeNotFoundException> {
                     sut.createIssue(actor, requestWithType)
                 }
+            }
+        }
+
+        // JA-C-4 — 부모 없는 Subtask 가 생성되던 결함(실서비스 QAWEB-156). 부모는 생성 요청에서 함께 받는다.
+        context("Subtask 유형으로 만들 때") {
+            val subtaskTypeId = IssueTypeId(4L)
+            val parentKey = IssueKey.of(projectKey, 7L)
+            val parentId = UUID.fromString("00000000-0000-0000-0000-0000000000a7")
+
+            fun subtaskRequest(
+                parent: IssueKey?,
+                requireParent: Boolean = true,
+            ) = CreateIssueRequest(
+                projectKey = projectKey,
+                summary = "하위 작업",
+                reporterId = actor,
+                typeId = subtaskTypeId,
+                parentKey = parent,
+                requireSubtaskParent = requireParent,
+            )
+
+            beforeEach {
+                every { permissionResolver.hasPermission(actor.value, any(), any()) } returns true
+                every { repo.incrementKeySequence(projectKey) } returns 8L
+                every { repo.findProjectIdByKey(projectKey) } returns UUID.randomUUID()
+                every { repo.insert(any()) } answers { firstArg() }
+                every { repo.insertComponents(any(), any()) } returns Unit
+                every { repo.updateParent(any(), any()) } returns Unit
+                every { eventPublisher.publish(any()) } returns Unit
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
+                every { issueTypeRepository.findById(subtaskTypeId) } returns
+                    taskIssueType.copy(id = subtaskTypeId, key = IssueTypeKey("subtask"), hierarchyLevel = -1)
+            }
+
+            it("부모가 없으면 SubtaskParentRequiredException 이고 저장하지 않는다") {
+                shouldThrow<SubtaskParentRequiredException> {
+                    sut.createIssue(actor, subtaskRequest(parent = null))
+                }
+                verify(exactly = 0) { repo.insert(any()) }
+            }
+
+            it("부모를 주면 만든 이슈의 parent_id 를 그 부모로 둔다") {
+                every { repo.findByKey(parentKey) } returns
+                    com.bts.issue.domain.Issue.create(
+                        id = com.bts.issue.domain.IssueId(parentId),
+                        key = parentKey,
+                        projectId = UUID.randomUUID(),
+                        typeId = taskTypeId,
+                        summary = "부모",
+                        reporterId = actor,
+                        currentStateKey = "open",
+                    )
+
+                val created = sut.createIssue(actor, subtaskRequest(parent = parentKey))
+
+                verify { repo.updateParent(created.id.value, parentId) }
+            }
+
+            it("부모 이슈를 수정할 권한이 없으면 IssueAccessDeniedException") {
+                val parentScope = IssueScope.Issue(parentKey.value)
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, parentScope)
+                } returns false
+
+                shouldThrow<IssueAccessDeniedException> {
+                    sut.createIssue(actor, subtaskRequest(parent = parentKey))
+                }
+            }
+
+            it("부모 이슈가 없으면 IssueNotFoundException") {
+                every { repo.findByKey(parentKey) } returns null
+
+                shouldThrow<com.bts.issue.domain.IssueNotFoundException> {
+                    sut.createIssue(actor, subtaskRequest(parent = parentKey))
+                }
+            }
+
+            it("requireSubtaskParent=false(반입) 면 부모 없이도 만든다") {
+                sut.createIssue(actor, subtaskRequest(parent = null, requireParent = false))
+
+                verify(exactly = 1) { repo.insert(any()) }
+                verify(exactly = 0) { repo.updateParent(any(), any()) }
             }
         }
 
