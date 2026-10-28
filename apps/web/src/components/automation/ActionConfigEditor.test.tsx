@@ -8,6 +8,8 @@ import { createElement } from 'react'
 import type { JSX, ReactNode } from 'react'
 import { server } from '@/test/server'
 import { projectMemberHandlers } from '@/mocks/project-member-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { simpleFixture } from '@/mocks/workflow-fixtures'
 import type { Version } from '@/api/versions.types'
 import { ActionConfigEditor } from './ActionConfigEditor'
 import type { ActionFormState } from './ActionConfigEditor'
@@ -66,7 +68,7 @@ const setFieldDefault: ActionFormState = { type: 'SET_FIELD', config: { field: '
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('ActionConfigEditor — 타입 전환', () => {
-  it('액션 유형 select에 5종 옵션을 렌더한다', () => {
+  it('액션 유형 select에 9종 옵션을 렌더한다', () => {
     render(<ActionConfigEditor projectKey={PROJECT_KEY} value={setFieldDefault} onChange={vi.fn()} />)
 
     expect(screen.getByRole('option', { name: '필드 값 설정' })).toBeInTheDocument()
@@ -74,6 +76,9 @@ describe('ActionConfigEditor — 타입 전환', () => {
     expect(screen.getByRole('option', { name: '댓글 추가' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '수정 예정 버전 설정' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '웹훅 호출' })).toBeInTheDocument()
+    for (const name of ['이슈 전환', '이슈 생성', '이슈 연결', '관찰자 추가']) {
+      expect(screen.getByRole('option', { name })).toBeInTheDocument()
+    }
   })
 
   it('유형을 ASSIGN으로 바꾸면 onChange가 기본 ASSIGN config로 호출된다', async () => {
@@ -577,5 +582,109 @@ describe('validateActions — S8 저장 거부', () => {
     const actions: ActionFormState[] = [{ type: 'SET_FIX_VERSIONS', config: { versionIds: [] } }]
 
     expect(validateActions(actions)).toEqual([{ index: 0, message: expect.any(String) as unknown as string }])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R9 단계 C — TRANSITION · CREATE_ISSUE · LINK_ISSUE · ADD_WATCHER
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('ActionConfigEditor — R9 단계 C 액션', () => {
+  beforeEach(() => {
+    server.use(
+      ...issueTypeHandlers,
+      http.get('/api/v1/projects/:projectKey/workflows', () => HttpResponse.json({ data: [simpleFixture] })),
+    )
+  })
+
+  it('TRANSITION 은 프로젝트 워크플로 상태를 select 로 보여 주고 고르면 toState 를 방출한다', async () => {
+    const onChange = vi.fn()
+    const value: ActionFormState = { type: 'TRANSITION', config: { toState: '' } }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={onChange} />)
+    const user = userEvent.setup()
+
+    await screen.findByRole('option', { name: 'Done' })
+    await user.selectOptions(screen.getByLabelText('대상 상태'), 'done')
+
+    expect(onChange).toHaveBeenCalledWith({ type: 'TRANSITION', config: { toState: 'done' } })
+  })
+
+  it('CREATE_ISSUE 에서 하위 작업 유형을 고르면 「하위 작업으로 만들기」도 켠다', async () => {
+    const onChange = vi.fn()
+    const value: ActionFormState = {
+      type: 'CREATE_ISSUE',
+      config: { summary: '후속', issueTypeKey: 'task', asSubtask: false },
+    }
+    renderWithClient(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={onChange} />)
+    const user = userEvent.setup()
+
+    await screen.findByRole('option', { name: '하위 작업' })
+    await user.selectOptions(screen.getByLabelText('이슈 유형'), 'subtask')
+
+    expect(onChange).toHaveBeenCalledWith({
+      type: 'CREATE_ISSUE',
+      config: { summary: '후속', issueTypeKey: 'subtask', asSubtask: true },
+    })
+  })
+
+  it('LINK_ISSUE 는 연결 유형과 대상 키를 편집한다', async () => {
+    const onChange = vi.fn()
+    const value: ActionFormState = { type: 'LINK_ISSUE', config: { linkTypeCode: 'relates', targetIssueKey: '' } }
+    render(<ActionConfigEditor projectKey={PROJECT_KEY} value={value} onChange={onChange} />)
+    const user = userEvent.setup()
+
+    await user.selectOptions(screen.getByLabelText('연결 유형'), 'blocks')
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'LINK_ISSUE', config: { linkTypeCode: 'blocks', targetIssueKey: '' } })
+
+    fireEvent.change(screen.getByLabelText('대상 이슈 키'), { target: { value: 'ATLAS-2' } })
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'LINK_ISSUE', config: { linkTypeCode: 'relates', targetIssueKey: 'ATLAS-2' } })
+  })
+
+  it('ADD_WATCHER 는 「지정 사용자」를 골라야 멤버 select 가 뜨고, 멤버를 고르면 userId 를 방출한다', async () => {
+    const onChange = vi.fn()
+    const byAssignee: ActionFormState = { type: 'ADD_WATCHER', config: { userId: null, fromField: 'assignee' } }
+    const { rerender } = renderWithClient(
+      <ActionConfigEditor projectKey={PROJECT_KEY} value={byAssignee} onChange={onChange} />,
+    )
+    const user = userEvent.setup()
+    expect(screen.queryByLabelText('사용자')).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('관찰자로 추가할 사람'), 'user')
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'ADD_WATCHER', config: { userId: null, fromField: null } })
+
+    rerender(
+      <ActionConfigEditor
+        projectKey={PROJECT_KEY}
+        value={{ type: 'ADD_WATCHER', config: { userId: null, fromField: null } }}
+        onChange={onChange}
+      />,
+    )
+    const aliceOption = await screen.findByRole('option', { name: '앨리스' })
+    await user.selectOptions(screen.getByLabelText('사용자'), aliceOption)
+    expect(onChange).toHaveBeenLastCalledWith({ type: 'ADD_WATCHER', config: { userId: ALICE_ID, fromField: null } })
+  })
+})
+
+describe('validateActions — R9 단계 C 필수 입력', () => {
+  it('전환 상태 · 요약 · 대상 키 · 지정 사용자가 비면 그 행을 짚어 거부한다', () => {
+    const errors = validateActions([
+      { type: 'TRANSITION', config: { toState: '' } },
+      { type: 'CREATE_ISSUE', config: { summary: '  ', issueTypeKey: 'task', asSubtask: false } },
+      { type: 'LINK_ISSUE', config: { linkTypeCode: 'blocks', targetIssueKey: '' } },
+      { type: 'ADD_WATCHER', config: { userId: null, fromField: null } },
+    ])
+
+    expect(errors.map((e) => e.index)).toEqual([0, 1, 2, 3])
+  })
+
+  it('채워져 있으면 거부하지 않는다', () => {
+    const errors = validateActions([
+      { type: 'TRANSITION', config: { toState: 'done' } },
+      { type: 'CREATE_ISSUE', config: { summary: '후속', issueTypeKey: 'task', asSubtask: false } },
+      { type: 'LINK_ISSUE', config: { linkTypeCode: 'blocks', targetIssueKey: 'ATLAS-2' } },
+      { type: 'ADD_WATCHER', config: { userId: null, fromField: 'reporter' } },
+    ])
+
+    expect(errors).toEqual([])
   })
 })

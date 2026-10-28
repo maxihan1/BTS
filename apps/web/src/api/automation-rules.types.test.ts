@@ -275,15 +275,22 @@ describe('triggerTypeSchema', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// actionTypeSchema — 자동화 액션 타입 5종 (FR-AT-02, SET_FIX_VERSIONS는 FR-AT-07 PR-B)
+// actionTypeSchema — 자동화 액션 타입 9종 (FR-AT-02, SET_FIX_VERSIONS는 FR-AT-07 PR-B, 뒤 4종은 R9 단계 C)
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('actionTypeSchema', () => {
-  it('5종 액션 타입 모두 파싱 성공한다', () => {
-    const validTypes = ['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK', 'SET_FIX_VERSIONS']
-    for (const type of validTypes) {
-      expect(() => actionTypeSchema.parse(type)).not.toThrow()
-    }
+  it('backend ActionType 9종과 정확히 같다', () => {
+    expect(actionTypeSchema.options).toEqual([
+      'SET_FIELD',
+      'ASSIGN',
+      'ADD_COMMENT',
+      'CALL_WEBHOOK',
+      'SET_FIX_VERSIONS',
+      'TRANSITION',
+      'CREATE_ISSUE',
+      'LINK_ISSUE',
+      'ADD_WATCHER',
+    ])
   })
 
   it('정의되지 않은 값은 ZodError를 throw한다', () => {
@@ -855,5 +862,36 @@ describe('automationImportResponseSchema', () => {
       conflicts: [{ type: 'CYCLE', severity: 'WARNING', ruleIds: ['550e8400-e29b-41d4-a716-446655440000'], detail: '순환' }],
     })
     expect(parsed.conflicts?.[0]?.type).toBe('CYCLE')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// parseActionConfig / serializeActionConfig — R9 단계 C 액션 4종 (와이어 = backend Action.fromJson 필드명)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseActionConfig / serializeActionConfig — R9 단계 C', () => {
+  it('TRANSITION 은 toState 를 왕복한다', () => {
+    const form = parseActionConfig('TRANSITION', { toState: 'done' })
+    expect(JSON.parse(serializeActionConfig('TRANSITION', form))).toEqual({ toState: 'done' })
+  })
+
+  it('CREATE_ISSUE 는 빈 config 에서 task · 하위 작업 아님이 기본이고 세 필드를 왕복한다', () => {
+    expect(parseActionConfig('CREATE_ISSUE', {})).toEqual({ summary: '', issueTypeKey: 'task', asSubtask: false })
+    const wire = { summary: '후속 {{ issue.key }}', issueTypeKey: 'subtask', asSubtask: true }
+    expect(JSON.parse(serializeActionConfig('CREATE_ISSUE', parseActionConfig('CREATE_ISSUE', wire)))).toEqual(wire)
+  })
+
+  it('LINK_ISSUE 는 linkTypeCode · targetIssueKey 를 왕복한다', () => {
+    const wire = { linkTypeCode: 'blocks', targetIssueKey: 'ATLAS-2' }
+    expect(JSON.parse(serializeActionConfig('LINK_ISSUE', parseActionConfig('LINK_ISSUE', wire)))).toEqual(wire)
+  })
+
+  it('ADD_WATCHER 는 빈 config 면 담당자 기준이고, 사람 필드 · 지정 사용자 중 하나만 보낸다', () => {
+    expect(parseActionConfig('ADD_WATCHER', {})).toEqual({ userId: null, fromField: 'assignee' })
+    const byField = parseActionConfig('ADD_WATCHER', { userId: null, fromField: 'reporter' })
+    expect(JSON.parse(serializeActionConfig('ADD_WATCHER', byField))).toEqual({ fromField: 'reporter' })
+    const userId = '00000000-0000-4000-8000-000000000001'
+    const byUser = parseActionConfig('ADD_WATCHER', { userId, fromField: null })
+    expect(JSON.parse(serializeActionConfig('ADD_WATCHER', byUser))).toEqual({ userId })
   })
 })

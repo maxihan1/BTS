@@ -238,10 +238,35 @@ export interface ActionValidationError {
  * `{"versionIds":[]}`를 그대로 내보내 기존 Fix Version을 전부 해제해버린다(FR-B1 재현) — 이
  * 조합만 저장을 거부한다. '전체 해제' 모드는 빈 목록이 곧 의도이므로 거부하지 않는다.
  */
+/**
+ * R9 단계 C 액션의 필수 입력이 비었으면 안내 문구, 아니면 null. 서버도 같은 조건을 400 으로 거부하지만
+ * 저장 전에 어느 행인지 짚어 준다.
+ */
+function missingRequiredInput(action: ActionFormState): string | null {
+  const { config } = action
+  switch (action.type) {
+    case 'TRANSITION':
+      return (config.toState ?? '') === '' ? '전환할 상태를 선택해주세요.' : null
+    case 'CREATE_ISSUE':
+      return (config.summary ?? '').trim() === '' ? '만들 이슈의 요약을 입력해주세요.' : null
+    case 'LINK_ISSUE':
+      return (config.targetIssueKey ?? '').trim() === '' ? '연결할 이슈 키를 입력해주세요.' : null
+    case 'ADD_WATCHER':
+      return config.fromField == null && config.userId == null ? '관찰자로 추가할 사용자를 선택해주세요.' : null
+    default:
+      return null
+  }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components -- S8 단위 검증용 순수 함수 공개 (ShareFilterDialog.tsx mergeShares 선례 동형, 파일 분리는 files 범위 밖)
 export function validateActions(actions: ActionFormState[]): ActionValidationError[] {
   const errors: ActionValidationError[] = []
   actions.forEach((action, index) => {
+    const missing = missingRequiredInput(action)
+    if (missing !== null) {
+      errors.push({ index, message: `${index + 1}번째 액션 — ${missing}` })
+      return
+    }
     if (action.type !== 'SET_FIX_VERSIONS') return
     const mode = action.config.fixVersionsMode ?? 'replace'
     const versionIds = action.config.versionIds ?? []
