@@ -193,3 +193,77 @@ describe('GadgetConfigForm — 보드 선택기의 프로젝트 종속 (엣지 E
     expect((boardSelect as HTMLSelectElement).value).toBe('')
   })
 })
+
+describe('GadgetConfigForm — 기존 설정으로 다시 열기 (JD-19)', () => {
+  const FIELDS = [
+    { key: 'title', type: 'STRING', required: false },
+    { key: 'limit', type: 'INT', required: false },
+    { key: 'projectKey', type: 'STRING', required: false },
+  ]
+
+  it('★initialConfig 의 값이 입력칸에 채워진 채로 열린다 — 숫자와 선택기 포함', () => {
+    render(
+      <GadgetConfigForm
+        entry={entryWith(FIELDS)}
+        initialConfig={{ title: '내 가젯', limit: 5, projectKey: 'OPS' }}
+        onAdd={vi.fn()}
+        onBack={vi.fn()}
+      />,
+      { wrapper },
+    )
+
+    expect(screen.getByRole('textbox', { name: /title/i })).toHaveValue('내 가젯')
+    expect(screen.getByRole('spinbutton', { name: /limit/i })).toHaveValue(5)
+    expect(screen.getByRole('combobox', { name: /project key/i })).toHaveValue('OPS')
+  })
+
+  it('고친 값으로 제출하고 버튼 문구를 바꿀 수 있다', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn()
+    const onBack = vi.fn()
+    render(
+      <GadgetConfigForm
+        entry={entryWith(FIELDS)}
+        initialConfig={{ title: '내 가젯', limit: 5 }}
+        submitLabel="저장"
+        backLabel="취소"
+        onAdd={onAdd}
+        onBack={onBack}
+      />,
+      { wrapper },
+    )
+
+    const title = screen.getByRole('textbox', { name: /title/i })
+    await user.clear(title)
+    await user.type(title, '새 이름')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(onAdd).toHaveBeenCalledWith({ title: '새 이름', limit: 5 })
+
+    await user.click(screen.getByRole('button', { name: '취소' }))
+    expect(onBack).toHaveBeenCalled()
+  })
+
+  it('ARRAY 필드는 저장된 행 그대로 열린다', () => {
+    render(
+      <GadgetConfigForm
+        entry={entryWith([
+          {
+            key: 'links',
+            type: 'ARRAY',
+            required: false,
+            itemSchema: [{ key: 'label', type: 'STRING', required: true }],
+          } as unknown as { key: string; type: string; required: boolean },
+        ])}
+        initialConfig={{ links: [{ label: '하나' }, { label: '둘' }] }}
+        onAdd={vi.fn()}
+        onBack={vi.fn()}
+      />,
+      { wrapper },
+    )
+
+    expect(screen.getAllByPlaceholderText('label').map((el) => (el as HTMLInputElement).value)).toEqual([
+      '하나',
+      '둘',
+    ])
+  })
+})

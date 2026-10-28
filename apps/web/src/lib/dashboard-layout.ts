@@ -63,6 +63,11 @@ export interface DashboardTile {
    * 저장 전 클라측 검증은 validateGadgetConfig(Task 1)가 담당한다.
    */
   config?: Record<string, unknown>
+  /**
+   * 타일 위 강조 띠 색 키 — `dashboardModeLabels.accentColors` 의 키 (JD-19).
+   * 없거나 모르는 값이면 띠를 그리지 않는다(흰색). 서버는 layout 을 통째 JSON 으로 저장한다.
+   */
+  accent?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

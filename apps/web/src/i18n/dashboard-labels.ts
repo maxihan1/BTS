@@ -195,6 +195,24 @@ export const dashboardModeLabels = {
   /** 설정을 그대로 복사해 타일 하나를 더 만든다 */
   duplicate: '복제',
   delete: '삭제',
+  /** 만든 가젯의 설정 폼을 다시 연다 (JD-19) */
+  configure: '구성',
+  /** 구성 모달 제목 접두 — 뒤에 가젯 라벨이 붙는다 */
+  configureTitle: '가젯 구성',
+  configureSave: '저장',
+  configureCancel: '취소',
+  /** 타일 위 띠 색 하위 메뉴 (JD-19) — 순서는 Jira 의 8색 radio 와 같다. `none` 이 흰색(띠 없음)이다 */
+  accent: '강조 색상',
+  accentColors: {
+    blue: '파랑',
+    red: '빨강',
+    yellow: '노랑',
+    green: '녹색',
+    teal: '청록',
+    purple: '보라',
+    gray: '회색',
+    none: '흰색',
+  },
 } as const
 
 /**

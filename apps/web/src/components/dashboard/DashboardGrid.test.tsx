@@ -194,6 +194,15 @@ describe('DashboardGrid', () => {
     expect((firstTile as DashboardTile | undefined)?.y).toBe(1)
   })
 
+  it('★드래그 뒤에도 강조 색이 남는다 (JD-19)', async () => {
+    const onLayoutChange = vi.fn<(tiles: DashboardTile[]) => void>()
+    await renderGrid({ tiles: [{ ...TILE_A, accent: 'red' }], canEdit: true, onLayoutChange })
+
+    capturedGridLayoutProps?.onLayoutChange?.([{ i: 'tile-a', x: 2, y: 1, w: 6, h: 4 }])
+
+    expect(onLayoutChange.mock.calls[0]?.[0][0]?.accent).toBe('red')
+  })
+
   /**
    * G-8. canEdit=true이면 타일에 삭제 버튼이 렌더된다.
    */

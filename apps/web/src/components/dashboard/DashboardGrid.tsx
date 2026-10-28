@@ -54,6 +54,7 @@ function mergeLayoutToTiles(
       // 가젯 필드 보존 — drag/resize 후에도 gadgetType/config 유실 방지 (FR-DB-02 Task 7)
       ...(existing?.gadgetType !== undefined && { gadgetType: existing.gadgetType }),
       ...(existing?.config !== undefined && { config: existing.config }),
+      ...(existing?.accent !== undefined && { accent: existing.accent }),
     }
   })
 }
@@ -77,6 +78,10 @@ export interface DashboardGridProps {
   isEditing: boolean
   /** 타일 복제 요청 (JD-3) */
   onDuplicate: (id: string) => void
+  /** 가젯 설정 다시 열기 요청 (JD-19) — 타일로 그대로 넘긴다 */
+  onConfigure?: (id: string) => void
+  /** 타일 강조 색 변경 (JD-19) — 타일로 그대로 넘긴다 */
+  onAccentChange?: (id: string, accent: string | undefined) => void
   /** 레이아웃 변경 콜백 (드래그/리사이즈 완료 시) */
   onLayoutChange: (tiles: DashboardTileData[]) => void
   /** 타일 삭제 요청 콜백 */
@@ -119,6 +124,8 @@ export function DashboardGrid({
   canEdit,
   isEditing,
   onDuplicate,
+  onConfigure,
+  onAccentChange,
   onLayoutChange,
   onDeleteTile,
   onEditTitle,
@@ -184,6 +191,8 @@ export function DashboardGrid({
               canEdit={canEdit}
               isEditing={isEditing}
               onDuplicate={onDuplicate}
+              onConfigure={onConfigure}
+              onAccentChange={onAccentChange}
               onDelete={onDeleteTile}
               onEditTitle={onEditTitle}
               publicMode={publicMode}

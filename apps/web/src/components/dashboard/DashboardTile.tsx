@@ -1,11 +1,16 @@
 // 대시보드 그리드 단일 타일 컴포넌트 — 인라인 편집·삭제·접근성·가젯 통합 (FR-DB-01 Task 8 / FR-DB-02 Task 7)
 import type { JSX, KeyboardEvent } from 'react'
 import { useState, useRef, useEffect } from 'react'
-import { Copy, LayoutDashboard, MoreHorizontal, Trash2 } from 'lucide-react'
+import { Copy, LayoutDashboard, MoreHorizontal, Palette, Settings2, Trash2 } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { dashboardModeLabels } from '@/i18n/dashboard-labels'
@@ -32,6 +37,10 @@ export interface DashboardTileProps {
   isEditing: boolean
   /** 타일 복제 요청 — 설정을 그대로 복사한다 (JD-3) */
   onDuplicate: (id: string) => void
+  /** 가젯 설정 폼 다시 열기 요청 (JD-19). 없으면 「구성」 항목을 숨긴다. legacy 타일엔 늘 없다 */
+  onConfigure?: (id: string) => void
+  /** 강조 색 변경 (JD-19). `undefined` = 흰색(띠 없음). 없으면 「강조 색상」 항목을 숨긴다 */
+  onAccentChange?: (id: string, accent: string | undefined) => void
   /** 편집 권한 — true면 인라인 편집·삭제 활성 */
   canEdit: boolean
   /** 타일 삭제 요청 콜백 */
@@ -44,6 +53,27 @@ export interface DashboardTileProps {
    * 기본 false — 기존 인증 모드 동작 불변 (FR-DB-01 default 보호 패턴, FR-DB-03 D6/D7 Task-8).
    */
   publicMode?: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 강조 색 (JD-19)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 흰색 — 띠 없음. 저장할 때는 `accent` 키를 지운다 */
+const ACCENT_NONE = 'none'
+
+/**
+ * 강조 색 키 → 타일 위 띠 클래스. 키 순서가 메뉴 순서다(Jira 8색 radio 와 같다).
+ * 테마 토큰이 있는 색은 토큰을 쓴다(다크 자동). 노랑 · 청록은 토큰이 없어 팔레트 값이다.
+ */
+const ACCENT_CLASS: Record<string, string> = {
+  blue: 'border-t-info',
+  red: 'border-t-danger',
+  yellow: 'border-t-yellow-400',
+  green: 'border-t-success',
+  teal: 'border-t-teal-500',
+  purple: 'border-t-discovery',
+  gray: 'border-t-neutral-bold',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +96,8 @@ export function DashboardTile({
   canEdit,
   isEditing,
   onDuplicate,
+  onConfigure,
+  onAccentChange,
   onDelete,
   onEditTitle,
   publicMode = false,
@@ -128,10 +160,15 @@ export function DashboardTile({
   /** 삭제 버튼 aria-label — 가젯은 한국어 라벨, legacy는 title 사용 */
   const deleteAriaLabel = `${gadgetHeaderLabel ?? tile.title ?? ''} 삭제`
 
+  /** 모르는 키는 띠 없음으로 떨어진다 — layout 은 사용자 JSON 이라 아무 값이나 올 수 있다 */
+  const accentClass = tile.accent !== undefined ? ACCENT_CLASS[tile.accent] : undefined
+
   return (
     <div
+      data-accent={accentClass !== undefined ? tile.accent : undefined}
       className={[
         'h-full rounded-lg border shadow-sm bg-card flex flex-col',
+        accentClass !== undefined ? `border-t-4 ${accentClass}` : '',
         effectiveCanEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
       ].join(' ')}
     >
@@ -203,6 +240,39 @@ export function DashboardTile({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {/* Jira 순서 — 강조 색상 · 구성 · 복제 · 삭제 (JD-19) */}
+              {onAccentChange !== undefined && (
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>
+                    <Palette className="h-4 w-4" aria-hidden="true" />
+                    {dashboardModeLabels.accent}
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuRadioGroup
+                      value={accentClass !== undefined ? tile.accent : ACCENT_NONE}
+                      onValueChange={(next) => {
+                        onAccentChange(tile.i, next === ACCENT_NONE ? undefined : next)
+                      }}
+                    >
+                      {Object.entries(dashboardModeLabels.accentColors).map(([key, label]) => (
+                        <DropdownMenuRadioItem key={key} value={key}>
+                          {label}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              )}
+              {tile.gadgetType !== undefined && onConfigure !== undefined && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onConfigure(tile.i)
+                  }}
+                >
+                  <Settings2 className="h-4 w-4" aria-hidden="true" />
+                  {dashboardModeLabels.configure}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onSelect={() => {
                   onDuplicate(tile.i)

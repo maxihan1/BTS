@@ -245,3 +245,62 @@ describe('GadgetCatalogModal', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+describe('GadgetReconfigureModal — 만든 가젯 다시 설정 (JD-19)', () => {
+  beforeEach(() => {
+    server.use(
+      http.get('/api/v1/dashboards/gadget-catalog', () =>
+        HttpResponse.json({ data: { gadgets: GADGET_CATALOG_FIXTURE } }),
+      ),
+    )
+  })
+
+  async function renderReconfigure() {
+    const { GadgetReconfigureModal } = await import('@/components/dashboard/GadgetCatalogModal')
+    const onSave = vi.fn()
+    const onClose = vi.fn()
+    render(
+      <QueryClientProvider client={makeClient()}>
+        <GadgetReconfigureModal
+          gadgetType="text_widget"
+          config={{ markdown: '## 기존 내용' }}
+          onSave={onSave}
+          onClose={onClose}
+        />
+      </QueryClientProvider>,
+    )
+    return { onSave, onClose }
+  }
+
+  it('★카탈로그를 거치지 않고 그 가젯의 폼이 기존 값으로 열린다', async () => {
+    await renderReconfigure()
+    expect(await screen.findByRole('dialog', { name: '가젯 구성 — Text Widget' })).toBeInTheDocument()
+    expect(await screen.findByLabelText(/markdown/i)).toHaveValue('## 기존 내용')
+  })
+
+  it('고쳐서 저장하면 새 config 로 onSave 가 온다', async () => {
+    const user = userEvent.setup()
+    const { onSave } = await renderReconfigure()
+    const markdown = await screen.findByLabelText(/markdown/i)
+    await user.clear(markdown)
+    await user.type(markdown, '새 내용')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(onSave).toHaveBeenCalledWith({ markdown: '새 내용' })
+  })
+
+  it('검증에 걸리면 저장하지 않는다 — 추가와 같은 규칙', async () => {
+    const user = userEvent.setup()
+    const { onSave } = await renderReconfigure()
+    await user.clear(await screen.findByLabelText(/markdown/i))
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('취소는 닫기다', async () => {
+    const user = userEvent.setup()
+    const { onClose } = await renderReconfigure()
+    await user.click(await screen.findByRole('button', { name: '취소' }))
+    expect(onClose).toHaveBeenCalled()
+  })
+})

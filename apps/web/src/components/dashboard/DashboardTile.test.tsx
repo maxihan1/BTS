@@ -67,6 +67,8 @@ async function renderTile(opts: {
   onDelete?: (id: string) => void
   onEditTitle?: (id: string, title: string) => void
   onDuplicate?: (id: string) => void
+  onConfigure?: (id: string) => void
+  onAccentChange?: (id: string, accent: string | undefined) => void
   publicMode?: boolean
 }) {
   const { DashboardTile } = await import('@/components/dashboard/DashboardTile')
@@ -77,6 +79,8 @@ async function renderTile(opts: {
     onDelete = vi.fn(),
     onEditTitle = vi.fn(),
     onDuplicate = vi.fn(),
+    onConfigure = vi.fn(),
+    onAccentChange = vi.fn(),
     publicMode,
   } = opts
   return render(
@@ -87,6 +91,8 @@ async function renderTile(opts: {
       onDelete={onDelete}
       onEditTitle={onEditTitle}
       onDuplicate={onDuplicate}
+      onConfigure={onConfigure}
+      onAccentChange={onAccentChange}
       publicMode={publicMode}
     />,
   )
@@ -247,6 +253,66 @@ describe('DashboardTile — ⋯ 메뉴 (Jira 패리티 JD-3)', () => {
     await user.click(screen.getByRole('menuitem', { name: /삭제/i }))
 
     expect(onDelete).toHaveBeenCalledWith(GADGET_TILE.i)
+  })
+})
+
+/** 하위 메뉴 항목을 키보드로 고른다 — jsdom 에서 포인터로 고르면 하위 메뉴가 닫힌다 */
+async function pickInSub(user: ReturnType<typeof userEvent.setup>, sub: string, item: string) {
+  screen.getByRole('menuitem', { name: sub }).focus()
+  await user.keyboard('{ArrowRight}')
+  for (let i = 0; i < 10 && document.activeElement?.textContent !== item; i++) {
+    await user.keyboard('{ArrowDown}')
+  }
+  expect(document.activeElement).toHaveTextContent(item)
+  await user.keyboard('{Enter}')
+}
+
+describe('DashboardTile — ⋯ 구성 · 강조 색상 (Jira 패리티 JD-19)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('★가젯 타일 메뉴의 구성을 누르면 그 타일 id 로 콜백이 온다', async () => {
+    const user = userEvent.setup()
+    const onConfigure = vi.fn()
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true, onConfigure })
+    await openTileMenu(user)
+    await user.click(screen.getByRole('menuitem', { name: dashboardModeLabels.configure }))
+
+    expect(onConfigure).toHaveBeenCalledWith(GADGET_TILE.i)
+  })
+
+  it('legacy 타일에는 구성이 없다 — 다시 열 설정 폼이 없다', async () => {
+    const user = userEvent.setup()
+    await renderTile({ tile: LEGACY_TILE, canEdit: true, isEditing: true })
+    await openTileMenu(user)
+
+    expect(
+      screen.queryByRole('menuitem', { name: dashboardModeLabels.configure }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('강조 색상 ▸ 빨강을 고르면 red 로, 흰색을 고르면 띠 없음으로 콜백이 온다', async () => {
+    const user = userEvent.setup()
+    const onAccentChange = vi.fn()
+    await renderTile({ tile: GADGET_TILE, canEdit: true, isEditing: true, onAccentChange })
+    await openTileMenu(user)
+    await pickInSub(user, dashboardModeLabels.accent, dashboardModeLabels.accentColors.red)
+    expect(onAccentChange).toHaveBeenLastCalledWith(GADGET_TILE.i, 'red')
+
+    await openTileMenu(user)
+    await pickInSub(user, dashboardModeLabels.accent, dashboardModeLabels.accentColors.none)
+    expect(onAccentChange).toHaveBeenLastCalledWith(GADGET_TILE.i, undefined)
+  })
+
+  it('★강조 색은 보기 모드에서도 보인다 — 띠는 내용이지 편집 UI 가 아니다', async () => {
+    const { container } = await renderTile({ tile: { ...GADGET_TILE, accent: 'red' } })
+    expect(container.querySelector('[data-accent="red"]')).not.toBeNull()
+  })
+
+  it('모르는 색 키는 띠를 그리지 않는다', async () => {
+    const { container } = await renderTile({ tile: { ...GADGET_TILE, accent: 'magenta' } })
+    expect(container.querySelector('[data-accent]')).toBeNull()
   })
 })
 
