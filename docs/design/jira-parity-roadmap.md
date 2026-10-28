@@ -125,7 +125,7 @@ F18~F25 Tier 3 마감.
 | **R5 알림 팝오버** | JN-1 | FR-UX-03 · FR-NT-01 | web 1 | inbox API · `InboxBell` | 없음 | ✅ **#590** |
 | **R6 가젯 재설정** | JD-19 | FR-DB-02 | web 1 | `GadgetConfigForm` | 저장 API 확인 | ✅ **#591** |
 | **R9 Automation 카탈로그** — 트리거(상태 전환 · 할당 · 필드 변경 · 수동 · 스프린트/버전) · 액션(전환 · 생성 · 연결 · 관찰자 · 이메일) | JAU-5 · JAU-6 | FR-AT-01 · FR-AT-02 | automation N — 트리거 · 액션 하나씩 | pgmq 이벤트 구독 | 스펙 · 이벤트 계약(위험 경로 가능) | ⬜ |
-| **R10 스프린트 완료 판정 = 맨 오른쪽 열** | JCB-5 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `lib/backlog-completion.ts` | **D3 결정 완료** | ⬜ |
+| **R10 스프린트 완료 판정 = 맨 오른쪽 열** | JCB-5 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `lib/backlog-completion.ts` | **D3 결정 완료** | ✅ **#595** — web 단독(서버는 판정 안 함) |
 | **R11 워크플로 초안을 스킴으로** — 워크플로 편집 즉시 반영 · 스킴 초안 → 게시 + 유형별 상태 매핑 마법사 | JCW-1 · 워크플로 spec §6 순 4 | FR-WF-02 · FR-WF-07 (**범위 변경**) | project-workflow N + issue-tracking + web | FR-WF-07 이관 마법사 · #524 판정 카운트 | **D4 결정 완료** · 스펙 · 위험 경로(데이터 이관) | ⬜ |
 
 **순서.** R1 → R3 → R4 → R5 → R6 (web 단독, 병렬 가능) · R1b · R3b · R10 (백엔드 1 BC + web) · R2(R1 뒤) · R9 · R11(스펙 먼저).
