@@ -119,7 +119,7 @@
 | 1 | 새 워크플로우가 발행되게 | B3 | FR-WF-04 · FR-WF-05 | project-workflow | **버그 fix** — FR 아님. 생성 때 INITIAL 1건을 심는다 |
 | 2 | `RequiredField` 필드 정합 | B2 | FR-WF-03 · FR-WF-06 | issue-tracking + apps/web | 버그 fix — 엔진 입력 확장 또는 필드명 입력을 지원 필드로 제한 |
 | 3 | 규칙을 편집기 안으로 | B4 · U1 · G7 · G13 · G15 | FR-WF-06 · FR-WF-07 · FR-WF-08 | project-workflow + apps/web | FR 후보 — 초안·발행에 규칙 포함, 프로젝트 소유면 화면 게이트를 API 와 맞춘다 |
-| 4 | 스킴 변경 시 상태 이관 | B5 · G14 | FR-WF-02 · FR-WF-07 | project-workflow + issue-tracking | FR 후보 — FR-WF-07 이관 마법사 재사용 |
+| 4 | 스킴 변경 시 상태 이관 | B5 · G14 | FR-WF-02 · FR-WF-07 | project-workflow + issue-tracking | **채택** (Maxi 2026-10-28 D4 — 초안을 스킴으로 옮기는 것과 함께, [`jira-parity-roadmap.md`](../design/jira-parity-roadmap.md) R11). 그 전까지는 #524 가 막는다 |
 | 5 | 후처리 런타임 완성 | B1 · G10 · G16 | FR-WF-03 · FR-WF-06 · FR-NT-05 | issue-tracking · notification · automation | FR 후보 — BC 별로 나눠야 한다 |
 | 6 | 상태 만들기 화면 | B6 | FR-WF-04 | project-workflow + apps/web | FR 후보 — 편집기 상태 피커에서 바로 만들기 |
 | 7 | 이슈 화면 전환 경험 | U12 · U13 · U14 · G11 · G2(순서) | FR-WF-01 · FR-WF-05 | issue-tracking + apps/web | **승격** (Maxi 2026-10-22) — FR-WF-01 D8~D11 |
