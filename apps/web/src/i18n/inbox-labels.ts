@@ -76,10 +76,20 @@ export const inboxLabels = {
 
   /** Header 알림 종(🔔) 아이콘 */
   bell: {
-    /** 종 아이콘 버튼 aria-label */
-    ariaLabel: '알림 보관함 열기',
+    /** 종 아이콘 버튼 aria-label — 팝오버 제목과 같다 */
+    ariaLabel: '알림',
     /** 미읽음 뱃지 스크린리더 텍스트 (숫자와 함께 사용) */
     unreadBadgeScreenReader: '읽지 않은 알림',
+  },
+
+  /** 종을 누르면 그 자리에 뜨는 최근 알림 팝오버 (JN-1) */
+  popover: {
+    /** 팝오버 제목 */
+    title: '알림',
+    /** 안읽음만 보기 스위치 라벨 */
+    unreadOnly: '읽지 않은 항목만',
+    /** 하단 /inbox 이동 링크 */
+    viewAll: '전체 보기',
   },
 
   /** 페이지네이션 */

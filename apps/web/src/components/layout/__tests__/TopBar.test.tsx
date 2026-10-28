@@ -247,7 +247,7 @@ describe('TopBar', () => {
   it('InboxBell(알림)이 렌더된다', () => {
     renderTopBar()
 
-    expect(screen.getByRole('link', { name: inboxLabels.bell.ariaLabel })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: inboxLabels.bell.ariaLabel })).toBeInTheDocument()
   })
 
   it('도움말 버튼 클릭 시 onHelpClick 콜백을 호출한다', async () => {
