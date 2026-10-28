@@ -18,7 +18,12 @@ export const issueTypeResponseSchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   iconName: z.string().nullable(),
+  /** 계층 깊이. epic=1 · 기본=0 · subtask=-1. 서버는 늘 보내지만 기존 fixture 호환을 위해 선택. */
+  hierarchyLevel: z.number().int().optional(),
 })
+
+/** 하위 작업 계층(hierarchyLevel=-1) — 부모 없이 만들 수 없다 (JA-C-4). */
+export const SUBTASK_HIERARCHY_LEVEL = -1
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 추론된 타입 (interface 중복 정의 금지)

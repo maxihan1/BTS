@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { useQuery } from '@tanstack/react-query'
 import { useActiveProject } from '@/hooks/use-active-project'
-import { fetchIssueTypes } from '@/api/issue-types'
+import { fetchIssueTypes, SUBTASK_HIERARCHY_LEVEL } from '@/api/issue-types'
 import type { Project } from '@/api/projects'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import type { IssueCreateFormValues } from '@/components/issue/create/issue-create-schema'
@@ -67,10 +67,15 @@ export interface IssueTypeSelection {
  */
 export function useIssueTypeSelection(): IssueTypeSelection {
   const [selectedTypeId, setSelectedTypeId] = useState<number | null>(null)
-  const { data: issueTypes = [], isLoading } = useQuery({
+  const { data: allIssueTypes, isLoading } = useQuery({
     queryKey: ['issue-types'],
     queryFn: fetchIssueTypes,
   })
+  // 하위 작업은 부모 상세의 「하위 작업 추가」에서만 만든다 — 전역 생성엔 부모 입력란이 없다 (JA-C-4).
+  const issueTypes = useMemo(
+    () => (allIssueTypes ?? []).filter((t) => t.hierarchyLevel !== SUBTASK_HIERARCHY_LEVEL),
+    [allIssueTypes],
+  )
 
   useEffect(() => {
     if (selectedTypeId === null && issueTypes.length > 0) {

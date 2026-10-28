@@ -447,6 +447,8 @@ export interface CreateIssueInput {
   priority?: number
   /** FR-UX-09 F2 — 라벨. 미전달이면 빈 목록. 개수 ≤20 · 개별 길이 ≤50 · 공백-only 금지. */
   labels?: string[]
+  /** JA-C-4 — 부모 이슈 키. 하위 작업 유형은 필수(없으면 422 `SUBTASK_PARENT_REQUIRED`). */
+  parentKey?: string
 }
 
 /**
@@ -768,6 +770,9 @@ export async function createIssue(input: CreateIssueInput): Promise<IssueRespons
   // null 을 undefined 와 같이 취급하면 「자동 배정 끄기」를 영영 표현할 수 없다.
   if ('assigneeId' in input) {
     body['assigneeId'] = input.assigneeId
+  }
+  if (input.parentKey !== undefined) {
+    body['parentKey'] = input.parentKey
   }
   const wrapped = await apiPost(
     '/api/v1/issues',
