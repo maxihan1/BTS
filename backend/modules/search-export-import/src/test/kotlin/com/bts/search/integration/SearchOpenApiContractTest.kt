@@ -225,6 +225,34 @@ class SearchOpenApiContractTest {
             .isEqualTo(2)
     }
 
+    // ── C6 셀 편집 · 필드 권한 필드 (R4 · FR-PM-07) ─────────────────────────────
+
+    /**
+     * Given 포트가 version · restrictedFields · noneditableFields 를 실은 hit 를 주면,
+     * When [AqlSearchHit.from] 으로 바꿔 직렬화하면,
+     * Then 세 필드가 그대로 `$.data[0]` 에 나간다 — 웹 검색 표가 셀 편집 · 「열람 권한 없음」에 쓴다.
+     */
+    @Test
+    fun `C6 version restrictedFields noneditableFields 가 응답에 실린다`() {
+        val inner =
+            sampleHitInner().copy(
+                version = 7L,
+                restrictedFields = listOf("assigneeId"),
+                noneditableFields = listOf("priority"),
+            )
+        val response =
+            AqlSearchPageResponse(
+                data = listOf(AqlSearchHit.from(inner)),
+                meta = PageMeta(page = PageInfo(number = 0, size = 20, totalElements = 1L, totalPages = 1)),
+            )
+
+        val hit = mapper.readTree(mapper.writeValueAsString(response)).path("data").path(0)
+
+        assertThat(hit.path("version").asLong()).isEqualTo(7L)
+        assertThat(hit.path("restrictedFields").map { it.asText() }).containsExactly("assigneeId")
+        assertThat(hit.path("noneditableFields").map { it.asText() }).containsExactly("priority")
+    }
+
     // ── private helpers ──────────────────────────────────────────────────────────
 
     /** HTTP 응답 DTO 직렬화 테스트용 [AqlSearchHit] 샘플. */
