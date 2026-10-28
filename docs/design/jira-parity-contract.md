@@ -13,7 +13,8 @@
 
 BTS 의 UI/UX 기준은 **Jira Cloud (2025)** 다. **기억으로 쓰지 않는다.** 새 화면·컴포넌트·인터랙션,
 그리고 사용성을 결정하는 도메인 규칙을 제안하기 전에 아래 5단계를 거치고 결과를 스펙의
-`## Jira 대조` 표에 남긴다. 강제 수단은 `scripts/workflow/jira-research-guard.test.ts`.
+`## Jira 대조` 표에 남긴다. 기계 강제 수단은 없다 — 판별식 `scripts/workflow/jira-research-guard.test.ts` 는
+하네스 다이어트(#505)로 지워졌다. `/bts` 가 UI 일에 이 §1 을 읽히는 것과 PR 본문 3줄(Jira 대응 · 채택 · 편차)이 남은 수단이다.
 
 **0. 재사용 먼저 — 같은 표면을 두 번 조사하지 않는다.**
 
@@ -39,9 +40,15 @@ grep -rlE "## Jira 대조|### 지라 근거" docs/specs/ docs/plans/ TODOS.md | 
 | `atlassian.design` | ADS v2 — Jira 대응 화면이 없을 때의 준용 근거 |
 | `confluence.atlassian.com` | DC/Server 문서 — **Cloud 가 아님을 행에 표기**해야 인정 |
 | `community.atlassian.com` | Atlassian 공식 답변만. 사용자 추측은 근거가 아니다 |
+| **Jira Cloud 실물 관찰** (REA · CDP) | 화면 구조 · 조작 동작 · 문구. 행에 관찰 URL · REA evidence_id(또는 「CDP 판독」) · 조회일을 붙이고 Cloud 사이트일 것. 2026-10-28 Maxi 결정 D1 — [`2026-10-28-jira-cloud-rea-parity-decisions.md`](../decisions/2026-10-28-jira-cloud-rea-parity-decisions.md) |
+
+**문서와 실물이 어긋나면 실물이 이긴다.** 2026-10-28 REA 분석에서 DC 문서 기반 승계 행이 Cloud 실물과
+여러 곳 달랐다(보드 설정 진입 · 카드 필드 상한 · 워크플로 초안 위치 — [`2026-10-28-jira-cloud-rea-gap.md`](2026-10-28-jira-cloud-rea-gap.md) §2).
+**재사용(§1-0) 대상에 그 문서를 포함한다** — `## Jira 대조` · `### 지라 근거` 헤딩이 없고 J 번호가 `JA-` · `JB-` · `JCB-` 처럼 접두어를 갖는다.
 
 다섯 도메인은 이미 허용돼 있어 추가 승인 없이 조회된다.
 **블로그·팔레트 스크린샷·기억은 근거가 아니다** — §3 이 같은 이유로 이미 판정을 내렸다.
+실물 관찰은 Jira Cloud 화면을 직접 본 기록이라 팔레트 스크린샷과 다르다.
 
 **2. 조작감 갭 표.** 그 화면과 BTS 현재 상태의 차이를 **조작 단위**로 나열하고(단축키 · 인라인 편집 ·
 기본 탭 · 카드 밀도 · 키보드 항법 · 빈/에러 상태), 각 행에 **원문 인용 + 출처 URL + 조회일 +

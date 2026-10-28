@@ -101,8 +101,35 @@ F4 ✅ / F13 ✅ / F6 / F18~F25 (독립)
 
 **임계경로 `B2 → F14 → F15 → F16` 은 2026-08-07 로 전량 소진됐다** — 실제 순서는 역방향으로
 풀렸다(F5·F15·F16 이 먼저, B2·F14 가 마지막). **잔여는 FR 이 아닌 chore 갈래뿐** — F6 도움말
-배선 · ~~F7 댓글 기본탭~~(**✅ #447** — 이슈 상세 Jira 패리티 캠페인 J3 에서 닫혔다) ·
+배선 · ~~F7 댓글 기본탭~~(**✅ #581** — #447 이 J3 로 닫았다고 적었으나 컴포넌트 `defaultValue` 에만 넣어
+라우트 초기값 `HISTORY` 에 막혀 있었다. 2026-10-28 REA 관찰로 발견, #581 이 실제로 적용) ·
 F18~F25 Tier 3 마감.
+
+## 2차 캠페인 — Jira Cloud 실물(REA) 갭 (2026-10-28~)
+
+> **근거**. [`2026-10-28-jira-cloud-rea-gap.md`](2026-10-28-jira-cloud-rea-gap.md) — Jira Cloud 실물(TM · CM 프로젝트)을 REA 로 관찰한 갭 표.
+> **결정**. [`2026-10-28-jira-cloud-rea-parity-decisions.md`](../decisions/2026-10-28-jira-cloud-rea-parity-decisions.md) D1~D5 (Maxi).
+> **FR**. 신설 · 범위 변경 없이 기존 FR 에 귀속한다 — 착수 때 `/bts` 1단계가 확정하고, 범위가 바뀌면(R11) 같은 PR 에서 `docs/rules/fr-sync-checklist.md`.
+> **BC**. 2026-10-28 확인 — BC 통합 없음(BC 8 + `shared-kernel` + `app`). 「한 PR = 한 BC」.
+> **워크플로 규칙 카탈로그 · 사용처 표시는 이 캠페인 밖** — `docs/specs/2026-10-20-workflow-jira-parity-gap.md` §6 의 기각(순 8 · 9)이 그대로다.
+
+| 묶음 | 갭 행 | 기존 FR | PR 단위(BC) | 재사용 자산 | 선행 | 상태 |
+|---|---|---|---|---|---|---|
+| **R0 활동 탭 기본값** | JA-D-1 | FR-UX-11 | web | — | — | ✅ **#581** |
+| **R1 생성 흐름** — `c` 는 모달 · 연속 생성 · 입력 중 닫기 확인 · 최소화(후순위) | JA-C-1 · JA-C-2 · JA-C-3 · JCB-22 | FR-UX-09 | web 1~2 | `CreateIssueDialog` · 전역 `c` effect | 없음 | ⬜ |
+| **R1b Subtask 진입점** — 부모 없는 Subtask 거부 · 상세 하위작업 섹션 | JA-C-4 · JA-D-2 | FR-UX-09 · 이슈 계층 FR | issue-tracking 1 + web 1 | 상세 링크 영역 | 없음 | ⬜ |
+| **R2 인라인 생성** — 보드 컬럼 · 백로그 섹션 한 줄 입력 | JA-C-5 · JB-B-1 · JB-L-1 | FR-UX-09 · FR-UX-13 | web 1 (+ 컬럼 상태 수단이 백엔드면 issue-tracking 1) | R1 생성 경로 | **D2 결정 완료** — 컬럼 상태 약속 수단을 같은 묶음에서 정한다 | ⬜ |
+| **R3 행 조작** — 카드 메뉴 · 백로그 행 메뉴 · 행 상태 드롭다운 · 행 밀도 · 보드에서 스프린트 완료 · 보드 텍스트 검색 | JB-B-2 · JCB-17 · JB-L-2 · JV-12 · JB-B-3 · JB-B-4 | FR-UX-13 · FR-UX-14 · FR-BD-02 · FR-BL-01 | web 2~3 | 카드/행 공용 메뉴 하나 · F9 `StatusCell` · 백로그 완료 다이얼로그 | 없음 | ⬜ |
+| **R3b 스프린트 헤더** — 상태별 포인트 합 · 예정 스프린트 날짜 | JB-L-3 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `ActiveSprintResponse`(활성만 날짜 보유) | 없음 | ⬜ |
+| **R4 검색** — `/search` 결과를 표로 · 검색창 포커스 패널 | JC-L-1 · JC-N-1 | FR-UX-12 | web 2 | `IssueTable` · `use-recent-issues` · `use-recent-projects` | AQL 응답 스키마 확인 | ⬜ |
+| **R5 알림 팝오버** | JN-1 | FR-UX-03 · FR-NT-01 | web 1 | inbox API · `InboxBell` | 없음 | ⬜ |
+| **R6 가젯 재설정** | JD-19 | FR-DB-02 | web 1 | `GadgetConfigForm` | 저장 API 확인 | ⬜ |
+| **R9 Automation 카탈로그** — 트리거(상태 전환 · 할당 · 필드 변경 · 수동 · 스프린트/버전) · 액션(전환 · 생성 · 연결 · 관찰자 · 이메일) | JAU-5 · JAU-6 | FR-AT-01 · FR-AT-02 | automation N — 트리거 · 액션 하나씩 | pgmq 이벤트 구독 | 스펙 · 이벤트 계약(위험 경로 가능) | ⬜ |
+| **R10 스프린트 완료 판정 = 맨 오른쪽 열** | JCB-5 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `lib/backlog-completion.ts` | **D3 결정 완료** | ⬜ |
+| **R11 워크플로 초안을 스킴으로** — 워크플로 편집 즉시 반영 · 스킴 초안 → 게시 + 유형별 상태 매핑 마법사 | JCW-1 · 워크플로 spec §6 순 4 | FR-WF-02 · FR-WF-07 (**범위 변경**) | project-workflow N + issue-tracking + web | FR-WF-07 이관 마법사 · #524 판정 카운트 | **D4 결정 완료** · 스펙 · 위험 경로(데이터 이관) | ⬜ |
+
+**순서.** R1 → R3 → R4 → R5 → R6 (web 단독, 병렬 가능) · R1b · R3b · R10 (백엔드 1 BC + web) · R2(R1 뒤) · R9 · R11(스펙 먼저).
+R7 · R8(갭 문서 초판)은 지웠다 — 워크플로 spec §6 의 기존 결정과 겹쳤다. R8 의 내용은 D4 로 R11 이 되었다.
 
 ## 계약 · 재사용 자산 · 검증 규범
 
