@@ -1,6 +1,8 @@
 // URL search params ↔ BoardCardFilterParams 매핑 유틸 테스트 (FR-BD-02, FR-UX-01)
 import { describe, it, expect } from 'vitest'
+import type { BoardDetail } from '../api/boards'
 import {
+  searchBoardCards,
   searchToFilter,
   filterToSearch,
   isEmptyFilter,
@@ -250,5 +252,30 @@ describe('round-trip — buildBoardFilterQuery → queryStringToSearch → searc
     const stripped = qs.startsWith('?') ? qs.slice(1) : qs
     const roundTripped = searchToFilter(queryStringToSearch(stripped))
     expect(roundTripped).toEqual(original)
+  })
+})
+
+describe('searchBoardCards — 보드 텍스트 검색 (JB-B-4)', () => {
+  const card = (issueKey: string, summary: string) =>
+    ({ issueKey, summary }) as BoardDetail['columns'][number]['cards'][number]
+  const board = {
+    columns: [
+      { columnId: 'c1', cards: [card('ATLAS-1', '로그인 버그'), card('ATLAS-2', '결제 화면')] },
+      { columnId: 'c2', cards: [card('ATLAS-12', '로그아웃 이동')] },
+    ],
+  } as unknown as BoardDetail
+
+  it('요약에 검색어가 든 카드만 남긴다 — 컬럼은 그대로', () => {
+    const result = searchBoardCards(board, '로그')
+    expect(result.columns.map((c) => c.cards.map((x) => x.issueKey))).toEqual([['ATLAS-1'], ['ATLAS-12']])
+  })
+
+  it('이슈 키로도 찾고 대소문자 · 앞뒤 공백을 가리지 않는다', () => {
+    const result = searchBoardCards(board, '  atlas-2 ')
+    expect(result.columns.map((c) => c.cards.map((x) => x.issueKey))).toEqual([['ATLAS-2'], []])
+  })
+
+  it('검색어가 비면 원본 참조를 그대로 돌려준다 (하위 memo 보호)', () => {
+    expect(searchBoardCards(board, '   ')).toBe(board)
   })
 })
