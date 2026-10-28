@@ -124,7 +124,7 @@ F18~F25 Tier 3 마감.
 | **R4 검색** — `/search` 결과를 표로 · 검색창 포커스 패널 | JC-L-1 · JC-N-1 | FR-UX-12 | web 2 | `IssueTable` · `use-recent-issues` · `use-recent-projects` | AQL 응답 스키마 확인 | ✅ **#586 · #587 · #588 · #589** |
 | **R5 알림 팝오버** | JN-1 | FR-UX-03 · FR-NT-01 | web 1 | inbox API · `InboxBell` | 없음 | ✅ **#590** |
 | **R6 가젯 재설정** | JD-19 | FR-DB-02 | web 1 | `GadgetConfigForm` | 저장 API 확인 | ✅ **#591** |
-| **R9 Automation 카탈로그** — 트리거(상태 전환 · 할당 · 필드 변경 · 수동 · 스프린트/버전) · 액션(전환 · 생성 · 연결 · 관찰자 · 이메일) | JAU-5 · JAU-6 | FR-AT-01 · FR-AT-02 | automation N — 트리거 · 액션 하나씩 | pgmq 이벤트 구독 | 스펙 · 이벤트 계약(위험 경로 가능) | ⬜ |
+| **R9 Automation 카탈로그** — 트리거(상태 전환 · 할당 · 필드 변경 · 수동 · 스프린트/버전) · 액션(전환 · 생성 · 연결 · 관찰자 · 이메일) | JAU-5 · JAU-6 | FR-AT-01 · FR-AT-02 | automation N — 트리거 · 액션 하나씩 | pgmq 이벤트 구독 | 스펙 · 이벤트 계약(위험 경로 가능) | 🟡 #597 · #598 · #PR3 — 남은 것: 스펙 §C 액션(전환 · 생성/하위 작업 · 연결 · 관찰자 — shared-kernel 포트 확장) · §D 스프린트/버전 트리거 · 이메일 액션 |
 | **R10 스프린트 완료 판정 = 맨 오른쪽 열** | JCB-5 | FR-BL-01 · FR-BL-02 | agile-planning 1 + web 1 | `lib/backlog-completion.ts` | **D3 결정 완료** | ✅ **#595** — web 단독(서버는 판정 안 함) |
 | **R11 워크플로 초안을 스킴으로** — 워크플로 편집 즉시 반영 · 스킴 초안 → 게시 + 유형별 상태 매핑 마법사 | JCW-1 · 워크플로 spec §6 순 4 | FR-WF-02 · FR-WF-07 (**범위 변경**) | project-workflow N + issue-tracking + web | FR-WF-07 이관 마법사 · #524 판정 카운트 | **D4 결정 완료** · 스펙 · 위험 경로(데이터 이관) | ⬜ |
 

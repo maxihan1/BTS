@@ -52,8 +52,11 @@ const STATUS_BADGE: Record<RuleExecutionStatus, { readonly label: string; readon
  */
 const TRIGGER_TYPE_LABELS: Record<string, string> = {
   ISSUE_CREATED: '생성',
-  ISSUE_UPDATED: '수정',
+  ISSUE_UPDATED: '필드 변경',
+  ISSUE_TRANSITIONED: '상태 전환',
+  ISSUE_ASSIGNED: '할당',
   ISSUE_COMMENTED: '댓글',
+  MANUAL: '수동',
   SCHEDULED: '스케줄',
   WEBHOOK: '웹훅',
   PR_MERGED: 'PR 병합',

@@ -8,12 +8,16 @@ import { z } from 'zod'
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 자동화 트리거 타입 enum — backend TriggerType 6종 1:1 대응 (PR_MERGED는 FR-AT-07 PR-C).
+ * 자동화 트리거 타입 enum — backend TriggerType 9종 1:1 대응 (PR_MERGED는 FR-AT-07 PR-C,
+ * ISSUE_TRANSITIONED · ISSUE_ASSIGNED · MANUAL 은 R9).
  */
 export const triggerTypeSchema = z.enum([
   'ISSUE_CREATED',
   'ISSUE_UPDATED',
+  'ISSUE_TRANSITIONED',
+  'ISSUE_ASSIGNED',
   'ISSUE_COMMENTED',
+  'MANUAL',
   'SCHEDULED',
   'WEBHOOK',
   'PR_MERGED',
@@ -239,7 +243,13 @@ function omitManagedKeys(base: Record<string, unknown>, keys: readonly string[])
  */
 export function serializeTriggerConfig(
   triggerType: TriggerType,
-  config: { cron?: string; fields?: string[]; targetBranch?: string } = {},
+  config: {
+    cron?: string
+    fields?: string[]
+    targetBranch?: string
+    fromStates?: string[]
+    toStates?: string[]
+  } = {},
   baseConfigJson?: string,
 ): string {
   const base = parseBaseConfig(baseConfigJson)
@@ -258,8 +268,19 @@ export function serializeTriggerConfig(
         ? JSON.stringify({ ...rest, targetBranch: config.targetBranch.trim() })
         : JSON.stringify(rest)
     }
+    case 'ISSUE_TRANSITIONED': {
+      // 빈 배열은 「모든 상태」라 키를 아예 싣지 않는다(ISSUE_UPDATED fields 동형).
+      const rest = omitManagedKeys(base, ['fromStates', 'toStates'])
+      return JSON.stringify({
+        ...rest,
+        ...(config.fromStates && config.fromStates.length > 0 ? { fromStates: config.fromStates } : {}),
+        ...(config.toStates && config.toStates.length > 0 ? { toStates: config.toStates } : {}),
+      })
+    }
     case 'ISSUE_CREATED':
     case 'ISSUE_COMMENTED':
+    case 'ISSUE_ASSIGNED':
+    case 'MANUAL':
     case 'WEBHOOK':
       return JSON.stringify(base)
   }

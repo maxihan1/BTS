@@ -19,6 +19,7 @@ import { projectMemberHandlers } from '@/mocks/project-member-handlers'
 import { AUTOMATION_RULES_QUERY_KEY } from '@/api/useAutomationRules'
 import { GIT_WEBHOOKS_QUERY_KEY } from '@/api/useGitWebhooks'
 import { gitWebhookHandlers } from '@/mocks/git-webhook-handlers'
+import { simpleFixture } from '@/mocks/workflow-fixtures'
 import { DEFAULT_GIT_WEBHOOKS, resetGitWebhookStore, seedGitWebhooks } from '@/mocks/git-webhook-fixtures'
 import type {
   AutomationRule,
@@ -268,6 +269,38 @@ describe('AutomationRuleFormDialog — 생성 시 triggerConfig 직렬화 전달
       throw new Error('capturedBodies[0]이 캡처되지 않음')
     }
     expect(capturedBody.triggerConfig).toBe(JSON.stringify({ fields: ['status', 'assignee'] }))
+  })
+
+  it('ISSUE_TRANSITIONED 생성 (R9): To 상태를 고르면 POST body triggerConfig 가 {"toStates":[...]} 로 직렬화된다', async () => {
+    const capturedBodies: CreateAutomationRuleInput[] = []
+    server.use(
+      http.get('/api/v1/projects/:projectKey/workflows', () => HttpResponse.json({ data: [simpleFixture] })),
+      http.post('/api/v1/projects/:projectKey/automation/rules', async ({ request }) => {
+        const body = (await request.json()) as CreateAutomationRuleInput
+        capturedBodies.push(body)
+        return HttpResponse.json({ rule: { ...SCHEDULED_EDIT_RULE, ...body }, webhookToken: null }, { status: 201 })
+      }),
+    )
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    const user = userEvent.setup()
+    await user.type(screen.getByLabelText('이름'), '완료 시 알림')
+    await user.selectOptions(screen.getByTestId('automation-rule-trigger-select'), 'ISSUE_TRANSITIONED')
+    const toGroup = await screen.findByRole('group', { name: '이후 상태 (To)' })
+    await user.click(within(toGroup).getByRole('checkbox', { name: 'Done' }))
+    await user.click(screen.getByTestId('automation-rule-save-button'))
+
+    await waitFor(() => expect(capturedBodies).toHaveLength(1))
+    expect(capturedBodies[0]?.triggerType).toBe('ISSUE_TRANSITIONED')
+    expect(capturedBodies[0]?.triggerConfig).toBe(JSON.stringify({ toStates: ['done'] }))
+  })
+
+  it('ISSUE_UPDATED 는 「필드 값 변경됨」으로 보인다 (R9 · Jira 이름)', () => {
+    renderWithClient(
+      <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
+    )
+    expect(screen.getByRole('option', { name: '필드 값 변경됨' })).toHaveValue('ISSUE_UPDATED')
   })
 })
 

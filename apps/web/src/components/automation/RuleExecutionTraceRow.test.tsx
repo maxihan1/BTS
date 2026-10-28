@@ -148,7 +148,7 @@ describe('RuleExecutionTraceRow', () => {
 
     it('트리거 타입 한국어 라벨을 표시한다', () => {
       renderRow({ execution: buildSummary({ triggerType: 'ISSUE_UPDATED' }) })
-      expect(screen.getByText('수정')).toBeInTheDocument()
+      expect(screen.getByText('필드 변경')).toBeInTheDocument()
     })
 
     it('미지 트리거 타입은 원문을 그대로 fallback한다', () => {
