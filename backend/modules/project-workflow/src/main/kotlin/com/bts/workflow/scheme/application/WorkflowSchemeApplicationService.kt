@@ -16,12 +16,14 @@ import com.bts.workflow.scheme.adapter.outbound.WorkflowSchemeEventPublisher
 import com.bts.workflow.scheme.application.port.IssueTypeLookupPort
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
 import com.bts.workflow.scheme.domain.SchemeIssueTypeMapping
+import com.bts.workflow.scheme.domain.StrandedIssueType
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
 import com.bts.workflow.scheme.event.WorkflowSchemeAssignedEvent
 import com.bts.workflow.scheme.exception.IssueTypeNotFoundException
 import com.bts.workflow.scheme.exception.SchemeChangeStrandsIssuesException
 import com.bts.workflow.scheme.exception.SchemeInUseException
+import com.bts.workflow.scheme.exception.SchemeMappingsInvalidException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
@@ -388,6 +390,64 @@ class WorkflowSchemeApplicationService(
     }
 
     /**
+     * 게시 요청의 `issueTypeKey`(null = 기본) → `workflowKey` 를 id 로 푼다 ([replaceMappings] 의 입력).
+     *
+     * @throws WorkflowNotFoundException 워크플로우 키가 없을 때.
+     * @throws IssueTypeNotFoundException 이슈 타입 키가 없을 때.
+     */
+    @Transactional(readOnly = true)
+    fun resolveMappingKeys(mappings: List<Pair<String?, String>>): List<Pair<IssueTypeId?, UUID>> =
+        mappings.map { (typeKey, workflowKey) ->
+            val typeId = typeKey?.let { mappingRepo.findIssueTypeIdByKey(it) ?: throw IssueTypeNotFoundException(it) }
+            typeId to (workflowRepo.findIdByKey(workflowKey) ?: throw WorkflowNotFoundException(workflowKey))
+        }
+
+    /**
+     * 스킴의 매핑 전체를 [mappings] 로 한 번에 바꾼다 — 화면 안 초안의 「게시」 (R11 A1 · 결정 D4).
+     *
+     * 차집합만 지우고 더한다 — 같은 (이슈 타입, 워크플로우) 행은 건드리지 않는다. 지우기를 먼저 해야
+     * 이슈 타입의 워크플로우를 바꿀 때 `(scheme_id, issue_type_id)` UNIQUE 에 걸리지 않는다.
+     *
+     * 남는 이슈 판정 범위는 **아카이브 포함**이다 — 이 경로는 이관이 있다([onStranded]).
+     *
+     * @param mappings 이슈 타입(null = 기본) → 워크플로우 id. 기본 매핑 정확히 하나 · 타입 중복 없음.
+     *   키는 [resolveMappingKeys] 로 푼다.
+     * @throws SchemeMappingsInvalidException 기본 매핑이 하나가 아니거나 이슈 타입이 겹칠 때.
+     */
+    fun replaceMappings(
+        actor: ActorId,
+        schemeKey: WorkflowSchemeKey,
+        mappings: List<Pair<IssueTypeId?, UUID>>,
+        onStranded: (Set<UUID>, List<StrandedIssueType>) -> Unit,
+    ) {
+        permissionResolver.requirePermission(
+            actor.toUuid(),
+            WorkflowSchemePermission.MANAGE_SCHEME,
+            scopeResolver.ofScheme(schemeKey.value),
+        )
+        val defaults = mappings.count { it.first == null }
+        if (defaults != 1) throw SchemeMappingsInvalidException("기본 매핑은 정확히 하나여야 한다 — 받은 수 $defaults")
+        val types = mappings.mapNotNull { it.first }
+        if (types.size != types.toSet().size) throw SchemeMappingsInvalidException("이슈 타입이 겹친다 — $types")
+
+        val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
+        val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }
+        val now = Instant.now()
+        val after =
+            mappings.map { (typeId, workflowId) ->
+                SchemeIssueTypeMapping(id = null, schemeId = schemeId, issueTypeId = typeId, workflowId = workflowId, createdAt = now)
+            }
+        val before = mappingRepo.findBySchemeId(schemeId)
+        requireNoStrandedIssues(assignmentRepo.findLiveProjectIdsBySchemeId(schemeId), before, after, onStranded)
+
+        fun SchemeIssueTypeMapping.slot() = issueTypeId to workflowId
+        val keep = before.map { it.slot() }.toSet() intersect after.map { it.slot() }.toSet()
+        before.filterNot { it.slot() in keep }.forEach { mappingRepo.deleteMapping(requireNotNull(it.id)) }
+        after.filterNot { it.slot() in keep }.forEach { mappingRepo.addMapping(it) }
+        log.info("replaceMappings: actor={} schemeKey={} mappings={}", actor.raw, schemeKey.value, mappings.size)
+    }
+
+    /**
      * 스킴에서 이슈타입-워크플로우 매핑을 삭제한다.
      *
      * 존재하지 않는 [mappingId] 에 대해서는 no-op 으로 처리된다 (Repository 동작 일치).
@@ -473,6 +533,7 @@ class WorkflowSchemeApplicationService(
      * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
      * @param schemeKey 배정할 스킴 키. 전역 템플릿이거나 [projectId] 소유여야 한다([requireAssignableTo]).
+     * @param onStranded 새 워크플로우에 없는 상태에 이슈가 남을 때의 처리기. 기본값은 409 로 막는다(R11).
      * @return 저장된 [ProjectWorkflowSchemeAssignment].
      * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없거나,
      *   그 스킴이 **다른 프로젝트 소유**일 때 (FR-WF-08).
@@ -482,6 +543,7 @@ class WorkflowSchemeApplicationService(
         projectId: UUID,
         projectKey: String,
         schemeKey: WorkflowSchemeKey,
+        onStranded: (Set<UUID>, List<StrandedIssueType>) -> Unit = ::rejectStranded,
     ): ProjectWorkflowSchemeAssignment {
         val actorUuid = actor.toUuid()
         // EC-1 D10 auto-assign 우회 — SYSTEM_ACTOR(nil UUID sentinel)만 권한 검사를 건너뛴다.
@@ -504,7 +566,7 @@ class WorkflowSchemeApplicationService(
                 assignmentRepo.findByProjectId(projectId)
                     ?.let { mappingRepo.findBySchemeId(it.workflowSchemeId) }
                     .orEmpty()
-            requireNoStrandedIssues(setOf(projectId), before, mappingRepo.findBySchemeId(schemeId))
+            requireNoStrandedIssues(setOf(projectId), before, mappingRepo.findBySchemeId(schemeId), onStranded)
         }
 
         val now = Instant.now()
@@ -601,12 +663,16 @@ class WorkflowSchemeApplicationService(
      *
      * 판정과 COMMIT 사이에 들어온 전환은 잡지 못한다 — 발행 차단(`WorkflowPublishService`)과 같은 잔여 창이다.
      *
-     * @throws SchemeChangeStrandsIssuesException 남는 이슈가 한 건이라도 있을 때.
+     * [onStranded] 기본값은 막는 것이다. 스킴 게시 · 교체(R11)는 상태 매핑으로 이관을 큐잉하는 처리기를
+     * 넘긴다 — 처리기가 던지지 않고 돌아오면 변경이 그대로 진행된다.
+     *
+     * @throws SchemeChangeStrandsIssuesException 남는 이슈가 한 건이라도 있고 처리기가 기본값일 때.
      */
     private fun requireNoStrandedIssues(
         projectIds: Set<UUID>,
         before: List<SchemeIssueTypeMapping>,
         after: List<SchemeIssueTypeMapping>,
+        onStranded: (Set<UUID>, List<StrandedIssueType>) -> Unit = ::rejectStranded,
     ) {
         if (projectIds.isEmpty()) return
         val moved =
@@ -615,20 +681,33 @@ class WorkflowSchemeApplicationService(
                 if (target == workflowOf(before, usage.issueTypeId)) null else usage to target
             }
         if (moved.isEmpty()) return
-        val statusKeys =
-            workflowRepo
-                .findByIds(moved.map { it.second }.distinct())
-                .mapValues { (_, wf) -> wf.states.map { it.key }.toSet() }
+        val workflows = workflowRepo.findByIds(moved.map { it.second }.distinct())
         // 워크플로우를 못 읽으면 빈 집합 — 전부 남는 것으로 본다(fail-closed).
+        val statusKeys = workflows.mapValues { (_, wf) -> wf.states.map { it.key }.toSet() }
         val stranded =
             moved
                 .filter { (usage, target) -> usage.statusKey !in statusKeys[target].orEmpty() }
-                .groupBy({ it.first.statusKey }, { it.first.count })
-                .mapValues { (_, counts) -> counts.sum() }
-        if (stranded.isNotEmpty()) {
-            log.info("스킴 변경 거부 — 새 워크플로우에 없는 상태에 이슈가 남는다. stranded={}", stranded)
-            throw SchemeChangeStrandsIssuesException(stranded)
-        }
+                .groupBy { (usage, target) -> usage.issueTypeId to target }
+                .map { (typeAndTarget, rows) ->
+                    val (typeId, target) = typeAndTarget
+                    StrandedIssueType(
+                        issueTypeId = typeId,
+                        workflowId = target,
+                        workflowKey = workflows[target]?.key.orEmpty(),
+                        targetStatusKeys = statusKeys[target].orEmpty(),
+                        statuses = rows.associate { (usage, _) -> usage.statusKey to usage.count },
+                    )
+                }.sortedBy { it.issueTypeId }
+        if (stranded.isNotEmpty()) onStranded(projectIds, stranded)
+    }
+
+    @Suppress("UnusedParameter")
+    private fun rejectStranded(
+        projectIds: Set<UUID>,
+        stranded: List<StrandedIssueType>,
+    ): Nothing {
+        log.info("스킴 변경 거부 — 새 워크플로우에 없는 상태에 이슈가 남는다. stranded={}", stranded)
+        throw SchemeChangeStrandsIssuesException(stranded)
     }
 
     /** 이슈 타입의 워크플로우. 명시 매핑이 먼저이고 없으면 기본 매핑이다(`WorkflowResolverImpl` 과 같은 규칙). */

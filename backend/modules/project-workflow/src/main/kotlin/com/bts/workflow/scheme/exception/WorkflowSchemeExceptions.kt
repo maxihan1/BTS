@@ -2,6 +2,8 @@
 
 package com.bts.workflow.scheme.exception
 
+import com.bts.workflow.scheme.domain.StrandedIssueType
+
 /**
  * 워크플로우 스킴(WorkflowScheme) BC 내 모든 도메인 예외의 봉인 기반 클래스.
  *
@@ -15,6 +17,9 @@ package com.bts.workflow.scheme.exception
  * | [WorkflowSchemeNotFoundException]    | `SCHEME_NOT_FOUND`               | 404       |
  * | [SchemeInUseException]               | `SCHEME_IN_USE`                  | 409       |
  * | [SchemeChangeStrandsIssuesException] | `SCHEME_CHANGE_STRANDS_ISSUES`   | 409       |
+ * | [SchemeMappingsInvalidException]     | `SCHEME_MAPPINGS_INVALID`        | 400       |
+ * | [SchemeStatusMappingInvalidException]| `SCHEME_STATUS_MAPPING_INVALID`  | 400       |
+ * | [SchemeMigrationInFlightException]   | `SCHEME_MIGRATION_IN_FLIGHT`     | 409       |
  * | [SchemeStandardNotDeletableException]| `SCHEME_STANDARD_NOT_DELETABLE`  | 409       |
  * | [SchemeStandardFieldLockedException] | `SCHEME_STANDARD_FIELD_LOCKED`   | 409       |
  * | [MappingDuplicateException]          | `MAPPING_DUPLICATE`              | 409       |
@@ -37,17 +42,55 @@ class WorkflowSchemeNotFoundException(
 /**
  * 스킴 배정·매핑 변경이 이슈를 새 워크플로우에 없는 상태에 남길 때 던지는 예외 (WF-02-1 · 결함 B5).
  *
+ * R11 부터는 「옮기지 않고 막는다」가 아니라 **상태 매핑을 달라**는 응답이다 — [strandedByType] 이
+ * 이관 마법사 1/2 단계의 입력이다. 매핑을 실은 게시 · 교체 요청은 이 예외 대신 이관을 큐잉한다.
+ *
  * errorCode: `SCHEME_CHANGE_STRANDS_ISSUES`
  *
- * @param strandedByStatus 남게 될 상태 키 → 이슈 수.
+ * @param strandedByType 워크플로우가 바뀌는 이슈 타입마다 남게 될 상태 → 이슈 수.
  */
 class SchemeChangeStrandsIssuesException(
-    val strandedByStatus: Map<String, Long>,
+    val strandedByType: List<StrandedIssueType>,
 ) : WorkflowSchemeDomainException(
         "새 워크플로우에 없는 상태에 이슈가 남는다 — " +
-            strandedByStatus.entries.joinToString(" · ") { "${it.key} ${it.value}건" } +
-            ". 그 이슈를 새 워크플로우에도 있는 상태로 먼저 옮길 것",
-    )
+            strandedByType.joinToString(" · ") { t ->
+                t.statuses.entries.joinToString(" · ") { "${t.issueTypeId}/${it.key} ${it.value}건" }
+            } +
+            ". 이슈 타입마다 옮길 상태를 고를 것",
+    ) {
+    /** 상태 키 → 이슈 수 (타입 합산). #524 응답 계약 — 하위 호환으로 남긴다. */
+    val strandedByStatus: Map<String, Long>
+        get() =
+            strandedByType
+                .flatMap { it.statuses.entries }
+                .groupBy({ it.key }, { it.value })
+                .mapValues { (_, counts) -> counts.sum() }
+}
+
+/**
+ * 게시할 매핑 목록이 스킴 규칙을 어길 때 — 기본 매핑이 정확히 하나가 아니거나 이슈 타입이 겹친다 (R11 A1).
+ *
+ * errorCode: `SCHEME_MAPPINGS_INVALID` (400)
+ */
+class SchemeMappingsInvalidException(
+    reason: String,
+) : WorkflowSchemeDomainException(reason)
+
+/**
+ * 상태 매핑이 그 이슈 타입의 새 워크플로우에 없는 상태를 도착지로 고를 때 (R11 A3).
+ *
+ * errorCode: `SCHEME_STATUS_MAPPING_INVALID` (400)
+ */
+class SchemeStatusMappingInvalidException(
+    reason: String,
+) : WorkflowSchemeDomainException(reason)
+
+/**
+ * 범위 프로젝트에 끝나지 않은 상태 이관이 있을 때 (R11 A6 — 발행 이관 F15 와 같은 판정).
+ *
+ * errorCode: `SCHEME_MIGRATION_IN_FLIGHT` (409)
+ */
+class SchemeMigrationInFlightException : WorkflowSchemeDomainException("끝나지 않은 상태 이관이 있다 — 끝난 뒤 다시 시도할 것")
 
 /**
  * 하나 이상의 프로젝트가 사용 중인 스킴을 삭제하려 할 때 던지는 예외.

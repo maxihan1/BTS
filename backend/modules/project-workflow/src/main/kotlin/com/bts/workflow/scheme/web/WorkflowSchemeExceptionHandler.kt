@@ -10,8 +10,11 @@ import com.bts.workflow.scheme.exception.MappingDuplicateException
 import com.bts.workflow.scheme.exception.SchemeChangeStrandsIssuesException
 import com.bts.workflow.scheme.exception.SchemeInUseException
 import com.bts.workflow.scheme.exception.SchemeKeyInvalidException
+import com.bts.workflow.scheme.exception.SchemeMappingsInvalidException
+import com.bts.workflow.scheme.exception.SchemeMigrationInFlightException
 import com.bts.workflow.scheme.exception.SchemeStandardFieldLockedException
 import com.bts.workflow.scheme.exception.SchemeStandardNotDeletableException
+import com.bts.workflow.scheme.exception.SchemeStatusMappingInvalidException
 import com.bts.workflow.scheme.exception.TypeStandardNotDeletableException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNoDefaultException
 import com.bts.workflow.scheme.exception.WorkflowSchemeNotFoundException
@@ -37,7 +40,10 @@ import java.time.Instant
  * - [WorkflowSchemeNotFoundException]       → 404 + SCHEME_NOT_FOUND
  * - [SchemeStandardNotDeletableException]   → 403 + SCHEME_STANDARD_NOT_DELETABLE
  * - [SchemeInUseException]                  → 409 + SCHEME_IN_USE (usedByProjects 포함)
- * - [SchemeChangeStrandsIssuesException]    → 409 + SCHEME_CHANGE_STRANDS_ISSUES (strandedByStatus 포함)
+ * - [SchemeChangeStrandsIssuesException]    → 409 + SCHEME_CHANGE_STRANDS_ISSUES (strandedByStatus · strandedByType 포함)
+ * - [SchemeMappingsInvalidException]        → 400 + SCHEME_MAPPINGS_INVALID
+ * - [SchemeStatusMappingInvalidException]   → 400 + SCHEME_STATUS_MAPPING_INVALID
+ * - [SchemeMigrationInFlightException]      → 409 + SCHEME_MIGRATION_IN_FLIGHT
  * - [MappingDuplicateException]             → 409 + MAPPING_DUPLICATE
  * - [MappingDefaultDuplicateException]      → 409 + MAPPING_DEFAULT_DUPLICATE
  * - [WorkflowNotFoundException]             → 404 + WORKFLOW_NOT_FOUND
@@ -254,9 +260,55 @@ class WorkflowSchemeExceptionHandler {
             title = "Scheme Change Strands Issues",
             errorCode = SchemeErrorCodes.SCHEME_CHANGE_STRANDS_ISSUES,
             detail = ex.message,
-            additionalFields = mapOf("strandedByStatus" to ex.strandedByStatus),
+            additionalFields =
+                mapOf(
+                    "strandedByStatus" to ex.strandedByStatus,
+                    "strandedByType" to
+                        ex.strandedByType.map {
+                            mapOf(
+                                "issueTypeId" to it.issueTypeId,
+                                "workflowKey" to it.workflowKey,
+                                "statuses" to it.statuses,
+                            )
+                        },
+                ),
         )
     }
+
+    // ── R11 스킴 게시 · 교체 이관 ─────────────────────────────────────────────
+
+    /** 게시 매핑 목록이 규칙 위반 — 400. */
+    @ExceptionHandler(SchemeMappingsInvalidException::class)
+    fun handleSchemeMappingsInvalid(ex: SchemeMappingsInvalidException): ProblemDetail =
+        problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "scheme-mappings-invalid",
+            title = "Scheme Mappings Invalid",
+            errorCode = SchemeErrorCodes.SCHEME_MAPPINGS_INVALID,
+            detail = ex.message,
+        )
+
+    /** 상태 매핑의 도착지가 새 워크플로우에 없음 — 400. */
+    @ExceptionHandler(SchemeStatusMappingInvalidException::class)
+    fun handleSchemeStatusMappingInvalid(ex: SchemeStatusMappingInvalidException): ProblemDetail =
+        problem(
+            status = HttpStatus.BAD_REQUEST,
+            type = "scheme-status-mapping-invalid",
+            title = "Scheme Status Mapping Invalid",
+            errorCode = SchemeErrorCodes.SCHEME_STATUS_MAPPING_INVALID,
+            detail = ex.message,
+        )
+
+    /** 범위 프로젝트에 끝나지 않은 이관 — 409. */
+    @ExceptionHandler(SchemeMigrationInFlightException::class)
+    fun handleSchemeMigrationInFlight(ex: SchemeMigrationInFlightException): ProblemDetail =
+        problem(
+            status = HttpStatus.CONFLICT,
+            type = "scheme-migration-in-flight",
+            title = "Scheme Migration In Flight",
+            errorCode = SchemeErrorCodes.SCHEME_MIGRATION_IN_FLIGHT,
+            detail = ex.message,
+        )
 
     // ── 409 MAPPING_DUPLICATE ─────────────────────────────────────────────────
 
@@ -366,6 +418,9 @@ object SchemeErrorCodes {
     const val SCHEME_STANDARD_NOT_DELETABLE = "SCHEME_STANDARD_NOT_DELETABLE"
     const val SCHEME_IN_USE = "SCHEME_IN_USE"
     const val SCHEME_CHANGE_STRANDS_ISSUES = "SCHEME_CHANGE_STRANDS_ISSUES"
+    const val SCHEME_MAPPINGS_INVALID = "SCHEME_MAPPINGS_INVALID"
+    const val SCHEME_STATUS_MAPPING_INVALID = "SCHEME_STATUS_MAPPING_INVALID"
+    const val SCHEME_MIGRATION_IN_FLIGHT = "SCHEME_MIGRATION_IN_FLIGHT"
     const val MAPPING_DUPLICATE = "MAPPING_DUPLICATE"
     const val MAPPING_DEFAULT_DUPLICATE = "MAPPING_DEFAULT_DUPLICATE"
     const val WORKFLOW_NOT_FOUND = "WORKFLOW_NOT_FOUND"

@@ -70,7 +70,8 @@
 - [x] D5. 백엔드 테스트 — 단위·Controller·Repository 통합 완료 (책임. backend-engineer) — PR #18. *종전 각주 「S1~S8 시나리오 통합테스트 + ADR·SDD 정정은 Wave 6 후속」은 **2026-09-03 실측으로 닫는다** — 스킴 통합 테스트가 실재한다(`scheme/repository/` 3건 · `scheme/web/WorkflowSchemeControllerIntegrationTest.kt`). 「S1~S8」이라는 명명은 정의처가 없고, 이름이 겹치는 두 가지가 저장소에 따로 있다 — `integration/WorkflowIntegrationTest.kt` 의 S1~S7(FR-WF-01 Task 35)과 `apps/web/e2e/issue-transition.spec.ts` 의 S8(#398, §2.5 각주). 그 명명을 되살리지 않는다*
 - [x] D6. 프론트 UI — 프로젝트 설정 → 워크플로우 (책임. designer → frontend-engineer) — PR #31
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
-- [x] D8. WF-02-1 스킴을 바꾸거나 매핑을 고쳐도 이슈 상태를 옮기지 않는다 — 결함 B5 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1) (PR #524, 2026-10-22). *옮기지 않고 막는다 — 워크플로우가 바뀌는 이슈 타입의 이슈가 새 편성에 없는 상태에 있으면 배정·매핑 추가·삭제가 409 `SCHEME_CHANGE_STRANDS_ISSUES`. 이관 워커가 이슈 타입 축을 못 봐(장부 145) 변경과 함께 상태를 고르는 것(G14)은 기능 후보로 남는다*
+- [x] D8. WF-02-1 스킴을 바꾸거나 매핑을 고쳐도 이슈 상태를 옮기지 않는다 — 결함 B5 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1) (PR #524, 2026-10-22). *옮기지 않고 막는다 — 워크플로우가 바뀌는 이슈 타입의 이슈가 새 편성에 없는 상태에 있으면 배정·매핑 추가·삭제가 409 `SCHEME_CHANGE_STRANDS_ISSUES`. 이관 워커가 이슈 타입 축을 못 봐(장부 145) 변경과 함께 상태를 고르는 것(G14)은 기능 후보로 남는다* — **R11 D9 · D10 이 「막는다」를 「유형별로 옮긴다」로 대체**(기존 `PUT` · 매핑 추가 · 삭제 API 는 그대로 409)
+- [x] D9. R11 A — 스킴 게시 · 프로젝트 스킴 교체 + 유형별 상태 이관 API (결정 D4 · 갭 JCW-1 · 스펙 `docs/specs/2026-10-28-r11-scheme-change-status-migration.md`) (2026-10-28). *`POST /workflow-schemes/{k}/publish`(매핑 전체 교체) · `POST /projects/{p}/workflow-scheme/switch`. 상태 매핑이 모자라면 409 `strandedByType`(마법사 입력), 다 덮으면 같은 tx 에서 바꾸고 유형마다 `StatusMigrationCommand` 1건 큐잉(shared-kernel 무변경). 게시 범위는 아카이브 포함 — WF-07-4 의 스킴 매핑 잔여를 이 경로로 닫는다*
 
 ### §2.3 FR-WF-03 — 워크플로우 전환 validator/PostAction 런타임 결선
 
@@ -189,6 +190,11 @@
 - [x] D14. WF-07-6 다이어그램(D8) 브라우저 눈확인 9항목 미실시 (`TODOS.md`) (2026-10-22). *남은 ⑦ 빈 캔버스 문구를 상태 5개 제거(확인 다이얼로그 정상 통과) 뒤 관측 — 라이트·다크 통과로 9/9. 코드 변경 0*
 - [x] D15. WF-07-7 이관 마법사(D6b) 실서버 눈확인 5경로 미실시 (`TODOS.md`) (2026-10-22). *실서버(bootRun + vite preview)로 5경로 통과 — 권한 없는 계정은 403 이 아니라 존재 숨김 404 · 부분 실패 뒤 서버는 DB 재카운트로 409. 코드 변경 0*
 - [x] D16. WF-07-8 테스트 빈틈 — 편집 잠금 409 · 순수 이동 판정 (`TODOS.md`) (2026-10-22). *잠금 409 를 `delete` · 전환 생성/수정/삭제 각각 판정(`WorkflowCrudIntegrationTest` 4건). 순수 이동 판정은 대상 스크립트가 #505 에서 삭제돼 대상 소멸*
+
+> **범위 변경 예고 — 결정 D4 (2026-10-28 · R11)**. 초안 → 발행은 워크플로우에서 **스킴으로** 옮겨 간다.
+> 스킴 쪽(FR-WF-02 D9 · D10)이 먼저 들어왔고, 이 절의 초안 · 발행을 「워크플로우 업데이트 즉시 반영 +
+> 기본 대상 · 프로젝트 × 유형 예외 이관 모달」로 바꾸는 단계 C 는 아직이다(스펙
+> `docs/specs/2026-10-28-r11-scheme-change-status-migration.md` §2 단계 C). 그 전까지 D1~D16 은 그대로 유효하다.
 
 > **D3 의 번호를 V207 → V208 로 정정했다** (2026-08-26). 계획 당시 예약해 둔 V207 을 FR-WF-05
 > (전환 identity, #395)가 먼저 가져갔다. 착수 시점 실측으로 확인해 다음 가용 번호로 바꿨다 —
