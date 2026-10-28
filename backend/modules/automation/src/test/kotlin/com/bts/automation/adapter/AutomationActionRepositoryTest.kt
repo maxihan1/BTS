@@ -242,6 +242,23 @@ class AutomationActionRepositoryTest {
         assertThat(found).containsExactly(Action.SetFixVersionsAction(versionIds = emptyList()))
     }
 
+    @Test
+    fun `replaceForRule — R9 단계 C 액션 4종은 findByRuleId 왕복에서 보존된다`() {
+        val rule = savedRule()
+        val actions =
+            listOf(
+                Action.TransitionAction("done"),
+                Action.CreateIssueAction("후속: {{ issue.summary }}", "subtask", asSubtask = true),
+                Action.LinkIssueAction("blocks", "PROJ-2"),
+                Action.AddWatcherAction(UUID.fromString("44444444-4444-4444-4444-444444444444"), null),
+                Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_ASSIGNEE),
+            )
+
+        actionRepository.replaceForRule(rule.id, actions)
+
+        assertThat(actionRepository.findByRuleId(rule.id)).containsExactlyElementsOf(actions)
+    }
+
     // ── AutomationRuleRepository.save 연동 ────────────────────────────────────────
 
     @Test

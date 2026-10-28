@@ -160,13 +160,17 @@ private fun actionTypeOf(action: Action): ActionType =
         is Action.AddCommentAction -> ActionType.ADD_COMMENT
         is Action.CallWebhookAction -> ActionType.CALL_WEBHOOK
         is Action.SetFixVersionsAction -> ActionType.SET_FIX_VERSIONS
+        is Action.TransitionAction -> ActionType.TRANSITION
+        is Action.CreateIssueAction -> ActionType.CREATE_ISSUE
+        is Action.LinkIssueAction -> ActionType.LINK_ISSUE
+        is Action.AddWatcherAction -> ActionType.ADD_WATCHER
     }
 
 /**
  * [Action] → `action_config` JSON 문자열 직렬화.
  *
  * [Action.fromJson] 의 파서(`parseSetField`/`parseAssign`/`parseAddComment`/`parseCallWebhook`/
- * `parseSetFixVersions`)가 기대하는 필드명과 정확히 일치해야 한다 — 여기서 어긋나면 [findByRuleId]
+ * `parseSetFixVersions` 등)가 기대하는 필드명과 정확히 일치해야 한다 — 여기서 어긋나면 [findByRuleId]
  * 역직렬화가 실패한다.
  */
 private fun actionConfigJson(
@@ -198,6 +202,20 @@ private fun actionConfigJson(
         is Action.SetFixVersionsAction -> {
             val versionIdsNode = node.putArray("versionIds")
             action.versionIds.forEach { versionIdsNode.add(it.toString()) }
+        }
+        is Action.TransitionAction -> node.put("toState", action.toState)
+        is Action.CreateIssueAction -> {
+            node.put("summary", action.summary)
+            node.put("issueTypeKey", action.issueTypeKey)
+            node.put("asSubtask", action.asSubtask)
+        }
+        is Action.LinkIssueAction -> {
+            node.put("linkTypeCode", action.linkTypeCode)
+            node.put("targetIssueKey", action.targetIssueKey)
+        }
+        is Action.AddWatcherAction -> {
+            node.put("userId", action.userId?.toString())
+            node.put("fromField", action.fromField)
         }
     }
     return objectMapper.writeValueAsString(node)

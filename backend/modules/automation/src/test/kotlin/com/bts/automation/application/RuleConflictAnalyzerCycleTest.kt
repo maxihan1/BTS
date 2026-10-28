@@ -288,4 +288,60 @@ class RuleConflictAnalyzerCycleTest : DescribeSpec({
             conflicts.filter { it.type == ConflictType.CYCLE }.map { it.ruleIds } shouldBe listOf(listOf(ruleA.id))
         }
     }
+
+    describe("CYCLE — R9 단계 C 액션") {
+        it("TRANSITION(done) 이 자기 ISSUE_TRANSITIONED{toStates:[done]} 를 유발하면 self-loop CYCLE") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_TRANSITIONED,
+                    triggerConfig = """{"toStates":["done"]}""",
+                    actions = listOf(Action.TransitionAction("done")),
+                )
+
+            val conflicts = analyzer.analyze(listOf(ruleA))
+
+            conflicts.filter { it.type == ConflictType.CYCLE }.map { it.ruleIds } shouldBe listOf(listOf(ruleA.id))
+        }
+
+        it("TRANSITION 대상 상태가 toStates 필터 밖이면 엣지가 없다") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_TRANSITIONED,
+                    triggerConfig = """{"toStates":["in-review"]}""",
+                    actions = listOf(Action.TransitionAction("done")),
+                )
+
+            analyzer.analyze(listOf(ruleA)).filter { it.type == ConflictType.CYCLE }.shouldBeEmpty()
+        }
+
+        it("CREATE_ISSUE 가 자기 ISSUE_CREATED 트리거를 유발하면 self-loop CYCLE") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_CREATED,
+                    actions = listOf(Action.CreateIssueAction("후속", "task")),
+                )
+
+            val conflicts = analyzer.analyze(listOf(ruleA))
+
+            conflicts.filter { it.type == ConflictType.CYCLE }.map { it.ruleIds } shouldBe listOf(listOf(ruleA.id))
+        }
+
+        it("LINK_ISSUE · ADD_WATCHER 는 이벤트를 발행하지 않아 엣지가 없다") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_UPDATED,
+                    actions =
+                        listOf(
+                            Action.LinkIssueAction("relates", "PROJ-2"),
+                            Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_REPORTER),
+                        ),
+                )
+
+            analyzer.analyze(listOf(ruleA)).filter { it.type == ConflictType.CYCLE }.shouldBeEmpty()
+        }
+    }
 })

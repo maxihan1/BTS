@@ -6,6 +6,7 @@ import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ConflictType
 import com.bts.automation.domain.RuleConflict
+import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
@@ -82,7 +83,7 @@ class RuleConflictAnalyzer(
     /**
      * [action] 이 [target] 의 트리거를 유발할 수 있으면 `true`(스펙 FR-3 매핑 표).
      *
-     * sealed [Action] 의 5개 하위 타입에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
+     * sealed [Action] 의 하위 타입 전부에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
      * 매핑을 별도로 만들지 않는다(기존 repo/executor/response 3곳 매핑과의 중복 회피, plan DRY 노트).
      *
      * ## AssignAction → ISSUE_ASSIGNED 만 엣지 (R9, 코드리뷰 C1 의 갱신)
@@ -98,6 +99,13 @@ class RuleConflictAnalyzer(
      * 않는다. `triggersIssueUpdated(target, "fixVersions")` 로 엣지를 그으면 위 AssignAction 과 동일한
      * phantom edge 사고가 재발한다. 따라서 무조건 `false` 로 판정한다 — 단 AssignAction 과 마찬가지로
      * [hasObservableSideEffect] 판정(FIELD_CONFLICT/PRIORITY_AMBIGUITY)에는 그대로 포함한다.
+     *
+     * ## R9 단계 C — 전환 · 생성은 엣지, 연결 · 관찰자는 없음
+     * TRANSITION 은 `issue.transitioned`(cause 없음 — 자동화 전환은 이관이 아니다)를 발행하므로
+     * [TriggerType.ISSUE_TRANSITIONED] 룰로 엣지를 긋는다. 대상의 `toStates` 필터가 이 액션의 대상 상태를 빼면
+     * 엣지가 없다 — `fromStates` 는 실행 시점 상태라 정적으로 모르므로 보지 않는다(과대 검출 쪽). CREATE_ISSUE 는
+     * `issue.created` → [TriggerType.ISSUE_CREATED]. 연결(`LinkApplicationService.createLink`) · 관찰자
+     * (`IssueWatcherService.watch`)는 이벤트를 발행하지 않는다 — 엣지를 그으면 phantom edge 다.
      */
     private fun actionTriggers(
         action: Action,
@@ -109,6 +117,12 @@ class RuleConflictAnalyzer(
             is Action.AddCommentAction -> target.triggerType == TriggerType.ISSUE_COMMENTED
             is Action.CallWebhookAction -> false
             is Action.SetFixVersionsAction -> false
+            is Action.TransitionAction ->
+                target.triggerType == TriggerType.ISSUE_TRANSITIONED &&
+                    toStatesAllow(target.triggerConfig, action.toState)
+            is Action.CreateIssueAction -> target.triggerType == TriggerType.ISSUE_CREATED
+            is Action.LinkIssueAction -> false
+            is Action.AddWatcherAction -> false
         }
 
     /** [target] 이 ISSUE_UPDATED 트리거이고 [field] 변경에 발화하면 `true`([matchesField] 공유 헬퍼 재사용). */
@@ -352,19 +366,14 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
     }
 
     /**
-     * [rule] 이 사용자가 관측 가능한 부수효과 액션(SET_FIELD/ASSIGN/ADD_COMMENT/SET_FIX_VERSIONS)을
-     * 하나라도 보유하면 `true`.
+     * [rule] 이 사용자가 관측 가능한 부수효과 액션(웹훅 호출 외 전부 — 이슈를 바꾸는 액션)을 하나라도 보유하면 `true`.
      *
-     * `||` 불리언 체인이라 컴파일러가 exhaustive 를 강제하지 않는다 — 신규 [Action] 서브타입을 추가할 때
-     * 이 판정을 빠뜨려도 컴파일과 기존 테스트가 그대로 통과하니 주의(FR-AT-07 인계 노트).
+     * 「웹훅이 아닌 것」으로 판정한다 — 이슈를 바꾸는 새 [Action] 서브타입이 이 목록에서 빠지는 일이 없다
+     * (FR-AT-07 인계 노트의 `||` 체인 함정을 R9 단계 C 에서 닫음).
      */
-    private fun hasObservableSideEffect(rule: AutomationRule): Boolean =
-        rule.actions.any {
-            it is Action.SetFieldAction ||
-                it is Action.AssignAction ||
-                it is Action.AddCommentAction ||
-                it is Action.SetFixVersionsAction
-        }
+    private fun hasObservableSideEffect(rule: AutomationRule): Boolean {
+        return rule.actions.any { it !is Action.CallWebhookAction }
+    }
 }
 
 /**
@@ -464,6 +473,10 @@ private class PermissionAnalyzer(
             is Action.AddCommentAction -> null
             is Action.CallWebhookAction -> null
             is Action.SetFixVersionsAction -> IssuePermission.UPDATE
+            is Action.TransitionAction -> IssuePermission.TRANSITION
+            is Action.CreateIssueAction -> IssuePermission.CREATE
+            is Action.LinkIssueAction -> IssuePermission.UPDATE
+            is Action.AddWatcherAction -> IssuePermission.UPDATE
         }
 
     /**
@@ -477,6 +490,10 @@ private class PermissionAnalyzer(
             is Action.AddCommentAction -> "댓글 추가"
             is Action.CallWebhookAction -> "웹훅 호출"
             is Action.SetFixVersionsAction -> "수정 예정 버전 설정"
+            is Action.TransitionAction -> "이슈 전환"
+            is Action.CreateIssueAction -> "이슈 생성"
+            is Action.LinkIssueAction -> "이슈 연결"
+            is Action.AddWatcherAction -> "관찰자 추가"
         }
 }
 
@@ -504,6 +521,19 @@ private fun matchesField(
     triggerConfig: String,
     field: String,
 ): Boolean = TriggerMatcher.matchesFieldFilter(triggerConfig, setOf(field))
+
+/**
+ * ISSUE_TRANSITIONED 룰의 `toStates` 필터가 [toState] 로의 전환에 발화할 수 있으면 `true`(비었으면 전체 발화).
+ * `fromStates` 는 보지 않는다 — [RuleConflictAnalyzer] `actionTriggers` 의 R9 단계 C 절 참조.
+ */
+private fun toStatesAllow(
+    triggerConfig: String,
+    toState: String,
+): Boolean {
+    val node = triggerConfigObjectMapper.readTree(triggerConfig).path(TriggerConfig.FIELD_TO_STATES)
+    if (!node.isArray || node.isEmpty) return true
+    return node.any { it.asText(null) == toState }
+}
 
 /**
  * `triggerConfig` JSON(`{"fields":[...]}`) 의 `fields` 배열을 문자열 집합으로 파싱한다.

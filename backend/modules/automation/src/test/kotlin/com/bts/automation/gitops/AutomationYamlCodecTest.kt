@@ -169,6 +169,24 @@ class AutomationYamlCodecTest : DescribeSpec({
         }
     }
 
+    describe("AutomationYamlCodec — R9 단계 C 액션 round-trip") {
+        it("전환 · 생성 · 연결 · 관찰자 액션이 YAML 왕복 뒤 같은 Action 으로 파싱된다") {
+            val actions =
+                listOf(
+                    Action.TransitionAction("done"),
+                    Action.CreateIssueAction("후속: {{ issue.summary }}", "subtask", asSubtask = true),
+                    Action.LinkIssueAction("blocks", "PROJ-2"),
+                    Action.AddWatcherAction(UUID.fromString("44444444-4444-4444-4444-444444444444"), null),
+                    Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_ASSIGNEE),
+                )
+            val rule = sampleRule(ruleId1, "규칙 C").copy(actions = actions)
+
+            val parsed = AutomationYamlCodec.fromYaml(AutomationYamlCodec.toYaml("PROJ", listOf(rule)))
+
+            parsed.rules.single().actions.map { Action.fromJson(it.type, it.config) } shouldBe actions
+        }
+    }
+
     describe("AutomationYamlCodec.fromYaml — 오류 처리") {
         it("malformed YAML은 예외를 던지고 원본 값을 echo하지 않는다") {
             val malformed = "not: [valid: yaml: structure"

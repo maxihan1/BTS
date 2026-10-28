@@ -77,7 +77,7 @@ data class PatchAutomationRuleRequest(
  * 역직렬화 실패(그 경우 500/malformed-request 로 분류가 모호해짐)에 맡기지 않기 위해 의도적으로
  * `String` 으로 받는다.
  *
- * @property type 액션 타입 이름 문자열(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS).
+ * @property type 액션 타입 이름 문자열([com.bts.automation.domain.ActionType] 9종).
  * @property config 액션별 설정 JSON 문자열. 기본값은 빈 객체(`{}`) — 필수 필드 누락이면 도메인이 400 을 던진다.
  */
 data class ActionRequest(

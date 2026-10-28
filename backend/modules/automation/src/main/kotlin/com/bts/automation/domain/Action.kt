@@ -1,4 +1,4 @@
-// 자동화 액션 다형성 — SetField/Assign/AddComment/CallWebhook/SetFixVersions (FR-AT-02, ADR D1, FR-AT-07)
+// 자동화 액션 다형성 — 필드/담당자/댓글/웹훅/수정 버전/전환/이슈 생성/연결/관찰자 (FR-AT-02, FR-AT-07, R9 단계 C)
 // SET_FIX_VERSIONS 파싱 헬퍼(parseSetFixVersions)가 top-level private 함수로 추가되며 파일 함수 수가
 // detekt TooManyFunctions 파일 임계값을 넘어선다 — 파싱 세부를 companion object 밖 top-level 함수로
 // 분리하는 기존 설계(클래스 KDoc 참고)를 유지하기 위해 억제한다(신규 위반, baseline 아님).
@@ -6,6 +6,7 @@
 
 package com.bts.automation.domain
 
+import com.bts.shared.issue.IssueTypeKey
 import com.fasterxml.jackson.core.JsonParseException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -26,6 +27,7 @@ import java.util.UUID
  * - [AddCommentAction] — 댓글 추가
  * - [CallWebhookAction] — 아웃바운드 웹훅 호출
  * - [SetFixVersionsAction] — 이슈 수정 예정 버전(Fix Version) 설정
+ * - [TransitionAction] · [CreateIssueAction] · [LinkIssueAction] · [AddWatcherAction] — R9 단계 C
  */
 sealed class Action {
     /**
@@ -77,6 +79,53 @@ sealed class Action {
      */
     data class SetFixVersionsAction(val versionIds: List<UUID>) : Action()
 
+    /**
+     * 이슈를 다른 상태로 전환하는 액션 (R9 단계 C).
+     *
+     * @property toState 대상 워크플로 상태 키. 그 전환이 워크플로에 있는지는 실행 시점 issue-tracking 이 판정한다
+     */
+    data class TransitionAction(val toState: String) : Action()
+
+    /**
+     * 룰 프로젝트에 이슈(또는 트리거 이슈의 하위 작업)를 만드는 액션 (R9 단계 C).
+     *
+     * @property summary 요약. `{{템플릿}}` 치환은 실행 시점 책임
+     * @property issueTypeKey 이슈 유형 키([IssueTypeKey] 형식). 유형 실재는 실행 시점 issue-tracking 이 판정한다
+     * @property asSubtask true 면 트리거 이슈를 부모로 하는 하위 작업으로 만든다
+     */
+    data class CreateIssueAction(
+        val summary: String,
+        val issueTypeKey: String,
+        val asSubtask: Boolean = false,
+    ) : Action()
+
+    /**
+     * 트리거 이슈를 다른 이슈와 연결하는 액션 (R9 단계 C).
+     *
+     * @property linkTypeCode 연결 유형 코드(`blocks` · `relates` · `duplicates` · `clones`). 실재 판정은 실행 시점
+     * @property targetIssueKey 대상 이슈 키. `{{템플릿}}` 치환 후 룰 프로젝트 소속이어야 한다(실행 시점 경계 검사)
+     */
+    data class LinkIssueAction(
+        val linkTypeCode: String,
+        val targetIssueKey: String,
+    ) : Action()
+
+    /**
+     * 트리거 이슈에 관찰자를 추가하는 액션 (R9 단계 C). [userId] 와 [fromField] 중 정확히 하나가 있다.
+     *
+     * @property userId 관찰자로 추가할 사용자 id
+     * @property fromField 이슈의 사람 필드(`reporter` · `assignee`) — 실행 시점 이슈 값을 관찰자로 추가한다
+     */
+    data class AddWatcherAction(
+        val userId: UUID?,
+        val fromField: String?,
+    ) : Action() {
+        companion object {
+            const val FROM_REPORTER = "reporter"
+            const val FROM_ASSIGNEE = "assignee"
+        }
+    }
+
     companion object {
         /** [CallWebhookAction.method] 기본값. */
         const val DEFAULT_METHOD: String = "POST"
@@ -103,6 +152,15 @@ sealed class Action {
                 ActionType.ADD_COMMENT -> parseAddComment(node)
                 ActionType.CALL_WEBHOOK -> parseCallWebhook(node)
                 ActionType.SET_FIX_VERSIONS -> parseSetFixVersions(node)
+                ActionType.TRANSITION ->
+                    Action.TransitionAction(requireNonBlankText(node, FIELD_TO_STATE, MSG_TRANSITION_TO_STATE_REQUIRED))
+                ActionType.CREATE_ISSUE -> parseCreateIssue(node)
+                ActionType.LINK_ISSUE ->
+                    Action.LinkIssueAction(
+                        linkTypeCode = requireNonBlankText(node, FIELD_LINK_TYPE_CODE, MSG_LINK_TYPE_CODE_REQUIRED),
+                        targetIssueKey = requireNonBlankText(node, FIELD_TARGET_ISSUE_KEY, MSG_LINK_TARGET_REQUIRED),
+                    )
+                ActionType.ADD_WATCHER -> parseAddWatcher(node)
             }
         }
     }
@@ -119,6 +177,14 @@ private const val FIELD_URL = "url"
 private const val FIELD_METHOD = "method"
 private const val FIELD_HEADERS = "headers"
 private const val FIELD_VERSION_IDS = "versionIds"
+private const val FIELD_TO_STATE = "toState"
+private const val FIELD_SUMMARY = "summary"
+private const val FIELD_ISSUE_TYPE_KEY = "issueTypeKey"
+private const val FIELD_AS_SUBTASK = "asSubtask"
+private const val FIELD_LINK_TYPE_CODE = "linkTypeCode"
+private const val FIELD_TARGET_ISSUE_KEY = "targetIssueKey"
+private const val FIELD_USER_ID = "userId"
+private const val FIELD_FROM_FIELD = "fromField"
 
 private const val MSG_INVALID_JSON = "action_config는 유효한 JSON 객체여야 합니다."
 private const val MSG_SET_FIELD_FIELD_REQUIRED = "SET_FIELD 액션은 비어있지 않은 field 문자열이 필요합니다."
@@ -138,6 +204,15 @@ private const val MSG_SET_FIX_VERSIONS_VERSION_IDS_INVALID =
     "SET_FIX_VERSIONS 액션의 versionIds는 배열이어야 합니다."
 private const val MSG_SET_FIX_VERSIONS_VERSION_ID_INVALID =
     "SET_FIX_VERSIONS 액션의 versionIds 각 원소는 uuid 문자열이어야 합니다."
+
+private const val MSG_TRANSITION_TO_STATE_REQUIRED = "TRANSITION 액션은 비어있지 않은 toState 문자열이 필요합니다."
+private const val MSG_CREATE_ISSUE_SUMMARY_REQUIRED = "CREATE_ISSUE 액션은 비어있지 않은 summary 문자열이 필요합니다."
+private const val MSG_CREATE_ISSUE_TYPE_INVALID = "CREATE_ISSUE 액션의 issueTypeKey는 이슈 유형 키 형식이어야 합니다."
+private const val MSG_CREATE_ISSUE_AS_SUBTASK_INVALID = "CREATE_ISSUE 액션의 asSubtask는 boolean이어야 합니다."
+private const val MSG_LINK_TYPE_CODE_REQUIRED = "LINK_ISSUE 액션은 비어있지 않은 linkTypeCode 문자열이 필요합니다."
+private const val MSG_LINK_TARGET_REQUIRED = "LINK_ISSUE 액션은 비어있지 않은 targetIssueKey 문자열이 필요합니다."
+private const val MSG_ADD_WATCHER_ONE_OF =
+    "ADD_WATCHER 액션은 userId(uuid) 또는 fromField(reporter/assignee) 중 정확히 하나가 필요합니다."
 
 private val objectMapper = ObjectMapper()
 
@@ -296,3 +371,36 @@ private fun requireNonBlankText(
     }
     return fieldNode.asText()
 }
+
+/** CREATE_ISSUE 액션 config `{summary, issueTypeKey, asSubtask?}` 를 파싱한다. */
+private fun parseCreateIssue(node: JsonNode): Action.CreateIssueAction {
+    val summary = requireNonBlankText(node, FIELD_SUMMARY, MSG_CREATE_ISSUE_SUMMARY_REQUIRED)
+    val typeKey = node.get(FIELD_ISSUE_TYPE_KEY)
+    if (typeKey == null || !typeKey.isTextual || !IssueTypeKey.REGEX.matches(typeKey.asText())) {
+        throw ActionConfigInvalidException(MSG_CREATE_ISSUE_TYPE_INVALID)
+    }
+    val asSubtask = node.get(FIELD_AS_SUBTASK)
+    if (asSubtask != null && !asSubtask.isBoolean) {
+        throw ActionConfigInvalidException(MSG_CREATE_ISSUE_AS_SUBTASK_INVALID)
+    }
+    return Action.CreateIssueAction(summary, typeKey.asText(), asSubtask?.asBoolean() ?: false)
+}
+
+/** ADD_WATCHER 액션 config `{userId}` 또는 `{fromField: "reporter"|"assignee"}` 를 파싱한다. */
+private fun parseAddWatcher(node: JsonNode): Action.AddWatcherAction {
+    val userIdNode = node.get(FIELD_USER_ID)?.takeUnless { it.isNull }
+    val fromField = node.get(FIELD_FROM_FIELD)?.takeUnless { it.isNull }?.asText()
+    val userId = userIdNode?.takeIf { it.isTextual }?.asText()?.let(::parseUuidOrNull)
+    val valid = if (userIdNode != null) fromField == null && userId != null else fromField in WATCHER_FROM_FIELDS
+    if (!valid) throw ActionConfigInvalidException(MSG_ADD_WATCHER_ONE_OF)
+    return Action.AddWatcherAction(userId = userId, fromField = fromField)
+}
+
+private val WATCHER_FROM_FIELDS = setOf(Action.AddWatcherAction.FROM_REPORTER, Action.AddWatcherAction.FROM_ASSIGNEE)
+
+private fun parseUuidOrNull(text: String): UUID? =
+    try {
+        UUID.fromString(text)
+    } catch (_: IllegalArgumentException) {
+        null
+    }

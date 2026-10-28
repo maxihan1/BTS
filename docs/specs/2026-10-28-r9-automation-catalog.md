@@ -49,7 +49,7 @@ shared-kernel `IssueMutationPort` 에 4 메서드 + 커맨드 4종. issue-tracki
 |---|---|---|---|---|
 | C1 | `TRANSITION` | `{toState}` | `IssueApplicationService.transition` | 필수 화면 · 검증기 실패 = 그 액션 FAILED. 루프 — 전환 액션 ↔ 전환 트리거가 사이클 표에 들어간다 |
 | C2 | `CREATE_ISSUE` | `{summary(템플릿), issueTypeKey, asSubtask?: boolean}` | `IssueApplicationService.create` | `asSubtask=true` 면 parentKey = 트리거 이슈(R1b 의 `parentKey` · 422 규칙 그대로). 대상 프로젝트 = 룰 프로젝트 고정 |
-| C3 | `LINK_ISSUE` | `{linkTypeId, targetIssueKey(템플릿)}` | `IssueLinkService` | 대상 키도 룰 프로젝트 소속만(경계 게이트 확장) |
+| C3 | `LINK_ISSUE` | `{linkTypeCode, targetIssueKey(템플릿)}` — 코드는 `blocks` · `relates` · `duplicates` · `clones` | `LinkApplicationService.createLink` | 대상 키도 룰 프로젝트 소속만(경계 게이트 확장). 구현 때 `linkTypeId` → 기존 API 의 `linkTypeCode` 로 바꿈 |
 | C4 | `ADD_WATCHER` | `{userId}` 또는 `{fromField: "reporter"\|"assignee"}` | `IssueWatcherService.watch` | |
 
 - **V312** — `ck_automation_actions_action_type` 9종 + `action_type` 폭 확인(`CREATE_ISSUE` 12자 — VARCHAR(20) 안).
@@ -77,6 +77,7 @@ shared-kernel `IssueMutationPort` 에 4 메서드 + 커맨드 4종. issue-tracki
 - shared-kernel(단계 C 포트 확장) — consumer-owns-stub(`StubIssueMutationPort`) · slack-integration 소비자 컴파일 확인.
 - 보안 — 수동 실행 엔드포인트(이슈 열람 권한 · 서버가 triggerEvent 생성), 이메일(사내 수신자만).
 - 루프 — 전환/할당/생성 액션이 같은 프로젝트 트리거를 다시 부른다. 런타임 가드(depth 10 · 60초 억제) + 충돌 분석 사이클 표 갱신.
+  - **생성 연쇄는 위 두 가드로 안 끊긴다**(R9b 리뷰 B1) — 새 이슈마다 키가 달라 (룰, 이슈) 억제창을 비켜 가고, depth 는 이벤트 왕복에서 0 으로 돌아간다. 그래서 `ActionExecutor` 가 「자동화가 만든 이슈 키 → 생성 깊이」를 기억해, 깊이 10 에 닿은 이슈가 트리거면 SKIPPED 한다(인스턴스 로컬 · 10분 TTL). 다중 인스턴스가 되면 `IssueCreated` 에 깊이를 싣는 이벤트 계약으로 옮긴다.
 
 ## 5. FR 문서
 

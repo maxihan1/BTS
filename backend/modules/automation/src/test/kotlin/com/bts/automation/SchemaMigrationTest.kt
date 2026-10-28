@@ -48,8 +48,8 @@ import java.util.UUID
  * - id = uuid PK NOT NULL / rule_id = uuid NOT NULL / position = integer NOT NULL
  * - action_type = character varying NOT NULL / action_config = jsonb NOT NULL
  * - created_at = timestamptz NOT NULL(DATA.md §4.1#4 — TIMESTAMP without tz 금지)
- * - action_type CHECK 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS) — 잘못된 값 거부
- *   (5번째 SET_FIX_VERSIONS 는 V306 확장 — FR-AT-07 PR-B)
+ * - action_type CHECK 9종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS/TRANSITION/CREATE_ISSUE/
+ *   LINK_ISSUE/ADD_WATCHER) — 잘못된 값 거부(SET_FIX_VERSIONS 는 V306, 뒤 4종은 V312 — R9 단계 C)
  * - rule_id FK → automation_rules(id) ON DELETE CASCADE(부모 룰 삭제 시 액션 동반 삭제)
  * - UNIQUE(rule_id, position)(겸 조회 인덱스 uq_automation_actions_rule_position) — 중복 순서 거부
  * - automation_rules.actor_user_id = uuid NOT NULL(V303 backfill: created_by → SET NOT NULL, 룰 실행 주체)
@@ -790,13 +790,22 @@ class SchemaMigrationTest {
         assertThat(columnIsNullable("automation_actions", "created_at")).isEqualTo("NO")
     }
 
-    // ── action_type CHECK 제약 (V306 이후 5종 화이트리스트) ─────────────────────
+    // ── action_type CHECK 제약 (V312 이후 9종 화이트리스트) ─────────────────────
 
     @Test
-    fun `V306 유효한 action_type 5종은 INSERT 허용`() {
+    fun `V312 유효한 action_type 9종은 INSERT 허용`() {
         val ruleId = insertRuleReturningId()
-        listOf("SET_FIELD", "ASSIGN", "ADD_COMMENT", "CALL_WEBHOOK", "SET_FIX_VERSIONS")
-            .forEachIndexed { position, actionType -> insertAction(ruleId, position, actionType) }
+        listOf(
+            "SET_FIELD",
+            "ASSIGN",
+            "ADD_COMMENT",
+            "CALL_WEBHOOK",
+            "SET_FIX_VERSIONS",
+            "TRANSITION",
+            "CREATE_ISSUE",
+            "LINK_ISSUE",
+            "ADD_WATCHER",
+        ).forEachIndexed { position, actionType -> insertAction(ruleId, position, actionType) }
     }
 
     @Test
@@ -1134,6 +1143,23 @@ class SchemaMigrationTest {
     @Test
     fun `V308 보존 정책 정리 배치용 received_at 인덱스 존재`() {
         assertThat(indexExists("ix_git_webhook_deliveries_received_at", "git_webhook_deliveries")).isTrue()
+    }
+
+    // ── R9 단계 C: V312 action_type CHECK 9종 확장 COMMENT 재발행 검증 (V306 의 5종을 대체) ───────
+
+    @Test
+    fun `V312 action_type 컬럼 · automation_actions 테이블 COMMENT 는 9종으로 재발행되었다`() {
+        assertThat(columnComment("automation_actions", "action_type")).contains("CHECK 9종")
+        val tableComment =
+            conn().use { c ->
+                c.createStatement().use { stmt ->
+                    stmt.executeQuery("SELECT obj_description('automation_actions'::regclass, 'pg_class')").use { rs ->
+                        rs.next()
+                        rs.getString(1)
+                    }
+                }
+            }
+        assertThat(tableComment).contains("9종")
     }
 
     // ── R9: V311 trigger_type CHECK 9종 확장 COMMENT 재발행 검증 (V309 의 6종을 대체) ───────

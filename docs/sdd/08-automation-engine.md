@@ -53,10 +53,12 @@ condition: "#issue.type == 'Bug' && #issue.priority == 'Highest' && #issue.assig
 | `SetFixVersions` | 수정 예정 버전(Fix Version) 설정 |
 | `AddComment` | 댓글 추가 (템플릿 변수 지원) |
 | `AddLabel` | 라벨 추가 |
-| `Transition` | 상태 전환 (워크플로우 거침) |
+| `Transition` | 상태 전환 (워크플로우 거침) — `TRANSITION {toState}` (R9 단계 C, 2026-10-28) |
 | `CallWebhook` | 외부 API 호출 |
 | `SendNotification` | 알림 발송 (사용자/채널 지정) |
-| `CreateIssue` | 새 이슈 생성 |
+| `CreateIssue` | 새 이슈 생성 — `CREATE_ISSUE {summary, issueTypeKey, asSubtask}`, 룰 프로젝트 고정 (R9 단계 C) |
+| `LinkIssue` | 트리거 이슈를 다른 이슈와 연결 — `LINK_ISSUE {linkTypeCode, targetIssueKey}`, 대상은 룰 프로젝트 소속만 (R9 단계 C) |
+| `AddWatcher` | 관찰자 추가 — `ADD_WATCHER {userId}` 또는 `{fromField: reporter\|assignee}` (R9 단계 C) |
 | `RunSubrule` | 다른 자동화 규칙 호출 |
 
 ## 8.5 규칙 YAML 예시
