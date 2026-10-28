@@ -249,7 +249,7 @@ D1~D7 마커는 **완주 단위**이므로 F12·F17 이 **둘 다** 끝나야 `[
 승계 PR 3건 (로드맵 §PR 체인 Tier 1 + 백엔드 B1).
 
 - **F2 — 이슈 생성 모달 + 유형·본문 + 담당자·우선순위·라벨.** (2026-08-01 Maxi 확정 재분할 — 3필드를 F3 에서 F2 로 이관했다. `components/issue/meta/` 8종 재사용이라 신규 컴포넌트가 0이고, F3 로 미루면 같은 폼 스키마·제출 페이로드·단위테스트를 두 번 열어야 한다. ADR [`2026-08-01-fr-ux-09-f2-create-issue-dialog`](../../decisions/2026-08-01-fr-ux-09-f2-create-issue-dialog.md) D-1) 지금 생성 폼은 **프로젝트를 자유 텍스트로 타이핑**해야 하고 **이슈 유형을 못 고른다**. 백엔드 `CreateIssueRequest.kt:30-35` 에 `typeId`·`description` 이 **이미 있는데 프론트가 안 보낸다**(`routes/issues.new.tsx:215-232`). 신규 `components/issue/CreateIssueDialog.tsx` · `api/issues.ts:266-278,551-568` · `TopBar.tsx:69-78`. `routes/issues.new` 라우트는 **딥링크 계약이라 유지**한다.
-- **F3 — 만들기 진입점 3곳**(백로그 칸 · 스프린트 칸 · **보드 헤더**) 배선. `BacklogColumn.tsx` · `SprintColumn.tsx` · `routes/projects.$projectKey.board.tsx`. 필드는 F2 에서 이미 완결됐다.
+- **F3 — 만들기 진입점 3곳**(백로그 칸 · 스프린트 칸 · **보드 헤더**) 배선. `BacklogColumn.tsx` · `SprintColumn.tsx` · `routes/projects.$projectKey.board.tsx`. 필드는 F2 에서 이미 완결됐다. **Deviation(2026-10-28 · 결정 D2 · R2)** — 보드 **컬럼 끝** · 백로그/스프린트 **섹션 끝**에 한 줄 인라인 생성을 더했다(`InlineCreateIssue` · Jira JB-B-1 · JB-L-1). 보드 컬럼에서 만든 이슈는 **생성 직후 그 컬럼 첫 상태로 전환**하고(초기 상태가 이미 그 컬럼이면 생략 · 워크플로가 막으면 이슈는 두고 경고) 스크럼이면 활성 스프린트에 넣는다 — ADR D-3 이 막았던 「컬럼별 +」의 약속을 그렇게 지킨다. 생성 API 는 그대로다.
 
 > **★ 위 F3 서술은 2026-08-03 실측·Maxi 확정으로 두 군데가 정정됐다. 정정 노트만 달지 않고 원문을 고쳤다** — 남겨 두면 다음 세션이 틀린 전제 위에 짓는다(FR-UX-08 PR-A 의 `?assignee=me` 정정과 같은 이유).
 >

@@ -3,6 +3,8 @@ import { describe, it, expect, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { boardLabels } from '@/i18n/board-labels'
 import type { BoardColumn as BoardColumnType, SwimlaneField } from '@/api/boards'
 import type { IssueTypeResponse } from '@/api/issue-types'
 
@@ -537,5 +539,40 @@ describe('BoardColumn — S11 issueTypesByKey 해석 전달', () => {
   it('S11c: 스윔레인 그룹 렌더(SwimlaneSection)에서도 issueTypesByKey가 전달된다', () => {
     renderColumn(columnWithCards, assigneeNames, false, 'ASSIGNEE', issueTypesByKey)
     expect(screen.getAllByRole('img', { name: '작업' })).toHaveLength(3)
+  })
+})
+
+describe('BoardColumn — S12 인라인 생성 진입점 (JB-B-1)', () => {
+  function renderWithCreate(column: BoardColumnType, createProjectKey?: string) {
+    return render(
+      <QueryClientProvider client={new QueryClient()}>
+        <DndContext>
+          <BoardColumn
+            column={column}
+            assigneeNames={assigneeNames}
+            swimlaneField="NONE"
+            issueTypesByKey={new Map()}
+            createProjectKey={createProjectKey}
+          />
+        </DndContext>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('S12a: 프로젝트가 주어지면 카드 있는 컬럼 · 빈 컬럼 모두 끝에 「+ 만들기」가 있다', () => {
+    renderWithCreate(columnWithCards, 'ATLAS')
+    renderWithCreate(emptyColumn, 'ATLAS')
+    expect(screen.getByRole('button', { name: boardLabels.column.inlineCreate('진행 중') })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: boardLabels.column.inlineCreate('할 일') })).toBeInTheDocument()
+  })
+
+  it('S12b: 권한이 없으면(프로젝트 미전달) 그리지 않는다', () => {
+    renderWithCreate(columnWithCards)
+    expect(screen.queryByRole('button', { name: boardLabels.column.inlineCreate('진행 중') })).toBeNull()
+  })
+
+  it('S12c: 상태가 매핑되지 않은 컬럼은 놓을 상태가 없어 그리지 않는다', () => {
+    renderWithCreate({ ...emptyColumn, states: [] }, 'ATLAS')
+    expect(screen.queryByRole('button', { name: boardLabels.column.inlineCreate('할 일') })).toBeNull()
   })
 })

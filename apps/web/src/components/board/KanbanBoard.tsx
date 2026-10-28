@@ -316,6 +316,8 @@ export interface KanbanBoardProps {
    * 드래그 고스트 카드(DragOverlay) 양쪽에 그대로 전달한다.
    */
   issueTypesByKey: Map<string, IssueTypeResponse>
+  /** CREATE 권한 — true 면 컬럼 끝에 인라인 생성(JB-B-1)을 그린다. fail-closed */
+  canCreateIssue?: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -483,7 +485,7 @@ const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
  * - accessibility.announcements로 드래그 상호작용을 한국어로 스크린리더에 공지한다(DR2).
  * - 센서: PointerSensor(distance:5) + KeyboardSensor — 클릭과 드래그 구분(D-2).
  */
-export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false, issueTypesByKey }: KanbanBoardProps): JSX.Element {
+export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterActive = false, issueTypesByKey, canCreateIssue = false }: KanbanBoardProps): JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [activeFromColumnId, setActiveFromColumnId] = useState<string | null>(null)
   const [overColumnId, setOverColumnId] = useState<string | null>(null)
@@ -651,6 +653,8 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
                 // ★새 조회가 아니라 **이미 손에 있는 `board`** 에서 꺼낸다. 보드 조회 응답이
                 //   설정을 함께 싣기 때문이다(Task 31 · N1) — 탭마다 왕복을 만들지 않는다.
                 cardLayout={board.cardLayout}
+                createProjectKey={canCreateIssue ? board.projectKey : undefined}
+                activeSprintId={board.activeSprint?.sprintId ?? null}
               />
             ))}
           </div>

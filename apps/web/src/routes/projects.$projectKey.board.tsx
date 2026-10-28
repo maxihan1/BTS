@@ -411,10 +411,8 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   const boardHeaderPortals = (
     <>
       <ProjectHeaderActions>
-      {/* 🛑 컬럼별이 아니라 보드 1곳이다 — 생성 계약에 상태(stateKey)가 없어
-          컬럼별 버튼은 「여기서 만들면 여기에 생긴다」는 지키지 못할 약속이 된다.
-          근거 = ADR docs/decisions/2026-08-03-fr-ux-09-f3-create-issue-entry-points.md D-3.
-          `BoardColumn.tsx` 는 이 PR 에서 한 줄도 바뀌지 않는다. */}
+      {/* 보드 전체 생성 모달. 컬럼별 진입점은 컬럼 끝 인라인 생성이 맡는다 —
+          그쪽은 만든 직후 그 컬럼 상태로 전환해 약속을 지킨다(결정 D2 · `BoardColumnInlineCreate`). */}
       <CreateIssueEntryButton
         label={boardLabels.page.createIssue}
         variant="text"
@@ -659,6 +657,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           filter={stableFilter}
           isFilterActive={!isEmptyFilter(stableFilter)}
           issueTypesByKey={issueTypesByKey}
+          canCreateIssue={canCreate}
         />
       )}
     </div>

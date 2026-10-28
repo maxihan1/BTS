@@ -12,6 +12,7 @@ import type { SwimlaneGroup } from '@/lib/swimlane-group'
 import { BoardCard } from './BoardCard'
 import type { CardAssigneeDisplay } from './BoardCard'
 import { WipCountBadge } from './WipCountBadge'
+import { BoardColumnInlineCreate } from './BoardColumnInlineCreate'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -54,6 +55,13 @@ export interface BoardColumnProps {
    * 미지정이면 카드 2층(J19)의 DOM 자체가 생기지 않는다.
    */
   cardLayout?: CardLayout
+  /**
+   * 컬럼 끝 인라인 생성(JB-B-1)의 프로젝트 — **미전달이면 「+ 만들기」를 그리지 않는다**(CREATE 권한 없음).
+   * 상태가 하나도 매핑되지 않은 컬럼도 그리지 않는다 — 그 컬럼으로 놓을 상태가 없다.
+   */
+  createProjectKey?: string
+  /** 스크럼 보드의 활성 스프린트 id — 인라인 생성한 이슈를 여기에 넣는다. 칸반은 null */
+  activeSprintId?: string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +128,7 @@ function SwimlaneSection({
 
 const UNASSIGNED: CardAssigneeDisplay = { state: 'unassigned' }
 
-function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false, issueTypesByKey, cardLayout }: BoardColumnProps) {
+function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField, isFilterActive = false, issueTypesByKey, cardLayout, createProjectKey, activeSprintId = null }: BoardColumnProps) {
   const { setNodeRef } = useDroppable({
     id: column.columnId,
     data: { category: column.category },
@@ -205,6 +213,9 @@ function BoardColumnInner({ column, assigneeNames, isOver = false, swimlaneField
               )
             })}
           </SortableContext>
+        )}
+        {createProjectKey !== undefined && column.states.length > 0 && (
+          <BoardColumnInlineCreate projectKey={createProjectKey} column={column} sprintId={activeSprintId} />
         )}
       </div>
     </div>

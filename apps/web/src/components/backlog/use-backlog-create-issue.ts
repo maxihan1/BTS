@@ -20,6 +20,10 @@ export interface BacklogCreateIssue {
   close: () => void
   /** 생성 성공 콜백 — 스프린트에서 열었으면 그 스프린트에 배정한다 */
   onCreated: (issueKey: string) => void
+  /** 백로그 섹션 끝 인라인 생성(JB-L-1)의 놓기 콜백 (참조 안정) */
+  placeInBacklog: (issueKey: string) => void
+  /** 스프린트 섹션 끝 인라인 생성의 놓기 콜백을 id 별로 돌려준다 (참조 안정) */
+  placeInSprint: (sprintId: string) => (issueKey: string) => void
 }
 
 /**
@@ -44,7 +48,8 @@ export interface BacklogCreateIssue {
  */
 export function useBacklogCreateIssue(projectKey: string): BacklogCreateIssue {
   const queryClient = useQueryClient()
-  const assignToSprint = useAssignToSprint(projectKey)
+  // `mutate` 는 안정 참조다 — 칸별 놓기 콜백을 캐시해도 낡지 않는다.
+  const { mutate: assignToSprint } = useAssignToSprint(projectKey)
 
   const [target, setTarget] = useState<string | null>(null)
   const targetRef = useRef<string | null>(null)
@@ -82,11 +87,7 @@ export function useBacklogCreateIssue(projectKey: string): BacklogCreateIssue {
    * 사용자가 다시 만들고 **중복 이슈**가 생긴다. 경고 톤 + 이슈 키로 낸다 (FR-5).
    * 선례 — `backlogLabels.rerankFailedWarning`(이동은 됐고 순서만 실패)이 같은 형태다.
    */
-  const onCreated = useCallback((issueKey: string): void => {
-    // ★여기서 대상을 비우지 않는다 — 「다른 항목 만들기」(JA-C-2)면 모달이 열린 채 같은 칸에
-    //   다음 건을 만든다. 닫힘은 모달의 `onOpenChange(false)` → `close` 가 맡는다.
-    const current = targetRef.current
-
+  const place = useCallback((current: string | null, issueKey: string): void => {
     // 백로그 칸이면 배정할 것이 없다 — 스프린트 미지정이 곧 백로그다.
     //
     // ★그래도 **목록 갱신은 필요하다** (FR-9). 스프린트 경로는 `useAssignToSprint` 의 성공
@@ -100,11 +101,26 @@ export function useBacklogCreateIssue(projectKey: string): BacklogCreateIssue {
       return
     }
 
-    assignToSprint.mutate(
+    assignToSprint(
       { sprintId: current, issueKey },
       { onError: () => toast.warning(issueCreateStrings.sprintAssignFailed(issueKey)) },
     )
   }, [assignToSprint, projectKey, queryClient])
 
-  return { isOpen: target !== null, openForBacklog, openForSprint, close, onCreated }
+  // ★여기서 대상을 비우지 않는다 — 「다른 항목 만들기」(JA-C-2)면 모달이 열린 채 같은 칸에
+  //   다음 건을 만든다. 닫힘은 모달의 `onOpenChange(false)` → `close` 가 맡는다.
+  const onCreated = useCallback((issueKey: string): void => { place(targetRef.current, issueKey) }, [place])
+
+  // 인라인 생성은 칸이 대상을 직접 안다 — 모달의 대상(ref)을 거치지 않는다.
+  const placeInBacklog = useCallback((issueKey: string): void => { place(BACKLOG_TARGET, issueKey) }, [place])
+  const placeCallbacks = useRef(new Map<string, (issueKey: string) => void>())
+  const placeInSprint = useCallback((sprintId: string): ((issueKey: string) => void) => {
+    const cached = placeCallbacks.current.get(sprintId)
+    if (cached !== undefined) return cached
+    const fn = (issueKey: string): void => { place(sprintId, issueKey) }
+    placeCallbacks.current.set(sprintId, fn)
+    return fn
+  }, [place])
+
+  return { isOpen: target !== null, openForBacklog, openForSprint, close, onCreated, placeInBacklog, placeInSprint }
 }

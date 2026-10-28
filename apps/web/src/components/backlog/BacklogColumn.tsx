@@ -14,6 +14,8 @@ import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { BacklogCard } from './BacklogCard'
 import { CreateSprintForm } from './CreateSprintForm'
+import { InlineCreateIssue } from '@/components/issue/InlineCreateIssue'
+import { issueCreateStrings } from '@/i18n/ko'
 
 /** 상태 맵 미전달 기본값 — 모듈 상수라 memo 비교가 깨지지 않는다 */
 const EMPTY_STATUS_META: Map<string, StatusMeta> = new Map()
@@ -82,6 +84,11 @@ export interface BacklogColumnProps {
    */
   canCreateIssue?: boolean
   /**
+   * 섹션 끝 인라인 생성(JB-L-1)이 만든 이슈를 이 칸에 놓는 콜백 (참조 안정).
+   * **미전달이거나 `canCreateIssue=false` 면 「+ 만들기」를 그리지 않는다.**
+   */
+  onInlineCreated?: (issueKey: string) => void
+  /**
    * 스프린트 생성 제출 콜백 — 폼이 입력받은 이름을 그대로 넘긴다 (FR-UX-13 F16 F16-11).
    *
    * **미전달이면 폼을 렌더하지 않는다** — `onCreateIssue` 와 같은 결이고, 기존 소비처의
@@ -116,6 +123,7 @@ function BacklogColumnInner({
   isOver = false,
   onCreateIssue,
   canCreateIssue = false,
+  onInlineCreated,
   onCreateSprint,
   createSprintDisabled = false,
 }: BacklogColumnProps) {
@@ -234,6 +242,16 @@ function BacklogColumnInner({
             })
           )}
         </div>
+      )}
+      {/* 섹션 끝 한 줄 생성 — 드롭 영역 밖이라 드래그 앤 드롭에 영향이 없다 */}
+      {onInlineCreated !== undefined && canCreateIssue && !collapsed && (
+        <InlineCreateIssue
+          projectKey={projectKey}
+          openLabel={backlogLabels.inlineCreateInBacklog}
+          placeholder={issueCreateStrings.inlineBacklogPlaceholder}
+          defaultTypeKey="task"
+          onCreated={(issue) => { onInlineCreated(issue.key) }}
+        />
       )}
     </div>
   )

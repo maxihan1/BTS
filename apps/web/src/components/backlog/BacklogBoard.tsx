@@ -790,6 +790,7 @@ function BacklogStack({
           // 권한이 없으면 버튼이 비활성이 아니라 메뉴가 통째로 부재한다 (FR-5).
           canManageSprint={canManageSprint}
           onCreateIssue={createIssue.openForSprint(meta.sprintId)}
+          onInlineCreated={createIssue.placeInSprint(meta.sprintId)}
         />
       ))}
       <BacklogColumn
@@ -802,6 +803,7 @@ function BacklogStack({
         isOver={overDroppableId === 'backlog'}
         canCreateIssue={canCreateIssue}
         onCreateIssue={createIssue.openForBacklog}
+        onInlineCreated={createIssue.placeInBacklog}
         // 스프린트 생성 폼은 이 칸의 헤더가 소유한다 (F16 F16-11).
         // 「권한 없음 OR 생성 진행 중」 판정은 부모 **한 곳**에서만 한다.
         onCreateSprint={onCreateSprint}
