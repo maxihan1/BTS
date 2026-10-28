@@ -27,6 +27,9 @@ import java.util.UUID
  * @property priorityName 우선순위 표시명. 예: `"Critical"`, `"Medium"`.
  * @property projectKey 이슈가 속한 프로젝트 키.
  * @property updatedAt 마지막 수정 시각(UTC). ISO-8601 직렬화.
+ * @property version 낙관적 잠금 버전 — 검색 표 셀 편집의 `expectedVersion`. null 이면 편집 불가.
+ * @property restrictedFields 필드 권한(FR-PM-07)으로 값이 가려진 필드 키. 목록 `IssueResponse` 와 같은 뜻.
+ * @property noneditableFields 보이지만 편집할 수 없는 필드 키. 목록 `IssueResponse` 와 같은 뜻.
  */
 data class AqlSearchResponse(
     val key: String,
@@ -38,6 +41,9 @@ data class AqlSearchResponse(
     val priorityName: String,
     val projectKey: String,
     val updatedAt: Instant,
+    val version: Long? = null,
+    val restrictedFields: List<String> = emptyList(),
+    val noneditableFields: List<String> = emptyList(),
 ) {
     companion object {
         /**
@@ -60,6 +66,9 @@ data class AqlSearchResponse(
                 priorityName = hit.priorityName,
                 projectKey = hit.projectKey,
                 updatedAt = hit.updatedAt,
+                version = hit.version,
+                restrictedFields = hit.restrictedFields,
+                noneditableFields = hit.noneditableFields,
             )
     }
 }
