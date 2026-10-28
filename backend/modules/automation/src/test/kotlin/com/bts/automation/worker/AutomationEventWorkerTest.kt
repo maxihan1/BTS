@@ -18,6 +18,7 @@ import com.bts.shared.permission.AutomationPermissionResolver
 import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -381,6 +382,18 @@ class AutomationEventWorkerTest {
         assertThat(messages[0].get("ruleId").asText()).isEqualTo(rule.id.toString())
         assertThat(messages[0].get("triggerEvent").get("issueKey").asText()).isEqualTo("ATLAS-10")
         assertThat(countPendingEventMessages()).isZero()
+    }
+
+    @Test
+    fun `ISSUE_TRANSITIONED — cause 키 자체가 없는 옛 메시지도 발화한다`() {
+        saveEnabledRule(TriggerType.ISSUE_TRANSITIONED)
+        val legacy = objectMapper.readTree(issueTransitionedJson("ATLAS-15")) as ObjectNode
+        legacy.remove("cause")
+        sendEvent(objectMapper.writeValueAsString(legacy))
+
+        worker.pollAndProcess()
+
+        assertThat(readExecutionMessages()).hasSize(1)
     }
 
     @Test

@@ -66,7 +66,7 @@ data class ManualRunRequest(
     val issueKey: String,
 )
 
-/** 인증 주체 UUID — 미인증 · 형식 오류는 401(`AutomationActorExtractor` 동형, BC 격리로 자체 구현). */
+/** 인증 주체 UUID — 미인증 · 형식 오류는 401(`AutomationActorExtractor` 동형 — 그쪽이 파일 private 이라 복제). */
 private fun currentActorId(): UUID {
     val authentication =
         SecurityContextHolder.getContext().authentication

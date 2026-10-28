@@ -272,6 +272,21 @@ class ManualRunControllerTest {
         assertThat(executionMessages()).isEmpty()
     }
 
+    /** prod 어댑터는 형식이 틀린 키에 IllegalArgumentException(500)을 던진다 — 포트에 닿기 전에 404 로 끝나야 한다. */
+    @Test
+    @WithMockUser(username = ACTOR_UUID)
+    fun `POST run - 형식이 틀린 이슈 키는 포트 조회 전에 404`() {
+        val rule = saveRule()
+        listOf("ATLAS-x", "ATLAS-0", "ATLAS-1-2", "ATLAS-").forEach { malformed ->
+            seedVisible(malformed)
+            mockMvc
+                .perform(post(runUrl(rule.id)).contentType(MediaType.APPLICATION_JSON).content(runBody(malformed)))
+                .andExpect(status().isNotFound)
+        }
+
+        assertThat(executionMessages()).isEmpty()
+    }
+
     @Test
     @WithMockUser(username = ACTOR_UUID)
     fun `POST run - issueKey 없는 본문은 400`() {

@@ -11,6 +11,7 @@ import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -38,6 +39,8 @@ class ManualRunService(
     private val issuePermissionResolver: IssuePermissionResolver,
     private val objectMapper: ObjectMapper,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     /**
      * [projectKey] 의 실행 가능한(enabled · 미삭제) MANUAL 룰 목록.
      *
@@ -64,9 +67,9 @@ class ManualRunService(
         ruleId: UUID,
         issueKey: String,
     ) {
+        // 형식 검사가 포트 조회보다 먼저다 — prod 어댑터는 틀린 형식에 IllegalArgumentException(500)을 던진다.
         val issueVisible =
-            issueKey.substringBefore('-', missingDelimiterValue = "") == projectKey &&
-                issueSnapshotPort.fetch(actorId, issueKey) != null
+            issueKeyPattern(projectKey).matches(issueKey) && issueSnapshotPort.fetch(actorId, issueKey) != null
         val rule = ruleRepository.findById(ruleId)?.takeIf { it.isManualRunnableIn(projectKey) }
         if (!issueVisible || rule == null) throw ManualRunNotFoundException()
         val triggerEvent =
@@ -76,8 +79,13 @@ class ManualRunService(
                 put("projectKey", projectKey)
                 put("actorId", actorId.toString())
             }
+        // 액션은 룰 actor 이름으로 남는다 — 누가 눌렀는지는 실행 이력(best-effort)과 이 로그에 남긴다.
+        log.info("automation_manual_run_enqueued ruleId={} issueKey={} requester={}", rule.id, issueKey, actorId)
         enqueuer.enqueue(rule.id, TriggerType.MANUAL, triggerEvent)
     }
+
+    /** `PROJ-123` 형식(번호는 1 이상) — issue-tracking `IssueKey` 규칙과 같은 모양만 통과. */
+    private fun issueKeyPattern(projectKey: String): Regex = Regex("^${Regex.escape(projectKey)}-[1-9][0-9]{0,17}$")
 }
 
 /** 이 프로젝트의 켜진 MANUAL 룰인가. */

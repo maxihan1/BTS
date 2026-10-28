@@ -3,7 +3,7 @@
 --
 -- ISSUE_TRANSITIONED: 이슈 상태 전환(issue.transitioned)에 발화. triggerConfig fromStates/toStates 로 거른다.
 -- ISSUE_ASSIGNED:     담당자 변경(issue.assigned)에 발화.
--- MANUAL:             이슈 화면에서 사람이 골라 실행(POST …/automation/rules/{id}/run).
+-- MANUAL:             이슈 화면에서 사람이 골라 실행(POST …/automation/manual-rules/{ruleId}/run).
 -- Kotlin TriggerType enum 에도 같은 상수가 추가된다(앱·DB 이중 방어 유지).
 -- 스펙: docs/specs/2026-10-28-r9-automation-catalog.md §A·§B.
 --

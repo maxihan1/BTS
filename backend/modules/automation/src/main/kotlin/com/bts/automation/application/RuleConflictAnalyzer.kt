@@ -235,7 +235,7 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
      * 유지한다 — false negative(놓친 충돌)보다 false positive(과도한 경고)가 더 안전하다는 판단.
      *
      * ## MANUAL 도 동시 매칭 불가 (R9)
-     * 수동 실행은 사람이 룰 하나를 골라 부른다(`POST …/rules/{id}/run`) — 실행 1건이 두 룰을 부를 수 없다.
+     * 수동 실행은 사람이 룰 하나를 골라 부른다(`POST …/automation/manual-rules/{ruleId}/run`) — 실행 1건이 두 룰을 부를 수 없다.
      * ISSUE_TRANSITIONED · ISSUE_ASSIGNED 는 SCHEDULED 와 같은 보수 정책(동시 매칭 가능 `true`)을 따른다.
      *
      * ## PR_MERGED 는 예외 — `targetBranch` 정밀 판정 (FR-AT-07 PR-C Task 4, DEC-27)
