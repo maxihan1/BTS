@@ -83,7 +83,7 @@ function renderTopBar(props: { onHelpClick?: () => void } = {}) {
 beforeEach(() => {
   // 모달 스토어는 모듈 전역이라 테스트 간에 새지 않도록 매번 닫는다.
   useIssueDetailModalStore.setState({ openKey: null })
-  useCreateIssueDialogStore.setState({ open: false })
+  useCreateIssueDialogStore.setState({ open: false, minimized: false })
   mockNavigate.mockReset()
   mockToggle.mockReset()
   mockUseSidebarCollapsed.mockReset()
@@ -222,6 +222,27 @@ describe('TopBar', () => {
       await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
     ).toBeInTheDocument()
     expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  it('최소화하면 알약으로 접히고, `c` 로 다시 열면 알약이 아니라 그 모달로 돌아온다 (JA-C-8)', async () => {
+    const user = userEvent.setup()
+    renderTopBar()
+    act(() => { useCreateIssueDialogStore.getState().setOpen(true) })
+    await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle })
+
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.minimizeButton }))
+
+    expect(
+      await screen.findByRole('button', { name: issueCreateStrings.dockRestore('') }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: issueCreateStrings.dialogTitle })).toBeNull()
+
+    act(() => { useCreateIssueDialogStore.getState().setOpen(true) })
+
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: issueCreateStrings.dockRestore('') })).toBeNull()
   })
 
   it('사이드바가 펼쳐진 상태(collapsed=false)면 토글 버튼 aria-label이 "사이드바 접기"다', async () => {

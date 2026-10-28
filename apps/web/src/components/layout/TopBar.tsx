@@ -76,6 +76,9 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   // FR-12 — 생성 모달을 제자리에서 연다 (URL 불변). `c` 단축키도 같은 스토어로 연다 (JA-C-1)
   const createOpen = useCreateIssueDialogStore((s) => s.open)
   const setCreateOpen = useCreateIssueDialogStore((s) => s.setOpen)
+  // 최소화(dock)는 상단바 모달만 받는다 — 다시 「만들기」·`c` 를 누르면 그 입력으로 돌아온다 (JA-C-8)
+  const createMinimized = useCreateIssueDialogStore((s) => s.minimized)
+  const setCreateMinimized = useCreateIssueDialogStore((s) => s.setMinimized)
   const navigate = useNavigate()
   // 🛑 `useSidebarCollapsed().toggle` 직접 사용 금지 — 모바일에서 무동작 버튼이 된다.
   //    폭에 따른 대상 선택·표시 방향은 `use-sidebar-drawer` 훅 두 개가 소유한다.
@@ -164,6 +167,8 @@ export function TopBar({ onHelpClick }: TopBarProps) {
       <CreateIssueDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
+        minimized={createMinimized}
+        onMinimizedChange={setCreateMinimized}
         onCreated={(key) => {
           // 제자리에 머무는 대신 만든 이슈로 갈 길을 토스트로 남긴다
           toast(`${key} ${issueCreateStrings.createdToast}`, {

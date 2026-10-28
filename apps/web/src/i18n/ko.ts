@@ -913,6 +913,13 @@ export const issueCreateStrings = {
   discardBackButton: '뒤로 가기',
   discardConfirmButton: '버리기',
 
+  // ── Jira 패리티 R1c — 최소화(dock, JA-C-8) ──────────────────────────────
+  /** 헤더 최소화 버튼의 접근 가능한 이름 */
+  minimizeButton: '최소화',
+  /** 오른쪽 아래 알약 — 누르면 입력 그대로 모달로 돌아온다. 제목이 비면 모달 제목만 */
+  dockRestore: (summary: string): string =>
+    summary.trim() === '' ? '새 이슈 만들기 다시 열기' : `새 이슈 만들기 다시 열기 — ${summary}`,
+
   // ── FR-UX-09 F3 — 스프린트 배정 부분 성공 ───────────────────────────────
   /**
    * 이슈는 만들어졌지만 스프린트 배정만 실패했을 때의 안내 (ADR 2026-08-03 D-2).
