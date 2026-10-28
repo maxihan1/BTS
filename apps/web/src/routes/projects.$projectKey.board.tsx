@@ -19,6 +19,8 @@ import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
 import { BoardSelectorDropdown } from '@/components/board/BoardSelectorDropdown'
 import { ActiveSprintSummary } from '@/components/board/ActiveSprintSummary'
+import { BoardCompleteSprintButton } from '@/components/board/BoardCompleteSprintButton'
+import { Input } from '@/components/ui/input'
 import { BoardActionsMenu } from '@/components/board/BoardActionsMenu'
 import {
   ScrumSprintEmptyState,
@@ -30,7 +32,7 @@ import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
 import { boardLabels } from '@/i18n/board-labels'
 import { extractErrorCode } from '@/lib/extract-error-code'
-import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch } from '@/lib/board-filter'
+import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch, searchBoardCards } from '@/lib/board-filter'
 import type { BoardFilterSearch } from '@/lib/board-filter'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { ProjectHeaderActions } from '@/components/project/ProjectChrome'
@@ -251,6 +253,11 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   // CREATE 권한 여부 — undefined이면 false-safe (로딩 중에는 셀렉터 미노출)
   const canCreate: boolean = projectPermissions?.permissions.CREATE === true
+  // UPDATE 권한 — 스프린트 완료 다이얼로그의 미완료 이관 UI 게이팅 (백로그 라우트와 같은 판정)
+  const canUpdate: boolean = projectPermissions?.permissions.UPDATE === true
+
+  // 보드 텍스트 검색어 (JB-B-4) — 화면에서만 거른다. 보드를 바꾸면 비운다(아래 effect)
+  const [searchQuery, setSearchQuery] = useState('')
 
   // ── FR-UX-01 — 활성 퀵필터 id 추적 (FR6). navigate와 co-locate (리뷰 BLOCKER-B).
   const queryClient = useQueryClient()
@@ -262,6 +269,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   useEffect(() => {
     if (previousBoardIdRef.current !== currentBoardId) {
       setActiveQuickFilterId(null)
+      setSearchQuery('')
       previousBoardIdRef.current = currentBoardId
     }
   }, [currentBoardId])
@@ -330,6 +338,12 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   const scrumEmptyVariant = useMemo(
     () => resolveScrumEmptyVariant(boardDetail, isFilteredEmpty),
     [boardDetail, isFilteredEmpty],
+  )
+
+  // 검색어로 거른 보드 — 검색어가 비면 원본 참조 그대로라 KanbanBoard 의 memo 가 유지된다
+  const searchedBoard = useMemo(
+    () => (boardDetail === undefined ? undefined : searchBoardCards(boardDetail, searchQuery)),
+    [boardDetail, searchQuery],
   )
 
   // 활성 스프린트 — 칸반은 항상 null 이므로 `boardType` 을 다시 보지 않는다 (`activeSprintSchema` KDoc).
@@ -528,6 +542,17 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           {/* 활성 스프린트 표기 — 칸반은 `activeSprint` 가 null 이라 아무것도 안 그린다 (FR-2 · J5) */}
           <ActiveSprintSummary activeSprint={activeSprint} />
 
+          {/* 스프린트 완료 — 백로그로 가지 않고 보드에서 끝낸다 (JB-B-3) */}
+          {activeSprint !== null && currentBoardId !== undefined && (
+            <BoardCompleteSprintButton
+              projectKey={projectKey}
+              boardId={currentBoardId}
+              sprintId={activeSprint.sprintId}
+              canManageSprint={canCreate}
+              canReorderIssue={canUpdate}
+            />
+          )}
+
           {/* 스윔레인 셀렉터 — 보드 상세 있고 CREATE 권한 있을 때만 */}
           {boardDetail !== undefined && canCreate && (
             <SwimlaneSelector
@@ -544,6 +569,16 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           projectKey={projectKey}
           value={stableFilter}
           onChange={handleFilterChange}
+          leadingSection={
+            <Input
+              type="search"
+              aria-label={boardLabels.page.search}
+              placeholder={boardLabels.page.search}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 w-48"
+            />
+          }
         />
       )}
 
@@ -619,7 +654,7 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
       {boardDetail !== undefined && currentBoardId !== undefined && !isFilteredEmpty && scrumEmptyVariant === null && (
         <KanbanBoard
           boardId={currentBoardId}
-          board={boardDetail}
+          board={searchedBoard ?? boardDetail}
           assigneeNames={assigneeNames}
           filter={stableFilter}
           isFilterActive={!isEmptyFilter(stableFilter)}

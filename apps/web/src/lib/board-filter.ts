@@ -1,5 +1,5 @@
 // URL search params ↔ BoardCardFilterParams 순수 매핑 유틸 (FR-BD-02)
-import type { BoardCardFilterParams } from '../api/boards'
+import type { BoardCardFilterParams, BoardDetail } from '../api/boards'
 
 /**
  * URL search params에서 보드 필터 3종(assignee·label·component)을 표현하는 타입.
@@ -134,4 +134,28 @@ export function queryStringToSearch(query: string): BoardFilterSearch {
   }
 
   return result
+}
+
+/**
+ * 보드 텍스트 검색 (JB-B-4) — 요약 · 이슈 키에 검색어가 들어간 카드만 남긴다.
+ *
+ * 서버 필터(담당자 · 라벨 · 컴포넌트)를 거친 결과를 화면에서 한 번 더 거르는 **클라이언트 필터**다 —
+ * 입력할 때마다 조회하지 않는다. 대소문자는 가리지 않는다.
+ *
+ * @param board 서버가 준 보드 상세
+ * @param query 검색어. 공백뿐이면 원본을 그대로 돌려준다(참조 유지 — 하위 memo 보호)
+ * @returns 카드가 걸러진 새 보드
+ */
+export function searchBoardCards(board: BoardDetail, query: string): BoardDetail {
+  const q = query.trim().toLowerCase()
+  if (q === '') return board
+  return {
+    ...board,
+    columns: board.columns.map((column) => ({
+      ...column,
+      cards: column.cards.filter(
+        (card) => card.summary.toLowerCase().includes(q) || card.issueKey.toLowerCase().includes(q),
+      ),
+    })),
+  }
 }

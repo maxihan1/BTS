@@ -1,6 +1,6 @@
-// 스크럼 보드 헤더의 활성 스프린트 표기 — 이름 + 기간 (FR-BD-04 FR-2)
+// 스크럼 보드 헤더의 활성 스프린트 표기 — 이름 + 기간 + 남은 일수 (FR-BD-04 FR-2 · JB-B-3)
 //
-// `formatSprintPeriod` 를 함께 export 하므로 fast-refresh 규칙을 끈다. 그 함수는 이 컴포넌트의
+// `formatSprintPeriod` · `formatSprintRemaining` 을 함께 export 하므로 fast-refresh 규칙을 끈다. 그 함수는 이 컴포넌트의
 // 표기 규칙 자체라 같은 파일에 두는 것이 맞고, 테스트가 네 조합을 직접 재려면 export 가 필요하다.
 // 같은 사유의 선례 — `ScrumSprintEmptyState.tsx` · `KanbanBoard.tsx:30` · `CfdChart.tsx:1`.
 /* eslint-disable react-refresh/only-export-components */
@@ -27,6 +27,27 @@ export function formatSprintPeriod(
   return `${startDate} ~ ${endDate}`
 }
 
+/**
+ * 종료일까지 남은 일수 표기 (JB-B-3 — Jira 「스프린트 세부 정보」의 「9일 남음」).
+ *
+ * 날짜는 서버가 `YYYY-MM-DD` 로 준다 — `new Date('2026-11-05')` 는 UTC 자정이라 한국 시각에서 하루가
+ * 어긋날 수 있어 연·월·일을 **로컬 날짜**로 세운다.
+ *
+ * @param endDate 종료일. 미설정이면 null
+ * @param today 기준일(테스트용). 기본은 지금
+ * @returns 「N일 남음」 · 「오늘 종료」 · 「N일 지남」. 종료일이 없거나 읽을 수 없으면 null
+ */
+export function formatSprintRemaining(endDate: string | null, today: Date = new Date()): string | null {
+  const match = endDate === null ? null : /^(\d{4})-(\d{2})-(\d{2})/.exec(endDate)
+  if (match === null) return null
+  const end = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)
+  if (days > 0) return `${days}일 남음`
+  if (days === 0) return '오늘 종료'
+  return `${-days}일 지남`
+}
+
 /** ActiveSprintSummary Props */
 export interface ActiveSprintSummaryProps {
   /**
@@ -51,11 +72,15 @@ export function ActiveSprintSummary({ activeSprint }: ActiveSprintSummaryProps):
   if (activeSprint === null) return null
 
   const period = formatSprintPeriod(activeSprint.startDate, activeSprint.endDate)
+  const remaining = formatSprintRemaining(activeSprint.endDate)
 
   return (
     <div className="flex items-center gap-2 text-sm" data-testid="active-sprint-summary">
       <span className="font-medium">{activeSprint.name}</span>
       {period !== null && <span className="text-muted-foreground">{period}</span>}
+      {remaining !== null && (
+        <span className="rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground ring-1 ring-border">{remaining}</span>
+      )}
     </div>
   )
 }
