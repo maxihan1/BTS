@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { schemeHandlers } from '@/mocks/scheme-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
+import { workflowHandlers } from '@/mocks/workflow-handlers'
 import { ProjectWorkflowSchemeSettingsPage } from '@/routes/projects.$projectKey.settings.workflow-scheme'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 
@@ -94,23 +96,21 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
   /**
    * T9-4. 적용 버튼 클릭 시 현재 선택값으로 mutate가 호출된다.
    * ATLAS 프로젝트는 custom-scheme-alpha 할당되어 있으므로,
-   * select 기본값(custom-scheme-alpha)으로 적용 클릭 → PUT 요청이 발생한다.
+   * select 기본값(custom-scheme-alpha)으로 적용 클릭 → POST /switch 요청이 발생한다(R11 — 이관과 함께 교체).
    *
    * Radix Select 드롭다운은 jsdom Portal 한계로 직접 옵션 클릭이 불가하므로,
    * 현재 할당값을 그대로 적용하는 시나리오로 mutate 호출 자체를 검증한다.
    */
-  it('T9-4: 적용 버튼 클릭 시 PUT 요청이 발생한다', async () => {
+  it('T9-4: 적용 버튼 클릭 시 switch 요청이 발생한다', async () => {
     const user = userEvent.setup()
 
-    // PUT 요청이 실제로 발생했는지 추적
+    // 요청이 실제로 발생했는지 추적
     let putCalled = false
     server.use(
-      http.put('/api/v1/projects/ATLAS/workflow-scheme', async ({ request }) => {
-        putCalled = true
-        const body = await request.json() as { schemeKey: string }
-        return HttpResponse.json({
-          data: { projectKey: 'ATLAS', schemeKey: body.schemeKey, schemeName: '테스트 스킴' },
-        })
+      http.post('/api/v1/projects/ATLAS/workflow-scheme/switch', async ({ request }) => {
+        const body = await request.json() as { schemeKey: string; statusMappings: unknown[] }
+        putCalled = body.schemeKey === 'custom-scheme-alpha' && body.statusMappings.length === 0
+        return HttpResponse.json({ data: { bulkOperationIds: [] } })
       }),
     )
 
@@ -136,9 +136,9 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
   it('T9-5: 409 errorCode 응답 시 에러 처리가 된다', async () => {
     const user = userEvent.setup()
 
-    // PUT endpoint를 409로 override
+    // switch endpoint를 409로 override
     server.use(
-      http.put('/api/v1/projects/:projectKey/workflow-scheme', () => {
+      http.post('/api/v1/projects/:projectKey/workflow-scheme/switch', () => {
         return HttpResponse.json(
           { errorCode: 'ASSIGNMENT_CONFLICT', message: '스킴 할당 충돌이 발생했습니다' },
           { status: 409 },
@@ -161,6 +161,52 @@ describe('ProjectWorkflowSchemeSettingsPage', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /적용/ })).toBeInTheDocument(),
     )
+    // 남는 상태 409 가 아니면 마법사를 열지 않는다
+    expect(screen.queryByText('상태 매핑 (1/2)')).not.toBeInTheDocument()
+  })
+
+  /**
+   * T9-6. 남는 상태 409 → 유형별 상태 매핑 마법사 → 매핑을 실어 다시 교체 (R11 B4 · 갭 JCW-1).
+   * #524 는 여기서 막기만 했다.
+   */
+  it('T9-6: 남는 상태가 있으면 마법사에서 고른 매핑으로 다시 교체한다', async () => {
+    const user = userEvent.setup()
+    const bodies: Array<{ schemeKey: string; statusMappings: unknown[] }> = []
+    server.use(
+      ...issueTypeHandlers,
+      ...workflowHandlers,
+      http.post('/api/v1/projects/ATLAS/workflow-scheme/switch', async ({ request }) => {
+        const body = await request.json() as { schemeKey: string; statusMappings: unknown[] }
+        bodies.push(body)
+        if (body.statusMappings.length === 0) {
+          return HttpResponse.json(
+            {
+              errorCode: 'SCHEME_CHANGE_STRANDS_ISSUES',
+              detail: 'review 2건',
+              strandedByType: [{ issueTypeId: 1, workflowKey: 'software-default', statuses: { review: 2 } }],
+            },
+            { status: 409 },
+          )
+        }
+        return HttpResponse.json({ data: { bulkOperationIds: [] } })
+      }),
+    )
+
+    renderPage('ATLAS')
+    await waitFor(() => expect(screen.getAllByText('사내 개발팀 커스텀 스킴').length).toBeGreaterThanOrEqual(1))
+    await user.click(screen.getByRole('button', { name: /적용/ }))
+
+    expect(await screen.findByText('상태 매핑 (1/2)')).toBeInTheDocument()
+    const target = await screen.findByRole('combobox', { name: '버그 · review 이슈를 옮길 상태' })
+    await waitFor(() => expect(within(target).getByRole('option', { name: 'Done' })).toBeInTheDocument())
+    await user.selectOptions(target, 'done')
+    await user.click(screen.getByRole('button', { name: '다음' }))
+
+    await waitFor(() => expect(screen.queryByText('상태 매핑 (1/2)')).not.toBeInTheDocument())
+    expect(bodies[1]).toEqual({
+      schemeKey: 'custom-scheme-alpha',
+      statusMappings: [{ issueTypeId: 1, fromStatusKey: 'review', toStatusKey: 'done' }],
+    })
   })
 
   /**

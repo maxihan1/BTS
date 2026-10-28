@@ -65,6 +65,8 @@ export class WorkflowSchemeApiError extends Error {
     public readonly status: number,
     public readonly errorCode: string,
     public readonly detail: string,
+    /** `SCHEME_CHANGE_STRANDS_ISSUES` 일 때 유형별로 남는 상태 — 이관 마법사 1/2 의 입력(R11) */
+    public readonly strandedByType: StrandedIssueType[] = [],
   ) {
     super(`WorkflowSchemeApiError [${errorCode}] ${detail}`)
     this.name = 'WorkflowSchemeApiError'
@@ -75,11 +77,27 @@ export class WorkflowSchemeApiError extends Error {
 // 내부 유틸리티
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 스킴 변경으로 워크플로우가 바뀌는 이슈 타입 하나의 남는 상태 → 이슈 수 (R11 · 백엔드 `StrandedIssueType`) */
+const strandedIssueTypeSchema = z.object({
+  issueTypeId: z.number().int(),
+  workflowKey: z.string(),
+  statuses: z.record(z.string(), z.number()),
+})
+export type StrandedIssueType = z.infer<typeof strandedIssueTypeSchema>
+
+/** 이슈 타입 하나의 「옛 상태 → 새 상태」 — 마법사 1/2 의 답 */
+export interface StatusMappingInput {
+  issueTypeId: number
+  fromStatusKey: string
+  toStatusKey: string
+}
+
 /** RFC 7807 에러 응답 Zod 스키마 — 백엔드는 `errorCode` 를 싣는다(`code` 는 옛 MSW 픽스처 호환) */
 const rfc7807ErrorSchema = z.object({
   errorCode: z.string().optional(),
   code: z.string().optional(),
   detail: z.string().default(''),
+  strandedByType: z.array(strandedIssueTypeSchema).optional(),
 })
 
 /**
@@ -91,7 +109,7 @@ async function throwSchemeApiError(res: Response): Promise<never> {
   const parsed = rfc7807ErrorSchema.safeParse(rawBody)
   const errorCode = (parsed.success ? (parsed.data.errorCode ?? parsed.data.code) : undefined) ?? 'UNKNOWN'
   const detail = parsed.success ? parsed.data.detail : String(rawBody)
-  throw new WorkflowSchemeApiError(res.status, errorCode, detail)
+  throw new WorkflowSchemeApiError(res.status, errorCode, detail, parsed.success ? parsed.data.strandedByType : [])
 }
 
 /**
@@ -305,4 +323,35 @@ export async function fetchAssignableWorkflowSchemes(projectKey: string): Promis
     dataOf(z.array(assignedSchemeSchema)),
   )
   return wrapped.data
+}
+
+/** 게시 · 교체 응답 — 큐잉한 이관 작업 id. 비면 옮길 이슈가 없었다 */
+const schemeMigrationResultSchema = z.object({ bulkOperationIds: z.array(z.string()) })
+
+/**
+ * 스킴 매핑 전체를 한 번에 바꾼다 — 화면 안 초안의 「게시」 (R11 A1).
+ * POST /api/v1/workflow-schemes/{schemeKey}/publish → { data: { bulkOperationIds } }
+ *
+ * @throws WorkflowSchemeApiError(409, "SCHEME_CHANGE_STRANDS_ISSUES") 상태 매핑이 모자랄 때 — `strandedByType` 로 마법사를 연다
+ */
+export async function publishWorkflowScheme(
+  schemeKey: string,
+  input: { mappings: AddMappingInput[]; statusMappings: StatusMappingInput[] },
+): Promise<string[]> {
+  const res = await apiFetch(`/api/v1/workflow-schemes/${schemeKey}/publish`, { method: 'POST', body: input })
+  return (await parseSchemeResponse(res, dataOf(schemeMigrationResultSchema))).data.bulkOperationIds
+}
+
+/**
+ * 프로젝트 스킴을 바꾸고 남는 이슈를 옮긴다 (R11 A2).
+ * POST /api/v1/projects/{projectKey}/workflow-scheme/switch → { data: { bulkOperationIds } }
+ *
+ * @throws WorkflowSchemeApiError(409, "SCHEME_CHANGE_STRANDS_ISSUES") 상태 매핑이 모자랄 때
+ */
+export async function switchProjectScheme(
+  projectKey: string,
+  input: { schemeKey: string; statusMappings: StatusMappingInput[] },
+): Promise<string[]> {
+  const res = await apiFetch(`/api/v1/projects/${projectKey}/workflow-scheme/switch`, { method: 'POST', body: input })
+  return (await parseSchemeResponse(res, dataOf(schemeMigrationResultSchema))).data.bulkOperationIds
 }

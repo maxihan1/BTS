@@ -1,16 +1,16 @@
-// 워크플로우 스킴 매핑 테이블 — CRUD + 낙관적 업데이트 + default 강조 + G1 이슈 타입 필터
+// 워크플로우 스킴 매핑 테이블 — 화면 안 초안 + 게시(유형별 상태 이관 마법사) + default 강조 + G1 이슈 타입 필터
 import type { JSX } from 'react'
-import { useState, useMemo, useId } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useId, useEffect } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useIssueTypes } from '@/hooks/use-issue-types'
-import {
-  useAddMapping,
-  useRemoveMapping,
-} from '@/hooks/use-workflow-schemes'
+import { SCHEME_KEYS } from '@/hooks/use-workflow-schemes'
+import { notifySchemeError } from '@/hooks/workflow-scheme-error'
 import { fetchWorkflows } from '@/api/workflows'
-import { toNullableIssueTypeKey } from '@/api/workflow-schemes'
-import type { MappingDetail } from '@/api/workflow-schemes'
+import { publishWorkflowScheme, toNullableIssueTypeKey, WorkflowSchemeApiError } from '@/api/workflow-schemes'
+import type { MappingDetail, StatusMappingInput, StrandedIssueType } from '@/api/workflow-schemes'
+import { SchemeMigrationWizard } from '@/components/admin/SchemeMigrationWizard'
 import type { IssueTypeResponse as IssueTypeHookResponse } from '@/api/issue-types'
 import { cn } from '@/lib/utils'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
@@ -169,7 +169,7 @@ function MappingRow({
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface AddMappingRowProps {
-  schemeKey: string
+  onAdd: (issueTypeKey: string | null, workflowKey: string) => void
   availableIssueTypes: IssueType[]
   hasDefaultMapping: boolean
   workflowOptions: Array<{ key: string; name: string }>
@@ -181,32 +181,21 @@ interface AddMappingRowProps {
  * G1 보강: 이미 매핑된 이슈 타입 + default 매핑 존재 시 해당 옵션을 제외한다.
  */
 function AddMappingRow({
-  schemeKey,
+  onAdd,
   availableIssueTypes,
   hasDefaultMapping,
   workflowOptions,
 }: AddMappingRowProps): JSX.Element {
   const [selectedIssueType, setSelectedIssueType] = useState('')
   const [selectedWorkflow, setSelectedWorkflow] = useState('')
-  const addMapping = useAddMapping(schemeKey)
   const issueTypeSelectId = useId()
   const workflowSelectId = useId()
 
   const handleAdd = () => {
     if (selectedWorkflow === '') return
-
-    addMapping.mutate(
-      {
-        issueTypeKey: toNullableIssueTypeKey(selectedIssueType || DEFAULT_SENTINEL),
-        workflowKey: selectedWorkflow,
-      },
-      {
-        onSuccess: () => {
-          setSelectedIssueType('')
-          setSelectedWorkflow('')
-        },
-      },
-    )
+    onAdd(toNullableIssueTypeKey(selectedIssueType || DEFAULT_SENTINEL), selectedWorkflow)
+    setSelectedIssueType('')
+    setSelectedWorkflow('')
   }
 
   return (
@@ -260,10 +249,10 @@ function AddMappingRow({
           size="sm"
           className="h-7 px-3 text-xs"
           onClick={handleAdd}
-          disabled={selectedWorkflow === '' || addMapping.isPending}
+          disabled={selectedWorkflow === ''}
           aria-label={workflowSchemeLabels.mapping.addMappingAriaLabel}
         >
-          {addMapping.isPending ? '추가 중...' : workflowSchemeLabels.mapping.addMappingButton}
+          {workflowSchemeLabels.mapping.addMappingButton}
         </Button>
       </td>
     </tr>
@@ -279,12 +268,48 @@ function AddMappingRow({
  *
  * - 현재 매핑 목록을 테이블 rows로 렌더한다.
  * - default 매핑(isDefault=true)에 ★ prefix + 강조 표시.
- * - 「삭제」 버튼 클릭 → 인라인 확인 dialog → useRemoveMapping.mutate (낙관적 삭제).
- * - 「+ 매핑 추가」 row — issueType select + workflow select + 「추가」 버튼.
+ * - 추가 · 삭제는 **화면 안 초안**에 쌓인다(결정 D4 — 초안 → 게시는 스킴에만). 「게시」가 매핑 전체를
+ *   한 번에 보내고, 새 워크플로우에 없는 상태에 이슈가 남으면 서버 409 로 유형별 상태 이관 마법사를 연다.
+ *   초안은 서버에 없다 — 페이지를 떠나면 사라지므로 미게시 변경이 있으면 이탈을 경고한다.
  * - G1 보강: 이미 매핑된 이슈 타입은 select 옵션에서 제외.
  */
-export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.Element {
+export function MappingTable({ schemeKey, mappings: saved }: MappingTableProps): JSX.Element {
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
+  const [draft, setDraft] = useState<MappingDetail[] | null>(null)
+  const [stranded, setStranded] = useState<StrandedIssueType[]>([])
+  const [bulkIds, setBulkIds] = useState<string[] | null>(null)
+  const mappings = draft ?? saved
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    if (draft === null) return
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [draft])
+
+  const publish = useMutation({
+    mutationFn: (statusMappings: StatusMappingInput[]) =>
+      publishWorkflowScheme(schemeKey, {
+        mappings: mappings.map((m) => ({ issueTypeKey: m.issueTypeKey, workflowKey: m.workflowKey })),
+        statusMappings,
+      }),
+    onSuccess: async (ids) => {
+      // 서버 목록이 먼저 도착해야 초안을 걷을 때 옛 매핑이 한 번 깜빡이지 않는다.
+      await queryClient.invalidateQueries({ queryKey: SCHEME_KEYS.detail(schemeKey) })
+      setDraft(null)
+      setStranded([])
+      if (ids.length > 0) setBulkIds(ids)
+      toast.success(workflowSchemeLabels.draft.published)
+    },
+    onError: (error) => {
+      if (error instanceof WorkflowSchemeApiError && error.strandedByType.length > 0) {
+        setStranded(error.strandedByType)
+        return
+      }
+      notifySchemeError(error)
+    },
+  })
 
   const { data: issueTypes = [] } = useIssueTypes()
   const { data: workflows = [] } = useQuery({
@@ -292,8 +317,6 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
     queryFn: fetchWorkflows,
     staleTime: 60 * 60 * 1_000,
   })
-
-  const removeMapping = useRemoveMapping(schemeKey)
 
   /** 이미 매핑된 이슈 타입 키 집합 */
   const mappedIssueTypeKeys = useMemo<Set<string | null>>(
@@ -315,9 +338,8 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
   }
 
   const handleConfirmDelete = (id: number) => {
-    removeMapping.mutate(id, {
-      onSettled: () => setConfirmingId(null),
-    })
+    setDraft(mappings.filter((m) => m.id !== id))
+    setConfirmingId(null)
   }
 
   const handleCancelDelete = () => {
@@ -337,8 +359,49 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
 
   const workflowOptions = (workflows ?? []).map((wf) => ({ key: wf.key, name: wf.name }))
 
+  const handleAdd = (issueTypeKey: string | null, workflowKey: string) => {
+    const issueType = (issueTypes as IssueType[]).find((it) => it.key === issueTypeKey)
+    setDraft([
+      ...mappings,
+      {
+        // 새 행은 서버 id 가 없다 — 음수로 기존 행과 겹치지 않게 한다(게시 뒤 서버 목록으로 바뀐다).
+        id: -(mappings.length + 1) - Date.now(),
+        issueTypeKey,
+        issueTypeName: issueType?.name ?? null,
+        workflowKey,
+        workflowName: workflowOptions.find((wf) => wf.key === workflowKey)?.name ?? workflowKey,
+        isDefault: issueTypeKey === null,
+      },
+    ])
+  }
+
+  const closeWizard = () => {
+    setStranded([])
+    setBulkIds(null)
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {draft !== null && (
+        <div className="flex items-center gap-2 border-b border-border bg-warning/10 px-4 py-2 text-sm">
+          <span className="flex-1">{workflowSchemeLabels.draft.unpublishedNotice}</span>
+          <Button variant="ghost" size="sm" onClick={() => setDraft(null)} disabled={publish.isPending}>
+            {workflowSchemeLabels.draft.discard}
+          </Button>
+          <Button size="sm" onClick={() => publish.mutate([])} disabled={publish.isPending}>
+            {publish.isPending ? workflowSchemeLabels.draft.publishing : workflowSchemeLabels.draft.publish}
+          </Button>
+        </div>
+      )}
+      {(stranded.length > 0 || bulkIds !== null) && (
+        <SchemeMigrationWizard
+          stranded={stranded}
+          bulkOperationIds={bulkIds}
+          isSubmitting={publish.isPending}
+          onSubmit={(statusMappings) => publish.mutate(statusMappings)}
+          onClose={closeWizard}
+        />
+      )}
       <div className="flex-1 overflow-auto">
         <table className="w-full border-collapse text-left">
           <thead className="sticky top-0 z-10 border-b border-border bg-(--bg-neutral-solid)/80 backdrop-blur-sm">
@@ -369,7 +432,7 @@ export function MappingTable({ schemeKey, mappings }: MappingTableProps): JSX.El
               />
             ))}
             <AddMappingRow
-              schemeKey={schemeKey}
+              onAdd={handleAdd}
               availableIssueTypes={availableIssueTypes}
               hasDefaultMapping={hasDefaultMapping}
               workflowOptions={workflowOptions}

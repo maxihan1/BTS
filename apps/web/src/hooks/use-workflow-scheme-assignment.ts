@@ -1,8 +1,13 @@
 // 프로젝트-스킴 할당 TanStack Query hooks — UPSERT + 낙관적 업데이트
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { fetchProjectAssignment, assignSchemeToProject } from '@/api/workflow-schemes'
-import type { AssignedScheme, AssignmentRecord, AssignSchemeInput } from '@/api/workflow-schemes'
+import {
+  fetchProjectAssignment,
+  assignSchemeToProject,
+  switchProjectScheme,
+  WorkflowSchemeApiError,
+} from '@/api/workflow-schemes'
+import type { AssignedScheme, AssignmentRecord, AssignSchemeInput, StatusMappingInput } from '@/api/workflow-schemes'
 import { notifySchemeError } from './workflow-scheme-error'
 // 배정 후보 목록의 queryKey — 낙관값을 그 캐시에서 끌어오려면 같은 키를 써야 한다.
 // (use-workflow-schemes 는 이 파일을 import 하지 않으므로 순환 의존이 아니다.)
@@ -121,6 +126,31 @@ export function useUpdateAssignment(projectKey: string) {
       await queryClient.invalidateQueries({
         queryKey: ASSIGNMENT_KEYS.byProject(projectKey),
       })
+    },
+  })
+}
+
+/**
+ * 프로젝트 스킴을 바꾸고 남는 이슈를 유형별로 옮긴다 (R11 A2).
+ * POST /api/v1/projects/{projectKey}/workflow-scheme/switch → 이관 작업 id 목록
+ *
+ * 낙관적 반영은 하지 않는다 — 409 면 마법사 1/2 를 거쳐 다시 보내야 바뀐다. 남는 상태 409 는
+ * 호출부가 마법사를 열어야 하므로 토스트로 삼키지 않고, 그 밖의 오류만 토스트로 알린다.
+ *
+ * @param projectKey 프로젝트 식별 키
+ */
+export function useSwitchProjectScheme(projectKey: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<string[], unknown, { schemeKey: string; statusMappings: StatusMappingInput[] }>({
+    mutationFn: (input) => switchProjectScheme(projectKey, input),
+    onError: (error) => {
+      if (error instanceof WorkflowSchemeApiError && error.strandedByType.length > 0) return
+      notifySchemeError(error)
+    },
+    onSuccess: async () => {
+      toast.success('프로젝트에 스킴이 할당됐습니다')
+      await queryClient.invalidateQueries({ queryKey: ASSIGNMENT_KEYS.byProject(projectKey) })
     },
   })
 }

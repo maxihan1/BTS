@@ -235,6 +235,16 @@ export const schemeHandlers = [
     return HttpResponse.json({ data: created })
   }),
 
+  /** POST /api/v1/workflow-schemes/:schemeKey/publish — 매핑 전체 교체 (R11). 기본은 남는 이슈 없음 */
+  http.post('/api/v1/workflow-schemes/:schemeKey/publish', () =>
+    HttpResponse.json({ data: { bulkOperationIds: [] } }),
+  ),
+
+  /** POST /api/v1/projects/:projectKey/workflow-scheme/switch — 스킴 교체 (R11). 기본은 남는 이슈 없음 */
+  http.post('/api/v1/projects/:projectKey/workflow-scheme/switch', () =>
+    HttpResponse.json({ data: { bulkOperationIds: [] } }),
+  ),
+
   /** DELETE /api/v1/workflow-schemes/:schemeKey/mappings/:mappingId — 매핑 삭제 */
   http.delete('/api/v1/workflow-schemes/:schemeKey/mappings/:mappingId', ({ params }) => {
     const schemeKey = params['schemeKey'] as string

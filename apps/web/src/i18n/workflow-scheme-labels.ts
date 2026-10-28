@@ -211,4 +211,34 @@ export const workflowSchemeLabels = {
     /** 생성 폼 제출 버튼 */
     createSubmit: '만들기',
   },
+
+  /** 스킴 초안 · 게시 (R11 · 결정 D4) */
+  draft: {
+    /** 미게시 변경 안내 */
+    unpublishedNotice: '게시하지 않은 변경이 있습니다. 게시해야 이슈에 반영됩니다.',
+    publish: '게시',
+    publishing: '게시 중...',
+    discard: '초안 폐기',
+    published: '스킴을 게시했습니다',
+  },
+
+  /** 유형별 상태 이관 마법사 (R11 · 갭 JCW-1) */
+  migration: {
+    step1Title: '상태 매핑 (1/2)',
+    step1Description: '워크플로우가 바뀌는 업무 유형마다, 새 워크플로우에 없는 상태의 이슈를 옮길 상태를 고르세요.',
+    step2Title: '이슈 옮기는 중 (2/2)',
+    step2Description: '이슈를 새 상태로 옮기고 있습니다. 창을 닫아도 계속 진행됩니다.',
+    /** 유형 소제목 — 이름을 못 찾으면 id */
+    typeHeading: (typeName: string, workflowKey: string) => `${typeName} → ${workflowKey}`,
+    /** 남는 상태 한 줄의 건수 */
+    issueCount: (count: number) => `${String(count)}건`,
+    targetPlaceholder: '옮길 상태 선택...',
+    targetAriaLabel: (typeName: string, statusName: string) => `${typeName} · ${statusName} 이슈를 옮길 상태`,
+    next: '다음',
+    cancel: '취소',
+    close: '닫기',
+    /** 진행률 한 줄 */
+    progress: (processed: number, total: number) => `${String(processed)} / ${String(total)}`,
+    switched: '프로젝트 스킴을 바꿨습니다',
+  },
 }
