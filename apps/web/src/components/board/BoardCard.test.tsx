@@ -31,6 +31,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { render, screen, within } from '@testing-library/react'
 import { DndContext } from '@dnd-kit/core'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as sortableModule from '@dnd-kit/sortable'
 import type { BoardCard as BoardCardType, CardLayout } from '@/api/boards'
 import type { BacklogIssue } from '@/api/backlog'
@@ -328,6 +329,12 @@ function renderBacklogCardWithLayout(options: {
         cardLayout={cardLayout}
       />
     </DndContext>,
+    // 백로그 행의 상태 드롭다운(`StatusCell`)이 mutation 훅을 쥐어 QueryClient 가 필요하다 (R3 · JB-L-2)
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+      ),
+    },
   )
 }
 
