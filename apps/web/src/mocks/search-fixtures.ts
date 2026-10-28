@@ -3,7 +3,7 @@ import type { AqlSearchHit, AqlSearchPage, ExportJobStatus } from '@/api/search'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AqlSearchHit 샘플 데이터
-// 백엔드 AqlSearchHit DTO 필드와 1:1 대응 (labels 없음)
+// 백엔드 AqlSearchHit DTO 필드와 1:1 대응 (labels 없음 · version/restrictedFields/noneditableFields 는 R4)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** 기본 AQL 검색 결과 샘플 — ATLAS 프로젝트 버그 이슈 */
@@ -17,6 +17,9 @@ export const SEARCH_HIT_BUG: AqlSearchHit = {
   priorityName: 'High',
   projectKey: 'ATLAS',
   updatedAt: '2026-06-25T10:00:00Z',
+  version: 3,
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** AQL 검색 결과 샘플 — 담당자 미할당 */
@@ -30,6 +33,9 @@ export const SEARCH_HIT_UNASSIGNED: AqlSearchHit = {
   priorityName: 'Medium',
   projectKey: 'ATLAS',
   updatedAt: '2026-06-24T08:30:00Z',
+  version: 1,
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** AQL 검색 결과 샘플 — 완료된 이슈 */
@@ -43,6 +49,9 @@ export const SEARCH_HIT_DONE: AqlSearchHit = {
   priorityName: 'High',
   projectKey: 'ATLAS',
   updatedAt: '2026-06-23T15:45:00Z',
+  version: 5,
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

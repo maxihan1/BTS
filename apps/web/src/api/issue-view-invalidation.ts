@@ -37,6 +37,8 @@ export const ISSUE_VIEW_KEY_PREFIXES: readonly (readonly string[])[] = [
   ['board'],
   /** 백로그 — `['backlog', projectKey, boardId]` */
   ['backlog'],
+  /** AQL 검색 결과 표 — `['search-aql', projectKey, query, page]` (R4 · JC-L-1) */
+  ['search-aql'],
 ]
 
 /**

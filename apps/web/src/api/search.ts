@@ -48,6 +48,15 @@ export const aqlSearchHitSchema = z.object({
   priorityName: z.string().min(1),
   projectKey: z.string().min(1),
   updatedAt: z.string().min(1),
+  /**
+   * 낙관적 잠금 버전 — 검색 표 셀 편집의 `expectedVersion`. null 이면 그 페이지의 셀 편집을 끈다.
+   * `.default(...)` 는 이 필드가 없는 기존 인라인 mock 이 깨지지 않게 한다(zod-schema-strengthen-inline-mock-fanout).
+   */
+  version: z.number().int().nonnegative().nullable().default(null),
+  /** 필드 권한(FR-PM-07)으로 가려진 필드 키 — 목록 `IssueResponse.restrictedFields` 와 같은 뜻 */
+  restrictedFields: z.array(z.string()).default([]),
+  /** 보이지만 편집할 수 없는 필드 키 — 목록 `IssueResponse.noneditableFields` 와 같은 뜻 */
+  noneditableFields: z.array(z.string()).default([]),
 })
 
 /** AQL 검색 결과 단건 타입 */

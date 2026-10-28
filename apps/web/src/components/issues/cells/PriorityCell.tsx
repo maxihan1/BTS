@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { useState } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
-import type { IssueResponse } from '@/api/issues'
+import type { IssueTableRow } from '@/api/issues'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
 // 필드 단위 편집가부 판정 정본 — 복제하지 않고 재사용한다.
@@ -181,14 +181,14 @@ export function PriorityCellEditor({
 /** PriorityCell props */
 export interface PriorityCellProps {
   /** 대상 이슈 — 표시값·`expectedVersion` 의 출처 */
-  issue: IssueResponse
+  issue: IssueTableRow
   /** 목록 queryKey — mutation 이 이 캐시를 낙관적으로 patch 한다 */
   listQueryKey: QueryKey
 }
 
 /** PriorityCellPopoverBody props */
 interface PriorityCellPopoverBodyProps {
-  issue: IssueResponse
+  issue: IssueTableRow
   isSaving: boolean
   onChange: (priority: number) => void
 }

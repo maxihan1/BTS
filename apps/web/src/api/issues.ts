@@ -376,6 +376,28 @@ export type TransitionScreenValues = Pick<TransitionIssueInput, 'resolutionId' |
 /** 이슈 단건 응답 타입 */
 export type IssueResponse = z.infer<typeof issueResponseSchema>
 
+/**
+ * 이슈 표 한 행이 읽는 필드 — 목록(`IssueResponse`)과 AQL 검색 결과(`AqlSearchHit` 어댑터)가 둘 다 맞는다.
+ *
+ * 표 · 셀(담당자 · 우선순위 · 상태) · 셀 편집 낙관적 patch 가 이 타입만 요구한다. 검색 결과에는
+ * id · reporterId 등이 없으므로 `IssueResponse` 를 요구하면 가짜 값을 채워야 한다 — 그래서 좁힌다.
+ */
+export type IssueTableRow = Pick<
+  IssueResponse,
+  | 'key'
+  | 'summary'
+  | 'typeKey'
+  | 'currentStateKey'
+  | 'assigneeId'
+  | 'priority'
+  | 'priorityName'
+  | 'updatedAt'
+  | 'version'
+  | 'restrictedFields'
+  | 'noneditableFields'
+> &
+  Partial<Pick<IssueResponse, 'resolution'>>
+
 /** 커스텀 필드 값 타입 — 프로젝트별 확장 키-값 맵 (FR-IS-10). */
 export type CustomFieldValues = Record<string, unknown>
 

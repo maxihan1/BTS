@@ -2,7 +2,7 @@
 import type { JSX } from 'react'
 import { useMemo, useState } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
-import type { IssueResponse } from '@/api/issues'
+import type { IssueTableRow } from '@/api/issues'
 import type { UserSummary } from '@/api/users'
 import { issueDetailStrings } from '@/i18n/ko'
 import { Button } from '@/components/ui/button'
@@ -224,7 +224,7 @@ export function AssigneeCellDisplay({
 /** AssigneeCell props */
 export interface AssigneeCellProps {
   /** 대상 이슈 — `assigneeId`·`expectedVersion` 의 출처 */
-  issue: IssueResponse
+  issue: IssueTableRow
   /** 목록이 이미 해석해 둔 담당자 표시 이름 (`assigneeNameMap`). 미배정이면 undefined */
   assigneeName: string | undefined
   /** 목록 queryKey — mutation 이 이 캐시를 낙관적으로 patch 한다 */
@@ -233,7 +233,7 @@ export interface AssigneeCellProps {
 
 /** AssigneeCellPopoverBody props */
 interface AssigneeCellPopoverBodyProps {
-  issue: IssueResponse
+  issue: IssueTableRow
   assigneeName: string | undefined
   isSaving: boolean
   onChange: (userId: string | null, displayName: string | null) => void
