@@ -57,7 +57,12 @@ class SchemeStatusMigrationController(
             WorkflowSchemePermission.MANAGE_SCHEME,
             scopeResolver.ofScheme(schemeKey),
         )
-        log.info("publishScheme: schemeKey={} mappings={} statusMappings={}", schemeKey, body.mappings.size, body.statusMappings.size)
+        log.info(
+            "publishScheme: schemeKey={} mappings={} statusMappings={}",
+            schemeKey,
+            body.mappings.size,
+            body.statusMappings.size,
+        )
         val ids =
             migrationService.publish(
                 actor,
@@ -83,7 +88,12 @@ class SchemeStatusMigrationController(
         val projectId =
             projectLookupPort.findIdByKey(ProjectKey(projectKey))
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found: $projectKey")
-        log.info("switchScheme: projectKey={} schemeKey={} statusMappings={}", projectKey, body.schemeKey, body.statusMappings.size)
+        log.info(
+            "switchScheme: projectKey={} schemeKey={} statusMappings={}",
+            projectKey,
+            body.schemeKey,
+            body.statusMappings.size,
+        )
         val ids =
             migrationService.switchScheme(
                 actor,

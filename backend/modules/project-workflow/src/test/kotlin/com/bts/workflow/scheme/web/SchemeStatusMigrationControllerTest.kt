@@ -104,7 +104,13 @@ class SchemeStatusMigrationControllerTest {
         open fun controller(projectLookupPort: ProjectLookupPort): SchemeStatusMigrationController {
             val scopeResolver = mockk<WorkflowOwnershipScopeResolver>()
             every { scopeResolver.ofScheme(any()) } returns WorkflowScope.Global
-            return SchemeStatusMigrationController(migrationStub, StubSchemeService(), permResolverStub, scopeResolver, projectLookupPort)
+            return SchemeStatusMigrationController(
+                migrationStub,
+                StubSchemeService(),
+                permResolverStub,
+                scopeResolver,
+                projectLookupPort,
+            )
         }
 
         @Bean
@@ -132,7 +138,9 @@ class SchemeStatusMigrationControllerTest {
     fun `게시 — 남는 이슈가 있으면 409 에 유형별 목록과 상태 합계를 싣는다`() {
         config.migrationStub.failWith =
             SchemeChangeStrandsIssuesException(
-                listOf(StrandedIssueType(10L, UUID.randomUUID(), "wf-plain", setOf("open", "done"), mapOf("review" to 3L))),
+                listOf(
+                    StrandedIssueType(10L, UUID.randomUUID(), "wf-plain", setOf("open", "done"), mapOf("review" to 3L)),
+                ),
             )
 
         mockMvc.perform(
@@ -162,7 +170,8 @@ class SchemeStatusMigrationControllerTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.bulkOperationIds[0]").value(BULK_ID.toString()))
 
-        assertThat(config.migrationStub.capturedStatusMappings).containsExactly(TypeStatusMapping(10L, "review", "done"))
+        assertThat(config.migrationStub.capturedStatusMappings)
+            .containsExactly(TypeStatusMapping(10L, "review", "done"))
         assertThat(config.permResolverStub.capturedPermission).isEqualTo(WorkflowSchemePermission.MANAGE_SCHEME)
     }
 

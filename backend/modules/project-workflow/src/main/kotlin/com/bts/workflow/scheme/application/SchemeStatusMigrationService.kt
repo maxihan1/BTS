@@ -92,6 +92,7 @@ class SchemeStatusMigrationService(
     private fun projectKeysOf(projectIds: Set<UUID>): Set<String> =
         projectIds.mapNotNull { projectLookupPort.findKeyById(it)?.value }.toSet()
 
+    @Suppress("ThrowsCount")
     private fun commandsFor(
         actor: ActorId,
         stranded: List<StrandedIssueType>,
@@ -100,7 +101,9 @@ class SchemeStatusMigrationService(
     ): List<StatusMigrationCommand> {
         val byType = statusMappings.groupBy { it.issueTypeId }
         val covered =
-            stranded.all { t -> t.statuses.keys.all { from -> byType[t.issueTypeId].orEmpty().any { it.fromStatusKey == from } } }
+            stranded.all { t ->
+                t.statuses.keys.all { from -> byType[t.issueTypeId].orEmpty().any { it.fromStatusKey == from } }
+            }
         if (!covered) throw SchemeChangeStrandsIssuesException(stranded)
         if (projectKeys.isEmpty()) return emptyList()
 
@@ -118,7 +121,8 @@ class SchemeStatusMigrationService(
                 }
             StatusMigrationCommand(
                 actorUserId = actor.toUuid(),
-                projectScopes = projectKeys.associateWith { StatusMigrationTypeFilter(setOf(t.issueTypeId), exceptListed = false) },
+                projectScopes =
+                    projectKeys.associateWith { StatusMigrationTypeFilter(setOf(t.issueTypeId), exceptListed = false) },
                 mappings = mappings,
             )
         }

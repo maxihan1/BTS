@@ -414,6 +414,7 @@ class WorkflowSchemeApplicationService(
      *   키는 [resolveMappingKeys] 로 푼다.
      * @throws SchemeMappingsInvalidException 기본 매핑이 하나가 아니거나 이슈 타입이 겹칠 때.
      */
+    @Suppress("ThrowsCount")
     fun replaceMappings(
         actor: ActorId,
         schemeKey: WorkflowSchemeKey,
@@ -435,7 +436,13 @@ class WorkflowSchemeApplicationService(
         val now = Instant.now()
         val after =
             mappings.map { (typeId, workflowId) ->
-                SchemeIssueTypeMapping(id = null, schemeId = schemeId, issueTypeId = typeId, workflowId = workflowId, createdAt = now)
+                SchemeIssueTypeMapping(
+                    id = null,
+                    schemeId = schemeId,
+                    issueTypeId = typeId,
+                    workflowId = workflowId,
+                    createdAt = now,
+                )
             }
         val before = mappingRepo.findBySchemeId(schemeId)
         requireNoStrandedIssues(assignmentRepo.findLiveProjectIdsBySchemeId(schemeId), before, after, onStranded)

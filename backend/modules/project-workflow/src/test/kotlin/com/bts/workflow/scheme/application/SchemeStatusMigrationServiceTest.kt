@@ -200,7 +200,8 @@ class SchemeStatusMigrationServiceTest {
         every { assignmentRepo.findByProjectId(projectId) } returns
             ProjectWorkflowSchemeAssignment(projectId, schemeId, Instant.now(), actor.toUuid())
         every { mappingRepo.findBySchemeId(newSchemeId) } returns listOf(mapping(null, wfPlain, id = 9L))
-        every { usagePort.countByTypeAndStatus(setOf(projectId)) } returns listOf(IssueTypeStatusCount(task.value, "review", 2))
+        every { usagePort.countByTypeAndStatus(setOf(projectId)) } returns
+            listOf(IssueTypeStatusCount(task.value, "review", 2))
         justRun { assignmentRepo.saveAssignment(any()) }
         justRun { eventPublisher.publish(any<WorkflowSchemeAssignedEvent>()) }
         val cmd = slot<StatusMigrationCommand>()
@@ -228,7 +229,10 @@ class SchemeStatusMigrationServiceTest {
         Workflow.of(
             key = key,
             name = key,
-            states = stateKeys.mapIndexed { i, k -> WorkflowState(key = k, name = k, category = StateCategory.TODO, displayOrder = i) },
+            states =
+                stateKeys.mapIndexed { i, k ->
+                    WorkflowState(key = k, name = k, category = StateCategory.TODO, displayOrder = i)
+                },
             transitions = emptyList(),
         )
 
@@ -236,7 +240,13 @@ class SchemeStatusMigrationServiceTest {
         issueTypeId: IssueTypeId?,
         workflowId: UUID,
         id: Long,
-    ) = SchemeIssueTypeMapping(id = id, schemeId = schemeId, issueTypeId = issueTypeId, workflowId = workflowId, createdAt = Instant.now())
+    ) = SchemeIssueTypeMapping(
+        id = id,
+        schemeId = schemeId,
+        issueTypeId = issueTypeId,
+        workflowId = workflowId,
+        createdAt = Instant.now(),
+    )
 
     private fun scheme(
         key: WorkflowSchemeKey,
