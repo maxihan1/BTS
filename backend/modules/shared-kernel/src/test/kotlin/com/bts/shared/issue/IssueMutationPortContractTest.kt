@@ -21,8 +21,8 @@ class IssueMutationPortContractTest {
     // ── IssueMutationPort fail-closed ────────────────────────────────────────
 
     @Test
-    fun `IssueMutationPort 는 default 구현 없이 4 메서드 모두 추상으로 선언된다`() {
-        // 4 메서드 모두 override 하지 않으면 익명 객체 생성이 컴파일되지 않는다.
+    fun `IssueMutationPort 는 default 구현 없이 모든 메서드가 추상으로 선언된다`() {
+        // 모든 메서드를 override 하지 않으면 익명 객체 생성이 컴파일되지 않는다.
         // 이 테스트는 컴파일 타임에 override 강제를 검증한다.
         val port =
             object : IssueMutationPort {
@@ -37,6 +37,18 @@ class IssueMutationPortContractTest {
 
                 override fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult =
                     MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = 1L)
+
+                override fun transition(cmd: TransitionIssueCommand): MutationResult =
+                    MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = 1L)
+
+                override fun createIssue(cmd: CreateIssueCommand): MutationResult =
+                    MutationResult(issueKey = "${cmd.projectKey}-9", applied = !cmd.dryRun, version = 0L)
+
+                override fun linkIssues(cmd: LinkIssueCommand): MutationResult =
+                    MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
+
+                override fun addWatcher(cmd: AddWatcherCommand): MutationResult =
+                    MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
             }
 
         val setFieldResult =

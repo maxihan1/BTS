@@ -3,11 +3,15 @@
 package com.bts.automation
 
 import com.bts.shared.issue.AddCommentCommand
+import com.bts.shared.issue.AddWatcherCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.CreateIssueCommand
 import com.bts.shared.issue.IssueMutationPort
+import com.bts.shared.issue.LinkIssueCommand
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
 import com.bts.shared.issue.SetFixVersionsCommand
+import com.bts.shared.issue.TransitionIssueCommand
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -43,6 +47,14 @@ class StubIssueMutationPort : IssueMutationPort {
     /** [setFixVersions] 호출 기록(테스트 검증용, 호출 순서 보존). */
     val setFixVersionsCalls: MutableList<SetFixVersionsCommand> = CopyOnWriteArrayList()
 
+    val transitionCalls: MutableList<TransitionIssueCommand> = CopyOnWriteArrayList()
+
+    val createIssueCalls: MutableList<CreateIssueCommand> = CopyOnWriteArrayList()
+
+    val linkIssuesCalls: MutableList<LinkIssueCommand> = CopyOnWriteArrayList()
+
+    val addWatcherCalls: MutableList<AddWatcherCommand> = CopyOnWriteArrayList()
+
     private var failure: RuntimeException? = null
 
     override fun setField(cmd: SetFieldCommand): MutationResult {
@@ -70,6 +82,31 @@ class StubIssueMutationPort : IssueMutationPort {
     }
 
     /** 이후 모든 호출이 [exception] 을 던지도록 설정한다(호출 기록은 예외 발생 전에 여전히 남는다). */
+    override fun transition(cmd: TransitionIssueCommand): MutationResult {
+        transitionCalls += cmd
+        failure?.let { throw it }
+        return successResult(cmd.issueKey, cmd.dryRun)
+    }
+
+    /** 만든 이슈 키는 `<projectKey>-<호출 순번 + 1000>` — 테스트가 결과 키를 단언할 수 있게 결정적이다. */
+    override fun createIssue(cmd: CreateIssueCommand): MutationResult {
+        createIssueCalls += cmd
+        failure?.let { throw it }
+        return successResult("${cmd.projectKey}-${CREATED_KEY_BASE + createIssueCalls.size}", cmd.dryRun)
+    }
+
+    override fun linkIssues(cmd: LinkIssueCommand): MutationResult {
+        linkIssuesCalls += cmd
+        failure?.let { throw it }
+        return MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
+    }
+
+    override fun addWatcher(cmd: AddWatcherCommand): MutationResult {
+        addWatcherCalls += cmd
+        failure?.let { throw it }
+        return MutationResult(issueKey = cmd.issueKey, applied = !cmd.dryRun, version = null)
+    }
+
     fun failNextCallsWith(exception: RuntimeException) {
         failure = exception
     }
@@ -81,6 +118,10 @@ class StubIssueMutationPort : IssueMutationPort {
         assignCalls.clear()
         addCommentCalls.clear()
         setFixVersionsCalls.clear()
+        transitionCalls.clear()
+        createIssueCalls.clear()
+        linkIssuesCalls.clear()
+        addWatcherCalls.clear()
     }
 
     private fun successResult(
@@ -93,5 +134,6 @@ class StubIssueMutationPort : IssueMutationPort {
 
     private companion object {
         const val DEFAULT_VERSION = 1L
+        const val CREATED_KEY_BASE = 1000
     }
 }

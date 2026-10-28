@@ -3,11 +3,15 @@
 package com.bts.slack
 
 import com.bts.shared.issue.AddCommentCommand
+import com.bts.shared.issue.AddWatcherCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.CreateIssueCommand
 import com.bts.shared.issue.IssueMutationPort
+import com.bts.shared.issue.LinkIssueCommand
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
 import com.bts.shared.issue.SetFixVersionsCommand
+import com.bts.shared.issue.TransitionIssueCommand
 
 /**
  * 통합 테스트가 이슈 변경(담당자 배정/댓글 추가/필드 변경/수정 예정 버전 설정) 결과를 명시 시드하는
@@ -115,6 +119,15 @@ class StubIssueMutationPort : IssueMutationPort {
         return nextSetFixVersionsResult
             ?: error("StubIssueMutationPort 미설정: setFixVersions 시나리오를 먼저 시드해야 합니다: cmd=$cmd")
     }
+
+    // 슬랙은 아래 네 통로(자동화 액션 전용 — R9 단계 C)를 쓰지 않는다. 불리면 시나리오 오류로 드러낸다.
+    override fun transition(cmd: TransitionIssueCommand): MutationResult = error("슬랙은 transition 을 쓰지 않습니다: cmd=$cmd")
+
+    override fun createIssue(cmd: CreateIssueCommand): MutationResult = error("슬랙은 createIssue 를 쓰지 않습니다: cmd=$cmd")
+
+    override fun linkIssues(cmd: LinkIssueCommand): MutationResult = error("슬랙은 linkIssues 를 쓰지 않습니다: cmd=$cmd")
+
+    override fun addWatcher(cmd: AddWatcherCommand): MutationResult = error("슬랙은 addWatcher 를 쓰지 않습니다: cmd=$cmd")
 
     /** 테스트 간 상태 격리를 위해 시드/캡처를 모두 초기화한다. */
     fun reset() {

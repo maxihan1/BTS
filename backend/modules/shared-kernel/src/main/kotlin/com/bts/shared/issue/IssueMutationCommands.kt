@@ -1,4 +1,4 @@
-// IssueMutationPort 커맨드/결과 값 객체 — 필드 변경·담당자 배정·댓글 추가·수정 예정 버전 설정 (FR-AT-02)
+// IssueMutationPort 커맨드/결과 값 객체 — 필드·담당자·댓글·수정 예정 버전·전환·생성·연결·관찰자 (FR-AT-02)
 package com.bts.shared.issue
 
 import java.util.UUID
@@ -108,8 +108,7 @@ data class SetFixVersionsCommand(
 )
 
 /**
- * [IssueMutationPort] 네 메서드([IssueMutationPort.setField]/[IssueMutationPort.assign]/
- * [IssueMutationPort.addComment]/[IssueMutationPort.setFixVersions]) 공통 결과 VO.
+ * [IssueMutationPort] 전 메서드 공통 결과 VO.
  *
  * 실패(권한 거부·이슈 부재·OCC 버전 충돌 등)는 이 VO 로 표현하지 않고 예외로 던진다
  * ([IssueMutationPort] KDoc "실패 전달 — 예외" 참조). 이 VO 는 성공(또는 dryRun 미리보기
@@ -125,4 +124,83 @@ data class MutationResult(
     val issueKey: String,
     val applied: Boolean,
     val version: Long?,
+)
+
+/**
+ * 이슈 상태 전환 커맨드 VO (R9 단계 C · TRANSITION 액션).
+ *
+ * automation BC 의 액션 실행기가 [IssueMutationPort.transition] 호출 시 전달하는 커맨드다.
+ * [actorUserId] 의 async 안전·위조 차단 설계 근거는 [SetFieldCommand] KDoc 참조. OCC `expectedVersion`
+ * 은 담지 않는다 — 구현체가 자신의 트랜잭션 안에서 재조회한다([SetFixVersionsCommand] 와 같음).
+ *
+ * @property actorUserId 실행 주체 UUID. 자동화 룰의 actor.
+ * @property issueKey 전환할 이슈 키. 예: `"PROJ-1"`.
+ * @property toStateKey 대상 워크플로 상태 키. 워크플로에 그 전환이 없거나 검증기가 거절하면 구현체가 예외를 던진다.
+ * @property dryRun true 이면 구현체가 권한/검증만 수행하고 실제 커밋·이벤트 발행을 하지 않는다.
+ * @see IssueMutationPort.transition
+ */
+data class TransitionIssueCommand(
+    val actorUserId: UUID,
+    val issueKey: String,
+    val toStateKey: String,
+    val dryRun: Boolean,
+)
+
+/**
+ * 이슈(또는 하위 작업) 생성 커맨드 VO (R9 단계 C · CREATE_ISSUE 액션).
+ *
+ * automation BC 의 액션 실행기가 [IssueMutationPort.createIssue] 호출 시 전달하는 커맨드다.
+ * 보고자 = [actorUserId] 다. 대상 프로젝트는 호출자가 룰 프로젝트로 고정해 채운다.
+ *
+ * @property actorUserId 실행 주체 UUID. 만든 이슈의 보고자로 기록된다.
+ * @property projectKey 이슈를 만들 프로젝트 키.
+ * @property issueTypeKey 이슈 유형 키(`task`, `subtask` 등 — [IssueTypeKey] 형식).
+ * @property summary 요약. 템플릿 치환이 완료된 최종 텍스트다.
+ * @property parentKey 부모 이슈 키. non-null 이면 하위 작업으로 만든다(부모 UPDATE 권한 필요).
+ * @property dryRun true 이면 구현체가 권한/검증만 수행하고 실제 커밋·이벤트 발행을 하지 않는다.
+ * @see IssueMutationPort.createIssue
+ */
+data class CreateIssueCommand(
+    val actorUserId: UUID,
+    val projectKey: String,
+    val issueTypeKey: String,
+    val summary: String,
+    val parentKey: String?,
+    val dryRun: Boolean,
+)
+
+/**
+ * 이슈 연결 커맨드 VO (R9 단계 C · LINK_ISSUE 액션).
+ *
+ * @property actorUserId 실행 주체 UUID. 자동화 룰의 actor.
+ * @property issueKey 연결의 출발(source) 이슈 키 — 트리거 이슈.
+ * @property targetIssueKey 연결 대상 이슈 키.
+ * @property linkTypeCode 연결 유형 코드(예: `blocks`, `relates`). 기존 연결 API 와 같은 값이다.
+ * @property dryRun true 이면 구현체가 권한/검증만 수행하고 실제 커밋·이벤트 발행을 하지 않는다.
+ * @see IssueMutationPort.linkIssues
+ */
+data class LinkIssueCommand(
+    val actorUserId: UUID,
+    val issueKey: String,
+    val targetIssueKey: String,
+    val linkTypeCode: String,
+    val dryRun: Boolean,
+)
+
+/**
+ * 이슈 관찰자 추가 커맨드 VO (R9 단계 C · ADD_WATCHER 액션).
+ *
+ * 「보고자 · 담당자를 관찰자로」 같은 필드 기준 해석은 호출자가 이슈 스냅샷으로 끝내고 사용자 id 만 넘긴다.
+ *
+ * @property actorUserId 실행 주체 UUID. 자동화 룰의 actor.
+ * @property issueKey 관찰자를 추가할 이슈 키.
+ * @property watcherUserId 관찰자로 추가할 사용자 UUID.
+ * @property dryRun true 이면 구현체가 권한/검증만 수행하고 실제 커밋을 하지 않는다.
+ * @see IssueMutationPort.addWatcher
+ */
+data class AddWatcherCommand(
+    val actorUserId: UUID,
+    val issueKey: String,
+    val watcherUserId: UUID,
+    val dryRun: Boolean,
 )

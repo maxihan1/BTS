@@ -5,24 +5,40 @@ package com.bts.issue.adapter.outbound.automation
 import com.bts.issue.adapter.inbound.rest.IssueResponse
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeVersionsRequest
+import com.bts.issue.application.CreateIssueRequest
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.TransitionIssueRequest
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.comment.domain.Comment
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.Issue
 import com.bts.issue.domain.IssueAccessDeniedException
+import com.bts.issue.domain.IssueId
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.link.application.LinkApplicationService
+import com.bts.issue.type.domain.IssueType
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.watcher.application.IssueWatcherService
 import com.bts.shared.issue.AddCommentCommand
+import com.bts.shared.issue.AddWatcherCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.CreateIssueCommand
 import com.bts.shared.issue.IssueMutationPermissionDeniedException
+import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.issue.LinkIssueCommand
 import com.bts.shared.issue.SetFieldCommand
 import com.bts.shared.issue.SetFixVersionsCommand
+import com.bts.shared.issue.TransitionIssueCommand
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssueScope
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
@@ -60,6 +76,9 @@ class AutomationIssueMutationAdapterTest {
     private val objectMapper: ObjectMapper = ObjectMapper().registerKotlinModule()
     private val transactionTemplate: TransactionTemplate = mockk()
     private val status: TransactionStatus = mockk(relaxed = true)
+    private val linkApplicationService: LinkApplicationService = mockk()
+    private val issueWatcherService: IssueWatcherService = mockk()
+    private val issueTypeRepository: IssueTypeRepository = mockk()
 
     private lateinit var adapter: AutomationIssueMutationAdapter
 
@@ -75,6 +94,9 @@ class AutomationIssueMutationAdapterTest {
                 commentApplicationService = commentApplicationService,
                 objectMapper = objectMapper,
                 transactionTemplate = transactionTemplate,
+                linkApplicationService = linkApplicationService,
+                issueWatcherService = issueWatcherService,
+                issueTypeRepository = issueTypeRepository,
             )
         every { transactionTemplate.execute(any<TransactionCallback<Any>>()) } answers {
             firstArg<TransactionCallback<Any>>().doInTransaction(status)
@@ -433,4 +455,122 @@ class AutomationIssueMutationAdapterTest {
         assertThat(result.version).isNull()
         verify { status.setRollbackOnly() }
     }
+
+    // ── transition (R9 단계 C) ───────────────────────────────────────────────
+
+    @Test
+    fun `transition delegates to transitionIssue with toStateKey and refetched version`() {
+        every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
+        every { issueApplicationService.transitionIssue(actor, issueKey, any()) } returns issueResponse(version = 4L)
+
+        val result = adapter.transition(TransitionIssueCommand(actorUuid, issueKey.value, "done", dryRun = false))
+
+        assertThat(result.applied).isTrue()
+        assertThat(result.version).isEqualTo(4L)
+        verify {
+            issueApplicationService.transitionIssue(
+                actor,
+                issueKey,
+                TransitionIssueRequest("done", expectedVersion = 3L),
+            )
+        }
+    }
+
+    @Test
+    fun `transition dryRun sets rollback only and returns applied false version null`() {
+        every { issueApplicationService.findByKey(actor, issueKey) } returns issueResponse(version = 3L)
+        every { issueApplicationService.transitionIssue(actor, issueKey, any()) } returns issueResponse(version = 4L)
+
+        val result = adapter.transition(TransitionIssueCommand(actorUuid, issueKey.value, "done", dryRun = true))
+
+        assertThat(result.applied).isFalse()
+        assertThat(result.version).isNull()
+        verify { status.setRollbackOnly() }
+    }
+
+    // ── createIssue (R9 단계 C) ──────────────────────────────────────────────
+
+    @Test
+    fun `createIssue resolves type key and creates subtask under parent with actor as reporter`() {
+        every { issueTypeRepository.findByKey(IssueTypeKey("subtask")) } returns
+            IssueType.create(key = IssueTypeKey("subtask"), name = "Subtask").copy(id = IssueTypeId(7L))
+        val request = slot<CreateIssueRequest>()
+        every { issueApplicationService.createIssue(actor, capture(request)) } returns createdIssue("PROJ-9")
+
+        val result =
+            adapter.createIssue(
+                CreateIssueCommand(actorUuid, "PROJ", "subtask", "후속 작업", parentKey = "PROJ-1", dryRun = false),
+            )
+
+        assertThat(result.issueKey).isEqualTo("PROJ-9")
+        assertThat(result.applied).isTrue()
+        assertThat(request.captured.projectKey).isEqualTo("PROJ")
+        assertThat(request.captured.summary).isEqualTo("후속 작업")
+        assertThat(request.captured.reporterId).isEqualTo(actor)
+        assertThat(request.captured.typeId).isEqualTo(IssueTypeId(7L))
+        assertThat(request.captured.parentKey).isEqualTo(issueKey)
+    }
+
+    @Test
+    fun `createIssue throws for unknown type key without calling createIssue`() {
+        every { issueTypeRepository.findByKey(IssueTypeKey("ghost")) } returns null
+
+        assertThatThrownBy {
+            adapter.createIssue(CreateIssueCommand(actorUuid, "PROJ", "ghost", "요약", parentKey = null, dryRun = false))
+        }.isInstanceOf(IllegalArgumentException::class.java)
+        verify(exactly = 0) { issueApplicationService.createIssue(any(), any()) }
+    }
+
+    // ── linkIssues · addWatcher (R9 단계 C) ──────────────────────────────────
+
+    @Test
+    fun `linkIssues delegates to createLink with source target and link type code`() {
+        val target = IssueKey("PROJ-2")
+        every { linkApplicationService.createLink(actor, issueKey, target, "blocks") } returns mockk()
+
+        val result =
+            adapter.linkIssues(LinkIssueCommand(actorUuid, issueKey.value, target.value, "blocks", dryRun = false))
+
+        assertThat(result.issueKey).isEqualTo(issueKey.value)
+        assertThat(result.applied).isTrue()
+        assertThat(result.version).isNull()
+        verify { linkApplicationService.createLink(actor, issueKey, target, "blocks") }
+    }
+
+    @Test
+    fun `addWatcher delegates to watch with target user`() {
+        val watcher = UUID.randomUUID()
+        every { issueWatcherService.watch(issueKey, actor, watcher) } just runs
+
+        val result = adapter.addWatcher(AddWatcherCommand(actorUuid, issueKey.value, watcher, dryRun = false))
+
+        assertThat(result.applied).isTrue()
+        verify { issueWatcherService.watch(issueKey, actor, watcher) }
+    }
+
+    @Test
+    fun `addWatcher translates IssueAccessDeniedException into IssueMutationPermissionDeniedException`() {
+        val watcher = UUID.randomUUID()
+        every { issueWatcherService.watch(issueKey, actor, watcher) } throws
+            IssueAccessDeniedException(actor, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+
+        assertThatThrownBy {
+            adapter.addWatcher(AddWatcherCommand(actorUuid, issueKey.value, watcher, dryRun = false))
+        }.isInstanceOf(IssueMutationPermissionDeniedException::class.java)
+    }
+
+    private fun createdIssue(key: String): Issue =
+        Issue(
+            id = IssueId(UUID.randomUUID()),
+            key = IssueKey(key),
+            projectId = UUID.randomUUID(),
+            summary = "후속 작업",
+            reporterId = actor,
+            currentStateKey = "open",
+            version = 0L,
+            deletedAt = null,
+            createdAt = Instant.parse("2026-01-01T00:00:00Z"),
+            updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            typeId = IssueTypeId(7L),
+        )
 }
