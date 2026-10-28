@@ -60,6 +60,8 @@ function renderWizard(over: Partial<React.ComponentProps<typeof MigrationWizard>
     starting: false,
     operation: operationProp,
     progressRatio: calculateProgressRatio(operationProp ?? undefined),
+    scopes: [{ projectKey: 'ALPHA', issueTypeIds: [8], exceptListed: true }],
+    issueTypes: [{ id: 7, name: '버그' }, { id: 8, name: '작업' }],
     ...over,
   }
   render(<MigrationWizard {...props} />)
@@ -97,10 +99,69 @@ describe('상태 이관 마법사 — 도착지 선택 단계', () => {
 
     await userEvent.click(button)
 
-    expect(onStartMigration).toHaveBeenCalledWith([
-      { fromStatusKey: 'doing', toStatusKey: 'open' },
-      { fromStatusKey: 'done', toStatusKey: 'open' },
-    ])
+    expect(onStartMigration).toHaveBeenCalledWith(
+      [
+        { fromStatusKey: 'doing', toStatusKey: 'open' },
+        { fromStatusKey: 'done', toStatusKey: 'open' },
+      ],
+      [],
+    )
+  })
+
+  it('같은 범주 상태를 기본 대상으로 골라 둔다 (R11C · Jira H7)', async () => {
+    const CLOSED = { key: 'closed', name: '닫힘', category: 'DONE', displayOrder: 4, layoutX: null, layoutY: null } as const
+    const { onStartMigration } = renderWizard({
+      published: { ...published(), states: [OPEN, DOING, DONE, CLOSED] },
+      draft: { ...draft(), states: [OPEN, CLOSED] },
+      selection: { doing: 'open' },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: labels.migration.start }))
+
+    expect(onStartMigration).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        { fromStatusKey: 'doing', toStatusKey: 'open' },
+        { fromStatusKey: 'done', toStatusKey: 'closed' },
+      ]),
+      [],
+    )
+  })
+})
+
+describe('상태 이관 마법사 — 프로젝트 × 유형 예외 (R11C)', () => {
+  const ALL: MigrationSelection = { doing: 'open', done: 'open' }
+
+  it('예외 행은 다 채워야 시작할 수 있고, 유형은 그 프로젝트에서 이 워크플로우가 맡는 것만 고를 수 있다', async () => {
+    const { onStartMigration } = renderWizard({ selection: ALL })
+
+    await userEvent.click(screen.getByRole('button', { name: labels.migration.addException }))
+    expect(screen.getByRole('button', { name: labels.migration.start })).toBeDisabled()
+
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: `${labels.migration.exceptionProject} 1` }), 'ALPHA')
+    const typeSelect = screen.getByRole('combobox', { name: `${labels.migration.exceptionIssueType} 1` })
+    // 스킴 기본 매핑(exceptListed) — 작업(8)은 형제 워크플로우 몫이라 선택지에 없다.
+    expect(screen.queryByRole('option', { name: '작업' })).not.toBeInTheDocument()
+    await userEvent.selectOptions(typeSelect, '7')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: `${labels.migration.exceptionTarget} 1` }), 'open')
+
+    await userEvent.click(screen.getByRole('button', { name: labels.migration.start }))
+
+    expect(onStartMigration).toHaveBeenCalledWith(
+      [
+        { fromStatusKey: 'doing', toStatusKey: 'open' },
+        { fromStatusKey: 'done', toStatusKey: 'open' },
+      ],
+      [{ projectKey: 'ALPHA', issueTypeId: 7, fromStatusKey: 'doing', toStatusKey: 'open' }],
+    )
+  })
+
+  it('예외 제거로 행을 지우면 다시 시작할 수 있다', async () => {
+    renderWizard({ selection: ALL })
+
+    await userEvent.click(screen.getByRole('button', { name: labels.migration.addException }))
+    await userEvent.click(screen.getByRole('button', { name: `${labels.migration.removeException} 1` }))
+
+    expect(screen.getByRole('button', { name: labels.migration.start })).toBeEnabled()
   })
 
   it('이관 시작 요청 전송 중에는 전부 골라도 비활성이다', () => {

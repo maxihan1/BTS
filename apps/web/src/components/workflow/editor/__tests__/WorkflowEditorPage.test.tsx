@@ -278,7 +278,7 @@ describe('전환 편집', () => {
 })
 
 describe('발행 흐름', () => {
-  it('사라지는 상태가 없으면 발행 다이얼로그가 바로 발행을 준다', async () => {
+  it('옮길 이슈가 없으면 「워크플로 업데이트」 한 번으로 묻지 않고 반영한다 (R11C)', async () => {
     renderEditor()
     await waitForLoaded()
 
@@ -286,10 +286,7 @@ describe('발행 흐름', () => {
     await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '발행할 이름')
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
 
-    const dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-    expect(within(dialog).getByText(P.publish.noRemoved)).toBeInTheDocument()
-
-    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
+    expect(screen.queryByRole('dialog', { name: P.publish.dialogTitle })).not.toBeInTheDocument()
 
     // ★ 발행해야 서버가 바뀐다.
     await waitFor(async () => {
@@ -306,8 +303,9 @@ describe('발행 흐름', () => {
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
 
     const dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-    // 눌러 보고 409 를 받게 두지 않는다.
-    expect(within(dialog).queryByRole('button', { name: P.publish.confirm })).not.toBeInTheDocument()
+    // 눌러 보고 409 를 받게 두지 않는다 — 같은 이름의 버튼은 이관 모달의 시작 버튼 하나뿐이다.
+    expect(await within(dialog).findByRole('button', { name: P.migration.addException })).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('button', { name: P.publish.confirm })).toHaveLength(1)
     expect(within(dialog).getByText(P.publish.boardWarning)).toBeInTheDocument()
   })
 
@@ -319,10 +317,6 @@ describe('발행 흐름', () => {
     await userEvent.click(screen.getByRole('button', { name: `${L.statusPanel.remove} Done` }))
     await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${L.statusPanel.remove}$`) }))
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
-
-    const dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-    expect(within(dialog).getByText(P.publish.noIssues)).toBeInTheDocument()
-    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
 
     await waitFor(async () => {
       expect((await fetchWorkflow('software-default')).states).not.toContainEqual(
@@ -342,10 +336,8 @@ describe('발행 흐름', () => {
       await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
       await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), name)
       await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
-      const dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-      await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
-      await waitFor(() => {
-        expect(screen.queryByRole('dialog', { name: P.publish.dialogTitle })).not.toBeInTheDocument()
+      await waitFor(async () => {
+        expect((await fetchWorkflow('software-default')).name).toBe(name)
       })
     }
 
@@ -366,10 +358,8 @@ describe('발행 흐름', () => {
     await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
     await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '발행할 이름')
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
-    let dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog', { name: P.publish.dialogTitle })).not.toBeInTheDocument()
+    await waitFor(async () => {
+      expect((await fetchWorkflow('software-default')).name).toBe('발행할 이름')
     })
 
     // 발행이 초안 행을 지웠으므로 폐기 버튼은 사라져야 한다 — 누르면 404 다.
@@ -381,8 +371,6 @@ describe('발행 흐름', () => {
     await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
     await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '이어서 발행')
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
-    dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
 
     await waitFor(async () => {
       expect((await fetchWorkflow('software-default')).name).toBe('이어서 발행')
@@ -404,8 +392,6 @@ describe('발행 흐름', () => {
     await userEvent.clear(screen.getByRole('textbox', { name: L.editor.nameField }))
     await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '충돌할 이름')
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
-    const dialog = await screen.findByRole('dialog', { name: P.publish.dialogTitle })
-    await userEvent.click(within(dialog).getByRole('button', { name: P.publish.confirm }))
 
     // 토스트로 사라지지 않고 배너로 남는다 — 재시도로는 안 풀리기 때문이다.
     const banner = await screen.findByRole('alert', { name: P.conflict.banner })
@@ -483,7 +469,7 @@ describe('★ 이관 중 새로고침 (G-2)', () => {
     expect(screen.getByRole('button', { name: P.draft.publish })).toBeEnabled()
   })
 
-  it('이관이 끝나면 마법사가 사는 발행 다이얼로그로 다시 갈 수 있다', async () => {
+  it('이관이 끝나면 다시 「워크플로 업데이트」로 반영할 수 있다', async () => {
     // 진행 중에는 발행이 잠겨 있다가, 폴링이 종료 상태를 받으면 되돌아온다.
     serveMigration('COMPLETED', 10, 10)
     enterWithMigrationInUrl()
@@ -499,7 +485,10 @@ describe('★ 이관 중 새로고침 (G-2)', () => {
     await userEvent.type(screen.getByRole('textbox', { name: L.editor.nameField }), '이관 뒤 발행')
     await userEvent.click(screen.getByRole('button', { name: P.draft.publish }))
 
-    expect(await screen.findByRole('dialog', { name: P.publish.dialogTitle })).toBeInTheDocument()
+    // 옮길 이슈가 남지 않았으므로 묻지 않고 반영된다(R11C).
+    await waitFor(async () => {
+      expect((await fetchWorkflow('software-default')).name).toBe('이관 뒤 발행')
+    })
   })
 })
 

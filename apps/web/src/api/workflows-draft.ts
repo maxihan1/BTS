@@ -14,6 +14,7 @@ import type {
   PublishResult,
   MigrateAccepted,
   StatusMappingInput,
+  StatusMappingExceptionInput,
 } from './workflows-draft.types'
 
 export * from './workflows-draft.types'
@@ -81,8 +82,8 @@ export async function publishDraft(key: string, baseVersion: number): Promise<Pu
 /**
  * 빠지는 상태에 남은 이슈를 옮길 일괄작업을 큐잉한다. **발행하지는 않는다** — 202 다.
  *
- * 진행률은 `GET /api/v1/bulk-operations/{id}` 로 따로 폴링하고, 완료된 뒤에 [publishDraft] 를
- * 이어 부른다. 지라는 조작 1회지만 BTS 는 이관과 발행이 나뉜 의도적 편차다.
+ * 진행률은 `GET /api/v1/bulk-operations/{id}` 로 따로 폴링하고, 완료된 뒤에 화면이 [publishDraft] 를
+ * 자동으로 이어 부른다(R11C — 사용자에게는 「워크플로 업데이트」 한 번).
  *
  * ★ **`projectKeys` 를 보내지 않는다.** 범위를 요청이 정하게 두면 워크플로우 하나에 발행
  * 권한을 가진 사람이 남의 프로젝트 이슈까지 옮길 수 있다. 서버가 스킴 할당을 거슬러 직접
@@ -92,9 +93,10 @@ export async function migrateStatuses(
   key: string,
   baseVersion: number,
   mappings: StatusMappingInput[],
+  exceptions: StatusMappingExceptionInput[] = [],
 ): Promise<MigrateAccepted> {
   return parseData(
-    await apiFetch(at(key, '/publish/migrate'), { method: 'POST', body: { baseVersion, mappings } }),
+    await apiFetch(at(key, '/publish/migrate'), { method: 'POST', body: { baseVersion, mappings, exceptions } }),
     migrateResponseSchema,
   )
 }

@@ -10,7 +10,7 @@ import { workflowEditorLabels as labels } from '@/i18n/workflow-editor-labels'
 import { useStatusCatalog } from '@/hooks/use-workflows-admin'
 import { useWorkflowDraft } from '@/hooks/use-workflow-draft'
 import { useWorkflowPublish } from '@/hooks/use-workflow-publish'
-import { usePublishFlow, useMigrationWizard } from '@/hooks/use-publish-flow'
+import { usePublishFlow, useMigrationWizard, useAutoPublishAfterMigration } from '@/hooks/use-publish-flow'
 import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import { publishBlockReason } from '@/lib/workflow-draft'
 import type { TransitionInput, EditableDraft, DraftAction } from '@/lib/workflow-draft'
@@ -158,6 +158,7 @@ function WorkflowEditorPage({ workflowKey }: WorkflowEditorPageProps): React.JSX
   // 이관 마법사는 여기서 쥔다 — `WorkflowEditorDialogs` 는 조립만 한다는 계약을 지키면서,
   // `discardDisabled`(G-3)를 아래 `DraftStatusBar` 까지 끌어올릴 수 있는 유일한 자리다.
   const migration = useMigrationWizard(workflowKey, flow.preview)
+  useAutoPublishAfterMigration(migration, flow)
 
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [statusToRemove, setStatusToRemove] = React.useState<PanelStatus | null>(null)

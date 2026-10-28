@@ -1,16 +1,31 @@
-// 발행으로 사라지는 상태에 남은 이슈를 어디로 옮길지 고르는 마법사 — 발행 다이얼로그의 한 단계
+// 업데이트로 사라지는 상태의 이슈를 옮길 곳 — 기본 대상 + 프로젝트 × 유형 예외(R11C) · 진행률
 // 순수 표현 컴포넌트다. 폴링·API 호출을 하지 않고 필요한 값을 전부 props 로 받는다(배선은 T5·T6 소관).
 import type { JSX } from 'react'
+import { useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
 import { bulkOperationLabels, failureReasonLabels, getFailureReasonLabel, statusLabels } from '@/i18n/bulk-operation-labels'
 import type { BulkOperationResponse } from '@/api/bulk-operations'
-import type { DraftDefinition, StatusMappingInput } from '@/api/workflows-draft.types'
+import type {
+  DraftDefinition,
+  PublishPreview,
+  StatusMappingExceptionInput,
+  StatusMappingInput,
+} from '@/api/workflows-draft.types'
 import type { EditableDraft } from '@/lib/workflow-draft'
 import { migrationTargets, removedStatusKeys, stateNameMap } from '@/lib/workflow-draft'
-import { canStartMigration, toMigrationRequest, type MigrationSelection } from '@/lib/workflow-migration'
+import {
+  canStartMigration,
+  exceptionsComplete,
+  scopedIssueTypes,
+  suggestedSelection,
+  toExceptionRequest,
+  toMigrationRequest,
+  type ExceptionDraft,
+  type MigrationSelection,
+} from '@/lib/workflow-migration'
 
 /** MigrationWizard Props */
 export interface MigrationWizardProps {
@@ -24,8 +39,12 @@ export interface MigrationWizardProps {
   readonly selection: MigrationSelection
   /** 셀렉트 값이 바뀔 때 호출된다 */
   readonly onSelectionChange: (removedKey: string, targetKey: string) => void
-  /** 이관 시작 버튼 클릭 — 서버 계약 형태로 변환된 매핑을 함께 넘긴다(F6) */
-  readonly onStartMigration: (mappings: StatusMappingInput[]) => void
+  /** 이관 시작 버튼 클릭 — 서버 계약 형태로 변환된 기본 매핑 · 예외를 함께 넘긴다(F6 · R11C) */
+  readonly onStartMigration: (mappings: StatusMappingInput[], exceptions: StatusMappingExceptionInput[]) => void
+  /** 이 워크플로우를 쓰는 프로젝트와 맡는 업무 유형 — 예외 선택지(`POST /publish/preview` 의 `scopes`) */
+  readonly scopes: PublishPreview['scopes']
+  /** 전역 업무 유형 목록 — 유형 id 를 이름으로 푼다 */
+  readonly issueTypes: readonly { id: number; name: string }[]
   /** 이관 시작 요청 전송 중 — 중복 클릭 방지 */
   readonly starting: boolean
   /** 접수된 이관 작업의 폴링 결과. null 이면 아직 시작 전(선택 단계) */
@@ -112,6 +131,98 @@ function ItemList({
   )
 }
 
+const nativeSelect = 'h-9 rounded-md border border-input bg-background px-2 text-sm'
+
+/**
+ * 예외 행들 — 현재 상태 · 프로젝트 · 그 프로젝트의 업무 유형 · 새 상태 · 「예외 제거」(R11C · Jira H7).
+ * 업무 유형 선택지는 그 프로젝트에서 이 워크플로우가 맡는 유형만이다(서버 C2 와 같은 범위).
+ */
+function ExceptionRows({
+  rows,
+  removed,
+  targets,
+  nameOf,
+  scopes,
+  issueTypes,
+  onChange,
+  onRemove,
+}: {
+  readonly rows: readonly ExceptionDraft[]
+  readonly removed: readonly string[]
+  readonly targets: readonly { key: string; name: string }[]
+  readonly nameOf: (key: string) => string
+  readonly scopes: PublishPreview['scopes']
+  readonly issueTypes: readonly { id: number; name: string }[]
+  readonly onChange: (index: number, patch: Partial<ExceptionDraft>) => void
+  readonly onRemove: (index: number) => void
+}): JSX.Element | null {
+  if (rows.length === 0) return null
+  const m = labels.migration
+  return (
+    <section aria-label={m.exceptionsHeading} className="flex flex-col gap-2">
+      <h3 className="text-sm font-medium">{m.exceptionsHeading}</h3>
+      {rows.map((row, index) => {
+        const types = scopedIssueTypes(
+          scopes.find((sc) => sc.projectKey === row.projectKey),
+          issueTypes,
+        )
+        const n = String(index + 1)
+        return (
+          <div key={index} className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label={`${m.exceptionFrom} ${n}`}
+              className={nativeSelect}
+              value={row.fromStatusKey}
+              onChange={(e) => onChange(index, { fromStatusKey: e.target.value })}
+            >
+              {removed.map((key) => (
+                <option key={key} value={key}>{nameOf(key)}</option>
+              ))}
+            </select>
+            <select
+              aria-label={`${m.exceptionProject} ${n}`}
+              className={nativeSelect}
+              value={row.projectKey}
+              onChange={(e) => onChange(index, { projectKey: e.target.value, issueTypeId: null })}
+            >
+              <option value="">{m.exceptionPlaceholder}</option>
+              {scopes.map((sc) => (
+                <option key={sc.projectKey} value={sc.projectKey}>{sc.projectKey}</option>
+              ))}
+            </select>
+            <select
+              aria-label={`${m.exceptionIssueType} ${n}`}
+              className={nativeSelect}
+              value={row.issueTypeId === null ? '' : String(row.issueTypeId)}
+              disabled={row.projectKey === ''}
+              onChange={(e) => onChange(index, { issueTypeId: e.target.value === '' ? null : Number(e.target.value) })}
+            >
+              <option value="">{m.exceptionPlaceholder}</option>
+              {types.map((t) => (
+                <option key={t.id} value={String(t.id)}>{t.name}</option>
+              ))}
+            </select>
+            <select
+              aria-label={`${m.exceptionTarget} ${n}`}
+              className={nativeSelect}
+              value={row.toStatusKey}
+              onChange={(e) => onChange(index, { toStatusKey: e.target.value })}
+            >
+              <option value="">{m.exceptionPlaceholder}</option>
+              {targets.map((t) => (
+                <option key={t.key} value={t.key}>{t.name}</option>
+              ))}
+            </select>
+            <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(index)}>
+              {`${m.removeException} ${n}`}
+            </Button>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
 /**
  * 상태 이관 마법사. 발행 다이얼로그의 한 단계로 들어간다(별도 `Dialog` 를 만들지 않는다).
  * `operation` 이 null 이면 도착지 선택 단계, 값이 있으면 진행률·결과 단계를 그린다.
@@ -129,12 +240,20 @@ export function MigrationWizard({
   starting,
   operation,
   progressRatio,
+  scopes,
+  issueTypes,
 }: MigrationWizardProps): JSX.Element {
+  const [exceptions, setExceptions] = useState<ExceptionDraft[]>([])
   const removed = removedStatusKeys(draft, published)
   const targets = migrationTargets(draft, published)
   const nameMap = { ...stateNameMap(published), ...stateNameMap(draft) }
   const nameOf = (key: string): string => nameMap[key] ?? key
-  const canStart = canStartMigration(selection, draft, published)
+  // 같은 범주 상태를 기본으로 골라 둔다 — 사용자가 고른 값이 있으면 그것이 이긴다(Jira H7).
+  const effective = { ...suggestedSelection(draft, published), ...selection }
+  const canStart = canStartMigration(effective, draft, published) && exceptionsComplete(exceptions)
+  const patchException = (index: number, patch: Partial<ExceptionDraft>) => {
+    setExceptions((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+  }
 
   const failedItems = operation?.items.filter((item) => item.status === 'FAILED' && item.failureReasonCode !== 'PROJECT_ARCHIVED') ?? []
   const excludedItems = operation?.items.filter((item) => item.failureReasonCode === 'PROJECT_ARCHIVED') ?? []
@@ -165,7 +284,7 @@ export function MigrationWizard({
                         {count > 0 ? `${String(count)}${labels.publish.issueCountSuffix}` : labels.publish.noIssues}
                       </span>
                     </div>
-                    <Select value={selection[key] ?? ''} onValueChange={(next) => onSelectionChange(key, next)}>
+                    <Select value={effective[key] ?? ''} onValueChange={(next) => onSelectionChange(key, next)}>
                       <SelectTrigger aria-label={name} className="min-h-11 w-full sm:w-48">
                         <SelectValue placeholder={bulkOperationLabels.statusSelectPlaceholder} />
                       </SelectTrigger>
@@ -182,8 +301,31 @@ export function MigrationWizard({
               })}
             </ul>
           </section>
-          <div className="flex justify-end">
-            <Button disabled={!canStart || starting} onClick={() => onStartMigration(toMigrationRequest(selection))}>
+          <ExceptionRows
+            rows={exceptions}
+            removed={removed}
+            targets={targets}
+            nameOf={nameOf}
+            scopes={scopes}
+            issueTypes={issueTypes}
+            onChange={patchException}
+            onRemove={(index) => setExceptions((rows) => rows.filter((_, i) => i !== index))}
+          />
+          <div className="flex justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={scopes.length === 0}
+              onClick={() =>
+                setExceptions((rows) => [...rows, { fromStatusKey: removed[0] ?? '', projectKey: '', issueTypeId: null, toStatusKey: '' }])
+              }
+            >
+              {labels.migration.addException}
+            </Button>
+            <Button
+              disabled={!canStart || starting}
+              onClick={() => onStartMigration(toMigrationRequest(effective), toExceptionRequest(exceptions))}
+            >
               {labels.migration.start}
             </Button>
           </div>

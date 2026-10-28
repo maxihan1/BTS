@@ -6,7 +6,8 @@ import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 import { server } from '@/test/server'
 import { MAX_ERROR_RETRIES, POLL_INTERVAL_MS } from '@/hooks/use-bulk-operation'
-import { useMigrationWizard } from '../use-publish-flow'
+import { useAutoPublishAfterMigration, useMigrationWizard } from '../use-publish-flow'
+import type { UseMigrationWizardResult } from '../use-publish-flow'
 import type { PublishPreview } from '@/api/workflows-draft.types'
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
@@ -27,6 +28,7 @@ function preview(over: Partial<PublishPreview> = {}): PublishPreview {
     currentVersion: 4,
     removedStatusKeys: ['done'],
     pendingIssueCounts: { done: 3 },
+    scopes: [],
     ...over,
   }
 }
@@ -156,7 +158,7 @@ describe('이관 시작', () => {
   it('202 를 받으면 그 id 로 폴링이 붙는다(F6 · J6)', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({ data: bulkOperationResponse({ status: 'RUNNING', processedCount: 1 }) }),
@@ -165,7 +167,7 @@ describe('이관 시작', () => {
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -178,7 +180,7 @@ describe('이관 시작', () => {
   it('COMPLETED 에 도달하면 진행률이 그 값으로 멈춘다', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({
@@ -189,7 +191,7 @@ describe('이관 시작', () => {
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -212,7 +214,7 @@ describe('이관 시작', () => {
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([])
+      result.current.onStartMigration([], [])
     })
 
     await waitFor(() => {
@@ -228,7 +230,7 @@ describe('★ 세션 리셋 — preview 가 바뀌면 이전 선택·이관 상�
   it('새 preview(참조 변경)를 받으면 selection·operation 이 초기화된다', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({ data: bulkOperationResponse({ status: 'RUNNING' }) }),
@@ -244,7 +246,7 @@ describe('★ 세션 리셋 — preview 가 바뀌면 이전 선택·이관 상�
       result.current.onSelectionChange('done', 'open')
     })
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
     await waitFor(() => {
       expect(result.current.operation).not.toBeNull()
@@ -262,7 +264,7 @@ describe('진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행
   it('이관을 접수하면 bulkOperationId 가 URL 쿼리(?migration=)에 실린다', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({ data: bulkOperationResponse({ status: 'RUNNING' }) }),
@@ -272,7 +274,7 @@ describe('진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행
     expect(new URLSearchParams(window.location.search).get('migration')).toBeNull()
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -300,7 +302,7 @@ describe('진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행
   it('종료 상태(COMPLETED)에 도달하면 URL 의 migration 쿼리를 정리한다', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({
@@ -311,7 +313,7 @@ describe('진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -325,7 +327,7 @@ describe('진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행
   it('종료 상태(FAILED)에 도달해도 URL 의 migration 쿼리를 정리한다', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({
@@ -336,7 +338,7 @@ describe('진행률 URL 보관(G-2) — 새로고침·링크 공유에도 진행
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -358,7 +360,7 @@ describe('초안 폐기 차단(G-3) — 폴링 중에는 막고 종료 상태에
   it('폴링 중에는 초안 폐기가 비활성이다(discardDisabled=true)', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({ data: bulkOperationResponse({ status: 'RUNNING' }) }),
@@ -367,7 +369,7 @@ describe('초안 폐기 차단(G-3) — 폴링 중에는 막고 종료 상태에
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -378,7 +380,7 @@ describe('초안 폐기 차단(G-3) — 폴링 중에는 막고 종료 상태에
   it('이관이 COMPLETED 로 끝나면 초안 폐기가 다시 활성화된다(discardDisabled=false)', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () =>
         HttpResponse.json({
@@ -389,7 +391,7 @@ describe('초안 폐기 차단(G-3) — 폴링 중에는 막고 종료 상태에
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -472,14 +474,14 @@ describe('폴링 실패 재시도(concern 2) — 5xx·네트워크만 재시도�
   it('4xx 로 폴링이 멈추면 재시도를 주지 않는다(pollRetryable=false — 같은 응답이 반복된다)', async () => {
     server.use(
       http.post(`/api/v1/workflows/${KEY}/publish/migrate`, () =>
-        HttpResponse.json({ data: { bulkOperationId: BULK_ID } }, { status: 202 }),
+        HttpResponse.json({ data: { bulkOperationId: BULK_ID, bulkOperationIds: [BULK_ID] } }, { status: 202 }),
       ),
       http.get(`/api/v1/bulk-operations/${BULK_ID}`, () => HttpResponse.json({}, { status: 404 })),
     )
     const { result } = renderMigrationWizard(KEY, preview())
 
     act(() => {
-      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }])
+      result.current.onStartMigration([{ fromStatusKey: 'done', toStatusKey: 'open' }], [])
     })
 
     await waitFor(() => {
@@ -536,5 +538,34 @@ describe('폴링 실패 재시도(concern 2) — 5xx·네트워크만 재시도�
     })
 
     expect(result.current.operation?.status).toBe('RUNNING')
+  })
+})
+
+describe('이관 성공 뒤 자동 업데이트 (R11C C5)', () => {
+  function op(status: 'RUNNING' | 'COMPLETED' | 'FAILED', failedCount = 0) {
+    return { status, failedCount } as unknown as NonNullable<UseMigrationWizardResult['operation']>
+  }
+
+  it('전부 COMPLETED · 실패 0 이 되면 다이얼로그가 열려 있을 때 한 번만 발행한다', () => {
+    const confirmPublish = vi.fn()
+    const { rerender } = renderHook(
+      ({ operation }) => { useAutoPublishAfterMigration({ operation }, { dialog: 'publish', confirmPublish }) },
+      { initialProps: { operation: op('RUNNING') as UseMigrationWizardResult['operation'] } },
+    )
+    expect(confirmPublish).not.toHaveBeenCalled()
+
+    rerender({ operation: op('COMPLETED') })
+    rerender({ operation: op('COMPLETED') })
+
+    expect(confirmPublish).toHaveBeenCalledTimes(1)
+  })
+
+  it('실패가 섞이거나 다이얼로그가 닫혀 있으면 발행하지 않는다', () => {
+    const confirmPublish = vi.fn()
+    renderHook(() => { useAutoPublishAfterMigration({ operation: op('COMPLETED', 1) }, { dialog: 'publish', confirmPublish }) })
+    renderHook(() => { useAutoPublishAfterMigration({ operation: op('FAILED') }, { dialog: 'publish', confirmPublish }) })
+    renderHook(() => { useAutoPublishAfterMigration({ operation: op('COMPLETED') }, { dialog: 'none', confirmPublish }) })
+
+    expect(confirmPublish).not.toHaveBeenCalled()
   })
 })

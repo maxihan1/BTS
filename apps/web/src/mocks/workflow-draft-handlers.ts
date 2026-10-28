@@ -259,6 +259,7 @@ export const workflowDraftHandlers = [
         currentVersion: versionOf(key),
         removedStatusKeys: removed,
         pendingIssueCounts: pendingFor(removed),
+        scopes: [{ projectKey: 'BTS', issueTypeIds: [], exceptListed: true }],
       },
     })
   }),
@@ -369,7 +370,7 @@ export const workflowDraftHandlers = [
       },
     )
 
-    return HttpResponse.json({ data: { bulkOperationId } }, { status: 202 })
+    return HttpResponse.json({ data: { bulkOperationId, bulkOperationIds: [bulkOperationId] } }, { status: 202 })
   }),
 
   // ── 기본값 복원 ───────────────────────────────────────────────────────────

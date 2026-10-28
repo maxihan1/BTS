@@ -1,4 +1,4 @@
-// 워크플로우 초안·발행·복원 UI 의 E2E 셀렉터 정본 — 라벨 변경 시 단일 진입점
+// 워크플로우 편집 · 업데이트(R11C) · 복원 UI 의 셀렉터 정본 — 라벨 변경 시 단일 진입점
 /**
  * 초안 편집 · 발행 · 기본값 복원이 노출하는 한국어 라벨.
  *
@@ -18,7 +18,7 @@ export const workflowPublishLabels = {
   /** 초안 상태 표시줄 */
   draft: {
     /** 표시줄 전체의 aria-label */
-    bar: '초안 상태',
+    bar: '편집 상태',
     /** 저장 상태 — 편집 없음 */
     idle: '편집 시작 전',
     /** 저장 상태 — 저장 대기 */
@@ -30,27 +30,28 @@ export const workflowPublishLabels = {
     /** 저장 상태 — 실패. 이 상태에서는 발행이 잠긴다 */
     error: '저장하지 못했습니다',
     /** 발행 버튼 */
-    publish: '발행',
+    publish: '워크플로 업데이트',
     /** 기본값 복원 버튼 */
     reset: '기본값으로 되돌리기',
     /** 초안 폐기 버튼 */
-    discard: '초안 폐기',
+    discard: '변경 취소',
     /**
      * 아직 발행되지 않은 편집이 있다는 안내.
      *
      * 「편집 ≠ 배포」가 이 화면의 핵심 계약이라 항상 보이는 자리에 둔다 — 사용자가 저장만
      * 하고 나가면 운영에는 아무 변화가 없다.
      */
-    unpublishedNotice: '변경 사항은 발행해야 반영됩니다',
+    unpublishedNotice: '변경 사항은 「워크플로 업데이트」를 눌러야 반영됩니다',
   },
 
   /** 발행 다이얼로그 */
   publish: {
     /** ★ 다이얼로그 제목. 단계가 바뀌어도 **이 이름은 끝까지 그대로**다 — 접근성 이름이
      *  단계마다 바뀌면 E2E 셀렉터가 굳지 못한다 */
-    dialogTitle: '워크플로우 발행',
+    dialogTitle: '업무 항목을 새 상태로 이동',
     /** 다이얼로그 설명 */
-    dialogDescription: '발행하면 초안이 운영에 반영됩니다',
+    dialogDescription:
+      '업데이트된 워크플로에 없는 상태의 업무 항목이 있습니다. 옮길 상태를 정하면 이동이 끝난 뒤 워크플로가 업데이트됩니다',
     /** 빠지는 상태 목록의 제목 */
     removedHeading: '사라지는 상태',
     /** 빠지는 상태가 없을 때 */
@@ -60,11 +61,11 @@ export const workflowPublishLabels = {
     /** 이슈가 남지 않은 상태 */
     noIssues: '이슈 없음',
     /** 확정 발행 버튼 */
-    confirm: '발행하기',
+    confirm: '워크플로 업데이트',
     /** 발행 성공 토스트 접두 — `${prefix} ${회차}회차` */
-    successPrefix: '발행했습니다',
+    successPrefix: '워크플로를 업데이트했습니다',
     /** 이름·설명 변경도 함께 나간다는 고지 */
-    metaChangeNotice: '이름과 설명 변경도 이번 발행에 함께 반영됩니다',
+    metaChangeNotice: '이름과 설명 변경도 이번 업데이트에 함께 반영됩니다',
     /**
      * 보드 컬럼 고지.
      *
@@ -87,9 +88,20 @@ export const workflowPublishLabels = {
    */
   migration: {
     /** 이관이 필요해 발행이 막혔을 때의 안내. 발행 다이얼로그가 쓴다 */
-    intro: '사라지는 상태에 남은 이슈를 어디로 옮길지 정하세요',
+    intro: '기본적으로 업무 항목을 이 상태로 이동합니다',
     /** 이관 시작 버튼. 사라지는 상태마다 도착지를 전부 고르기 전에는 비활성이다(F5) */
-    start: '이관 시작',
+    start: '워크플로 업데이트',
+    /** 예외 — 프로젝트 × 업무 유형마다 기본 대상 대신 쓸 상태 (R11C · Jira H7) */
+    addException: '예외 추가',
+    removeException: '예외 제거',
+    exceptionsHeading: '예외',
+    exceptionProject: '프로젝트',
+    exceptionIssueType: '선택한 프로젝트의 업무 유형',
+    exceptionFrom: '현재 상태',
+    exceptionTarget: '새 상태',
+    exceptionPlaceholder: '선택',
+    /** 이동이 끝났는데 실패가 섞여 자동 업데이트를 하지 않았을 때 */
+    autoPublishSkipped: '옮기지 못한 이슈가 있어 워크플로를 업데이트하지 않았습니다. 확인한 뒤 다시 누르세요',
     /** 진행률 영역의 aria-label. `role="progressbar"` 요소가 이 이름을 쓴다(J6 · ADS A1) */
     progressLabel: '이관 진행률',
     /**
@@ -106,7 +118,7 @@ export const workflowPublishLabels = {
      * 「벗어나도 계속된다」를 함께 말하는 것은 이관이 서버 작업이라 화면을 닫아도 멈추지 않기
      * 때문이다 — 모르면 사용자가 화면을 지키고 앉아 있는다.
      */
-    inProgressNotice: '이관이 끝나면 발행과 초안 폐기를 다시 할 수 있습니다. 이 화면을 벗어나도 이관은 계속됩니다',
+    inProgressNotice: '이동이 끝나면 워크플로가 자동으로 업데이트됩니다. 이 화면을 벗어나도 이동은 계속됩니다',
     /** 이관 완료 문구 */
     completed: '이관이 완료됐습니다',
     /** 실패 항목 목록의 제목. `failedCount === 0` 이면 목록 자체를 그리지 않는다 */
@@ -146,17 +158,17 @@ export const workflowPublishLabels = {
     /** 다이얼로그 제목 — 화면 전역 고유 */
     dialogTitle: '기본값으로 되돌리기',
     /** 설명. 「초안까지만」이 이 기능의 핵심이다 */
-    dialogDescription: '기본 정의를 초안으로 불러옵니다. 발행해야 운영에 반영됩니다',
+    dialogDescription: '기본 정의를 편집기로 불러옵니다. 「워크플로 업데이트」를 눌러야 반영됩니다',
     /** 확인 버튼 */
-    confirm: '초안으로 불러오기',
+    confirm: '편집기로 불러오기',
   },
 
   /** 초안 폐기 다이얼로그 */
   discard: {
     /** 다이얼로그 제목 — 화면 전역 고유 */
-    dialogTitle: '초안 폐기',
+    dialogTitle: '변경 취소',
     /** 설명 */
-    dialogDescription: '편집 중인 초안을 버리고 지금 발행된 정의로 되돌아갑니다',
+    dialogDescription: '편집 중인 변경을 버리고 지금 반영된 워크플로로 되돌아갑니다',
     /**
      * 진행률 폴링이 5xx·네트워크로 멈췄을 때만 설명에 덧붙이는 한 줄
      * (`useMigrationWizard.pollRetryable`).
@@ -170,24 +182,24 @@ export const workflowPublishLabels = {
      * 다음번 경고까지 같이 무뎌진다.
      */
     migrationRunningWarning:
-      '이관이 아직 진행 중일 수 있습니다. 폐기해도 이미 옮겨진 이슈는 되돌아오지 않습니다',
+      '이동이 아직 진행 중일 수 있습니다. 취소해도 이미 옮겨진 이슈는 되돌아오지 않습니다',
     /** 확인 버튼 */
-    confirm: '폐기하기',
+    confirm: '변경 버리기',
   },
 
   /** 낙관적 락 충돌 배너 */
   conflict: {
     /** 배너 aria-label */
-    banner: '발행 충돌',
+    banner: '업데이트 충돌',
     /**
      * 본문.
      *
      * ★ 「다시 시도」를 권하지 않는다. 서버 앵커는 write-once 라 다시 불러와도 저장된 초안의
      * 앵커는 그대로이고 같은 409 가 반복된다. 출구는 폐기뿐이다.
      */
-    message: '다른 사용자가 먼저 발행했습니다. 이 초안은 다시 시도해도 발행되지 않습니다',
+    message: '다른 사용자가 먼저 워크플로를 업데이트했습니다. 이 변경은 다시 시도해도 반영되지 않습니다',
     /** 유일한 출구 */
-    action: '초안을 버리고 다시 편집하기',
+    action: '변경을 버리고 다시 편집하기',
   },
 
   /** 공용 */

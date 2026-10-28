@@ -9,6 +9,8 @@ import type { UseMigrationWizardResult } from '@/hooks/use-publish-flow'
 import type { EditableDraft } from '@/lib/workflow-draft'
 import { calculateProgressRatio } from '@/hooks/use-bulk-operation'
 
+vi.mock('@/hooks/use-issue-types', () => ({ useIssueTypes: () => ({ data: [] }) }))
+
 const NAMES = { done: '완료', open: '열림' }
 
 function preview(over: Partial<PublishPreview> = {}): PublishPreview {
@@ -17,6 +19,7 @@ function preview(over: Partial<PublishPreview> = {}): PublishPreview {
     currentVersion: 4,
     removedStatusKeys: [],
     pendingIssueCounts: {},
+    scopes: [],
     ...over,
   }
 }
@@ -109,8 +112,9 @@ describe('발행 다이얼로그', () => {
       preview: preview({ removedStatusKeys: ['done'], pendingIssueCounts: { done: 3 } }),
     })
 
-    // 발행 버튼을 눌러 409 를 받게 두지 않는다.
-    expect(screen.queryByRole('button', { name: labels.publish.confirm })).not.toBeInTheDocument()
+    // 발행 버튼을 눌러 409 를 받게 두지 않는다 — 같은 이름의 버튼은 마법사의 시작 버튼 하나뿐이다(R11C).
+    expect(screen.getAllByRole('button', { name: labels.publish.confirm })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: labels.migration.addException })).toBeInTheDocument()
     expect(screen.getByText(/3/)).toBeInTheDocument()
     expect(onPublish).not.toHaveBeenCalled()
   })
@@ -183,6 +187,18 @@ describe('발행 다이얼로그 — 이관 완료 후 발행 버튼 (G-1 · E1)
     renderDialog(migrationNeededProps(completedOperation(1)))
 
     expect(screen.queryByRole('button', { name: labels.publish.confirm })).not.toBeInTheDocument()
+  })
+
+  it('실패가 섞이면 자동 업데이트를 하지 않은 이유를 알린다 (R11C C5)', () => {
+    renderDialog(migrationNeededProps(completedOperation(1)))
+
+    expect(screen.getByText(labels.migration.autoPublishSkipped)).toBeInTheDocument()
+  })
+
+  it('전량 옮겨졌으면 자동 업데이트 미실시 문구가 없다', () => {
+    renderDialog(migrationNeededProps(completedOperation(0)))
+
+    expect(screen.queryByText(labels.migration.autoPublishSkipped)).not.toBeInTheDocument()
   })
 })
 
