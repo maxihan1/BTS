@@ -64,6 +64,10 @@ data class IssueSearchPage(
  * @property priorityName 우선순위 표시명. 예: `"Critical"`, `"Medium"`.
  * @property projectKey 이슈가 속한 프로젝트 키. 예: `"PROJ"`.
  * @property updatedAt 마지막 수정 시각(UTC). ISO-8601 로 직렬화된다.
+ * @property version 낙관적 잠금 버전 — 결과 표의 셀 편집이 `expectedVersion` 으로 싣는다.
+ *   null 이면 공급자가 싣지 않은 것이고, 소비자는 그 행의 편집을 막는다.
+ * @property restrictedFields 필드 권한(FR-PM-07)으로 값이 가려진 필드 키. 목록 `IssueResponse` 와 같은 뜻.
+ * @property noneditableFields 보이지만 편집할 수 없는 필드 키. 목록 `IssueResponse` 와 같은 뜻.
  */
 data class IssueSearchHit(
     val key: String,
@@ -75,4 +79,7 @@ data class IssueSearchHit(
     val priorityName: String,
     val projectKey: String,
     val updatedAt: Instant,
+    val version: Long? = null,
+    val restrictedFields: List<String> = emptyList(),
+    val noneditableFields: List<String> = emptyList(),
 )

@@ -183,6 +183,19 @@ class IssueSearchRepositoryIntegrationTest : IssueTestcontainersBase() {
         assertThat(result.items).allMatch { it.currentStateKey == "open" }
     }
 
+    // ── SR-V. 결과 행에 낙관적 잠금 버전을 싣는다 (검색 표 셀 편집 · R4) ────────
+
+    @Test
+    @Order(1)
+    fun `SR-V결과 행은 이슈의 현재 version 을 싣는다`() {
+        val inserted = buildIssue(seq = 1)
+
+        val ast = AqlNode.Comparison(AqlField("status"), AqlOperator.EQ, listOf(AqlValue.Str("open")))
+        val hit = adapter.search(buildQuery(ast)).items.single()
+
+        assertThat(hit.version).isEqualTo(inserted.version)
+    }
+
     // ── SR-2. summary CONTAINS ──────────────────────────────────────────────
 
     @Test

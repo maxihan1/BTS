@@ -3,6 +3,9 @@
 package com.bts.issue.adapter.outbound.search
 
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.FieldKind
+import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -13,6 +16,7 @@ import com.bts.shared.search.AqlNode
 import com.bts.shared.search.AqlOperator
 import com.bts.shared.search.AqlSort
 import com.bts.shared.search.AqlValue
+import com.bts.shared.search.IssueSearchHit
 import com.bts.shared.search.IssueSearchPage
 import com.bts.shared.search.IssueSearchQuery
 import com.bts.shared.search.SortDirection
@@ -22,6 +26,7 @@ import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -34,12 +39,15 @@ import java.util.UUID
  * - label ~ 연산자 허용 / priority ~ 연산자 거부.
  * - 미지원 필드 거부([IllegalArgumentException]).
  * - 빈 결과 정상 반환(누출 0 케이스 — 실 DB 검증은 통합 테스트에서).
+ * - 필드 권한(FR-PM-07): 열람 제한된 assigneeId 는 가리고, 편집 불가 필드를 표기한다(목록과 같은 규칙).
  */
 class IssueSearchAdapterTest {
     private val issueRepository: IssueRepository = mockk()
     private val securityDirectory: IssueSecurityDirectory = mockk()
     private val permissionResolver: IssuePermissionResolver = mockk()
-    private val adapter = IssueSearchAdapter(issueRepository, securityDirectory, permissionResolver)
+    private val fieldPermissionResolver: FieldPermissionResolver = mockk()
+    private val adapter =
+        IssueSearchAdapter(issueRepository, securityDirectory, permissionResolver, fieldPermissionResolver)
 
     private val actorId: UUID = UUID.randomUUID()
     private val projectKey = "PROJ"
@@ -441,7 +449,88 @@ class IssueSearchAdapterTest {
         }
     }
 
+    // ── 필드 권한(FR-PM-07) — 목록 maskFieldsForPage 와 같은 규칙 ───────────
+
+    @Test
+    fun `열람 제한된 담당자는 null 로 가리고 restrictedFields 에 적는다`() {
+        val projectId = UUID.randomUUID()
+        val hit = hit(assigneeId = UUID.randomUUID())
+        stubSearchReturning(hit)
+        every { issueRepository.findProjectIdByKey(projectKey) } returns projectId
+        val visible = setOf(FieldRef(FieldKind.CORE, "summary"), FieldRef(FieldKind.CORE, "priority"))
+        every { fieldPermissionResolver.visibleFields(actorId, projectId, any()) } returns visible
+        every { fieldPermissionResolver.editableFields(actorId, projectId, visible) } returns visible
+
+        val result = adapter.search(buildQuery(anyAst)).items.single()
+
+        assertThat(result.assigneeId).isNull()
+        assertThat(result.restrictedFields).containsExactly("assigneeId")
+        assertThat(result.noneditableFields).isEmpty()
+        assertThat(result.version).isEqualTo(hit.version)
+    }
+
+    @Test
+    fun `열람은 되고 편집은 안 되는 필드는 noneditableFields 에 적고 값은 그대로 둔다`() {
+        val projectId = UUID.randomUUID()
+        val assigneeId = UUID.randomUUID()
+        stubSearchReturning(hit(assigneeId = assigneeId))
+        every { issueRepository.findProjectIdByKey(projectKey) } returns projectId
+        val visible =
+            setOf(
+                FieldRef(FieldKind.CORE, "summary"),
+                FieldRef(FieldKind.CORE, "priority"),
+                FieldRef(FieldKind.CORE, "assigneeId"),
+            )
+        every { fieldPermissionResolver.visibleFields(actorId, projectId, any()) } returns visible
+        every {
+            fieldPermissionResolver.editableFields(actorId, projectId, visible)
+        } returns visible - FieldRef(FieldKind.CORE, "priority")
+
+        val result = adapter.search(buildQuery(anyAst)).items.single()
+
+        assertThat(result.assigneeId).isEqualTo(assigneeId)
+        assertThat(result.restrictedFields).isEmpty()
+        assertThat(result.noneditableFields).containsExactly("priority")
+    }
+
+    @Test
+    fun `빈 결과면 필드 권한을 묻지 않는다`() {
+        stubBrowseAllow()
+        every { securityDirectory.accessibleLevels(actorId, projectKey) } returns unrestrictedAccess
+        every {
+            issueRepository.searchByAql(projectKey, anyAst, defaultSort, actorId, unrestrictedAccess, 0, 20)
+        } returns emptyPage()
+
+        adapter.search(buildQuery(anyAst))
+
+        verify(exactly = 0) { fieldPermissionResolver.visibleFields(any(), any(), any()) }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    private val anyAst = AqlNode.Comparison(AqlField("status"), AqlOperator.EQ, listOf(AqlValue.Str("open")))
+
+    private fun hit(assigneeId: UUID?): IssueSearchHit =
+        IssueSearchHit(
+            key = "PROJ-1",
+            summary = "요약",
+            typeKey = "task",
+            currentStateKey = "open",
+            assigneeId = assigneeId,
+            priority = 3,
+            priorityName = "Medium",
+            projectKey = projectKey,
+            updatedAt = Instant.parse("2026-10-28T00:00:00Z"),
+            version = 7L,
+        )
+
+    private fun stubSearchReturning(hit: IssueSearchHit) {
+        stubBrowseAllow()
+        every { securityDirectory.accessibleLevels(actorId, projectKey) } returns unrestrictedAccess
+        every {
+            issueRepository.searchByAql(projectKey, anyAst, defaultSort, actorId, unrestrictedAccess, 0, 20)
+        } returns IssueSearchPage(items = listOf(hit), total = 1, page = 0, size = 20)
+    }
 
     private fun stubBrowseAllow() {
         every {

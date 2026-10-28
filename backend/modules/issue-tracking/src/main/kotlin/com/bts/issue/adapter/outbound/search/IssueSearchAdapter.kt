@@ -2,7 +2,11 @@
 
 package com.bts.issue.adapter.outbound.search
 
+import com.bts.issue.fieldpermission.adapter.AlwaysAllowFieldPermissionResolver
 import com.bts.issue.repository.IssueRepository
+import com.bts.shared.permission.FieldKind
+import com.bts.shared.permission.FieldPermissionResolver
+import com.bts.shared.permission.FieldRef
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -16,6 +20,7 @@ import com.bts.shared.search.IssueSearchQuery
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
+import java.util.UUID
 
 // 필드 집합은 shared-kernel AqlFields 를 단일 진실출처로 사용한다(drift 방지 — C1 codereview-fix).
 
@@ -30,6 +35,8 @@ import org.springframework.transaction.annotation.Transactional
  *    권한 없으면 [SecurityException] — 이슈 존재 여부를 노출하지 않는다(probe 차단).
  * 2. **visibility 보안 술어**: [IssueRepository.searchByAql] 이 `buildActiveSecureWhere` 를 최상위 AND 로 결합.
  *    사용자 AST 는 보안 술어 밖에서 감쌀 수 없으므로 OR/NOT 우회가 구조적으로 불가능하다.
+ * 3. **필드 권한(FR-PM-07)**: 목록 `maskFieldsForPage` 와 같은 규칙으로 열람 제한된 담당자를 가리고
+ *    편집 불가 필드를 표기한다. 이 포트를 쓰는 검색 표 · 내보내기 · Slack 이 모두 같은 결과를 받는다.
  *
  * @see IssueSearchPort
  * @see IssueRepository.searchByAql
@@ -39,6 +46,9 @@ class IssueSearchAdapter(
     private val issueRepository: IssueRepository,
     private val securityDirectory: IssueSecurityDirectory,
     private val permissionResolver: IssuePermissionResolver,
+    // 기본값은 Spring 이 관리하지 않는 테스트 컨텍스트 호환용이다([BoardIssueLookupAdapter] 동형).
+    // 실 컨텍스트에서는 FieldPermissionResolver Bean 이 타입으로 주입돼 대체한다.
+    private val fieldPermissionResolver: FieldPermissionResolver = AlwaysAllowFieldPermissionResolver(),
 ) : IssueSearchPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -50,6 +60,7 @@ class IssueSearchAdapter(
      * 2. [IssueSecurityDirectory.accessibleLevels] 로 보안 등급 접근 집합 1회 조회.
      * 3. AST 필드/연산자 사전 검증 (지원 여부).
      * 4. [IssueRepository.searchByAql] 위임 — visibility 보안 술어 + AST Condition + 정렬 + 페이지.
+     * 5. 필드 권한 마스킹 — [maskFields].
      *
      * @param query AQL 커맨드 객체.
      * @return 검색 결과 페이지. BROWSE 없으면 예외.
@@ -89,14 +100,56 @@ class IssueSearchAdapter(
         )
 
         // 4. repository 위임 — buildActiveSecureWhere + AST Condition + 정렬 + 페이지
-        return issueRepository.searchByAql(
-            projectKey = query.projectKey,
-            ast = query.ast,
-            sort = query.sort,
-            actor = query.viewerUserId,
-            access = access,
-            page = query.page,
-            size = query.size,
+        val page =
+            issueRepository.searchByAql(
+                projectKey = query.projectKey,
+                ast = query.ast,
+                sort = query.sort,
+                actor = query.viewerUserId,
+                access = access,
+                page = query.page,
+                size = query.size,
+            )
+
+        // 5. 필드 권한 마스킹
+        return maskFields(query.viewerUserId, query.projectKey, page)
+    }
+
+    /**
+     * 검색 결과에 필드 수준 열람 마스킹 + 편집 불가 표기를 적용한다 (FR-PM-07).
+     *
+     * 목록 `IssueApplicationService.maskFieldsForPage` · `IssueResponse.maskInvisible` 과 같은 규칙이다.
+     * hit 에 실린 필드 중 가릴 수 있는 것은 nullable CORE 인 담당자뿐이다 — summary · priority 는
+     * non-null CORE 라 가리지 않고 편집 가능 여부만 적는다. 한 프로젝트 결과라 판정은 페이지당 1회다.
+     * 빈 페이지이거나 projectId 를 찾지 못하면 원본을 그대로 반환한다(목록과 같은 방어적 처리).
+     *
+     * @param actor 조회 행위자 UUID.
+     * @param projectKey 검색 대상 프로젝트 키.
+     * @param page 마스킹 전 결과 페이지.
+     * @return 마스킹 · 편집 불가 표기가 적용된 결과 페이지.
+     */
+    @Suppress("ReturnCount") // empty guard + projectId miss guard 조기 반환 — maskFieldsForPage 동형
+    private fun maskFields(
+        actor: UUID,
+        projectKey: String,
+        page: IssueSearchPage,
+    ): IssueSearchPage {
+        if (page.items.isEmpty()) return page
+        val projectId = issueRepository.findProjectIdByKey(projectKey) ?: return page
+        val visible = fieldPermissionResolver.visibleFields(actor, projectId, HIT_FIELD_CANDIDATES)
+        val editable = fieldPermissionResolver.editableFields(actor, projectId, visible)
+        val assigneeHidden = ASSIGNEE_FIELD !in visible
+        val restricted = if (assigneeHidden) listOf(ASSIGNEE_FIELD.key) else emptyList()
+        val noneditable = visible.filter { it !in editable }.map { it.key }
+        return page.copy(
+            items =
+                page.items.map { hit ->
+                    hit.copy(
+                        assigneeId = if (assigneeHidden) null else hit.assigneeId,
+                        restrictedFields = restricted,
+                        noneditableFields = noneditable,
+                    )
+                },
         )
     }
 
@@ -163,5 +216,18 @@ class IssueSearchAdapter(
                 }
             "$fieldName 필드에는 $opSymbol 연산자를 사용할 수 없습니다."
         }
+    }
+
+    private companion object {
+        /** 담당자 필드 — hit 에서 유일하게 열람 마스킹 대상인 필드. */
+        val ASSIGNEE_FIELD = FieldRef(FieldKind.CORE, "assigneeId")
+
+        /** hit 에 실린 필드 중 필드 권한 판정 대상 — 목록 `buildCoreCandidates` 의 부분집합. */
+        val HIT_FIELD_CANDIDATES =
+            setOf(
+                ASSIGNEE_FIELD,
+                FieldRef(FieldKind.CORE, "summary"),
+                FieldRef(FieldKind.CORE, "priority"),
+            )
     }
 }
