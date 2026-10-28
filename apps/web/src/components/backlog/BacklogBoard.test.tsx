@@ -231,6 +231,7 @@ vi.mock('@/hooks/use-backlog', () => ({
         sprints: [
           {
             sprint: {
+              boardId: '10000000-0000-4000-8000-000000000001',
               sprintId: PLANNED_SPRINT_ID,
               name: '스프린트 1',
               goal: null,
@@ -257,6 +258,7 @@ vi.mock('@/hooks/use-backlog', () => ({
           },
           {
             sprint: {
+              boardId: '10000000-0000-4000-8000-000000000001',
               sprintId: ACTIVE_SPRINT_ID,
               name: '스프린트 2 (ACTIVE)',
               goal: null,
@@ -430,7 +432,6 @@ import { NO_EPIC, emptyBacklogFilter, filterToSearch, searchToFilter } from '@/l
 import type { BacklogFilter, BacklogFilterSearch } from '@/lib/backlog-filter'
 import { useBacklogCollapsedStore } from '@/hooks/use-backlog-collapsed'
 import { server } from '@/test/server'
-import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
 import type { UserSummary } from '@/api/users'
 import type { BacklogIssue, BacklogView } from '@/api/backlog'
 
@@ -728,7 +729,7 @@ function liveColumnDropTarget(
  * 완료 다이얼로그가 **직접 내는** 요청의 목 (F15 T9).
  *
  * `useCompleteSprint` 는 이 파일이 mock 하지만, 다이얼로그는 그 밖에 세 가지를 스스로 낸다.
- * ① `GET /api/v1/workflows` — 미완료 판정(FR-7)의 카테고리 사상
+ * ① `GET /api/v1/boards/{id}` — 미완료 판정(FR-7 · 결정 D3)의 맨 오른쪽 열
  * ② `DELETE /api/v1/sprints/{id}/issues/{key}` — 이관 (FR-6)
  * ③ `GET /api/v1/projects/{key}/backlog` — 완료 직전 재검증 (C-7)
  * 전역 MSW 는 `onUnhandledRequest: 'error'` 라 하나라도 빠지면 그 자리에서 터진다.
@@ -738,9 +739,9 @@ function liveColumnDropTarget(
 function installSprintDialogHandlers(): void {
   sprintDialogCalls = []
   server.use(
-    http.get('/api/v1/workflows', () => {
-      sprintDialogCalls.push('WORKFLOWS')
-      return HttpResponse.json({ data: allWorkflowFixtures })
+    http.get('/api/v1/boards/:boardId', () => {
+      sprintDialogCalls.push('BOARD')
+      return HttpResponse.json({ data: SPRINT_BOARD })
     }),
     http.delete('/api/v1/sprints/:sprintId/issues/:issueKey', ({ params }) => {
       sprintDialogCalls.push(`UNASSIGN ${String(params['sprintId'])}/${String(params['issueKey'])}`)
@@ -751,6 +752,22 @@ function installSprintDialogHandlers(): void {
       return HttpResponse.json({ data: FRESH_AFTER_TRANSFER })
     }),
   )
+}
+
+/** 스프린트 소속 보드 — `open` 은 첫 열이라 미완료, `done` 만 맨 오른쪽 열이라 완료 */
+const SPRINT_BOARD = {
+  boardId: '10000000-0000-4000-8000-000000000001',
+  projectKey: 'ATLAS',
+  name: '스크럼 보드',
+  columns: [
+    { columnId: 'c0000000-0000-4000-8000-000000000001', name: '할 일', category: 'TODO', displayOrder: 1, states: [{ key: 'open', name: 'Open', category: 'TODO' }], cards: [], wipLimit: null, wipExceeded: false },
+    { columnId: 'c0000000-0000-4000-8000-000000000002', name: '완료', category: 'DONE', displayOrder: 2, states: [{ key: 'done', name: 'Done', category: 'DONE' }], cards: [], wipLimit: null, wipExceeded: false },
+  ],
+  truncated: false,
+  unplacedCount: 0,
+  swimlaneField: 'NONE',
+  boardType: 'SCRUM',
+  activeSprint: null,
 }
 
 /** 완료 다이얼로그가 낸 요청의 관측 순서 — 「이관이 먼저」(FR-6)를 재는 데 쓴다 */
@@ -993,7 +1010,7 @@ describe('BacklogBoard', () => {
       // 이관(DELETE) → 재검증(GET) 순서를 그대로 지났다 (FR-6 · C-7). 완료가 먼저 나가면
       // 남은 이슈가 영구 동결된다 — 순서가 곧 안전 요구다.
       expect(sprintDialogCalls).toEqual([
-        'WORKFLOWS',
+        'BOARD',
         `UNASSIGN ${ACTIVE_SPRINT_ID}/ATLAS-5`,
         'REVALIDATE',
       ])

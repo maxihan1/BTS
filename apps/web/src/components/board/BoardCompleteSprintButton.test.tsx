@@ -62,7 +62,22 @@ describe('BoardCompleteSprintButton', () => {
         expect(new URL(request.url).searchParams.get('board')).toBe(BOARD_ID)
         return HttpResponse.json({ data: view })
       }),
-      http.get('/api/v1/workflows', () => HttpResponse.json({ data: [] })),
+      // 완료 판정의 열 구성(결정 D3). 보드 화면에선 이미 캐시에 있지만 이 테스트는 버튼만 그린다
+      http.get(`/api/v1/boards/${BOARD_ID}`, () =>
+        HttpResponse.json({
+          data: {
+            boardId: BOARD_ID,
+            projectKey: 'ATLAS',
+            name: '스크럼 보드',
+            columns: [],
+            truncated: false,
+            unplacedCount: 0,
+            swimlaneField: 'NONE',
+            boardType: 'SCRUM',
+            activeSprint: null,
+          },
+        }),
+      ),
       http.post('/api/v1/sprints/:id/complete', ({ params }) => {
         completed = String(params.id)
         return HttpResponse.json({ data: { ...view.sprints[0]?.sprint, status: 'COMPLETED' } })

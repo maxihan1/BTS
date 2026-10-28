@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { z } from 'zod'
 import { server } from '@/test/server'
-import { allWorkflowFixtures } from '@/mocks/workflow-fixtures'
+import type { BoardColumn, BoardDetail } from '@/api/boards'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { issueCreateStrings } from '@/i18n/ko'
 import type { BacklogIssue, BacklogView, SprintMeta, SprintWithIssues } from '@/api/backlog'
@@ -120,14 +120,53 @@ const COMPLETED_ID = '44444444-4444-4444-8444-444444444444'
  * `status` 는 백엔드 응답이 문자열이므로 그대로 문자열로 둔다 (`sprintMetaSchema` 미러).
  */
 function meta(sprintId: string, name: string, status: string): SprintMeta {
-  return { boardId: '10000000-0000-4000-8000-000000000001', sprintId, name, goal: null, status, startDate: null, endDate: null, version: 1 }
+  return { boardId: SPRINT_BOARD_ID, sprintId, name, goal: null, status, startDate: null, endDate: null, version: 1 }
+}
+
+/**
+ * 스프린트가 속한 보드 — 완료 판정의 열 구성은 **이 보드**에서 읽는다(결정 D3).
+ * 화면의 `BOARD_ID` 와 일부러 다르게 둔다 — `?board=` 가 없거나 다른 보드여도 스프린트 자기 보드를 봐야 한다.
+ */
+const SPRINT_BOARD_ID = '10000000-0000-4000-8000-000000000001'
+
+/** 판정은 `displayOrder` · `name` · `states[].key` 만 읽는다 */
+function boardColumn(displayOrder: number, name: string, stateKeys: string[]): BoardColumn {
+  return {
+    columnId: `c0000000-0000-4000-8000-00000000000${displayOrder}`,
+    name,
+    category: 'TODO',
+    displayOrder,
+    states: stateKeys.map((key) => ({ key, name: key, category: 'TODO' })),
+    cards: [],
+    wipLimit: null,
+    wipExceeded: false,
+  }
+}
+
+/** 기본 보드 — `open` 은 첫 열이라 **미완료**, `done` 은 맨 오른쪽 열이라 **완료** */
+const DEFAULT_COLUMNS: BoardColumn[] = [boardColumn(1, '할 일', ['open']), boardColumn(2, '완료', ['done'])]
+
+function boardDetail(columns: BoardColumn[]): BoardDetail {
+  return {
+    boardId: SPRINT_BOARD_ID,
+    projectKey: 'ATLAS',
+    name: '스크럼 보드',
+    columns,
+    truncated: false,
+    unplacedCount: 0,
+    unmappedStates: [],
+    swimlaneField: 'NONE',
+    quickFilters: [],
+    boardType: 'SCRUM',
+    activeSprint: null,
+  }
 }
 
 /**
  * 백로그 이슈 픽스처.
  *
- * `currentStateKey` 기본값 `'open'` 은 MSW 워크플로우 픽스처에서 `TODO` 라 **미완료**,
- * `'done'` 은 전 워크플로우에서 `DONE` 하나뿐이라 **완료**로 판정된다.
+ * `currentStateKey` 기본값 `'open'` 은 기본 보드 첫 열이라 **미완료**,
+ * `'done'` 은 맨 오른쪽 열이라 **완료**로 판정된다 ({@link DEFAULT_COLUMNS}).
  */
 function issue(key: string, currentStateKey = 'open'): BacklogIssue {
   return {
@@ -199,12 +238,15 @@ let backlogRequestUrls: string[] = []
 let deleteGate: Promise<void> | null = null
 
 /**
- * `GET /api/v1/workflows` 를 붙잡아 두는 게이트. null 이면 즉시 응답한다.
+ * `GET /api/v1/boards/{id}` 를 붙잡아 두는 게이트. null 이면 즉시 응답한다.
  *
- * 백로그 화면은 워크플로우를 미리 부르지 않으므로 창을 여는 순간이 **매번 콜드 페치**다.
- * 그 사이 상태 분류가 없다는 사실을 재려면 응답을 실제로 붙잡아 둬야 한다.
+ * 백로그 화면은 보드를 미리 부르지 않으므로 창을 여는 순간이 **콜드 페치**다.
+ * 그 사이 열 구성이 없다는 사실을 재려면 응답을 실제로 붙잡아 둬야 한다.
  */
-let workflowGate: Promise<void> | null = null
+let boardGate: Promise<void> | null = null
+
+/** 보드 응답의 열 구성 */
+let boardColumns: BoardColumn[] = DEFAULT_COLUMNS
 
 const del = (issueKey: string): string => `DELETE ${SOURCE_ID}/${issueKey}`
 const post = (targetId: string, issueKey: string): string => `POST ${targetId}/${issueKey}`
@@ -226,9 +268,11 @@ const assignBodySchema = z.object({ issueKey: z.string() })
 function installHandlers(): void {
   server.use(
     // `test/handlers.ts` 는 refresh 하나뿐이다 — 이 파일이 쓰는 엔드포인트는 전부 여기서 깐다.
-    http.get('/api/v1/workflows', async () => {
-      if (workflowGate !== null) await workflowGate
-      return HttpResponse.json({ data: allWorkflowFixtures })
+    // 스프린트 자기 보드만 답한다 — 다른 보드를 물으면 404 라 판정이 열리지 않는다
+    http.get('/api/v1/boards/:boardId', async ({ params }) => {
+      if (String(params['boardId']) !== SPRINT_BOARD_ID) return new HttpResponse(null, { status: 404 })
+      if (boardGate !== null) await boardGate
+      return HttpResponse.json({ data: boardDetail(boardColumns) })
     }),
     http.delete('/api/v1/sprints/:sprintId/issues/:issueKey', async ({ params }) => {
       const issueKey = String(params['issueKey'])
@@ -266,7 +310,8 @@ beforeEach(() => {
   freshBacklog = emptyFreshBacklog()
   backlogRequestUrls = []
   deleteGate = null
-  workflowGate = null
+  boardGate = null
+  boardColumns = DEFAULT_COLUMNS
   installHandlers()
 })
 
@@ -329,9 +374,25 @@ describe('CompleteSprintDialog — 요약과 미완료 목록 (FR-5)', () => {
     expect(screen.getByText('ATLAS-1')).toBeInTheDocument()
     expect(screen.getByText('ATLAS-2')).toBeInTheDocument()
     expect(screen.getByText('ATLAS-3')).toBeInTheDocument()
-    // 완료(카테고리 집합이 정확히 {DONE})는 이관 대상이 아니다
+    // 완료(맨 오른쪽 열의 상태)는 이관 대상이 아니다
     expect(screen.queryByText('ATLAS-9')).not.toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(3)
+  })
+
+  it('완료 기준(보드 마지막 열 이름)을 함께 알린다 (JCB-5)', async () => {
+    renderDialog()
+    expect(await screen.findByText(L.doneRule('완료'))).toBeInTheDocument()
+  })
+
+  it('★ D3 — Done 뒤에 열을 하나 더 두면 Done 열의 이슈도 미완료다', async () => {
+    boardColumns = [...DEFAULT_COLUMNS, boardColumn(3, '검수', ['verified'])]
+    renderDialog()
+
+    // 로딩 중에도 안전측으로 「0 · 4」가 보이므로, 보드가 도착했다는 신호(열 이름)를 먼저 기다린다
+    expect(await screen.findByText(L.doneRule('검수'))).toBeInTheDocument()
+    expect(screen.getByText(L.summary(0, 4))).toBeInTheDocument()
+    expect(screen.getByText('ATLAS-9')).toBeInTheDocument()
+    expect(submitButton()).not.toBeDisabled()
   })
 
   it('다이얼로그 이름은 트리거와 같은 「스프린트 완료」다 (FR-10 즉사 계약)', async () => {
@@ -652,20 +713,20 @@ describe('CompleteSprintDialog — E15 truncated 차단 정책', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// E14 — 워크플로우 조회 실패 (fail-safe)
+// E14 — 보드 조회 실패 (fail-safe)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('CompleteSprintDialog — E14 워크플로우 조회 실패', () => {
-  /** 조회를 500 으로 끊는다 — `useWorkflows().data` 가 undefined 로 남는다 */
-  function breakWorkflows(): void {
-    server.use(http.get('/api/v1/workflows', () => new HttpResponse(null, { status: 500 })))
+describe('CompleteSprintDialog — E14 보드 조회 실패', () => {
+  /** 조회를 500 으로 끊는다 — `useBoard().data` 가 undefined 로 남는다 */
+  function breakBoard(): void {
+    server.use(http.get('/api/v1/boards/:boardId', () => new HttpResponse(null, { status: 500 })))
   }
 
   it('전부 미완료로 보고 안내를 띄우되 제출은 잠근다', async () => {
-    breakWorkflows()
+    breakBoard()
     renderDialog()
 
-    expect(await screen.findByText(L.workflowLoadFailed)).toBeInTheDocument()
+    expect(await screen.findByText(L.boardLoadFailed)).toBeInTheDocument()
     expect(screen.getByText(L.summary(0, 4))).toBeInTheDocument()
     expect(screen.getAllByRole('listitem')).toHaveLength(4)
     // ★ 분류를 모르는 채 완료하면 `isIssueIncomplete` 가 전건을 미완료로 봐서
@@ -674,21 +735,21 @@ describe('CompleteSprintDialog — E14 워크플로우 조회 실패', () => {
   })
 
   it('T15 — 안내가 「막았다」는 사실과 처방을 함께 말한다', async () => {
-    breakWorkflows()
+    breakBoard()
     renderDialog()
 
     // 버튼만 잠그고 문구는 「모든 이슈를 미완료로 봅니다」까지만 말하면, 사용자는 왜
     // 눌리지 않는지 알 수 없다 — 이 PR 이 BLOCKER 로 다뤄 온 「안내가 사실과 다름」이다.
-    const alert = await screen.findByText(L.workflowLoadFailed)
+    const alert = await screen.findByText(L.boardLoadFailed)
     expect(alert).toHaveTextContent('완료할 수 없습니다')
     expect(alert).toHaveTextContent('다시 시도')
     expect(submitButton()).toBeDisabled()
   })
 
   it('그 상태에서 제출을 눌러도 이관·완료 요청이 한 건도 나가지 않는다', async () => {
-    breakWorkflows()
+    breakBoard()
     const { user, onOpenChange } = renderDialog()
-    await screen.findByText(L.workflowLoadFailed)
+    await screen.findByText(L.boardLoadFailed)
 
     await user.click(submitButton())
 
@@ -699,13 +760,13 @@ describe('CompleteSprintDialog — E14 워크플로우 조회 실패', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 워크플로우 로딩 중 — 콜드 페치가 끝나기 전에는 분류를 모른다
+// 보드 로딩 중 — 콜드 페치가 끝나기 전에는 열 구성을 모른다
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('CompleteSprintDialog — 워크플로우 로딩 중 제출 차단', () => {
+describe('CompleteSprintDialog — 보드 로딩 중 제출 차단', () => {
   it('로딩 중에는 제출이 잠기고 눌러도 요청이 0건이며, 도착하면 같은 버튼이 열린다', async () => {
     let release: () => void = () => undefined
-    workflowGate = new Promise<void>((resolve) => {
+    boardGate = new Promise<void>((resolve) => {
       release = resolve
     })
     const { user } = renderDialog()

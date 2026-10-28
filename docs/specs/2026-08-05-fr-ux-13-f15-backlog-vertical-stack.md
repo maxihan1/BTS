@@ -271,6 +271,11 @@
 
 ### FR-7. 미완료 판정 기준
 
+> **Deviation (2026-10-28 · 결정 D3 · 갭 JCB-5 · R10).** 아래 「워크플로우 카테고리 사상」은 대체됐다.
+> 지금 판정은 Jira 와 같다 — 스프린트가 속한 보드(`sprint.boardId`)의 **맨 오른쪽 열**(`displayOrder` 최대)에
+> 매핑된 상태만 완료, 그 밖은 전부 미완료. 출처는 `GET /api/v1/workflows` 대신 `GET /api/v1/boards/{id}` 의 `columns`.
+> 안전측 편향(보드 조회 실패 · 로딩 중 = 전부 미완료 + 제출 차단)은 그대로다. 다이얼로그에 「완료된 이슈는 보드의 마지막 열 「X」에 …」 설명 한 줄.
+
 **실측 결론 — 백로그 응답만으로는 판정할 수 없다.**
 `api/backlog.ts:25-42` 의 `backlogIssueSchema` 필드는
 `key` · `summary` · `currentStateKey` · `assigneeId` · `priority` · `rank` · `version` · `epicKey` 뿐이고

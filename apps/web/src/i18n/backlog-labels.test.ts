@@ -126,7 +126,7 @@ describe('backlogLabels — FR-UX-13 F15 신규 문구군 (T4·T6·T7·T8 이 �
   })
 
   it('FR-7·E15: 워크플로우 조회 실패 안내와 truncated 차단 문구가 있다', () => {
-    expect(backlogLabels.completeDialog.workflowLoadFailed).not.toBe('')
+    expect(backlogLabels.completeDialog.boardLoadFailed).not.toBe('')
     expect(backlogLabels.completeDialog.truncatedBlocked).not.toBe('')
   })
 
@@ -191,12 +191,12 @@ describe('backlogLabels — FR-UX-13 F15 신규 문구군 (T4·T6·T7·T8 이 �
 describe('backlogLabels — T15 안내 문구 정합', () => {
   it('E14: 워크플로우 조회 실패 안내가 차단 사실과 처방을 함께 말한다', () => {
     const d = backlogLabels.completeDialog
-    expect(d.workflowLoadFailed).toContain('안전하게 완료할 수 없습니다')
-    expect(d.workflowLoadFailed).toContain('다시 시도')
+    expect(d.boardLoadFailed).toContain('안전하게 완료할 수 없습니다')
+    expect(d.boardLoadFailed).toContain('다시 시도')
     // `truncatedBlocked` 의 **결**은 따르되 값을 재사용하지 않는다 —
     // 「일부 이슈만 표시되어」는 이 상황에서 거짓이다(목록은 전건 다 있다).
-    expect(d.workflowLoadFailed).not.toBe(d.truncatedBlocked)
-    expect(d.workflowLoadFailed).not.toContain('일부 이슈만')
+    expect(d.boardLoadFailed).not.toBe(d.truncatedBlocked)
+    expect(d.boardLoadFailed).not.toContain('일부 이슈만')
   })
 
   it('E9: 409 안내가 입력 보존을 말하고 「최신 값을 불러왔다」고 하지 않는다', () => {
