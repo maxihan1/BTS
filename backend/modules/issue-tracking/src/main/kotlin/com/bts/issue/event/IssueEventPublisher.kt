@@ -115,7 +115,8 @@ class IssueEventPublisher(
      *
      * automation 대상 = `issue.created` / `issue.updated` / `issue.commented`
      * (ADR 2026-07-10-fr-at-01-automation-triggers D2 — `ISSUE_CREATED`/`ISSUE_UPDATED`/
-     * `ISSUE_COMMENTED` 트리거 타입과 정합).
+     * `ISSUE_COMMENTED` 트리거 타입과 정합) + `issue.transitioned` / `issue.assigned`(R9 —
+     * `ISSUE_TRANSITIONED`/`ISSUE_ASSIGNED`).
      *
      * `else` 분기 없는 exhaustive `when` — [isWebhookPublishable] 과 동일한 이유로, [IssueDomainEvent]
      * 에 새 구현체가 추가되면 이 함수가 컴파일에 실패해 분류 누락(under-send)을 원천 차단한다.
@@ -128,16 +129,18 @@ class IssueEventPublisher(
             is IssueCreated -> true
             is IssueUpdated -> true
             is IssueCommented -> true
+            // R9 — ISSUE_TRANSITIONED · ISSUE_ASSIGNED 트리거(spec 2026-10-28-r9-automation-catalog §A).
+            // 상태 이관(cause = STATUS_MIGRATION)도 싣는다 — 거르는 것은 소비자(automation TriggerMatcher)의 몫(F11).
+            is IssueTransitioned -> true
+            is IssueAssigned -> true
             // automation 미대상 — 대응 TriggerType 이 아직 없다(ADR D2 의 6종에 comment_deleted 없음).
             // 트리거를 추가하려면 TriggerType enum · 룰 스키마 · 조건 평가까지 함께 가야 하며,
             // 그 수요는 아직 확인되지 않았다(TODOS §댓글 이벤트 항목 — 알림 슬라이스만 먼저 구현).
             is IssueCommentDeleted -> false
-            is IssueTransitioned -> false
             is IssueSoftDeleted -> false
             is IssueMentioned -> false
             is IssueDueSoon -> false
             is IssueOverdue -> false
-            is IssueAssigned -> false
         }
 
     companion object {
