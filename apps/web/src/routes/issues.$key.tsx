@@ -30,6 +30,7 @@ import { IssueDetailHeader } from '@/components/issue/IssueDetailHeader'
 import { downloadIssuePdf } from '@/api/issues'
 import { triggerBlobDownload } from '@/lib/download'
 import { IssueDescription } from '@/components/issue/IssueDescription'
+import { IssueSubtasksSection } from '@/components/issue/IssueSubtasksSection'
 import type { ChangelogRefs } from '@/lib/changelog-labels'
 import { AttachmentSection } from '@/components/issue/AttachmentSection'
 import { IssueMetaPanel, isFieldHidden, isFieldDisabled } from '@/components/issue/IssueMetaPanel'
@@ -1065,6 +1066,14 @@ export function IssueDetailPage({
 
           {/* 첨부 파일 섹션 — IssueDescription 하단 (FR-AC-01 D6) */}
           <AttachmentSection issueKey={issue.key} canUpdate={canEdit} />
+
+          {/* 하위 작업 — Jira 처럼 본문 칼럼 고정 섹션, 첨부 아래 (JA-D-2) */}
+          <IssueSubtasksSection
+            issueKey={issue.key}
+            projectKey={issue.projectKey}
+            typeId={issue.typeId}
+            canCreate={canEdit}
+          />
 
           {/* 활동(댓글/이력/작업로그/연결) — 본문 컬럼 **안**, 첨부 아래 (J2). grid 바깥
               전체폭이던 FR-UX-06 PR19 배치를 되돌렸다 — 근거는 IssueActivityTabs KDoc. */}

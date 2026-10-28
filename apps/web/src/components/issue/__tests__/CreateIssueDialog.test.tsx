@@ -11,7 +11,8 @@ import { projectHandlers } from '@/mocks/project-handlers'
 import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import { userHandlers } from '@/mocks/user-handlers'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
-import { issueCreateStrings } from '@/i18n/ko'
+import { issueCreateStrings, issueDetailStrings } from '@/i18n/ko'
+import { bugIssueTypeFixture, subtaskIssueTypeFixture } from '@/mocks/issue-type-fixtures'
 import type { CustomField } from '@/api/custom-fields.types'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -113,6 +114,23 @@ describe('CreateIssueDialog — 제어 컴포넌트 계약 (FR-1)', () => {
     await user.keyboard('{Escape}')
 
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+})
+
+describe('CreateIssueDialog — 유형 목록 (JA-C-4)', () => {
+  it('하위 작업 유형은 고를 수 없다 — 부모 상세에서만 만든다', async () => {
+    renderDialog({ open: true })
+
+    // 유형 목록 도착 전의 비활성 select 는 다른 요소라 활성화될 때까지 다시 찾는다.
+    const typeSelect = await waitFor(() => {
+      const el = screen.getByRole('combobox', { name: issueDetailStrings.typeSelectLabel })
+      expect(el).toBeEnabled()
+      return el as HTMLSelectElement
+    })
+    const names = Array.from(typeSelect.options).map((o) => o.textContent)
+
+    expect(names).toContain(bugIssueTypeFixture.name)
+    expect(names).not.toContain(subtaskIssueTypeFixture.name)
   })
 })
 

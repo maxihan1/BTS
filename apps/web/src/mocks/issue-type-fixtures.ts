@@ -7,6 +7,7 @@ export interface IssueTypeFixture {
   name: string
   description: string
   iconName: string | null
+  hierarchyLevel?: number
 }
 
 /** Bug — 예상치 못한 동작 또는 결함 */
@@ -52,6 +53,7 @@ export const subtaskIssueTypeFixture: IssueTypeFixture = {
   name: '하위 작업',
   description: '다른 이슈의 하위 작업',
   iconName: 'subtask',
+  hierarchyLevel: -1,
 }
 
 /** 5 표준 이슈 타입 전체 목록 */
