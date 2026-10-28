@@ -95,6 +95,51 @@
 | Jira (2차) | 프로젝트 **CMP「[REA] Company Scrum」** 통째 — CMP-1~11, 스프린트 id 4(활성), 보드 설정 다수(완료 판정 열이 「[REA] Review」), 워크플로 `[REA] CM Workflow` + 상태 `[REA] CM 검토`(스토리 · 버그에 적용), 커스텀 필드 `[REA] CM 영향 범위`. 정리는 CMP 프로젝트 삭제 + `[REA]` 워크플로·필드 삭제로 끝난다. 기본 스킴은 바꾸지 않았다 |
 | BTS 실서비스 | QAWEB-156 — 부모 없는 Subtask(JA-C-4 재현 결과). 정리 필요 |
 
+## 4. 로드맵 제안 — P1 을 작업 묶음으로
+
+> **지위.** 제안이다. FR 신설 · 범위 변경은 하지 않았다 — 묶음을 착수할 때 `/bts` 1단계가 FR 귀속을 정하고, 범위가 바뀌면 같은 PR 에서 `docs/rules/fr-sync-checklist.md` 를 맞춘다. 정본 진척표로 옮길지는 Maxi 결정(§4-4).
+> **BC 구조.** 2026-10-28 확인 — BC 통합은 없었다. `backend/settings.gradle` 은 BC 8 + `shared-kernel` + `app` 그대로이고 `DEVELOPMENT.md:129` 「한 PR = 한 BC」도 유효하다. 아래 PR 단위는 이 규칙을 따른다.
+
+### 4-1. 묶음
+
+| 묶음 | 갭 행 | 기존 FR | PR 단위(BC) | 재사용 자산 | 선행 | 크기 |
+|---|---|---|---|---|---|---|
+| **R0 회귀** | JA-D-1 | FR-UX-11 · F7 #447 | web 1 | `IssueActivityTabs` 기본값 — 라우트 `useActivityTab` 초기값만 고친다 | 없음 | 1시간 |
+| **R1 생성 흐름** | JA-C-1 · JA-C-2 · JA-C-3/JCB-22 | FR-UX-09 | web 1~2 | `CreateIssueDialog` · 전역 `c` 단축키 effect | 없음 | 1~2일. 최소화(dock)는 후순위 |
+| **R1b Subtask 진입점** | JA-C-4 · JA-D-2 | FR-UX-09 · 이슈 계층 FR(착수 시 확인) | issue-tracking 1(부모 없는 Subtask 거부) + web 1(전역 생성 목록 · 상세 하위작업 섹션) | 상세 화면 링크 영역 | 없음 | 2~3일 |
+| **R2 인라인 생성** | JA-C-5 · JB-B-1 · JB-L-1 | FR-UX-09 · FR-UX-13 | web 1 | R1 의 생성 경로 | **ADR fr-ux-09-f3 D-3 재결정** | 1~2일 |
+| **R3 행 조작** | JB-B-2 · JCB-17 · JB-L-2 · JV-12 · JB-B-3 · JB-B-4 | FR-UX-13 · FR-UX-14 · FR-BD-02 · FR-BL-01 | web 2~3(메뉴 · 밀도 · 보드 툴바) | 카드/행 공용 메뉴 컴포넌트 하나로 보드 · 백로그 양쪽. 상태 드롭다운은 F9 `StatusCell` 재사용. 스프린트 완료는 백로그 다이얼로그 재사용 | 없음 | 3~4일 |
+| **R3b 스프린트 헤더** | JB-L-3 | FR-BL-01 · FR-BL-02 | agile-planning 1(상태별 포인트 합 · 예정 스프린트 날짜) + web 1 | `ActiveSprintResponse` 는 활성 스프린트의 `startDate`·`endDate` 만 준다(`api/boards.ts:196-211`) | 없음 | 1~2일 |
+| **R4 검색** | JC-L-1 · JC-N-1 | FR-UX-12 | web 2 | `IssueTable`(셀 편집 · 일괄)을 `/search` 에 · 검색창 패널에 `use-recent-issues` · `use-recent-projects` | AQL 결과 응답이 목록 행 스키마와 맞는지 착수 시 확인 | 2~3일 |
+| **R5 알림 팝오버** | JN-1 | FR-UX-03 · FR-NT-01 | web 1 | inbox API · `InboxBell` | 없음 | 1일 |
+| **R6 가젯 재설정** | JD-19 | FR-DB-02 | web 1 (+ dashboard 저장 API 가 설정 수정을 받는지 확인) | `GadgetConfigForm` | 없음 | 0.5~1일 |
+| **R7 전환 규칙 노출** | JW-7 · JCW-4 | FR-WF-05 · FR-WF-06 | web 1 — 1단계는 **백엔드가 이미 지원하는** validator 4 · post-action 5 를 UI 에 노출 | 워크플로 편집기 전환 패널 | 없음 | 1~2일. 카탈로그 확장(19종)은 별도 |
+| **R8 스킴 교체 상태 이관** | JCW-1 | FR-WF-02 | project-workflow 1~2 + web 1 | 상태 삭제 이관 모달(`workflow-status-migration-wiring`) | 스펙 · **위험 경로**(데이터 이관 · 마이그레이션 가능) · 「워크플로 초안」 모델 결정(§1 결정 항목) | 1주 |
+| **R9 Automation 카탈로그** | JAU-5 · JAU-6 | FR-AT-01 · FR-AT-02 | automation N — 트리거 하나 · 액션 하나가 각각 PR | 트리거는 다른 BC 이벤트를 pgmq 로 구독해야 한다(상태 전환 · 할당 · 스프린트) | 스펙 · 이벤트 계약 확인(**위험 경로** 가능: shared-kernel 이벤트 타입) | 트리거당 1~2일 |
+
+### 4-2. 순서
+
+1. **지금 바로** — R0. 원인이 확인된 회귀라 스펙이 필요 없다.
+2. **web 만, 결정 불필요** — R1 → R3 → R4 → R5 → R6 → R7. 서로 독립이라 병렬 가능하다. R1 · R3 이 매일 쓰는 조작이라 먼저.
+3. **백엔드 한 BC + web** — R1b · R3b.
+4. **결정 뒤** — R2(ADR 재결정), R8(워크플로 초안 모델 + 스펙), R9(스펙 · 이벤트 계약).
+
+### 4-3. 이번 로드맵이 다루지 않는 것
+
+- P2 · P3 행 — §A~§H 에 남아 있다. R 묶음을 착수할 때 같은 화면의 P2 를 함께 볼지 `/bts` 1단계에서 정한다.
+- 의도적 편차(X · JX) — 계약 §3 판정 그대로.
+- §2 정정 후보 — 승계 문서를 고치는 별도 docs PR 하나로 묶는다.
+
+### 4-4. 결정 대기
+
+| # | 결정 | 막는 묶음 |
+|---|---|---|
+| D1 | REA 실물 관찰을 계약 §1 근거로 인정할지 | 전부(스펙 승계 방식) |
+| D2 | 인라인 생성 재도입(ADR fr-ux-09-f3 D-3) | R2 |
+| D3 | 스프린트 완료 판정 — 맨 오른쪽 열 vs 상태 카테고리 DONE(JCB-5) | 없음(현행 유지 시 X 명시만) |
+| D4 | 「워크플로 초안」 모델 유지 vs 스킴 초안으로 이동 | R8 |
+| D5 | 이 §4 를 `jira-parity-roadmap.md` 정본 진척표로 옮길지 | — |
+
 ---
 
 ## A — 이슈 상세 · 이슈 생성 조작감 갭 (2026-10-28)
