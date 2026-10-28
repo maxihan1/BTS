@@ -2933,6 +2933,7 @@ class IssueRepository(
                         updatedAt =
                             (issueRecord.updatedAt ?: error("issues.updated_at must not be null"))
                                 .toInstant(),
+                        version = issueRecord.version ?: error("issues.version must not be null"),
                     )
                 }
 
