@@ -1,6 +1,7 @@
 // CreateIssueDialog 단위 테스트 — 제어 컴포넌트 계약 + 고유 접근성 이름 (FR-UX-09 F2 T7)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { useState } from 'react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
@@ -345,5 +346,85 @@ describe('CreateIssueDialog — 연속 생성 (JA-C-2)', () => {
 
     expect(await screen.findByText(issueCreateStrings.createdCount(2))).toBeInTheDocument()
     expect(onCreated).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('CreateIssueDialog — 최소화 (JA-C-3 · JA-C-8)', () => {
+  /** 최소화 상태를 쥔 호출부 — 상단바가 스토어로 하는 일을 그대로 흉내 낸다. */
+  function MinimizableDialog({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+    const [minimized, setMinimized] = useState(false)
+    return (
+      <CreateIssueDialog
+        open
+        onOpenChange={onOpenChange}
+        minimized={minimized}
+        onMinimizedChange={setMinimized}
+      />
+    )
+  }
+
+  function renderMinimizable(onOpenChange: (open: boolean) => void) {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <MinimizableDialog onOpenChange={onOpenChange} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('최소화하면 모달이 사라지고 알약에 제목이 남으며, 알약을 누르면 입력 그대로 돌아온다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    renderMinimizable(onOpenChange)
+    await waitForProjects()
+
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '쓰다 만 이슈')
+    expect(document.body.style.pointerEvents).toBe('none')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.minimizeButton }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: issueCreateStrings.dialogTitle })).toBeNull()
+    })
+    // 알약이 접근 트리에 있다 = 모달의 aria-hidden 이 풀렸다. 페이지 클릭 차단도 풀려야 한다
+    const dock = screen.getByRole('button', { name: issueCreateStrings.dockRestore('쓰다 만 이슈') })
+    expect(document.body.style.pointerEvents).not.toBe('none')
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+
+    await user.click(dock)
+
+    expect(
+      await screen.findByRole('dialog', { name: issueCreateStrings.dialogTitle }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText(issueCreateStrings.summaryLabel)).toHaveValue('쓰다 만 이슈')
+    expect(
+      screen.queryByRole('button', { name: issueCreateStrings.dockRestore('쓰다 만 이슈') }),
+    ).toBeNull()
+  })
+
+  it('입력이 있을 때 바깥을 누르면 버릴지 묻지 않고 최소화한다', async () => {
+    const user = userEvent.setup()
+    const onOpenChange = vi.fn()
+    renderMinimizable(onOpenChange)
+    await waitForProjects()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '쓰다 만 이슈')
+
+    // Radix 는 바깥 누름 리스너를 다음 틱에 붙인다
+    await waitFor(() => {
+      fireEvent.pointerDown(document.querySelector('[data-slot="dialog-overlay"]') as Element)
+      expect(
+        screen.getByRole('button', { name: issueCreateStrings.dockRestore('쓰다 만 이슈') }),
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('dialog', { name: issueCreateStrings.discardTitle })).toBeNull()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it('최소화 prop 이 없으면 최소화 버튼을 그리지 않는다 — 보드 · 백로그 · 딥링크는 그대로', async () => {
+    renderDialog({ open: true })
+    await waitForProjects()
+
+    expect(screen.queryByRole('button', { name: issueCreateStrings.minimizeButton })).toBeNull()
   })
 })

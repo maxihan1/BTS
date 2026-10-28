@@ -57,6 +57,8 @@ interface IssueCreateFormProps {
    * `onPendingChange` 와 같은 이유로 setState 함수를 그대로 넘긴다.
    */
   onHasInputChange?: (hasInput: boolean) => void
+  /** 제목 변경 콜백 — 최소화 알약이 제목을 보여 준다 (JA-C-8) */
+  onSummaryChange?: (summary: string) => void
 }
 
 /**
@@ -82,12 +84,18 @@ export function IssueCreateForm({
   onPendingChange,
   initialProjectKey,
   onHasInputChange,
+  onSummaryChange,
 }: IssueCreateFormProps = {}): JSX.Element {
   const state = useIssueCreateFormState({ initialSummary, initialProjectKey })
 
   useEffect(() => {
     onHasInputChange?.(state.hasInput)
   }, [state.hasInput, onHasInputChange])
+
+  const summary = state.form.watch('summary')
+  useEffect(() => {
+    onSummaryChange?.(summary)
+  }, [summary, onSummaryChange])
 
   /**
    * 성공하면 제목만 비우고 제목에 포커스를 둔다 — 연속 생성(JA-C-2)은 모달이 남아 다음 건을 받는다.

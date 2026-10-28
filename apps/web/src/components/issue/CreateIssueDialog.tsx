@@ -1,6 +1,7 @@
 // 이슈 생성 모달 — URL 을 모르는 제어 컴포넌트 (FR-UX-09 F2)
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { Activity, useState } from 'react'
+import { Minus, SquarePen } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,13 @@ export interface CreateIssueDialogProps {
    * 「라우터 훅 import 0」 설계 조건(FR-1)을 깨지 않는다.
    */
   initialProjectKey?: string
+  /**
+   * 최소화(dock) 여부 — `onMinimizedChange` 와 함께 줄 때만 헤더에 최소화 버튼이 생긴다 (JA-C-8).
+   * 상단바(전역 생성)만 준다. 최소화 중에도 `open` 은 참이다 — 입력을 쥐고 있기 때문이다.
+   */
+  minimized?: boolean
+  /** 최소화 · 복원 요청 */
+  onMinimizedChange?: (minimized: boolean) => void
 }
 
 /**
@@ -76,7 +84,13 @@ export interface CreateIssueDialogProps {
  * ### 연속 생성 · 닫기 확인 (Jira 패리티 R1 — JA-C-2 · JA-C-3 · JCB-22)
  * 「다른 항목 만들기」를 켜면 성공 뒤에도 닫지 않는다 — 폼이 제목만 비우고 프로젝트·유형은 남는다.
  * 값이 하나라도 있으면 X · Esc · 바깥 클릭 · 취소가 바로 닫지 않고 「버리기」를 묻는다.
- * 최소화(dock)는 아직 없다.
+ *
+ * ### 최소화 (Jira 패리티 R1c — JA-C-3 · JA-C-8)
+ * 최소화하면 모달이 오른쪽 아래 알약(제목)으로 접히고, 알약을 누르면 입력 그대로 돌아온다.
+ * 최소화를 받는 호출부에서는 입력 중 바깥 클릭도 묻지 않고 최소화한다(Jira 문서 동작).
+ * 🛑 Radix 를 닫으면 폼이 언마운트돼 입력이 사라지고, 열어 둔 채 숨기면 모달이 페이지를 계속 막는다
+ *    (`hideOthers` · 바깥 pointer-events 차단). `<Activity hidden>` 은 상태는 두고 effect 만 내려
+ *    둘 다 피한다 — Radix 는 `open` 그대로, 모달 부수효과만 풀린다.
  */
 export function CreateIssueDialog({
   open,
@@ -85,6 +99,8 @@ export function CreateIssueDialog({
   onCreateProject,
   initialSummary,
   initialProjectKey,
+  minimized = false,
+  onMinimizedChange,
 }: CreateIssueDialogProps): JSX.Element {
   /**
    * 제출 진행 상태 — 푸터 버튼이 폼 **밖**이라 폼에서 받아와야 한다 (게이트 2 C-2).
@@ -95,6 +111,7 @@ export function CreateIssueDialog({
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false)
   const [createAnother, setCreateAnother] = useState(false)
   const [createdCount, setCreatedCount] = useState(0)
+  const [summary, setSummary] = useState('')
 
   /** 실제로 닫는다 — 이번 열림의 건수는 다음 열림에 남기지 않는다. */
   function close(): void {
@@ -116,73 +133,113 @@ export function CreateIssueDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => { if (next) onOpenChange(true); else requestClose() }}>
-      <DialogContent
-        className="max-w-2xl max-h-[80vh] flex flex-col"
-        aria-describedby={undefined}
-      >
-        <DialogHeader>
-          <DialogTitle>{issueCreateStrings.dialogTitle}</DialogTitle>
-        </DialogHeader>
+    <>
+      <Activity mode={minimized ? 'hidden' : 'visible'}>
+        <Dialog open={open} onOpenChange={(next) => { if (next) onOpenChange(true); else requestClose() }}>
+          <DialogContent
+            className="max-w-2xl max-h-[80vh] flex flex-col"
+            aria-describedby={undefined}
+            onPointerDownOutside={(e) => {
+              if (onMinimizedChange !== undefined && hasInput) {
+                e.preventDefault()
+                onMinimizedChange(true)
+              }
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>{issueCreateStrings.dialogTitle}</DialogTitle>
+            </DialogHeader>
 
-        {/* 본문만 스크롤한다 — 푸터는 이 영역 밖이라 버튼이 늘 보인다.
-            🛑 `pr-1` 만 두지 마라 — `overflow-y-auto` 는 CSS 규칙상 overflow-x 까지 auto 로
-               올려 **가로도 잘린다**. 입력 포커스 링은 `ring-3`(3px) box-shadow 라 요소 박스
-               **바깥**에 그려지는데, 좌측 패딩이 0 이면 그 링이 통째로 잘려 「인풋 왼쪽이
-               잘린」 것처럼 보인다. 좌우 6px 을 주고 음수 마진으로 되돌려 본문 정렬은 유지한다.
-            🛑 스크롤바는 기본값이 15px 라 다크모드에서 밝은 트랙이 본문만큼 도드라진다.
-               `scrollbar-width:thin` + 토큰 색으로 낮춘다(토큰이라 라이트/다크 자동 대응). */}
-        <div
-          data-testid="create-issue-scroll"
-          className="flex-1 overflow-y-auto -mx-1.5 px-1.5 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
-        >
-          <IssueCreateForm
-            formId={CREATE_ISSUE_FORM_ID}
-            initialSummary={initialSummary}
-            initialProjectKey={initialProjectKey}
-            onSuccess={handleSuccess}
-            onCreateProject={onCreateProject}
-            onPendingChange={setSubmitting}
-            onHasInputChange={setHasInput}
+            {/* 본문만 스크롤한다 — 푸터는 이 영역 밖이라 버튼이 늘 보인다.
+                🛑 `pr-1` 만 두지 마라 — `overflow-y-auto` 는 CSS 규칙상 overflow-x 까지 auto 로
+                   올려 **가로도 잘린다**. 입력 포커스 링은 `ring-3`(3px) box-shadow 라 요소 박스
+                   **바깥**에 그려지는데, 좌측 패딩이 0 이면 그 링이 통째로 잘려 「인풋 왼쪽이
+                   잘린」 것처럼 보인다. 좌우 6px 을 주고 음수 마진으로 되돌려 본문 정렬은 유지한다.
+                🛑 스크롤바는 기본값이 15px 라 다크모드에서 밝은 트랙이 본문만큼 도드라진다.
+                   `scrollbar-width:thin` + 토큰 색으로 낮춘다(토큰이라 라이트/다크 자동 대응). */}
+            <div
+              data-testid="create-issue-scroll"
+              className="flex-1 overflow-y-auto -mx-1.5 px-1.5 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
+            >
+              <IssueCreateForm
+                formId={CREATE_ISSUE_FORM_ID}
+                initialSummary={initialSummary}
+                initialProjectKey={initialProjectKey}
+                onSuccess={handleSuccess}
+                onCreateProject={onCreateProject}
+                onPendingChange={setSubmitting}
+                onHasInputChange={setHasInput}
+                onSummaryChange={setSummary}
+              />
+            </div>
+
+            <DialogFooter className="sm:items-center">
+              {createdCount > 0 && (
+                <p role="status" className="mr-auto text-sm text-muted-foreground">
+                  {issueCreateStrings.createdCount(createdCount)}
+                </p>
+              )}
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={createAnother}
+                  onCheckedChange={(checked) => { setCreateAnother(checked === true) }}
+                />
+                {issueCreateStrings.createAnotherLabel}
+              </label>
+              <Button type="button" variant="outline" onClick={requestClose}>
+                {issueCreateStrings.cancelButton}
+              </Button>
+              {/* 폼 밖에서 제출한다 — `form` 속성이 id 로 폼을 가리킨다 (NFR-2) */}
+              <Button type="submit" form={CREATE_ISSUE_FORM_ID} disabled={submitting}>
+                {submitting ? issueCreateStrings.submitButtonPending : issueCreateStrings.submitButton}
+              </Button>
+            </DialogFooter>
+
+            {/* X(`right-4`) 왼쪽에 붙는다 — DOM 은 본문 뒤라 열 때 첫 포커스를 뺏지 않는다 */}
+            {onMinimizedChange !== undefined && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={issueCreateStrings.minimizeButton}
+                className="absolute top-4 right-12 opacity-70 hover:opacity-100"
+                onClick={() => { onMinimizedChange(true) }}
+              >
+                <Minus className="size-4" />
+              </Button>
+            )}
+          </DialogContent>
+
+          <ConfirmDialog
+            open={confirmDiscardOpen}
+            onOpenChange={setConfirmDiscardOpen}
+            title={issueCreateStrings.discardTitle}
+            description={issueCreateStrings.discardDescription}
+            cancelLabel={issueCreateStrings.discardBackButton}
+            confirmLabel={issueCreateStrings.discardConfirmButton}
+            destructive
+            onConfirm={() => {
+              setConfirmDiscardOpen(false)
+              close()
+            }}
           />
-        </div>
+        </Dialog>
+      </Activity>
 
-        <DialogFooter className="sm:items-center">
-          {createdCount > 0 && (
-            <p role="status" className="mr-auto text-sm text-muted-foreground">
-              {issueCreateStrings.createdCount(createdCount)}
-            </p>
-          )}
-          <label className="flex items-center gap-2 text-sm">
-            <Checkbox
-              checked={createAnother}
-              onCheckedChange={(checked) => { setCreateAnother(checked === true) }}
-            />
-            {issueCreateStrings.createAnotherLabel}
-          </label>
-          <Button type="button" variant="outline" onClick={requestClose}>
-            {issueCreateStrings.cancelButton}
-          </Button>
-          {/* 폼 밖에서 제출한다 — `form` 속성이 id 로 폼을 가리킨다 (NFR-2) */}
-          <Button type="submit" form={CREATE_ISSUE_FORM_ID} disabled={submitting}>
-            {submitting ? issueCreateStrings.submitButtonPending : issueCreateStrings.submitButton}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-
-      <ConfirmDialog
-        open={confirmDiscardOpen}
-        onOpenChange={setConfirmDiscardOpen}
-        title={issueCreateStrings.discardTitle}
-        description={issueCreateStrings.discardDescription}
-        cancelLabel={issueCreateStrings.discardBackButton}
-        confirmLabel={issueCreateStrings.discardConfirmButton}
-        destructive
-        onConfirm={() => {
-          setConfirmDiscardOpen(false)
-          close()
-        }}
-      />
-    </Dialog>
+      {open && minimized && onMinimizedChange !== undefined && (
+        <Button
+          type="button"
+          variant="outline"
+          aria-label={issueCreateStrings.dockRestore(summary)}
+          className="fixed right-4 bottom-4 z-50 h-10 max-w-xs rounded-full bg-popover px-4 shadow-lg"
+          onClick={() => { onMinimizedChange(false) }}
+        >
+          <SquarePen className="size-4" />
+          <span className="truncate">
+            {summary.trim() === '' ? issueCreateStrings.dialogTitle : summary}
+          </span>
+        </Button>
+      )}
+    </>
   )
 }
