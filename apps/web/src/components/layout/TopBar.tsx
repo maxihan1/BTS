@@ -1,11 +1,9 @@
 // 상단바 컴포넌트 — 사이드바 토글·로고·검색·만들기·알림·도움말·설정·계정 드롭다운 (FR-UX-06 PR11 Task 6, 트리 미배선)
-import { useState, type JSX, type KeyboardEvent } from 'react'
+import type { JSX } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useIssueDetailModalStore } from '@/components/issue/issueDetailModalStore'
 import {
   PanelLeftClose,
   PanelLeftOpen,
-  Search,
   Plus,
   HelpCircle,
   Settings,
@@ -22,8 +20,7 @@ import { InboxBell } from '@/components/inbox/InboxBell'
 import { ProjectSwitcher } from '@/components/project/ProjectSwitcher'
 import { AccountMenu } from './AccountMenu'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { resolveGlobalSearchInput } from '@/lib/aql-natural'
+import { GlobalSearchBox } from './GlobalSearchBox'
 
 /** TopBar 컴포넌트 props */
 export interface TopBarProps {
@@ -80,37 +77,10 @@ export function TopBar({ onHelpClick }: TopBarProps) {
   const createOpen = useCreateIssueDialogStore((s) => s.open)
   const setCreateOpen = useCreateIssueDialogStore((s) => s.setOpen)
   const navigate = useNavigate()
-  const openIssueDetailModal = useIssueDetailModalStore((s) => s.open)
   // 🛑 `useSidebarCollapsed().toggle` 직접 사용 금지 — 모바일에서 무동작 버튼이 된다.
   //    폭에 따른 대상 선택·표시 방향은 `use-sidebar-drawer` 훅 두 개가 소유한다.
   const toggle = useSidebarToggle()
   const sidebarShown = useSidebarShown()
-
-  // FR-UX-12 F13 — 상단바 전역 검색. 제출 시에만 이동하고 입력 자체는 네트워크를 부르지 않는다(NFR2).
-  const [query, setQuery] = useState('')
-
-  /**
-   * Enter 제출 — 판별 결과대로 목적지를 고른다.
-   *
-   * ★`e.nativeEvent.isComposing` 을 먼저 본다(FR10/S6). 한글 조합 중의 Enter 는 조합 확정이지
-   * 제출이 아니다. 이 가드가 없으면 「로그인」을 치는 도중 첫 Enter 에 검색이 나간다.
-   * ★`keyCode === 229` 는 **이중 방어**다 — `isComposing` 을 세팅하지 않고 조합 중 keydown 을
-   * 229 로만 보내는 브라우저/IME 조합이 있다. 저장소 선례와 같은 형태다
-   * (`routes/issues.$key.tsx:741` · `components/issue/IssueDescription.tsx:392`).
-   * ★`projectKey` 를 싣지 않는다(FR12) — `/search` 가 4단 해소와 미해소 안내를 이미 소유한다
-   * (`routes/search.tsx:480` `useResolvedActiveProject` · `:565` `<ActiveProjectGate>`).
-   */
-  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter' || e.nativeEvent.isComposing || e.keyCode === 229) return
-    const intent = resolveGlobalSearchInput(query)
-    if (intent.kind === 'empty') return
-    if (intent.kind === 'issue-key') {
-      // 이슈 키 직접 입력은 상세 모달로 — 보던 화면을 잃지 않는다(J1).
-      openIssueDetailModal(intent.issueKey)
-      return
-    }
-    void navigate({ to: '/search', search: { q: intent.query } })
-  }
 
   return (
     <header className="flex h-12 items-center gap-1 border-b bg-background px-3">
@@ -156,24 +126,7 @@ export function TopBar({ onHelpClick }: TopBarProps) {
           ★컨트롤 종류는 어떤 폭에서도 바뀌지 않는다. 좁다고 아이콘 버튼으로 되돌리면
            `searchbox` 가 0개가 돼 유닛·E2E 단언이 뷰포트에 따라 깨지고, 그 버튼의
            접근성 이름을 무엇으로 할지 계약 §2 문제가 되살아난다. */}
-      <div className="relative ml-2 min-w-32 max-w-md flex-1">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          value={query}
-          aria-label={navLabels.globalSearch}
-          placeholder={navLabels.globalSearchPlaceholder}
-          /* `[&::-webkit-search-cancel-button]:appearance-none` — `type="search"` 의 네이티브
-             × 버튼 제거. tailwind preflight 는 `::-webkit-search-decoration` 만 지우고 이건
-             남겨서, Chromium 에서 **값이 있을 때만** 디자인 토큰 밖의 브라우저 기본 아이콘이
-             입력칸 안에 뜬다 (F13 2차 코드리뷰 I-3). 지움 = 취소는 Esc/직접 삭제로 통일. */
-          className="pl-8 [&::-webkit-search-cancel-button]:appearance-none"
-          onChange={(e) => {
-            setQuery(e.target.value)
-          }}
-          onKeyDown={handleSearchKeyDown}
-        />
-      </div>
+      <GlobalSearchBox />
 
       {/* ★`ml-auto` 로 우측 액션을 끝에 붙인다 — **빈 `flex-1` 스페이서를 다시 넣지 말 것**
           (F13 1차 코드리뷰 BLOCKER-2 → 2차 CONCERNS-1 의 왕복 이력).
