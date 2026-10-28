@@ -118,26 +118,34 @@ class IssueSearchAdapter(
     /**
      * 검색 결과에 필드 수준 열람 마스킹 + 편집 불가 표기를 적용한다 (FR-PM-07).
      *
-     * 목록 `IssueApplicationService.maskFieldsForPage` · `IssueResponse.maskInvisible` 과 같은 규칙이다.
-     * hit 에 실린 필드 중 가릴 수 있는 것은 nullable CORE 인 담당자뿐이다 — summary · priority 는
-     * non-null CORE 라 가리지 않고 편집 가능 여부만 적는다. 한 프로젝트 결과라 판정은 페이지당 1회다.
-     * 빈 페이지이거나 projectId 를 찾지 못하면 원본을 그대로 반환한다(목록과 같은 방어적 처리).
+     * 표시 마스킹은 목록 `IssueApplicationService.maskFieldsForPage` · `IssueResponse.maskInvisible` 과
+     * 같은 규칙이다. hit 에 실린 필드 중 가릴 수 있는 것은 nullable CORE 인 담당자뿐이다 — summary ·
+     * priority 는 non-null CORE 라 가리지 않고 편집 가능 여부만 적는다. 한 프로젝트 결과라 판정은 페이지당 1회다.
+     *
+     * ★projectId 를 못 찾으면 **막는 쪽**으로 둔다(목록과 다르다). `findProjectIdByKey` 는 soft-delete 된
+     * 프로젝트를 거르지만 `searchByAql` 은 거르지 않아, 원본을 그대로 돌려주면 담당자가 마스킹 없이 나간다
+     * (리뷰 SHOULD 1). 그때는 담당자를 가리고 판정 대상 필드를 전부 편집 불가로 적는다.
      *
      * @param actor 조회 행위자 UUID.
      * @param projectKey 검색 대상 프로젝트 키.
      * @param page 마스킹 전 결과 페이지.
      * @return 마스킹 · 편집 불가 표기가 적용된 결과 페이지.
      */
-    @Suppress("ReturnCount") // empty guard + projectId miss guard 조기 반환 — maskFieldsForPage 동형
     private fun maskFields(
         actor: UUID,
         projectKey: String,
         page: IssueSearchPage,
     ): IssueSearchPage {
         if (page.items.isEmpty()) return page
-        val projectId = issueRepository.findProjectIdByKey(projectKey) ?: return page
-        val visible = fieldPermissionResolver.visibleFields(actor, projectId, HIT_FIELD_CANDIDATES)
-        val editable = fieldPermissionResolver.editableFields(actor, projectId, visible)
+        val projectId = issueRepository.findProjectIdByKey(projectKey)
+        val visible =
+            if (projectId == null) {
+                HIT_FIELD_CANDIDATES - ASSIGNEE_FIELD
+            } else {
+                fieldPermissionResolver.visibleFields(actor, projectId, HIT_FIELD_CANDIDATES)
+            }
+        val editable =
+            if (projectId == null) emptySet() else fieldPermissionResolver.editableFields(actor, projectId, visible)
         val assigneeHidden = ASSIGNEE_FIELD !in visible
         val restricted = if (assigneeHidden) listOf(ASSIGNEE_FIELD.key) else emptyList()
         val noneditable = visible.filter { it !in editable }.map { it.key }

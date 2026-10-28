@@ -494,6 +494,19 @@ class IssueSearchAdapterTest {
     }
 
     @Test
+    fun `projectId 를 못 찾으면 담당자를 가리고 전부 편집 불가로 적는다`() {
+        stubSearchReturning(hit(assigneeId = UUID.randomUUID()))
+        every { issueRepository.findProjectIdByKey(projectKey) } returns null
+
+        val result = adapter.search(buildQuery(anyAst)).items.single()
+
+        assertThat(result.assigneeId).isNull()
+        assertThat(result.restrictedFields).containsExactly("assigneeId")
+        assertThat(result.noneditableFields).containsExactlyInAnyOrder("summary", "priority")
+        verify(exactly = 0) { fieldPermissionResolver.visibleFields(any(), any(), any()) }
+    }
+
+    @Test
     fun `빈 결과면 필드 권한을 묻지 않는다`() {
         stubBrowseAllow()
         every { securityDirectory.accessibleLevels(actorId, projectKey) } returns unrestrictedAccess
