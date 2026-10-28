@@ -551,6 +551,8 @@ class IssueImportAdapter(
                         //   매칭된 담당자는 계속 changeAssignee 를 경유해야 이력·watcher·IssueAssigned
                         //   경로가 유지되므로 applyAssigneeIfPresent 는 손대지 않는다.
                         assignee = AssigneeIntent.None,
+                        // 반입 원본에 부모 정보가 없다 — 강제하면 Subtask 행이 전부 실패한다 (JA-C-4).
+                        requireSubtaskParent = false,
                     ),
             )
 

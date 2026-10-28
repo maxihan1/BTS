@@ -29,6 +29,7 @@ import com.bts.issue.domain.IssueSecurityLevelNotInSchemeException
 import com.bts.issue.domain.IssueTransitionNotAllowedException
 import com.bts.issue.domain.IssueVersionConflictException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
+import com.bts.issue.domain.SubtaskParentRequiredException
 import com.bts.issue.event.IssueAssigned
 import com.bts.issue.event.IssueCreated
 import com.bts.issue.event.IssueEventPublisher
@@ -51,6 +52,7 @@ import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.resolution.repository.ResolutionRepository
 import com.bts.issue.template.domain.TemplateVariable
 import com.bts.issue.template.domain.TemplateVariableSubstitutor
+import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.issue.version.repository.VersionRepository
@@ -239,7 +241,9 @@ class IssueApplicationService(
             repo.findProjectIdByKey(request.projectKey)
                 ?: throw IssueProjectNotFoundException(request.projectKey)
 
-        val resolvedTypeId = resolveTypeId(request.typeId)
+        val resolvedType = resolveType(request.typeId)
+        val resolvedTypeId = request.typeId ?: checkNotNull(resolvedType.id) { "task 타입 id 가 없습니다." }
+        val parentId = resolveCreateParent(actor, request, resolvedType)
 
         val normalizedComponentIds = request.componentIds.distinct()
         validateComponents(normalizedComponentIds, projectId)
@@ -311,6 +315,7 @@ class IssueApplicationService(
                 labels = request.labels ?: emptyList(),
             )
         val saved = repo.insert(issue, body.html)
+        if (parentId != null) repo.updateParent(saved.id.value, parentId)
         autoWatch(saved.id.value, listOfNotNull(saved.reporterId.value, resolvedAssignee?.value))
         repo.insertComponents(saved.id.value, normalizedComponentIds)
         eventPublisher.publish(
@@ -1274,14 +1279,35 @@ class IssueApplicationService(
      * @return 유효성이 보장된 [IssueTypeId].
      * @throws IssueTypeNotFoundException requestedTypeId 가 non-null 이지만 활성 타입이 없을 때.
      */
-    private fun resolveTypeId(requestedTypeId: IssueTypeId?): IssueTypeId {
+    private fun resolveType(requestedTypeId: IssueTypeId?): IssueType {
         if (requestedTypeId == null) {
-            val taskType = issueTypeRepository.findByKey(IssueTypeKey("task"))
-            return taskType?.id ?: error("표준 task 타입이 DB에 없습니다. V003 마이그레이션 확인 필요.")
+            return issueTypeRepository.findByKey(IssueTypeKey("task"))
+                ?: error("표준 task 타입이 DB에 없습니다. V003 마이그레이션 확인 필요.")
         }
-        issueTypeRepository.findById(requestedTypeId)
+        return issueTypeRepository.findById(requestedTypeId)
             ?: throw IssueTypeNotFoundException(requestedTypeId)
-        return requestedTypeId
+    }
+
+    /**
+     * 생성 요청의 부모를 내부 id 로 바꾼다 (JA-C-4). 부모가 없으면 null.
+     *
+     * Subtask 유형([IssueType.SUBTASK] 와 같은 hierarchyLevel)인데 부모가 없으면 422 — 고아 Subtask 차단.
+     * 부모를 붙이는 권한은 [com.bts.issue.link.application.IssueParentService.setParent] 와 같이 부모 UPDATE 다.
+     */
+    private fun resolveCreateParent(
+        actor: ActorId,
+        request: CreateIssueRequest,
+        type: IssueType,
+    ): UUID? {
+        val parentKey = request.parentKey
+        if (parentKey == null) {
+            if (request.requireSubtaskParent && type.hierarchyLevel == IssueType.SUBTASK.hierarchyLevel) {
+                throw SubtaskParentRequiredException()
+            }
+            return null
+        }
+        assertPermission(actor, IssuePermission.UPDATE, IssueScope.Issue(parentKey.value))
+        return (repo.findByKey(parentKey) ?: throw IssueNotFoundException(parentKey)).id.value
     }
 
     /**

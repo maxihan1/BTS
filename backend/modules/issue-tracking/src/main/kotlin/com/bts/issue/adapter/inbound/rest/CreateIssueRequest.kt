@@ -10,6 +10,7 @@ import jakarta.validation.constraints.AssertTrue
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Positive
 import jakarta.validation.constraints.Size
 import org.openapitools.jackson.nullable.JsonNullable
@@ -81,6 +82,10 @@ data class CreateIssueRequest(
     // 숫자를 여기 직접 적지 말 것. IssueLabelConstraintsAlignmentTest 가 차단한다.
     @field:Size(max = IssueLabelConstraints.MAX_COUNT, message = "라벨은 최대 20개까지 허용합니다.")
     val labels: List<String>? = null,
+    // JA-C-4 — 부모 이슈 키. Subtask 유형은 필수(없으면 422 SUBTASK_PARENT_REQUIRED).
+    // 형식 위반이 IssueKey 생성자의 require 까지 내려가면 500 이라 여기서 400 으로 끊는다.
+    @field:Pattern(regexp = "^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$", message = "parentKey 형식이 올바르지 않습니다.")
+    val parentKey: String? = null,
 ) {
     /**
      * 라벨 **개별 길이 + 공백-only** 검증 (FR-UX-09 B1).

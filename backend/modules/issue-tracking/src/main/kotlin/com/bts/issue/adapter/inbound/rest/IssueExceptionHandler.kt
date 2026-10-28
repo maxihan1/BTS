@@ -24,6 +24,7 @@ import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.domain.MoveSameProjectException
 import com.bts.issue.domain.RequiredFieldMissingException
 import com.bts.issue.domain.SubtaskHasOwnSubtasksException
+import com.bts.issue.domain.SubtaskParentRequiredException
 import com.bts.issue.resolution.domain.ResolutionNotFoundException
 import com.bts.issue.type.domain.IssueTypeNotFoundException
 import org.slf4j.LoggerFactory
@@ -589,6 +590,25 @@ class IssueExceptionHandler {
         )
     }
 
+    // ── 422 SUBTASK_PARENT_REQUIRED (JA-C-4) ─────────────────────────────────
+
+    /**
+     * [SubtaskParentRequiredException] — Subtask 유형을 부모 없이 생성 시도 — 422.
+     *
+     * @param ex 부모 누락으로 생성이 거부된 예외.
+     */
+    @ExceptionHandler(SubtaskParentRequiredException::class)
+    fun handleSubtaskParentRequired(ex: SubtaskParentRequiredException): ProblemDetail {
+        log.info("ISSUE_422 subtask_parent_required message='{}'", ex.message)
+        return problem(
+            status = HttpStatus.UNPROCESSABLE_ENTITY,
+            type = "subtask-parent-required",
+            title = "Subtask Parent Required",
+            errorCode = IssueErrorCodes.SUBTASK_PARENT_REQUIRED,
+            detail = "하위 작업은 부모 이슈에서 만들어야 합니다.",
+        )
+    }
+
     // ── 422 INVALID_TARGET_STATE (FR-MV-01) ──────────────────────────────────
 
     /**
@@ -834,6 +854,7 @@ object IssueErrorCodes {
     const val ISSUE_HAS_SUBTASKS = "ISSUE_HAS_SUBTASKS"
     const val SUBTASK_HAS_OWN_SUBTASKS = "SUBTASK_HAS_OWN_SUBTASKS"
     const val INCOMPLETE_SUBTASK_MAPPING = "INCOMPLETE_SUBTASK_MAPPING"
+    const val SUBTASK_PARENT_REQUIRED = "SUBTASK_PARENT_REQUIRED"
     const val INVALID_TARGET_STATE = "INVALID_TARGET_STATE"
     const val INVALID_TARGET_MAPPING = "INVALID_TARGET_MAPPING"
     const val REQUIRED_FIELD_MISSING = "REQUIRED_FIELD_MISSING"

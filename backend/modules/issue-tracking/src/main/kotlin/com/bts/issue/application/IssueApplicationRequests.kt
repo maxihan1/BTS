@@ -3,6 +3,7 @@
 package com.bts.issue.application
 
 import com.bts.issue.domain.ActorId
+import com.bts.issue.domain.IssueKey
 import com.bts.shared.issue.IssueTypeId
 import java.time.LocalDate
 import java.util.UUID
@@ -54,6 +55,13 @@ data class CreateIssueRequest(
     val priority: Int? = null,
     val labels: List<String>? = null,
     val notifyAssignment: Boolean = false,
+    /** 만든 이슈의 부모(issues.parent_id). 부모 이슈 UPDATE 권한이 필요하다 — setParent 와 같은 규칙. */
+    val parentKey: IssueKey? = null,
+    /**
+     * Subtask 유형에 부모를 강제한다 (JA-C-4). 기본 true — 새 생산자는 고아 Subtask 를 못 만든다.
+     * Import 만 false 다 — 반입 원본에 부모 정보가 없어 강제하면 Subtask 행이 전부 실패한다.
+     */
+    val requireSubtaskParent: Boolean = true,
 )
 
 /**

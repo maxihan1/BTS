@@ -152,3 +152,11 @@ class IssueTransitionNotAllowedException(
             if (reason != null) append(" — $reason")
         },
     )
+
+/**
+ * 하위 작업(hierarchyLevel=-1) 유형을 부모 없이 만들려 할 때 — 422 (JA-C-4).
+ *
+ * 부모 없는 Subtask 는 어느 화면에서도 부모 밑에 보이지 않는 고아가 된다(실서비스 QAWEB-156).
+ */
+class SubtaskParentRequiredException :
+    IssueDomainException("Subtask requires a parent issue")

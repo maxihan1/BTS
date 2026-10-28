@@ -411,4 +411,20 @@ class IssueControllerCreateTest {
         assertEquals(1, slot.captured.priority)
         assertEquals(listOf("urgent"), slot.captured.labels)
     }
+
+    // JA-C-4 — 하위 작업은 부모와 함께 만든다. REST 경로는 Subtask 부모 강제를 끄지 않는다.
+    @Test
+    fun `POST 이슈 생성 — parentKey 가 IssueKey 로 전달되고 Subtask 부모 강제는 켜져 있다`() {
+        val slot = captureAppRequest()
+
+        postCreate(mapOf("parentKey" to "ATLAS-7")).andExpect(status().isCreated)
+
+        assertEquals(IssueKey("ATLAS-7"), slot.captured.parentKey)
+        assertEquals(true, slot.captured.requireSubtaskParent)
+    }
+
+    @Test
+    fun `POST 이슈 생성 — parentKey 형식이 틀리면 400`() {
+        postCreate(mapOf("parentKey" to "not-a-key")).andExpect(status().isBadRequest)
+    }
 }
