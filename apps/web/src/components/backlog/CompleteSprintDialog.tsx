@@ -34,9 +34,9 @@ import { ApiError } from '@/api/client'
 import { assignToSprint, fetchBacklog, unassignFromSprint } from '@/api/backlog'
 import type { BacklogIssue, BacklogView, SprintMeta, SprintWithIssues } from '@/api/backlog'
 import { backlogKeys, useCompleteSprint } from '@/hooks/use-backlog'
-import { useWorkflows } from '@/hooks/use-workflows'
-import { buildStateCategoryMap, isIssueIncomplete } from '@/lib/backlog-completion'
-import type { StateCategoryMap } from '@/lib/backlog-completion'
+import { useBoard } from '@/hooks/use-boards'
+import { buildDoneColumnMap, isIssueIncomplete } from '@/lib/backlog-completion'
+import type { DoneColumnMap } from '@/lib/backlog-completion'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import { issueCreateStrings } from '@/i18n/ko'
 import { cn } from '@/lib/utils'
@@ -169,7 +169,7 @@ function buildMoveTargets(
 }
 
 /** 스프린트 이슈를 미완료/완료로 갈라 화면에 그릴 한 벌로 만든다 */
-function buildView(issues: readonly BacklogIssue[], map: StateCategoryMap): CompletionView {
+function buildView(issues: readonly BacklogIssue[], map: DoneColumnMap): CompletionView {
   const rows = issues.filter((issue) => isIssueIncomplete(issue, map))
   return { rows, doneCount: issues.length - rows.length }
 }
@@ -188,8 +188,8 @@ interface SprintCompletionParams {
   readonly boardId: string | undefined
   /** 완료할 스프린트 + 이슈 */
   readonly sprint: SprintWithIssues
-  /** 상태 키 → 카테고리 집합 사상 (FR-7) */
-  readonly categoryMap: StateCategoryMap
+  /** 보드 맨 오른쪽 열의 상태 키 — 완료 판정 (FR-7 · 결정 D3) */
+  readonly doneMap: DoneColumnMap
   /** 다이얼로그 열림 여부. 닫히면 회차 상태를 비운다 */
   readonly open: boolean
   /** 완료가 성공했을 때 호출된다 */
@@ -208,7 +208,7 @@ function useSprintCompletion({
   projectKey,
   boardId,
   sprint,
-  categoryMap,
+  doneMap,
   open,
   onCompleted,
 }: SprintCompletionParams) {
@@ -223,7 +223,7 @@ function useSprintCompletion({
   const [progressTotal, setProgressTotal] = useState(0)
   const [failure, setFailure] = useState<FailureState | null>(null)
 
-  const derived = useMemo(() => buildView(sprint.issues, categoryMap), [sprint.issues, categoryMap])
+  const derived = useMemo(() => buildView(sprint.issues, doneMap), [sprint.issues, doneMap])
   const view = snapshot ?? derived
 
   // 닫힘 전환에서 회차 상태를 비운다 — 같은 스프린트로 다시 열면 처음부터다.
@@ -302,7 +302,7 @@ function useSprintCompletion({
       return { kind: 'stale' }
     }
     const freshSprint = fresh.sprints.find((entry) => entry.sprint.sprintId === sourceSprintId)
-    const nextView = buildView(freshSprint?.issues ?? [], categoryMap)
+    const nextView = buildView(freshSprint?.issues ?? [], doneMap)
     if (isSubmitBlockedByTruncation(fresh.truncated)) {
       setSnapshot(nextView)
       return { kind: 'truncated' }
@@ -451,14 +451,15 @@ export function CompleteSprintDialog({
   truncated,
   canReorderIssue,
 }: CompleteSprintDialogProps): JSX.Element {
-  const workflows = useWorkflows()
-  const categoryMap = useMemo(() => buildStateCategoryMap(workflows.data), [workflows.data])
+  // 완료 판정 = 스프린트가 속한 보드의 맨 오른쪽 열(결정 D3). `?board=` 가 없어도 스프린트가 자기 보드를 안다
+  const board = useBoard(sprint.sprint.boardId)
+  const doneMap = useMemo(() => buildDoneColumnMap(board.data?.columns), [board.data])
   const [moveTarget, setMoveTarget] = useState<string>(BACKLOG_TARGET_VALUE)
   const flow = useSprintCompletion({
     projectKey,
     boardId,
     sprint,
-    categoryMap,
+    doneMap,
     open,
     onCompleted: () => onOpenChange(false),
   })
@@ -466,16 +467,16 @@ export function CompleteSprintDialog({
   const moveTargets = buildMoveTargets(allSprints, sprint.sprint.sprintId)
   const blockedByTruncation = isSubmitBlockedByTruncation(truncated)
   const blockedByPermission = !canReorderIssue && flow.view.rows.length > 0
-  // ★ 상태 분류를 모르면 완료를 막는다 — `truncated` 와 **같은 처방**이다 (Maxi 확정 2026-08-05).
-  //   `isIssueIncomplete` 는 분류가 없으면 안전측으로 전건을 미완료로 본다(FR-7). 그 상태로
+  // ★ 보드 열 구성을 모르면 완료를 막는다 — `truncated` 와 **같은 처방**이다 (Maxi 확정 2026-08-05).
+  //   `isIssueIncomplete` 는 열 구성이 없으면 안전측으로 전건을 미완료로 본다(FR-7). 그 상태로
   //   제출하면 **완료된 이슈까지 전량** 백로그로 반출되고, 되돌릴 방법이 없다 —
   //   `assignIssue` 가 `STATUS <> 'COMPLETED'` 조건부라 완료된 스프린트에는 다시 넣지 못하고(409),
   //   벨로시티가 `sprint_issues` 멤버십으로 계산되므로 그 스프린트의 성과 기록이 영구히 0이 된다.
-  //   백로그 화면은 `/workflows` 를 미리 부르지 않아 창을 여는 순간이 매번 콜드 페치다.
-  //   `unavailable` 은 `workflows.data === undefined` 와 동치라 **로딩 중과 조회 실패를 함께** 덮는다
+  //   백로그 화면은 보드를 미리 부르지 않아 창을 여는 순간이 콜드 페치일 수 있다.
+  //   `unavailable` 은 `board.data === undefined` 와 동치라 **로딩 중과 조회 실패를 함께** 덮는다
   //   (`isPending` 을 따로 OR 하면 도달 불가 분기가 생긴다).
-  const blockedByUnknownWorkflow = categoryMap.unavailable
-  const showWorkflowWarning = blockedByUnknownWorkflow && !workflows.isPending
+  const blockedByUnknownBoard = doneMap.unavailable
+  const showBoardWarning = blockedByUnknownBoard && !board.isPending
   const showRetry = flow.failure?.kind === 'partial' || flow.failure?.kind === 'forbidden'
 
   /** E19 — 이관 진행 중에는 Esc·오버레이·닫기 버튼 어느 것으로도 닫히지 않는다 */
@@ -506,12 +507,12 @@ export function CompleteSprintDialog({
               {L.truncatedBlocked}
             </p>
           )}
-          {showWorkflowWarning && (
+          {showBoardWarning && (
             <p
               role="alert"
               className="rounded-md border border-warning bg-warning/10 px-3 py-2 text-sm"
             >
-              {L.workflowLoadFailed}
+              {L.boardLoadFailed}
             </p>
           )}
           {blockedByPermission && (
@@ -526,8 +527,11 @@ export function CompleteSprintDialog({
           <p className="text-sm text-muted-foreground">
             {L.summary(flow.view.doneCount, flow.view.rows.length)}
           </p>
+          {doneMap.lastColumnName !== null && (
+            <p className="text-sm text-muted-foreground">{L.doneRule(doneMap.lastColumnName)}</p>
+          )}
 
-          {workflows.isPending ? (
+          {board.isPending ? (
             <div className="space-y-2" aria-hidden="true">
               <Skeleton className="h-8 w-full" />
               <Skeleton className="h-8 w-full" />
@@ -576,7 +580,7 @@ export function CompleteSprintDialog({
               flow.running ||
               blockedByTruncation ||
               blockedByPermission ||
-              blockedByUnknownWorkflow
+              blockedByUnknownBoard
             }
             onClick={() => handleSubmit(false)}
           >
