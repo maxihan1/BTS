@@ -1145,6 +1145,23 @@ class SchemaMigrationTest {
         assertThat(indexExists("ix_git_webhook_deliveries_received_at", "git_webhook_deliveries")).isTrue()
     }
 
+    // ── R9 단계 C: V312 action_type CHECK 9종 확장 COMMENT 재발행 검증 (V306 의 5종을 대체) ───────
+
+    @Test
+    fun `V312 action_type 컬럼 · automation_actions 테이블 COMMENT 는 9종으로 재발행되었다`() {
+        assertThat(columnComment("automation_actions", "action_type")).contains("CHECK 9종")
+        val tableComment =
+            conn().use { c ->
+                c.createStatement().use { stmt ->
+                    stmt.executeQuery("SELECT obj_description('automation_actions'::regclass, 'pg_class')").use { rs ->
+                        rs.next()
+                        rs.getString(1)
+                    }
+                }
+            }
+        assertThat(tableComment).contains("9종")
+    }
+
     // ── R9: V311 trigger_type CHECK 9종 확장 COMMENT 재발행 검증 (V309 의 6종을 대체) ───────
 
     @Test

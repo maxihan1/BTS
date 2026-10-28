@@ -26,7 +26,10 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 자동화 룰([AutomationRule])의 액션 리스트를 position 순으로 실행하는 디스패처 (FR-AT-02 Task 9).
@@ -132,6 +135,9 @@ class ActionExecutor(
     /** 조건 트리 평가기. 클래스 KDoc 마지막 문단 참조 — 상태 없는 object 싱글턴 고정값. */
     private val conditionEvaluator: ConditionEvaluator = ConditionEvaluator
 
+    /** CREATE_ISSUE 연쇄 차단용 생성 깊이 기록 — [CreationLineage] KDoc 참조. */
+    private val creationLineage = CreationLineage()
+
     /**
      * [rule] 의 액션 리스트를 position 순으로 실행한다.
      *
@@ -151,6 +157,10 @@ class ActionExecutor(
         return when {
             isCrossProjectIssueKey(rule.projectKey, issueKey) -> {
                 log.warn(LOG_CROSS_PROJECT_BLOCKED, rule.id, rule.projectKey, issueKey)
+                ActionExecutionResult(ActionExecutionStatus.SKIPPED, emptyList())
+            }
+            creationLineage.depthOf(issueKey) >= MAX_CREATION_CHAIN_DEPTH -> {
+                log.warn(LOG_CREATION_CHAIN_BLOCKED, rule.id, issueKey, MAX_CREATION_CHAIN_DEPTH)
                 ActionExecutionResult(ActionExecutionStatus.SKIPPED, emptyList())
             }
             isConditionUnmet(rule, issueKey) -> {
@@ -256,9 +266,9 @@ class ActionExecutor(
                     }
                 is Action.CreateIssueAction ->
                     if (action.asSubtask) {
-                        attemptIssueMutation(issueKey) { key -> createIssue(action, key, env) }
+                        attemptIssueMutation(issueKey) { key -> createIssue(action, issueKey, key, env) }
                     } else {
-                        attemptPortCall(issueKey) { createIssue(action, null, env) }
+                        attemptPortCall(issueKey) { createIssue(action, issueKey, null, env) }
                     }
                 is Action.LinkIssueAction -> attemptIssueMutation(issueKey) { key -> linkIssue(action, key, env) }
                 is Action.AddWatcherAction -> attemptIssueMutation(issueKey) { key -> addWatcher(action, key, env) }
@@ -301,16 +311,23 @@ class ActionExecutor(
         }
     }
 
-    /** 룰 프로젝트에 이슈를 만든다(R9 단계 C). [parentKey] 가 있으면 그 이슈의 하위 작업. 요약은 템플릿 치환. */
+    /**
+     * 룰 프로젝트에 이슈를 만든다(R9 단계 C). [parentKey] 가 있으면 그 이슈의 하위 작업. 요약은 템플릿 치환.
+     * 만든 이슈는 트리거 이슈([triggerIssueKey]) 깊이 + 1 로 [creationLineage] 에 기록한다 — 그 이슈가 다시 룰을
+     * 부르면 [execute] 가 깊이를 본다.
+     */
     private fun createIssue(
         action: Action.CreateIssueAction,
+        triggerIssueKey: String?,
         parentKey: String?,
         env: ExecutionEnv,
     ) {
         val summary = templateRenderer.render(action.summary, env.context)
-        issueMutationPort.createIssue(
-            CreateIssueCommand(env.actorId, env.projectKey, action.issueTypeKey, summary, parentKey, env.dryRun),
-        )
+        val result =
+            issueMutationPort.createIssue(
+                CreateIssueCommand(env.actorId, env.projectKey, action.issueTypeKey, summary, parentKey, env.dryRun),
+            )
+        if (result.applied) creationLineage.record(result.issueKey, creationLineage.depthOf(triggerIssueKey) + 1)
     }
 
     /**
@@ -432,6 +449,12 @@ class ActionExecutor(
          */
         const val LOG_CROSS_PROJECT_BLOCKED =
             "automation_action_executor_cross_project_blocked ruleId={} projectKey={} issueKey={}"
+
+        /** 자동화가 만든 이슈가 다시 룰을 부르는 연쇄의 최대 깊이 — 워커 `MAX_EXECUTION_DEPTH` 와 같은 값. */
+        const val MAX_CREATION_CHAIN_DEPTH = 10
+
+        const val LOG_CREATION_CHAIN_BLOCKED =
+            "automation_action_executor_creation_chain_blocked ruleId={} issueKey={} maxDepth={}"
 
         /** 이슈가 필요한 액션인데 triggerEvent 에서 이슈 키를 찾지 못했을 때의 실패 사유. */
         const val FAILURE_ISSUE_KEY_MISSING = "ISSUE_KEY_MISSING"
@@ -563,3 +586,36 @@ data class ActionOutcome(
     val success: Boolean,
     val error: String?,
 )
+
+/**
+ * 자동화(CREATE_ISSUE)가 만든 이슈 키 → 생성 깊이(R9 단계 C 리뷰 B1).
+ *
+ * `ISSUE_CREATED` 룰이 이슈를 만들면 새 이슈가 그 룰을 다시 부른다. 키가 매번 달라 워커의 (ruleId, issueKey)
+ * 억제창이 못 끊고, 워커의 `executionDepth` 는 이슈 이벤트 왕복에서 0 으로 돌아간다(워커 KDoc 「한계」). 그래서
+ * 만든 이슈마다 「트리거 이슈 깊이 + 1」을 기억하고, 깊이가 [ActionExecutor] `MAX_CREATION_CHAIN_DEPTH` 에 닿은 이슈가
+ * 트리거면 실행하지 않는다. 사람이 만든 이슈는 기록이 없어 깊이 0 이다. 기록은 [TTL] 뒤 접근 시 정리된다.
+ *
+ * ponytail: 인스턴스 로컬 메모리(재시작 시 잊음 · 다중 인스턴스면 인스턴스별) — 워커 억제창과 같은 단일 호스트 전제.
+ * 다중 인스턴스가 되면 `IssueCreated` 이벤트에 생성 깊이를 실어 워커가 이어받게 바꾼다(cross-BC 이벤트 계약 변경).
+ */
+private class CreationLineage {
+    private val depths = ConcurrentHashMap<String, Pair<Int, Instant>>()
+
+    fun depthOf(issueKey: String?): Int {
+        val entry = issueKey?.let { depths[it] } ?: return 0
+        return if (entry.second.isAfter(Instant.now().minus(TTL))) entry.first else 0
+    }
+
+    fun record(
+        issueKey: String,
+        depth: Int,
+    ) {
+        val now = Instant.now()
+        depths.entries.removeIf { it.value.second.isBefore(now.minus(TTL)) }
+        depths[issueKey] = depth to now
+    }
+
+    private companion object {
+        val TTL: Duration = Duration.ofMinutes(10)
+    }
+}

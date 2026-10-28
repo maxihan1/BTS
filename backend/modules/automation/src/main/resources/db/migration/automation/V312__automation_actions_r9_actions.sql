@@ -23,5 +23,6 @@ ALTER TABLE automation_actions ADD CONSTRAINT ck_automation_actions_action_type 
     )
 );
 
--- COMMENT 재발행 — 살아있는 DB 객체의 「5종」 drift 방지(V306 · V311 동형).
+-- COMMENT 재발행 — 살아있는 DB 객체의 「5종」 drift 방지(V306 · V311 동형). V306 이 TABLE COMMENT 에도 「5종」을 박았다.
+COMMENT ON TABLE  automation_actions             IS 'AutomationRule 액션 — 룰당 순서대로 실행하는 9종 액션(FR-AT-02, FR-AT-07, R9 단계 C)';
 COMMENT ON COLUMN automation_actions.action_type IS '액션 종류 — CHECK 9종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS/TRANSITION/CREATE_ISSUE/LINK_ISSUE/ADD_WATCHER)';

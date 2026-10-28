@@ -734,7 +734,8 @@ class ActionExecutorTest : DescribeSpec({
         }
 
         it("ADD_WATCHER fromField=assignee 는 룰 actor 가시성 스냅샷의 담당자를 추가한다") {
-            val rule = newRule()
+            // createdBy 와 actor 를 갈라 actor 쪽에만 시드 — 조회 주체가 createdBy 로 바뀌면 스냅샷이 없어 실패한다.
+            val rule = ruleWithDistinctActor(createdBy = UUID.randomUUID(), actorUserId = UUID.randomUUID())
             val assignee = UUID.randomUUID()
             issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", issueSnapshot(assigneeId = assignee))
             every { actionRepository.findByRuleId(rule.id) } returns
@@ -743,6 +744,43 @@ class ActionExecutorTest : DescribeSpec({
             executor.execute(rule, issueEvent("PROJ-1"))
 
             issueMutationPort.addWatcherCalls.single().watcherUserId shouldBe assignee
+        }
+
+        it("ADD_WATCHER fromField=reporter 는 스냅샷의 보고자를 추가한다") {
+            val rule = newRule()
+            val snapshot = issueSnapshot(assigneeId = UUID.randomUUID())
+            issueSnapshotPort.seed(rule.actorUserId, "PROJ-1", snapshot)
+            every { actionRepository.findByRuleId(rule.id) } returns
+                listOf(Action.AddWatcherAction(null, Action.AddWatcherAction.FROM_REPORTER))
+
+            executor.execute(rule, issueEvent("PROJ-1"))
+
+            issueMutationPort.addWatcherCalls.single().watcherUserId shouldBe snapshot.reporterId
+        }
+
+        it("CREATE_ISSUE 연쇄(ISSUE_CREATED 룰이 이슈를 만듦)는 생성 깊이 10 을 넘으면 SKIPPED 로 끊긴다") {
+            // 새 이슈마다 키가 달라 (ruleId, issueKey) 억제창이 못 끊는 경로 — 리뷰 B1 재현.
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns listOf(Action.CreateIssueAction("후속", "task"))
+
+            var triggerKey = "PROJ-1"
+            val statuses =
+                (1..12).map {
+                    val result = executor.execute(rule, issueEvent(triggerKey))
+                    // 다음 트리거 = 방금 만든 이슈(StubIssueMutationPort 의 결정적 키). 막히면 같은 키가 다시 온다.
+                    triggerKey = "PROJ-${1000 + issueMutationPort.createIssueCalls.size}"
+                    result.status
+                }
+
+            issueMutationPort.createIssueCalls.size shouldBe 10
+            statuses.last() shouldBe ActionExecutionStatus.SKIPPED
+        }
+
+        it("사람이 만든 이슈(생성 기록 없음)는 깊이 0 이라 막히지 않는다") {
+            val rule = newRule()
+            every { actionRepository.findByRuleId(rule.id) } returns listOf(Action.CreateIssueAction("후속", "task"))
+
+            executor.execute(rule, issueEvent("PROJ-77")).status shouldBe ActionExecutionStatus.SUCCESS
         }
 
         it("ADD_WATCHER fromField=assignee 인데 미배정이면 아무것도 하지 않고 성공한다") {

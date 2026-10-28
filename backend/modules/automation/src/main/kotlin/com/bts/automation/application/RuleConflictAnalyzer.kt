@@ -83,7 +83,7 @@ class RuleConflictAnalyzer(
     /**
      * [action] 이 [target] 의 트리거를 유발할 수 있으면 `true`(스펙 FR-3 매핑 표).
      *
-     * sealed [Action] 의 5개 하위 타입에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
+     * sealed [Action] 의 하위 타입 전부에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
      * 매핑을 별도로 만들지 않는다(기존 repo/executor/response 3곳 매핑과의 중복 회피, plan DRY 노트).
      *
      * ## AssignAction → ISSUE_ASSIGNED 만 엣지 (R9, 코드리뷰 C1 의 갱신)
