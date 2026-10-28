@@ -252,8 +252,18 @@ describe('automationRuleResponseSchema — conflicts 부재 (GET 단건, FR-AT-0
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('triggerTypeSchema', () => {
-  it('6종 트리거 타입 모두 파싱 성공한다', () => {
-    const validTypes = ['ISSUE_CREATED', 'ISSUE_UPDATED', 'ISSUE_COMMENTED', 'SCHEDULED', 'WEBHOOK', 'PR_MERGED']
+  it('9종 트리거 타입 모두 파싱 성공한다', () => {
+    const validTypes = [
+      'ISSUE_CREATED',
+      'ISSUE_UPDATED',
+      'ISSUE_TRANSITIONED',
+      'ISSUE_ASSIGNED',
+      'ISSUE_COMMENTED',
+      'MANUAL',
+      'SCHEDULED',
+      'WEBHOOK',
+      'PR_MERGED',
+    ]
     for (const type of validTypes) {
       expect(() => triggerTypeSchema.parse(type)).not.toThrow()
     }
@@ -349,6 +359,28 @@ describe('serializeTriggerConfig', () => {
   // 경로(PR-D 입력 UI 도입 이후 managed key 전환)는 아래 'baseConfigJson 병합' describe 참조.
   it('PR_MERGED: targetBranch 를 지정하지 않으면 빈 객체를 반환한다(미지정=전체 브랜치)', () => {
     expect(serializeTriggerConfig('PR_MERGED')).toBe('{}')
+  })
+
+  it('ISSUE_ASSIGNED · MANUAL 은 입력을 무시하고 빈 객체를 반환한다 (R9)', () => {
+    expect(serializeTriggerConfig('ISSUE_ASSIGNED', { fields: ['x'] })).toBe('{}')
+    expect(serializeTriggerConfig('MANUAL')).toBe('{}')
+  })
+
+  it('ISSUE_TRANSITIONED 는 비지 않은 fromStates/toStates 만 싣는다 (R9)', () => {
+    expect(serializeTriggerConfig('ISSUE_TRANSITIONED', { fromStates: ['open'], toStates: ['done'] })).toBe(
+      JSON.stringify({ fromStates: ['open'], toStates: ['done'] }),
+    )
+    expect(serializeTriggerConfig('ISSUE_TRANSITIONED', { fromStates: [], toStates: ['done'] })).toBe(
+      JSON.stringify({ toStates: ['done'] }),
+    )
+    expect(serializeTriggerConfig('ISSUE_TRANSITIONED', { fromStates: [], toStates: [] })).toBe('{}')
+  })
+
+  it('ISSUE_TRANSITIONED 편집 — 체크를 모두 풀면 base 의 상태 키가 지워지고 모르는 키는 남는다 (R9)', () => {
+    const base = JSON.stringify({ fromStates: ['open'], toStates: ['done'], futureKey: 1 })
+    expect(serializeTriggerConfig('ISSUE_TRANSITIONED', { fromStates: [], toStates: [] }, base)).toBe(
+      JSON.stringify({ futureKey: 1 }),
+    )
   })
 })
 

@@ -156,6 +156,39 @@ export async function deleteAutomationRule(projectKey: string, id: string): Prom
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 수동 실행(MANUAL) — 이슈 화면 「자동화」 메뉴 (R9 · JAU-5)
+// 룰 관리(MANAGE_AUTOMATION)가 아니라 이슈 열람자 권한으로 판정하는 별도 경로다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const manualRuleListSchema = z.array(z.object({ id: z.string(), name: z.string() }))
+
+/** 이슈 화면에서 실행할 수 있는 MANUAL 룰 한 건. */
+export type ManualRule = z.infer<typeof manualRuleListSchema>[number]
+
+/**
+ * GET /api/v1/projects/{projectKey}/automation/manual-rules — 켜진 MANUAL 룰 목록(이름만).
+ *
+ * @throws ApiError(403, AUTOMATION_ACCESS_DENIED) 프로젝트를 볼 권한이 없을 때
+ */
+export async function fetchManualRules(projectKey: string): Promise<ManualRule[]> {
+  return apiGet(`/api/v1/projects/${projectKey}/automation/manual-rules`, manualRuleListSchema)
+}
+
+/**
+ * POST …/manual-rules/{ruleId}/run — 이슈 하나로 룰을 실행 큐에 넣는다(202, 결과는 실행 이력).
+ *
+ * @throws ApiError(404, AUTOMATION_MANUAL_RUN_NOT_FOUND) 룰 · 이슈를 찾을 수 없거나 볼 수 없을 때
+ */
+export async function runManualRule(projectKey: string, ruleId: string, issueKey: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/projects/${projectKey}/automation/manual-rules/${ruleId}/run`, {
+    method: 'POST',
+    body: { issueKey },
+    headers: { 'X-XSRF-TOKEN': readXsrfToken() },
+  })
+  await throwIfNotOk(res)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // YAML GitOps export/import (FR-AT-06 D6)
 // ─────────────────────────────────────────────────────────────────────────────
 

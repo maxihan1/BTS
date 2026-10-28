@@ -5,6 +5,7 @@ import type { IssueResponse } from '@/api/issues'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueDetailPresentationMenu } from '@/components/issue/IssueDetailPresentationMenu'
+import { IssueAutomationMenu } from '@/components/automation/IssueAutomationMenu'
 import { SUMMARY_MAX_LENGTH } from '@/components/issue/create/issue-create-schema'
 import { issueDetailStrings } from '@/i18n/ko'
 
@@ -127,6 +128,8 @@ export function IssueDetailHeader({
               이슈 이동
             </Button>
           )}
+          {/* 수동 실행 자동화 규칙 — Jira 이슈 화면 ⚡ 자리 (R9 · JAU-5) */}
+          <IssueAutomationMenu projectKey={issue.projectKey} issueKey={issueKey} />
           <Button
             variant="secondary"
             size="sm"

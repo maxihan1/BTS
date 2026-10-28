@@ -38,6 +38,8 @@ import { ActionListEditor } from './ActionListEditor'
 import type { ActionFormState } from './ActionConfigEditor'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
 import { ConditionBuilder } from './ConditionBuilder'
+import { TransitionStatesPicker } from './TransitionStatesPicker'
+import type { TransitionStates } from './TransitionStatesPicker'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 문구 — BC 내 고정 한국어 (WebhookTokenModal.tsx 선례, i18n 미도입 BC 관례)
@@ -71,11 +73,17 @@ const labels = {
 /** 폼 섹션 헤더 공통 클래스 — GadgetCatalogModal.tsx 섹션 라벨 선례 동형(design-review#1) */
 const SECTION_HEADING_CLASS = 'mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground'
 
-/** 트리거 타입 6종 한국어 라벨 — backend TriggerType enum 1:1 대응 (PR_MERGED는 FR-AT-07 PR-C) */
+/**
+ * 트리거 타입 9종 한국어 라벨 — backend TriggerType enum 1:1 대응 (PR_MERGED는 FR-AT-07 PR-C).
+ * R9 — ISSUE_UPDATED 는 Jira 「필드 값 변경됨」과 같은 능력(fields 필터)이라 그 이름으로 보인다.
+ */
 const TRIGGER_LABELS: Record<TriggerType, string> = {
   ISSUE_CREATED: '이슈 생성',
-  ISSUE_UPDATED: '이슈 수정',
+  ISSUE_UPDATED: '필드 값 변경됨',
+  ISSUE_TRANSITIONED: '상태 전환됨',
+  ISSUE_ASSIGNED: '담당자 할당됨',
   ISSUE_COMMENTED: '이슈 댓글 작성',
+  MANUAL: '수동 실행 (이슈 화면 ⚡ 자동화)',
   SCHEDULED: '예약 실행 (cron)',
   WEBHOOK: '웹훅 호출',
   PR_MERGED: 'PR 병합',
@@ -158,6 +166,15 @@ interface ParsedTriggerConfig {
   cron: string
   fields: string[]
   targetBranch: string
+  fromStates: string[]
+  toStates: string[]
+}
+
+const EMPTY_TRIGGER_CONFIG: ParsedTriggerConfig = { cron: '', fields: [], targetBranch: '', fromStates: [], toStates: [] }
+
+/** JSON 값이 문자열 배열이면 문자열만 골라 돌려주고, 아니면 빈 배열. */
+function stringArrayOf(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
 /**
@@ -167,19 +184,18 @@ interface ParsedTriggerConfig {
 function parseTriggerConfig(triggerConfig: string): ParsedTriggerConfig {
   try {
     const parsed: unknown = JSON.parse(triggerConfig)
-    if (typeof parsed !== 'object' || parsed === null) {
-      return { cron: '', fields: [], targetBranch: '' }
-    }
+    if (typeof parsed !== 'object' || parsed === null) return EMPTY_TRIGGER_CONFIG
     const obj = parsed as Record<string, unknown>
-    const cron = typeof obj['cron'] === 'string' ? obj['cron'] : ''
-    const fields = Array.isArray(obj['fields'])
-      ? obj['fields'].filter((field): field is string => typeof field === 'string')
-      : []
-    const targetBranch = typeof obj['targetBranch'] === 'string' ? obj['targetBranch'] : ''
-    return { cron, fields, targetBranch }
+    return {
+      cron: typeof obj['cron'] === 'string' ? obj['cron'] : '',
+      fields: stringArrayOf(obj['fields']),
+      targetBranch: typeof obj['targetBranch'] === 'string' ? obj['targetBranch'] : '',
+      fromStates: stringArrayOf(obj['fromStates']),
+      toStates: stringArrayOf(obj['toStates']),
+    }
   } catch (error) {
     console.error('automation triggerConfig 파싱 실패', error)
-    return { cron: '', fields: [], targetBranch: '' }
+    return EMPTY_TRIGGER_CONFIG
   }
 }
 
@@ -288,6 +304,8 @@ interface TriggerFormValues {
   cron: string
   fields: string[]
   targetBranch: string
+  fromStates: string[]
+  toStates: string[]
 }
 
 /**
@@ -534,9 +552,13 @@ function FormBody({
 }: FormBodyProps): JSX.Element {
   const initialConfig = hasEditingRule(editingRule)
     ? parseTriggerConfig(editingRule.triggerConfig)
-    : { cron: '', fields: [], targetBranch: '' }
+    : EMPTY_TRIGGER_CONFIG
 
   const [fields, setFields] = useState<string[]>(initialConfig.fields)
+  const [transitionStates, setTransitionStates] = useState<TransitionStates>({
+    fromStates: initialConfig.fromStates,
+    toStates: initialConfig.toStates,
+  })
   const [fieldDraft, setFieldDraft] = useState('')
   const [actions, setActions] = useState<ActionFormState[]>(() => parseActionsFormState(editingRule))
   const [conditionTree, setConditionTree] = useState<ConditionNode>(() =>
@@ -600,7 +622,7 @@ function FormBody({
 
     const sharedPayload = buildSharedSavePayload(
       effectiveTriggerType,
-      { cron: values.cron, fields, targetBranch: values.targetBranch },
+      { cron: values.cron, fields, targetBranch: values.targetBranch, ...transitionStates },
       actions,
       conditionTree,
       actorUserId,
@@ -693,6 +715,9 @@ function FormBody({
           onRemoveField={removeField}
           showNoGitWebhooksWarning={showNoGitWebhooksWarning}
         />
+        {effectiveTriggerType === 'ISSUE_TRANSITIONED' && (
+          <TransitionStatesPicker projectKey={projectKey} value={transitionStates} onChange={setTransitionStates} />
+        )}
       </section>
 
       {/* 액션 — 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS) 추가/삭제/순서변경(FR2·FR7) */}
