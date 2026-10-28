@@ -1,5 +1,6 @@
-// 백로그·스프린트 카드 컴포넌트 — 이슈 요약 표시 + @dnd-kit 드래그/드롭 핸들
+// 백로그·스프린트 이슈 행(40px 한 줄) 컴포넌트 — 이슈 요약 · 상태 드롭다운 + @dnd-kit 드래그/드롭 핸들
 import { memo, useState } from 'react'
+import type { SyntheticEvent } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
@@ -11,6 +12,8 @@ import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
 import { IssueActionsMenu } from '@/components/issue/IssueActionsMenu'
+import { StatusCell } from '@/components/issues/cells/StatusCell'
+import type { StateCategory } from '@/components/issues/issue-visuals'
 import { CardExtraFields } from '@/components/board/BoardCard'
 import type { CardCustomFieldValues } from '@/components/board/BoardCard'
 import type { BacklogIssue } from '@/api/backlog'
@@ -108,6 +111,17 @@ export interface BacklogCardProps {
    * 있는 것이 J18 이다. 미지정이거나 그 뷰의 키가 없으면 추가 필드 층의 DOM 이 생기지 않는다.
    */
   cardLayout?: CardLayout
+  /**
+   * 워크플로우에서 해석한 상태 표시 이름 · 카테고리 (JB-L-2). 부모가 `statusMetaByKey` 로 미리
+   * 해석해 원시 값으로 넘긴다 — `typeName` 과 같은 memo 이유. 미해석이면 상태 키 원문 · 중립색.
+   */
+  statusName?: string
+  statusCategory?: StateCategory
+}
+
+/** 행 안 컨트롤의 이벤트가 행 드래그 핸들(@dnd-kit listeners)까지 올라가지 않게 한다 */
+function stopPropagation(event: SyntheticEvent): void {
+  event.stopPropagation()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -174,6 +188,8 @@ function BacklogCardInner({
   typeIconName,
   typeName,
   cardLayout,
+  statusName,
+  statusCategory,
 }: BacklogCardProps) {
   const openIssueDetail = useOpenIssueDetail()
   const resolvedSprintId = sprintId ?? null
@@ -233,17 +249,22 @@ function BacklogCardInner({
         e.preventDefault()
         setMenuOpen(true)
       }}
+      // 한 줄 40px 행 (JV-12). 행 사이 선은 부모 목록의 `divide-y` 가 긋는다
       className={cn(
-        'group flex flex-col gap-2 rounded-lg border border-border bg-card p-3 shadow-sm',
+        'group flex h-10 items-center gap-2 bg-card px-3 hover:bg-accent/50',
         'cursor-grab active:cursor-grabbing',
         isDragging && 'opacity-50',
       )}
     >
-      {/* summary — 주 정보. 드래그 중 클릭 방지 */}
+      <IssueTypeIcon iconName={typeIconName} typeName={typeName} />
+      <span className="shrink-0 text-xs text-muted-foreground">{issue.key}</span>
+
+      {/* summary — 주 정보. 남는 폭을 다 쓰고 한 줄로 자른다. 드래그 중 클릭 방지 */}
       <Link
         to="/issues/$key"
         params={{ key: issue.key }}
-        className="line-clamp-2 text-sm font-medium leading-snug text-foreground hover:underline"
+        title={issue.summary}
+        className="min-w-0 flex-1 truncate text-sm text-foreground hover:underline"
         onClick={(e) => {
           if (isDragging) {
             e.preventDefault()
@@ -255,55 +276,49 @@ function BacklogCardInner({
         {issue.summary}
       </Link>
 
-      {/* J19 2층 — 구성이 고른 추가 필드. 요약 바로 아래이고 상세(3층)보다 위다 */}
-      <CardExtraFields
-        layout={cardLayout}
-        view="BACKLOG"
-        source={{
-          epicKey: issue.epicKey,
-          priority: issue.priority,
-          labels: issue.labels,
-          originalEstimateSeconds: issue.originalEstimateSeconds,
-          assigneeName: assigneeName ?? null,
-          typeName,
-          customFields: issue.customFields,
-        }}
-      />
-
-      {/* 라벨 칩 행 — 라벨이 없으면 DOM 자체가 없다 (`CardLabelChips` FR9) */}
-      <CardLabelChips labels={issue.labels} />
-
-      {/* 하단 행: [유형 아이콘][issueKey] — [P{priority}][추정][담당자] (FR7) */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1">
-          <IssueTypeIcon iconName={typeIconName} typeName={typeName} />
-          <span className="text-xs text-muted-foreground">{issue.key}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span
-            // FR19 를 이 칩에도 적용한다 — 맨 span 은 role=generic 이라 aria-label 이 무효고,
-            // 스크린리더가 "우선순위 3" 이 아니라 "P3" 만 읽는다. 선재 결함이지만 FR17 이
-            // 이미 이 줄의 라운드를 정렬하며 사정거리로 끌어왔고, 바로 옆 형제(추정 배지)만
-            // 고치면 같은 행에 같은 결함이 남는다.
-            role="img"
-            aria-label={`우선순위 ${issue.priority}`}
-            className="shrink-0 rounded-sm px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
-          >
-            P{issue.priority}
-          </span>
-          {/* 추정 배지 — 미추정(null)이면 DOM 자체가 없다 (`CardEstimateBadge` FR10) */}
-          <CardEstimateBadge seconds={issue.originalEstimateSeconds} />
-          <AssigneeSlot assigneeId={issue.assigneeId} assigneeName={assigneeName} />
-          <IssueActionsMenu
-            issueKey={issue.key}
-            version={issue.version}
-            priority={issue.priority}
-            assigneeId={issue.assigneeId}
-            open={menuOpen}
-            onOpenChange={setMenuOpen}
-          />
-        </div>
+      {/* J19 2층(구성이 고른 추가 필드) + 라벨 칩 — 한 줄을 넘치면 잘린다. 좁은 화면에선 숨긴다 */}
+      <div className="hidden max-h-6 min-w-0 shrink items-center gap-1 overflow-hidden md:flex">
+        <CardExtraFields
+          layout={cardLayout}
+          view="BACKLOG"
+          source={{
+            epicKey: issue.epicKey,
+            priority: issue.priority,
+            labels: issue.labels,
+            originalEstimateSeconds: issue.originalEstimateSeconds,
+            assigneeName: assigneeName ?? null,
+            typeName,
+            customFields: issue.customFields,
+          }}
+        />
+        {/* 라벨이 없으면 DOM 자체가 없다 (`CardLabelChips` FR9) */}
+        <CardLabelChips labels={issue.labels} />
       </div>
+
+      {/* 상태 드롭다운 (JB-L-2) — 목록 F9 셀 그대로. Space · 포인터가 행 드래그를 시작하지 않게 끊는다 */}
+      <span className="shrink-0" onKeyDown={stopPropagation} onPointerDown={stopPropagation}>
+        <StatusCell issue={issue} statusName={statusName} category={statusCategory} />
+      </span>
+
+      {/* 추정 배지 — 미추정(null)이면 DOM 자체가 없다 (`CardEstimateBadge` FR10) */}
+      <CardEstimateBadge seconds={issue.originalEstimateSeconds} />
+      <span
+        // FR19 — 맨 span 은 role=generic 이라 aria-label 이 무효고 스크린리더가 "P3" 만 읽는다
+        role="img"
+        aria-label={`우선순위 ${issue.priority}`}
+        className="shrink-0 rounded-sm px-1 py-0.5 text-xs text-muted-foreground ring-1 ring-border"
+      >
+        P{issue.priority}
+      </span>
+      <AssigneeSlot assigneeId={issue.assigneeId} assigneeName={assigneeName} />
+      <IssueActionsMenu
+        issueKey={issue.key}
+        version={issue.version}
+        priority={issue.priority}
+        assigneeId={issue.assigneeId}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+      />
     </div>
   )
 }
@@ -313,15 +328,16 @@ function BacklogCardInner({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * 백로그·스프린트 칸의 개별 이슈 카드.
+ * 백로그·스프린트 칸의 개별 이슈 행 — Jira 백로그처럼 **40px 한 줄**이다 (R3 · JV-12).
  *
- * - summary를 주 정보로(2줄 truncate), 라벨 칩 행 + 하단 행(유형 아이콘·issueKey·우선순위·
- *   추정·담당자)을 보조로 표시한다 (FR-UX-14 F14 Task 4).
+ * - 한 줄 순서: 유형 아이콘 · issueKey · summary(남는 폭, 1줄 truncate) · 추가 필드 + 라벨(md 이상) ·
+ *   상태 드롭다운(F9 `StatusCell`, JB-L-2) · 추정 · 우선순위 · 담당자 · `⋯` 작업 메뉴.
+ *   종전 3단 카드(≈110px)는 보드 카드 문법이라 한 화면에 이슈가 약 1/2.6 만 보였다.
  * - 보드 카드(`BoardCard`)와 대부분 동형이지만 **`P{priority}` 칩을 그대로 유지**한다 —
  *   보드는 컬럼 자체가 우선순위 정보를 대신하지 않지만, 백로그는 스프린트 계획 단계에서
  *   우선순위를 한눈에 봐야 하므로 칩을 없애지 않는다.
- * - **J19 3층 구조**(부채 177 Task 20). 1층 요약 → 2층 `CardExtraFields`(보드와 **공유**하는
- *   조각) → 3층 라벨 칩 행 + 하단 상세 행. 2층은 `cardLayout` 의 **`BACKLOG` 스코프만** 읽는다 —
+ * - `CardExtraFields`(보드와 **공유**하는 J19 2층 조각)는 한 줄 안에 인라인으로 들어간다.
+ *   `cardLayout` 의 **`BACKLOG` 스코프만** 읽는다 —
  *   같은 보드의 보드 카드와 **다른 필드 집합**을 가질 수 있는 것이 J18 이다.
  * - 라벨·추정 배지는 각각 `CardLabelChips`/`CardEstimateBadge`(보드와 공유) 에 위임한다 —
  *   값이 없으면 두 컴포넌트 모두 DOM 자체를 만들지 않는다.

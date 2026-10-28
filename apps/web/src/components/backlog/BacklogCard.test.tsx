@@ -1,7 +1,7 @@
 // BacklogCard 컴포넌트 단위 테스트 — 이슈 정보 표시·드래그 affordance·이슈 상세 링크
 import { describe, it, expect } from 'vitest'
 import type { ReactNode } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue } from '@/api/backlog'
@@ -63,6 +63,15 @@ interface TypeProps {
   typeName?: string
 }
 
+
+/** 라벨 칩 배지 — 같은 Badge 프리미티브인 상태 배지(`role="status"`)는 뺀다 */
+const LABEL_BADGES = '[data-slot="badge"]:not([role="status"])'
+
+/** 행 상태 드롭다운(`StatusCell`)이 mutation 훅을 쥐므로 QueryClient 가 필요하다 (R3 · JB-L-2) */
+function withQueryClient({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+}
+
 function renderCard(
   issue: BacklogIssue = baseIssue,
   context: 'backlog' | 'sprint' = 'backlog',
@@ -81,6 +90,7 @@ function renderCard(
         typeName={type?.typeName ?? issue.typeKey}
       />
     </DndContext>,
+    { wrapper: withQueryClient },
   )
 }
 
@@ -206,7 +216,8 @@ describe('BacklogCard — S5 유형·라벨·추정 (F14 Task 4)', () => {
   it('S5c: 라벨이 없으면 라벨 칩 행 DOM이 없다', () => {
     renderCard({ ...baseIssue, labels: [] })
     // CardLabelChips는 labels=[]면 null을 반환한다 — 행 자체가 DOM에 없어야 한다.
-    expect(document.querySelectorAll('[data-slot="badge"]')).toHaveLength(0)
+    // 상태 드롭다운 배지(`role="status"`, JB-L-2)도 Badge 라 셈에서 뺀다.
+    expect(document.querySelectorAll(LABEL_BADGES)).toHaveLength(0)
   })
 
   /**
@@ -219,7 +230,7 @@ describe('BacklogCard — S5 유형·라벨·추정 (F14 Task 4)', () => {
     renderCard({ ...baseIssue, labels: ['백엔드', '결제'] })
     expect(screen.getByText('백엔드')).toBeInTheDocument()
     expect(screen.getByText('결제')).toBeInTheDocument()
-    expect(document.querySelectorAll('[data-slot="badge"]')).toHaveLength(2)
+    expect(document.querySelectorAll(LABEL_BADGES)).toHaveLength(2)
   })
 
   it('S5d: 추정이 null이면 추정 배지 DOM이 없다', () => {
@@ -272,5 +283,64 @@ describe('BacklogCard — S6 작업 메뉴', () => {
   it('S6b: `⋯` 버튼은 이슈 키를 이름에 싣는다 (행이 여러 개라 strict mode 충돌 방지)', () => {
     renderCard()
     expect(screen.getByRole('button', { name: 'ATLAS-10 작업' })).toBeInTheDocument()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S7. 한 줄 행 + 상태 드롭다운 (JV-12 · JB-L-2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 이슈 키로 행 루트를 찾는다 */
+function rowOf(key: string): HTMLElement {
+  const row = document.querySelector<HTMLElement>(`[data-card-droppable$=":${key}"]`)
+  if (row === null) throw new Error(`${key} 행이 없다`)
+  return row
+}
+
+describe('BacklogCard — S7 한 줄 행 · 상태', () => {
+  it('S7a: 행은 40px 한 줄이다 — 카드 그림자·세로 쌓기가 없다', () => {
+    renderCard()
+    const row = document.querySelector('[data-drag-context="backlog"]')
+    expect(row).toHaveClass('h-10', 'flex', 'items-center')
+    expect(row).not.toHaveClass('flex-col')
+    expect(row).not.toHaveClass('shadow-sm')
+  })
+
+  it('S7b: 상태 드롭다운이 해석된 이름을 보이고 이슈 키로 이름 붙는다', () => {
+    render(
+      <DndContext>
+        <BacklogCard
+          issue={baseIssue}
+          context="backlog"
+          typeIconName={null}
+          typeName="task"
+          statusName="해야 할 일"
+          statusCategory="TODO"
+        />
+      </DndContext>,
+      { wrapper: withQueryClient },
+    )
+    // dnd-kit 의 공지 영역도 role=status 라 행 안으로 좁힌다
+    expect(within(rowOf('ATLAS-10')).getByRole('status')).toHaveTextContent('해야 할 일')
+    expect(screen.getByRole('button', { name: 'ATLAS-10 상태 변경, 현재 해야 할 일' })).toBeInTheDocument()
+  })
+
+  it('S7c: 상태 이름을 못 풀면 상태 키 원문을 보인다', () => {
+    renderCard()
+    expect(within(rowOf('ATLAS-10')).getByRole('status')).toHaveTextContent('todo')
+  })
+
+  it('S7d: 상태 버튼의 Space 가 행 드래그로 올라가지 않는다', () => {
+    const onRowKeyDown = vi.fn()
+    render(
+      <div onKeyDown={onRowKeyDown}>
+        <DndContext>
+          <BacklogCard issue={baseIssue} context="backlog" typeIconName={null} typeName="task" />
+        </DndContext>
+      </div>,
+      { wrapper: withQueryClient },
+    )
+    fireEvent.keyDown(screen.getByRole('button', { name: /^ATLAS-10 상태 변경/ }), { code: 'Space', key: ' ' })
+    expect(onRowKeyDown).not.toHaveBeenCalled()
   })
 })

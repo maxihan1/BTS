@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue } from '@/api/backlog'
@@ -81,6 +82,12 @@ const PROJECT_KEY = 'ATLAS'
 /** 백로그 섹션의 접기 토글 접근 이름 (하드코딩 금지 — i18n 경유) */
 const COLLAPSE_TOGGLE_NAME = backlogLabels.collapseSection(backlogLabels.backlogTitle)
 
+
+/** 행 상태 드롭다운(`StatusCell`)이 mutation 훅을 쥐므로 QueryClient 가 필요하다 (R3 · JB-L-2) */
+function withQueryClient({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+}
+
 function renderColumn(
   issues: BacklogIssue[] = [issue1, issue2],
   names: Map<string, string> = assigneeNames,
@@ -104,6 +111,7 @@ function renderColumn(
         createSprintDisabled={sprint?.createSprintDisabled}
       />
     </DndContext>,
+    { wrapper: withQueryClient },
   )
 }
 
