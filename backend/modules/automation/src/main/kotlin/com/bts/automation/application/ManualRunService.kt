@@ -64,16 +64,11 @@ class ManualRunService(
         ruleId: UUID,
         issueKey: String,
     ) {
-        if (issueKey.substringBefore('-', missingDelimiterValue = "") != projectKey) throw ManualRunNotFoundException()
-        issueSnapshotPort.fetch(actorId, issueKey) ?: throw ManualRunNotFoundException()
-        val rule = ruleRepository.findById(ruleId)
-        if (rule == null ||
-            rule.projectKey != projectKey ||
-            rule.triggerType != TriggerType.MANUAL ||
-            !rule.enabled
-        ) {
-            throw ManualRunNotFoundException()
-        }
+        val issueVisible =
+            issueKey.substringBefore('-', missingDelimiterValue = "") == projectKey &&
+                issueSnapshotPort.fetch(actorId, issueKey) != null
+        val rule = ruleRepository.findById(ruleId)?.takeIf { it.isManualRunnableIn(projectKey) }
+        if (!issueVisible || rule == null) throw ManualRunNotFoundException()
         val triggerEvent =
             objectMapper.createObjectNode().apply {
                 put("type", "manual")
@@ -84,6 +79,10 @@ class ManualRunService(
         enqueuer.enqueue(rule.id, TriggerType.MANUAL, triggerEvent)
     }
 }
+
+/** 이 프로젝트의 켜진 MANUAL 룰인가. */
+private fun AutomationRule.isManualRunnableIn(projectKey: String): Boolean =
+    this.projectKey == projectKey && triggerType == TriggerType.MANUAL && enabled
 
 /** 수동 실행 대상(이슈 · 룰)을 찾을 수 없거나 볼 수 없을 때 — 404. */
 class ManualRunNotFoundException : RuntimeException("실행할 수 있는 자동화 규칙이나 이슈를 찾을 수 없습니다.")

@@ -78,8 +78,9 @@ object TriggerMatcher {
                 .takeIf { it?.isNotBlank() == true }
                 ?.let(::projectKeyOf)
 
-        if (triggerType == null || projectKey == null) return null
-        if (triggerType == TriggerType.ISSUE_TRANSITIONED && !event.path(FIELD_CAUSE).isMissingOrNull()) return null
+        val isStatusMigration =
+            triggerType == TriggerType.ISSUE_TRANSITIONED && !event.path(FIELD_CAUSE).isMissingOrNull()
+        if (triggerType == null || projectKey == null || isStatusMigration) return null
 
         val updatedFields =
             if (triggerType == TriggerType.ISSUE_UPDATED) parseFieldArray(event, FIELD_FIELDS) else emptySet()

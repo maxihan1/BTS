@@ -39,8 +39,10 @@ class ManualRunController(
     @GetMapping
     fun list(
         @PathVariable projectKey: String,
-    ): List<ManualRuleResponse> =
-        service.listRunnable(currentActorId(), projectKey).map { ManualRuleResponse(it.id, it.name) }
+    ): List<ManualRuleResponse> {
+        val rules = service.listRunnable(currentActorId(), projectKey)
+        return rules.map { ManualRuleResponse(it.id, it.name) }
+    }
 
     @PostMapping("/{ruleId}/run")
     fun run(
