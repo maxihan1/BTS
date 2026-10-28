@@ -1,23 +1,33 @@
-// IssueMutationPort prod 어댑터 — automation 액션을 기존 Issue/CommentApplicationService 위임 (FR-AT-02 Task 7)
+// IssueMutationPort prod 어댑터 — automation 액션을 기존 이슈 · 댓글 · 연결 · 관찰자 서비스에 위임 (FR-AT-02 · R9 단계 C)
 
 package com.bts.issue.adapter.outbound.automation
 
 import com.bts.issue.application.AppChangeAssigneeRequest
 import com.bts.issue.application.AppChangeVersionsRequest
+import com.bts.issue.application.CreateIssueRequest
 import com.bts.issue.application.IssueApplicationService
+import com.bts.issue.application.TransitionIssueRequest
 import com.bts.issue.application.UpdateIssueRequest
 import com.bts.issue.comment.application.CommentApplicationService
 import com.bts.issue.domain.ActorId
 import com.bts.issue.domain.IssueAccessDeniedException
 import com.bts.issue.domain.IssueKey
 import com.bts.issue.domain.IssueVersionConflictException
+import com.bts.issue.link.application.LinkApplicationService
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.watcher.application.IssueWatcherService
 import com.bts.shared.issue.AddCommentCommand
+import com.bts.shared.issue.AddWatcherCommand
 import com.bts.shared.issue.AssignCommand
+import com.bts.shared.issue.CreateIssueCommand
 import com.bts.shared.issue.IssueMutationPermissionDeniedException
 import com.bts.shared.issue.IssueMutationPort
+import com.bts.shared.issue.IssueTypeKey
+import com.bts.shared.issue.LinkIssueCommand
 import com.bts.shared.issue.MutationResult
 import com.bts.shared.issue.SetFieldCommand
 import com.bts.shared.issue.SetFixVersionsCommand
+import com.bts.shared.issue.TransitionIssueCommand
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
@@ -28,8 +38,9 @@ import org.springframework.transaction.support.TransactionTemplate
 /**
  * [IssueMutationPort] prod 구현체 (FR-AT-02 Task 7).
  *
- * automation BC 의 자동화 액션(필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정)을 issue-tracking 의 기존
- * [IssueApplicationService]/[CommentApplicationService] 유스케이스에 위임한다. 도메인
+ * automation BC 의 자동화 액션(필드 변경/담당자 배정/댓글 추가/수정 예정 버전 설정 · R9 단계 C 의 전환/생성/연결/관찰자)을
+ * issue-tracking 의 기존 [IssueApplicationService]/[CommentApplicationService]/[LinkApplicationService]/[IssueWatcherService]
+ * 유스케이스에 위임한다. 도메인
  * repository 를 직접 호출하지 않으므로 권한 검증([IssueApplicationService.assertPermission] 계열)·
  * 필드 검증·OCC(낙관적 동시성 제어)·이벤트 발행이 모두 기존 경로 그대로 강제된다
  * (PATCH 도메인 우회 금지, DEVELOPMENT.md §회귀 방지).
@@ -63,7 +74,7 @@ import org.springframework.transaction.support.TransactionTemplate
  *
  * ### dryRun — 실행 후 롤백으로 "진실한 미리보기"
  *
- * [SetFieldCommand.dryRun]/[AssignCommand.dryRun]/[AddCommentCommand.dryRun] 이 true 이면
+ * 각 커맨드의 `dryRun` 이 true 이면
  * [TransactionTemplate] 이 제공하는 [org.springframework.transaction.TransactionStatus] 에
  * `setRollbackOnly()` 를 호출해 커밋을 막는다. 위임 대상 서비스 호출 자체는 그대로 수행되므로
  * 권한 검증·필드 검증·OCC 버전 검사가 실제 경로와 동일하게 작동한다("진실한 미리보기") — 커밋과
@@ -76,11 +87,14 @@ import org.springframework.transaction.support.TransactionTemplate
  *   디코딩 책임을 진다([SetFieldCommand] KDoc 참조).
  * @param transactionTemplate 시도별 독립 트랜잭션 경계. 위 "트랜잭션 경계" 절 참조.
  *
- * 공개 메서드 4개(setField/assign/addComment/setFixVersions) + private 헬퍼 7개 = 11개.
- * TooManyFunctions 임계값과 정확히 맞물리나, [IssueMutationPort] 4 메서드를 한 어댑터가 위임하는
- * 설계([VersionApplicationService] KDoc 동형 근거) 상 클래스 분리는 과도 — Suppress 처리.
+ * @param linkApplicationService 이슈 연결 위임 대상(R9 단계 C).
+ * @param issueWatcherService 관찰자 추가 위임 대상(R9 단계 C).
+ * @param issueTypeRepository 생성 액션의 유형 키 → id 해석(읽기 전용).
+ *
+ * [IssueMutationPort] 전 메서드를 한 어댑터가 위임하는 설계([VersionApplicationService] KDoc 동형 근거)
+ * 상 클래스 분리는 과도 — TooManyFunctions Suppress 처리.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList") // 위임 대상 서비스마다 생성자 인자 하나 — 묶을 VO 가 없다
 @Component
 @Profile("prod")
 class AutomationIssueMutationAdapter(
@@ -88,6 +102,9 @@ class AutomationIssueMutationAdapter(
     private val commentApplicationService: CommentApplicationService,
     private val objectMapper: ObjectMapper,
     private val transactionTemplate: TransactionTemplate,
+    private val linkApplicationService: LinkApplicationService,
+    private val issueWatcherService: IssueWatcherService,
+    private val issueTypeRepository: IssueTypeRepository,
 ) : IssueMutationPort {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -172,6 +189,78 @@ class AutomationIssueMutationAdapter(
                     .version
             }
         return toResult(key.value, cmd.dryRun, version)
+    }
+
+    /**
+     * [cmd.toStateKey] 전환을 [IssueApplicationService.transitionIssue] 에 위임한다(R9 단계 C).
+     * 해결 · 화면 입력 없이 부른다 — 그것을 요구하는 전환은 위임 대상이 거절한다. OCC 충돌 시 1 회 재시도.
+     */
+    override fun transition(cmd: TransitionIssueCommand): MutationResult {
+        val actor = ActorId(cmd.actorUserId)
+        val key = IssueKey(cmd.issueKey)
+        val version =
+            runWithOccRetry(key, cmd.dryRun) {
+                val expectedVersion = issueApplicationService.findByKey(actor, key).version
+                issueApplicationService
+                    .transitionIssue(actor, key, TransitionIssueRequest(cmd.toStateKey, expectedVersion))
+                    .version
+            }
+        return toResult(key.value, cmd.dryRun, version)
+    }
+
+    /**
+     * [IssueApplicationService.createIssue] 에 위임한다(R9 단계 C). 보고자 = actor, 담당자는 생성 기본 규칙
+     * (자동 배정)을 따른다. [cmd.parentKey] 가 있으면 하위 작업 — 부모 UPDATE 권한 · 고아 Subtask 422 규칙이
+     * 그대로 걸린다. 결과의 [MutationResult.issueKey] 는 **만든 이슈** 키다.
+     *
+     * @throws IllegalArgumentException [cmd.issueTypeKey] 형식이 틀리거나 활성 유형이 없을 때.
+     */
+    override fun createIssue(cmd: CreateIssueCommand): MutationResult {
+        val actor = ActorId(cmd.actorUserId)
+        val created =
+            runAttempt(cmd.dryRun) {
+                val type =
+                    requireNotNull(issueTypeRepository.findByKey(IssueTypeKey(cmd.issueTypeKey))) {
+                        "unknown issue type: ${cmd.issueTypeKey}"
+                    }
+                issueApplicationService.createIssue(
+                    actor,
+                    CreateIssueRequest(
+                        projectKey = cmd.projectKey,
+                        summary = cmd.summary,
+                        reporterId = actor,
+                        typeId = type.id,
+                        parentKey = cmd.parentKey?.let(::IssueKey),
+                    ),
+                )
+            }
+        return toResult(created.key.value, cmd.dryRun, created.version)
+    }
+
+    /** [LinkApplicationService.createLink] 에 위임한다(R9 단계 C). 연결은 OCC 대상이 아니라 version 은 null. */
+    override fun linkIssues(cmd: LinkIssueCommand): MutationResult {
+        val key = IssueKey(cmd.issueKey)
+        runAttempt(cmd.dryRun) {
+            linkApplicationService.createLink(
+                actor = ActorId(cmd.actorUserId),
+                sourceKey = key,
+                targetKey = IssueKey(cmd.targetIssueKey),
+                linkTypeCode = cmd.linkTypeCode,
+            )
+        }
+        return MutationResult(issueKey = key.value, applied = !cmd.dryRun, version = null)
+    }
+
+    /**
+     * [IssueWatcherService.watch] 에 위임한다(R9 단계 C). 타인을 추가하면 actor 의 이슈 UPDATE 권한이 필요하다
+     * (위임 대상 규칙). 이미 관찰 중이면 멱등.
+     */
+    override fun addWatcher(cmd: AddWatcherCommand): MutationResult {
+        val key = IssueKey(cmd.issueKey)
+        runAttempt(cmd.dryRun) {
+            issueWatcherService.watch(key, ActorId(cmd.actorUserId), cmd.watcherUserId)
+        }
+        return MutationResult(issueKey = key.value, applied = !cmd.dryRun, version = null)
     }
 
     // ── private helpers ───────────────────────────────────────────────────────

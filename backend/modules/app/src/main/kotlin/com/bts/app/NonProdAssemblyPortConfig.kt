@@ -10,6 +10,9 @@ import com.bts.issue.adapter.outbound.automation.AutomationIssueMutationAdapter
 import com.bts.issue.adapter.outbound.automation.AutomationIssueSnapshotAdapter
 import com.bts.issue.application.IssueApplicationService
 import com.bts.issue.comment.application.CommentApplicationService
+import com.bts.issue.link.application.LinkApplicationService
+import com.bts.issue.type.repository.IssueTypeRepository
+import com.bts.issue.watcher.application.IssueWatcherService
 import com.bts.shared.issue.IssueMutationPort
 import com.bts.shared.issue.IssueSnapshotPort
 import com.bts.shared.permission.AutomationPermissionResolver
@@ -79,12 +82,18 @@ class NonProdAssemblyPortConfig {
         commentApplicationService: CommentApplicationService,
         objectMapper: ObjectMapper,
         transactionTemplate: TransactionTemplate,
+        linkApplicationService: LinkApplicationService,
+        issueWatcherService: IssueWatcherService,
+        issueTypeRepository: IssueTypeRepository,
     ): IssueMutationPort =
         AutomationIssueMutationAdapter(
             issueApplicationService = issueApplicationService,
             commentApplicationService = commentApplicationService,
             objectMapper = objectMapper,
             transactionTemplate = transactionTemplate,
+            linkApplicationService = linkApplicationService,
+            issueWatcherService = issueWatcherService,
+            issueTypeRepository = issueTypeRepository,
         )
 
     /**

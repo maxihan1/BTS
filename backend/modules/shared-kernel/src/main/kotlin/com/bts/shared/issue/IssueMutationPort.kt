@@ -1,4 +1,4 @@
-// 자동화 액션의 이슈 변경 위임 cross-BC 포트 — automation → issue-tracking (FR-AT-02)
+// 자동화 액션의 이슈 변경 위임 cross-BC 포트 — automation → issue-tracking (FR-AT-02 · R9 단계 C)
 package com.bts.shared.issue
 
 /**
@@ -25,7 +25,7 @@ package com.bts.shared.issue
  *
  * ### 실패 전달 — 예외
  *
- * 네 메서드 모두 성공 시에만 [MutationResult] 를 반환하고, 권한 거부·이슈 부재·OCC 버전
+ * 모든 메서드가 성공 시에만 [MutationResult] 를 반환하고, 권한 거부·이슈 부재·OCC 버전
  * 충돌 등 실패는 예외로 던진다. [com.bts.shared.board.IssueTransitionPort.transition] 과 동일한
  * 계약이다 — consumer(automation `ActionExecutor`)가 catch 후 실행 결과(성공/부분실패)로 매핑한다.
  *
@@ -117,4 +117,41 @@ interface IssueMutationPort {
      *   결과로 매핑한다.
      */
     fun setFixVersions(cmd: SetFixVersionsCommand): MutationResult
+
+    /**
+     * 이슈를 [TransitionIssueCommand.toStateKey] 상태로 전환한다(R9 단계 C · TRANSITION 액션).
+     *
+     * 워크플로 전환 규칙 · 검증기 · TRANSITION 권한은 issue-tracking 기존 전환 경로가 그대로 강제한다.
+     * 해결(resolution) · 화면 입력은 싣지 않는다 — 그것이 필요한 전환은 구현체가 거절하고 consumer 는 그
+     * 액션을 실패로 기록한다.
+     *
+     * @return 전환 결과. dryRun 이면 `applied=false`, `version=null`.
+     * @throws RuntimeException 전환 불가 · 권한 거부 · 이슈 부재 등.
+     */
+    fun transition(cmd: TransitionIssueCommand): MutationResult
+
+    /**
+     * 이슈(또는 하위 작업)를 만든다(R9 단계 C · CREATE_ISSUE 액션).
+     *
+     * @return 만든 이슈의 키를 [MutationResult.issueKey] 에 담는다. dryRun 이면 `applied=false`,
+     *   `version=null` 이고 키는 롤백된 가상 키다.
+     * @throws RuntimeException CREATE 권한 거부 · 유형 부재 · 하위 작업 부모 누락 등.
+     */
+    fun createIssue(cmd: CreateIssueCommand): MutationResult
+
+    /**
+     * 두 이슈를 연결한다(R9 단계 C · LINK_ISSUE 액션).
+     *
+     * @return 변경 결과. 연결은 OCC 버전 대상이 아니므로 `version` 은 항상 null 이다.
+     * @throws RuntimeException 권한 거부 · 이슈 부재 · 중복 연결 · 순환 등.
+     */
+    fun linkIssues(cmd: LinkIssueCommand): MutationResult
+
+    /**
+     * 이슈에 관찰자를 추가한다(R9 단계 C · ADD_WATCHER 액션). 이미 관찰 중이면 아무 일도 하지 않는다(멱등).
+     *
+     * @return 변경 결과. 관찰자는 OCC 버전 대상이 아니므로 `version` 은 항상 null 이다.
+     * @throws RuntimeException 권한 거부 · 이슈 부재 · 대상 사용자 부재 등.
+     */
+    fun addWatcher(cmd: AddWatcherCommand): MutationResult
 }
