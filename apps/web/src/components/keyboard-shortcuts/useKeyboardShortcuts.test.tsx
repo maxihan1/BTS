@@ -12,6 +12,12 @@ import { join } from 'node:path'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import { LEADER_TIMEOUT_MS } from './shortcuts'
 import { useContextShortcuts, useContextShortcutsStore } from './useContextShortcuts'
+import { useCreateIssueDialogStore } from '@/components/issue/createIssueDialogStore'
+
+/** `c` 가 연 생성 모달 열림 여부 — 상단바가 소유한 모달의 스토어를 읽는다 (JA-C-1) */
+function isCreateDialogOpen(): boolean {
+  return useCreateIssueDialogStore.getState().open
+}
 
 // TanStack Router useNavigate 모킹 — 라우터 컨텍스트 없이 단위 테스트 (CommandPalette.test.tsx 패턴 미러)
 const mockNavigate = vi.fn()
@@ -56,6 +62,7 @@ function renderShortcuts(enabled: boolean) {
 describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
     mockNavigate.mockReset()
+    useCreateIssueDialogStore.setState({ open: false })
     // 기본 GET 핸들러 — 개별 테스트가 필요 시 server.use()로 덮어쓴다
     server.use(http.get('/api/v1/users/me/keymap', () => HttpResponse.json(DEFAULT_KEYMAP_FIXTURE)))
   })
@@ -70,15 +77,16 @@ describe('useKeyboardShortcuts', () => {
     dispatchKey('c')
 
     expect(mockNavigate).not.toHaveBeenCalled()
+    expect(isCreateDialogOpen()).toBe(false)
   })
 
-  it('enabled=true에서 c 입력 시 새 이슈 생성 경로로 navigate한다', () => {
+  it('enabled=true에서 c 입력 시 화면을 옮기지 않고 생성 모달을 연다 (JA-C-1)', () => {
     renderShortcuts(true)
 
     dispatchKey('c')
 
-    expect(mockNavigate).toHaveBeenCalledTimes(1)
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/new' })
+    expect(isCreateDialogOpen()).toBe(true)
+    expect(mockNavigate).not.toHaveBeenCalled()
   })
 
   it('g 다음 i를 타임아웃 이내에 입력하면 내 이슈로 navigate한다', () => {
@@ -178,10 +186,10 @@ describe('useKeyboardShortcuts + useKeymap 배선 (FR-PF-03 Task-8)', () => {
     await waitFor(() => expect(queryClient.getQueryState(KEYMAP_QUERY_KEY)?.status).toBe('success'))
 
     dispatchKey('c')
-    expect(mockNavigate).not.toHaveBeenCalled()
+    expect(isCreateDialogOpen()).toBe(false)
 
     dispatchKey('n')
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/new' })
+    expect(isCreateDialogOpen()).toBe(true)
   })
 
   it('enabled=false(비로그인)이면 useKeymap이 GET을 호출하지 않고 기본 키맵으로 동작한다 (FR7)', () => {
@@ -207,7 +215,7 @@ describe('useKeyboardShortcuts + useKeymap 배선 (FR-PF-03 Task-8)', () => {
     renderShortcuts(true)
     dispatchKey('c')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/new' })
+    expect(isCreateDialogOpen()).toBe(true)
   })
 })
 
@@ -426,14 +434,14 @@ describe('useKeyboardShortcuts — 컨텍스트 단축키 폴백 (FR-UX-10 F10)'
     expect(onCursorMove).not.toHaveBeenCalled()
   })
 
-  it('전역 키는 컨텍스트보다 우선한다 — c 는 여전히 새 이슈로 간다', () => {
+  it('전역 키는 컨텍스트보다 우선한다 — c 는 여전히 생성 모달을 연다', () => {
     const onCursorMove = vi.fn()
     renderHook(() => useContextShortcuts('issue-list', { onCursorMove }))
     renderShortcuts(true)
 
     dispatchKey('c')
 
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/issues/new' })
+    expect(isCreateDialogOpen()).toBe(true)
     expect(onCursorMove).not.toHaveBeenCalled()
   })
 })

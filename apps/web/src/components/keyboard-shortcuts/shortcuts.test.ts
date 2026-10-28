@@ -12,11 +12,8 @@ import {
 } from './shortcuts'
 
 describe('resolveKeydown', () => {
-  it('c는 새 이슈 생성 navigate 액션을 반환한다', () => {
-    expect(resolveKeydown({ key: 'c' }, null, false)).toEqual({
-      kind: 'navigate',
-      to: '/issues/new',
-    })
+  it('c는 화면을 옮기지 않고 생성 모달을 여는 액션을 반환한다 (JA-C-1)', () => {
+    expect(resolveKeydown({ key: 'c' }, null, false)).toEqual({ kind: 'open-create-issue' })
   })
 
   it('/는 검색 navigate 액션을 반환한다', () => {
@@ -155,12 +152,11 @@ describe('DEFAULT_KEYMAP', () => {
 })
 
 describe('resolveKeydown — 병합 키맵(override) 발화 (FR-PF-03 Task-6)', () => {
-  it('create-issue를 n으로 재배치한 키맵 전달 시 n이 새 이슈 생성으로 navigate하고 c는 무동작한다', () => {
+  it('create-issue를 n으로 재배치한 키맵 전달 시 n이 생성 모달을 열고 c는 무동작한다', () => {
     const overrideKeymap: Keymap = { ...DEFAULT_KEYMAP, 'create-issue': 'n' }
 
     expect(resolveKeydown({ key: 'n' }, null, false, overrideKeymap)).toEqual({
-      kind: 'navigate',
-      to: '/issues/new',
+      kind: 'open-create-issue',
     })
     expect(resolveKeydown({ key: 'c' }, null, false, overrideKeymap)).toEqual({ kind: 'none' })
   })
@@ -175,10 +171,7 @@ describe('resolveKeydown — 병합 키맵(override) 발화 (FR-PF-03 Task-6)', 
   })
 
   it('keymap 인자를 생략하면 기존(기본 키맵) 동작과 동일하다 (무회귀)', () => {
-    expect(resolveKeydown({ key: 'c' }, null, false)).toEqual({
-      kind: 'navigate',
-      to: '/issues/new',
-    })
+    expect(resolveKeydown({ key: 'c' }, null, false)).toEqual({ kind: 'open-create-issue' })
   })
 
   it('FR5-a — help를 h로 재배치한 키맵에서 도움말 열림 중 h가 toggle-help, 기존 ?는 무동작한다', () => {
