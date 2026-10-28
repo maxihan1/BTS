@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { QueryKey } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { changeAssignee, updateIssue, transitionIssue } from '@/api/issues'
-import type { IssueResponse, TransitionScreenValues } from '@/api/issues'
+import type { IssueResponse, IssueTableRow, TransitionScreenValues } from '@/api/issues'
 import { ApiError } from '@/api/client'
 import { extractErrorCode, extractErrorReason } from '@/lib/extract-error-code'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -19,7 +19,7 @@ const TRANSITION_NOT_ALLOWED = 'TRANSITION_NOT_ALLOWED'
  * 나머지는 스프레드로 그대로 보존하므로 최소 계약으로 충분하다.
  */
 export interface IssueListPage {
-  content: IssueResponse[]
+  content: IssueTableRow[]
 }
 
 /** 셀 편집이 적용하는 필드 patch. undefined 인 필드는 미변경. */

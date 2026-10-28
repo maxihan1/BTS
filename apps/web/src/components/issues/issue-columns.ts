@@ -3,7 +3,7 @@ import { createElement } from 'react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { QueryKey } from '@tanstack/react-query'
 import { ISSUE_SORT_FIELDS } from '@/api/issues'
-import type { IssueResponse, IssueSortField } from '@/api/issues'
+import type { IssueSortField, IssueTableRow } from '@/api/issues'
 // 열람 숨김 판정 정본 — 상세 화면(`IssueMetaPanel.tsx:306`)과 같은 술어를 재사용한다
 import { isFieldHidden } from '@/components/issue/IssueMetaPanel'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
@@ -99,7 +99,7 @@ export interface IssueColumnDef {
   /** 필수 컬럼 여부 — true면 ColumnSelector에서 항상 표시(비활성 체크박스), 숨김 불가 */
   required: boolean
   /** 셀 렌더 함수 */
-  render: (issue: IssueResponse, ctx: IssueColumnRenderContext) => ReactNode
+  render: (issue: IssueTableRow, ctx: IssueColumnRenderContext) => ReactNode
   /**
    * 기본 폭(px) — 사용자가 드래그로 바꾸기 전의 값.
    *
@@ -146,7 +146,7 @@ const DEFAULT_TEXT_CLASS = 'text-(--text-default)'
  * (계약 §4 — 새로 만들지 않는다). 색은 `currentColor` 를 타고 내려가므로 감싸는 span 의
  * `text-type-*` 하나로 칠해진다 — `IssueTypeIcon` 을 건드리지 않는 이유다.
  */
-function renderTypeCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+function renderTypeCell(issue: IssueTableRow, ctx: IssueColumnRenderContext): ReactNode {
   return createElement(
     'span',
     { className: `inline-flex ${issueTypeColorClass(issue.typeKey)}` },
@@ -162,7 +162,7 @@ function renderTypeCell(issue: IssueResponse, ctx: IssueColumnRenderContext): Re
  * 추가로 더해 {@link IssueTable}의 행(tr) 클릭 핸들러가 중복 호출되지 않게 한다
  * (행 전체 클릭 네비게이션은 IssueTable이 tr onClick으로 별도 제공).
  */
-function renderKeyCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+function renderKeyCell(issue: IssueTableRow, ctx: IssueColumnRenderContext): ReactNode {
   return createElement(
     'a',
     {
@@ -180,7 +180,7 @@ function renderKeyCell(issue: IssueResponse, ctx: IssueColumnRenderContext): Rea
 }
 
 /** 요약 셀 렌더 — ★e2e 계약 보존(data-testid=issue-summary-{key}). 시각 주역(GAP-4) */
-function renderSummaryCell(issue: IssueResponse): ReactNode {
+function renderSummaryCell(issue: IssueTableRow): ReactNode {
   return createElement(
     'span',
     {
@@ -199,7 +199,7 @@ function renderSummaryCell(issue: IssueResponse): ReactNode {
  * (즉사 계약, FR9). 배지 마크업 정본은 {@link StatusCellDisplay} 하나뿐이라 두 경로가
  * 어긋날 수 없다.
  */
-function renderStatusCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+function renderStatusCell(issue: IssueTableRow, ctx: IssueColumnRenderContext): ReactNode {
   if (!isEditEnabled(ctx.edit)) {
     return createElement(StatusCellDisplay, {
       currentStateKey: issue.currentStateKey,
@@ -223,7 +223,7 @@ function renderStatusCell(issue: IssueResponse, ctx: IssueColumnRenderContext): 
  * 말하게 된다. 편집 경로의 차단은 {@link AssigneeCell} 이 스스로 한다(직접 렌더돼도
  * 안전하도록) — 여기서는 편집이 꺼진 경로만 메운다.
  */
-function renderAssigneeCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+function renderAssigneeCell(issue: IssueTableRow, ctx: IssueColumnRenderContext): ReactNode {
   if (!isEditEnabled(ctx.edit)) {
     return createElement(AssigneeCellDisplay, {
       assigneeName: ctx.assigneeName,
@@ -245,7 +245,7 @@ function renderAssigneeCell(issue: IssueResponse, ctx: IssueColumnRenderContext)
  * 쓰지 않는다(Maxi 확정 2026-08-04). 여기서 미리 해석해 넘기면 순수 컬럼 정의 모듈에
  * i18n 결합이 새어 들어간다.
  */
-function renderPriorityCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+function renderPriorityCell(issue: IssueTableRow, ctx: IssueColumnRenderContext): ReactNode {
   if (!isEditEnabled(ctx.edit)) {
     return createElement(PriorityCellDisplay, { priority: issue.priority })
   }
@@ -253,7 +253,7 @@ function renderPriorityCell(issue: IssueResponse, ctx: IssueColumnRenderContext)
 }
 
 /** 수정일 셀 렌더 — 사용자 dateFormat 프리셋 기준(GAP-4, 보조 정보라 subtle) */
-function renderUpdatedAtCell(issue: IssueResponse, ctx: IssueColumnRenderContext): ReactNode {
+function renderUpdatedAtCell(issue: IssueTableRow, ctx: IssueColumnRenderContext): ReactNode {
   return createElement('span', { className: SUBTLE_TEXT_CLASS }, ctx.formatDate(issue.updatedAt))
 }
 

@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown } from 'lucide-react'
 import { MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH } from '@/hooks/use-column-widths'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useDateFormat } from '@/hooks/use-date-format'
-import type { IssueResponse, IssueSortField } from '@/api/issues'
+import type { IssueSortField, IssueTableRow } from '@/api/issues'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { ISSUE_COLUMNS, ISSUE_COLUMN_DEFAULT_WIDTHS, getSortField } from './issue-columns'
@@ -46,6 +46,18 @@ export interface IssueTableSortState {
   dir: 'asc' | 'desc'
 }
 
+/**
+ * 표 한 페이지 — 목록(`IssuePage`)과 AQL 검색 결과 어댑터(`toSearchTablePage`)가 둘 다 맞는 최소 형태.
+ * `routes/issues.index.tsx` `IssueListContent` 가 받는다.
+ */
+export interface IssueTablePage {
+  content: IssueTableRow[]
+  empty: boolean
+  totalPages: number
+  first: boolean
+  last: boolean
+}
+
 /** 선택(체크박스) 상태 + 콜백 묶음 */
 export interface IssueTableSelectionProps {
   /** 특정 이슈 키의 선택 여부 */
@@ -60,13 +72,16 @@ export interface IssueTableSelectionProps {
 
 export interface IssueTableProps {
   /** 렌더할 이슈 목록 */
-  issues: IssueResponse[]
+  issues: IssueTableRow[]
   /** 현재 표시 중인 컬럼 키 목록(useColumnVisibility().visible을 그대로 전달 가능) */
   visibleColumnKeys: readonly string[]
   /** 현재 정렬 상태. null이면 정렬 미적용 */
   sort: IssueTableSortState | null
-  /** 정렬 헤더 클릭 콜백 — 다음 정렬 상태 계산(3-state 토글 등)은 호출 측 책임 */
-  onSort: (field: IssueSortField) => void
+  /**
+   * 정렬 헤더 클릭 콜백 — 다음 정렬 상태 계산(3-state 토글 등)은 호출 측 책임.
+   * 미전달이면 모든 헤더가 일반 헤더다(정렬은 AQL `ORDER BY` 가 맡는 `/search`).
+   */
+  onSort?: (field: IssueSortField) => void
   /** 선택 상태 + 콜백 */
   selection: IssueTableSelectionProps
   /** 행 네비게이션 콜백 */
@@ -274,7 +289,7 @@ function SortableHeaderCell({
 interface IssueTableHeaderRowProps {
   columns: readonly IssueColumnDef[]
   sort: IssueTableSortState | null
-  onSort: (field: IssueSortField) => void
+  onSort?: (field: IssueSortField) => void
   selectAllChecked: boolean
   onSelectAllPage: () => void
   /** 컬럼 키 → 현재 폭(px) */
@@ -311,8 +326,8 @@ function IssueTableHeaderRow({
       </TableHead>
       {columns.map((column) => {
         const width = widths[column.key] ?? column.defaultWidth
-        const sortField = getSortField(column)
-        if (sortField === undefined) {
+        const sortField = onSort === undefined ? undefined : getSortField(column)
+        if (sortField === undefined || onSort === undefined) {
           return (
             // className·aria-label 은 {@link SortableHeaderCell} 과 같은 이유다
             <TableHead key={column.key} className="relative" aria-label={column.header}>
@@ -362,7 +377,7 @@ function getCurrentRowAttrs(isCurrent: boolean): { 'data-state'?: 'selected'; 'a
 }
 
 interface IssueTableDataRowProps {
-  issue: IssueResponse
+  issue: IssueTableRow
   columns: readonly IssueColumnDef[]
   selection: IssueTableSelectionProps
   onNavigate: (key: string) => void

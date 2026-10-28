@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { fetchIssues, ISSUE_SORT_FIELDS } from '@/api/issues'
-import type { IssuePage, IssueFilterParams, IssueSortField } from '@/api/issues'
+import type { IssueFilterParams, IssueSortField } from '@/api/issues'
 import { Button } from '@/components/ui/button'
 import { useIssueSelection } from '@/hooks/use-issue-selection'
 import { useColumnVisibility } from '@/hooks/use-column-visibility'
@@ -22,7 +22,7 @@ import { BulkOperationResultDialog } from '@/components/issues/BulkOperationResu
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { IssueFilterBar } from '@/components/issues/IssueFilterBar'
 import { IssueTable } from '@/components/issues/IssueTable'
-import type { IssueTableSortState } from '@/components/issues/IssueTable'
+import type { IssueTablePage, IssueTableSortState } from '@/components/issues/IssueTable'
 import { ColumnSelector } from '@/components/issues/ColumnSelector'
 import { ISSUE_COLUMNS, ISSUE_COLUMN_DEFAULT_WIDTHS } from '@/components/issues/issue-columns'
 import type { IssueCellEditContext } from '@/components/issues/issue-columns'
@@ -256,8 +256,8 @@ function IssuePagination({ page, totalPages, isFirst, isLast, onPageChange }: Is
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface IssueListContentProps {
-  /** Spring Page 형태의 이슈 목록 데이터 */
-  data: IssuePage
+  /** 표 한 페이지 데이터 */
+  data: IssueTablePage
   /** 현재 페이지 번호 (0-indexed) */
   page: number
   /** 페이지 변경 콜백 */
@@ -274,8 +274,8 @@ interface IssueListContentProps {
   isAllPageSelected: boolean
   /** 현재 정렬 상태 — IssueTable 헤더의 aria-sort/방향 아이콘에 반영 */
   sort: IssueTableSortState | null
-  /** 정렬 헤더 클릭 콜백 */
-  onSort: (field: IssueSortField) => void
+  /** 정렬 헤더 클릭 콜백. 미전달이면 정렬 헤더가 없다(`/search`) */
+  onSort?: (field: IssueSortField) => void
   /** 재조회 진행 여부(GAP-5) — true면 표 영역을 dim 처리해 전환 중임을 알린다 */
   isFetching: boolean
   /**
@@ -301,7 +301,7 @@ interface IssueListContentProps {
  *   레이아웃 시프트 없이 전환 중임을 알린다. IssueListPage의 keepPreviousData 덕분에
  *   이전 데이터가 유지된 채 dim된다.
  */
-function IssueListContent({
+export function IssueListContent({
   data,
   page,
   onPageChange,

@@ -8,6 +8,9 @@ import { RouterProvider, createRouter, createRoute, createRootRoute, createMemor
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { searchHandlers } from '@/mocks/search-handlers'
+import { workflowHandlers } from '@/mocks/workflow-handlers'
+import { userHandlers } from '@/mocks/user-handlers'
+import { issueTypeHandlers } from '@/mocks/issue-type-handlers'
 import {
   searchAqlSyntaxErrorHandler,
   searchAqlEmptyHandler,
@@ -20,6 +23,7 @@ import { useAuthStore } from '@/auth/authStore'
 import { projectListHandlers, projectListFixtures } from '@/mocks/project-list-handlers'
 import { useActiveProject } from '@/hooks/use-active-project'
 import { SearchPage, SearchRouteAdapter } from './search'
+import { toSearchTablePage } from '@/components/search/search-table-page'
 import type { AqlHighlighterProps } from '@/components/search/AqlHighlighter'
 import { toast } from 'sonner'
 
@@ -109,7 +113,8 @@ function renderSearchPage(
 // ─────────────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  server.use(...searchHandlers)
+  // 결과 표(IssueListContent)가 담당자 이름 · 이슈 유형 · 상태 이름을 목록당 1회 조회한다 (R4)
+  server.use(...searchHandlers, ...workflowHandlers, ...userHandlers, ...issueTypeHandlers)
   useAuthStore.getState().setAccessToken('mock-access-token-test')
 })
 
@@ -155,7 +160,7 @@ describe('SearchPage — ① 정상 검색', () => {
     })
   })
 
-  it('우선순위가 priorityName으로 표시된다', async () => {
+  it('우선순위가 목록 표와 같은 한국어 표기로 표시된다', async () => {
     server.use(
       http.post('/api/v1/search/aql', () =>
         HttpResponse.json({
@@ -175,9 +180,10 @@ describe('SearchPage — ① 정상 검색', () => {
     await user.type(input, 'priority IN (2, 3)')
     await user.click(screen.getByRole('button', { name: '검색' }))
 
+    // 표기 정본은 목록 표의 PriorityCellDisplay(`issueDetailStrings.priorityNames`) — 백엔드 영어 이름은 쓰지 않는다
     await waitFor(() => {
-      expect(screen.getByText('High')).toBeInTheDocument()
-      expect(screen.getByText('Medium')).toBeInTheDocument()
+      expect(screen.getByText('높음')).toBeInTheDocument()
+      expect(screen.getByText('보통')).toBeInTheDocument()
     })
   })
 
@@ -217,6 +223,85 @@ describe('SearchPage — ① 정상 검색', () => {
     await waitFor(() => {
       expect(screen.getByRole('navigation', { name: '페이지 탐색' })).toBeInTheDocument()
     })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ①-b 목록과 같은 표 — 셀 편집 · 일괄 (R4 · JC-L-1)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('SearchPage — ①-b 결과는 목록과 같은 표', () => {
+  async function searchOpen(): Promise<ReturnType<typeof userEvent.setup>> {
+    const user = userEvent.setup()
+    renderSearchPage()
+    await user.type(screen.getByTestId('aql-input'), 'status = open')
+    await user.click(screen.getByRole('button', { name: '검색' }))
+    await screen.findByRole('table', { name: '이슈 목록' })
+    return user
+  }
+
+  it('행을 고르면 일괄 액션 바가 뜬다', async () => {
+    const user = await searchOpen()
+
+    await user.click(screen.getByTestId('select-ATLAS-1'))
+
+    expect(screen.getByRole('toolbar', { name: '일괄 액션 바' })).toHaveTextContent('1건 선택됨')
+  })
+
+  it('정렬은 AQL ORDER BY 가 맡으므로 정렬 헤더 버튼이 없다', async () => {
+    await searchOpen()
+
+    expect(screen.getByRole('columnheader', { name: '키' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '키' })).not.toBeInTheDocument()
+  })
+
+  it('version 이 실린 결과는 셀을 편집할 수 있다', async () => {
+    await searchOpen()
+
+    expect(await screen.findByRole('button', { name: /ATLAS-1 우선순위 변경/ })).toBeInTheDocument()
+  })
+
+  it('version 이 없는 행이 하나라도 있으면 셀 편집을 끈다', async () => {
+    server.use(
+      http.post('/api/v1/search/aql', () =>
+        HttpResponse.json({
+          ...DEFAULT_SEARCH_PAGE,
+          data: [SEARCH_HIT_BUG, { ...SEARCH_HIT_UNASSIGNED, version: null }],
+          meta: { page: { ...DEFAULT_SEARCH_PAGE.meta.page, totalElements: 2, totalPages: 1 } },
+        }),
+      ),
+    )
+    await searchOpen()
+
+    expect(screen.getByText('높음')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /우선순위 변경/ })).not.toBeInTheDocument()
+  })
+
+  it('필드 권한으로 가린 담당자는 「열람 권한 없음」으로 그린다', async () => {
+    server.use(
+      http.post('/api/v1/search/aql', () =>
+        HttpResponse.json({
+          ...DEFAULT_SEARCH_PAGE,
+          data: [{ ...SEARCH_HIT_BUG, assigneeId: null, restrictedFields: ['assigneeId'] }],
+          meta: { page: { ...DEFAULT_SEARCH_PAGE.meta.page, totalElements: 1, totalPages: 1 } },
+        }),
+      ),
+    )
+    await searchOpen()
+
+    expect(screen.getByTestId('cell-assignee-restricted')).toBeInTheDocument()
+  })
+})
+
+describe('toSearchTablePage', () => {
+  it('AQL 응답을 목록 표 한 페이지로 바꾸고 페이지 경계를 계산한다', () => {
+    const page = toSearchTablePage({
+      data: [SEARCH_HIT_BUG],
+      meta: { page: { number: 1, size: 20, totalElements: 40, totalPages: 2 } },
+    })
+
+    expect(page.content[0]).toMatchObject({ key: 'ATLAS-1', version: SEARCH_HIT_BUG.version })
+    expect(page).toMatchObject({ empty: false, first: false, last: true, totalPages: 2, editable: true })
   })
 })
 

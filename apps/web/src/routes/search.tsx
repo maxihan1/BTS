@@ -1,11 +1,20 @@
 // AQL 검색 페이지 — SearchPage(props 기반) + SearchRouteAdapter(URL 동기화 + filterId 딥링크) (FR-SR-02/03 D6 Task-5/6)
 import type { JSX } from 'react'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { searchAql, SEARCH_ERROR_CODES } from '@/api/search'
-import type { AqlSearchPage } from '@/api/search'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
+import { useIssueSelection } from '@/hooks/use-issue-selection'
+import { IssueBulkActionBar } from '@/components/issues/IssueBulkActionBar'
+import { BulkEditDialog } from '@/components/issues/BulkEditDialog'
+import { BulkTransitionDialog } from '@/components/issues/BulkTransitionDialog'
+import { BulkOperationResultDialog } from '@/components/issues/BulkOperationResultDialog'
+import type { IssueCellEditContext } from '@/components/issues/issue-columns'
+import { toSearchTablePage } from '@/components/search/search-table-page'
+import type { SearchTablePage } from '@/components/search/search-table-page'
+import { IssueListContent } from './issues.index'
 import { ApiError } from '@/api/client'
 import { fetchFilter } from '@/api/saved-filters'
 import { AqlHighlighter } from '@/components/search/AqlHighlighter'
@@ -130,111 +139,6 @@ function parseApiError(err: unknown): ParsedApiError {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 검색 결과 카드 컴포넌트
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface SearchResultCardProps {
-  /** 이슈 키 (ATLAS-1 형태) */
-  issueKey: string
-  /** 이슈 요약 */
-  summary: string
-  /** 현재 상태 키 */
-  currentStateKey: string
-  /** 우선순위 이름 (백엔드 priorityName 필드) */
-  priorityName: string
-  /** 카드 클릭 콜백 */
-  onNavigate: (key: string) => void
-}
-
-/**
- * AQL 검색 결과 단건 카드 컴포넌트.
- *
- * - IssueCard와 동일한 시각 클래스 사용 (rounded-lg border bg-card px-4 py-3)
- * - 상태 배지: rounded-full bg-muted
- * - 결과 클릭 시 onNavigate(key) 호출
- */
-function SearchResultCard({
-  issueKey,
-  summary,
-  currentStateKey,
-  priorityName,
-  onNavigate,
-}: SearchResultCardProps): JSX.Element {
-  return (
-    <a
-      href={`/issues/${issueKey}`}
-      aria-label={issueKey}
-      onClick={(e) => {
-        e.preventDefault()
-        onNavigate(issueKey)
-      }}
-      className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 text-sm hover:bg-muted/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span className="shrink-0 font-mono text-xs font-medium text-muted-foreground w-20">
-        {issueKey}
-      </span>
-
-      <span className="flex-1 truncate text-foreground">{summary}</span>
-
-      <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-        {currentStateKey}
-      </span>
-
-      <span className="shrink-0 text-xs text-muted-foreground">{priorityName}</span>
-    </a>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 페이지네이션 컴포넌트 (IssuePagination과 동일 패턴)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface SearchPaginationProps {
-  page: number
-  totalPages: number
-  isFirst: boolean
-  isLast: boolean
-  onPageChange: (page: number) => void
-}
-
-/** AQL 검색 결과 페이지네이션 컴포넌트. IssuePagination과 동일 패턴. */
-function SearchPagination({
-  page,
-  totalPages,
-  isFirst,
-  isLast,
-  onPageChange,
-}: SearchPaginationProps): JSX.Element {
-  return (
-    <nav className="flex items-center justify-between pt-2" aria-label="페이지 탐색">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onPageChange(page - 1)}
-        disabled={isFirst}
-        aria-label="이전 페이지"
-      >
-        이전
-      </Button>
-
-      <span className="text-sm text-muted-foreground">
-        {page + 1} / {totalPages}
-      </span>
-
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onPageChange(page + 1)}
-        disabled={isLast}
-        aria-label="다음 페이지"
-      >
-        다음
-      </Button>
-    </nav>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // SearchPage props 인터페이스
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -266,6 +170,7 @@ export interface SearchPageProps {
  * - AqlHighlighter 입력창 + 검색 버튼 + Cmd/Ctrl+Enter 힌트
  * - 빈/공백 쿼리 시 검색 버튼 disable
  * - useQuery(['search-aql', projectKey, q, page]) — placeholderData keepPrevious로 깜빡임 방지
+ * - 결과는 `/issues` 와 같은 표(`IssueListContent`) — 셀 편집 · 체크박스 · 일괄 편집/전환 (R4 · JC-L-1)
  * - 에러 위치 분리: 문법오류/미지원필드는 입력창 하단 alert, 401/403은 일반 alert
  * - 0건은 결과 영역 회색 안내(alert 아님)
  * - 로딩 "검색 중..." + 입력창/버튼 유지
@@ -306,15 +211,60 @@ export function SearchPage({
   }, [isQueryEmpty, trimmedInput, onSearch])
 
   // ── useQuery — filter-aware queryKey ─────────────────────────────────────
+  // ★queryKey 정본 — useQuery 와 셀 편집 mutation 이 **같은 값**을 써야 낙관적 patch 가 닿는다
+  // (`issues.index.tsx` listQueryKey 와 같은 이유).
+  const listQueryKey = useMemo(
+    () => ['search-aql', projectKey, submittedQuery, page],
+    [projectKey, submittedQuery, page],
+  )
   // submittedQuery가 비어 있으면 쿼리를 비활성화 (enabled=false)
-  const { data, isFetching, error } = useQuery<AqlSearchPage, Error>({
-    queryKey: ['search-aql', projectKey, submittedQuery, page],
+  const { data, isFetching, error } = useQuery<SearchTablePage, Error>({
+    queryKey: listQueryKey,
     queryFn: () =>
-      searchAql({ projectKey, query: submittedQuery, page, size: PAGE_SIZE }),
+      searchAql({ projectKey, query: submittedQuery, page, size: PAGE_SIZE }).then(toSearchTablePage),
     enabled: submittedQuery.trim().length > 0,
     placeholderData: keepPreviousData,
     retry: false,
   })
+
+  const editContext = useMemo<IssueCellEditContext>(
+    () => ({ listQueryKey, enabled: data?.editable ?? false }),
+    [listQueryKey, data?.editable],
+  )
+
+  // ── 선택 · 일괄 작업 (`issues.index.tsx` 와 같은 결선) ──────────────────────
+  const queryClient = useQueryClient()
+  const { selectedKeys, count, isSelected, toggle, selectAllOnPage, clearPageSelection, clearAll } =
+    useIssueSelection()
+  const [editOpen, setEditOpen] = useState(false)
+  const [transitionOpen, setTransitionOpen] = useState(false)
+  const [resultOpen, setResultOpen] = useState(false)
+  const [bulkOperationId, setBulkOperationId] = useState<string | null>(null)
+
+  // 쿼리를 바꾸면 이전 결과에서 고른 선택은 의미가 없다 — 페이지 이동은 선택을 유지한다
+  useEffect(() => {
+    clearAll()
+  }, [submittedQuery, clearAll])
+
+  const pageKeys = useMemo(() => data?.content.map((row) => row.key) ?? [], [data])
+  const isAllPageSelected = pageKeys.length > 0 && pageKeys.every((key) => isSelected(key))
+  const handleSelectAllPage = useCallback(() => {
+    if (isAllPageSelected) {
+      clearPageSelection(pageKeys)
+    } else {
+      selectAllOnPage(pageKeys)
+    }
+  }, [isAllPageSelected, pageKeys, clearPageSelection, selectAllOnPage])
+
+  const handleBulkSubmitted = useCallback(
+    (id: string) => {
+      setBulkOperationId(id)
+      setResultOpen(true)
+      void invalidateIssueViews(queryClient)
+      clearAll()
+    },
+    [queryClient, clearAll],
+  )
 
   // ── 에러 분류 ─────────────────────────────────────────────────────────────
   const { errorCode, detail, position } = parseApiError(error)
@@ -392,53 +342,59 @@ export function SearchPage({
         {/* 결과 렌더 — data가 있으면 isFetching 여부와 무관하게 표시.
             keepPreviousData 덕분에 새 쿼리 로딩 중에도 이전 결과가 유지된다.
             isFetching=true 시 opacity-60으로 전환 중임을 시각화한다. */}
-        {data !== undefined && (() => {
-          // envelope meta.page 로컬 변수 — data.meta.page 중첩 반복 제거
-          const pg = data.meta.page
-          const hits = data.data
-          const isEmpty = pg.totalElements === 0
-          const isFirst = pg.number === 0
-          const isLast = pg.number >= pg.totalPages - 1
-
-          return (
-            <div className={isFetching ? 'opacity-60' : undefined}>
-              {isEmpty ? (
-                /* 0건 빈 상태 — role=alert 없음(에러 아님), 결과 영역 회색 안내 */
-                <div className="py-12 text-center text-muted-foreground">
-                  <p className="text-base">검색 결과가 없습니다.</p>
-                  <p className="mt-1 text-sm">다른 쿼리를 시도해 보세요.</p>
-                </div>
-              ) : (
-                <>
-                  <ul className="space-y-2" aria-label="검색 결과">
-                    {hits.map((hit) => (
-                      <li key={hit.key}>
-                        <SearchResultCard
-                          issueKey={hit.key}
-                          summary={hit.summary}
-                          currentStateKey={hit.currentStateKey}
-                          priorityName={hit.priorityName}
-                          onNavigate={onNavigate}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-
-                  {pg.totalPages > 1 && (
-                    <SearchPagination
-                      page={page}
-                      totalPages={pg.totalPages}
-                      isFirst={isFirst}
-                      isLast={isLast}
-                      onPageChange={onPageChange}
-                    />
-                  )}
-                </>
-              )}
+        {data !== undefined &&
+          (data.empty ? (
+            /* 0건 빈 상태 — role=alert 없음(에러 아님), 결과 영역 회색 안내 */
+            <div className="py-12 text-center text-muted-foreground">
+              <p className="text-base">검색 결과가 없습니다.</p>
+              <p className="mt-1 text-sm">다른 쿼리를 시도해 보세요.</p>
             </div>
-          )
-        })()}
+          ) : (
+            <div className="space-y-2">
+              <IssueBulkActionBar
+                count={count}
+                onEdit={() => setEditOpen(true)}
+                onTransition={() => setTransitionOpen(true)}
+                onClear={clearAll}
+              />
+              <IssueListContent
+                data={data}
+                page={page}
+                onPageChange={onPageChange}
+                onNavigate={onNavigate}
+                isSelected={isSelected}
+                onToggle={toggle}
+                onSelectAllPage={handleSelectAllPage}
+                isAllPageSelected={isAllPageSelected}
+                sort={null}
+                isFetching={isFetching}
+                edit={editContext}
+              />
+            </div>
+          ))}
       </div>
+
+      <BulkEditDialog
+        issueKeys={selectedKeys}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSubmitted={handleBulkSubmitted}
+      />
+      <BulkTransitionDialog
+        issueKeys={selectedKeys}
+        open={transitionOpen}
+        onOpenChange={setTransitionOpen}
+        onSubmitted={handleBulkSubmitted}
+      />
+      <BulkOperationResultDialog
+        bulkOperationId={bulkOperationId}
+        open={resultOpen}
+        onOpenChange={(next) => {
+          setResultOpen(next)
+          // 닫힐 때 id를 null로 리셋해 재오픈 시 이전 작업 데이터 잔상을 방지한다.
+          if (!next) setBulkOperationId(null)
+        }}
+      />
     </div>
   )
 }

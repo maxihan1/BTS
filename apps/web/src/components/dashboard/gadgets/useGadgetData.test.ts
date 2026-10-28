@@ -97,6 +97,9 @@ const MOCK_HIT: AqlSearchHit = {
   priorityName: 'High',
   projectKey: PROJECT_KEY,
   updatedAt: '2026-06-25T10:00:00Z',
+  version: 0,
+  restrictedFields: [],
+  noneditableFields: [],
 }
 
 /** AqlSearchPage envelope 픽스처 생성 헬퍼 — searchAql 실제 응답 계약(`{data, meta.page}`)과 1:1 대응 */
