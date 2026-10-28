@@ -72,6 +72,7 @@
 - [x] D7. E2E — 워크플로우 스킴 5 시나리오 Playwright (스킴 CRUD + 매핑 편집 + 표준 보호 + 사용 중 차단 모달 + 프로젝트 할당) (책임. qa-engineer) — PR #35, 2026-05-29
 - [x] D8. WF-02-1 스킴을 바꾸거나 매핑을 고쳐도 이슈 상태를 옮기지 않는다 — 결함 B5 (`docs/specs/2026-10-20-workflow-jira-parity-gap.md` §1) (PR #524, 2026-10-22). *옮기지 않고 막는다 — 워크플로우가 바뀌는 이슈 타입의 이슈가 새 편성에 없는 상태에 있으면 배정·매핑 추가·삭제가 409 `SCHEME_CHANGE_STRANDS_ISSUES`. 이관 워커가 이슈 타입 축을 못 봐(장부 145) 변경과 함께 상태를 고르는 것(G14)은 기능 후보로 남는다* — **R11 D9 · D10 이 「막는다」를 「유형별로 옮긴다」로 대체**(기존 `PUT` · 매핑 추가 · 삭제 API 는 그대로 409)
 - [x] D9. R11 A — 스킴 게시 · 프로젝트 스킴 교체 + 유형별 상태 이관 API (결정 D4 · 갭 JCW-1 · 스펙 `docs/specs/2026-10-28-r11-scheme-change-status-migration.md`) (2026-10-28). *`POST /workflow-schemes/{k}/publish`(매핑 전체 교체) · `POST /projects/{p}/workflow-scheme/switch`. 상태 매핑이 모자라면 409 `strandedByType`(마법사 입력), 다 덮으면 같은 tx 에서 바꾸고 유형마다 `StatusMigrationCommand` 1건 큐잉(shared-kernel 무변경). 게시 범위는 아카이브 포함 — WF-07-4 의 스킴 매핑 잔여를 이 경로로 닫는다*
+- [x] D10. R11 B — 스킴 매핑 화면 안 초안 + 「게시」 · 유형별 상태 이관 마법사(1/2 매핑 · 2/2 진행률) · 프로젝트 스킴 교체도 같은 마법사 (2026-10-28). *매핑 추가 · 삭제가 즉시 반영되지 않고 초안에 쌓이며 미게시 변경이 있으면 이탈 경고. 409 `strandedByType` 으로 마법사를 열고 고른 매핑을 실어 다시 보낸다(`components/admin/SchemeMigrationWizard.tsx`). 브라우저 눈확인 미실시 — 배포 뒤 확인*
 
 ### §2.3 FR-WF-03 — 워크플로우 전환 validator/PostAction 런타임 결선
 

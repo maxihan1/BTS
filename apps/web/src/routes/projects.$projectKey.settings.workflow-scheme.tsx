@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { useGetAssignment, useUpdateAssignment } from '@/hooks/use-workflow-scheme-assignment'
+import { useGetAssignment, useSwitchProjectScheme } from '@/hooks/use-workflow-scheme-assignment'
 import {
   useAssignableWorkflowSchemes,
   useCreateWorkflowScheme,
@@ -29,7 +29,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { WorkflowSchemeSidebar } from '@/components/admin/WorkflowSchemeSidebar'
 import { MappingTable } from '@/components/admin/MappingTable'
 import { SchemeMetaPanel } from '@/components/admin/SchemeMetaPanel'
-import type { SchemeDetail, SchemeListItem } from '@/api/workflow-schemes'
+import { SchemeMigrationWizard } from '@/components/admin/SchemeMigrationWizard'
+import type { SchemeDetail, SchemeListItem, StatusMappingInput, StrandedIssueType } from '@/api/workflow-schemes'
 import { workflowSchemeLabels } from '@/i18n/workflow-scheme-labels'
 import { ApiError } from '@/api/client'
 import { WorkflowSchemeApiError } from '@/api/workflow-schemes'
@@ -94,9 +95,12 @@ export function ProjectWorkflowSchemeSettingsPage({
     error: assignmentError,
   } = useGetAssignment(projectKey)
   const { data: schemes, isLoading: schemesLoading, error: schemesError } = useAssignableWorkflowSchemes(projectKey)
-  const updateAssignment = useUpdateAssignment(projectKey)
+  const switchScheme = useSwitchProjectScheme(projectKey)
 
   const [selectedSchemeKey, setSelectedSchemeKey] = useState<string>('')
+  // 마법사 — 남는 상태(1/2) · 큐잉된 이관(2/2). 대상 스킴은 마법사가 열린 동안 고정한다.
+  const [pending, setPending] = useState<{ schemeKey: string; stranded: StrandedIssueType[] } | null>(null)
+  const [bulkIds, setBulkIds] = useState<string[] | null>(null)
 
   const isLoading = assignmentLoading || schemesLoading
 
@@ -140,10 +144,27 @@ export function ProjectWorkflowSchemeSettingsPage({
 
   const schemeOptions = schemes ?? []
 
+  function submit(schemeKey: string, statusMappings: StatusMappingInput[]) {
+    switchScheme.mutate(
+      { schemeKey, statusMappings },
+      {
+        onSuccess: (ids) => {
+          setPending(null)
+          if (ids.length > 0) setBulkIds(ids)
+        },
+        onError: (error) => {
+          if (error instanceof WorkflowSchemeApiError && error.strandedByType.length > 0) {
+            setPending({ schemeKey, stranded: error.strandedByType })
+          }
+        },
+      },
+    )
+  }
+
   function handleApply() {
     const target = selectedSchemeKey !== '' ? selectedSchemeKey : (assignment?.key ?? '')
     if (target === '') return
-    updateAssignment.mutate({ schemeKey: target })
+    submit(target, [])
   }
 
   return (
@@ -194,13 +215,28 @@ export function ProjectWorkflowSchemeSettingsPage({
 
             <Button
               onClick={handleApply}
-              disabled={updateAssignment.isPending}
+              disabled={switchScheme.isPending}
             >
               {workflowSchemeLabels.assignment.applyButton}
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {(pending !== null || bulkIds !== null) && (
+        <SchemeMigrationWizard
+          stranded={pending?.stranded ?? []}
+          bulkOperationIds={bulkIds}
+          isSubmitting={switchScheme.isPending}
+          onSubmit={(statusMappings) => {
+            if (pending !== null) submit(pending.schemeKey, statusMappings)
+          }}
+          onClose={() => {
+            setPending(null)
+            setBulkIds(null)
+          }}
+        />
+      )}
 
       {/* 스킴 관리 — 생성·매핑·메타 편집 (FR-WF-08 PR ⑤) */}
       <ProjectSchemeManagement projectKey={projectKey} />
