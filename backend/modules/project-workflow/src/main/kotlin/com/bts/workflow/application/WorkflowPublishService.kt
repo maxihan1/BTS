@@ -584,6 +584,10 @@ class WorkflowPublishService(
     ) {
         fun reject(reason: String): Nothing = throw WorkflowMigrationInvalidMappingException(key, reason)
 
+        // 예외마다 작업 1건이다 — 상한이 없으면 요청 하나로 빈 작업을 수천 건 큐잉할 수 있다(R11C 리뷰 S1).
+        if (exceptions.size > STATUS_MIGRATION_MAX_EXCEPTIONS) {
+            reject("예외가 ${exceptions.size}건으로 한 번에 받을 수 있는 $STATUS_MIGRATION_MAX_EXCEPTIONS 건을 넘는다")
+        }
         val defaults = mappings.map { it.fromStatusKey }.toSet()
         val draftKeys = definition.states.map { it.key }.toSet()
         val duplicated =
@@ -625,9 +629,11 @@ private fun StatusMigrationTypeFilter.without(excluded: Set<Long>): StatusMigrat
  * 기본 명령은 예외 유형을 뺀 범위를 옮기고, 예외 (프로젝트, 유형)마다 기본 매핑에 예외를 덮은 명령을 따로 만든다.
  * 범위가 겹치지 않아 한 이슈가 두 명령에 걸리지 않는다. 기본 범위가 다 빠지면 기본 명령은 없다.
  *
- * ponytail: (프로젝트, 유형)마다 명령 1건 — 같은 덮어쓰기를 공유하는 쌍을 합치지 않는다. 예외가 수십 개가 되면 묶는다.
+ * ponytail: (프로젝트, 유형)마다 명령 1건 — 같은 덮어쓰기를 공유하는 쌍을 합치지 않는다. 상한
+ * [STATUS_MIGRATION_MAX_EXCEPTIONS] 가 작업 수를 묶는다. 명령마다 범위를 따로 긁으므로 그 사이 이슈 유형이 바뀌면
+ * 그 이슈를 두 작업이 함께 놓치거나(발행 409 → 재이관) 한쪽이 실패 항목으로 남긴다 — 두 번 옮겨지지는 않는다.
  */
-internal fun splitByExceptions(
+private fun splitByExceptions(
     scopes: Map<String, StatusMigrationTypeFilter>,
     mappings: List<StatusMigrationMapping>,
     exceptions: List<ProjectTypeStatusMapping>,
@@ -679,6 +685,9 @@ data class ProjectTypeStatusMapping(
  * 없으므로, **갈라진 것을 CI 가 즉시 잡게** 하는 쪽으로 닫았다.
  */
 const val STATUS_MIGRATION_MAX_TARGETS: Long = 1000
+
+/** 한 번의 이관 요청이 받을 수 있는 예외 수. 예외마다 일괄작업 1건이라 큐잉량의 상한이다 (R11C). */
+const val STATUS_MIGRATION_MAX_EXCEPTIONS: Int = 100
 
 /**
  * 전처리를 통과한 초안. [WorkflowPublishService.prepareDraft] 의 결과다.

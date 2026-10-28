@@ -175,7 +175,7 @@ class WorkflowDraftController(
      * ### 왜 202 인가
      * 접수했다는 뜻이지 끝났다는 뜻이 아니다. 실제 이관은 issue-tracking 의 pgmq 워커가 나중에
      * 하고, 진행률은 기존 `GET /api/v1/bulk-operations/{id}` 가 돌려준다 — 그래서 본문에는 그 id
-     * 하나만 싣는다.
+     * 들만 싣는다(예외가 있으면 (프로젝트, 유형)마다 하나씩 늘어난다 · R11C).
      *
      * ### 왜 `POST /publish` 에 얹지 않았나
      * 발행 API 가 「발행하지 않고 202 를 준다」는 상태를 만들지 않기 위해서다. 경로를 나눈 덕에

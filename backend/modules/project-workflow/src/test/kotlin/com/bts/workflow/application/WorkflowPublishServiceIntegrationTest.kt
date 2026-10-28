@@ -1262,7 +1262,48 @@ class WorkflowPublishServiceIntegrationTest {
         assertThat(migrationPort.received)
             .describedAs("빈 유형 필터(exceptListed=false)를 실은 기본 명령은 아무것도 안 옮기는 작업이다")
             .singleElement()
-            .satisfies({ assertThat(it.mappings).containsExactly(StatusMigrationMapping("done", "review")) })
+            .satisfies({
+                assertThat(it.mappings).containsExactly(StatusMigrationMapping("done", "review"))
+                val only = StatusMigrationTypeFilter(setOf(type), exceptListed = false)
+                assertThat(it.projectScopes).isEqualTo(mapOf(projectKey(project) to only))
+            })
+    }
+
+    @Test
+    fun `예외 도착지가 초안에만 있는 새 상태면 400 이다 — F16 과 같은 축`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (alpha, _) = attachTwoProjects(id)
+        val fresh = "r11c-${UUID.randomUUID().toString().take(8)}"
+        insertCatalogOnlyStatus(fresh, "새 상태 $fresh")
+        draftRepository.upsert(id, draftAddingStatus(key, fresh, "새 상태 $fresh"), baseVersion = 0, updatedBy = null)
+
+        assertThatThrownBy {
+            service.migrate(
+                ACTOR,
+                key,
+                baseVersion = 0,
+                mappings = listOf(StatusMigrationMapping("done", "open")),
+                exceptions = listOf(ProjectTypeStatusMapping(projectKey(alpha), insertIssueType(), "done", fresh)),
+            )
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+        assertThat(migrationPort.received).isEmpty()
+    }
+
+    @Test
+    fun `예외가 상한을 넘으면 400 이고 포트에 닿지 않는다`() {
+        val key = seedWorkflow()
+        val id = seedWithReviewAndDraftWithoutDone(key)
+        val (alpha, _) = attachTwoProjects(id)
+        val tooMany =
+            (1..STATUS_MIGRATION_MAX_EXCEPTIONS + 1).map {
+                ProjectTypeStatusMapping(projectKey(alpha), it.toLong() + 1_000_000, "done", "review")
+            }
+
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, 0, listOf(StatusMigrationMapping("done", "open")), tooMany)
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+        assertThat(migrationPort.received).isEmpty()
     }
 
     @Test

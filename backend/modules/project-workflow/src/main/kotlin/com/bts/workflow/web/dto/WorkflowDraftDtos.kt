@@ -128,8 +128,9 @@ data class StatusMappingExceptionDto(
     @JsonProperty(required = true) val fromStatusKey: String,
     @JsonProperty(required = true) val toStatusKey: String,
 ) {
-    fun toMapping(): ProjectTypeStatusMapping =
-        ProjectTypeStatusMapping(projectKey, issueTypeId, fromStatusKey, toStatusKey)
+    fun toMapping(): ProjectTypeStatusMapping {
+        return ProjectTypeStatusMapping(projectKey, issueTypeId, fromStatusKey, toStatusKey)
+    }
 }
 
 /**
