@@ -1,10 +1,14 @@
-// 액션 1건의 타입별 조건부 편집기 — SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS (FR-AT-02 D6 Task 4, SET_FIX_VERSIONS는 FR-AT-07 PR-B)
+// 액션 1건의 타입별 조건부 편집기 — 9종 (FR-AT-02 D6 Task 4, SET_FIX_VERSIONS는 FR-AT-07 PR-B, 전환·생성·연결·관찰자는 R9 단계 C)
 import type { ChangeEvent, JSX, KeyboardEvent } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { actionTypeSchema, parseActionConfig } from '@/api/automation-rules.types'
-import type { ActionType, ActionConfigFormState, WebhookHeaderEntry } from '@/api/automation-rules.types'
+import type { ActionType, ActionConfigFormState, WatcherFromField, WebhookHeaderEntry } from '@/api/automation-rules.types'
+import { SUBTASK_HIERARCHY_LEVEL } from '@/api/issue-types'
 import { useVersions } from '@/hooks/use-versions'
+import { useIssueTypes } from '@/hooks/use-issue-types'
+import { extractStatusOptions, useProjectWorkflows } from '@/hooks/use-workflows'
+import { issueLinkStrings } from '@/i18n/ko'
 import { VersionMultiSelect } from '@/components/issue/VersionMultiSelect'
 import { ProjectMemberSelect } from './ProjectMemberSelect'
 
@@ -45,19 +49,54 @@ const TEXT = {
   fixVersionsClearLabel: '전체 해제',
   fixVersionsLoading: '버전 목록을 불러오는 중...',
   fixVersionsError: '버전 목록을 불러오지 못했습니다.',
+  transitionToStateLabel: '대상 상태',
+  transitionStatePlaceholder: '상태 선택',
+  statesLoading: '상태를 불러오는 중...',
+  statesError: '워크플로 상태를 불러오지 못했습니다.',
+  createSummaryLabel: '요약',
+  templateHint: '{{ issue.key }} 등 템플릿 변수를 사용할 수 있습니다.',
+  createTypeLabel: '이슈 유형',
+  createAsSubtaskLabel: '트리거 이슈의 하위 작업으로 만들기',
+  typesLoading: '이슈 유형을 불러오는 중...',
+  typesError: '이슈 유형을 불러오지 못했습니다.',
+  linkTypeLabel: '연결 유형',
+  linkTargetLabel: '대상 이슈 키',
+  linkTargetHint: '이 프로젝트의 이슈만 연결합니다. {{ }} 템플릿 변수를 사용할 수 있습니다.',
+  watcherSourceLabel: '관찰자로 추가할 사람',
+  watcherUserLabel: '사용자',
 } as const
+
+/** LINK_ISSUE 연결 유형 — backend LinkType 소문자 코드(IssueLinksPanel 과 같은 목록 · 라벨) */
+const LINK_TYPES = [
+  { value: 'blocks', label: issueLinkStrings.linkTypeBlocks },
+  { value: 'relates', label: issueLinkStrings.linkTypeRelates },
+  { value: 'duplicates', label: issueLinkStrings.linkTypeDuplicates },
+  { value: 'clones', label: issueLinkStrings.linkTypeClones },
+] as const
+
+/** ADD_WATCHER 관찰자 출처 select 값 — `user` 는 지정 사용자(config.fromField = null) */
+type WatcherSource = WatcherFromField | 'user'
+const WATCHER_SOURCES: readonly { readonly value: WatcherSource; readonly label: string }[] = [
+  { value: 'assignee', label: '담당자' },
+  { value: 'reporter', label: '보고자' },
+  { value: 'user', label: '지정 사용자' },
+]
 
 /** 입력 필드 공통 Tailwind 클래스 — text/select 위젯 전반에서 재사용 */
 const FIELD_CLASS =
   'w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20'
 
-/** 액션 타입 5종 한국어 라벨 — backend ActionType enum 1:1 대응 (SET_FIX_VERSIONS는 FR-AT-07 PR-B) */
+/** 액션 타입 9종 한국어 라벨 — backend ActionType enum 1:1 대응 (SET_FIX_VERSIONS는 FR-AT-07 PR-B, 뒤 4종은 R9 단계 C) */
 const ACTION_TYPE_LABELS: Record<ActionType, string> = {
   SET_FIELD: '필드 값 설정',
   ASSIGN: '담당자 지정',
   ADD_COMMENT: '댓글 추가',
   CALL_WEBHOOK: '웹훅 호출',
   SET_FIX_VERSIONS: '수정 예정 버전 설정',
+  TRANSITION: '이슈 전환',
+  CREATE_ISSUE: '이슈 생성',
+  LINK_ISSUE: '이슈 연결',
+  ADD_WATCHER: '관찰자 추가',
 }
 
 /** SET_FIELD가 지원하는 필드 6종 — backend SetFieldAction 계약(FR3, 스펙 §백엔드 계약) */
@@ -609,6 +648,220 @@ function SetFixVersionsFields({ projectKey, config, onChange, idPrefix }: SetFix
   )
 }
 
+interface ProjectFieldsProps extends TypedFieldsProps {
+  readonly projectKey: string
+}
+
+/** TRANSITION 전용 필드 — 프로젝트 워크플로 상태 select(R9 단계 C). 「상태 전환됨」 트리거 피커와 같은 목록. */
+function TransitionFields({ projectKey, config, onChange, idPrefix }: ProjectFieldsProps): JSX.Element {
+  const workflowsQuery = useProjectWorkflows(projectKey)
+  const options = useMemo(() => extractStatusOptions(workflowsQuery.data ?? []), [workflowsQuery.data])
+
+  if (workflowsQuery.isPending) return <p className="text-sm text-muted-foreground">{TEXT.statesLoading}</p>
+  if (workflowsQuery.isError) {
+    return (
+      <p className="text-sm text-destructive" role="alert">
+        {TEXT.statesError}
+      </p>
+    )
+  }
+
+  return (
+    <div>
+      <label htmlFor={`${idPrefix}-transition-state`} className="block text-sm font-medium mb-1">
+        {TEXT.transitionToStateLabel}
+      </label>
+      <select
+        id={`${idPrefix}-transition-state`}
+        aria-label={TEXT.transitionToStateLabel}
+        value={config.toState ?? ''}
+        onChange={(event) => {
+          onChange({ type: 'TRANSITION', config: { toState: event.target.value } })
+        }}
+        className={FIELD_CLASS}
+      >
+        <option value="">{TEXT.transitionStatePlaceholder}</option>
+        {options.map((option) => (
+          <option key={option.key} value={option.key}>
+            {option.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+/**
+ * CREATE_ISSUE 전용 필드 — 요약(템플릿) · 이슈 유형 · 하위 작업 여부(R9 단계 C). 이슈는 이 룰의 프로젝트에 만든다.
+ * 하위 작업 유형(hierarchyLevel -1)을 고르면 부모 없이 만들 수 없어 「하위 작업으로 만들기」를 함께 켠다.
+ */
+function CreateIssueFields({ config, onChange, idPrefix }: TypedFieldsProps): JSX.Element {
+  const typesQuery = useIssueTypes()
+
+  function emit(patch: Partial<ActionConfigFormState>): void {
+    onChange({ type: 'CREATE_ISSUE', config: { ...config, ...patch } })
+  }
+
+  function handleTypeChange(event: ChangeEvent<HTMLSelectElement>): void {
+    const key = event.target.value
+    const isSubtask = typesQuery.data?.find((type) => type.key === key)?.hierarchyLevel === SUBTASK_HIERARCHY_LEVEL
+    emit(isSubtask ? { issueTypeKey: key, asSubtask: true } : { issueTypeKey: key })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor={`${idPrefix}-create-summary`} className="block text-sm font-medium mb-1">
+          {TEXT.createSummaryLabel}
+        </label>
+        <input
+          id={`${idPrefix}-create-summary`}
+          type="text"
+          aria-label={TEXT.createSummaryLabel}
+          value={config.summary ?? ''}
+          onChange={(event) => {
+            emit({ summary: event.target.value })
+          }}
+          className={FIELD_CLASS}
+        />
+        <p className="text-xs text-muted-foreground mt-1">{TEXT.templateHint}</p>
+      </div>
+      <div>
+        <label htmlFor={`${idPrefix}-create-type`} className="block text-sm font-medium mb-1">
+          {TEXT.createTypeLabel}
+        </label>
+        {typesQuery.isPending && <p className="text-sm text-muted-foreground">{TEXT.typesLoading}</p>}
+        {typesQuery.isError && (
+          <p className="text-sm text-destructive" role="alert">
+            {TEXT.typesError}
+          </p>
+        )}
+        {typesQuery.isSuccess && (
+          <select
+            id={`${idPrefix}-create-type`}
+            aria-label={TEXT.createTypeLabel}
+            value={config.issueTypeKey ?? 'task'}
+            onChange={handleTypeChange}
+            className={FIELD_CLASS}
+          >
+            {typesQuery.data.map((type) => (
+              <option key={type.key} value={type.key}>
+                {type.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={config.asSubtask ?? false}
+          onChange={(event) => {
+            emit({ asSubtask: event.target.checked })
+          }}
+          className="h-4 w-4 cursor-pointer accent-primary"
+        />
+        {TEXT.createAsSubtaskLabel}
+      </label>
+    </div>
+  )
+}
+
+/** LINK_ISSUE 전용 필드 — 연결 유형 · 대상 이슈 키(템플릿, 룰 프로젝트 소속만 — 서버가 실행 시점에 검사)(R9 단계 C) */
+function LinkIssueFields({ config, onChange, idPrefix }: TypedFieldsProps): JSX.Element {
+  function emit(patch: Partial<ActionConfigFormState>): void {
+    onChange({ type: 'LINK_ISSUE', config: { ...config, ...patch } })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor={`${idPrefix}-link-type`} className="block text-sm font-medium mb-1">
+          {TEXT.linkTypeLabel}
+        </label>
+        <select
+          id={`${idPrefix}-link-type`}
+          aria-label={TEXT.linkTypeLabel}
+          value={config.linkTypeCode ?? 'relates'}
+          onChange={(event) => {
+            emit({ linkTypeCode: event.target.value })
+          }}
+          className={FIELD_CLASS}
+        >
+          {LINK_TYPES.map((linkType) => (
+            <option key={linkType.value} value={linkType.value}>
+              {linkType.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label htmlFor={`${idPrefix}-link-target`} className="block text-sm font-medium mb-1">
+          {TEXT.linkTargetLabel}
+        </label>
+        <input
+          id={`${idPrefix}-link-target`}
+          type="text"
+          aria-label={TEXT.linkTargetLabel}
+          value={config.targetIssueKey ?? ''}
+          onChange={(event) => {
+            emit({ targetIssueKey: event.target.value })
+          }}
+          className={FIELD_CLASS}
+        />
+        <p className="text-xs text-muted-foreground mt-1">{TEXT.linkTargetHint}</p>
+      </div>
+    </div>
+  )
+}
+
+/** ADD_WATCHER 전용 필드 — 담당자 · 보고자 · 지정 사용자 중 하나(R9 단계 C). 지정 사용자면 프로젝트 멤버 select. */
+function AddWatcherFields({ projectKey, config, onChange, idPrefix }: ProjectFieldsProps): JSX.Element {
+  const source: WatcherSource = config.fromField ?? 'user'
+
+  function handleSourceChange(event: ChangeEvent<HTMLSelectElement>): void {
+    const next = event.target.value
+    onChange({
+      type: 'ADD_WATCHER',
+      config: next === 'reporter' || next === 'assignee' ? { userId: null, fromField: next } : { userId: null, fromField: null },
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label htmlFor={`${idPrefix}-watcher-source`} className="block text-sm font-medium mb-1">
+          {TEXT.watcherSourceLabel}
+        </label>
+        <select
+          id={`${idPrefix}-watcher-source`}
+          aria-label={TEXT.watcherSourceLabel}
+          value={source}
+          onChange={handleSourceChange}
+          className={FIELD_CLASS}
+        >
+          {WATCHER_SOURCES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {source === 'user' && (
+        <ProjectMemberSelect
+          projectKey={projectKey}
+          value={config.userId ?? null}
+          onChange={(userId) => {
+            onChange({ type: 'ADD_WATCHER', config: { userId, fromField: null } })
+          }}
+          label={TEXT.watcherUserLabel}
+          id={`${idPrefix}-watcher-user`}
+        />
+      )}
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
@@ -632,7 +885,7 @@ export interface ActionConfigEditorProps {
 /**
  * 액션 1건의 타입별 조건부 편집기.
  *
- * 상단의 액션 유형 select로 5종(SET_FIELD/ASSIGN/ADD_COMMENT/CALL_WEBHOOK/SET_FIX_VERSIONS) 중
+ * 상단의 액션 유형 select로 9종({@link ACTION_TYPE_LABELS}) 중
  * 하나를 고르면, 그 아래에 타입별 서브컴포넌트가 조건부로 전환된다(`TriggerConfigFields` 선례 동형).
  * - {@link SetFieldFields} — 필드 6종 드롭다운 + 필드 타입에 맞는 값 위젯(텍스트/1~5·1~3 select/태그입력).
  *   6종 밖 field(EC10, 기존 룰에 저장된 값)는 텍스트 위젯으로 fallback해 값을 보존한다.
@@ -640,6 +893,7 @@ export interface ActionConfigEditorProps {
  * - {@link AddCommentField} — 본문 textarea + 템플릿 변수 힌트(FR5).
  * - {@link CallWebhookFields} — url·method(기본 POST)·헤더 행 추가/삭제·본문.
  * - {@link SetFixVersionsFields} — 적용 방식(교체/전체 해제) + {@link VersionMultiSelect}(FR-AT-07 PR-B).
+ * - {@link TransitionFields} · {@link CreateIssueFields} · {@link LinkIssueFields} · {@link AddWatcherFields} — R9 단계 C.
  *
  * 완전한 controlled 컴포넌트다 — `value`/`onChange`로만 상태를 주고받고, 자체 상태는 라벨 태그
  * 입력의 임시 draft에만 쓴다. 직렬화(JSON 문자열화)는 하지 않는다(상위 AutomationRuleFormDialog가
@@ -695,6 +949,14 @@ export function ActionConfigEditor({
       {value.type === 'CALL_WEBHOOK' && <CallWebhookFields config={value.config} onChange={onChange} idPrefix={idPrefix} />}
       {value.type === 'SET_FIX_VERSIONS' && (
         <SetFixVersionsFields projectKey={projectKey} config={value.config} onChange={onChange} idPrefix={idPrefix} />
+      )}
+      {value.type === 'TRANSITION' && (
+        <TransitionFields projectKey={projectKey} config={value.config} onChange={onChange} idPrefix={idPrefix} />
+      )}
+      {value.type === 'CREATE_ISSUE' && <CreateIssueFields config={value.config} onChange={onChange} idPrefix={idPrefix} />}
+      {value.type === 'LINK_ISSUE' && <LinkIssueFields config={value.config} onChange={onChange} idPrefix={idPrefix} />}
+      {value.type === 'ADD_WATCHER' && (
+        <AddWatcherFields projectKey={projectKey} config={value.config} onChange={onChange} idPrefix={idPrefix} />
       )}
     </div>
   )

@@ -24,9 +24,20 @@ export const triggerTypeSchema = z.enum([
 ])
 
 /**
- * 자동화 액션 타입 enum — backend ActionType 5종 1:1 대응 (FR-AT-02, SET_FIX_VERSIONS는 FR-AT-07 PR-B).
+ * 자동화 액션 타입 enum — backend ActionType 9종 1:1 대응 (FR-AT-02, SET_FIX_VERSIONS는 FR-AT-07 PR-B,
+ * TRANSITION · CREATE_ISSUE · LINK_ISSUE · ADD_WATCHER 는 R9 단계 C).
  */
-export const actionTypeSchema = z.enum(['SET_FIELD', 'ASSIGN', 'ADD_COMMENT', 'CALL_WEBHOOK', 'SET_FIX_VERSIONS'])
+export const actionTypeSchema = z.enum([
+  'SET_FIELD',
+  'ASSIGN',
+  'ADD_COMMENT',
+  'CALL_WEBHOOK',
+  'SET_FIX_VERSIONS',
+  'TRANSITION',
+  'CREATE_ISSUE',
+  'LINK_ISSUE',
+  'ADD_WATCHER',
+])
 
 /**
  * 액션 1건의 응답 Zod 스키마 — backend `ActionResponse` DTO 1:1 대응 (FR-AT-02).
@@ -339,6 +350,8 @@ export interface WebhookHeaderEntry {
  * - SET_FIX_VERSIONS → `versionIds`(UUID 배열, 와이어 대응) · `fixVersionsMode`(**UI 전용 —
  *   와이어에 실리지 않는 첫 필드**. `replace`/`clear` 중 어느 모드로 저장할지만 UI가 판단하는 데
  *   쓰고, {@link serializeActionConfig}가 `versionIds`로 환원해 config에는 담지 않는다)
+ * - TRANSITION → `toState` · CREATE_ISSUE → `summary`·`issueTypeKey`·`asSubtask`
+ *   · LINK_ISSUE → `linkTypeCode`·`targetIssueKey` · ADD_WATCHER → `fromField`(reporter/assignee) 또는 `userId` (R9 단계 C)
  */
 export interface ActionConfigFormState {
   field?: string
@@ -350,6 +363,23 @@ export interface ActionConfigFormState {
   headers?: WebhookHeaderEntry[]
   versionIds?: string[]
   fixVersionsMode?: 'replace' | 'clear'
+  toState?: string
+  summary?: string
+  issueTypeKey?: string
+  asSubtask?: boolean
+  linkTypeCode?: string
+  targetIssueKey?: string
+  userId?: string | null
+  /** ADD_WATCHER — null 이면 `userId` 지정 사용자 */
+  fromField?: WatcherFromField | null
+}
+
+/** ADD_WATCHER 가 이슈에서 관찰자를 끌어오는 사람 필드 — backend `AddWatcherAction.FROM_*` */
+export type WatcherFromField = 'reporter' | 'assignee'
+
+/** config 값이 문자열이면 그대로, 아니면 `fallback`. */
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback
 }
 
 /** `value`가 문자열 값만 가진 순수 객체(Record<string, string>)인지 타입 가드로 확인한다. */
@@ -413,6 +443,26 @@ export function parseActionConfig(
       const versionIds = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []
       return { versionIds, fixVersionsMode: versionIds.length === 0 ? 'clear' : 'replace' }
     }
+    case 'TRANSITION':
+      return { toState: stringOr(config['toState'], '') }
+    case 'CREATE_ISSUE':
+      return {
+        summary: stringOr(config['summary'], ''),
+        issueTypeKey: stringOr(config['issueTypeKey'], 'task'),
+        asSubtask: config['asSubtask'] === true,
+      }
+    case 'LINK_ISSUE':
+      return {
+        linkTypeCode: stringOr(config['linkTypeCode'], 'relates'),
+        targetIssueKey: stringOr(config['targetIssueKey'], ''),
+      }
+    case 'ADD_WATCHER': {
+      const userId = typeof config['userId'] === 'string' ? config['userId'] : null
+      const raw = config['fromField']
+      const fromField: WatcherFromField | null =
+        raw === 'reporter' || raw === 'assignee' ? raw : userId === null ? 'assignee' : null
+      return { userId, fromField }
+    }
   }
 }
 
@@ -450,6 +500,18 @@ export function serializeActionConfig(actionType: ActionType, config: ActionConf
       return config.fixVersionsMode === 'clear'
         ? JSON.stringify({ versionIds: [] })
         : JSON.stringify({ versionIds: config.versionIds ?? [] })
+    case 'TRANSITION':
+      return JSON.stringify({ toState: config.toState ?? '' })
+    case 'CREATE_ISSUE':
+      return JSON.stringify({
+        summary: config.summary ?? '',
+        issueTypeKey: config.issueTypeKey ?? 'task',
+        asSubtask: config.asSubtask ?? false,
+      })
+    case 'LINK_ISSUE':
+      return JSON.stringify({ linkTypeCode: config.linkTypeCode ?? 'relates', targetIssueKey: config.targetIssueKey ?? '' })
+    case 'ADD_WATCHER':
+      return config.fromField ? JSON.stringify({ fromField: config.fromField }) : JSON.stringify({ userId: config.userId ?? null })
   }
 }
 

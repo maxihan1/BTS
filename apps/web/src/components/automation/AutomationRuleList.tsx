@@ -69,13 +69,17 @@ const triggerTypeLabels: Record<TriggerType, string> = {
   PR_MERGED: 'PR 병합',
 }
 
-/** 액션 타입 → 한국어 배지 라벨 (backend ActionType 5종 1:1 대응, FR-AT-02 FR11 · SET_FIX_VERSIONS는 FR-AT-07 PR-B) */
+/** 액션 타입 → 한국어 배지 라벨 (backend ActionType 9종 1:1 대응, FR-AT-02 FR11 · SET_FIX_VERSIONS는 FR-AT-07 PR-B · 뒤 4종 R9 단계 C) */
 const actionTypeLabels: Record<ActionType, string> = {
   SET_FIELD: '필드 변경',
   ASSIGN: '담당자',
   ADD_COMMENT: '댓글',
   CALL_WEBHOOK: '웹훅',
   SET_FIX_VERSIONS: '수정 예정 버전',
+  TRANSITION: '전환',
+  CREATE_ISSUE: '이슈 생성',
+  LINK_ISSUE: '연결',
+  ADD_WATCHER: '관찰자',
 }
 
 /**
