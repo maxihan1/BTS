@@ -19,6 +19,7 @@ import com.bts.workflow.web.DataResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -103,6 +104,18 @@ class SchemeStatusMigrationController(
                 body.statusMappings.map { it.toDomain() },
             )
         return ResponseEntity.ok(DataResponse(data = SchemeMigrationResponse(ids)))
+    }
+
+    /**
+     * 이관 어댑터의 구조 검증(`require`) 백스톱 — 앞단 가드가 놓친 입력이 500 이 되지 않게 400 으로 (R11 리뷰 S5).
+     * 이 컨트롤러에만 걸린다. 여기 닿았다면 앞단 가드가 빠진 것이라 warn 으로 남긴다.
+     */
+    @ExceptionHandler(IllegalArgumentException::class)
+    fun handleInvalidMigration(ex: IllegalArgumentException): ResponseEntity<Map<String, String>> {
+        log.warn("스킴 변경 이관 입력 거부(백스톱): {}", ex.message)
+        return ResponseEntity.badRequest().body(
+            mapOf("errorCode" to SchemeErrorCodes.SCHEME_STATUS_MAPPING_INVALID, "detail" to ex.message.orEmpty()),
+        )
     }
 }
 

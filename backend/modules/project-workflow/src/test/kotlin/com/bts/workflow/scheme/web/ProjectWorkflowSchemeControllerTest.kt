@@ -106,7 +106,7 @@ class ProjectWorkflowSchemeControllerTest {
             projectId: UUID,
             projectKey: String,
             schemeKey: WorkflowSchemeKey,
-            onStranded: (Set<UUID>, List<StrandedIssueType>) -> Unit,
+            onStranded: ((Set<UUID>, List<StrandedIssueType>) -> Unit)?,
         ): ProjectWorkflowSchemeAssignment {
             capturedActor = actor
             return assignToProjectResponse ?: throw IllegalStateException("assignToProjectResponse not configured")

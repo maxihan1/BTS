@@ -8,6 +8,7 @@ import com.bts.shared.issue.StatusMigrationCommand
 import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.workflow.application.port.MigrationInFlightPort
+import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.scheme.domain.StrandedIssueType
@@ -31,9 +32,15 @@ import java.util.UUID
  *
  * 이슈 타입마다 명령 1건이다 — 타입마다 옛 워크플로우 · 새 워크플로우가 달라 같은 상태 키가 다른
  * 곳으로 갈 수 있다. 유형 필터로 좁히므로 shared-kernel 계약은 그대로다.
+ *
+ * ### 직렬화
+ * 판정(남는 이슈 · 진행 중 이관) → 쓰기는 검사-후-사용이라, 같은 프로젝트를 두 스킴으로 동시에 바꾸거나
+ * 게시와 교체가 겹치면 둘 다 통과한다(R11 리뷰 S2). 첫 읽기 **전에** 트랜잭션 advisory lock 을 잡아
+ * 스킴 변경끼리 줄을 세운다 — 락을 쥔 뒤의 읽기는 앞선 변경의 COMMIT 을 본다.
  */
 @Service
 class SchemeStatusMigrationService(
+    private val cache: WorkflowCache,
     private val schemeService: WorkflowSchemeApplicationService,
     private val projectLookupPort: ProjectLookupPort,
     private val migrationInFlightPort: MigrationInFlightPort,
@@ -54,13 +61,14 @@ class SchemeStatusMigrationService(
         schemeKey: WorkflowSchemeKey,
         mappings: List<Pair<IssueTypeId?, UUID>>,
         statusMappings: List<TypeStatusMapping>,
-    ): List<UUID> {
-        var commands: List<StatusMigrationCommand> = emptyList()
-        schemeService.replaceMappings(actor, schemeKey, mappings) { projectIds, stranded ->
-            commands = commandsFor(actor, stranded, statusMappings, projectKeysOf(projectIds))
+    ): List<UUID> =
+        cache.withKeyLock(SCHEME_CHANGE_LOCK_KEY) {
+            var commands: List<StatusMigrationCommand> = emptyList()
+            schemeService.replaceMappings(actor, schemeKey, mappings) { projectIds, stranded ->
+                commands = commandsFor(actor, stranded, statusMappings, projectKeysOf(projectIds))
+            }
+            enqueue(commands)
         }
-        return enqueue(commands)
-    }
 
     /**
      * 프로젝트 스킴을 교체하고 남는 이슈를 옮긴다.
@@ -75,13 +83,14 @@ class SchemeStatusMigrationService(
         projectKey: String,
         schemeKey: WorkflowSchemeKey,
         statusMappings: List<TypeStatusMapping>,
-    ): List<UUID> {
-        var commands: List<StatusMigrationCommand> = emptyList()
-        schemeService.assignToProject(actor, projectId, projectKey, schemeKey) { _, stranded ->
-            commands = commandsFor(actor, stranded, statusMappings, setOf(projectKey))
+    ): List<UUID> =
+        cache.withKeyLock(SCHEME_CHANGE_LOCK_KEY) {
+            var commands: List<StatusMigrationCommand> = emptyList()
+            schemeService.assignToProject(actor, projectId, projectKey, schemeKey) { _, stranded ->
+                commands = commandsFor(actor, stranded, statusMappings, setOf(projectKey))
+            }
+            enqueue(commands)
         }
-        return enqueue(commands)
-    }
 
     private fun enqueue(commands: List<StatusMigrationCommand>): List<UUID> =
         commands.map { issueStatusMigrationPort.enqueueStatusMigration(it) }.also {
@@ -99,6 +108,11 @@ class SchemeStatusMigrationService(
         statusMappings: List<TypeStatusMapping>,
         projectKeys: Set<String>,
     ): List<StatusMigrationCommand> {
+        val duplicated =
+            statusMappings.groupingBy { it.issueTypeId to it.fromStatusKey }.eachCount().filterValues { it > 1 }
+        if (duplicated.isNotEmpty()) {
+            throw SchemeStatusMappingInvalidException("같은 (이슈 타입, 출발 상태)에 매핑이 둘 이상이다 — ${duplicated.keys}")
+        }
         val byType = statusMappings.groupBy { it.issueTypeId }
         val covered =
             stranded.all { t ->
@@ -126,5 +140,15 @@ class SchemeStatusMigrationService(
                 mappings = mappings,
             )
         }
+    }
+
+    private companion object {
+        /**
+         * 스킴 변경 전역 락 키. 락 번호는 `hashCode` 라 워크플로우 키와 겹칠 수 있지만, 겹쳐도 잠깐 줄을 설 뿐이다.
+         *
+         * ponytail: 전역 락 하나 — 스킴 변경은 관리자 조작이라 드물다. 경합이 보이면 스킴 · 프로젝트별 키로.
+         * 워크플로우 발행 이관(F15 락)과는 키 공간이 달라 서로의 진행 중 이관 판정 창이 남는다(스펙 §2 잔여).
+         */
+        const val SCHEME_CHANGE_LOCK_KEY = "__scheme-change__"
     }
 }

@@ -540,7 +540,7 @@ class WorkflowSchemeApplicationService(
      * @param projectId 스킴을 배정할 프로젝트 UUID (projects.id UUID — V202 에서 BIGINT → UUID 정정).
      * @param projectKey 권한 범위 결정에 사용할 프로젝트 키 (예. "ATLAS").
      * @param schemeKey 배정할 스킴 키. 전역 템플릿이거나 [projectId] 소유여야 한다([requireAssignableTo]).
-     * @param onStranded 새 워크플로우에 없는 상태에 이슈가 남을 때의 처리기. 기본값은 409 로 막는다(R11).
+     * @param onStranded 워크플로우가 바뀌는 유형이 있을 때의 처리기. null 이면 남는 이슈를 409 로 막는다(R11).
      * @return 저장된 [ProjectWorkflowSchemeAssignment].
      * @throws WorkflowSchemeNotFoundException [schemeKey] 에 해당하는 활성 스킴이 없거나,
      *   그 스킴이 **다른 프로젝트 소유**일 때 (FR-WF-08).
@@ -550,7 +550,7 @@ class WorkflowSchemeApplicationService(
         projectId: UUID,
         projectKey: String,
         schemeKey: WorkflowSchemeKey,
-        onStranded: (Set<UUID>, List<StrandedIssueType>) -> Unit = ::rejectStranded,
+        onStranded: ((Set<UUID>, List<StrandedIssueType>) -> Unit)? = null,
     ): ProjectWorkflowSchemeAssignment {
         val actorUuid = actor.toUuid()
         // EC-1 D10 auto-assign 우회 — SYSTEM_ACTOR(nil UUID sentinel)만 권한 검사를 건너뛴다.
@@ -670,8 +670,9 @@ class WorkflowSchemeApplicationService(
      *
      * 판정과 COMMIT 사이에 들어온 전환은 잡지 못한다 — 발행 차단(`WorkflowPublishService`)과 같은 잔여 창이다.
      *
-     * [onStranded] 기본값은 막는 것이다. 스킴 게시 · 교체(R11)는 상태 매핑으로 이관을 큐잉하는 처리기를
-     * 넘긴다 — 처리기가 던지지 않고 돌아오면 변경이 그대로 진행된다.
+     * [onStranded] 가 null 이면 남는 이슈가 있을 때 막는다. 스킴 게시 · 교체(R11)는 상태 매핑으로 이관을
+     * 큐잉하는 처리기를 넘긴다 — 워크플로우가 바뀌는 유형이 하나라도 있으면 남는 목록이 비어도 불리고,
+     * 던지지 않고 돌아오면 변경이 그대로 진행된다.
      *
      * @throws SchemeChangeStrandsIssuesException 남는 이슈가 한 건이라도 있고 처리기가 기본값일 때.
      */
@@ -679,7 +680,7 @@ class WorkflowSchemeApplicationService(
         projectIds: Set<UUID>,
         before: List<SchemeIssueTypeMapping>,
         after: List<SchemeIssueTypeMapping>,
-        onStranded: (Set<UUID>, List<StrandedIssueType>) -> Unit = ::rejectStranded,
+        onStranded: ((Set<UUID>, List<StrandedIssueType>) -> Unit)? = null,
     ) {
         if (projectIds.isEmpty()) return
         val moved =
@@ -705,14 +706,17 @@ class WorkflowSchemeApplicationService(
                         statuses = rows.associate { (usage, _) -> usage.statusKey to usage.count },
                     )
                 }.sortedBy { it.issueTypeId }
-        if (stranded.isNotEmpty()) onStranded(projectIds, stranded)
+        // 처리기가 있으면 남는 이슈가 없어도 부른다 — 워크플로우가 바뀌는 유형이 있으면 진행 중인 이관과
+        // 겹치는지 봐야 한다(R11 리뷰 S1). 기본값은 여기서(대상 인스턴스 위에서) 고른다 — 기본 인자에
+        // 함수 참조를 두면 호출자가 쥔 @Transactional 프록시 위에서 돌아 필드가 비어 있다(리뷰 B1).
+        if (onStranded != null) {
+            onStranded(projectIds, stranded)
+        } else if (stranded.isNotEmpty()) {
+            rejectStranded(stranded)
+        }
     }
 
-    @Suppress("UnusedParameter")
-    private fun rejectStranded(
-        projectIds: Set<UUID>,
-        stranded: List<StrandedIssueType>,
-    ): Nothing {
+    private fun rejectStranded(stranded: List<StrandedIssueType>): Nothing {
         log.info("스킴 변경 거부 — 새 워크플로우에 없는 상태에 이슈가 남는다. stranded={}", stranded)
         throw SchemeChangeStrandsIssuesException(stranded)
     }

@@ -7,10 +7,14 @@ import com.bts.shared.issue.IssueTypeId
 import com.bts.shared.issue.StatusMigrationCommand
 import com.bts.shared.issue.StatusMigrationMapping
 import com.bts.shared.issue.StatusMigrationTypeFilter
+import com.bts.shared.permission.WorkflowSchemeAccessDeniedException
+import com.bts.shared.permission.WorkflowSchemePermission
+import com.bts.shared.permission.WorkflowSchemePermissionResolver
 import com.bts.shared.permission.WorkflowScope
 import com.bts.workflow.application.port.IssueStatusUsagePort
 import com.bts.workflow.application.port.IssueTypeStatusCount
 import com.bts.workflow.application.port.MigrationInFlightPort
+import com.bts.workflow.cache.WorkflowCache
 import com.bts.workflow.domain.StateCategory
 import com.bts.workflow.domain.Workflow
 import com.bts.workflow.domain.WorkflowState
@@ -41,6 +45,7 @@ import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -65,6 +70,8 @@ class SchemeStatusMigrationServiceTest {
     private val projectLookupPort: ProjectLookupPort = mockk()
     private val inFlightPort: MigrationInFlightPort = mockk()
     private val migrationPort: IssueStatusMigrationPort = mockk()
+    private val cache: WorkflowCache = mockk()
+    private var permissionResolver: WorkflowSchemePermissionResolver = AlwaysAllowWorkflowSchemePermissionResolver()
 
     private lateinit var service: SchemeStatusMigrationService
 
@@ -79,21 +86,26 @@ class SchemeStatusMigrationServiceTest {
     private val task = IssueTypeId(20L)
     private val bulkId = UUID.fromString("00000000-0000-0000-0000-0000000000b1")
 
-    @BeforeEach
-    fun setUp() {
+    private fun build() {
         val schemeService =
             WorkflowSchemeApplicationService(
                 schemeRepo,
                 assignmentRepo,
                 mappingRepo,
                 eventPublisher,
-                AlwaysAllowWorkflowSchemePermissionResolver(),
+                permissionResolver,
                 workflowRepo,
                 mockk<IssueTypeLookupPort>(),
                 scopeResolver,
                 usagePort,
             )
-        service = SchemeStatusMigrationService(schemeService, projectLookupPort, inFlightPort, migrationPort)
+        service = SchemeStatusMigrationService(cache, schemeService, projectLookupPort, inFlightPort, migrationPort)
+    }
+
+    @BeforeEach
+    fun setUp() {
+        build()
+        every { cache.withKeyLock<List<UUID>>(any(), any()) } answers { secondArg<() -> List<UUID>>().invoke() }
 
         every { scopeResolver.ofScheme(any()) } returns WorkflowScope.Global
         every { schemeRepo.findByKey(schemeKey) } returns scheme(schemeKey, schemeId)
@@ -187,9 +199,83 @@ class SchemeStatusMigrationServiceTest {
         val ids = service.publish(actor, schemeKey, listOf<Pair<IssueTypeId?, UUID>>(null to wfPlain), emptyList())
 
         assertThat(ids).isEmpty()
-        verify(exactly = 1) { mappingRepo.deleteMapping(1L) }
-        verify(exactly = 1) { mappingRepo.addMapping(match { it.issueTypeId == null && it.workflowId == wfPlain }) }
+        // 순서가 UNIQUE(scheme_id, issue_type_id) 를 피하는 근거다 — 더하기가 먼저면 기본 매핑 partial UNIQUE 에 걸린다.
+        verifyOrder {
+            mappingRepo.deleteMapping(1L)
+            mappingRepo.addMapping(match { it.issueTypeId == null && it.workflowId == wfPlain })
+        }
         verify(exactly = 0) { migrationPort.enqueueStatusMigration(any()) }
+    }
+
+    @Test
+    fun `게시 · 교체 — 스킴 변경 전역 락 안에서 판정한다`() {
+        service.publish(actor, schemeKey, bugToPlain, listOf(TypeStatusMapping(bug.value, "review", "done")))
+
+        verify(exactly = 1) { cache.withKeyLock<List<UUID>>("__scheme-change__", any()) }
+    }
+
+    @Test
+    fun `게시 — 남는 이슈가 없어도 워크플로우가 바뀌는 유형이 있으면 진행 중 이관을 본다`() {
+        // 진행 중인 이관이 끝난 뒤 그 도착 상태가 새 워크플로우에 없을 수 있다(리뷰 S1).
+        every { usagePort.countByTypeAndStatus(any()) } returns listOf(IssueTypeStatusCount(bug.value, "open", 5))
+        every { inFlightPort.hasInFlightMigration(setOf("ATLAS", "OLD")) } returns true
+
+        assertThatThrownBy { service.publish(actor, schemeKey, bugToPlain, emptyList()) }
+            .isInstanceOf(SchemeMigrationInFlightException::class.java)
+        verify(exactly = 0) { mappingRepo.addMapping(any()) }
+    }
+
+    @Test
+    fun `게시 — 같은 유형 · 출발 상태에 매핑이 둘이면 400`() {
+        assertThatThrownBy {
+            service.publish(
+                actor,
+                schemeKey,
+                bugToPlain,
+                listOf(TypeStatusMapping(bug.value, "review", "done"), TypeStatusMapping(bug.value, "review", "open")),
+            )
+        }.isInstanceOf(SchemeStatusMappingInvalidException::class.java)
+        verify(exactly = 0) { migrationPort.enqueueStatusMigration(any()) }
+    }
+
+    @Test
+    fun `게시 — 권한이 없으면 저장도 이관 포트도 닿지 않는다`() {
+        permissionResolver =
+            object : WorkflowSchemePermissionResolver {
+                override fun requirePermission(
+                    actorId: UUID,
+                    permission: WorkflowSchemePermission,
+                    scope: WorkflowScope,
+                ): Unit = throw WorkflowSchemeAccessDeniedException(actorId, permission, scope)
+            }
+        build()
+
+        assertThatThrownBy {
+            service.publish(actor, schemeKey, bugToPlain, listOf(TypeStatusMapping(bug.value, "review", "done")))
+        }.isInstanceOf(WorkflowSchemeAccessDeniedException::class.java)
+        verify(exactly = 0) { usagePort.countByTypeAndStatus(any()) }
+        verify(exactly = 0) { migrationPort.enqueueStatusMigration(any()) }
+    }
+
+    @Test
+    fun `게시 — 두 유형이 남으면 유형마다 명령 1건 · 필터가 갈린다`() {
+        every { usagePort.countByTypeAndStatus(any()) } returns
+            listOf(IssueTypeStatusCount(bug.value, "review", 3), IssueTypeStatusCount(task.value, "review", 7))
+        val cmds = mutableListOf<StatusMigrationCommand>()
+        every { migrationPort.enqueueStatusMigration(capture(cmds)) } returns bulkId
+
+        val ids =
+            service.publish(
+                actor,
+                schemeKey,
+                listOf(null to wfPlain),
+                listOf(TypeStatusMapping(bug.value, "review", "done"), TypeStatusMapping(task.value, "review", "open")),
+            )
+
+        assertThat(ids).hasSize(2)
+        assertThat(cmds.map { it.projectScopes.getValue("ATLAS").issueTypeIds })
+            .containsExactly(setOf(bug.value), setOf(task.value))
+        assertThat(cmds.map { it.mappings.single().toStatusKey }).containsExactly("done", "open")
     }
 
     @Test
@@ -218,7 +304,8 @@ class SchemeStatusMigrationServiceTest {
 
         assertThat(ids).containsExactly(bulkId)
         verify(exactly = 1) { assignmentRepo.saveAssignment(any()) }
-        assertThat(cmd.captured.projectScopes.keys).containsExactly("ATLAS")
+        assertThat(cmd.captured.projectScopes)
+            .isEqualTo(mapOf("ATLAS" to StatusMigrationTypeFilter(setOf(task.value), exceptListed = false)))
         assertThat(cmd.captured.mappings).containsExactly(StatusMigrationMapping("review", "open"))
     }
 

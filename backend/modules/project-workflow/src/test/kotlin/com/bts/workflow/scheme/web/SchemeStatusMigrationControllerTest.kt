@@ -49,7 +49,7 @@ import java.util.UUID
 @ContextConfiguration(classes = [SchemeStatusMigrationControllerTest.TestMvcConfig::class])
 @WebAppConfiguration
 class SchemeStatusMigrationControllerTest {
-    class StubMigrationService : SchemeStatusMigrationService(mockk(), mockk(), mockk(), mockk()) {
+    class StubMigrationService : SchemeStatusMigrationService(mockk(), mockk(), mockk(), mockk(), mockk()) {
         var failWith: RuntimeException? = null
         var capturedStatusMappings: List<TypeStatusMapping>? = null
 
