@@ -42,6 +42,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.aop.framework.ProxyFactory
 import java.time.Instant
 import java.util.UUID
 
@@ -626,6 +627,26 @@ class WorkflowSchemeApplicationServiceTest {
                 assertThat(it.strandedByStatus).isEqualTo(mapOf("review" to 3L))
             }
         verify(exactly = 0) { assignmentRepo.saveAssignment(any()) }
+    }
+
+    @Test
+    fun `assignToProject — CGLIB 프록시를 거쳐 불러도 남는 이슈는 409 다 (NPE 500 이 아니다)`() {
+        // 운영의 호출자는 @Transactional 프록시를 쥔다. 프록시는 생성자를 안 돌려 필드가 비어 있어서,
+        // 기본 인자가 호출자 쪽 수신자에 묶인 함수 참조면 그 본문이 빈 프록시 위에서 돈다(R11 리뷰 B1).
+        val newKey = WorkflowSchemeKey("plain-scheme")
+        every { schemeRepo.findByKey(newKey) } returns buildScheme(newKey, id = newSchemeId)
+        every { assignmentRepo.findByProjectId(projectId) } returns
+            ProjectWorkflowSchemeAssignment(projectId, oldSchemeId, Instant.now(), actor.toUuid())
+        every { mappingRepo.findBySchemeId(oldSchemeId) } returns listOf(buildMapping(oldSchemeId, null, wfReview))
+        every { mappingRepo.findBySchemeId(newSchemeId) } returns listOf(buildMapping(newSchemeId, null, wfPlain))
+        every { issueStatusUsagePort.countByTypeAndStatus(setOf(projectId)) } returns
+            listOf(IssueTypeStatusCount(bug.value, "review", 3))
+        stubWorkflows()
+        val proxy =
+            ProxyFactory(service).apply { isProxyTargetClass = true }.proxy as WorkflowSchemeApplicationService
+
+        assertThatThrownBy { proxy.assignToProject(actor, projectId, "ATLAS", newKey) }
+            .isInstanceOf(SchemeChangeStrandsIssuesException::class.java)
     }
 
     @Test

@@ -184,6 +184,27 @@ class ProjectWorkflowSchemeAssignmentRepository(private val dsl: DSLContext) {
             .toSet()
 
     /**
+     * 스킴에 할당된 살아 있는 프로젝트 id — **아카이브 포함**.
+     *
+     * 스킴 게시(R11)는 이관 경로가 있어 아카이브 이슈도 옮긴다. 빼면 그 이슈가 워크플로우에 없는
+     * 상태로 남는다(WF-07-4). [findActiveProjectIdsBySchemeId] 는 이관 없는 매핑 추가 · 삭제용이다.
+     *
+     * @param schemeId 조회할 스킴.
+     * @return 프로젝트 id 집합. 할당이 없으면 빈 집합.
+     */
+    @Transactional(readOnly = true)
+    fun findLiveProjectIdsBySchemeId(schemeId: WorkflowSchemeId): Set<UUID> =
+        dsl
+            .select(P_ID)
+            .from(TABLE)
+            .join(PROJECTS).on(P_ID.eq(A_PROJECT_ID))
+            .where(A_SCHEME_ID.eq(schemeId.value))
+            .and(P_DELETED_AT.isNull)
+            .fetchSet(P_ID)
+            .filterNotNull()
+            .toSet()
+
+    /**
      * project_id 에 대한 스킴 할당을 삭제한다.
      *
      * 존재하지 않는 `projectId` 에 대해 예외 없이 no-op 으로 처리한다.

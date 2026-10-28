@@ -10,6 +10,7 @@ import com.bts.workflow.port.outbound.ActorId
 import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.domain.ProjectKey
 import com.bts.workflow.scheme.domain.ProjectWorkflowSchemeAssignment
+import com.bts.workflow.scheme.domain.StrandedIssueType
 import com.bts.workflow.scheme.domain.WorkflowScheme
 import com.bts.workflow.scheme.domain.WorkflowSchemeId
 import com.bts.workflow.scheme.domain.WorkflowSchemeKey
@@ -105,6 +106,7 @@ class ProjectWorkflowSchemeControllerTest {
             projectId: UUID,
             projectKey: String,
             schemeKey: WorkflowSchemeKey,
+            onStranded: ((Set<UUID>, List<StrandedIssueType>) -> Unit)?,
         ): ProjectWorkflowSchemeAssignment {
             capturedActor = actor
             return assignToProjectResponse ?: throw IllegalStateException("assignToProjectResponse not configured")
