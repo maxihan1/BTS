@@ -18,6 +18,7 @@ import com.bts.shared.permission.AutomationPermissionResolver
 import com.bts.shared.permission.IssuePermissionResolver
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -184,13 +185,36 @@ class AutomationEventWorkerTest {
         return objectMapper.writeValueAsString(node)
     }
 
-    private fun issueTransitionedJson(issueKey: String): String {
+    private fun issueTransitionedJson(
+        issueKey: String,
+        fromState: String = "open",
+        toState: String = "in_progress",
+        cause: String? = null,
+    ): String {
         val node = objectMapper.createObjectNode()
         node.put("type", "issue.transitioned")
         node.put("issueKey", issueKey)
-        node.put("fromState", "open")
-        node.put("toState", "in_progress")
+        node.put("fromState", fromState)
+        node.put("toState", toState)
         node.putObject("actorId").put("value", UUID.randomUUID().toString())
+        node.put("occurredAt", now.toString())
+        node.put("cause", cause)
+        return objectMapper.writeValueAsString(node)
+    }
+
+    private fun issueAssignedJson(issueKey: String): String {
+        val node = objectMapper.createObjectNode()
+        node.put("type", "issue.assigned")
+        node.put("issueKey", issueKey)
+        node.putObject("actorId").put("value", UUID.randomUUID().toString())
+        node.put("occurredAt", now.toString())
+        return objectMapper.writeValueAsString(node)
+    }
+
+    private fun issueSoftDeletedJson(issueKey: String): String {
+        val node = objectMapper.createObjectNode()
+        node.put("type", "issue.soft_deleted")
+        node.put("issueKey", issueKey)
         node.put("occurredAt", now.toString())
         return objectMapper.writeValueAsString(node)
     }
@@ -308,9 +332,9 @@ class AutomationEventWorkerTest {
     }
 
     @Test
-    fun `미관심 타입(issue_transitioned) 이벤트는 skip 되고 q_automation_events 에서 삭제된다`() {
+    fun `미관심 타입(issue_soft_deleted) 이벤트는 skip 되고 q_automation_events 에서 삭제된다`() {
         saveEnabledRule(TriggerType.ISSUE_CREATED)
-        sendEvent(issueTransitionedJson("ATLAS-8"))
+        sendEvent(issueSoftDeletedJson("ATLAS-8"))
 
         worker.pollAndProcess()
 
@@ -323,5 +347,77 @@ class AutomationEventWorkerTest {
         worker.pollAndProcess()
 
         assertThat(readExecutionMessages()).isEmpty()
+    }
+
+    // ── R9 — ISSUE_TRANSITIONED · ISSUE_ASSIGNED ────────────────────────────────
+
+    @Test
+    fun `ISSUE_TRANSITIONED — 빈 config 룰은 모든 전환에 발화한다`() {
+        val rule = saveEnabledRule(TriggerType.ISSUE_TRANSITIONED)
+        sendEvent(issueTransitionedJson("ATLAS-9"))
+
+        worker.pollAndProcess()
+
+        val messages = readExecutionMessages()
+        assertThat(messages).hasSize(1)
+        assertThat(messages[0].get("ruleId").asText()).isEqualTo(rule.id.toString())
+        assertThat(messages[0].get("triggerType").asText()).isEqualTo("ISSUE_TRANSITIONED")
+    }
+
+    @Test
+    fun `ISSUE_TRANSITIONED — fromStates · toStates 가 둘 다 맞을 때만 발화한다`() {
+        val rule =
+            saveEnabledRule(
+                TriggerType.ISSUE_TRANSITIONED,
+                triggerConfig = """{"fromStates":["open"],"toStates":["done"]}""",
+            )
+        sendEvent(issueTransitionedJson("ATLAS-10", fromState = "open", toState = "done"))
+        sendEvent(issueTransitionedJson("ATLAS-11", fromState = "open", toState = "in_progress"))
+        sendEvent(issueTransitionedJson("ATLAS-12", fromState = "in_progress", toState = "done"))
+
+        worker.pollAndProcess()
+
+        val messages = readExecutionMessages()
+        assertThat(messages).hasSize(1)
+        assertThat(messages[0].get("ruleId").asText()).isEqualTo(rule.id.toString())
+        assertThat(messages[0].get("triggerEvent").get("issueKey").asText()).isEqualTo("ATLAS-10")
+        assertThat(countPendingEventMessages()).isZero()
+    }
+
+    @Test
+    fun `ISSUE_TRANSITIONED — cause 키 자체가 없는 옛 메시지도 발화한다`() {
+        saveEnabledRule(TriggerType.ISSUE_TRANSITIONED)
+        val legacy = objectMapper.readTree(issueTransitionedJson("ATLAS-15")) as ObjectNode
+        legacy.remove("cause")
+        sendEvent(objectMapper.writeValueAsString(legacy))
+
+        worker.pollAndProcess()
+
+        assertThat(readExecutionMessages()).hasSize(1)
+    }
+
+    @Test
+    fun `ISSUE_TRANSITIONED — 관리자 상태 이관(cause 있음)은 발화하지 않고 삭제된다`() {
+        saveEnabledRule(TriggerType.ISSUE_TRANSITIONED)
+        sendEvent(issueTransitionedJson("ATLAS-13", cause = "STATUS_MIGRATION"))
+
+        worker.pollAndProcess()
+
+        assertThat(readExecutionMessages()).isEmpty()
+        assertThat(countPendingEventMessages()).isZero()
+    }
+
+    @Test
+    fun `ISSUE_ASSIGNED 이벤트가 매칭 룰을 발화시킨다 — 다른 트리거 룰은 발화하지 않는다`() {
+        val rule = saveEnabledRule(TriggerType.ISSUE_ASSIGNED)
+        saveEnabledRule(TriggerType.ISSUE_UPDATED)
+        sendEvent(issueAssignedJson("ATLAS-14"))
+
+        worker.pollAndProcess()
+
+        val messages = readExecutionMessages()
+        assertThat(messages).hasSize(1)
+        assertThat(messages[0].get("ruleId").asText()).isEqualTo(rule.id.toString())
+        assertThat(messages[0].get("triggerType").asText()).isEqualTo("ISSUE_ASSIGNED")
     }
 }

@@ -29,17 +29,17 @@
 | A3 | 「필드 값 변경됨」 — 새 enum 을 만들지 않는다. 기존 `ISSUE_UPDATED` + `fields` 필터가 같은 능력이다 | web 표시명만 「이슈 수정」→「필드 값 변경됨」, `fields` 입력을 필드 선택 목록으로 |
 
 - issue-tracking PR: `isAutomationPublishable` 에서 `IssueTransitioned` · `IssueAssigned` → `true`. 큐 · 이벤트 모양 무변경.
-- automation PR: `TriggerType` 2종 + **V311** CHECK 8종(DROP → ADD, 이름 유지, COMMENT 재발행 — `automation_rules` · `rule_executions` 둘 다) · `TriggerConfig` 검증(ISSUE_TRANSITIONED 의 fromStates/toStates = 비지 않은 문자열 배열) · `TriggerMatcher` 매핑 + 상태 필터 + cause 거르기 · `RuleConflictAnalyzer` 의 트리거 ↔ 액션 사이클 표(전환 액션 도입 전이라 ASSIGN → ISSUE_ASSIGNED 만 추가) · YAML codec(enum 그대로 통과 확인).
-- web PR: `triggerTypeSchema` 8종, 폼에 두 트리거 + 전환 트리거의 From/To 상태 다중 선택(프로젝트 워크플로 상태 목록), 목록 배지 라벨.
+- automation PR: `TriggerType` 2종(+ 단계 B 의 MANUAL) + **V311** CHECK 9종(DROP → ADD, 이름 유지, COMMENT 재발행 — `automation_rules` · `rule_executions` 둘 다) · `TriggerConfig` 검증(ISSUE_TRANSITIONED 의 fromStates/toStates = 비지 않은 문자열 배열) · `TriggerMatcher` 매핑 + 상태 필터 + cause 거르기 · `RuleConflictAnalyzer` 의 트리거 ↔ 액션 사이클 표(전환 액션 도입 전이라 ASSIGN → ISSUE_ASSIGNED 만 추가) · YAML codec(Jackson enum 이라 그대로 통과 — 별도 테스트 없음).
+- web PR: `triggerTypeSchema` 9종, 폼에 두 트리거 + 전환 트리거의 From/To 상태 다중 선택(프로젝트 워크플로 상태 목록), 목록 배지 라벨.
 
 ### 단계 B — 트리거: 수동 실행
 
 | ID | 동작 | 결정 |
 |---|---|---|
-| B1 | `MANUAL` — 이슈 상세에서 사람이 골라 실행. config 없음 | `POST /api/v1/projects/{projectKey}/automation/rules/{id}/run` body `{issueKey}` → 202. 권한 = 요청자가 그 이슈 **열람 가능** + 룰이 `MANUAL` · enabled · 같은 프로젝트. 실행은 큐(`q_automation_execution`)로 — triggerEvent `{type:"manual", issueKey, actorId}` 을 **서버가 만든다**(요청 body 의 다른 값은 싣지 않는다 — 프로젝트 경계 게이트 전제 유지) |
-| B2 | 이슈 상세 `⋯` 에 「자동화 ▸」 — 이 프로젝트의 MANUAL 룰 목록, 고르면 실행 + 토스트 | 목록 API = 기존 룰 목록을 `triggerType=MANUAL` 로 거른다(읽기 권한은 이슈 열람자 — 기존 목록은 `MANAGE_AUTOMATION` 이라 **새 조회 엔드포인트** `GET …/automation/manual-rules` 가 필요) |
+| B1 | `MANUAL` — 이슈 상세에서 사람이 골라 실행. config 없음 | `POST /api/v1/projects/{projectKey}/automation/manual-rules/{ruleId}/run` body `{issueKey}` → 202. 권한 = 요청자가 그 이슈 **열람 가능**(`IssueSnapshotPort` 요청자 가시성 — 보안 수준 포함) + 룰이 `MANUAL` · enabled · 같은 프로젝트. 하나라도 틀리면 404(존재 숨김). 실행은 큐(`q_automation_execution`)로 — triggerEvent `{type:"manual", issueKey, projectKey, actorId}` 를 **서버가 만든다**(요청 body 의 다른 값은 싣지 않는다 — 프로젝트 경계 게이트 전제 유지). 액션은 룰 actor 권한(Jira 와 같음) |
+| B2 | 이슈 상세 헤더 ⚡ 「자동화」 버튼(Jira 이슈 화면 자리) — 이 프로젝트의 MANUAL 룰 목록, 고르면 실행 + 토스트 | `GET /api/v1/projects/{projectKey}/automation/manual-rules` → `[{id, name}]`. 권한 = 프로젝트 BROWSE(기존 룰 목록은 `MANAGE_AUTOMATION` 이라 따로 둔다). 같은 룰 · 같은 이슈를 60초 안에 다시 부르면 실행 워커의 루프 억제 창에 걸려 조용히 건너뛴다(알려진 한계) |
 
-- automation PR: `TriggerType.MANUAL` 은 단계 A 의 V311 에 **같이** 넣는다(마이그레이션 한 번). 엔드포인트 · 서비스는 단계 B PR.
+- automation PR: 단계 A 와 **같은 PR** 이다(같은 BC · 마이그레이션 V311 한 번). 형식이 틀린 이슈 키(`PROJ-123` 아님)는 포트 조회 전에 404 — issue-tracking 어댑터가 형식 오류를 500 으로 던지기 때문.
 
 ### 단계 C — 액션: 이슈 전환 · 이슈/하위 작업 생성 · 연결 · 관찰자
 

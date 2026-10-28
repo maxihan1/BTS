@@ -1,4 +1,4 @@
-// 자동화 트리거 타입 6종 — 이슈 이벤트 3종 + 스케줄 + 웹훅 + PR 머지
+// 자동화 트리거 타입 9종 — 이슈 이벤트 5종 + 스케줄 + 웹훅 + PR 머지 + 수동 실행
 
 package com.bts.automation.domain
 
@@ -16,6 +16,11 @@ package com.bts.automation.domain
  *   은 PR 머지를 알 수 없어 이 큐에 발행할 수 없다). [WEBHOOK]처럼 룰별 불투명 토큰 엔드포인트를 갖지도
  *   않는다. 대신 프로젝트 단위 Git 웹훅(`GitWebhookController`, Task 9/10)이 서명 검증 후 룰을 직접
  *   조회해 동기적으로 enqueue한다 — `TriggerMatcher`의 이슈 이벤트 wire 매핑 대상이 아니다.
+ * - [ISSUE_TRANSITIONED]/[ISSUE_ASSIGNED] — `issue.transitioned`/`issue.assigned` fan-out(R9 · JAU-5).
+ *   전환은 triggerConfig `fromStates`/`toStates` 로 거르고, 관리자 상태 이관(`cause` 있음)은 발화하지 않는다.
+ * - [MANUAL] — 이슈 화면에서 사람이 골라 실행(`ManualRunController`, R9). 큐 fan-out 대상이 아니다.
+ *
+ * 스펙 `docs/specs/2026-10-28-r9-automation-catalog.md`.
  */
 enum class TriggerType {
     ISSUE_CREATED,
@@ -24,4 +29,7 @@ enum class TriggerType {
     SCHEDULED,
     WEBHOOK,
     PR_MERGED,
+    ISSUE_TRANSITIONED,
+    ISSUE_ASSIGNED,
+    MANUAL,
 }

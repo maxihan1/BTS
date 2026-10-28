@@ -27,8 +27,8 @@ import java.sql.ResultSet
  * 3. [TriggerMatcher.match] 로 트리거 타입 매핑. 매핑 없음(미관심 타입/malformed) → skip + delete.
  * 4. [AutomationRuleRepository.findEnabledByProjectAndTriggerType] 로 매칭 대상 룰 조회
  *    (disabled/soft-deleted 룰은 이 조회가 이미 제외 — 스펙 S8/EC7).
- * 5. [TriggerType.ISSUE_UPDATED] 는 룰의 triggerConfig `fields` 와 이벤트 필드 교집합 필터를 추가
- *    적용한다(스펙 S4).
+ * 5. [TriggerMatcher.matchesConfig] 로 룰의 triggerConfig 필터를 적용한다 — [TriggerType.ISSUE_UPDATED] 의
+ *    `fields` 교집합(스펙 S4), [TriggerType.ISSUE_TRANSITIONED] 의 `fromStates`/`toStates`(R9).
  * 6. 필터 통과 룰마다 [AutomationExecutionEnqueuer.enqueue].
  * 7. 처리 성공 → `pgmq.delete`. 예외 → delete 안 함(vt 만료 후 재전달, at-least-once).
  *    read_ct 가 [MAX_RECEIVE_COUNT] 초과면 `pgmq.archive`(dead-letter).
@@ -128,7 +128,7 @@ class AutomationEventWorker(
 
     /**
      * [matched] 의 프로젝트+트리거타입에 매칭되는 enabled 룰을 조회해, ISSUE_UPDATED 필드 필터를
-     * 통과한 룰마다 실행 큐에 적재한다.
+     * 통과한 룰마다 실행 큐에 적재한다(필터는 [TriggerMatcher.matchesConfig]).
      *
      * @param matched 매칭된 이벤트 컨텍스트.
      * @param triggerEvent enqueue payload 에 포함될 원본 이벤트 JSON.
@@ -139,11 +139,7 @@ class AutomationEventWorker(
     ) {
         val rules = ruleRepository.findEnabledByProjectAndTriggerType(matched.projectKey, matched.triggerType)
         for (rule in rules) {
-            if (matched.triggerType == TriggerType.ISSUE_UPDATED &&
-                !TriggerMatcher.matchesFieldFilter(rule.triggerConfig, matched.updatedFields)
-            ) {
-                continue
-            }
+            if (!TriggerMatcher.matchesConfig(rule.triggerConfig, matched)) continue
             enqueuer.enqueue(rule.id, matched.triggerType, triggerEvent)
         }
     }

@@ -277,6 +277,28 @@ class RuleConflictAnalyzerFieldPriorityTest : DescribeSpec({
         }
     }
 
+    describe("coFire 미검출 — MANUAL 규칙 두 개는 사람이 하나씩 골라 실행해 동시 발화가 불가능하다 (R9)") {
+        it("A·B가 둘 다 MANUAL 이고 같은 필드를 다른 값으로 SET 해도 FIELD_CONFLICT/PRIORITY_AMBIGUITY 가 검출되지 않는다") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.MANUAL,
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = IntNode(1))),
+                )
+            val ruleB =
+                ruleOf(
+                    name = "B",
+                    triggerType = TriggerType.MANUAL,
+                    actions = listOf(Action.SetFieldAction(field = "priority", value = IntNode(5))),
+                )
+
+            val conflicts = analyzer.analyze(listOf(ruleA, ruleB))
+            val ambiguousTypes = setOf(ConflictType.FIELD_CONFLICT, ConflictType.PRIORITY_AMBIGUITY)
+
+            conflicts.none { it.type in ambiguousTypes } shouldBe true
+        }
+    }
+
     describe("coFire 유지 — SCHEDULED 는 cron 이 겹칠 수 있어 보수적으로 동시 매칭 취급한다") {
         it("A·B가 둘 다 SCHEDULED 이고 같은 필드를 다른 값으로 SET 하면 FIELD_CONFLICT 가 그대로 검출된다") {
             val ruleA =

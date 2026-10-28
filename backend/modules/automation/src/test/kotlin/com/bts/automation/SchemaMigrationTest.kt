@@ -680,12 +680,21 @@ class SchemaMigrationTest {
         assertThat(columnIsNullable("automation_rules", "deleted_at")).isEqualTo("YES")
     }
 
-    // ── trigger_type CHECK 제약 검증 (V309 이후 6종 화이트리스트) ────────────────
+    // ── trigger_type CHECK 제약 검증 (V311 이후 9종 화이트리스트) ────────────────
 
     @Test
-    fun `V309 유효한 trigger_type 6종은 INSERT 허용`() {
-        listOf("ISSUE_CREATED", "ISSUE_UPDATED", "ISSUE_COMMENTED", "SCHEDULED", "WEBHOOK", "PR_MERGED")
-            .forEach { insertRule(it) }
+    fun `V311 유효한 trigger_type 9종은 INSERT 허용`() {
+        listOf(
+            "ISSUE_CREATED",
+            "ISSUE_UPDATED",
+            "ISSUE_COMMENTED",
+            "SCHEDULED",
+            "WEBHOOK",
+            "PR_MERGED",
+            "ISSUE_TRANSITIONED",
+            "ISSUE_ASSIGNED",
+            "MANUAL",
+        ).forEach { insertRule(it) }
     }
 
     @Test
@@ -1127,11 +1136,11 @@ class SchemaMigrationTest {
         assertThat(indexExists("ix_git_webhook_deliveries_received_at", "git_webhook_deliveries")).isTrue()
     }
 
-    // ── FR-AT-07 PR-C: V309 trigger_type CHECK 6종 확장 COMMENT 재발행 검증 ───────
+    // ── R9: V311 trigger_type CHECK 9종 확장 COMMENT 재발행 검증 (V309 의 6종을 대체) ───────
 
     @Test
-    fun `V309 trigger_type 컬럼 COMMENT 는 CHECK 6종으로 재발행되었다`() {
-        assertThat(columnComment("automation_rules", "trigger_type")).contains("CHECK 6종")
+    fun `V311 trigger_type 컬럼 COMMENT 는 CHECK 9종으로 재발행되었다`() {
+        assertThat(columnComment("automation_rules", "trigger_type")).contains("CHECK 9종")
     }
 
     /**
@@ -1145,5 +1154,14 @@ class SchemaMigrationTest {
     @Test
     fun `V310 rule_executions trigger_type 컬럼 COMMENT 에 PR_MERGED 가 포함된다`() {
         assertThat(columnComment("rule_executions", "trigger_type")).contains("PR_MERGED")
+    }
+
+    /** V311 — R9 트리거 3종도 실행 이력에 적재되므로 같은 drift 를 막는다(V310 동형). */
+    @Test
+    fun `V311 rule_executions trigger_type 컬럼 COMMENT 에 R9 트리거 3종이 포함된다`() {
+        assertThat(columnComment("rule_executions", "trigger_type"))
+            .contains("ISSUE_TRANSITIONED")
+            .contains("ISSUE_ASSIGNED")
+            .contains("MANUAL")
     }
 }
