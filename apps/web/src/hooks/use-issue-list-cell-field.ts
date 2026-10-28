@@ -212,10 +212,11 @@ function resolveCellErrorMessage(err: unknown, field: IssueCellFieldVars['field'
  * 부분 뷰(`descriptionHtml` 항상 null)라 통째 교체하면 파생 필드가 사라진다
  * (learnings 2026-05-30 C2).
  *
- * @param listQueryKey 이 목록의 queryKey — `['issues', projectKey, page, filter, sort]`
+ * @param listQueryKey 이 목록의 queryKey — `['issues', projectKey, page, filter, sort]`. 없으면 낙관적
+ *   patch 없이 서버 저장 + 무효화만 한다(백로그 행 상태 셀 · R3)
  * @returns 담당자·우선순위·상태 변경 mutation
  */
-export function useIssueListCellField(listQueryKey: QueryKey) {
+export function useIssueListCellField(listQueryKey?: QueryKey) {
   const queryClient = useQueryClient()
 
   return useMutation<
@@ -227,6 +228,9 @@ export function useIssueListCellField(listQueryKey: QueryKey) {
     mutationFn: requestCellChange,
 
     onMutate: async (vars) => {
+      // 목록 캐시가 없는 화면(백로그 행)은 낙관적 patch 를 건너뛴다 — onSettled 무효화가 다시 읽는다
+      if (listQueryKey === undefined) return { snapshot: undefined }
+
       // 편집 중 refetch 가 낙관적 상태를 덮어쓰지 않도록 진행 중 쿼리를 취소한다
       await queryClient.cancelQueries({ queryKey: listQueryKey })
 
@@ -242,13 +246,14 @@ export function useIssueListCellField(listQueryKey: QueryKey) {
 
     onError: (err, vars, ctx) => {
       // 스냅샷으로 원위치 복원 — 실패한 값이 화면에 남으면 사용자가 저장된 줄 안다
-      if (ctx?.snapshot !== undefined) {
+      if (listQueryKey !== undefined && ctx?.snapshot !== undefined) {
         queryClient.setQueryData(listQueryKey, ctx.snapshot)
       }
       toast.error(resolveCellErrorMessage(err, vars.field))
     },
 
     onSuccess: (data) => {
+      if (listQueryKey === undefined) return
       // 서버가 반환한 최신 담당자·우선순위·상태·version 으로 갱신
       queryClient.setQueryData<IssueListPage>(listQueryKey, (prev) =>
         prev

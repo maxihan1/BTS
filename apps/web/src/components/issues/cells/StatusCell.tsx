@@ -137,12 +137,22 @@ export function StatusCellEditor({
   )
 }
 
+/**
+ * 상태 셀이 읽는 이슈 필드 — 목록 행(`IssueResponse`)과 백로그 행(`BacklogIssue`)이 둘 다 맞는다.
+ * 백로그 행에는 해결 결과가 없어 전환 화면이 그 칸만 비워 둔다 (R3 · JB-L-2).
+ */
+export type StatusCellIssue = Pick<IssueResponse, 'key' | 'version' | 'currentStateKey' | 'assigneeId'> &
+  Partial<Pick<IssueResponse, 'resolution'>>
+
 /** StatusCell props */
 export interface StatusCellProps {
   /** 대상 이슈 — 현재 상태·`expectedVersion`·기존 결의안의 출처 */
-  issue: IssueResponse
-  /** 목록 queryKey — mutation 이 이 캐시를 낙관적으로 patch 한다 */
-  listQueryKey: QueryKey
+  issue: StatusCellIssue
+  /**
+   * 목록 queryKey — mutation 이 이 캐시를 낙관적으로 patch 한다.
+   * 없으면(백로그) 낙관적 patch 없이 저장 뒤 `invalidateIssueViews` 가 화면을 다시 읽는다.
+   */
+  listQueryKey?: QueryKey
   /** 워크플로우에서 해석한 상태 표시 이름. 미해석이면 원시 키로 폴백한다 */
   statusName?: string
   /** 워크플로우에서 해석한 상태 카테고리 — 배지 색의 근거 */
@@ -151,7 +161,7 @@ export interface StatusCellProps {
 
 /** StatusCellPopoverBody props */
 interface StatusCellPopoverBodyProps {
-  issue: IssueResponse
+  issue: StatusCellIssue
   isSaving: boolean
   onTransition: (toStateKey: string) => void
   onScreenTransition: (transition: IssueTransition) => void

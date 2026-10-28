@@ -5,11 +5,15 @@ import { cn } from '@/lib/utils'
 import { backlogLabels } from '@/i18n/backlog-labels'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
 import type { IssueTypeResponse } from '@/api/issue-types'
+import type { StatusMeta } from '@/components/issues/IssueTable'
 import type { CardLayout } from '@/api/boards'
 import { resolveCardType } from '@/components/issue/resolve-card-type'
 import { useBacklogCollapsed } from '@/hooks/use-backlog-collapsed'
 import { SprintColumnHeader } from './SprintColumnHeader'
 import { BacklogCard } from './BacklogCard'
+
+/** 상태 맵 미전달 기본값 — 모듈 상수라 memo 비교가 깨지지 않는다 */
+const EMPTY_STATUS_META: Map<string, StatusMeta> = new Map()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -42,6 +46,11 @@ export interface SprintColumnProps {
    * 원문 fallback 경로를 탄다 (FR6).
    */
   issueTypesByKey: Map<string, IssueTypeResponse>
+  /**
+   * 상태 키 → 표시 이름 · 카테고리 — 행 상태 드롭다운의 배지 (JB-L-2). 미조회면 빈 맵 → 키 원문.
+   * ★부모가 `useMemo` 로 안정시킨 참조여야 한다 — 칸이 `memo` 다.
+   */
+  statusMetaByKey?: Map<string, StatusMeta>
   /**
    * 이 보드의 **뷰별** 카드 레이아웃 구성 (부채 177 Task 32 · J18).
    *
@@ -95,6 +104,7 @@ function SprintColumnInner({
   issues,
   assigneeNames,
   issueTypesByKey,
+  statusMetaByKey = EMPTY_STATUS_META,
   cardLayout,
   isOver = false,
   onStart,
@@ -150,7 +160,7 @@ function SprintColumnInner({
           data-droppable-disabled={isCompleted ? 'true' : undefined}
           data-ordered-keys={isCompleted ? undefined : orderedKeys.join(',')}
           className={cn(
-            'flex flex-col gap-2 rounded-b-lg border border-border p-2 transition-colors',
+            'flex flex-col divide-y divide-border rounded-b-lg border border-border transition-colors',
             isOver && !isCompleted && 'bg-accent ring-2 ring-primary',
             isCompleted && 'bg-muted/50 opacity-75',
           )}
@@ -165,6 +175,7 @@ function SprintColumnInner({
           ) : (
             issues.map((issue) => {
               const cardType = resolveCardType(issueTypesByKey, issue.typeKey)
+              const status = statusMetaByKey.get(issue.currentStateKey)
               return (
                 <BacklogCard
                   key={issue.key}
@@ -175,6 +186,8 @@ function SprintColumnInner({
                   typeIconName={cardType.iconName}
                   typeName={cardType.typeName}
                   cardLayout={cardLayout}
+                  statusName={status?.name}
+                  statusCategory={status?.category}
                 />
               )
             })

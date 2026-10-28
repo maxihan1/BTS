@@ -8,6 +8,8 @@ import { useBoard } from '@/hooks/use-boards'
 import { useUsersByIdsChunked } from '@/hooks/use-users'
 import { useBacklogEpics } from '@/hooks/use-backlog-epics'
 import { useIssueTypes } from '@/hooks/use-issue-types'
+import { useStatusMetaByKey } from '@/hooks/use-workflows'
+import type { StatusMeta } from '@/components/issues/IssueTable'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { collectAssigneeIds, buildAssigneeNameMap } from './backlog-assignee-names'
 import { BacklogColumn } from './BacklogColumn'
@@ -405,6 +407,9 @@ export function BacklogBoard({
     [issueTypes],
   )
 
+  // 상태 이름 · 카테고리 — 행 상태 드롭다운의 배지 (JB-L-2). 화면에서 1회만 조회해 전 칸이 공유한다.
+  const statusMetaByKey = useStatusMetaByKey()
+
   // 카드 레이아웃 구성 — 사유 전문은 이 함수 KDoc 「카드 레이아웃 배선」 절 (부채 177 Task 32 · J18).
   // ★조기 반환(`isLoading`)보다 **위**에 있어야 렌더마다 훅 개수가 같다.
   const { data: boardDetail } = useBoard(boardId)
@@ -527,6 +532,7 @@ export function BacklogBoard({
             display={display}
             assigneeNames={assigneeNames}
             issueTypesByKey={issueTypesByKey}
+            statusMetaByKey={statusMetaByKey}
             overDroppableId={drag.overDroppableId}
             // 「필터가 걸려 있는데 보이는 것이 0건」일 때만 빈 상태다 (EC1).
             // 필터가 없는 0건은 칸의 기존 「이슈 없음」이 말한다 — 「고장」과 「할 일 없음」의 구별.
@@ -691,6 +697,7 @@ interface BacklogStackProps {
   readonly assigneeNames: Map<string, string>
   /** 이슈 타입 키 → 응답 맵 — 칸에 그대로 흘려보내 카드 유형 아이콘을 해석한다 (F14 Task 4) */
   readonly issueTypesByKey: Map<string, IssueTypeResponse>
+  readonly statusMetaByKey: Map<string, StatusMeta>
   /** 드래그가 올라가 있는 droppable id */
   readonly overDroppableId: string | null
   /** 필터가 하나라도 걸려 있는가 — 0건 빈 상태의 종류를 가른다 (EC1) */
@@ -730,6 +737,7 @@ function BacklogStack({
   display,
   assigneeNames,
   issueTypesByKey,
+  statusMetaByKey,
   overDroppableId,
   filterActive,
   onResetFilter,
@@ -766,6 +774,7 @@ function BacklogStack({
           issues={issues}
           assigneeNames={assigneeNames}
           issueTypesByKey={issueTypesByKey}
+          statusMetaByKey={statusMetaByKey}
           cardLayout={cardLayout}
           isOver={overDroppableId === `sprint-${meta.sprintId}`}
           // 버튼은 곧장 mutation 을 쏘지 않고 다이얼로그를 연다 (F15 FR-3 · FR-5).
@@ -788,6 +797,7 @@ function BacklogStack({
         issues={display.backlogIssues}
         assigneeNames={assigneeNames}
         issueTypesByKey={issueTypesByKey}
+        statusMetaByKey={statusMetaByKey}
         cardLayout={cardLayout}
         isOver={overDroppableId === 'backlog'}
         canCreateIssue={canCreateIssue}

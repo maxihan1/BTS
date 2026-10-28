@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { userEvent } from '@testing-library/user-event'
 import { DndContext } from '@dnd-kit/core'
 import type { BacklogIssue, SprintMeta } from '@/api/backlog'
@@ -109,6 +110,12 @@ const issue1: BacklogIssue = {
 /** 화면이 보고 있는 보드 — `?board=` 로 들어온 값 (FR-BD-04) */
 const BOARD_ID = 'b0000000-0000-4000-8000-00000000000b'
 
+
+/** 행 상태 드롭다운(`StatusCell`)이 mutation 훅을 쥐므로 QueryClient 가 필요하다 (R3 · JB-L-2) */
+function withQueryClient({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+}
+
 function renderSprintColumn(
   sprint: SprintMeta = plannedSprint,
   issues: BacklogIssue[] = [issue1],
@@ -136,6 +143,7 @@ function renderSprintColumn(
         onCreateIssue={entry?.onCreateIssue}
       />
     </DndContext>,
+    { wrapper: withQueryClient },
   )
 }
 
@@ -666,6 +674,7 @@ function renderSprintColumnWithActions(
         canManageSprint={canManageSprint}
       />
     </DndContext>,
+    { wrapper: withQueryClient },
   )
 }
 

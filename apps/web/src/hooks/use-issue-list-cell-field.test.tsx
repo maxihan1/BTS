@@ -137,6 +137,23 @@ describe('useIssueListCellField', () => {
     expect(cached?.content[0]?.priority).toBe(3) // 롤백됨
   })
 
+  it('목록 키가 없으면(백로그 행) 낙관적 patch 없이 저장하고 다른 캐시를 건드리지 않는다 (R3 · JB-L-2)', async () => {
+    vi.mocked(transitionIssue).mockResolvedValue(makeIssue({ currentStateKey: 'done', version: 2 }))
+    const before = queryClient.getQueryData(LIST_KEY)
+
+    const { result } = renderHook(() => useIssueListCellField(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await act(async () => {
+      result.current.mutate({ issueKey: 'ATLAS-1', field: 'status', toStatusKey: 'done', expectedVersion: 1 })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(vi.mocked(transitionIssue)).toHaveBeenCalledWith('ATLAS-1', { toStatusKey: 'done', expectedVersion: 1 })
+    expect(queryClient.getQueryData(LIST_KEY)).toBe(before)
+  })
+
   it('409 TRANSITION_NOT_ALLOWED 와 VERSION_CONFLICT 를 다른 문구로 안내한다 (FR15)', async () => {
     vi.mocked(transitionIssue)
       .mockRejectedValueOnce(new ApiError(409, { errorCode: 'TRANSITION_NOT_ALLOWED' }))
