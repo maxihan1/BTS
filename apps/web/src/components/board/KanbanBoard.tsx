@@ -1,6 +1,6 @@
 // 칸반 보드 루트 컴포넌트 — DndContext + 컬럼 배치 + 드래그 이동 오케스트레이션 (FR-BD-01)
 import type { JSX } from 'react'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { DndContext, DragOverlay } from '@dnd-kit/core'
 import type { Announcements, DragEndEvent, DragStartEvent, DragOverEvent } from '@dnd-kit/core'
@@ -10,6 +10,8 @@ import { fetchIssueTransitions } from '@/api/issues'
 import type { IssueTransition, TransitionScreenValues } from '@/api/issues'
 import { issueTransitionKeys } from '@/hooks/use-issue-transitions'
 import { TransitionScreenDialog } from '@/components/issue/TransitionScreenDialog'
+import { IssueMoveActionsContext, buildInListMoves } from '@/components/issue/issue-move-actions-context'
+import type { IssueMoveAction } from '@/components/issue/issue-move-actions-context'
 import type { IssueTypeResponse } from '@/api/issue-types'
 import { useMoveCard } from '@/hooks/use-move-card'
 import type { MoveCardVars } from '@/hooks/use-move-card'
@@ -502,6 +504,20 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
   // 복사본을 두 벌 두면 한쪽만 고쳐지고, 고쳐지지 않은 쪽은 키보드 사용자에게만 고장 난다.
   const sensors = useBoardDragSensors()
 
+  // 카드 작업 메뉴의 이동 항목 (JB-B-2) — 컬럼 안 순서만. 다른 컬럼은 상태 전환이라 드래그가 맡는다.
+  // `mutate` 는 안정 참조라 board 가 바뀔 때만 resolver 가 바뀐다.
+  const reorderCardMutate = reorderCard.mutate
+  const resolveCardMoves = useCallback(
+    (issueKey: string): IssueMoveAction[] => {
+      const column = board.columns.find((c) => c.cards.some((card) => card.issueKey === issueKey))
+      if (column === undefined) return []
+      return buildInListMoves(column.cards.map((c) => c.issueKey), issueKey, (neighbors) =>
+        reorderCardMutate({ issueKey, columnId: column.columnId, ...neighbors }),
+      )
+    },
+    [board, reorderCardMutate],
+  )
+
   // displayOrder asc 정렬 — 원본 board.columns 변경 금지 (immutable)
   const sortedColumns = [...board.columns].sort((a, b) => a.displayOrder - b.displayOrder)
 
@@ -620,23 +636,25 @@ export function KanbanBoard({ boardId, board, assigneeNames, filter, isFilterAct
         accessibility={{ announcements }}
       >
         {/* 가로 스크롤 컨테이너 — 모바일 first, 반응형 가로 스크롤 (D-3) */}
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {sortedColumns.map((column) => (
-            <BoardColumn
-              key={column.columnId}
-              column={column}
-              assigneeNames={assigneeNames}
-              isOver={overColumnId === column.columnId}
-              swimlaneField={board.swimlaneField}
-              isFilterActive={isFilterActive}
-              issueTypesByKey={issueTypesByKey}
-              // 카드 레이아웃 구성 — 컬럼을 지나 카드까지 내려간다 (부채 177 Task 32 · J17).
-              // ★새 조회가 아니라 **이미 손에 있는 `board`** 에서 꺼낸다. 보드 조회 응답이
-              //   설정을 함께 싣기 때문이다(Task 31 · N1) — 탭마다 왕복을 만들지 않는다.
-              cardLayout={board.cardLayout}
-            />
-          ))}
-        </div>
+        <IssueMoveActionsContext.Provider value={resolveCardMoves}>
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {sortedColumns.map((column) => (
+              <BoardColumn
+                key={column.columnId}
+                column={column}
+                assigneeNames={assigneeNames}
+                isOver={overColumnId === column.columnId}
+                swimlaneField={board.swimlaneField}
+                isFilterActive={isFilterActive}
+                issueTypesByKey={issueTypesByKey}
+                // 카드 레이아웃 구성 — 컬럼을 지나 카드까지 내려간다 (부채 177 Task 32 · J17).
+                // ★새 조회가 아니라 **이미 손에 있는 `board`** 에서 꺼낸다. 보드 조회 응답이
+                //   설정을 함께 싣기 때문이다(Task 31 · N1) — 탭마다 왕복을 만들지 않는다.
+                cardLayout={board.cardLayout}
+              />
+            ))}
+          </div>
+        </IssueMoveActionsContext.Provider>
 
         {/* 드래그 중 카드 미리보기 */}
         <DragOverlay>

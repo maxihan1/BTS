@@ -21,6 +21,8 @@ import { sprintCreateErrorMessage } from './backlog-sprint-create-error'
 import { useBacklogCreateIssue } from './use-backlog-create-issue'
 import type { BacklogCreateIssue } from './use-backlog-create-issue'
 import { useBacklogDrag } from './use-backlog-drag'
+import { useBacklogRowMoves } from './use-backlog-row-moves'
+import { IssueMoveActionsContext } from '@/components/issue/issue-move-actions-context'
 import { CreateIssueDialog } from '@/components/issue/CreateIssueDialog'
 import { FilteredEmptyState } from '@/components/filters/FilteredEmptyState'
 import { Button } from '@/components/ui/button'
@@ -444,6 +446,9 @@ export function BacklogBoard({
   /** 드래그 처리 — 드롭 판정과 이동/재정렬 mutation 을 함께 쥔다. */
   const drag = useBacklogDrag(projectKey, backlogView, canReorderIssue)
 
+  /** 행 작업 메뉴의 이동 항목 (JCB-17) — 드래그와 같은 권한을 따른다 */
+  const rowMoves = useBacklogRowMoves(projectKey, backlogView, canReorderIssue)
+
   // 한국어 드래그 공지 (FR-9). ★`canReorderIssue` 를 반드시 넘긴다 — 안 넘기면 권한이
   // 없어 mutation 이 0건인 사용자에게 「옮겼습니다」를 읽어 주는 거짓말이 된다 (FR-17).
   // ★`drag.wasLastDropZeroMove` 도 같은 이유다 — 훅과 lib 이 각각 맞아도 이 통로가 끊기면
@@ -514,25 +519,27 @@ export function BacklogBoard({
         onDragCancel={(event) => { drag.handleDragOver({ ...event, over: null }) }}
         accessibility={{ announcements, screenReaderInstructions: backlogScreenReaderInstructions }}
       >
-        <BacklogStack
-          projectKey={projectKey}
-          boardId={boardId}
-          cardLayout={cardLayout}
-          display={display}
-          assigneeNames={assigneeNames}
-          issueTypesByKey={issueTypesByKey}
-          overDroppableId={drag.overDroppableId}
-          // 「필터가 걸려 있는데 보이는 것이 0건」일 때만 빈 상태다 (EC1).
-          // 필터가 없는 0건은 칸의 기존 「이슈 없음」이 말한다 — 「고장」과 「할 일 없음」의 구별.
-          filterActive={!isEmptyFilter(filterState.filter)}
-          onResetFilter={filterState.reset}
-          canManageSprint={canManageSprint}
-          canCreateIssue={canCreateIssue}
-          createIssue={createIssue}
-          onOpenSprintDialog={setSprintDialog}
-          onCreateSprint={handleCreateSprint}
-          createSprintDisabled={!canManageSprint || createSprint.isPending}
-        />
+        <IssueMoveActionsContext.Provider value={rowMoves}>
+          <BacklogStack
+            projectKey={projectKey}
+            boardId={boardId}
+            cardLayout={cardLayout}
+            display={display}
+            assigneeNames={assigneeNames}
+            issueTypesByKey={issueTypesByKey}
+            overDroppableId={drag.overDroppableId}
+            // 「필터가 걸려 있는데 보이는 것이 0건」일 때만 빈 상태다 (EC1).
+            // 필터가 없는 0건은 칸의 기존 「이슈 없음」이 말한다 — 「고장」과 「할 일 없음」의 구별.
+            filterActive={!isEmptyFilter(filterState.filter)}
+            onResetFilter={filterState.reset}
+            canManageSprint={canManageSprint}
+            canCreateIssue={canCreateIssue}
+            createIssue={createIssue}
+            onOpenSprintDialog={setSprintDialog}
+            onCreateSprint={handleCreateSprint}
+            createSprintDisabled={!canManageSprint || createSprint.isPending}
+          />
+        </IssueMoveActionsContext.Provider>
       </DndContext>
 
       <BacklogDialogs

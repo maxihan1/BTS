@@ -1,5 +1,5 @@
 // 칸반 보드 카드 컴포넌트 — 이슈 요약 표시 + @dnd-kit/sortable 정렬 가능 드래그 핸들
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -11,6 +11,7 @@ import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { CardLabelChips } from '@/components/issue/CardLabelChips'
 import { CardEstimateBadge } from '@/components/issue/CardEstimateBadge'
 import { useOpenIssueDetail } from '@/components/issue/use-open-issue-detail'
+import { IssueActionsMenu } from '@/components/issue/IssueActionsMenu'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 담당자 표시 3-상태 discriminated union
@@ -395,6 +396,8 @@ function BoardCardInner({
   cardLayout,
 }: BoardCardProps) {
   const openIssueDetail = useOpenIssueDetail()
+  // 카드 작업 메뉴 — `⋯` 와 우클릭이 같은 메뉴를 연다 (JB-B-2)
+  const [menuOpen, setMenuOpen] = useState(false)
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.issueKey,
     data: { fromColumnId: columnId },
@@ -413,8 +416,12 @@ function BoardCardInner({
       {...attributes}
       aria-roledescription="draggable card"
       aria-label={`${card.issueKey} — ${card.summary}`}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setMenuOpen(true)
+      }}
       className={cn(
-        'flex flex-col gap-2 rounded-lg border border-border bg-card p-3 shadow-sm',
+        'group flex flex-col gap-2 rounded-lg border border-border bg-card p-3 shadow-sm',
         'cursor-grab active:cursor-grabbing',
         isDragging && 'opacity-50',
       )}
@@ -464,6 +471,14 @@ function BoardCardInner({
         <div className="flex items-center gap-1">
           <CardEstimateBadge seconds={card.originalEstimateSeconds} />
           <AssigneeSlot assignee={assignee} />
+          <IssueActionsMenu
+            issueKey={card.issueKey}
+            version={card.version}
+            priority={card.priority}
+            assigneeId={card.assigneeId}
+            open={menuOpen}
+            onOpenChange={setMenuOpen}
+          />
         </div>
       </div>
     </div>
