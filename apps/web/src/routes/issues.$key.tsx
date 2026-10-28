@@ -241,10 +241,10 @@ function buildChangelogRefs(
  * 탭을 먼저 열지 않으면 포커스 줄 입력이 DOM 에 없다). 딥링크도 같은 제약을 받는다 —
  * 댓글 탭이 닫혀 있으면 스크롤할 행 자체가 없다.
  *
- * ★초기값과 effect **둘 다** 필요하다.
- * - 초기값만 두면 모달이 열린 채로 다른 알림을 눌렀을 때(`focusCommentId` 만 교체) 못 따라간다.
- * - effect 만 두면 첫 렌더가 이력 탭이라 한 프레임 번쩍이고, 그 사이 댓글 목록이 마운트되지
- *   않아 스크롤 대상이 없다.
+ * ★기본은 댓글 탭이다(J3 · Jira Cloud). 컴포넌트 `defaultValue` 는 라우트가 `value` 를 쥐는 한
+ *   먹지 않으므로 기본값은 여기 초기값이 정본이다.
+ * ★effect 도 필요하다 — 모달이 열린 채로 다른 알림을 누르면(`focusCommentId` 만 교체) 사용자가
+ *   이력 탭으로 옮겨 둔 상태를 댓글 탭으로 되돌려야 한다.
  *
  * `IssueDetailPage` 밖에 두는 것은 200줄 래칫(`lint-ratchet`) 때문이기도 하다 —
  * 베이스라인 숫자를 올리는 대신 쪼갠다(`buildChangelogRefs` 선례).
@@ -255,9 +255,7 @@ function buildChangelogRefs(
 function useActivityTab(
   focusCommentId: string | undefined,
 ): [ActivityTabValue, (value: ActivityTabValue) => void] {
-  const [activityTab, setActivityTab] = useState<ActivityTabValue>(
-    focusCommentId !== undefined ? ACTIVITY_TABS.COMMENT : ACTIVITY_TABS.HISTORY,
-  )
+  const [activityTab, setActivityTab] = useState<ActivityTabValue>(ACTIVITY_TABS.COMMENT)
 
   useEffect(() => {
     if (focusCommentId === undefined) return
