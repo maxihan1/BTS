@@ -20,6 +20,11 @@
 | `schedule.cron` | 스케줄 (예: 매일 09:00) |
 | `webhook.received` | 외부 Webhook |
 | `pr.merged` | PR 머지 (GitHub/GitLab 연동) |
+| `manual` | 수동 실행 — 이슈 화면 「자동화 ▸」에서 사람이 골라 실행 (R9, 2026-10-28) |
+
+> **R9 보강 (2026-10-28)**. `issue.transitioned`(`ISSUE_TRANSITIONED` — `fromStates`/`toStates` 필터, 관리자 상태 이관은
+> 발화 안 함) · `issue.assigned`(`ISSUE_ASSIGNED`) · `manual`(`MANUAL`)이 실제로 결선됐다. 스펙
+> `docs/specs/2026-10-28-r9-automation-catalog.md`.
 
 ## 8.3 조건 표현식
 

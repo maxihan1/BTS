@@ -17,8 +17,10 @@ import org.springframework.scheduling.support.CronExpression
  * - [TriggerType.ISSUE_UPDATED] — `fields` 필드는 선택. 있으면 비어있지 않은 문자열의 배열이어야 함.
  * - [TriggerType.PR_MERGED] — `targetBranch` 필드는 선택(미지정 시 전체 브랜치 발화). 있으면
  *   비어있지 않은 문자열이어야 함.
- * - [TriggerType.ISSUE_CREATED]/[TriggerType.ISSUE_COMMENTED]/[TriggerType.WEBHOOK] — 빈
- *   config(`{}`) 허용, 추가 형식 검증 없음.
+ * - [TriggerType.ISSUE_TRANSITIONED] — `fromStates`/`toStates` 필드는 선택(상태 키 배열). 있으면 비어있지
+ *   않은 문자열의 배열이어야 함. 비우면 모든 전환에 발화.
+ * - [TriggerType.ISSUE_CREATED]/[TriggerType.ISSUE_COMMENTED]/[TriggerType.WEBHOOK]/
+ *   [TriggerType.ISSUE_ASSIGNED]/[TriggerType.MANUAL] — 빈 config(`{}`) 허용, 추가 형식 검증 없음.
  */
 object TriggerConfig {
     /** 빈 config 를 나타내는 기본 JSON 문자열. */
@@ -27,6 +29,8 @@ object TriggerConfig {
     private const val FIELD_CRON = "cron"
     private const val FIELD_FIELDS = "fields"
     private const val FIELD_TARGET_BRANCH = "targetBranch"
+    const val FIELD_FROM_STATES = "fromStates"
+    const val FIELD_TO_STATES = "toStates"
     private const val MSG_INVALID_JSON = "triggerConfig는 유효한 JSON 객체여야 합니다."
 
     private val objectMapper = ObjectMapper()
@@ -45,9 +49,18 @@ object TriggerConfig {
         val node = parseJsonObject(configJson)
         when (triggerType) {
             TriggerType.SCHEDULED -> validateScheduled(node)
-            TriggerType.ISSUE_UPDATED -> validateIssueUpdated(node)
+            TriggerType.ISSUE_UPDATED -> validateStringArray(node, FIELD_FIELDS, "ISSUE_UPDATED")
+            TriggerType.ISSUE_TRANSITIONED -> {
+                validateStringArray(node, FIELD_FROM_STATES, "ISSUE_TRANSITIONED")
+                validateStringArray(node, FIELD_TO_STATES, "ISSUE_TRANSITIONED")
+            }
             TriggerType.PR_MERGED -> validatePrMerged(node)
-            TriggerType.ISSUE_CREATED, TriggerType.ISSUE_COMMENTED, TriggerType.WEBHOOK -> Unit
+            TriggerType.ISSUE_CREATED,
+            TriggerType.ISSUE_COMMENTED,
+            TriggerType.WEBHOOK,
+            TriggerType.ISSUE_ASSIGNED,
+            TriggerType.MANUAL,
+            -> Unit
         }
     }
 
@@ -83,16 +96,21 @@ object TriggerConfig {
         }
     }
 
-    private fun validateIssueUpdated(node: JsonNode) {
-        val fieldsNode = node.get(FIELD_FIELDS) ?: return
-        if (fieldsNode.isNull) return
-        if (!fieldsNode.isArray) {
-            throw TriggerConfigInvalidException("ISSUE_UPDATED 트리거의 fields는 배열이어야 합니다.")
+    /** [fieldName] 이 있으면 비어있지 않은 문자열 배열인지 본다(없음 · null = 통과). [type] 은 메시지용. */
+    private fun validateStringArray(
+        node: JsonNode,
+        fieldName: String,
+        type: String,
+    ) {
+        val arrayNode = node.get(fieldName) ?: return
+        if (arrayNode.isNull) return
+        if (!arrayNode.isArray) {
+            throw TriggerConfigInvalidException("$type 트리거의 ${fieldName}는 배열이어야 합니다.")
         }
-        fieldsNode.forEach { item ->
+        arrayNode.forEach { item ->
             if (!item.isTextual || item.asText().isBlank()) {
                 throw TriggerConfigInvalidException(
-                    "ISSUE_UPDATED 트리거의 fields 항목은 빈 문자열이 아닌 문자열이어야 합니다.",
+                    "$type 트리거의 $fieldName 항목은 빈 문자열이 아닌 문자열이어야 합니다.",
                 )
             }
         }

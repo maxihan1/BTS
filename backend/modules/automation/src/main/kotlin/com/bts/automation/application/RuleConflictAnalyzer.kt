@@ -85,15 +85,12 @@ class RuleConflictAnalyzer(
      * sealed [Action] 의 5개 하위 타입에 대해 exhaustive `when` 으로 분기한다 — `ActionType` enum 기반
      * 매핑을 별도로 만들지 않는다(기존 repo/executor/response 3곳 매핑과의 중복 회피, plan DRY 노트).
      *
-     * ## AssignAction 은 CYCLE 엣지가 없다 (코드리뷰 C1 수정)
-     * 담당자 변경은 `issue.assigned`(cross-BC `IssueAssigned`) 별도 이벤트로 발행되고, automation
-     * [TriggerMatcher] 는 `issue.assigned` 를 소비하지 않는다(`issue.created`/`issue.updated`/
-     * `issue.commented` 만 매핑) — `issue.updated` 의 `changedFields` 에도 담당자 변경은 포함되지 않는다.
-     * 즉 `AssignAction → ISSUE_UPDATED{assignee}` 트리거 유발은 런타임에 존재하지 않는 경로였다
-     * (phantom edge, over-approximation false positive). [CallWebhookAction] 과 동형으로 CYCLE 엣지
-     * 없음(`false`)으로 판정한다 — 단 [hasObservableSideEffect] 같은 부수효과 판정(FIELD_CONFLICT/
-     * PRIORITY_AMBIGUITY)에는 AssignAction 을 그대로 포함한다(담당자 변경도 관측 가능한 부수효과이므로,
-     * 이 제거는 CYCLE 판정에만 한정된다).
+     * ## AssignAction → ISSUE_ASSIGNED 만 엣지 (R9, 코드리뷰 C1 의 갱신)
+     * 담당자 변경은 `issue.assigned`(cross-BC `IssueAssigned`) 별도 이벤트로 발행되고, `issue.updated` 의
+     * `changedFields` 에는 담당자 변경이 들어가지 않는다 — 그래서 `AssignAction → ISSUE_UPDATED{assignee}` 는
+     * 런타임에 없는 경로(phantom edge)라 C1 이 지웠다. R9 부터 [TriggerMatcher] 가 `issue.assigned` 를
+     * [TriggerType.ISSUE_ASSIGNED] 로 매핑하므로(어댑터 `assign` → `changeAssignee` 가 발행) 그 트리거를 향한
+     * 엣지만 실재한다. [hasObservableSideEffect] 판정(FIELD_CONFLICT/PRIORITY_AMBIGUITY)은 그대로다.
      *
      * ## SetFixVersionsAction 도 CYCLE 엣지가 없다 (FR-AT-07, AssignAction 과 동일 근거)
      * `changeFixVersions`(`IssueApplicationService`)는 `eventPublisher.publish` 를 호출하지 않는다
@@ -108,7 +105,7 @@ class RuleConflictAnalyzer(
     ): Boolean =
         when (action) {
             is Action.SetFieldAction -> triggersIssueUpdated(target, action.field)
-            is Action.AssignAction -> false
+            is Action.AssignAction -> target.triggerType == TriggerType.ISSUE_ASSIGNED
             is Action.AddCommentAction -> target.triggerType == TriggerType.ISSUE_COMMENTED
             is Action.CallWebhookAction -> false
             is Action.SetFixVersionsAction -> false
@@ -237,6 +234,10 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
      * 동치 판정은 이 분석 범위를 넘는 별도 난제) 보수적으로 기존과 동일하게 동시 매칭 가능(`true`)으로
      * 유지한다 — false negative(놓친 충돌)보다 false positive(과도한 경고)가 더 안전하다는 판단.
      *
+     * ## MANUAL 도 동시 매칭 불가 (R9)
+     * 수동 실행은 사람이 룰 하나를 골라 부른다(`POST …/rules/{id}/run`) — 실행 1건이 두 룰을 부를 수 없다.
+     * ISSUE_TRANSITIONED · ISSUE_ASSIGNED 는 SCHEDULED 와 같은 보수 정책(동시 매칭 가능 `true`)을 따른다.
+     *
      * ## PR_MERGED 는 예외 — `targetBranch` 정밀 판정 (FR-AT-07 PR-C Task 4, DEC-27)
      * SCHEDULED 의 cron 겹침과 달리 PR_MERGED 의 `targetBranch` 는 **정확 문자열 비교**로 실제 겹침
      * 여부를 확실히 판정할 수 있다 — 즉 위 SCHEDULED 보수 정책의 근거("정적으로 판단하기 어려움")가
@@ -253,6 +254,7 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
         when {
             a.triggerType != b.triggerType -> false
             a.triggerType == TriggerType.WEBHOOK -> false
+            a.triggerType == TriggerType.MANUAL -> false
             a.triggerType == TriggerType.PR_MERGED -> targetBranchCoFire(a.triggerConfig, b.triggerConfig)
             a.triggerType != TriggerType.ISSUE_UPDATED -> true
             else -> fieldsCoFire(a.triggerConfig, b.triggerConfig)

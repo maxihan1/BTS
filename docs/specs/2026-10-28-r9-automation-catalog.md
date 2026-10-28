@@ -36,8 +36,8 @@
 
 | ID | 동작 | 결정 |
 |---|---|---|
-| B1 | `MANUAL` — 이슈 상세에서 사람이 골라 실행. config 없음 | `POST /api/v1/projects/{projectKey}/automation/rules/{id}/run` body `{issueKey}` → 202. 권한 = 요청자가 그 이슈 **열람 가능** + 룰이 `MANUAL` · enabled · 같은 프로젝트. 실행은 큐(`q_automation_execution`)로 — triggerEvent `{type:"manual", issueKey, actorId}` 을 **서버가 만든다**(요청 body 의 다른 값은 싣지 않는다 — 프로젝트 경계 게이트 전제 유지) |
-| B2 | 이슈 상세 `⋯` 에 「자동화 ▸」 — 이 프로젝트의 MANUAL 룰 목록, 고르면 실행 + 토스트 | 목록 API = 기존 룰 목록을 `triggerType=MANUAL` 로 거른다(읽기 권한은 이슈 열람자 — 기존 목록은 `MANAGE_AUTOMATION` 이라 **새 조회 엔드포인트** `GET …/automation/manual-rules` 가 필요) |
+| B1 | `MANUAL` — 이슈 상세에서 사람이 골라 실행. config 없음 | `POST /api/v1/projects/{projectKey}/automation/manual-rules/{ruleId}/run` body `{issueKey}` → 202. 권한 = 요청자가 그 이슈 **열람 가능**(`IssueSnapshotPort` 요청자 가시성 — 보안 수준 포함) + 룰이 `MANUAL` · enabled · 같은 프로젝트. 하나라도 틀리면 404(존재 숨김). 실행은 큐(`q_automation_execution`)로 — triggerEvent `{type:"manual", issueKey, projectKey, actorId}` 를 **서버가 만든다**(요청 body 의 다른 값은 싣지 않는다 — 프로젝트 경계 게이트 전제 유지). 액션은 룰 actor 권한(Jira 와 같음) |
+| B2 | 이슈 상세 `⋯` 에 「자동화 ▸」 — 이 프로젝트의 MANUAL 룰 목록, 고르면 실행 + 토스트 | `GET /api/v1/projects/{projectKey}/automation/manual-rules` → `[{id, name}]`. 권한 = 프로젝트 BROWSE(기존 룰 목록은 `MANAGE_AUTOMATION` 이라 따로 둔다). 같은 룰 · 같은 이슈를 60초 안에 다시 부르면 실행 워커의 루프 억제 창에 걸려 조용히 건너뛴다(알려진 한계) |
 
 - automation PR: `TriggerType.MANUAL` 은 단계 A 의 V311 에 **같이** 넣는다(마이그레이션 한 번). 엔드포인트 · 서비스는 단계 B PR.
 

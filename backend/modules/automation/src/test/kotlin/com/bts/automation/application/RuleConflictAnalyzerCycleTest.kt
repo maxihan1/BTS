@@ -248,8 +248,8 @@ class RuleConflictAnalyzerCycleTest : DescribeSpec({
             "A(AssignAction, ISSUE_UPDATED{status})↔B(SetField(status), ISSUE_UPDATED{assignee}) 는 " +
                 "B→A 엣지만 있고 A→B 엣지가 없어 CYCLE 이 아니다",
         ) {
-            // 담당자 변경은 issue.assigned 별도 이벤트로 발행되고 automation TriggerMatcher 는 그 이벤트를
-            // 소비하지 않는다(issue.created/updated/commented 만 매핑) — 즉 AssignAction 이 실제로
+            // 담당자 변경은 issue.assigned 별도 이벤트로 발행된다 — R9 부터 그 이벤트는 ISSUE_ASSIGNED 트리거로만
+            // 매핑되고 issue.updated 의 fields 에는 담당자가 없다. 즉 AssignAction 이 실제로
             // ISSUE_UPDATED{fields:[assignee]} 를 유발하는 런타임 경로는 존재하지 않는다. A→B 엣지가 그대로
             // 있었다면 B→A(SetField(status)가 A의 ISSUE_UPDATED{status} 를 유발) 와 합쳐져 A↔B 2-cycle 로
             // 오탐(phantom CYCLE)됐을 시나리오다.
@@ -271,6 +271,21 @@ class RuleConflictAnalyzerCycleTest : DescribeSpec({
             val conflicts = analyzer.analyze(listOf(ruleA, ruleB))
 
             conflicts.none { it.type == ConflictType.CYCLE } shouldBe true
+        }
+    }
+
+    describe("CYCLE 검출 — AssignAction → ISSUE_ASSIGNED (R9)") {
+        it("ISSUE_ASSIGNED 트리거 규칙이 AssignAction 을 가지면 self-loop CYCLE 1건") {
+            val ruleA =
+                ruleOf(
+                    name = "A",
+                    triggerType = TriggerType.ISSUE_ASSIGNED,
+                    actions = listOf(Action.AssignAction(assigneeId = UUID.randomUUID())),
+                )
+
+            val conflicts = analyzer.analyze(listOf(ruleA))
+
+            conflicts.filter { it.type == ConflictType.CYCLE }.map { it.ruleIds } shouldBe listOf(listOf(ruleA.id))
         }
     }
 })

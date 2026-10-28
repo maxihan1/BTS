@@ -12,12 +12,12 @@ class TriggerConfigTest : DescribeSpec({
 
     val fixedNow = Instant.parse("2026-07-10T00:00:00Z")
 
-    describe("TriggerType — enum 6종") {
-        it("6종 모두 정의된다") {
-            TriggerType.entries.size shouldBe 6
+    describe("TriggerType — enum 9종") {
+        it("9종 모두 정의된다") {
+            TriggerType.entries.size shouldBe 9
         }
 
-        it("이슈 이벤트 3종 + SCHEDULED + WEBHOOK + PR_MERGED 를 포함한다") {
+        it("이슈 이벤트 5종 + SCHEDULED + WEBHOOK + PR_MERGED + MANUAL 을 포함한다") {
             TriggerType.entries.toSet() shouldBe
                 setOf(
                     TriggerType.ISSUE_CREATED,
@@ -26,7 +26,35 @@ class TriggerConfigTest : DescribeSpec({
                     TriggerType.SCHEDULED,
                     TriggerType.WEBHOOK,
                     TriggerType.PR_MERGED,
+                    TriggerType.ISSUE_TRANSITIONED,
+                    TriggerType.ISSUE_ASSIGNED,
+                    TriggerType.MANUAL,
                 )
+        }
+    }
+
+    describe("TriggerConfig.validate — ISSUE_TRANSITIONED (R9)") {
+        it("빈 config(모든 전환 발화)는 통과한다") {
+            TriggerConfig.validate(TriggerType.ISSUE_TRANSITIONED, "{}")
+        }
+
+        it("fromStates · toStates 가 문자열 배열이면 통과한다") {
+            TriggerConfig.validate(
+                TriggerType.ISSUE_TRANSITIONED,
+                """{"fromStates":["open"],"toStates":["done","closed"]}""",
+            )
+        }
+
+        it("toStates 가 배열이 아니면 거부한다") {
+            shouldThrow<TriggerConfigInvalidException> {
+                TriggerConfig.validate(TriggerType.ISSUE_TRANSITIONED, """{"toStates":"done"}""")
+            }
+        }
+
+        it("fromStates 항목이 빈 문자열이면 거부한다") {
+            shouldThrow<TriggerConfigInvalidException> {
+                TriggerConfig.validate(TriggerType.ISSUE_TRANSITIONED, """{"fromStates":[""]}""")
+            }
         }
     }
 
@@ -123,6 +151,11 @@ class TriggerConfigTest : DescribeSpec({
 
         it("ISSUE_COMMENTED 는 빈 config 를 허용한다") {
             TriggerConfig.validate(TriggerType.ISSUE_COMMENTED, "{}")
+        }
+
+        it("ISSUE_ASSIGNED · MANUAL 은 빈 config 를 허용한다") {
+            TriggerConfig.validate(TriggerType.ISSUE_ASSIGNED, "{}")
+            TriggerConfig.validate(TriggerType.MANUAL, "{}")
         }
 
         it("WEBHOOK 은 빈 config 를 허용한다") {
