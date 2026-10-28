@@ -3,7 +3,9 @@
 package com.bts.workflow.web
 
 import com.bts.shared.issue.StatusMigrationMapping
+import com.bts.shared.issue.StatusMigrationTypeFilter
 import com.bts.workflow.application.DraftView
+import com.bts.workflow.application.ProjectTypeStatusMapping
 import com.bts.workflow.application.PublishPreview
 import com.bts.workflow.application.WorkflowDraftService
 import com.bts.workflow.application.WorkflowPublishService
@@ -267,12 +269,16 @@ class WorkflowDraftControllerMvcTest {
                 currentVersion = 3,
                 removedStatusKeys = listOf("done"),
                 pendingIssueCounts = mapOf("done" to 4L),
+                scopes = mapOf("ALPHA" to StatusMigrationTypeFilter(setOf(9L, 2L), exceptListed = true)),
             )
 
         mockMvc.perform(post("/api/v1/workflows/$KEY/publish/preview").accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.removedStatusKeys[0]").value("done"))
             .andExpect(jsonPath("$.data.pendingIssueCounts.done").value(4))
+            .andExpect(jsonPath("$.data.scopes[0].projectKey").value("ALPHA"))
+            .andExpect(jsonPath("$.data.scopes[0].issueTypeIds[0]").value(2))
+            .andExpect(jsonPath("$.data.scopes[0].exceptListed").value(true))
     }
 
     // ── 발행 ──────────────────────────────────────────────────────────────────
@@ -357,8 +363,8 @@ class WorkflowDraftControllerMvcTest {
     fun `POST publish migrate — 202 이고 bulkOperationId 를 돌려준다`() {
         val bulkOperationId = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
         every {
-            publishService.migrate(any(), KEY, 3, listOf(StatusMigrationMapping("done", "closed")))
-        } returns bulkOperationId
+            publishService.migrate(any(), KEY, 3, listOf(StatusMigrationMapping("done", "closed")), emptyList())
+        } returns listOf(bulkOperationId)
 
         mockMvc.perform(
             post("/api/v1/workflows/$KEY/publish/migrate")
@@ -367,12 +373,42 @@ class WorkflowDraftControllerMvcTest {
         )
             .andExpect(status().isAccepted)
             .andExpect(jsonPath("$.data.bulkOperationId").value(bulkOperationId.toString()))
+            .andExpect(jsonPath("$.data.bulkOperationIds[0]").value(bulkOperationId.toString()))
+    }
+
+    @Test
+    @WithMockUser(username = ACTOR_ID)
+    fun `POST publish migrate — 예외를 서비스에 넘기고 작업 id 를 전부 돌려준다`() {
+        val first = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        val second = UUID.fromString("bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee")
+        every {
+            publishService.migrate(
+                any(),
+                KEY,
+                3,
+                listOf(StatusMigrationMapping("done", "closed")),
+                listOf(ProjectTypeStatusMapping("ALPHA", 7, "done", "open")),
+            )
+        } returns listOf(first, second)
+
+        mockMvc.perform(
+            post("/api/v1/workflows/$KEY/publish/migrate")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """{"baseVersion":3,"mappings":[{"fromStatusKey":"done","toStatusKey":"closed"}],""" +
+                        """"exceptions":[{"projectKey":"ALPHA","issueTypeId":7,""" +
+                        """"fromStatusKey":"done","toStatusKey":"open"}]}""",
+                ),
+        )
+            .andExpect(status().isAccepted)
+            .andExpect(jsonPath("$.data.bulkOperationIds.length()").value(2))
+            .andExpect(jsonPath("$.data.bulkOperationIds[1]").value(second.toString()))
     }
 
     @Test
     @WithMockUser(username = ACTOR_ID)
     fun `POST publish migrate — 버전 충돌은 409 이고 전용 코드를 쓴다`() {
-        every { publishService.migrate(any(), KEY, any(), any()) } throws
+        every { publishService.migrate(any(), KEY, any(), any(), any()) } throws
             WorkflowVersionConflictException(KEY, 3, 4)
 
         mockMvc.perform(

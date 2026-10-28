@@ -55,8 +55,8 @@ import java.util.UUID
  * 전역 임계값은 건드리지 않는다.
  *
  * ### `TooManyFunctions` 억제 사유
- * public 진입점은 셋([preview] · [publish] · [migrate])뿐이고 나머지 아홉은 전부 private 관문이다
- * (한도 11, 현재 12). 줄이는 길은 둘인데 둘 다 더 나쁘다 — 관문을 합치면 어느 검사가 왜 있는지가
+ * public 진입점은 셋([preview] · [publish] · [migrate])뿐이고 나머지 열은 전부 private 관문이다
+ * (한도 11, 현재 13). 줄이는 길은 둘인데 둘 다 더 나쁘다 — 관문을 합치면 어느 검사가 왜 있는지가
  * 이름에서 사라지고, 클래스를 쪼개면 **같은 초안을 근거로 삼는 세 경로의 전처리가 갈라진다**.
  * 갈라진 관문은 한쪽에만 붙은 검사가 다른 쪽에서 통째로 우회되는 형태이며, 그것이 이 PR 이
  * [prepareDraft] 로 되레 **묶은** 이유다. 클래스 분리는 별건으로 다룬다.
@@ -101,11 +101,14 @@ class WorkflowPublishService(
         validateDefinition(key, definition)
 
         val removed = removedStatusKeys(workflow.id, definition)
+        val scopes = schemeAssignmentRepository.findMigrationScopesByWorkflowId(workflow.id)
         return PublishPreview(
             baseVersion = draft.baseVersion,
             currentVersion = workflow.version,
             removedStatusKeys = removed.toList(),
-            pendingIssueCounts = pendingIssueCounts(workflow.id, removed),
+            pendingIssueCounts = pendingIssueCounts(scopes.associate { it.ref.id to it.typeFilter }, removed),
+            // 이관 모달의 「예외 추가」 선택지 — 프로젝트 × 이 워크플로우가 맡는 유형 (R11C)
+            scopes = scopes.associate { it.ref.key to it.typeFilter },
         )
     }
 
@@ -190,8 +193,10 @@ class WorkflowPublishService(
      * @param actorId 이관을 지시한 관리자. 권한 판정과 커맨드의 `actorUserId` 에 함께 쓴다 —
      *   워커에는 SecurityContext 가 없어 actor 를 커맨드가 실어 날라야 한다.
      * @param baseVersion 화면이 들고 있던 버전. 저장된 초안의 앵커와 다르면 409.
-     * @param mappings 빠지는 상태마다 옮길 곳.
-     * @return 큐잉된 일괄작업 id. 진행률은 `GET /api/v1/bulk-operations/{id}` 가 돌려준다.
+     * @param mappings 빠지는 상태마다 옮길 곳 — 기본 대상.
+     * @param exceptions (프로젝트, 이슈 타입)별로 기본 대상 대신 쓸 곳 (R11C · 결정 D4). 명령은 기본 1건
+     *   (예외 유형을 뺀 범위) + 예외 (프로젝트, 유형)마다 1건으로 쪼갠다 — 명령 하나는 매핑 목록 하나라서다.
+     * @return 큐잉된 일괄작업 id 들. 진행률은 `GET /api/v1/bulk-operations/{id}` 가 돌려준다.
      * @throws WorkflowNotFoundException 워크플로우가 없거나 소프트 삭제됐을 때
      * @throws WorkflowInvalidRequestException 초안이 없거나 상태가 카탈로그에 없을 때
      * @throws WorkflowVersionConflictException 그 사이 다른 세션이 먼저 발행했을 때
@@ -202,7 +207,8 @@ class WorkflowPublishService(
         key: String,
         baseVersion: Long,
         mappings: List<StatusMigrationMapping>,
-    ): UUID {
+        exceptions: List<ProjectTypeStatusMapping> = emptyList(),
+    ): List<UUID> {
         permissionResolver.requirePermission(
             actorId,
             WorkflowDefinitionPermission.PUBLISH,
@@ -236,27 +242,33 @@ class WorkflowPublishService(
                 mappings,
             )
 
+            val scopeByKey = scope.associate { it.ref.key to it.typeFilter }
+            requireSoundExceptions(key, definition, live, scopeByKey, mappings, exceptions)
+
             if (migrationInFlightPort.hasInFlightMigration(projectKeys)) {
                 throw WorkflowMigrationInFlightException(key)
             }
-            val bulkOperationId =
-                issueStatusMigrationPort.enqueueStatusMigration(
-                    StatusMigrationCommand(
-                        actorUserId = actorId,
-                        projectScopes = scope.associate { it.ref.key to it.typeFilter },
-                        mappings = mappings,
-                    ),
-                )
+            val bulkOperationIds =
+                splitByExceptions(scopeByKey, mappings, exceptions).map { (scopes, commandMappings) ->
+                    issueStatusMigrationPort.enqueueStatusMigration(
+                        StatusMigrationCommand(
+                            actorUserId = actorId,
+                            projectScopes = scopes,
+                            mappings = commandMappings,
+                        ),
+                    )
+                }
 
             log.info(
-                "상태 이관 큐잉. key={} bulkOperationId={} removed={} projects={} mappings={}",
+                "상태 이관 큐잉. key={} bulkOperationIds={} removed={} projects={} mappings={} exceptions={}",
                 key,
-                bulkOperationId,
+                bulkOperationIds,
                 removed,
                 projectKeys.size,
                 mappings.size,
+                exceptions.size,
             )
-            bulkOperationId
+            bulkOperationIds
         }
     }
 
@@ -434,17 +446,12 @@ class WorkflowPublishService(
      * 3단 JOIN 이 한 번씩 나간다 — 스코프는 상태와 무관하므로 루프 **밖에서** 한 번만 읽는다.
      */
     private fun pendingIssueCounts(
-        workflowId: UUID,
+        scopes: Map<UUID, StatusMigrationTypeFilter>,
         removed: Set<String>,
-    ): Map<String, Long> {
-        val scopes =
-            schemeAssignmentRepository
-                .findMigrationScopesByWorkflowId(workflowId)
-                .associate { it.ref.id to it.typeFilter }
-        return removed
+    ): Map<String, Long> =
+        removed
             .associateWith { issueStatusUsagePort.countIssuesInStatusWithin(it, scopes) }
             .filterValues { it > 0 }
-    }
 
     /**
      * 빠지는 상태에 남은 이슈가 있으면 발행을 막는다.
@@ -468,7 +475,11 @@ class WorkflowPublishService(
         workflowId: UUID,
         removed: Set<String>,
     ) {
-        val pending = pendingIssueCounts(workflowId, removed)
+        val scopes =
+            schemeAssignmentRepository
+                .findMigrationScopesByWorkflowId(workflowId)
+                .associate { it.ref.id to it.typeFilter }
+        val pending = pendingIssueCounts(scopes, removed)
         if (pending.isNotEmpty()) {
             throw WorkflowPublishMappingRequiredException(key, pending)
         }
@@ -555,7 +566,104 @@ class WorkflowPublishService(
             )
         }
     }
+
+    /**
+     * 예외가 안전한지 판정한다. [requireSoundMappings] 를 지난 뒤, **포트를 부르기 전에** 끝난다.
+     *
+     * 예외는 기본 매핑이 있는 출발 상태만 덮는다 — 기본이 없는 상태의 예외는 나머지 유형을 옮기지 않은 채
+     * 남긴다. (프로젝트, 유형)이 이 워크플로우의 범위 밖이면 남의 이슈를 옮기게 되므로 거부한다.
+     */
+    @Suppress("LongParameterList")
+    private fun requireSoundExceptions(
+        key: String,
+        definition: WorkflowDraftDefinition,
+        live: Set<String>,
+        scopes: Map<String, StatusMigrationTypeFilter>,
+        mappings: List<StatusMigrationMapping>,
+        exceptions: List<ProjectTypeStatusMapping>,
+    ) {
+        fun reject(reason: String): Nothing = throw WorkflowMigrationInvalidMappingException(key, reason)
+
+        val defaults = mappings.map { it.fromStatusKey }.toSet()
+        val draftKeys = definition.states.map { it.key }.toSet()
+        val duplicated =
+            exceptions
+                .groupingBy { Triple(it.projectKey, it.issueTypeId, it.fromStatusKey) }
+                .eachCount()
+                .filterValues { it > 1 }
+                .keys
+        if (duplicated.isNotEmpty()) reject("같은 (프로젝트, 이슈 타입, 출발 상태) 예외가 여러 번 왔다 — $duplicated")
+        exceptions.forEach { e ->
+            if (e.fromStatusKey !in defaults) reject("예외의 출발 상태 ${e.fromStatusKey} 에 기본 대상이 없다")
+            // F8 · F16 과 같은 축 — 도착지는 초안에도 지금 편성에도 있어야 한다.
+            if (e.toStatusKey !in draftKeys || e.toStatusKey !in live) {
+                reject("예외의 도착 상태 ${e.toStatusKey} 가 초안과 지금 편성에 함께 있지 않다")
+            }
+            val filter = scopes[e.projectKey] ?: reject("프로젝트 ${e.projectKey} 는 이 워크플로우를 쓰지 않는다")
+            if (!filter.covers(e.issueTypeId)) {
+                reject("프로젝트 ${e.projectKey} 에서 이슈 타입 ${e.issueTypeId} 는 이 워크플로우를 쓰지 않는다")
+            }
+        }
+    }
 }
+
+/** 이 필터가 그 이슈 타입을 범위에 넣는가. */
+private fun StatusMigrationTypeFilter.covers(issueTypeId: Long): Boolean =
+    if (exceptListed) issueTypeId !in issueTypeIds else issueTypeId in issueTypeIds
+
+/** 필터에서 이슈 타입들을 뺀다. 남는 것이 없으면 null — 아무것도 안 고르는 범위를 명령에 싣지 않는다. */
+private fun StatusMigrationTypeFilter.without(excluded: Set<Long>): StatusMigrationTypeFilter? =
+    when {
+        excluded.isEmpty() -> this
+        exceptListed -> copy(issueTypeIds = issueTypeIds + excluded)
+        else -> (issueTypeIds - excluded).takeIf { it.isNotEmpty() }?.let { copy(issueTypeIds = it) }
+    }
+
+/**
+ * 기본 매핑과 예외를 (범위, 매핑) 명령 단위로 쪼갠다 (R11C).
+ *
+ * 기본 명령은 예외 유형을 뺀 범위를 옮기고, 예외 (프로젝트, 유형)마다 기본 매핑에 예외를 덮은 명령을 따로 만든다.
+ * 범위가 겹치지 않아 한 이슈가 두 명령에 걸리지 않는다. 기본 범위가 다 빠지면 기본 명령은 없다.
+ *
+ * ponytail: (프로젝트, 유형)마다 명령 1건 — 같은 덮어쓰기를 공유하는 쌍을 합치지 않는다. 예외가 수십 개가 되면 묶는다.
+ */
+internal fun splitByExceptions(
+    scopes: Map<String, StatusMigrationTypeFilter>,
+    mappings: List<StatusMigrationMapping>,
+    exceptions: List<ProjectTypeStatusMapping>,
+): List<Pair<Map<String, StatusMigrationTypeFilter>, List<StatusMigrationMapping>>> {
+    val byProjectType = exceptions.groupBy { it.projectKey to it.issueTypeId }
+    val defaultScopes =
+        scopes
+            .mapNotNull { (projectKey, filter) ->
+                val excepted = byProjectType.keys.filter { it.first == projectKey }.map { it.second }.toSet()
+                filter.without(excepted)?.let { projectKey to it }
+            }.toMap()
+    val overridden =
+        byProjectType.map { (projectType, overrides) ->
+            val (projectKey, issueTypeId) = projectType
+            val commandMappings =
+                mappings.map { m ->
+                    overrides
+                        .firstOrNull { it.fromStatusKey == m.fromStatusKey }
+                        ?.let { m.copy(toStatusKey = it.toStatusKey) } ?: m
+                }
+            mapOf(projectKey to StatusMigrationTypeFilter(setOf(issueTypeId), exceptListed = false)) to commandMappings
+        }
+    return listOfNotNull(defaultScopes.takeIf { it.isNotEmpty() }?.let { it to mappings }) + overridden
+}
+
+/**
+ * 이관 예외 한 건 — 이 (프로젝트, 이슈 타입)의 [fromStatusKey] 이슈는 기본 대상 대신 [toStatusKey] 로 간다.
+ *
+ * @property projectKey `projects.key`. 이 워크플로우의 이관 범위 안이어야 한다.
+ */
+data class ProjectTypeStatusMapping(
+    val projectKey: String,
+    val issueTypeId: Long,
+    val fromStatusKey: String,
+    val toStatusKey: String,
+)
 
 /**
  * 한 번의 이관이 담을 수 있는 이슈 수의 상한.
@@ -595,10 +703,12 @@ private data class PreparedDraft(
  * @property currentVersion 지금 DB 의 버전. [baseVersion] 과 다르면 이미 남이 발행한 것이다.
  * @property removedStatusKeys 발행하면 이 워크플로우에서 빠지는 상태 키.
  * @property pendingIssueCounts 그중 이슈가 남아 있는 상태와 그 건수. 비어 있지 않으면 발행이 막힌다.
+ * @property scopes 이관 범위 — 프로젝트 키 → 이 워크플로우가 맡는 이슈 타입. 예외 선택지의 근거다.
  */
 data class PublishPreview(
     val baseVersion: Long,
     val currentVersion: Long,
     val removedStatusKeys: List<String>,
     val pendingIssueCounts: Map<String, Long>,
+    val scopes: Map<String, StatusMigrationTypeFilter>,
 )

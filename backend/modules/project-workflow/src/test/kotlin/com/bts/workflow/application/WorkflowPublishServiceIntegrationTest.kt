@@ -1184,7 +1184,7 @@ class WorkflowPublishServiceIntegrationTest {
         val bulkOperationId =
             service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
 
-        assertThat(bulkOperationId).isEqualTo(BULK_OPERATION_ID)
+        assertThat(bulkOperationId).containsExactly(BULK_OPERATION_ID)
         assertThat(migrationPort.received.single().actorUserId)
             .describedAs("워커에는 SecurityContext 가 없다 — actor 는 커맨드가 실어 나른다")
             .isEqualTo(ACTOR)
@@ -1192,6 +1192,122 @@ class WorkflowPublishServiceIntegrationTest {
             .containsExactly(StatusMigrationMapping("done", "open"))
         // F4 — migrate 는 project-workflow 를 읽기만 한다. 발행까지 해 버리면 초안이 사라진다.
         assertThat(draftRepository.findByWorkflowId(id)).isNotNull
+    }
+
+    // ── 이관 예외 — 기본 대상 + 프로젝트 × 유형 (R11C · 결정 D4) ─────────────────
+
+    /** `review` 를 편성에 더해 두고 `done` 을 빼는 초안 — 예외 도착지가 기본 대상(`open`)과 달라야 한다. */
+    private fun seedWithReviewAndDraftWithoutDone(key: String): UUID {
+        val id = workflowId(key)
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            insertWorkflowStatus(conn, id, "review", "검토 $key", "IN_PROGRESS", 2)
+        }
+        val base = draftWithoutDone(key)
+        val draft =
+            base.copy(
+                states =
+                    base.states +
+                        DraftStateDto(key = "review", name = "검토 $key", category = "IN_PROGRESS", displayOrder = 1),
+            )
+        draftRepository.upsert(id, draft, baseVersion = 0, updatedBy = null)
+        return id
+    }
+
+    @Test
+    fun `예외가 있으면 기본 명령에서 그 유형을 빼고 프로젝트 × 유형마다 명령을 따로 싣는다`() {
+        val key = seedWorkflow()
+        val id = seedWithReviewAndDraftWithoutDone(key)
+        val (alpha, beta) = attachTwoProjects(id)
+        val bug = insertIssueType()
+
+        val ids =
+            service.migrate(
+                ACTOR,
+                key,
+                baseVersion = 0,
+                mappings = listOf(StatusMigrationMapping("done", "open")),
+                exceptions = listOf(ProjectTypeStatusMapping(projectKey(alpha), bug, "done", "review")),
+            )
+
+        assertThat(ids).hasSize(2)
+        val (defaultCmd, exceptionCmd) = migrationPort.received
+        assertThat(defaultCmd.projectScopes)
+            .describedAs("기본 명령이 alpha 의 버그까지 옮기면 예외 명령과 같은 이슈를 두 번 옮긴다")
+            .isEqualTo(
+                mapOf(
+                    projectKey(alpha) to StatusMigrationTypeFilter(setOf(bug), exceptListed = true),
+                    projectKey(beta) to StatusMigrationTypeFilter(emptySet(), exceptListed = true),
+                ),
+            )
+        assertThat(defaultCmd.mappings).containsExactly(StatusMigrationMapping("done", "open"))
+        assertThat(exceptionCmd.projectScopes)
+            .isEqualTo(mapOf(projectKey(alpha) to StatusMigrationTypeFilter(setOf(bug), exceptListed = false)))
+        assertThat(exceptionCmd.mappings).containsExactly(StatusMigrationMapping("done", "review"))
+    }
+
+    @Test
+    fun `유형 하나만 맡는 프로젝트에서 그 유형을 예외로 빼면 기본 명령이 없다`() {
+        val key = seedWorkflow()
+        val id = seedWithReviewAndDraftWithoutDone(key)
+        val (project, type) = attachSchemeByTypeOnly(id)
+
+        service.migrate(
+            ACTOR,
+            key,
+            baseVersion = 0,
+            mappings = listOf(StatusMigrationMapping("done", "open")),
+            exceptions = listOf(ProjectTypeStatusMapping(projectKey(project), type, "done", "review")),
+        )
+
+        assertThat(migrationPort.received)
+            .describedAs("빈 유형 필터(exceptListed=false)를 실은 기본 명령은 아무것도 안 옮기는 작업이다")
+            .singleElement()
+            .satisfies({ assertThat(it.mappings).containsExactly(StatusMigrationMapping("done", "review")) })
+    }
+
+    @Test
+    fun `예외의 프로젝트 · 유형 · 출발 · 도착이 범위를 벗어나면 400 이고 포트에 닿지 않는다`() {
+        val key = seedWorkflow()
+        val id = seedWithReviewAndDraftWithoutDone(key)
+        val (project, siblingType) = attachSchemeWithSibling(id)
+        val p = projectKey(project)
+        val bad =
+            mapOf(
+                "범위 밖 프로젝트" to ProjectTypeStatusMapping("NOPE", insertIssueType(), "done", "review"),
+                "형제 워크플로우 유형" to ProjectTypeStatusMapping(p, siblingType, "done", "review"),
+                "기본 대상 없는 출발" to ProjectTypeStatusMapping(p, insertIssueType(), "review", "open"),
+                "초안에 없는 도착" to ProjectTypeStatusMapping(p, insertIssueType(), "done", "done"),
+            )
+
+        bad.forEach { (axis, exception) ->
+            assertThatThrownBy {
+                service.migrate(
+                    ACTOR,
+                    key,
+                    baseVersion = 0,
+                    mappings = listOf(StatusMigrationMapping("done", "open")),
+                    exceptions = listOf(exception),
+                )
+            }.describedAs(axis).isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+        }
+        val dup = ProjectTypeStatusMapping(p, insertIssueType(), "done", "review")
+        assertThatThrownBy {
+            service.migrate(ACTOR, key, 0, listOf(StatusMigrationMapping("done", "open")), listOf(dup, dup))
+        }.isInstanceOf(WorkflowMigrationInvalidMappingException::class.java)
+        assertThat(migrationPort.received).isEmpty()
+    }
+
+    @Test
+    fun `preview 가 프로젝트별로 이 워크플로우가 맡는 유형 범위를 싣는다`() {
+        val key = seedWorkflow()
+        val id = workflowId(key)
+        val (project, siblingType) = attachSchemeWithSibling(id)
+        draftRepository.upsert(id, draftWithoutDone(key), baseVersion = 0, updatedBy = null)
+
+        val preview = service.preview(ACTOR, key)
+
+        assertThat(preview.scopes)
+            .isEqualTo(mapOf(projectKey(project) to StatusMigrationTypeFilter(setOf(siblingType), exceptListed = true)))
     }
 
     /**
@@ -1337,7 +1453,7 @@ class WorkflowPublishServiceIntegrationTest {
 
         val bulkOperationId =
             service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
-        assertThat(bulkOperationId).isEqualTo(BULK_OPERATION_ID)
+        assertThat(bulkOperationId).containsExactly(BULK_OPERATION_ID)
 
         assertThatThrownBy { service.publish(ACTOR, key, baseVersion = 0) }
             .describedAs("큐잉은 약속일 뿐이다 — 워커가 실패하면 이슈는 그대로 남는다")
@@ -1490,7 +1606,7 @@ class WorkflowPublishServiceIntegrationTest {
         val bulkOperationId =
             service.migrate(ACTOR, key, baseVersion = 0, mappings = listOf(StatusMigrationMapping("done", "open")))
 
-        assertThat(bulkOperationId).isEqualTo(BULK_OPERATION_ID)
+        assertThat(bulkOperationId).containsExactly(BULK_OPERATION_ID)
     }
 
     // ── 매핑 가드 (Task 4 · F7·F8·F11·F13·F14·F16 · E2·E4) ────────────────────

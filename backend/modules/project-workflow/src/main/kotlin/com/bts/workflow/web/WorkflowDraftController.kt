@@ -10,6 +10,7 @@ import com.bts.workflow.port.outbound.toUuid
 import com.bts.workflow.web.dto.DraftResponse
 import com.bts.workflow.web.dto.MigrateRequest
 import com.bts.workflow.web.dto.MigrateResponse
+import com.bts.workflow.web.dto.MigrationScopeDto
 import com.bts.workflow.web.dto.PublishPreviewResponse
 import com.bts.workflow.web.dto.PublishRequest
 import com.bts.workflow.web.dto.PublishResponse
@@ -143,6 +144,10 @@ class WorkflowDraftController(
                 currentVersion = preview.currentVersion,
                 removedStatusKeys = preview.removedStatusKeys,
                 pendingIssueCounts = preview.pendingIssueCounts,
+                scopes =
+                    preview.scopes.map { (projectKey, filter) ->
+                        MigrationScopeDto(projectKey, filter.issueTypeIds.sorted(), filter.exceptListed)
+                    },
             ),
         )
     }
@@ -184,15 +189,23 @@ class WorkflowDraftController(
     ): DataResponse<MigrateResponse> {
         val actor = CurrentActor.current()
         log.info(
-            "WorkflowDraftController.migrate workflow={} baseVersion={} mappings={}",
+            "WorkflowDraftController.migrate workflow={} baseVersion={} mappings={} exceptions={}",
             key,
             request.baseVersion,
             request.mappings.size,
+            request.exceptions.size,
         )
         // 범위(projectKeys)는 여기서 넘기지 않는다 — 서비스가 스킴 할당을 거슬러 직접 조회한다.
-        val bulkOperationId =
-            publishService.migrate(actor.toUuid(), key, request.baseVersion, request.mappings.map { it.toMapping() })
-        return DataResponse(MigrateResponse(bulkOperationId))
+        // 예외의 (프로젝트, 유형)도 서비스가 그 범위와 대조한다.
+        val bulkOperationIds =
+            publishService.migrate(
+                actor.toUuid(),
+                key,
+                request.baseVersion,
+                request.mappings.map { it.toMapping() },
+                request.exceptions.map { it.toMapping() },
+            )
+        return DataResponse(MigrateResponse(bulkOperationIds.first(), bulkOperationIds))
     }
 
     /**

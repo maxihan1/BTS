@@ -3,6 +3,7 @@
 package com.bts.workflow.web.dto
 
 import com.bts.shared.issue.StatusMigrationMapping
+import com.bts.workflow.application.ProjectTypeStatusMapping
 import com.bts.workflow.domain.WorkflowDraftDefinition
 import com.fasterxml.jackson.annotation.JsonProperty
 import java.util.UUID
@@ -110,12 +111,26 @@ data class PublishResponse(
  *
  * @property baseVersion 초안 조회 때 받은 값. **저장된 초안의 앵커**와 다르면 409 다.
  * @property mappings 빠지는 상태마다 옮길 곳. 한 번의 발행에서 여러 상태가 동시에 빠질 수 있고
- *   그 각각의 대상이 다르므로 단일 쌍이 아니라 목록이다.
+ *   그 각각의 대상이 다르므로 단일 쌍이 아니라 목록이다. 이것이 「기본 대상」이다.
+ * @property exceptions (프로젝트, 이슈 타입)별로 기본 대상 대신 쓸 곳 (R11C). 빠지면 빈 목록 — 옛 화면 호환.
+ *   범위는 서버가 다시 대조한다 — 이 워크플로우를 쓰지 않는 (프로젝트, 유형)은 400 이다.
  */
 data class MigrateRequest(
     @JsonProperty(required = true) val baseVersion: Long,
     @JsonProperty(required = true) val mappings: List<StatusMappingDto>,
+    val exceptions: List<StatusMappingExceptionDto> = emptyList(),
 )
+
+/** 이관 예외 1건 — 이 (프로젝트, 이슈 타입)의 [fromStatusKey] 이슈는 기본 대상 대신 [toStatusKey] 로 간다. */
+data class StatusMappingExceptionDto(
+    @JsonProperty(required = true) val projectKey: String,
+    @JsonProperty(required = true) val issueTypeId: Long,
+    @JsonProperty(required = true) val fromStatusKey: String,
+    @JsonProperty(required = true) val toStatusKey: String,
+) {
+    fun toMapping(): ProjectTypeStatusMapping =
+        ProjectTypeStatusMapping(projectKey, issueTypeId, fromStatusKey, toStatusKey)
+}
 
 /**
  * 상태 1개의 이관 대상 매핑.
@@ -140,10 +155,12 @@ data class StatusMappingDto(
  * 진행률은 담지 않는다 — 기존 `GET /api/v1/bulk-operations/{id}` 가 이미 그 일을 한다. 두 번째
  * 조회 경로를 만들면 둘이 서로를 검사하지 않는다.
  *
- * @property bulkOperationId 큐잉된 일괄작업 id. 화면은 이 id 로 진행률을 폴링한다.
+ * @property bulkOperationId 첫 일괄작업 id — 예외 이전 화면 호환.
+ * @property bulkOperationIds 큐잉된 일괄작업 id 전부. 예외가 있으면 (프로젝트, 유형)마다 하나씩 늘어난다.
  */
 data class MigrateResponse(
     val bulkOperationId: UUID,
+    val bulkOperationIds: List<UUID>,
 )
 
 /**
@@ -153,10 +170,21 @@ data class MigrateResponse(
  * @property currentVersion 지금 DB 의 버전. [baseVersion] 과 다르면 이미 남이 발행한 것이다.
  * @property removedStatusKeys 발행하면 이 워크플로우에서 빠지는 상태 키.
  * @property pendingIssueCounts 그중 이슈가 남아 있는 상태와 그 건수. 비어 있지 않으면 발행이 막힌다.
+ * @property scopes 이 워크플로우를 쓰는 프로젝트와 거기서 맡는 이슈 타입 — 이관 예외 선택지 (R11C).
  */
 data class PublishPreviewResponse(
     val baseVersion: Long,
     val currentVersion: Long,
     val removedStatusKeys: List<String>,
     val pendingIssueCounts: Map<String, Long>,
+    val scopes: List<MigrationScopeDto>,
+)
+
+/**
+ * 이관 범위 1건. [exceptListed] 가 참이면 [issueTypeIds] **밖의** 유형 전부를 맡는다(스킴 기본 매핑).
+ */
+data class MigrationScopeDto(
+    val projectKey: String,
+    val issueTypeIds: List<Long>,
+    val exceptListed: Boolean,
 )
