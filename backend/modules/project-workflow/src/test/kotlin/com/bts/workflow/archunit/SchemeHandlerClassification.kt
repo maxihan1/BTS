@@ -85,4 +85,9 @@ internal val HANDLER_CLASSIFICATION: Map<HandlerKey, HandlerClassification> =
         // 「붙일 수 있는 스킴」과 「고칠 수 있는 스킴」은 다른 질문이라 권한도 갈린다.
         HandlerKey("ProjectWorkflowSchemeController", "listManagedSchemes") to
             HandlerClassification(WorkflowSchemePermission.MANAGE_SCHEME, ScopeKind.PROJECT),
+        // R11 스킴 변경 + 상태 이관 — 게시는 `update` 와, 교체는 `assignScheme` 와 같은 가드다.
+        HandlerKey("SchemeStatusMigrationController", "publish") to
+            HandlerClassification(WorkflowSchemePermission.MANAGE_SCHEME, ScopeKind.GLOBAL),
+        HandlerKey("SchemeStatusMigrationController", "switchScheme") to
+            HandlerClassification(WorkflowSchemePermission.ASSIGN_SCHEME, ScopeKind.PROJECT),
     )
