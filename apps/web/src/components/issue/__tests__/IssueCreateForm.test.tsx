@@ -175,6 +175,35 @@ describe('IssueCreateForm — 이슈 유형과 본문 (FR-4/FR-5)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
+// R1 — 제자리 모달은 화면을 떠나지 않으니 목록·보드를 직접 갱신해야 한다
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueCreateForm — 생성 뒤 이슈 화면 무효화 (R1 · FR-UX-09)', () => {
+  it('생성에 성공하면 목록 · 보드 · 백로그 · 검색 캐시를 무효화한다', async () => {
+    const user = userEvent.setup()
+    const onSuccess = vi.fn()
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    render(
+      <QueryClientProvider client={client}>
+        <IssueCreateForm onSuccess={onSuccess} />
+      </QueryClientProvider>,
+    )
+
+    await waitForProjectSelect()
+    await user.type(screen.getByLabelText(issueCreateStrings.summaryLabel), '제목입니다')
+    await user.click(screen.getByRole('button', { name: issueCreateStrings.submitButton }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled())
+    for (const queryKey of [['issues'], ['board'], ['backlog'], ['search-aql']]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey })
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
 // B-2 (선재 결함 정렬) — 제목 상한이 백엔드와 같다
 // ─────────────────────────────────────────────────────────────────────────────
 

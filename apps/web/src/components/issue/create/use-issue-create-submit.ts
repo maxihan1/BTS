@@ -1,7 +1,8 @@
 // 이슈 생성 폼의 제출 — 게이트·required 선검사·mutation·진행 신호 (부채 매핑 8)
 import { useEffect } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { createIssue } from '@/api/issues'
+import { invalidateIssueViews } from '@/api/issue-view-invalidation'
 import { isRequiredFieldEmpty } from '@/components/custom-fields/required-empty'
 import { resolveCreateErrorMessage } from '@/components/issue/create/issue-create-validation'
 import { buildCreateIssuePayload } from '@/components/issue/create/issue-create-schema'
@@ -57,10 +58,13 @@ export function useIssueCreateSubmit(
   const { isCreateExplicitlyDenied, onSuccess, onPendingChange } = options
   const { setServerError, setCustomFieldRequiredError } = state
 
+  const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: createIssue,
     onSuccess: (data) => {
       setServerError(null)
+      // 제자리 모달(R1)은 화면을 떠나지 않으니 보던 목록·보드가 스스로 다시 불리지 않는다.
+      void invalidateIssueViews(queryClient)
       onSuccess?.(data.key)
     },
     onError: (err: unknown) => {
