@@ -178,17 +178,6 @@ class OidcAuthenticationSuccessHandler(
      * 실제 1회용 소비/만료 검사는 [SsoLinkingCallbackProcessor] 가 [SsoLinkingIntentStore.consume] 으로
      * 단일 지점에서 수행한다. 세션이 없거나 속성이 없으면 일반 로그인 경로(null 반환).
      */
-    /**
-     * 진입 때 [LoginCardAuthorizationRequestResolver] 가 세션에 맡긴 returnTo 를 꺼내 지운다(1회용).
-     * 콜백 주소는 IdP 가 정해 returnTo 쿼리가 없다 — 쿼리로 읽던 때는 늘 기본 경로로 갔다.
-     */
-    private fun takeReturnTo(request: HttpServletRequest): String? {
-        val session = request.getSession(false) ?: return null
-        return (session.getAttribute(RETURN_TO_SESSION_ATTR) as? String).also {
-            session.removeAttribute(RETURN_TO_SESSION_ATTR)
-        }
-    }
-
     private fun linkingIntentOrNull(request: HttpServletRequest): SsoLinkingIntent? =
         request.getSession(false)?.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY) as? SsoLinkingIntent
 

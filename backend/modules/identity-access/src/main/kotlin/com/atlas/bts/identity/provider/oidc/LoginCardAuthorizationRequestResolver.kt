@@ -6,8 +6,20 @@ import jakarta.servlet.http.HttpServletRequest
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest
 
-/** 진입 때 받은 returnTo 를 콜백까지 들고 가는 세션 속성 — [OidcAuthenticationSuccessHandler] 가 꺼내 지운다 */
+/** 진입 때 받은 returnTo 를 콜백까지 들고 가는 세션 속성 — [takeReturnTo] 가 꺼내 지운다 */
 internal const val RETURN_TO_SESSION_ATTR = "bts.oidc.return-to"
+
+/**
+ * 진입 때 [LoginCardAuthorizationRequestResolver] 가 세션에 맡긴 returnTo 를 꺼내 지운다(1회용) — 콜백 쪽
+ * [OidcAuthenticationSuccessHandler] 가 쓴다. 콜백 주소는 IdP 가 정해 returnTo 쿼리가 없다 — 쿼리로 읽던 때는
+ * 늘 기본 경로로 갔다. 검증은 부른 쪽 몫이다.
+ */
+internal fun takeReturnTo(request: HttpServletRequest): String? {
+    val session = request.getSession(false) ?: return null
+    return (session.getAttribute(RETURN_TO_SESSION_ATTR) as? String).also {
+        session.removeAttribute(RETURN_TO_SESSION_ATTR)
+    }
+}
 
 /**
  * `/oauth2/authorization/{id}?login_hint=…|prompt=login&returnTo=…` 를 받는다 (S22 로그인 카드).
@@ -45,7 +57,10 @@ internal class LoginCardAuthorizationRequestResolver(
 
         val extra =
             buildMap {
-                request.getParameter(LOGIN_HINT_PARAM)?.takeIf { LOGIN_HINT.matches(it) }?.let { put(LOGIN_HINT_PARAM, it) }
+                request
+                    .getParameter(LOGIN_HINT_PARAM)
+                    ?.takeIf { LOGIN_HINT.matches(it) }
+                    ?.let { put(LOGIN_HINT_PARAM, it) }
                 if (request.getParameter(PROMPT_PARAM) == PROMPT_LOGIN) put(PROMPT_PARAM, PROMPT_LOGIN)
             }
         if (extra.isEmpty()) return authorizationRequest
