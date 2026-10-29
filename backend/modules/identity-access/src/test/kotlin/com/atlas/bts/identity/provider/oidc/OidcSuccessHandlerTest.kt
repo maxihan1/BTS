@@ -166,13 +166,16 @@ class OidcSuccessHandlerTest {
         return token
     }
 
-    private fun request(returnPath: String?): HttpServletRequest {
-        val req = mockk<HttpServletRequest>(relaxed = true)
-        every { req.getParameter(RETURN_PARAM) } returns returnPath
-        every { req.remoteAddr } returns "10.0.0.1"
-        every { req.getHeader("User-Agent") } returns "test-agent"
-        return req
-    }
+    /**
+     * 콜백 요청. returnTo 는 쿼리가 아니라 세션에 있다 — IdP 가 보내는 콜백 주소에는 returnTo 가 없고,
+     * 진입 때 [LoginCardAuthorizationRequestResolver] 가 세션에 맡긴다.
+     */
+    private fun request(returnPath: String?): HttpServletRequest =
+        MockHttpServletRequest("GET", "/login/oauth2/code/$registrationId").apply {
+            remoteAddr = "10.0.0.1"
+            addHeader("User-Agent", "test-agent")
+            returnPath?.let { requireNotNull(getSession(true)).setAttribute(RETURN_TO_SESSION_ATTR, it) }
+        }
 
     @Test
     fun `registrationId 로 providerId 를 해소해 provision 을 호출한다`() {
@@ -285,9 +288,12 @@ class OidcSuccessHandlerTest {
         val locationSlot = slot<String>()
         every { response.sendRedirect(capture(locationSlot)) } returns Unit
 
-        handler.onAuthenticationSuccess(request("/projects/PROJ-1"), response, oidcAuthentication())
+        val req = request("/projects/PROJ-1")
+        handler.onAuthenticationSuccess(req, response, oidcAuthentication())
 
         assertThat(locationSlot.captured).isEqualTo("/projects/PROJ-1")
+        // 1회용 — 다음 로그인이 이 경로를 물려받지 않는다
+        assertThat(req.getSession(false)?.getAttribute(RETURN_TO_SESSION_ATTR)).isNull()
     }
 
     @Test
@@ -323,6 +329,17 @@ class OidcSuccessHandlerTest {
         every { response.sendRedirect(capture(locationSlot)) } returns Unit
 
         handler.onAuthenticationSuccess(request("/\\evil.example.com"), response, oidcAuthentication())
+
+        assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
+    }
+
+    @Test
+    fun `제어문자를 끼운 복귀 경로(슬래시 탭 슬래시)도 차단한다 — 브라우저가 탭을 지우면 슬래시 두개가 된다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(request("/\t/evil.example.com"), response, oidcAuthentication())
 
         assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
     }
@@ -531,7 +548,6 @@ class OidcSuccessHandlerTest {
     private companion object {
         const val DEFAULT_REDIRECT = "/dashboard"
         const val SESSION_TTL_SECONDS = 1_209_600L
-        const val RETURN_PARAM = "returnTo"
         const val INTENT_TTL_SECONDS = 300L
         const val SETTINGS_PATH = "/settings/account-links"
     }
