@@ -214,6 +214,20 @@ class ActionExecutorTest : DescribeSpec({
             cmd.issueKey shouldBe "PROJ-2"
             cmd.body shouldBe "이슈 PROJ-2 - 템플릿 테스트"
         }
+
+        // 편집기 안내는 `{{ issue.key }}` 다. 평평한 이벤트(issueKey 최상위 — 수동 실행 · 상태 전환)에서
+        // 그 경로가 비어 「자동 하위 작업 」처럼 키 없이 렌더됐다(운영 확인 2026-10-29).
+        it("평평한 이벤트에서도 {{ issue.key }} 가 이슈 키로 치환된다") {
+            val rule = newRule()
+            val actions = listOf(Action.AddCommentAction(body = "전환 감지 {{ issue.key }}"))
+            every { actionRepository.findByRuleId(rule.id) } returns actions
+            val manualEvent =
+                objectMapper.readTree("""{"type":"manual","actorId":"${UUID.randomUUID()}","issueKey":"PROJ-3","projectKey":"PROJ"}""")
+
+            executor.execute(rule, manualEvent)
+
+            issueMutationPort.addCommentCalls.single().body shouldBe "전환 감지 PROJ-3"
+        }
     }
 
     describe("E-e CALL_WEBHOOK 디스패치") {

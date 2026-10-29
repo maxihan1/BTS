@@ -404,9 +404,13 @@ class ActionExecutor(
         val issueNode = if (triggerEvent.has(FIELD_ISSUE)) triggerEvent.path(FIELD_ISSUE) else triggerEvent
         val issueMap: Map<String, Any?> =
             if (issueNode.isObject) objectMapper.convertValue(issueNode, MAP_TYPE_REF) else emptyMap()
+        // 평평한 이벤트(수동 실행 · 상태 전환)는 키를 `issueKey` 로 싣는다 — 편집기가 안내하는 `{{ issue.key }}` 도 채운다.
+        val issueKey = extractIssueKey(triggerEvent)
+        val issueMapWithKey =
+            if (issueKey != null && FIELD_KEY !in issueMap) issueMap + (FIELD_KEY to issueKey) else issueMap
         val actorId = triggerEvent.path(FIELD_ACTOR_ID).asText(null)?.takeIf { it.isNotBlank() }
         return mapOf(
-            FIELD_ISSUE to issueMap,
+            FIELD_ISSUE to issueMapWithKey,
             "trigger" to mapOf("type" to rule.triggerType.name),
             "actor" to actorId?.let { mapOf("id" to it) }.orEmpty(),
         )
