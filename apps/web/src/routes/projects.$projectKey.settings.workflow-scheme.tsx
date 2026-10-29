@@ -168,12 +168,14 @@ export function ProjectWorkflowSchemeSettingsPage({
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-2xl">
+    // 폭 상한은 카드에만 건다 — 아래 스킴 관리는 사이드바 · 매핑표 · 메타패널 세 칸이라
+    // 페이지 전체를 2xl 로 묶으면 매핑표가 30px 로 찌그러진다(R11 운영 확인 2026-10-29).
+    <div className="p-8 space-y-6">
       <PageHeader />
 
       {/* 현재 할당된 스킴 카드 — 조회가 성공하면 배정은 항상 존재한다 (백엔드 자동 배정) */}
       {assignment !== undefined && (
-        <Card>
+        <Card className="max-w-2xl">
           <CardHeader>
             <CardTitle>{workflowSchemeLabels.assignment.currentSchemeTitle}</CardTitle>
             <CardDescription>현재 이 프로젝트에 적용 중인 워크플로우 스킴입니다.</CardDescription>
@@ -190,7 +192,7 @@ export function ProjectWorkflowSchemeSettingsPage({
       )}
 
       {/* 스킴 변경 섹션 */}
-      <Card>
+      <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>{workflowSchemeLabels.assignment.changeTitle}</CardTitle>
           <CardDescription>변경할 스킴을 선택하고 적용 버튼을 누르세요.</CardDescription>
