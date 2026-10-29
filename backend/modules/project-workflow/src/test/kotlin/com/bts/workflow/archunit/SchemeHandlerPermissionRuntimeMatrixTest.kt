@@ -11,6 +11,7 @@ import com.bts.workflow.scheme.application.WorkflowSchemeApplicationService
 import com.bts.workflow.scheme.port.outbound.ProjectLookupPort
 import com.bts.workflow.scheme.web.CapturingPermissionResolverStub
 import com.bts.workflow.scheme.web.ProjectWorkflowSchemeController
+import com.bts.workflow.scheme.web.SchemeStatusMigrationController
 import com.bts.workflow.scheme.web.WorkflowSchemeController
 import com.bts.workflow.scheme.web.WorkflowSchemeExceptionHandler
 import com.tngtech.archunit.core.domain.JavaClass
@@ -119,6 +120,15 @@ class SchemeHandlerPermissionRuntimeMatrixTest {
             resolver: WorkflowSchemePermissionResolver,
             lookupPort: ProjectLookupPort,
         ): ProjectWorkflowSchemeController = ProjectWorkflowSchemeController(svc, resolver, lookupPort)
+
+        @Bean
+        open fun schemeStatusMigrationController(
+            svc: WorkflowSchemeApplicationService,
+            resolver: WorkflowSchemePermissionResolver,
+            scopeResolver: WorkflowOwnershipScopeResolver,
+            lookupPort: ProjectLookupPort,
+        ): SchemeStatusMigrationController =
+            SchemeStatusMigrationController(mockk(relaxed = true), svc, resolver, scopeResolver, lookupPort)
 
         @Bean
         open fun workflowSchemeExceptionHandler(): WorkflowSchemeExceptionHandler = WorkflowSchemeExceptionHandler()
@@ -256,6 +266,13 @@ class SchemeHandlerPermissionRuntimeMatrixTest {
                 },
                 HandlerKey("ProjectWorkflowSchemeController", "listManagedSchemes") to {
                     get("/api/v1/projects/$PROJECT_KEY/workflow-schemes")
+                },
+                HandlerKey("SchemeStatusMigrationController", "publish") to {
+                    post("/api/v1/workflow-schemes/$SCHEME_KEY/publish")
+                        .json("""{"mappings":[{"issueTypeKey":null,"workflowKey":"default-workflow"}]}""")
+                },
+                HandlerKey("SchemeStatusMigrationController", "switchScheme") to {
+                    post("/api/v1/projects/$PROJECT_KEY/workflow-scheme/switch").json("""{"schemeKey":"$SCHEME_KEY"}""")
                 },
             )
 
