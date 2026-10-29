@@ -11,8 +11,14 @@
 //   그대로 옮긴 것이다. 갱신할 때도 같은 방법을 쓴다 — 테스트를 돌려 나온 줄을 붙여 넣는다.
 export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   "src/components/auth/MfaSettings.tsx::Function 'MfaSettings'": 218,
-  "src/components/automation/AutomationRuleFormDialog.tsx::Function 'FormBody'": 230,
+  // ⚠️ 2026-10-29 R 구간 승인(Maxi 「숫자를 올려」). R2 · R3 · R4 · R6 · R9 · R10 이 관문 생략으로 머지돼
+  //   배포 관문에서 드러났다 — 230 → 237 · BacklogBoard · KanbanBoard · DashboardTile · SearchPage 신규 ·
+  //   DashboardDetailPage 261 → 299 · IssueDetailPage 933 → 941 · BoardPage 421 → 453. 쪼개기는 부채로 남는다.
+  "src/components/automation/AutomationRuleFormDialog.tsx::Function 'FormBody'": 237,
+  "src/components/backlog/BacklogBoard.tsx::Function 'BacklogBoard'": 205,
+  "src/components/board/KanbanBoard.tsx::Function 'KanbanBoard'": 205,
   "src/components/custom-fields/CustomFieldFormDialog.tsx::Function 'FormBody'": 225,
+  "src/components/dashboard/DashboardTile.tsx::Function 'DashboardTile'": 228,
   // ★2026-08-14 (부채 매핑 16) 288 → 289. **의도적으로 올린 유일한 항목**이다.
   //   진행 중 신호를 부모에게 보고해야 하는데, 본문에 남길 수 있는 최소가 훅 호출 1줄이다
   //   (효과 본문·판정식·KDoc 은 전부 컴포넌트 밖 `useBusySignal`·`isWizardBusy` 로 뺐고,
@@ -51,7 +57,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   상단 헤더를 `DashboardDetailHeader` 로 순수 추출했다(DOM 무변경 — 바깥 div 의 class
   //   문자열이 e2e `headerOf()` 의 스코프다). 그 결과 동결값보다 71줄 아래로 내려갔다.
   //   여전히 200 위라 줄을 지우지 않는다.
-  "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 261,
+  "src/routes/dashboards.$dashboardId.tsx::Function 'DashboardDetailPage'": 299,
   // J1 표시 방식 토글이 조건 렌더 1줄을 더했다(1011 → 1012). 함께 들어온 40줄 중 39줄은
   // `IssueDetailPresentationMenu` 로 떼어내 갚았고, 남은 한 줄은 「이 기능이 존재한다」는
   // 최소 렌더라 0줄로 만들려면 기능을 지우는 수밖에 없다.
@@ -62,7 +68,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   전부 주석과 클래스이고 로직 증가는 0 이다. 착수 시점 1003 대비로는 여전히 상환이다.
   // ★2026-10-27 944 → 933. #566(전환 화면 대화상자)이 줄였는데 장부를 안 낮춰 배포 관문에서 드러났다.
   //   같은 PR 이 `BulkTransitionDialog`(212)를 200 밑으로 내려 그 줄은 지웠다 — 갚은 것이다.
-  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 933,
+  "src/routes/issues.$key.tsx::Function 'IssueDetailPage'": 941,
   "src/routes/issues.index.tsx::Function 'IssueListPage'": 331,
   // ★2026-08-24 367 → 372. **의도적으로 올린 항목**이다(위 289 선례와 같은 성격).
   //   보드 화면에만 `<h1>` 이 없어 헤더에 즐겨찾기 별 아이콘 하나만 떠 있었고 문서당 h1 이 0개였다
@@ -101,6 +107,7 @@ export const OVERSIZED_FUNCTION_BASELINE: Readonly<Record<string, number>> = {
   //   ★설명 주석 2줄은 걷어내 증가를 최소로 줄였다(423 → 421). 남은 +1 은 prop 그 자체다.
   //   #367 이 「래칫 장부를 낮추라는 지시를 안 지켜 재성장이 사전 승인됐다」로 남긴 사고를
   //   반복하지 않으려고, 이 이탈을 게이트 2 요약에 그대로 싣는다.
-  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 421,
+  "src/routes/projects.$projectKey.board.tsx::Function 'BoardPage'": 453,
+  "src/routes/search.tsx::Function 'SearchPage'": 221,
   "src/routes/settings.account-links.tsx::Function 'AccountLinksSettingsPage'": 257,
 }

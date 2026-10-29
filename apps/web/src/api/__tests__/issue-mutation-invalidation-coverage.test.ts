@@ -104,7 +104,13 @@ describe('이슈 변경 뮤테이션 ↔ 무효화 헬퍼 — 차집합 0', () =
   it('헬퍼를 쓰는 파일이 이슈 변경 파일 집합 안에 있다 (유령 사용 차단)', () => {
     // 반대 방향 — 이슈를 바꾸지도 않으면서 헬퍼를 부르는 곳이 생기면 무효화가 과해진다.
     // 폴링 완료 지점(`use-bulk-operation`)은 API 를 직접 부르지 않으므로 명시 허용한다.
-    const ALLOWED_WITHOUT_DIRECT_API = ['hooks/use-bulk-operation.ts']
+    // 하위 작업 생성(R1b)은 `createIssue` 라 위 목록 밖이지만 부모의 목록 · 보드 표시를 바꾼다.
+    // `/search` 의 일괄 접수(R4)는 `issues.index` 의 일괄 접수와 같은 자리다 — API 는 다이얼로그가 부른다.
+    const ALLOWED_WITHOUT_DIRECT_API = [
+      'hooks/use-bulk-operation.ts',
+      'components/issue/IssueSubtasksSection.tsx',
+      'routes/search.tsx',
+    ]
 
     const users = ALL_FILES.filter((rel) => {
       if (EXCLUDED.some((re) => re.test(rel))) return false
