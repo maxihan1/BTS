@@ -334,6 +334,17 @@ class OidcSuccessHandlerTest {
     }
 
     @Test
+    fun `제어문자를 끼운 복귀 경로(슬래시 탭 슬래시)도 차단한다 — 브라우저가 탭을 지우면 슬래시 두개가 된다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        val locationSlot = slot<String>()
+        every { response.sendRedirect(capture(locationSlot)) } returns Unit
+
+        handler.onAuthenticationSuccess(request("/\t/evil.example.com"), response, oidcAuthentication())
+
+        assertThat(locationSlot.captured).isEqualTo(DEFAULT_REDIRECT)
+    }
+
+    @Test
     fun `복귀 파라미터가 없으면 기본 dashboard 로 보낸다`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
         val locationSlot = slot<String>()
