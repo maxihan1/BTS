@@ -2,6 +2,7 @@
 
 package com.atlas.bts.identity.config
 
+import com.atlas.bts.identity.provider.oidc.LoginCardAuthorizationRequestResolver
 import com.atlas.bts.identity.provider.oidc.OidcAuthenticationSuccessHandler
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.context.annotation.Bean
@@ -45,10 +46,10 @@ import org.springframework.web.cors.CorsConfigurationSource
  * 를 강제하여 MVC 빈이 없는 통합 테스트 컨텍스트 부팅을 깬다. 따라서 MVC 비의존 [AntPathRequestMatcher]
  * 로 명시 매칭한다.
  *
- * ## 복귀 경로 (returnTo)
- * 본 FR 은 [OidcAuthenticationSuccessHandler] 의 RelayStateValidator open-redirect 방어 로직만
- * 유지하고, oauth2Login 의 자체 state 검증과 충돌하는 returnTo 전달은 후속으로 미룬다(복귀 경로 자체는
- * nice-to-have, open-redirect 차단이 핵심). 핸들러는 returnTo 부재 시 기본 랜딩으로 안전하게 폴백한다.
+ * ## 로그인 카드 파라미터 · 복귀 경로 (S22)
+ * 진입 `/oauth2/authorization/{id}` 의 `login_hint` · `prompt=login` 만 authorize 요청으로 옮기고, `returnTo` 는
+ * 세션에 맡겨 [OidcAuthenticationSuccessHandler] 가 RelayStateValidator 로 검증해 쓴다
+ * ([LoginCardAuthorizationRequestResolver]).
  *
  * ## 세션 고정 방어 + JSESSIONID SameSite (FR-AU-08b — EC10/EC17, SAML 체인 동형)
  * session-fixation 을 `changeSessionId` 로 명시해 인증 성공 시 SSO LinkingIntent 속성을 보존한다(EC10).
@@ -111,13 +112,16 @@ class OidcSecurityConfig(
      * 가진 **confidential client** 라 기본 동작으로는 PKCE 가 빠진다. OAuth 2.1 은 confidential client 에도
      * PKCE 를 권장(defense in depth)하므로, [OAuth2AuthorizationRequestCustomizers.withPkce] 로
      * code_challenge + code_challenge_method=S256 을 진입 요청에 강제 부착한다.
+     * 바깥은 [LoginCardAuthorizationRequestResolver] — 로그인 카드의 hint · prompt · returnTo (S22).
      */
     private fun pkceAuthorizationRequestResolver(
         clientRegistrationRepository: ClientRegistrationRepository,
     ): OAuth2AuthorizationRequestResolver =
-        DefaultOAuth2AuthorizationRequestResolver(clientRegistrationRepository, AUTHORIZATION_BASE_URI).apply {
-            setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce())
-        }
+        LoginCardAuthorizationRequestResolver(
+            DefaultOAuth2AuthorizationRequestResolver(clientRegistrationRepository, AUTHORIZATION_BASE_URI).apply {
+                setAuthorizationRequestCustomizer(OAuth2AuthorizationRequestCustomizers.withPkce())
+            },
+        )
 
     /** OIDC 경로([OIDC_PATHS])를 MVC 비의존 [AntPathRequestMatcher] 로 매칭하는 [RequestMatcher]. */
     private fun oidcPathMatcher(): RequestMatcher = OrRequestMatcher(OIDC_PATHS.map { AntPathRequestMatcher(it) })

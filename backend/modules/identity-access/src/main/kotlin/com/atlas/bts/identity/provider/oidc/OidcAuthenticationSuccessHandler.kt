@@ -144,7 +144,7 @@ class OidcAuthenticationSuccessHandler(
             ),
         )
 
-        val target = relayStateValidator.resolve(request.getParameter(RETURN_PARAM))
+        val target = relayStateValidator.resolve(takeReturnTo(request))
         log.debug("OIDC 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
         response.sendRedirect(target)
     }
@@ -320,9 +320,6 @@ class OidcAuthenticationSuccessHandler(
             .joinToString("") { "%02x".format(it) }
 
     private companion object {
-        /** 복귀 경로 요청 파라미터명 (OIDC 인증 후 돌아갈 상대 경로). */
-        const val RETURN_PARAM = "returnTo"
-
         /** 세션 providerId — OIDC 공급자 식별자 (소문자 관례, SAML 핸들러와 동일 패턴). */
         const val PROVIDER_ID = "oidc"
 

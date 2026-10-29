@@ -347,6 +347,7 @@ class Saml2AuthenticationSuccessHandler(
  * - `/` 로 시작하고
  * - `//` 또는 `/\` 로 시작하지 않으며 (프로토콜 상대 URL / 브라우저 백슬래시 정규화 우회 차단)
  * - `:` 가 경로 앞부분에 없음 (scheme 형태 차단)
+ * - 제어문자 · 백슬래시가 어디에도 없음 (`/\t/host` 정규화 우회 차단)
  */
 class RelayStateValidator {
     /**
@@ -364,7 +365,10 @@ class RelayStateValidator {
             value[1] != '/' &&
             value[1] != '\\' &&
             // scheme 형태(`/javascript:` 등 콜론 포함) 차단
-            !value.contains(':')
+            !value.contains(':') &&
+            // 제어문자 · 백슬래시는 어디에도 — 브라우저가 탭 · 줄바꿈을 지우거나 `\` 를 `/` 로 바꿔
+            // `/\t/host` 가 `//host` 가 된다(상대 Location 으로 나가면 외부로 간다)
+            value.none { it.isISOControl() || it == '\\' }
 
     private companion object {
         /** RelayState 가 비었거나 안전하지 않을 때의 기본 복귀 경로. */
