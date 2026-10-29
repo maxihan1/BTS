@@ -34,7 +34,7 @@ beforeEach(() => {
   useAuthStore.setState({ accessToken: null, user: null })
   vi.spyOn(window, 'location', 'get').mockReturnValue({
     ...window.location,
-    assign: vi.fn(),
+    replace: vi.fn(),
   } as unknown as Location)
   // providers/route useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
   server.use(
@@ -90,11 +90,14 @@ describe('LoginForm — OIDC provider 버튼', () => {
     expect(screen.queryByRole('button', { name: / 로 로그인/ })).toBeNull()
   })
 
-  it('provider 버튼 클릭 시 window.location.assign으로 OIDC 경로로 이동한다', async () => {
-    const assignMock = vi.fn()
+  it('provider 버튼 클릭 시 window.location.replace로 OIDC 경로로 이동하고 보던 화면을 returnTo 로 싣는다', async () => {
+    // 세션 만료 dialog — 콘텐츠 화면 위에 떠 있다. replace 라 방문 기록이 사라지므로 returnTo 가 돌아올 길이다 (S22)
+    const replaceMock = vi.fn()
     vi.spyOn(window, 'location', 'get').mockReturnValue({
       ...window.location,
-      assign: assignMock,
+      pathname: '/projects/PROJ/board',
+      search: '?view=1',
+      replace: replaceMock,
     } as unknown as Location)
 
     server.use(
@@ -113,7 +116,9 @@ describe('LoginForm — OIDC provider 버튼', () => {
     await user.click(btn)
 
     await waitFor(() => {
-      expect(assignMock).toHaveBeenCalledWith('/oauth2/authorization/google')
+      expect(replaceMock).toHaveBeenCalledWith(
+        '/oauth2/authorization/google?returnTo=%2Fprojects%2FPROJ%2Fboard%3Fview%3D1',
+      )
     })
   })
 })

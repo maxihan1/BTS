@@ -17,3 +17,19 @@ export function ssoEntryUrl(type: 'SAML' | 'OIDC', registrationId: string): stri
   const id = encodeURIComponent(registrationId)
   return type === 'SAML' ? `/saml2/authenticate/${id}` : `/oauth2/authorization/${id}`
 }
+
+/**
+ * OIDC 진입 주소에 로그인 카드의 hint · prompt 와 돌아갈 곳(`returnTo`)을 붙인다 (S22).
+ * 백엔드 `LoginCardAuthorizationRequestResolver` 가 앞의 둘을 authorize 로 옮기고 returnTo 를 로그인 뒤 이동에 쓴다.
+ *
+ * 돌아갈 곳 — `/login` 이면 그 주소의 `returnTo`, 다른 화면(세션 만료 dialog)이면 지금 화면이다.
+ * Auth 로는 `replace` 로 가서 방문 기록이 사라지므로 이것이 보던 화면으로 돌아오는 유일한 길이다.
+ */
+export function withSsoParams(href: string, params: Record<string, string> = {}): string {
+  const query = new URLSearchParams(params)
+  const { pathname, search } = window.location
+  const returnTo = pathname === '/login' ? new URLSearchParams(search).get('returnTo') : pathname + search
+  if (returnTo !== null) query.set('returnTo', returnTo)
+  const qs = query.toString()
+  return qs === '' ? href : `${href}?${qs}`
+}

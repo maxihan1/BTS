@@ -63,6 +63,9 @@ export const ssoLoginScreenStrings = {
   loggedOutDescription: '다시 들어가려면 로그인하세요',
   errorHeading: '로그인하지 못했습니다',
   errorMessage: '통합계정 로그인을 마치지 못했습니다. 다시 시도하고, 계속되면 관리자에게 문의하세요.',
+  continueAsAccount: '이 계정으로 로그인',
+  accountLine: (name: string, username: string) => `${name} · ${username}`,
+  otherAccount: '다른 계정으로 로그인',
 } as const
 
 /** 이슈 상세 페이지 관련 문자열 */

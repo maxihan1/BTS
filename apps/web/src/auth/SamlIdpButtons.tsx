@@ -15,7 +15,8 @@ interface SamlIdpButtonsProps {
  * SAML IdP 로그인 버튼 목록을 렌더한다.
  *
  * - `idps`가 비어 있으면 null을 반환해 divider 포함 영역 전체를 숨긴다.
- * - 각 버튼 클릭 시 `window.location.assign`으로 SP-initiated SAML 인증 경로로 풀 네비게이션.
+ * - 각 버튼 클릭 시 `window.location.replace`로 SP-initiated SAML 인증 경로로 풀 네비게이션.
+ *   `replace` 인 이유 — 로그인 화면을 방문 기록에 남기면 로그인 뒤 뒤로가기가 이 화면으로 돌아온다 (S22).
  *   SPA 라우터(TanStack Router)를 거치지 않고 백엔드 Spring Security SAML 필터가 직접 IdP로 리다이렉트해야 한다.
  *   경로는 Spring Security saml2Login 표준 엔드포인트 `/saml2/authenticate/{registrationId}` 를 따른다.
  *
@@ -42,7 +43,7 @@ export const SamlIdpButtons = ({ idps, divider = true }: SamlIdpButtonsProps) =>
           variant="outline"
           className="w-full"
           onClick={() => {
-            window.location.assign(ssoEntryUrl('SAML', idp.registrationId))
+            window.location.replace(ssoEntryUrl('SAML', idp.registrationId))
           }}
         >
           {loginStrings.samlLoginButtonLabel(idp.displayName)}
