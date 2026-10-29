@@ -11,6 +11,7 @@ import {
   readLastAccount,
   type LastAccount,
 } from '@/auth/loginMemory'
+import { withSsoParams } from '@/auth/ssoEntryUrl'
 import { useSsoOnlyEntry, type SsoOnlyEntry } from '@/auth/useSsoOnlyEntry'
 import { ssoLoginScreenStrings } from '@/i18n/ko'
 
@@ -77,17 +78,9 @@ export const LoginPage = () => {
   )
 }
 
-/**
- * SSO 진입 주소. OIDC 면 로그인 카드의 hint · prompt 와 지금 주소의 `returnTo` 를 붙인다 — 백엔드
- * `LoginCardAuthorizationRequestResolver` 가 앞의 둘을 authorize 로 옮기고 returnTo 를 로그인 뒤 이동에 쓴다.
- */
+/** SSO 진입 주소. hint · prompt · returnTo 는 OIDC 것이다 (`withSsoParams`) */
 function entryHref(entry: SsoOnlyEntry, params: Record<string, string> = {}): string {
-  if (entry.type !== 'OIDC') return entry.href
-  const query = new URLSearchParams(params)
-  const returnTo = new URLSearchParams(window.location.search).get('returnTo')
-  if (returnTo !== null) query.set('returnTo', returnTo)
-  const qs = query.toString()
-  return qs === '' ? entry.href : `${entry.href}?${qs}`
+  return entry.type === 'OIDC' ? withSsoParams(entry.href, params) : entry.href
 }
 
 /**

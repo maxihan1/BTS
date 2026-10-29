@@ -24,7 +24,7 @@ import {
 import { useLoginMutation } from './useLoginMutation'
 import { SamlIdpButtons } from './SamlIdpButtons'
 import { OidcIdpButtons } from './OidcIdpButtons'
-import { ssoEntryUrl } from './ssoEntryUrl'
+import { ssoEntryUrl, withSsoParams } from './ssoEntryUrl'
 import {
   readStoredLoginProvider,
   resolveLoginProvider,
@@ -278,9 +278,8 @@ const LoginCredentialsForm = ({
               type="button"
               className="h-10 w-full"
               onClick={() => {
-                window.location.replace(
-                  ssoEntryUrl(matchedRoute.type, matchedRoute.registrationId),
-                )
+                const href = ssoEntryUrl(matchedRoute.type, matchedRoute.registrationId)
+                window.location.replace(matchedRoute.type === 'OIDC' ? withSsoParams(href) : href)
               }}
             >
               {matchedRoute.type === 'SAML'

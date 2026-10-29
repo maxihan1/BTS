@@ -1,7 +1,7 @@
 // OIDC provider 로그인 버튼 목록 컴포넌트 — LoginForm에서 분리된 표현 전담 컴포넌트
 import { Button } from '@/components/ui/button'
 import { loginStrings } from '@/i18n/ko'
-import { ssoEntryUrl } from './ssoEntryUrl'
+import { ssoEntryUrl, withSsoParams } from './ssoEntryUrl'
 import type { OidcProvider } from '@/api/oidc'
 
 interface OidcIdpButtonsProps {
@@ -43,7 +43,7 @@ export const OidcIdpButtons = ({ providers, divider = true }: OidcIdpButtonsProp
           variant="outline"
           className="w-full"
           onClick={() => {
-            window.location.replace(ssoEntryUrl('OIDC', provider.registrationId))
+            window.location.replace(withSsoParams(ssoEntryUrl('OIDC', provider.registrationId)))
           }}
         >
           {loginStrings.oidcLoginButtonLabel(provider.displayName)}

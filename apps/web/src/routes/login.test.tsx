@@ -15,6 +15,7 @@ const replaceMock = vi.fn()
 function setLocation(search: string) {
   vi.spyOn(window, 'location', 'get').mockReturnValue({
     ...window.location,
+    pathname: '/login',
     search,
     replace: replaceMock,
   } as unknown as Location)
@@ -210,6 +211,21 @@ describe('LoginPage — 로그아웃 표시 · 계정 카드 (S22)', () => {
     expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth?login_hint=maxi')
     expect(isLoggedOut()).toBe(false)
     expect(readLastAccount()).toEqual({ username: 'maxi', name: '한맥시' })
+  })
+
+  it('새 탭 deep link(?returnTo) 의 카드도 돌아갈 곳을 싣는다 — 「이 계정으로」 뒤 보던 화면', async () => {
+    useSsoOnlyInstall()
+    rememberLogin({ username: 'maxi', name: '한맥시' })
+    markLoggedOut()
+    setLocation('?returnTo=%2Fprojects%2FPROJ%2Fboard')
+
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: /이 계정으로 로그인/ }))
+
+    expect(replaceMock).toHaveBeenCalledWith(
+      '/oauth2/authorization/auth?login_hint=maxi&returnTo=%2Fprojects%2FPROJ%2Fboard',
+    )
   })
 
   it('「다른 계정으로 로그인」은 prompt=login 으로 가고 기억한 계정을 지운다', async () => {
