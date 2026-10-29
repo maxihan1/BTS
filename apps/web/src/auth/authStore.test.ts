@@ -1,6 +1,7 @@
 // Zustand authStore 단위 테스트 — sessionStorage persist + 절대 규칙(localStorage 금지) 검증
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAuthStore } from './authStore'
+import { isLoggedOut, markLoggedOut, readLastAccount } from './loginMemory'
 import type { WhoamiResponse } from '@/api/schemas'
 
 const MOCK_USER: WhoamiResponse = {
@@ -79,6 +80,21 @@ describe('authStore', () => {
         expect(value).not.toContain(MOCK_TOKEN)
       }
     }
+  })
+
+  it('setSession 은 로그인 카드용 마지막 계정을 기억하고 로그아웃 표시를 지운다 (S22)', () => {
+    markLoggedOut()
+
+    useAuthStore.getState().setSession({ accessToken: MOCK_TOKEN, user: { ...MOCK_USER, displayName: '앨리스' } })
+
+    expect(readLastAccount()).toEqual({ username: 'alice', name: '앨리스' })
+    expect(isLoggedOut()).toBe(false)
+  })
+
+  it('표시 이름이 없으면 username 을 이름으로 기억한다', () => {
+    useAuthStore.getState().setSession({ accessToken: MOCK_TOKEN, user: MOCK_USER })
+
+    expect(readLastAccount()).toEqual({ username: 'alice', name: 'alice' })
   })
 
   it('setUser 호출 시 accessToken은 보존하고 user만 교체 (FR-PR-01 D6 Task 5)', () => {

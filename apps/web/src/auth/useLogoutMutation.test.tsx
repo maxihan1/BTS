@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useLogoutMutation } from './useLogoutMutation'
 import { useAuthStore } from './authStore'
+import { isLoggedOut } from './loginMemory'
 
 /**
  * 이 훅이 부르는 `navigate` — 실 라우터를 세우지 않고 **호출 자체**를 잰다.
@@ -31,6 +32,7 @@ function createWrapper() {
 beforeEach(() => {
   useAuthStore.setState({ accessToken: 'test-token', user: null })
   mockNavigate.mockClear()
+  localStorage.clear()
 })
 
 afterEach(() => {
@@ -55,6 +57,8 @@ describe('useLogoutMutation', () => {
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith({ to: '/login', search: { logged_out: true } }),
     )
+    // 주소의 표시는 이 탭뿐이다 — 새 탭 · 북마크도 카드를 보게 브라우저에 남긴다 (S22)
+    expect(isLoggedOut()).toBe(true)
   })
 
   it('서버가 실패해도 /login 으로 이동한다 — 사용자 로그아웃 의도 우선', async () => {
@@ -69,6 +73,7 @@ describe('useLogoutMutation', () => {
       expect(mockNavigate).toHaveBeenCalledWith({ to: '/login', search: { logged_out: true } }),
     )
     expect(useAuthStore.getState().accessToken).toBeNull()
+    expect(isLoggedOut()).toBe(true)
   })
 
   it('성공 (204) 시 POST /api/v1/auth/logout 호출 후 clearSession을 실행한다', async () => {

@@ -93,7 +93,7 @@ beforeEach(async () => {
   window.localStorage.clear()
   vi.spyOn(window, 'location', 'get').mockReturnValue({
     ...window.location,
-    assign: vi.fn(),
+    replace: vi.fn(),
   } as unknown as Location)
   // providers/route useQuery가 미핸들 MSW 에러로 폼을 깨뜨리지 않도록 기본 핸들러를 등록한다.
   server.use(defaultProvidersHandler, defaultRouteHandler)
@@ -1238,10 +1238,10 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
   })
 
   it('식별자 blur 시 도메인 route 를 조회해 SSO 버튼을 노출한다 — 자동 이동하지 않는다', async () => {
-    const assignMock = vi.fn()
+    const replaceMock = vi.fn()
     vi.spyOn(window, 'location', 'get').mockReturnValue({
       ...window.location,
-      assign: assignMock,
+      replace: replaceMock,
     } as unknown as Location)
 
     server.use(
@@ -1263,7 +1263,7 @@ describe('LoginForm — 단일 화면 (이메일 선입력 단계 폐기)', () =
 
     expect(await screen.findByRole('button', { name: 'Okta SSO로 로그인' })).toBeInTheDocument()
     // 트리거가 blur 라는 수동적 이벤트이므로 풀 네비게이션을 걸면 안 된다(C7).
-    expect(assignMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
   })
 
   it('SSO 매칭 후에도 로컬 로그인 버튼이 살아 있다 (FR-07 S4 fail-safe)', async () => {

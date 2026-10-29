@@ -16,6 +16,7 @@ export const oidcProvidersQuery = { queryKey: ['oidc', 'providers'], queryFn: fe
 
 /** SSO 하나뿐인 설치의 그 SSO — 버튼 주소와 문구 */
 export interface SsoOnlyEntry {
+  type: 'SAML' | 'OIDC'
   href: string
   label: string
 }
@@ -25,7 +26,7 @@ export interface SsoOnlyEntry {
  *
  * - `undefined` — 아직 조회 중(또는 `enabled=false`). 판정 전이라 아무것도 하지 마라.
  * - `null` — 해당 없음. 지금처럼 로그인 dialog 를 쓴다.
- * - `{ href, label }` — `/login` 은 dialog 대신 이 주소로 바로 넘긴다(로그아웃 · 실패 표시가 있으면 카드).
+ * - `{ type, href, label }` — `/login` 은 dialog 대신 이 주소로 바로 넘긴다(로그아웃 · 실패 표시가 있으면 카드).
  *
  * providers 조회 실패는 `LoginForm` 이 LOCAL 로 폴백하므로(EC-06-06) 여기서도 「해당 없음」이다.
  * SAML · OIDC 조회 실패는 `LoginForm` 처럼 빈 목록으로 본다.
@@ -44,10 +45,12 @@ export function useSsoOnlyEntry(enabled = true): SsoOnlyEntry | null | undefined
 
   const entries: SsoOnlyEntry[] = [
     ...(saml.data ?? []).map((idp) => ({
+      type: 'SAML' as const,
       href: ssoEntryUrl('SAML', idp.registrationId),
       label: loginStrings.samlLoginButtonLabel(idp.displayName),
     })),
     ...(oidc.data ?? []).map((provider) => ({
+      type: 'OIDC' as const,
       href: ssoEntryUrl('OIDC', provider.registrationId),
       label: loginStrings.oidcLoginButtonLabel(provider.displayName),
     })),
