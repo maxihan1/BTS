@@ -2,6 +2,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { WhoamiResponse } from '@/api/schemas'
+import { rememberLogin } from './loginMemory'
 
 interface AuthState {
   accessToken: string | null
@@ -30,7 +31,11 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       accessToken: null,
       user: null,
       avatarVersion: 0,
-      setSession: ({ accessToken, user }) => set({ accessToken, user }),
+      setSession: ({ accessToken, user }) => {
+        set({ accessToken, user })
+        // 로그인 카드의 「이 계정으로 로그인」 (S22). OIDC 로 만든 계정의 username 은 Auth 의 preferred_username 이다
+        if (user.username !== '') rememberLogin({ username: user.username, name: user.displayName ?? user.username })
+      },
       clearSession: () => {
         set({ accessToken: null, user: null })
         sessionStorage.removeItem('bts.auth')

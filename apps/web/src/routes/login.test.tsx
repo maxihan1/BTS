@@ -1,11 +1,13 @@
-// LoginPage 테스트 — main 랜드마크 · SSO 하나뿐인 설치의 바로 넘기기와 남는 카드(S21). 폼과 라우팅 우선순위는 LoginDialog.test.tsx 가 소유한다
+// LoginPage 테스트 — main 랜드마크 · SSO 하나뿐인 설치의 바로 넘기기와 남는 카드(S21 · S22 계정 카드). 폼과 라우팅 우선순위는 LoginDialog.test.tsx 가 소유한다
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
 import { useSsoOnlyEntry } from '@/auth/useSsoOnlyEntry'
-import { AUTO_SSO_AT_KEY, LoginPage } from './login'
+import { AUTO_SSO_AT_KEY, isLoggedOut, markLoggedOut, readLastAccount, rememberLogin } from '@/auth/loginMemory'
+import { LoginPage } from './login'
 
 const replaceMock = vi.fn()
 
@@ -53,6 +55,7 @@ function useSsoOnlyInstall() {
 beforeEach(() => {
   replaceMock.mockClear()
   window.sessionStorage.clear()
+  window.localStorage.clear()
   setLocation('')
   // 테스트 서버에는 로그인 수단 기본 핸들러가 없다 — 비밀번호(Local)만 있는 설치를 기본으로 둔다
   server.use(
@@ -96,7 +99,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
     renderPage()
 
     await vi.waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth'))
-    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
     // 고리 차단의 「쓰기」 절반 — 이 시각이 없으면 다음 방문의 고리 판정이 늘 비어 있다
     expect(Number(window.sessionStorage.getItem(AUTO_SSO_AT_KEY))).toBeGreaterThan(Date.now() - 5_000)
   })
@@ -111,12 +114,12 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
 
     expect(await screen.findByRole('heading', { name: '로그아웃했습니다' })).toBeInTheDocument()
     expect(screen.getByText('BTS')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'QA Hub 통합계정으로 로그인' })).toHaveAttribute(
-      'href',
-      '/oauth2/authorization/auth',
-    )
     expect(screen.queryByRole('alert')).toBeNull()
     expect(replaceMock).not.toHaveBeenCalled()
+
+    // 기억한 계정이 없으면 SSO 버튼 하나 — 누르면 기록을 남기지 않고 간다
+    await userEvent.click(screen.getByRole('button', { name: 'QA Hub 통합계정으로 로그인' }))
+    expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth')
   })
 
   it('SSO 실패(?error)로 돌아오면 넘기지 않고 오류 카드를 보인다 — 고리 금지', async () => {
@@ -127,7 +130,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
 
     expect(await screen.findByRole('heading', { name: '로그인하지 못했습니다' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('통합계정 로그인을 마치지 못했습니다')
-    expect(screen.getByRole('link', { name: 'QA Hub 통합계정으로 로그인' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'QA Hub 통합계정으로 로그인' })).toBeInTheDocument()
     expect(replaceMock).not.toHaveBeenCalled()
   })
 
@@ -163,6 +166,81 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
     // 판정이 끝나도 배경만 남는다 — 폼은 LoginDialog 몫
     await waitForVerdict('dialog')
     expect(replaceMock).not.toHaveBeenCalled()
-    expect(screen.queryByRole('link')).toBeNull()
+    expect(screen.queryByRole('button')).toBeNull()
+  })
+
+  it('returnTo 를 SSO 진입 주소에 실어 보낸다 — 로그인 뒤 보던 화면으로 돌아온다', async () => {
+    useSsoOnlyInstall()
+    setLocation('?returnTo=%2Fprojects%2FPROJ%2Fboard')
+
+    renderPage()
+
+    await vi.waitFor(() =>
+      expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth?returnTo=%2Fprojects%2FPROJ%2Fboard'),
+    )
+  })
+})
+
+describe('LoginPage — 로그아웃 표시 · 계정 카드 (S22)', () => {
+  it('브라우저의 로그아웃 표시만 있어도(새 탭 · 북마크) 넘기지 않고 카드를 보인다', async () => {
+    useSsoOnlyInstall()
+    markLoggedOut()
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: '로그아웃했습니다' })).toBeInTheDocument()
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('기억한 계정이 있으면 「이 계정으로 로그인」이 login_hint 로 가고 로그아웃 표시를 지운다', async () => {
+    useSsoOnlyInstall()
+    markLoggedOut()
+    rememberLogin({ username: 'maxi', name: '한맥시' })
+    // rememberLogin 이 표시를 지우므로 로그아웃 직후 상태를 다시 만든다
+    markLoggedOut()
+
+    renderPage()
+
+    const continueButton = await screen.findByRole('button', { name: /이 계정으로 로그인/ })
+    expect(continueButton).toHaveTextContent('한맥시 · maxi')
+    expect(screen.queryByRole('button', { name: 'QA Hub 통합계정으로 로그인' })).toBeNull()
+
+    await userEvent.click(continueButton)
+
+    expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth?login_hint=maxi')
+    expect(isLoggedOut()).toBe(false)
+    expect(readLastAccount()).toEqual({ username: 'maxi', name: '한맥시' })
+  })
+
+  it('「다른 계정으로 로그인」은 prompt=login 으로 가고 기억한 계정을 지운다', async () => {
+    useSsoOnlyInstall()
+    rememberLogin({ username: 'maxi', name: '한맥시' })
+    markLoggedOut()
+
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: '다른 계정으로 로그인' }))
+
+    expect(replaceMock).toHaveBeenCalledWith('/oauth2/authorization/auth?prompt=login')
+    expect(readLastAccount()).toBeNull()
+    expect(isLoggedOut()).toBe(false)
+  })
+
+  it('SAML 하나뿐인 설치는 계정을 기억해도 SSO 버튼 하나 — login_hint · prompt 는 OIDC 것이다', async () => {
+    useSsoOnlyInstall()
+    server.use(
+      http.get('/api/v1/auth/saml/idps', () =>
+        HttpResponse.json({ idps: [{ registrationId: 'okta', displayName: 'Okta SSO' }] }),
+      ),
+      http.get('/api/v1/auth/oidc/providers', () => HttpResponse.json({ providers: [] })),
+    )
+    rememberLogin({ username: 'maxi', name: '한맥시' })
+    markLoggedOut()
+
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Okta SSO로 로그인' }))
+    expect(screen.queryByRole('button', { name: '다른 계정으로 로그인' })).toBeNull()
+    expect(replaceMock).toHaveBeenCalledWith('/saml2/authenticate/okta')
   })
 })

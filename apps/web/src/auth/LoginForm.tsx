@@ -278,7 +278,7 @@ const LoginCredentialsForm = ({
               type="button"
               className="h-10 w-full"
               onClick={() => {
-                window.location.assign(
+                window.location.replace(
                   ssoEntryUrl(matchedRoute.type, matchedRoute.registrationId),
                 )
               }}
