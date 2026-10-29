@@ -13,6 +13,7 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -333,7 +334,7 @@ class IssueApplicationServiceSecurityLevelTest : DescribeSpec({
             every { repo.insert(any()) } answers { firstArg() }
             every { repo.insertComponents(any(), any()) } returns Unit
             every {
-                workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task"))
             } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
             // typeId=null → task fallback. relaxed mock 의 IssueTypeId 캐스팅 오류를 막기 위해 명시 stub.
             every { issueTypeRepository.findByKey(com.bts.shared.issue.IssueTypeKey("task")) } returns

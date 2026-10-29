@@ -15,8 +15,10 @@ import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.event.IssueTransitioned
 import com.bts.issue.event.TransitionEventPublisher
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -126,9 +128,40 @@ class IssueApplicationServiceTransitionTest : DescribeSpec({
         every { repo.findActiveComponentIdsByIssue(any()) } returns emptyList()
         every { repo.findAffectsVersionIdsByIssue(any()) } returns emptyList()
         every { repo.findFixVersionIdsByIssue(any()) } returns emptyList()
+        // 유형을 모르면(null) 스킴의 기본 매핑으로 해석한다 — 아래 대부분의 시나리오가 그 경로다.
+        every { issueTypeRepository.findById(IssueTypeId(3L)) } returns null
     }
 
     describe("transitionIssue") {
+
+        context("S-TYPE — 스킴의 유형별 매핑을 따른다 (R11 운영 확인 2026-10-29)") {
+            val request = TransitionIssueRequest(toStateKey = "done", expectedVersion = existingVersion)
+            val plan = TransitionPlan(toStateKey = "done", fieldChanges = emptyList(), emitEvents = emptyList())
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.TRANSITION, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKeyForUpdate(issueKey) } returns makeIssue(state = "in_progress")
+                every { issueTypeRepository.findById(IssueTypeId(3L)) } returns
+                    IssueType.TASK.copy(id = IssueTypeId(3L), key = IssueTypeKey("bug"), name = "Bug")
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "todo")
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), IssueTypeKey("bug"))
+                } returns WorkflowStartState(workflowKey = "BUG-WF", startStateKey = "backlog")
+                every { workflowPort.plan(any()) } returns TransitionResult.Success(plan)
+                every { repo.applyTransition(issueKey, "done", existingVersion, null) } returns 1
+                every { repo.findByKeyWithType(issueKey) } returns makeResponse(state = "done", version = existingVersion + 1)
+                every { eventPublisher.publish(any()) } returns Unit
+            }
+
+            it("이슈 유형 key 로 해석한 워크플로로 전환을 계획한다") {
+                sut.transitionIssue(actor, issueKey, request)
+                verify { workflowPort.plan(match { it.workflowKey == "BUG-WF" }) }
+            }
+        }
 
         it("IssueApplicationService 는 @Transactional 어노테이션을 클래스 또는 메서드에 선언한다") {
             val classAnnotation = IssueApplicationService::class.java.getAnnotation(Transactional::class.java)

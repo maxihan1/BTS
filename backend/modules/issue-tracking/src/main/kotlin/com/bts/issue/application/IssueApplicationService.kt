@@ -260,7 +260,7 @@ class IssueApplicationService(
 
         val startState =
             try {
-                workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), null)
+                workflowKeyResolver.resolveStart(ProjectKey.of(request.projectKey), resolvedType.key)
             } catch (e: RuntimeException) {
                 // BC 격리: WorkflowSchemeNoDefaultException 직접 import 불가 — 클래스명 비교로 처리
                 if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
@@ -402,7 +402,7 @@ class IssueApplicationService(
 
         val seq = repo.incrementKeySequence(projectKey)
         val newKey = IssueKey.of(projectKey, seq)
-        val startState = resolveWorkflowKey(newKey)
+        val startState = resolveWorkflowKey(newKey, typeKeyOf(source.typeId))
         val summary = resolveCloneSummary(request, source)
         // 복제도 생성이다 — 최초 전환 규칙을 똑같이 탄다 (WF-05-3).
         val creationPlan = planCreation(startState, newKey, actor, summary)
@@ -720,7 +720,7 @@ class IssueApplicationService(
     ): List<AvailableTransitionView> {
         assertViewIssueOrNotFound(actor, key)
         val issue = repo.findByKey(key) ?: throw IssueNotFoundException(key)
-        val resolvedWorkflow = resolveWorkflowKeyReadOnly(key)
+        val resolvedWorkflow = resolveWorkflowKeyReadOnly(key, typeKeyOf(issue.typeId))
         // resolution 필드 포함 — EXECUTION phase RequiredField validator 입력 (B7 에서 활성화).
         val issueFieldsForAvailable = mapOf("summary" to issue.summary, "resolution" to issue.resolutionId?.toString())
         val req =
@@ -799,7 +799,7 @@ class IssueApplicationService(
         val issue = repo.findByKeyForUpdate(key) ?: throw IssueNotFoundException(key)
         val newAssigneeId = request.assigneeId?.takeIf { it != issue.assigneeId?.value }
         if (newAssigneeId != null) requireAssignable(actor, key, newAssigneeId)
-        val resolvedWorkflow = resolveWorkflowKey(key)
+        val resolvedWorkflow = resolveWorkflowKey(key, typeKeyOf(issue.typeId))
         // 전환 화면 필드는 전환 **후** 값을 화면 필드 키 그대로 싣는다 — 엔진이 화면의 필수를 이 값으로 본다 (D11).
         val issueFieldsForTransition =
             mapOf(
@@ -1279,6 +1279,13 @@ class IssueApplicationService(
      * @return 유효성이 보장된 [IssueTypeId].
      * @throws IssueTypeNotFoundException requestedTypeId 가 non-null 이지만 활성 타입이 없을 때.
      */
+    /**
+     * 기존 이슈의 유형 키 — 워크플로우 해석(스킴의 유형별 매핑)에 쓴다.
+     *
+     * 유형이 비활성·삭제돼 못 찾으면 null 이고, 그러면 기본 매핑으로 해석한다(EC-8 — 기존 이슈의 타입 보존).
+     */
+    private fun typeKeyOf(typeId: IssueTypeId): IssueTypeKey? = issueTypeRepository.findById(typeId)?.key
+
     private fun resolveType(requestedTypeId: IssueTypeId?): IssueType {
         if (requestedTypeId == null) {
             return issueTypeRepository.findByKey(IssueTypeKey("task"))
@@ -1369,6 +1376,7 @@ class IssueApplicationService(
      * javaClass.simpleName 로 감지한다 (BC 격리, DEVELOPMENT.md §1.1).
      *
      * @param key 워크플로우를 resolve 할 이슈 키.
+     * @param typeKey 이슈 유형 키 — 스킴의 유형별 매핑을 고른다. null 이면 기본 매핑.
      * @return [WorkflowStartState] — workflowKey + startStateKey.
      * @throws IssueWorkflowNotConfiguredException WorkflowSchemeNoDefaultException 발생 시.
      *
@@ -1376,9 +1384,12 @@ class IssueApplicationService(
      * RuntimeException 을 catch 하여 simpleName 으로 감지한다. 의도적인 설계 (DEVELOPMENT.md §1.1).
      */
     @Suppress("TooGenericExceptionCaught")
-    private fun resolveWorkflowKey(key: IssueKey): WorkflowStartState =
+    private fun resolveWorkflowKey(
+        key: IssueKey,
+        typeKey: IssueTypeKey?,
+    ): WorkflowStartState =
         try {
-            workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), null)
+            workflowKeyResolver.resolveStart(ProjectKey.of(key.projectPrefix), typeKey)
         } catch (e: RuntimeException) {
             if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
                 throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)
@@ -1396,6 +1407,7 @@ class IssueApplicationService(
      * DB 쓰기 및 이벤트 발행이 일어나지 않는다.
      *
      * @param key 워크플로우를 resolve 할 이슈 키.
+     * @param typeKey 이슈 유형 키 — 스킴의 유형별 매핑을 고른다. null 이면 기본 매핑.
      * @return [WorkflowStartState] — workflowKey + startStateKey.
      * @throws IssueWorkflowNotConfiguredException 스킴 미할당 또는 WorkflowSchemeNoDefaultException 발생 시.
      *
@@ -1403,10 +1415,13 @@ class IssueApplicationService(
      * RuntimeException 을 catch 하여 simpleName 으로 감지한다. 의도적인 설계 (DEVELOPMENT.md §1.1).
      */
     @Suppress("TooGenericExceptionCaught", "ThrowsCount")
-    private fun resolveWorkflowKeyReadOnly(key: IssueKey): WorkflowStartState {
+    private fun resolveWorkflowKeyReadOnly(
+        key: IssueKey,
+        typeKey: IssueTypeKey?,
+    ): WorkflowStartState {
         val result =
             try {
-                workflowKeyResolver.resolveExisting(ProjectKey.of(key.projectPrefix), null)
+                workflowKeyResolver.resolveExisting(ProjectKey.of(key.projectPrefix), typeKey)
             } catch (e: RuntimeException) {
                 if (e.javaClass.simpleName == "WorkflowSchemeNoDefaultException") {
                     throw IssueWorkflowNotConfiguredException(key.projectPrefix, null)

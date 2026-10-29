@@ -156,7 +156,7 @@ class IssueApplicationServiceWatcherTest : DescribeSpec({
             updatedAt = Instant.parse("2026-01-01T00:00:00Z"),
             deletedAt = null,
         )
-    every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+    every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
         WorkflowStartState(workflowKey = "default", startStateKey = "open")
     every { eventPublisher.publish(any()) } returns Unit
 

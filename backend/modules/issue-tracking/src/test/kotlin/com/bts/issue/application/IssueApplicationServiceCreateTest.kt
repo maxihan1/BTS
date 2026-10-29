@@ -134,7 +134,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.insertComponents(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task"))
                 } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
             }
@@ -185,7 +185,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
 
                 sut.createIssue(actor, request)
 
-                verify { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) }
+                verify { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) }
                 issueSlot.captured.currentStateKey shouldBe "open"
             }
 
@@ -233,6 +233,9 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                         deletedAt = null,
                     )
                 every { issueTypeRepository.findById(specifiedTypeId) } returns specifiedIssueType
+                every {
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("bug"))
+                } returns WorkflowStartState(workflowKey = "bug-wf", startStateKey = "reported")
 
                 val issueSlot: CapturingSlot<com.bts.issue.domain.Issue> = slot()
                 every { repo.insert(capture(issueSlot)) } answers { issueSlot.captured }
@@ -247,6 +250,8 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 sut.createIssue(actor, requestWithType)
 
                 issueSlot.captured.typeId shouldBe specifiedTypeId
+                // 시작 상태도 그 유형의 워크플로우(스킴의 유형별 매핑)에서 고른다.
+                issueSlot.captured.currentStateKey shouldBe "reported"
             }
 
             // T7-C: typeId 지정 + 해당 타입이 존재하지 않으면 예외
@@ -294,7 +299,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.updateParent(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("subtask"))
                 } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
                 every { issueTypeRepository.findById(subtaskTypeId) } returns
                     taskIssueType.copy(id = subtaskTypeId, key = IssueTypeKey("subtask"), hierarchyLevel = -1)
@@ -367,7 +372,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.findProjectIdByKey(projectKey) } returns fixedProjectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task"))
                 } throws WorkflowSchemeNoDefaultException(projectKey)
             }
 
@@ -398,7 +403,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.insertComponents(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task"))
                 } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
                 issueSlot = slot()
@@ -465,7 +470,7 @@ class IssueApplicationServiceCreateTest : DescribeSpec({
                 every { repo.insertComponents(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
                 every {
-                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+                    workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task"))
                 } returns WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
                 every { componentRepository.findByProject(b1ProjectId) } returns emptyList()
