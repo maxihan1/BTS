@@ -10,8 +10,10 @@ import com.bts.issue.domain.IssueNotFoundException
 import com.bts.issue.domain.IssueWorkflowNotConfiguredException
 import com.bts.issue.event.IssueEventPublisher
 import com.bts.issue.repository.IssueRepository
+import com.bts.issue.type.domain.IssueType
 import com.bts.issue.type.repository.IssueTypeRepository
 import com.bts.shared.issue.IssueTypeId
+import com.bts.shared.issue.IssueTypeKey
 import com.bts.shared.permission.IssuePermission
 import com.bts.shared.permission.IssuePermissionResolver
 import com.bts.shared.permission.IssueScope
@@ -86,6 +88,8 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
 
     beforeEach {
         clearMocks(repo, eventPublisher, permissionResolver, workflowPort, workflowKeyResolver, answers = false)
+        // 유형을 모르면(null) 스킴의 기본 매핑으로 해석한다 — 아래 대부분의 시나리오가 그 경로다.
+        every { issueTypeRepository.findById(IssueTypeId(3L)) } returns null
     }
 
     describe("availableTransitions") {
@@ -115,6 +119,30 @@ class IssueApplicationServiceAvailableTransitionsTest : DescribeSpec({
                             it.isAnnotationPresent(Transactional::class.java)
                     }
             method.getAnnotation(Transactional::class.java).readOnly shouldBe true
+        }
+
+        context("S-TYPE — 스킴의 유형별 매핑을 따른다 (R11 운영 확인 2026-10-29)") {
+            // 유형을 null 로 넘기면 기본 매핑만 보고, 유형별 워크플로로 이관된 이슈가 「전환 없음」에 갇힌다.
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.VIEW, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { repo.findByKey(issueKey) } returns makeIssue(state = "in_progress")
+                every { issueTypeRepository.findById(IssueTypeId(3L)) } returns
+                    IssueType.TASK.copy(id = IssueTypeId(3L), key = IssueTypeKey("bug"), name = "Bug")
+                every {
+                    workflowKeyResolver.resolveExisting(ProjectKey.of("BTS"), null)
+                } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "todo")
+                every {
+                    workflowKeyResolver.resolveExisting(ProjectKey.of("BTS"), IssueTypeKey("bug"))
+                } returns WorkflowStartState(workflowKey = "BUG-WF", startStateKey = "backlog")
+                every { workflowPort.availableTransitions(any()) } returns AvailableTransitionsResult.Success(emptyList())
+            }
+
+            it("이슈 유형 key 로 해석한 워크플로의 전환을 묻는다") {
+                sut.availableTransitions(actor, issueKey)
+                verify { workflowPort.availableTransitions(match { it.workflowKey == "BUG-WF" }) }
+            }
         }
 
         context("S1 — 정상: port.availableTransitions 가 Success(2건) 반환 시 2건 매핑") {

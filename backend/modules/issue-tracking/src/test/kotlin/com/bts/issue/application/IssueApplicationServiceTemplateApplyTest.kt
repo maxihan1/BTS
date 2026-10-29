@@ -107,8 +107,9 @@ class IssueApplicationServiceTemplateApplyTest : DescribeSpec({
         every { repo.incrementKeySequence(projectKey) } returns 1L
         every { repo.findProjectIdByKey(projectKey) } returns projectId
         every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
+        every { issueTypeRepository.findById(IssueTypeId(3L)) } returns taskIssueType
         every {
-            workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null)
+            workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task"))
         } returns WorkflowStartState(workflowKey = "default", startStateKey = "open")
         every { eventPublisher.publish(any()) } returns Unit
         every { repo.insertComponents(any(), any()) } returns Unit

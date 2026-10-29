@@ -605,6 +605,7 @@ class IssueApplicationServiceArchiveGuardTest : DescribeSpec({
                         updatedAt = Instant.parse("2026-07-18T00:00:00Z"),
                         typeId = com.bts.shared.issue.IssueTypeId(3L),
                     )
+                every { issueTypeRepository.findById(com.bts.shared.issue.IssueTypeId(3L)) } returns null
                 every {
                     workflowKeyResolver.resolveExisting(ProjectKey.of("BTS"), null)
                 } returns WorkflowStartState(workflowKey = "DEFAULT", startStateKey = "open")

@@ -187,7 +187,7 @@ class IssueCustomFieldsTest : DescribeSpec({
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
-                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
                     WorkflowStartState(workflowKey = "wf", startStateKey = "open")
                 every { repo.insertComponents(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
@@ -220,7 +220,7 @@ class IssueCustomFieldsTest : DescribeSpec({
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
-                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
                     WorkflowStartState(workflowKey = "wf", startStateKey = "open")
                 every { customFieldDefinitionRepository.findActiveByProject(projectId) } returns
                     listOf(salaryImpactDef)
@@ -250,7 +250,7 @@ class IssueCustomFieldsTest : DescribeSpec({
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
-                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
                     WorkflowStartState(workflowKey = "wf", startStateKey = "open")
                 every { customFieldDefinitionRepository.findActiveByProject(projectId) } returns
                     listOf(salaryImpactDef)
@@ -283,7 +283,7 @@ class IssueCustomFieldsTest : DescribeSpec({
                 every { repo.incrementKeySequence(projectKey) } returns 1L
                 every { repo.findProjectIdByKey(projectKey) } returns projectId
                 every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskIssueType
-                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
                     WorkflowStartState(workflowKey = "wf", startStateKey = "open")
                 every { repo.insertComponents(any(), any()) } returns Unit
                 every { eventPublisher.publish(any()) } returns Unit
@@ -480,7 +480,8 @@ class IssueCustomFieldsTest : DescribeSpec({
                 } returns true
                 every { repo.findByKey(issueKey) } returns sourceIssue
                 every { repo.incrementKeySequence(projectKey) } returns 2L
-                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+                every { issueTypeRepository.findById(taskTypeId) } returns taskIssueType
+                every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
                     WorkflowStartState(workflowKey = "wf", startStateKey = "open")
                 every { repo.insert(any()) } returns cloneIssue
                 every { eventPublisher.publish(any()) } returns Unit

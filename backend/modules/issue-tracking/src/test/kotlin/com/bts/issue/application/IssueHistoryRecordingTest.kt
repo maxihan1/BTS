@@ -139,7 +139,7 @@ class IssueHistoryRecordingTest : DescribeSpec({
             every { repo.findProjectIdByKey("BTS") } returns projectId
             every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns
                 com.bts.issue.type.domain.IssueType.TASK.copy(id = taskTypeId)
-            every { workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null) } returns
+            every { workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), IssueTypeKey("task")) } returns
                 WorkflowStartState(workflowKey = "default", startStateKey = "open")
             every { repo.insert(any()) } returns issue
             every { repo.insertComponents(any(), any()) } returns Unit
@@ -237,7 +237,9 @@ class IssueHistoryRecordingTest : DescribeSpec({
 
         beforeTest {
             every { repo.findByKeyForUpdate(issueKey) } returns existing
-            every { workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), null) } returns
+            every { issueTypeRepository.findById(taskTypeId) } returns
+                com.bts.issue.type.domain.IssueType.TASK.copy(id = taskTypeId)
+            every { workflowKeyResolver.resolveStart(ProjectKey.of("BTS"), IssueTypeKey("task")) } returns
                 WorkflowStartState(workflowKey = "default", startStateKey = "open")
             every { workflowPort.plan(any()) } returns
                 TransitionResult.Success(

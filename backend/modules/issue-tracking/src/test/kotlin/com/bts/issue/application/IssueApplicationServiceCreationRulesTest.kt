@@ -97,7 +97,8 @@ class IssueApplicationServiceCreationRulesTest : DescribeSpec({
         every { repo.insert(any(), any()) } answers { firstArg() }
         every { repo.insertComponents(any(), any()) } returns Unit
         every { issueTypeRepository.findByKey(IssueTypeKey("task")) } returns taskType
-        every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), null) } returns
+        every { issueTypeRepository.findById(IssueTypeId(3L)) } returns taskType
+        every { workflowKeyResolver.resolveStart(ProjectKey.of(projectKey), IssueTypeKey("task")) } returns
             WorkflowStartState(workflowKey = "software-default", startStateKey = "open")
     }
 

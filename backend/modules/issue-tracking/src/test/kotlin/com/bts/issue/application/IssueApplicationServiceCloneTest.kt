@@ -29,7 +29,6 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
-import io.mockk.Called
 import io.mockk.CapturingSlot
 import io.mockk.clearMocks
 import io.mockk.every
@@ -107,6 +106,8 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
     beforeEach {
         clearMocks(repo, issueTypeRepository, eventPublisher, permissionResolver, answers = false)
+        // 워크플로우 해석용 유형 조회 — 못 찾으면(비활성·삭제) 기본 매핑으로 해석한다. EC-8 의 「재검증 없음」 그대로.
+        every { issueTypeRepository.findById(sourceTypeId) } returns null
     }
 
     describe("cloneIssue") {
@@ -280,8 +281,8 @@ class IssueApplicationServiceCloneTest : DescribeSpec({
 
                 sut.cloneIssue(actor, sourceKey, CloneIssueRequest())
 
+                // 유형 조회가 null(비활성·삭제)을 돌려줘도 막지 않고 원본 typeId 를 그대로 복사한다.
                 slot.captured.typeId shouldBe sourceTypeId
-                verify { issueTypeRepository wasNot Called }
             }
 
             it("권한체크 → findByKey → incrementKeySequence → insert → publish 순서로 호출한다") {
