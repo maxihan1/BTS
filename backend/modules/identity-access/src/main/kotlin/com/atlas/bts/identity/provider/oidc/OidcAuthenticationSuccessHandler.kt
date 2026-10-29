@@ -144,7 +144,7 @@ class OidcAuthenticationSuccessHandler(
             ),
         )
 
-        val target = relayStateValidator.resolve(request.getParameter(RETURN_PARAM))
+        val target = relayStateValidator.resolve(takeReturnTo(request))
         log.debug("OIDC 인증 성공 — providerId={}, registrationId={}", providerId, registrationId)
         response.sendRedirect(target)
     }
@@ -178,6 +178,17 @@ class OidcAuthenticationSuccessHandler(
      * 실제 1회용 소비/만료 검사는 [SsoLinkingCallbackProcessor] 가 [SsoLinkingIntentStore.consume] 으로
      * 단일 지점에서 수행한다. 세션이 없거나 속성이 없으면 일반 로그인 경로(null 반환).
      */
+    /**
+     * 진입 때 [LoginCardAuthorizationRequestResolver] 가 세션에 맡긴 returnTo 를 꺼내 지운다(1회용).
+     * 콜백 주소는 IdP 가 정해 returnTo 쿼리가 없다 — 쿼리로 읽던 때는 늘 기본 경로로 갔다.
+     */
+    private fun takeReturnTo(request: HttpServletRequest): String? {
+        val session = request.getSession(false) ?: return null
+        return (session.getAttribute(RETURN_TO_SESSION_ATTR) as? String).also {
+            session.removeAttribute(RETURN_TO_SESSION_ATTR)
+        }
+    }
+
     private fun linkingIntentOrNull(request: HttpServletRequest): SsoLinkingIntent? =
         request.getSession(false)?.getAttribute(SsoLinkingIntentStore.ATTRIBUTE_KEY) as? SsoLinkingIntent
 
@@ -320,9 +331,6 @@ class OidcAuthenticationSuccessHandler(
             .joinToString("") { "%02x".format(it) }
 
     private companion object {
-        /** 복귀 경로 요청 파라미터명 (OIDC 인증 후 돌아갈 상대 경로). */
-        const val RETURN_PARAM = "returnTo"
-
         /** 세션 providerId — OIDC 공급자 식별자 (소문자 관례, SAML 핸들러와 동일 패턴). */
         const val PROVIDER_ID = "oidc"
 
