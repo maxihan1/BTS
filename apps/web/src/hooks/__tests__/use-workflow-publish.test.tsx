@@ -35,6 +35,7 @@ beforeEach(() => {
           currentVersion: 11,
           removedStatusKeys: ['done'],
           pendingIssueCounts: {},
+          scopes: [],
         },
       })
     }),
