@@ -2,6 +2,12 @@
 
 # BTS 디자인 시스템 v2.0 (ADS v2)
 
+> **상위 정책 (2026-10-30 Maxi 결정).** 색 · 글꼴 · 모양 · 움직임 · 창 · 휴대폰 · 문구는
+> [QA Hub 제품군 공통 UI/UX 정책](docs/design/2026-10-30-qa-hub-shared-ui-policy.md)이 이 문서보다 우선한다.
+> 정보 구조 · 화면 배치는 Jira 패리티([`jira-parity-contract.md`](docs/design/jira-parity-contract.md))를 따른다.
+> 아래 값은 **지금 코드의 값**이다. 부딪히는 절(§2 색 · §5 타이포 · §7 라운드 · §9 다크 모드)에는 「이행 예정」 표지를 달았다 —
+> 이행 일은 [`jira-parity-roadmap.md`](docs/design/jira-parity-roadmap.md) 「3차 캠페인」 Q1~Q6.
+
 BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 문서는 **shadcn/ui radix-nova 프리셋** + **Tailwind v4 CSS-first `@theme`** 위에 구축된 디자인 토큰·프리미티브의 단일 출처(Single Source of Truth)다. 컬러 팔레트는 Atlassian Design System v2(이하 **ADS v2**, Jira/Confluence가 쓰는 오픈소스 디자인 토큰 체계)의 값을 이식했다 — 사내 협업 도구로서 검증된 정보 밀도·색 대비 기준을 그대로 물려받기 위함이다.
 
 정본 CSS 구현. `apps/web/src/index.css`. 이 문서의 모든 표는 그 파일의 `:root` / `.dark` 블록과 1:1 대응해야 한다. 값 도출 과정·앵커 검증은 `docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md` 참조.
@@ -23,6 +29,9 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 ---
 
 ## 2. 컬러 토큰
+
+> **⏳ 이행 예정 — 공통 정책 §1 · §11.2~11.3 (로드맵 Q1).** 파랑 대표색 → 오렌지 `#FF7A1A`, ADS v2 바탕 · 글자 단계 → 공통 두 벌 토큰,
+> `--success` · `--danger` → 판정 색, 경고 `--warning` 은 노랑 쪽으로. 이행 전까지 아래 표가 코드의 값이다.
 
 ### 출처
 
@@ -241,6 +250,9 @@ AQL(BTS의 이슈 검색 쿼리 언어) 쿼리 입력창의 syntax highlight용 
 
 ## 5. 타이포그래피
 
+> **⏳ 이행 예정 — 공통 정책 §2 · §11.4 (로드맵 Q2).** Geist → IBM Plex Sans KR(400 · 600) · IBM Plex Mono · IBM Plex Sans Condensed 600,
+> 숫자는 `tabular-nums`, 글꼴 파일은 제품 안에. 🔒 `--font-mono` 는 AQL overlay 정렬을 잰 뒤에 푼다.
+
 ### 폰트 스택
 
 | 역할 | 폰트 | 적용 방법 |
@@ -342,6 +354,9 @@ Tailwind v4 기본값. `1` unit = `0.25rem` = `4px`.
 
 ## 7. 라운드 (Border Radius)
 
+> **⏳ 이행 예정 — 공통 정책 §3 (로드맵 Q1).** 판(Card · Dialog) 8px, 버튼 · 입력 칸 6px, 칩은 알약(`rounded-full`).
+> 지금의 Card 12px · Button/Input 8px 가 바뀐다. 행은 카드로 감싸지 않고 괘선으로 나눈다.
+
 ### 명시 스케일 (calc 파생 폐기)
 
 `index.css`의 `@theme inline`에 5단계를 **각각 픽셀 리터럴로 직접 명시**한다. `--radius` 베이스 변수 + `calc()` 배율 파생 방식은 폐기했다.
@@ -389,6 +404,9 @@ Button의 `xs`/`sm` size variant는 `rounded-[min(var(--radius-md),10px)]` 형�
 ---
 
 ## 9. 다크 모드 정책
+
+> **⏳ 이행 예정 — 공통 정책 §1 · §4 (로드맵 Q1 · Q3).** 밝게 · 어둡게 두 벌 값이 공통 토큰으로 바뀌고, 다크에서 파랑 `--primary` 를 지키던 예외는 없어진다.
+> 전환은 화면 전체가 0.2초 겹쳐 바뀐다(View Transitions). `light` · `dark` · `system` 3종과 `class="dark"` 전략은 그대로 둔다.
 
 다크 모드는 **1급 시민으로 활성 상태**다 — §2의 모든 컬러 토큰 표가 라이트/다크 값을 쌍으로 제공하는 이유가 이것이다.
 
