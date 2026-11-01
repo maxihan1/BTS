@@ -36,7 +36,7 @@ class ResolutionController(
     /**
      * 활성 Resolution 목록을 반환한다.
      *
-     * V011 seed 직후에는 표준 5종(fixed/wontfix/duplicate/cannotreproduce/done)이 displayOrder ASC 로 반환된다.
+     * seed 직후에는 표준 5종과 QA Hub 넷(V040)이 displayOrder ASC 로 반환된다.
      * `deleted_at IS NULL` 인 Resolution 만 포함된다.
      *
      * @return 200 OK + `{ "data": [ { id, key, name, description, displayOrder, isStandard }, ... ] }`

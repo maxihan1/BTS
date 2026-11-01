@@ -246,11 +246,16 @@ class ResolutionMigrationTest {
 
         DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
             conn.createStatement().executeQuery(
-                "SELECT key, id FROM hand_seeded.resolutions WHERE display_order >= 6 ORDER BY display_order",
+                "SELECT key, id, description FROM hand_seeded.resolutions " +
+                    "WHERE display_order >= 6 ORDER BY display_order",
             ).use { rs ->
-                val rows = generateSequence { if (rs.next()) rs.getString(1) to rs.getString(2) else null }.toList()
-                assertThat(rows.map { it.first }).containsExactly("screen_right", "test_problem", "flaky", "env_problem")
+                val rows = mutableListOf<Triple<String, String, String?>>()
+                while (rs.next()) rows += Triple(rs.getString(1), rs.getString(2), rs.getString(3))
+                assertThat(rows.map { it.first })
+                    .containsExactly("screen_right", "test_problem", "flaky", "env_problem")
+                // 손으로 넣은 행은 id 도 description(NULL)도 그대로다 — DO UPDATE 로 바뀌면 여기서 깨진다
                 assertThat(rows.first().second).isEqualTo(handInsertedId)
+                assertThat(rows.first().third).isNull()
             }
         }
     }

@@ -28,7 +28,7 @@ class ResolutionApplicationService(
      * 활성 Resolution 목록을 displayOrder ASC 순으로 반환한다.
      *
      * `deleted_at IS NULL` 인 row 만 반환한다.
-     * V011 seed 직후에는 표준 5종(fixed/wontfix/duplicate/cannotreproduce/done)이 반환된다.
+     * seed 직후에는 표준 5종(fixed/wontfix/duplicate/cannotreproduce/done)과 QA Hub 넷(V040)이 반환된다.
      *
      * @return 활성 [Resolution] 리스트. 비어있을 수 있다.
      */

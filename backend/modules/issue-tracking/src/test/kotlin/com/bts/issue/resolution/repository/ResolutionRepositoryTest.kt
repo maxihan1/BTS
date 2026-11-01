@@ -18,7 +18,7 @@ import java.util.UUID
  * ResolutionRepository 통합 테스트.
  *
  * 검증 범위.
- * - findAllActive: 표준 5종을 display_order ASC 로 반환 + deletedAt 있는 건 제외
+ * - findAllActive: 표준 5종 + QA Hub 넷(V040)을 display_order ASC 로 반환 + deletedAt 있는 건 제외
  * - findById: 존재하는 resolution 반환 + soft-deleted 는 null + 없으면 null
  *
  * Spring 컨텍스트 없이 Testcontainers + Flyway + jOOQ DSLContext 직접 구성.
