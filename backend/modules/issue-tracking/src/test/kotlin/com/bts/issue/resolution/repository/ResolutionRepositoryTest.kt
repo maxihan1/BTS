@@ -55,14 +55,17 @@ class ResolutionRepositoryTest {
     // ── findAllActive ─────────────────────────────────────────────────────────
 
     @Test
-    fun `findAllActive - 표준 5종을 display_order ASC 로 반환`() {
+    fun `findAllActive - 표준 5종 + QA Hub 넷을 display_order ASC 로 반환`() {
         val results = repository.findAllActive()
 
-        assertThat(results).hasSize(5)
+        assertThat(results).hasSize(9)
         val orders = results.map { it.displayOrder }
         assertThat(orders).isSorted
         val keys = results.map { it.key }
-        assertThat(keys).containsExactly("fixed", "wontfix", "duplicate", "cannotreproduce", "done")
+        assertThat(keys).containsExactly(
+            "fixed", "wontfix", "duplicate", "cannotreproduce", "done",
+            "screen_right", "test_problem", "flaky", "env_problem",
+        )
     }
 
     @Test
@@ -73,7 +76,7 @@ class ResolutionRepositoryTest {
         softDeleteResolution(targetId)
         try {
             val results = repository.findAllActive()
-            assertThat(results).hasSize(4)
+            assertThat(results).hasSize(allBefore.size - 1)
             assertThat(results.map { it.id }).doesNotContain(targetId)
         } finally {
             restoreResolution(targetId)

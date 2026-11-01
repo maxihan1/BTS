@@ -68,6 +68,15 @@ class ResolutionMigrationTest {
                 Triple("cannotreproduce", "Cannot Reproduce", 4),
                 Triple("done", "Done", 5),
             )
+
+        // QA Hub 닫기 사유 넷(V040) — QA Hub 는 이름으로 짝짓는다(bts_link.resolution_map).
+        private val QAHUB_RESOLUTIONS: List<Triple<String, String, Int>> =
+            listOf(
+                Triple("screen_right", "화면이 맞음", 6),
+                Triple("test_problem", "테스트 문제", 7),
+                Triple("flaky", "흔들림", 8),
+                Triple("env_problem", "환경 문제", 9),
+            )
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────────
@@ -199,6 +208,50 @@ class ResolutionMigrationTest {
             assertThat(row.name).isEqualTo(expectedName)
             assertThat(row.displayOrder).isEqualTo(expectedOrder)
             assertThat(row.isStandard).isTrue()
+        }
+    }
+
+    @Test
+    fun `V040 QA Hub 해결 상태 넷 seed - 표준 아님 · 순서 6~9`() {
+        QAHUB_RESOLUTIONS.forEach { (key, expectedName, expectedOrder) ->
+            val row = requireNotNull(selectResolutionByKey(key)) { "QA Hub resolution '$key' seed 누락" }
+            assertThat(row.name).isEqualTo(expectedName)
+            assertThat(row.displayOrder).isEqualTo(expectedOrder)
+            assertThat(row.isStandard).isFalse()
+        }
+    }
+
+    @Test
+    fun `V040 은 운영에 손으로 넣은 같은 key 행을 덮지 않는다`() {
+        val handInsertedId = "5f6b8d4c-69dc-4188-b72c-9fdb8610a1c1"
+        val flyway = { target: String ->
+            Flyway.configure()
+                .dataSource(postgres.jdbcUrl, postgres.username, postgres.password)
+                .schemas("hand_seeded")
+                .placeholderReplacement(false)
+                .locations("classpath:db/migration/issue-tracking")
+                .target(target)
+                .load()
+                .migrate()
+        }
+        flyway("39")
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().execute(
+                "INSERT INTO hand_seeded.resolutions (id, key, name, display_order) " +
+                    "VALUES ('$handInsertedId', 'screen_right', '화면이 맞음', 6)",
+            )
+        }
+
+        flyway("latest")
+
+        DriverManager.getConnection(postgres.jdbcUrl, postgres.username, postgres.password).use { conn ->
+            conn.createStatement().executeQuery(
+                "SELECT key, id FROM hand_seeded.resolutions WHERE display_order >= 6 ORDER BY display_order",
+            ).use { rs ->
+                val rows = generateSequence { if (rs.next()) rs.getString(1) to rs.getString(2) else null }.toList()
+                assertThat(rows.map { it.first }).containsExactly("screen_right", "test_problem", "flaky", "env_problem")
+                assertThat(rows.first().second).isEqualTo(handInsertedId)
+            }
         }
     }
 
