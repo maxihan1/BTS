@@ -38,6 +38,8 @@
 > **D6/D7 완료 (2026-07-10, PR #254)**. 프로젝트 설정 `projects/$projectKey/settings/automation`에서 자동화 룰(트리거) CRUD 프론트 UI + E2E. 트리거 5종 선택 + 타입별 조건부 필드(SCHEDULED cron·ISSUE_UPDATED fields) + WEBHOOK 토큰 1회 노출 모달(PatTokenModal 선례). 백엔드 5 엔드포인트(bare DTO·XSRF·invalidate-only) 소비. 액션(FR-AT-02)/조건(FR-AT-03) 빌더는 별개 FR(미구현). 코드리뷰+/review 2관점으로 폼 409 무한루프(F1) 적발·수정(409 시 폼 자동닫기+토스트+refetch). E2E 8/8. FR 총수 123 불변(기존 FR-AT-01 완성). → **FR-AT-01 전체 완료(D1~D7)**.
 >
 > **보강 — R9 트리거 3종 (2026-10-28)**. `ISSUE_TRANSITIONED`(From/To 상태 필터 · 관리자 상태 이관 제외) · `ISSUE_ASSIGNED` · `MANUAL`(이슈 화면 ⚡ 「자동화」, 이슈 열람자가 실행 · `POST …/automation/manual-rules/{id}/run`) 추가, V311 CHECK 9종. 「필드 값 변경됨」은 기존 `ISSUE_UPDATED` + `fields` 필터의 표시명. 갭 JAU-5 · 스펙 [2026-10-28-r9-automation-catalog](../../specs/2026-10-28-r9-automation-catalog.md). FR 수 · D 마커 불변.
+>
+> **보강 — 웹훅 규칙이 여러 이슈에 걸린다 (2026-11-01, QA Hub BTS-F2-01)**. WEBHOOK `triggerConfig` 선택 칸 넷 — `targetStates`(그 프로젝트에서 이 상태인 이슈 전부, 기존 `IssueSearchPort` · 룰 작성자 가시성) · `keysField`(웹훅 몸의 그 배열에 든 키 전부, 둘은 함께 못 둔다) · `skipWhenTrue`(몸의 그 칸이 true 면 안 돎 — 롤백 배포에서 「배포 대기 → QA 요청」을 막는 조건, 차례 대신) · `webhookFromRuleId`(같은 프로젝트 다른 규칙의 웹훅 주소로도 돎 — 주소 하나에 규칙 둘). 워커(`WebhookFanOut`)가 대상 키마다 `issueKey` 를 붙여 한 트랜잭션으로 다시 큐에 넣어 기존 경로(프로젝트 경계 · 조건 · 억제창 · 이력)를 탄다. 한 번 200개 — 넘으면 하나도 안 넣고 이력에 `TARGET_LIMIT_EXCEEDED`(화면 「상한 넘음」). 템플릿 `{{ webhook.<칸> }}` 로 몸을 읽는다. 마이그레이션 없음. FR 수 · D 마커 불변.
 
 ### §2.2 FR-AT-02 — 액션 (필드 변경/담당자/댓글/API 호출)
 

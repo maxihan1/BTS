@@ -231,6 +231,24 @@ describe('RuleExecutionTraceRow', () => {
       expect(pre?.textContent).toContain('ATLAS-100')
     })
 
+    it('웹훅 대상 상한을 넘은 실패는 코드 대신 「상한 넘음」으로 보인다 (BTS-F2-01)', async () => {
+      server.use(
+        http.get('/api/v1/automation/executions/:id', () =>
+          HttpResponse.json({
+            ...DETAIL_FIXTURE,
+            outcomes: [{ position: 0, actionType: 'TRANSITION', success: false, error: 'TARGET_LIMIT_EXCEEDED' }],
+          }),
+        ),
+      )
+      const user = userEvent.setup()
+      renderRow()
+
+      await user.click(screen.getByRole('button', { expanded: false }))
+
+      expect(await screen.findByText(/^상한 넘음/)).toBeInTheDocument()
+      expect(screen.queryByText('TARGET_LIMIT_EXCEEDED')).not.toBeInTheDocument()
+    })
+
     it('detail 로딩 중에는 펼침 영역 내 로딩 표시가 나타난다', async () => {
       // GET 응답을 수동으로 제어해(resolveDetail 호출 전까지 미해결) 로딩 구간을 결정적으로 관측한다.
       let resolveDetail: (() => void) | undefined

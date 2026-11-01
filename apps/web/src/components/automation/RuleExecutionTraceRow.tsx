@@ -29,6 +29,11 @@ const labels = {
   actionFailure: '실패',
 } as const
 
+/** 실패 사유 코드 중 사람이 읽을 말이 따로 있는 것 — 나머지는 코드 그대로 보인다. */
+const errorLabels: Readonly<Record<string, string>> = {
+  TARGET_LIMIT_EXCEEDED: '상한 넘음 — 대상 이슈가 200개를 넘어 하나도 바꾸지 않음',
+}
+
 /**
  * 실행 이력 상태 → 배지 색/한국어 라벨.
  * 색상을 상태 구분의 유일한 단서로 쓰지 않도록(NFR1) 텍스트 라벨을 항상 함께 렌더한다.
@@ -125,7 +130,7 @@ function RuleExecutionOutcomeRow({ outcome }: RuleExecutionOutcomeRowProps): JSX
       </span>
       <span className="sr-only">{outcome.success ? labels.actionSuccess : labels.actionFailure}</span>
       <span className="font-medium">{outcome.actionType}</span>
-      {!outcome.success && outcome.error !== null && <span className="text-destructive">{outcome.error}</span>}
+      {!outcome.success && outcome.error !== null && <span className="text-destructive">{errorLabels[outcome.error] ?? outcome.error}</span>}
     </li>
   )
 }

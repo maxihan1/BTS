@@ -7,6 +7,7 @@ import com.bts.automation.adapter.RuleExecutionRepository
 import com.bts.automation.application.ActionExecutionResult
 import com.bts.automation.application.ActionExecutor
 import com.bts.automation.application.RuleExecution
+import com.bts.automation.application.WebhookFanOut
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.TriggerType
 import com.fasterxml.jackson.databind.JsonNode
@@ -105,6 +106,7 @@ import java.util.concurrent.ConcurrentHashMap
  * @param ruleExecutionRepository 실행 이력 저장소(FR-AT-05). "실행 이력 저장" 섹션 참조.
  * @param clock 억제 캐시 시각 소스. 기본값 UTC(테스트에서 결정적 시각으로 교체).
  */
+@Suppress("LongParameterList") // 큐 · 룰 · 실행 · 이력 · 웹훅 대상 고르기(BTS-F2-01) · 시각 — 전부 생성자 주입 협력자
 @Component
 class AutomationExecutionWorker(
     private val jdbcTemplate: JdbcTemplate,
@@ -112,6 +114,7 @@ class AutomationExecutionWorker(
     private val ruleRepository: AutomationRuleRepository,
     private val actionExecutor: ActionExecutor,
     private val ruleExecutionRepository: RuleExecutionRepository,
+    private val webhookFanOut: WebhookFanOut,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -226,6 +229,12 @@ class AutomationExecutionWorker(
         rule: AutomationRule,
     ) {
         try {
+            // 웹훅 규칙의 대상 고르기(BTS-F2-01) — 여기서 끝냈으면(건너뜀 · 이슈마다 큐에 나눔 · 상한 넘음) 실행 없이 archive
+            val webhook = (payload.triggerType ?: rule.triggerType) == TriggerType.WEBHOOK
+            if (webhook && webhookFanOut.handle(rule, payload.triggerEvent, payload.issueKey)) {
+                archiveMessage(message.msgId)
+                return
+            }
             val startedAt = clock.instant()
             val result = actionExecutor.execute(rule, payload.triggerEvent, dryRun = false)
             val finishedAt = clock.instant()

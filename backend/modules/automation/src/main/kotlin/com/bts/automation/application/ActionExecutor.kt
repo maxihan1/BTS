@@ -9,6 +9,7 @@ import com.bts.automation.domain.Action
 import com.bts.automation.domain.ActionType
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.Condition
+import com.bts.automation.domain.TriggerType
 import com.bts.shared.issue.AddCommentCommand
 import com.bts.shared.issue.AddWatcherCommand
 import com.bts.shared.issue.AssignCommand
@@ -185,6 +186,17 @@ class ActionExecutor(
             }
         }
     }
+
+    /**
+     * 웹훅 대상 이슈가 상한을 넘어 아무것도 바꾸지 않은 실행 결과 — 액션마다 [FAILURE_TARGET_LIMIT_EXCEEDED](BTS-F2-01).
+     */
+    fun targetLimitExceeded(rule: AutomationRule): ActionExecutionResult =
+        ActionExecutionResult(
+            ActionExecutionStatus.FAILED,
+            actionRepository.findByRuleId(rule.id).mapIndexed { position, action ->
+                ActionOutcome(position, actionTypeOf(action), success = false, error = FAILURE_TARGET_LIMIT_EXCEEDED)
+            },
+        )
 
     /**
      * 클래스 KDoc "조건 게이트" 참조. [rule] 에 저장된 조건이 없으면 게이트를 통과(`false` — 조건 없음은
@@ -409,11 +421,15 @@ class ActionExecutor(
         val issueMapWithKey =
             if (issueKey != null && FIELD_KEY !in issueMap) issueMap + (FIELD_KEY to issueKey) else issueMap
         val actorId = triggerEvent.path(FIELD_ACTOR_ID).asText(null)?.takeIf { it.isNotBlank() }
-        return mapOf(
-            FIELD_ISSUE to issueMapWithKey,
-            "trigger" to mapOf("type" to rule.triggerType.name),
-            "actor" to actorId?.let { mapOf("id" to it) }.orEmpty(),
-        )
+        val context =
+            mapOf(
+                FIELD_ISSUE to issueMapWithKey,
+                "trigger" to mapOf("type" to rule.triggerType.name),
+                "actor" to actorId?.let { mapOf("id" to it) }.orEmpty(),
+            )
+        // 웹훅 몸은 `{{ webhook.build }}` 처럼 읽는다(BTS-F2-01)
+        if (rule.triggerType != TriggerType.WEBHOOK || !triggerEvent.isObject) return context
+        return context + ("webhook" to objectMapper.convertValue(triggerEvent, MAP_TYPE_REF))
     }
 
     /** [Action] 서브타입 → [ActionType] 매핑(로그/결과 리포팅 전용 — [AutomationActionRepository] 저장측 매핑과 별도). */
@@ -465,6 +481,9 @@ class ActionExecutor(
 
         /** [classifyPortFailure] 가 타입 있는 [IssueMutationPermissionDeniedException] 을 권한 거부로 분류했을 때의 실패 사유. */
         const val FAILURE_PERMISSION_DENIED = "PERMISSION_DENIED"
+
+        /** 웹훅 대상 이슈가 상한을 넘어 하나도 바꾸지 않았을 때의 실패 사유(화면은 「상한 넘음」). */
+        const val FAILURE_TARGET_LIMIT_EXCEEDED = "TARGET_LIMIT_EXCEEDED"
 
         /** [classifyPortFailure] 가 권한 거부로 분류하지 못한 그 외 포트 예외/웹훅 실패의 기본 사유. */
         const val FAILURE_GENERIC = "FAILED"
