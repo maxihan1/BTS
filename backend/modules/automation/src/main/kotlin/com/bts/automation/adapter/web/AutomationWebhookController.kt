@@ -4,6 +4,7 @@ package com.bts.automation.adapter.web
 
 import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
+import com.bts.automation.domain.TriggerConfig
 import com.bts.automation.domain.TriggerType
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
@@ -100,6 +101,10 @@ class AutomationWebhookController(
             ruleRepository.findByWebhookTokenHash(sha256Hex(token))
                 ?: throw AutomationWebhookNotFoundException()
         enqueuer.enqueue(rule.id, TriggerType.WEBHOOK, triggerEvent)
+        // 이 주소를 따라 도는 같은 프로젝트 규칙(triggerConfig webhookFromRuleId — BTS-F2-01)도 같이 넣는다
+        ruleRepository.findEnabledByProjectAndTriggerType(rule.projectKey, TriggerType.WEBHOOK)
+            .filter { TriggerConfig.webhookTargeting(it.triggerConfig).webhookFromRuleId == rule.id }
+            .forEach { enqueuer.enqueue(it.id, TriggerType.WEBHOOK, triggerEvent) }
         log.info("automation_webhook_enqueued ruleId={} bytes={}", rule.id, body.size)
         return ResponseEntity.status(HttpStatus.ACCEPTED).build()
     }

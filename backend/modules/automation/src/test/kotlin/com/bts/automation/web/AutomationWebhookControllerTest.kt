@@ -185,6 +185,40 @@ class AutomationWebhookControllerTest {
         assertThat(node.get("triggerEvent").get("value").asInt()).isEqualTo(42)
     }
 
+    @Test
+    fun `webhookFromRuleId 로 이 주소를 따르는 같은 프로젝트 규칙도 같이 큐에 들어간다 (BTS-F2-01)`() {
+        val rawToken = "webhook-token-shared"
+        val owner = webhookRule(sha256Hex(rawToken))
+        repository.save(owner)
+        val follower = followerRule("ATLAS", owner.id)
+        repository.save(follower)
+        repository.save(followerRule("OTHER", owner.id)) // 다른 프로젝트 규칙은 따라 돌지 않는다
+
+        val response = postWebhook(rawToken, """{"build":"b","rollback":true}""".toByteArray(Charsets.UTF_8))
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.ACCEPTED)
+        val ruleIds =
+            jdbcTemplate.queryForList(
+                "SELECT message->>'ruleId' FROM pgmq.read('q_automation_execution', 30, 10)",
+                String::class.java,
+            )
+        assertThat(ruleIds).containsExactlyInAnyOrder(owner.id.toString(), follower.id.toString())
+    }
+
+    private fun followerRule(
+        projectKey: String,
+        ownerId: UUID,
+    ): AutomationRule =
+        AutomationRule.create(
+            projectKey = projectKey,
+            name = "따라 도는 룰",
+            triggerType = TriggerType.WEBHOOK,
+            triggerConfig = """{"webhookFromRuleId":"$ownerId"}""",
+            createdBy = UUID.randomUUID(),
+            webhookTokenHash = sha256Hex(UUID.randomUUID().toString()),
+            now = now,
+        )
+
     // ── 미존재/비활성/삭제 토큰 → 404 (S7/G5, 존재 숨김) ──────────────────────
 
     @Test

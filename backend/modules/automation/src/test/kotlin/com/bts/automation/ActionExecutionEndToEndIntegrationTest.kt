@@ -10,6 +10,7 @@ import com.bts.automation.adapter.WebhookActionClient
 import com.bts.automation.adapter.WebhookCallResult
 import com.bts.automation.application.ActionExecutionStatus
 import com.bts.automation.application.ActionExecutor
+import com.bts.automation.application.WebhookFanOut
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ComparisonOperator
@@ -123,6 +124,10 @@ class ActionExecutionEndToEndIntegrationTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
+    private lateinit var webhookFanOut: WebhookFanOut
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var automationExecutionEnqueuer: AutomationExecutionEnqueuer
 
     @Autowired
@@ -177,6 +182,7 @@ class ActionExecutionEndToEndIntegrationTest {
             ruleRepository,
             actionExecutor,
             ruleExecutionRepository,
+            webhookFanOut,
             clock,
         )
 

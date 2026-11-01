@@ -9,10 +9,12 @@ import com.bts.automation.StubIssueMutationPort
 import com.bts.automation.StubIssuePermissionResolver
 import com.bts.automation.StubIssueSnapshotPort
 import com.bts.automation.adapter.AutomationConditionRepository
+import com.bts.automation.adapter.AutomationExecutionEnqueuer
 import com.bts.automation.adapter.AutomationRuleRepository
 import com.bts.automation.adapter.RuleExecutionRepository
 import com.bts.automation.application.ActionExecutionStatus
 import com.bts.automation.application.ActionExecutor
+import com.bts.automation.application.WebhookFanOut
 import com.bts.automation.domain.Action
 import com.bts.automation.domain.AutomationRule
 import com.bts.automation.domain.ComparisonOperator
@@ -20,6 +22,10 @@ import com.bts.automation.domain.Condition
 import com.bts.automation.domain.TriggerType
 import com.bts.shared.permission.AutomationPermissionResolver
 import com.bts.shared.permission.IssuePermissionResolver
+import com.bts.shared.search.IssueSearchHit
+import com.bts.shared.search.IssueSearchPage
+import com.bts.shared.search.IssueSearchPort
+import com.bts.shared.search.IssueSearchQuery
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.NullNode
@@ -41,6 +47,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * [AutomationExecutionWorker] 통합 테스트 (FR-AT-02 Task 10, [[pgmq-consumer-message-lifecycle-p0]]).
@@ -105,6 +112,25 @@ class AutomationExecutionWorkerTest {
 
         @Bean
         fun issuePermissionResolver(): IssuePermissionResolver = StubIssuePermissionResolver()
+
+        @Bean
+        fun issueSearchPort(): FakeIssueSearchPort = FakeIssueSearchPort()
+    }
+
+    /** 웹훅 상태 검색(BTS-F2-01)용 — [keys] 를 그대로 돌려주고 [total] 을 실제 수보다 크게 둘 수 있다. 받은 질의는 [queries]. */
+    class FakeIssueSearchPort : IssueSearchPort {
+        var keys: List<String> = emptyList()
+        var total: Long? = null
+        val queries: MutableList<IssueSearchQuery> = CopyOnWriteArrayList()
+
+        override fun search(query: IssueSearchQuery): IssueSearchPage {
+            queries += query
+            val hits =
+                keys.map { key ->
+                    IssueSearchHit(key, "s", "task", "deploy_wait", null, 3, "Medium", query.projectKey, Instant.EPOCH)
+                }
+            return IssueSearchPage(hits, total ?: hits.size.toLong(), query.page, query.size)
+        }
     }
 
     @Autowired
@@ -129,6 +155,18 @@ class AutomationExecutionWorkerTest {
 
     @Autowired
     @Suppress("VarCouldBeVal")
+    private lateinit var issueSearchPort: FakeIssueSearchPort
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var webhookFanOut: WebhookFanOut
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
+    private lateinit var enqueuer: AutomationExecutionEnqueuer
+
+    @Autowired
+    @Suppress("VarCouldBeVal")
     private lateinit var jdbcTemplate: JdbcTemplate
 
     @Autowired
@@ -149,6 +187,9 @@ class AutomationExecutionWorkerTest {
         jdbcTemplate.execute("SELECT pgmq.purge_queue('q_automation_execution')")
         jdbcTemplate.update("DELETE FROM pgmq.\"${pgmqTable("a")}\"")
         issueMutationPort.reset()
+        issueSearchPort.keys = emptyList()
+        issueSearchPort.total = null
+        issueSearchPort.queries.clear()
     }
 
     // ── 워커/룰/메시지 헬퍼 ───────────────────────────────────────────────────
@@ -164,6 +205,7 @@ class AutomationExecutionWorkerTest {
             ruleRepository,
             executor,
             executionRepository,
+            webhookFanOut,
             clock,
         )
     }
@@ -483,7 +525,160 @@ class AutomationExecutionWorkerTest {
         assertThat(archivedCount()).isEqualTo(1)
     }
 
+    // ── 웹훅 규칙이 여러 이슈에 걸린다 (BTS-F2-01) ─────────────────────────────
+
+    private fun saveWebhookRule(
+        triggerConfig: String,
+        actions: List<Action> = listOf(Action.TransitionAction("deploy_wait")),
+    ): AutomationRule {
+        val rule =
+            AutomationRule.create(
+                projectKey = "ATLAS",
+                name = "웹훅 룰",
+                triggerType = TriggerType.WEBHOOK,
+                triggerConfig = triggerConfig,
+                createdBy = UUID.randomUUID(),
+                webhookTokenHash = UUID.randomUUID().toString().replace("-", ""),
+                actions = actions,
+                now = now,
+            )
+        ruleRepository.save(rule)
+        return rule
+    }
+
+    private fun enqueueWebhook(
+        ruleId: UUID,
+        body: String,
+    ) = enqueuer.enqueue(ruleId, TriggerType.WEBHOOK, objectMapper.readTree(body))
+
+    private fun executionsOf(rule: AutomationRule) =
+        ruleExecutionRepository.findByRule("ATLAS", rule.id, issueKey = null, limit = 10, before = null)
+
+    /** 큐가 빌 때까지 돌린다 — 첫 번은 대상 고르기, 다음은 이슈마다 실행. */
+    private fun drain(worker: AutomationExecutionWorker = worker()) {
+        repeat(DRAIN_ROUNDS) { worker.pollAndProcess() }
+    }
+
+    @Test
+    fun `keysField 규칙은 몸의 키마다 한 번 돈다 - 겹친 키는 한 번 · 다른 프로젝트 키는 막힌다`() {
+        val rule = saveWebhookRule("""{"keysField":"rollbackKeys"}""")
+        enqueueWebhook(
+            rule.id,
+            """{"build":"b1","rollback":true,"rollbackKeys":["ATLAS-1","ATLAS-2","OTHER-9","ATLAS-1"]}""",
+        )
+
+        drain()
+
+        assertThat(issueMutationPort.transitionCalls.map { it.issueKey to it.toStateKey })
+            .containsExactlyInAnyOrder("ATLAS-1" to "deploy_wait", "ATLAS-2" to "deploy_wait")
+        val executions = executionsOf(rule)
+        assertThat(executions.map { it.issueKey to it.status }).containsExactlyInAnyOrder(
+            "ATLAS-1" to ActionExecutionStatus.SUCCESS,
+            "ATLAS-2" to ActionExecutionStatus.SUCCESS,
+            "OTHER-9" to ActionExecutionStatus.SKIPPED,
+        )
+        assertThat(pendingCount()).isZero()
+    }
+
+    @Test
+    fun `keysField 키가 200개를 넘으면 하나도 안 바꾸고 상한 넘음 이력 한 건을 남긴다`() {
+        val rule = saveWebhookRule("""{"keysField":"rollbackKeys"}""")
+        val keys = (1..201).joinToString(",") { "\"ATLAS-$it\"" }
+        enqueueWebhook(rule.id, """{"rollbackKeys":[$keys]}""")
+
+        drain()
+
+        assertThat(issueMutationPort.transitionCalls).isEmpty()
+        val executions = executionsOf(rule)
+        assertThat(executions).hasSize(1)
+        assertThat(executions.single().status).isEqualTo(ActionExecutionStatus.FAILED)
+        assertThat(executions.single().outcomes.map { it.error }).containsExactly("TARGET_LIMIT_EXCEEDED")
+        assertThat(pendingCount()).isZero()
+    }
+
+    @Test
+    fun `keysField 키가 정확히 200개면 모두 돈다`() {
+        val rule = saveWebhookRule("""{"keysField":"rollbackKeys"}""")
+        val keys = (1..200).joinToString(",") { "\"ATLAS-$it\"" }
+        enqueueWebhook(rule.id, """{"rollbackKeys":[$keys]}""")
+
+        drain()
+
+        assertThat(issueMutationPort.transitionCalls).hasSize(200)
+    }
+
+    @Test
+    fun `targetStates 규칙은 그 상태 이슈 전부에 돌고 댓글에 웹훅 몸의 build 를 넣는다`() {
+        val rule =
+            saveWebhookRule(
+                """{"targetStates":["deploy_wait"],"skipWhenTrue":"rollback"}""",
+                actions =
+                    listOf(
+                        Action.TransitionAction("qa_request"),
+                        Action.AddCommentAction("QA 서버 {{ webhook.build }} 배포됨"),
+                    ),
+            )
+        issueSearchPort.keys = listOf("ATLAS-3", "ATLAS-4")
+        enqueueWebhook(rule.id, """{"build":"a1b2c3d-202611011200"}""")
+
+        drain()
+
+        val query = issueSearchPort.queries.single()
+        assertThat(query.projectKey).isEqualTo("ATLAS")
+        assertThat(query.viewerUserId).isEqualTo(rule.createdBy)
+        assertThat(query.size).isEqualTo(200)
+        assertThat(issueMutationPort.transitionCalls.map { it.issueKey to it.toStateKey })
+            .containsExactlyInAnyOrder("ATLAS-3" to "qa_request", "ATLAS-4" to "qa_request")
+        assertThat(issueMutationPort.addCommentCalls.map { it.issueKey to it.body }).containsExactlyInAnyOrder(
+            "ATLAS-3" to "QA 서버 a1b2c3d-202611011200 배포됨",
+            "ATLAS-4" to "QA 서버 a1b2c3d-202611011200 배포됨",
+        )
+    }
+
+    @Test
+    fun `targetStates 검색 총수가 200을 넘으면 하나도 안 바꾼다`() {
+        val rule = saveWebhookRule("""{"targetStates":["deploy_wait"]}""")
+        issueSearchPort.keys = listOf("ATLAS-3")
+        issueSearchPort.total = 201
+        enqueueWebhook(rule.id, """{"build":"b"}""")
+
+        drain()
+
+        assertThat(issueMutationPort.transitionCalls).isEmpty()
+        val executions = executionsOf(rule)
+        assertThat(executions.single().outcomes.map { it.error }).containsExactly("TARGET_LIMIT_EXCEEDED")
+    }
+
+    @Test
+    fun `skipWhenTrue 칸이 true 인 몸이면 규칙이 돌지 않는다 - 롤백 배포에서 QA 요청 규칙`() {
+        val rule = saveWebhookRule("""{"targetStates":["deploy_wait"],"skipWhenTrue":"rollback"}""")
+        issueSearchPort.keys = listOf("ATLAS-3")
+        enqueueWebhook(rule.id, """{"build":"b","rollback":true,"rollbackKeys":["ATLAS-3"]}""")
+
+        drain()
+
+        assertThat(issueSearchPort.queries).isEmpty()
+        assertThat(issueMutationPort.transitionCalls).isEmpty()
+        assertThat(executionsOf(rule)).isEmpty()
+        assertThat(pendingCount()).isZero()
+    }
+
+    @Test
+    fun `대상 칸이 없는 웹훅 규칙은 지금처럼 이슈 없이 한 번 돈다`() {
+        val rule = saveWebhookRule("{}")
+        enqueueWebhook(rule.id, """{"build":"b"}""")
+
+        drain()
+
+        val executions = executionsOf(rule)
+        assertThat(executions.map { it.issueKey to it.outcomes.single().error })
+            .containsExactly(null to "ISSUE_KEY_MISSING")
+    }
+
     private companion object {
+        /** 대상 고르기 1회 + 200건(배치 5)을 비우기에 넉넉한 횟수. */
+        const val DRAIN_ROUNDS = 45
+
         /** [AutomationExecutionWorker.MAX_RECEIVE_COUNT] 미러(private 상수라 테스트에서 직접 참조 불가). */
         const val MAX_RECEIVE_COUNT_FIXTURE = 5
     }

@@ -163,6 +163,44 @@ class TriggerConfigTest : DescribeSpec({
         }
     }
 
+    describe("TriggerConfig — WEBHOOK 대상 고르기 칸 (BTS-F2-01)") {
+        val ruleId = "00000000-0000-0000-0000-000000000001"
+
+        it("네 칸을 모두 받고 webhookTargeting 으로 읽는다") {
+            val config = """{"targetStates":["deploy_wait"],"skipWhenTrue":"rollback","webhookFromRuleId":"$ruleId"}"""
+            TriggerConfig.validate(TriggerType.WEBHOOK, config)
+            TriggerConfig.webhookTargeting(config) shouldBe
+                WebhookTargeting(
+                    targetStates = listOf("deploy_wait"),
+                    skipWhenTrue = "rollback",
+                    webhookFromRuleId = UUID.fromString(ruleId),
+                )
+            TriggerConfig.webhookTargeting("""{"keysField":"rollbackKeys"}""") shouldBe
+                WebhookTargeting(keysField = "rollbackKeys")
+        }
+
+        it("targetStates 와 keysField 를 함께 두면 거부한다") {
+            shouldThrow<TriggerConfigInvalidException> {
+                TriggerConfig.validate(TriggerType.WEBHOOK, """{"targetStates":["a"],"keysField":"k"}""")
+            }
+        }
+
+        it("빈 targetStates · 빈 keysField · UUID 아닌 webhookFromRuleId 는 거부한다") {
+            listOf(
+                """{"targetStates":[]}""",
+                """{"keysField":""}""",
+                """{"webhookFromRuleId":"x"}""",
+                """{"skipWhenTrue":1}""",
+            ).forEach { config ->
+                shouldThrow<TriggerConfigInvalidException> { TriggerConfig.validate(TriggerType.WEBHOOK, config) }
+            }
+        }
+
+        it("칸이 없는 옛 config 는 빈 WebhookTargeting 이다") {
+            TriggerConfig.webhookTargeting("{}") shouldBe WebhookTargeting()
+        }
+    }
+
     describe("TriggerConfig.validate — 공통 형식 오류") {
         it("빈 문자열은 모든 타입에서 거부한다") {
             shouldThrow<TriggerConfigInvalidException> {

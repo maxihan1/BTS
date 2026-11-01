@@ -63,6 +63,16 @@ class AutomationExecutionEnqueuer(
         log.info("automation_execution_enqueued queue={} ruleId={} triggerType={}", QUEUE_NAME, ruleId, triggerType)
     }
 
+    /** [triggerEvents] 를 한 트랜잭션으로 모두 적재한다 — 웹훅 대상 이슈마다 한 건(BTS-F2-01). 중간에 깨지면 하나도 안 들어간다. */
+    @Transactional
+    fun enqueueAll(
+        ruleId: UUID,
+        triggerType: TriggerType,
+        triggerEvents: List<JsonNode>,
+    ) {
+        triggerEvents.forEach { enqueue(ruleId, triggerType, it) }
+    }
+
     private companion object {
         /** pgmq 큐 이름 — V301__pgmq_queue_automation_execution.sql 에서 생성된 큐와 일치해야 한다. */
         const val QUEUE_NAME = "q_automation_execution"
