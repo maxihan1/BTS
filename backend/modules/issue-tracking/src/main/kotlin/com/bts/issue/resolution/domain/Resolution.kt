@@ -1,4 +1,4 @@
-// Resolution Aggregate Root — 표준 5종(Fixed/Won't Fix/Duplicate/Cannot Reproduce/Done) + 커스텀 후속 FR
+// Resolution Aggregate Root — 표준 5종(Fixed/Won't Fix/Duplicate/Cannot Reproduce/Done) + QA Hub 닫기 사유 넷(V040) + 커스텀 후속 FR
 package com.bts.issue.resolution.domain
 
 import java.time.Instant
@@ -12,7 +12,7 @@ import java.util.UUID
  * isStandard = true 로 표시된다.
  *
  * **key 슬러그 규칙.**
- * key 는 소문자 알파벳과 숫자만 허용하며 공백·특수문자를 포함할 수 없다.
+ * key 는 소문자 알파벳 · 숫자 · 밑줄만 허용하며 공백·그 밖의 특수문자를 포함할 수 없다(밑줄은 V040 `screen_right` 등).
  * 예: `"fixed"`, `"wontfix"`, `"cannotreproduce"`.
  *
  * @property id DB PK(UUID). 신규 생성 전(DB 저장 전)에는 null 이다.
@@ -47,10 +47,10 @@ data class Resolution(
         /**
          * key 슬러그 허용 패턴.
          *
-         * 소문자 알파벳과 숫자만 허용한다. 공백·특수문자·하이픈 불가.
-         * 예: `"fixed"`, `"wontfix"`, `"cannotreproduce"`.
+         * 소문자 알파벳 · 숫자 · 밑줄을 허용한다(CustomFieldDefinition 선례). 공백·하이픈·그 밖의 특수문자 불가.
+         * 예: `"fixed"`, `"wontfix"`, `"screen_right"`(V040 QA Hub 닫기 사유).
          */
-        private val KEY_REGEX = Regex("^[a-z][a-z0-9]{0,29}\$")
+        private val KEY_REGEX = Regex("^[a-z][a-z0-9_]{0,29}\$")
 
         /**
          * Resolution 인스턴스를 생성하는 factory 메서드.
@@ -61,7 +61,7 @@ data class Resolution(
          * - [createdAt], [updatedAt] 은 현재 시각으로 초기화된다.
          * - [deletedAt] 은 null 로 초기화된다 (활성 상태).
          *
-         * @param key URL-safe 소문자 슬러그 키. 소문자 알파벳·숫자만 허용, 1~30자.
+         * @param key URL-safe 소문자 슬러그 키. 소문자 알파벳·숫자·밑줄만 허용, 1~30자.
          * @param name 표시 이름. 공백 트림 후 빈 문자열이면 예외.
          * @param description 선택적 설명. 기본값 null.
          * @param displayOrder 목록 표시 순서. 기본값 1.

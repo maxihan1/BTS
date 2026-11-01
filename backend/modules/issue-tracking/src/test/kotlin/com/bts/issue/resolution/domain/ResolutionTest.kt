@@ -87,6 +87,16 @@ class ResolutionTest : DescribeSpec({
             }
         }
 
+        context("key 유효성 검증 — 밑줄 허용 (V040)") {
+            it("밑줄이 든 key(screen_right)를 받는다") {
+                Resolution.create(key = "screen_right", name = "화면이 맞음").key shouldBe "screen_right"
+            }
+
+            it("하이픈이 든 key 는 거부한다") {
+                shouldThrow<IllegalArgumentException> { Resolution.create(key = "screen-right", name = "x") }
+            }
+        }
+
         context("name 유효성 검증") {
             it("name 이 빈 문자열이면 IllegalArgumentException 을 던진다") {
                 shouldThrow<IllegalArgumentException> {

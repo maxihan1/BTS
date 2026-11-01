@@ -14,7 +14,7 @@ import java.util.UUID
  * Resolution Repository.
  *
  * jOOQ DSLContext 를 통해 `resolutions` 테이블에 접근한다.
- * V011 마이그레이션이 표준 5종(fixed/wontfix/duplicate/cannotreproduce/done) seed 를 INSERT 한다.
+ * V011 마이그레이션이 표준 5종(fixed/wontfix/duplicate/cannotreproduce/done), V040 이 QA Hub 닫기 사유 넷 seed 를 INSERT 한다.
  *
  * ## 설계 결정
  *
@@ -33,7 +33,7 @@ class ResolutionRepository(
      * 활성 Resolution 목록을 display_order ASC 로 반환한다.
      *
      * `deleted_at IS NULL` 인 row 만 반환한다.
-     * V011 seed 직후에는 표준 5종이 display_order 1~5 순으로 반환된다.
+     * seed 직후에는 표준 5종(1~5) · QA Hub 넷(6~9)이 display_order 순으로 반환된다.
      *
      * @return 활성 [Resolution] 리스트. 비어있을 수 있다.
      */
