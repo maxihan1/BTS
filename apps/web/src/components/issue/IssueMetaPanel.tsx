@@ -30,6 +30,7 @@ import { IssueAutomationMenu } from '@/components/automation/IssueAutomationMenu
 import { IssueLabelsEdit } from '@/components/issue/meta/IssueLabelsEdit'
 import { IssueAssigneeSelect } from '@/components/issue/meta/IssueAssigneeSelect'
 import { IssueReporterRow } from '@/components/issue/meta/IssueReporterRow'
+import type { FocusHandle } from '@/components/issue/meta/use-inline-edit'
 import { IssueStateTransition } from '@/components/issue/meta/IssueStateTransition'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -126,10 +127,10 @@ export interface IssueMetaPanelProps {
   // 아래 넷은 이 패널이 **소비하지 않고 그대로 통과시키는** ref다. 실제 소비처는
   // routes/issues.$key.tsx의 useContextShortcuts('issue-detail') 핸들러다.
   // 미전달이면 해당 컨트롤에 aria-keyshortcuts도 붙지 않는다(하위 컴포넌트 규칙).
-  /** 담당자 검색 input으로 통과시킬 ref — 단축키 `a` */
-  assigneeSearchRef?: RefObject<HTMLInputElement | null>
-  /** 라벨 입력으로 통과시킬 ref — 단축키 `l` (IssueLabelsEdit에서 2단 더 내려간다) */
-  labelsInputRef?: RefObject<HTMLInputElement | null>
+  /** 담당자 칸 손잡이 — 단축키 `a`. 접혀 있으면 편집을 열고 검색 input 에 포커스한다 */
+  assigneeSearchRef?: RefObject<FocusHandle | null>
+  /** 라벨 칸 손잡이 — 단축키 `l`. 접혀 있으면 편집을 열고 라벨 입력에 포커스한다 */
+  labelsInputRef?: RefObject<FocusHandle | null>
   /** 즐겨찾기 토글 버튼으로 통과시킬 ref — 단축키 `s` */
   favoriteToggleRef?: RefObject<HTMLButtonElement | null>
   /** Watch 토글 버튼으로 통과시킬 ref — 단축키 `w` */
@@ -747,6 +748,7 @@ export function IssueMetaPanel({
               onAssigneeChange={onAssigneeChange}
               canEdit={!isFieldDisabled('assigneeId', canEdit, issue.noneditableFields)}
               focusRef={assigneeSearchRef}
+              collapsible
             />
           </div>
         )}

@@ -34,7 +34,7 @@
 // 보드를 시드하고 `replaceDetailViewFields`(실제 PATCH 창구)로 구성을 심는다. 스텁을 손으로
 // 지으면 응답 모양이 갈려 「유닛은 초록인데 e2e 를 쓰자마자 red」가 된다.
 import type { ReactElement } from 'react'
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -951,8 +951,9 @@ describe('IssueMetaPanel — 라벨 칩', () => {
   /**
    * IMP-42: 라벨 추가 입력 필드가 있다.
    */
-  it('IMP-42: 라벨 추가 입력 필드가 있다', () => {
+  it('IMP-42: 라벨 추가 입력 필드가 있다', async () => {
     renderPanel()
+    await userEvent.click(screen.getByTestId('labels-edit-trigger'))
     expect(screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)).toBeInTheDocument()
   })
 
@@ -975,6 +976,7 @@ describe('IssueMetaPanel — 라벨 칩', () => {
       onLabelsSave,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
     await user.type(input, 'new-label')
     await user.keyboard('{Enter}')
@@ -1005,6 +1007,7 @@ describe('IssueMetaPanel — 라벨 칩', () => {
       onLabelsSave,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const labelsSection = screen.getByTestId('labels-section')
     // 'bug' 라벨 제거 버튼 클릭 (aria-label='라벨 제거' 버튼 중 첫 번째)
     const removeBtns = within(labelsSection).getAllByRole('button', { name: issueDetailStrings.labelRemoveLabel })
@@ -1034,6 +1037,7 @@ describe('IssueMetaPanel — 라벨 칩', () => {
       onLabelsSave,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const labelsSection = screen.getByTestId('labels-section')
     const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
     const longLabel = 'a'.repeat(51)
@@ -1048,10 +1052,11 @@ describe('IssueMetaPanel — 라벨 칩', () => {
   /**
    * IMP-46: 이미 20개 라벨이 있으면 추가 입력 필드가 disabled이다.
    */
-  it('IMP-46: 라벨이 20개이면 추가 입력 필드가 disabled이다', () => {
+  it('IMP-46: 라벨이 20개이면 추가 입력 필드가 disabled이다', async () => {
     const labels = Array.from({ length: 20 }, (_, i) => `label-${i}`)
     const issueMaxLabels: IssueResponse = { ...issueFixture, labels }
     renderPanel(issueMaxLabels)
+    await userEvent.click(screen.getByTestId('labels-edit-trigger'))
     const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
     expect(input).toBeDisabled()
   })
@@ -1075,6 +1080,7 @@ describe('IssueMetaPanel — 라벨 칩', () => {
       onLabelsSave,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const labelsSection = screen.getByTestId('labels-section')
     const input = screen.getByPlaceholderText(issueDetailStrings.labelAddPlaceholder)
     await user.type(input, '   ')
@@ -1251,6 +1257,7 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       onAssigneeSearch,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('assignee-edit-trigger'))
     const assigneeSection = screen.getByTestId('assignee-section')
     const searchInput = within(assigneeSection).getByPlaceholderText(issueDetailStrings.assigneeSearchPlaceholder)
     await user.type(searchInput, 'ali')
@@ -1279,6 +1286,7 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       onAssigneeChange,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('assignee-edit-trigger'))
     const assigneeSection = screen.getByTestId('assignee-section')
     const aliceBtn = within(assigneeSection).getByRole('button', { name: '김앨리스' })
     await user.click(aliceBtn)
@@ -1312,6 +1320,7 @@ describe('IssueMetaPanel — 담당자 셀렉터', () => {
       alice, // currentAssignee prop
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('assignee-edit-trigger'))
     const assigneeSection = screen.getByTestId('assignee-section')
     const unassignBtn = within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })
     await user.click(unassignBtn)
@@ -1405,9 +1414,9 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
   }
 
   /**
-   * IMP-58: UPDATE=false이면 담당자 검색 input이 disabled된다.
+   * IMP-58: UPDATE=false이면 담당자 칸이 열리지 않는다 — 여는 단추 disabled · 검색 input 없음 (JV-17).
    */
-  it('IMP-58: UPDATE=false이면 담당자 검색 input이 disabled된다', () => {
+  it('IMP-58: UPDATE=false이면 담당자 칸이 열리지 않는다', () => {
     setupNoEditPermissions()
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -1434,14 +1443,17 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
       </QueryClientProvider>,
     )
     const assigneeSection = screen.getByTestId('assignee-section')
-    const searchInput = within(assigneeSection).getByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })
-    expect(searchInput).toBeDisabled()
+    expect(within(assigneeSection).getByTestId('assignee-edit-trigger')).toBeDisabled()
+    expect(within(assigneeSection).queryByRole('textbox')).not.toBeInTheDocument()
   })
 
   /**
    * IMP-59: UPDATE=false이고 담당자가 있을 때 해제 버튼이 disabled된다.
    */
-  it('IMP-59: UPDATE=false이면 담당자 해제 버튼이 disabled된다', () => {
+  it('IMP-59: UPDATE=false이면 해제 · 나에게 할당이 보이지 않는다', () => {
+    // 로그인 사용자가 있어야 「나에게 할당」이 숨는 이유가 권한임을 잴 수 있다(담당자 ≠ 나)
+    useAuthStore.setState({ user: { ...aliceUser, userId: '00000000-0000-4000-8000-0000000000ff' } })
+    onTestFinished(() => useAuthStore.getState().clearSession())
     setupNoEditPermissions()
     const alice = usersFixture[0]
     if (!alice) return
@@ -1471,8 +1483,9 @@ describe('IssueMetaPanel — 담당자 canEdit 게이트 (FR-PM-02 C1)', () => {
       </QueryClientProvider>,
     )
     const assigneeSection = screen.getByTestId('assignee-section')
-    const unassignBtn = within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton })
-    expect(unassignBtn).toBeDisabled()
+    expect(within(assigneeSection).getByTestId('assignee-current-name')).toHaveTextContent(alice.displayName ?? alice.username)
+    expect(within(assigneeSection).queryByRole('button', { name: issueDetailStrings.assigneeUnassignButton })).not.toBeInTheDocument()
+    expect(within(assigneeSection).queryByRole('button', { name: issueDetailStrings.assignToMe })).not.toBeInTheDocument()
   })
 })
 
@@ -1513,9 +1526,10 @@ describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () =
    * IMP-70: 라벨 편집 영역에 LabelAutocompleteInput이 렌더된다.
    * data-testid="label-autocomplete-input"으로 확인.
    */
-  it('IMP-70: 라벨 편집 영역에 LabelAutocompleteInput이 렌더된다', () => {
+  it('IMP-70: 라벨 편집 영역에 LabelAutocompleteInput이 렌더된다', async () => {
     setupLabelsMock([])
     renderPanel()
+    await userEvent.click(screen.getByTestId('labels-edit-trigger'))
     expect(screen.getByTestId('label-autocomplete-input')).toBeInTheDocument()
   })
 
@@ -1526,6 +1540,7 @@ describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () =
     setupLabelsMock(['bug', 'urgent', 'backend'])
     renderPanel()
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
     await user.type(input, 'bu')
@@ -1541,6 +1556,7 @@ describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () =
     setupLabelsMock(['bug', 'urgent'])
     renderPanel()
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const input = screen.getByTestId('label-autocomplete-input')
     await user.click(input)
     await user.type(input, 'b')
@@ -1558,6 +1574,7 @@ describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () =
     setupLabelsMock([])
     renderPanel()
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const input = screen.getByTestId('label-autocomplete-input')
     await user.type(input, 'new-label')
     await user.keyboard('{Enter}')
@@ -1585,6 +1602,7 @@ describe('IssueMetaPanel — 라벨 자동완성 통합 (FR-IS-09 Task-6)', () =
       onLabelsSave,
     )
     const user = userEvent.setup()
+    await user.click(screen.getByTestId('labels-edit-trigger'))
     const input = screen.getByTestId('label-autocomplete-input')
     await user.type(input, 'autocomplete-label')
     await user.keyboard('{Enter}')
@@ -1864,6 +1882,23 @@ describe('IssueMetaPanel — 보드 상세 보기 구성 (부채 177 T21 · R7c)
     // 설정 store 는 boardStore 에 종속한다 — 보드를 지우면 구성도 함께 사라진다(핸들러의 CASCADE 규칙).
     resetBoardStore()
     useIssueDetailModalStore.setState({ openKey: null, presentation: 'modal' })
+  })
+
+  // 보드 구성과는 다른 관심사지만 실제 모달 하네스가 여기뿐이라 이 스위트에 둔다.
+  it('JV-17: 모달 안 「누르면 편집」 칸의 Esc 는 그 칸만 닫고 모달은 남긴다', async () => {
+    const user = userEvent.setup()
+    renderIssueShells('modal')
+    const trigger = await screen.findByTestId('assignee-edit-trigger')
+    await waitFor(() => expect(trigger).toBeEnabled())
+    await user.click(trigger)
+    const search = screen.getByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })
+    expect(search).toHaveFocus()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('textbox', { name: issueDetailStrings.assigneeSearchPlaceholder })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: '이슈 상세 ATLAS-1' })).toBeInTheDocument()
+    expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-1')
   })
 
   it('T21-1: 모달로 연 상세가 보드 구성을 그룹·순서 그대로 그린다', async () => {

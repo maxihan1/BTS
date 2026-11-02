@@ -1,9 +1,15 @@
 // 이슈 담당자 선택 셀렉터 (IssueMetaPanel 분해 B, FR-IS-03)
 import type { JSX, RefObject } from 'react'
+import { UserRound } from 'lucide-react'
 import type { UserSummary } from '@/api/users'
+import { useAuthUser } from '@/auth/authStore'
 import { issueDetailStrings } from '@/i18n/ko'
 import { AssigneeUserList } from '@/components/issue/meta/AssigneeUserList'
+import { META_SELECT_CLASS } from '@/components/issue/meta/meta-row-class'
+import { type FocusHandle, useInlineEdit } from '@/components/issue/meta/use-inline-edit'
+import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props
@@ -34,14 +40,20 @@ export interface IssueAssigneeSelectProps {
    */
   canEdit: boolean
   /**
-   * 검색 input으로 가는 ref — FR-UX-10 F11 단축키 `a`가 여기에 포커스를 준다.
+   * 단축키 손잡이 — FR-UX-10 F11 단축키 `a`가 `.focus()` 로 검색 input 에 포커스를 준다.
    * 소비처는 routes/issues.$key.tsx(IssueMetaPanel.assigneeSearchRef 경유).
+   * `collapsible` 이면 접힌 상태에서 받은 `.focus()` 가 먼저 편집을 연다([useInlineEdit]).
    *
    * 이 ref의 유무가 `aria-keyshortcuts` 노출 조건이기도 하다. 이 셀렉터는 이슈 생성 폼
    * (IssueCreateAssignmentFields)도 함께 쓰는데 거기엔 `a`가 없으므로, 무조건 붙이면
    * 스크린리더가 없는 단축키를 안내한다. "손잡이를 연결한 화면에만 단축키가 있다"가 규칙.
    */
-  focusRef?: RefObject<HTMLInputElement | null>
+  focusRef?: RefObject<FocusHandle | null>
+  /**
+   * 「누르면 편집」(기본 false) — 이슈 상세 「세부 사항」만 켠다(JV-17). 평소엔 아바타 + 이름과
+   * 「나에게 할당」만 보이고, 누르면 검색 칸이 열린다. 생성 폼 · 전환 화면은 폼이라 늘 열어 둔다.
+   */
+  collapsible?: boolean
   /**
    * 「해제」 버튼을 보일지 (기본 true). 전환 화면(FR-WF-01 D11)은 담당자를 비우는 요청을 표현하지 않아
    * false 로 둔다 — 눌러도 서버가 담당자를 그대로 두는 버튼을 보이지 않는다.
@@ -73,15 +85,71 @@ export function IssueAssigneeSelect({
   onAssigneeChange,
   canEdit,
   focusRef,
+  collapsible = false,
   allowClear = true,
 }: IssueAssigneeSelectProps): JSX.Element {
+  const currentUserId = useAuthUser()?.userId ?? null
+  // 닫힐 때 검색어를 비운다 — 다시 열었을 때 지난 검색 결과가 남아 있지 않게
+  const edit = useInlineEdit({ focusRef, canEdit, alwaysOpen: !collapsible, onClose: () => onSearch('') })
+
   /** 현재 담당자 표시 이름 — displayName 우선, 없으면 username */
   function getDisplayName(user: UserSummary): string {
     return user.displayName ?? user.username
   }
 
+  /** 고르거나 해제하면 바로 저장하고 칸을 닫는다(Jira 와 같다) */
+  function choose(userId: string | null): void {
+    onAssigneeChange(userId)
+    if (collapsible) edit.close(true)
+  }
+
+  if (!edit.isOpen) {
+    const name = currentAssignee !== null ? getDisplayName(currentAssignee) : issueDetailStrings.assigneeUnassigned
+    return (
+      <div className="flex min-w-0 flex-col items-start">
+        <Button
+          ref={edit.triggerRef}
+          type="button"
+          variant="ghost"
+          onClick={edit.open}
+          disabled={!canEdit}
+          aria-label={`${issueDetailStrings.assigneeLabel} ${name}`}
+          aria-keyshortcuts={focusRef !== undefined ? 'a' : undefined}
+          className={cn(META_SELECT_CLASS, 'justify-start gap-2 font-normal disabled:opacity-100')}
+          data-testid="assignee-edit-trigger"
+        >
+          {currentAssignee !== null ? (
+            <Avatar avatarUrl={null} displayName={currentAssignee.displayName} username={currentAssignee.username} size="sm" />
+          ) : (
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <UserRound className="size-4" aria-hidden />
+            </span>
+          )}
+          <span
+            className={cn('min-w-0 truncate', currentAssignee === null && 'text-muted-foreground')}
+            data-testid="assignee-current-name"
+          >
+            {name}
+          </span>
+        </Button>
+        {/* 「나에게 할당」 — 이미 나면 숨긴다(Jira 와 같다). 단축키 `i` 와 같은 저장 경로 */}
+        {canEdit && currentUserId !== null && value !== currentUserId && (
+          <Button
+            type="button"
+            variant="link"
+            size="xs"
+            onClick={() => onAssigneeChange(currentUserId)}
+            className="h-auto px-2 text-sm max-md:min-h-[44px]"
+          >
+            {issueDetailStrings.assignToMe}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" {...edit.containerProps}>
       {/* 현재 담당자 표시 — currentAssignee prop 기반 (C1 수정: users 검색결과 의존 제거) */}
       <div className="flex items-center justify-between gap-1">
         {/* 🛑 미할당일 때 `font-medium` + 기본 글자색을 쓰지 마라 — 이슈 생성 모달
@@ -106,7 +174,7 @@ export function IssueAssigneeSelect({
             type="button"
             variant="ghost"
             size="xs"
-            onClick={() => onAssigneeChange(null)}
+            onClick={() => choose(null)}
             disabled={!canEdit}
             className="min-h-[44px] shrink-0 px-1 text-muted-foreground hover:text-destructive disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={issueDetailStrings.assigneeUnassignButton}
@@ -118,7 +186,6 @@ export function IssueAssigneeSelect({
 
       {/* 검색 input — canEdit=false이면 disabled (FR-PM-02) */}
       <input
-        ref={focusRef}
         type="text"
         className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-40 disabled:cursor-not-allowed"
         placeholder={issueDetailStrings.assigneeSearchPlaceholder}
@@ -140,7 +207,7 @@ export function IssueAssigneeSelect({
 
       {/* 검색 결과 사용자 목록 */}
       {users.length > 0 && (
-        <AssigneeUserList users={users} onSelect={onAssigneeChange} />
+        <AssigneeUserList users={users} onSelect={choose} />
       )}
     </div>
   )

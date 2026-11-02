@@ -298,10 +298,10 @@ export function IssueDetailPage({
 
   // ── FR-UX-10 F11 — 상세 액션 단축키가 조작할 컨트롤 손잡이 5종 ──────────────
   // 전부 하위 컴포넌트가 자기 요소에 붙여 주는 ref다(Task 4). 이 라우트는 소비만 한다.
-  /** 담당자 검색 input — 단축키 `a` */
-  const assigneeSearchRef = useRef<HTMLInputElement>(null)
-  /** 라벨 입력 — 단축키 `l` */
-  const labelsInputRef = useRef<HTMLInputElement>(null)
+  /** 담당자 칸 손잡이 — 단축키 `a`(접혀 있으면 열고 검색 input 에 포커스) */
+  const assigneeSearchRef = useRef<Pick<HTMLElement, 'focus'>>(null)
+  /** 라벨 칸 손잡이 — 단축키 `l`(접혀 있으면 열고 라벨 입력에 포커스) */
+  const labelsInputRef = useRef<Pick<HTMLElement, 'focus'>>(null)
   /** 즐겨찾기 토글 버튼 — 단축키 `s` */
   const favoriteToggleRef = useRef<HTMLButtonElement>(null)
   /** 관심(watch) 토글 버튼 — 단축키 `w` */
