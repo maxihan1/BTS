@@ -28,6 +28,7 @@ import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { IssuePrioritySelect } from '@/components/issue/meta/IssuePrioritySelect'
 import { IssueImpactSelect } from '@/components/issue/meta/IssueImpactSelect'
 import { IssueTypeSelect } from '@/components/issue/meta/IssueTypeSelect'
+import { META_LABEL_CLASS, META_ROW_CLASS } from '@/components/issue/meta/meta-row-class'
 import { IssueEnvironmentEdit } from '@/components/issue/meta/IssueEnvironmentEdit'
 import { IssueLabelsEdit } from '@/components/issue/meta/IssueLabelsEdit'
 import { IssueCustomFieldsEdit } from '@/components/issue/meta/IssueCustomFieldsEdit'
@@ -525,7 +526,7 @@ function DetailViewFieldsSection({ state }: { state: IssueDetailViewFieldsState 
   if (state.isError) {
     return (
       <div
-        className="border border-border rounded-xl px-3.5 py-3"
+        className="border border-border rounded-lg px-3.5 py-3"
         role="alert"
         data-testid="detail-view-error"
       >
@@ -540,7 +541,7 @@ function DetailViewFieldsSection({ state }: { state: IssueDetailViewFieldsState 
   if (state.groups.length === 0) return null
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden" data-testid="detail-view-fields">
+    <div className="border border-border rounded-lg overflow-hidden" data-testid="detail-view-fields">
       {state.groups.map(({ group, rows }) => (
         <div key={group} className="px-3.5 py-3 border-b border-border last:border-b-0">
           <p className="text-xs text-muted-foreground mb-1.5">{detailViewLabels.groupLabels[group]}</p>
@@ -722,10 +723,10 @@ export function IssueMetaPanel({
       <DetailViewFieldsSection state={detailView} />
 
       {/* 메타 패널 카드 */}
-      <div className="border border-border rounded-xl overflow-hidden">
+      <div className="border border-border rounded-lg overflow-hidden">
         {/* 상태 — 현재 상태 배지가 곧 전환 메뉴 트리거 (FR-IS-01 · FR-WF-01 D9) */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.statLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.statLabel}</p>
           <IssueStateTransition
             currentStateKey={issue.currentStateKey}
             transitions={transitions}
@@ -737,46 +738,43 @@ export function IssueMetaPanel({
 
         {/* 해결 결과 — DONE 전환 후 resolution이 있을 때만 표시 (FR-IS-07) */}
         {issue.resolution != null && (
-          <div className="px-3.5 py-3 border-b border-border">
-            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.resolutionLabel}</p>
+          <div className={META_ROW_CLASS}>
+            <p className={META_LABEL_CLASS}>{issueDetailStrings.resolutionLabel}</p>
             <p className="text-sm font-medium" data-testid="issue-resolution">{issue.resolution.name}</p>
           </div>
         )}
 
-        {/* 유형 — 아이콘 + typeName 표시 + 셀렉터 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.typeLabel}</p>
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <IssueTypeIcon
-              iconName={currentType?.iconName ?? null}
-              typeName={issue.typeName}
+        {/* 유형 — 아이콘 옆 셀렉터 하나. 이름 글자는 셀렉터가 이미 보여 줘서 화면에서는 감춘다(같은 값이 두 번 보였다) */}
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.typeLabel}</p>
+          <div className="flex min-w-0 items-center gap-1">
+            <IssueTypeIcon iconName={currentType?.iconName ?? null} typeName={issue.typeName} />
+            <span className="sr-only" data-testid="issue-type-name">{issue.typeName}</span>
+            <IssueTypeSelect
+              value={issue.typeId}
+              availableTypes={availableTypes}
+              onTypeChange={onTypeChange}
+              currentTypeId={issue.typeId}
             />
-            <span className="text-sm font-medium" data-testid="issue-type-name">{issue.typeName}</span>
           </div>
-          <IssueTypeSelect
-            value={issue.typeId}
-            availableTypes={availableTypes}
-            onTypeChange={onTypeChange}
-            currentTypeId={issue.typeId}
-          />
         </div>
 
         {/* 우선순위 — IssuePrioritySelect (FR-IS-04) */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.priorityLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.priorityLabel}</p>
           <IssuePrioritySelect value={issue.priority} onPriorityChange={onPriorityChange} />
         </div>
 
         {/* 영향도 — IssueImpactSelect (FR-IS-04) */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.impactLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.impactLabel}</p>
           <IssueImpactSelect value={issue.impact} onImpactChange={onImpactChange} />
         </div>
 
         {/* 환경 — IssueEnvironmentEdit (FR-IS-04). restrictedFields에 "environment"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
         {!isFieldHidden('environment', issue.restrictedFields) && (
-          <div className="px-3.5 py-3 border-b border-border" data-testid="environment-section">
-            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.environmentLabel}</p>
+          <div className={META_ROW_CLASS} data-testid="environment-section">
+            <p className={META_LABEL_CLASS}>{issueDetailStrings.environmentLabel}</p>
             <IssueEnvironmentEdit
               value={issue.environment}
               onSave={onEnvironmentSave}
@@ -787,8 +785,8 @@ export function IssueMetaPanel({
 
         {/* 라벨 — IssueLabelsEdit (FR-IS-04). restrictedFields에 "labels"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
         {!isFieldHidden('labels', issue.restrictedFields) && (
-          <div className="px-3.5 py-3 border-b border-border" data-testid="labels-section">
-            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.labelsLabel}</p>
+          <div className={META_ROW_CLASS} data-testid="labels-section">
+            <p className={META_LABEL_CLASS}>{issueDetailStrings.labelsLabel}</p>
             <IssueLabelsEdit
               value={issue.labels}
               onSave={onLabelsSave}
@@ -800,8 +798,8 @@ export function IssueMetaPanel({
 
         {/* 담당자 — IssueAssigneeSelect (FR-IS-03). restrictedFields에 "assigneeId"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
         {!isFieldHidden('assigneeId', issue.restrictedFields) && (
-          <div className="px-3.5 py-3 border-b border-border" data-testid="assignee-section">
-            <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.assigneeLabel}</p>
+          <div className={META_ROW_CLASS} data-testid="assignee-section">
+            <p className={META_LABEL_CLASS}>{issueDetailStrings.assigneeLabel}</p>
             <IssueAssigneeSelect
               value={issue.assigneeId ?? null}
               currentAssignee={currentAssignee}
@@ -820,13 +818,13 @@ export function IssueMetaPanel({
         </div>
 
         {/* 감시자 — WatchersSection (FR-WT-01). 담당자/사람 관련 섹션 근처에 배치. */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="watchers-section-wrapper">
+        <div className={META_ROW_CLASS} data-testid="watchers-section-wrapper">
           <WatchersSection issueKey={issue.key} focusRef={watchToggleRef} />
         </div>
 
         {/* 컴포넌트 — ComponentMultiSelect (FR-CM-02) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="components-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.componentsLabel}</p>
+        <div className={META_ROW_CLASS} data-testid="components-section">
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.componentsLabel}</p>
           <ComponentMultiSelect
             value={componentIds}
             options={components}
@@ -836,8 +834,8 @@ export function IssueMetaPanel({
         </div>
 
         {/* 영향 버전 — VersionMultiSelect affects (FR-VR-03) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="affects-versions-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.affectsVersionsLabel}</p>
+        <div className={META_ROW_CLASS} data-testid="affects-versions-section">
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.affectsVersionsLabel}</p>
           <VersionMultiSelect
             variant="affects"
             value={affectsVersionIds}
@@ -848,8 +846,8 @@ export function IssueMetaPanel({
         </div>
 
         {/* 수정 버전 — VersionMultiSelect fix (FR-VR-03) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="fix-versions-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.fixVersionsLabel}</p>
+        <div className={META_ROW_CLASS} data-testid="fix-versions-section">
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.fixVersionsLabel}</p>
           <VersionMultiSelect
             variant="fix"
             value={fixVersionIds}
@@ -860,8 +858,8 @@ export function IssueMetaPanel({
         </div>
 
         {/* 보안등급 — IssueSecurityLevelSelect (FR-PM-06 PR-B) */}
-        <div className="px-3.5 py-3 border-b border-border" data-testid="security-level-section">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.securityLevelLabel}</p>
+        <div className={META_ROW_CLASS} data-testid="security-level-section">
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.securityLevelLabel}</p>
           <IssueSecurityLevelSelect
             projectKey={issue.projectKey}
             value={issue.securityLevelId ?? null}
@@ -886,26 +884,26 @@ export function IssueMetaPanel({
         <IssueReporterRow reporter={reporter} fallbackId={issue.reporterId} />
 
         {/* 프로젝트 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.projectLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.projectLabel}</p>
           <p className="text-sm font-medium">{issue.projectKey}</p>
         </div>
 
         {/* 버전 (낙관락 OCC 버전 번호) */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.versionLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.versionLabel}</p>
           <p className="text-sm font-medium">v{issue.version}</p>
         </div>
 
         {/* 생성일 */}
-        <div className="px-3.5 py-3 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.createdAtLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.createdAtLabel}</p>
           <p className="text-sm font-medium">{formatDateTime(issue.createdAt)}</p>
         </div>
 
         {/* 수정일 */}
-        <div className="px-3.5 py-3">
-          <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.updatedAtLabel}</p>
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.updatedAtLabel}</p>
           <p className="text-sm font-medium">{formatDateTime(issue.updatedAt)}</p>
         </div>
       </div>

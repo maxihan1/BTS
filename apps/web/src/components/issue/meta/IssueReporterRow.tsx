@@ -2,6 +2,7 @@
 import type { JSX } from 'react'
 import type { UserSummary } from '@/api/users'
 import { issueDetailStrings } from '@/i18n/ko'
+import { META_LABEL_CLASS, META_ROW_CLASS } from './meta-row-class'
 
 /** {@link IssueReporterRow} props */
 interface IssueReporterRowProps {
@@ -27,8 +28,8 @@ interface IssueReporterRowProps {
  */
 export function IssueReporterRow({ reporter, fallbackId }: IssueReporterRowProps): JSX.Element {
   return (
-    <div className="px-3.5 py-3 border-b border-border">
-      <p className="text-xs text-muted-foreground mb-1">{issueDetailStrings.reporterLabel}</p>
+    <div className={META_ROW_CLASS}>
+      <p className={META_LABEL_CLASS}>{issueDetailStrings.reporterLabel}</p>
       <p className="text-sm font-medium truncate" data-testid="issue-reporter-name">
         {reporter !== null ? (reporter.displayName ?? reporter.username) : fallbackId}
       </p>

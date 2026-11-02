@@ -44,8 +44,9 @@ export function IssueEnvironmentEdit({ value, onSave, canEdit }: IssueEnvironmen
   return (
     <div className="flex flex-col gap-1.5">
       <textarea
-        className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-        rows={3}
+        // 평소에는 값 글자처럼(테두리 · 바탕 없음), 누르면 입력 칸이 된다 — Jira 실측 JV-17. 줄 수는 내용만큼
+        className="w-full min-h-8 resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-sm field-sizing-content placeholder:text-muted-foreground hover:bg-(--bg-neutral-hover) focus:border-input focus:bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+        rows={1}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         placeholder={issueDetailStrings.environmentPlaceholder}
@@ -53,9 +54,9 @@ export function IssueEnvironmentEdit({ value, onSave, canEdit }: IssueEnvironmen
         maxLength={1000}
       />
       <Button
-        variant="outline"
-        size="sm"
-        className="self-end min-h-[44px]"
+        variant="ghost"
+        size="xs"
+        className="self-end lg:min-h-0 max-lg:min-h-[44px]"
         onClick={() => onSave(draft)}
         disabled={!canEdit}
         aria-label={issueDetailStrings.environmentSaveButton}
