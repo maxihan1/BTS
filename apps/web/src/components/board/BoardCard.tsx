@@ -352,7 +352,7 @@ function AssigneeSlot({ assignee }: { assignee: CardAssigneeDisplay }): React.Re
         aria-label={`담당자: ${assignee.name}`}
         className={cn(
           'flex h-6 w-6 items-center justify-center rounded-full',
-          'bg-primary text-xs font-medium text-primary-foreground',
+          'bg-(--bg-neutral-press) text-xs font-medium text-foreground',
         )}
       >
         {initial}

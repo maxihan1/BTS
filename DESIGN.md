@@ -5,12 +5,12 @@
 > **상위 정책 (2026-10-30 Maxi 결정).** 색 · 글꼴 · 모양 · 움직임 · 창 · 휴대폰 · 문구는
 > [QA Hub 제품군 공통 UI/UX 정책](docs/design/2026-10-30-qa-hub-shared-ui-policy.md)이 이 문서보다 우선한다.
 > 정보 구조 · 화면 배치는 Jira 패리티([`jira-parity-contract.md`](docs/design/jira-parity-contract.md))를 따른다.
-> 아래 값은 **지금 코드의 값**이다. 부딪히는 절(§2 색 · §5 타이포 · §7 라운드 · §9 다크 모드)에는 「이행 예정」 표지를 달았다 —
+> 아래 값은 **지금 코드의 값**이다. §2 색 · §7 라운드 · §9 다크 모드는 Q1 에서 이행했고(2026-11-02), 남은 절(§5 타이포)에는 「이행 예정」 표지를 달았다 —
 > 이행 일은 [`jira-parity-roadmap.md`](docs/design/jira-parity-roadmap.md) 「3차 캠페인」 Q1~Q6.
 
-BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 문서는 **shadcn/ui radix-nova 프리셋** + **Tailwind v4 CSS-first `@theme`** 위에 구축된 디자인 토큰·프리미티브의 단일 출처(Single Source of Truth)다. 컬러 팔레트는 Atlassian Design System v2(이하 **ADS v2**, Jira/Confluence가 쓰는 오픈소스 디자인 토큰 체계)의 값을 이식했다 — 사내 협업 도구로서 검증된 정보 밀도·색 대비 기준을 그대로 물려받기 위함이다.
+BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 문서는 **shadcn/ui radix-nova 프리셋** + **Tailwind v4 CSS-first `@theme`** 위에 구축된 디자인 토큰·프리미티브의 단일 출처(Single Source of Truth)다. 컬러 팔레트는 QA Hub 제품군 공통 정책 값이다(Q1, 2026-11-02 — 그 전에는 Atlassian Design System v2, 이하 **ADS v2** 이식값이었다).
 
-정본 CSS 구현. `apps/web/src/index.css`. 이 문서의 모든 표는 그 파일의 `:root` / `.dark` 블록과 1:1 대응해야 한다. 값 도출 과정·앵커 검증은 `docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md` 참조.
+정본 CSS 구현. `apps/web/src/index.css`. 이 문서의 모든 표는 그 파일의 `:root` / `.dark` 블록과 1:1 대응해야 한다(`state-tokens.test.ts` 가 전수 대조).
 
 ---
 
@@ -30,43 +30,50 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 ## 2. 컬러 토큰
 
-> **⏳ 이행 예정 — 공통 정책 §1 · §11.2~11.3 (로드맵 Q1).** 파랑 대표색 → 오렌지 `#FF7A1A`, ADS v2 바탕 · 글자 단계 → 공통 두 벌 토큰,
-> `--success` · `--danger` → 판정 색, 경고 `--warning` 은 노랑 쪽으로. 이행 전까지 아래 표가 코드의 값이다.
+> **✅ 이행 완료 — 공통 정책 §1 · §11.2~11.3 (로드맵 Q1, 2026-11-02).** 아래 표가 지금 코드의 값이다.
+> 대표색은 오렌지 `#FF7A1A`, 바탕 · 글자 단계는 공통 두 벌 토큰, `--success` · `--danger` 는 판정 색, 경고는 노랑 쪽이다.
 
 ### 출처
 
-`apps/web/src/index.css`의 `:root`(라이트) / `.dark`(다크) 블록. 값은 모두 **hex**(sRGB)다 — OKLCH가 아니다(이전 shadcn init 산출물은 OKLCH였으나 ADS v2 이식 과정에서 hex로 전량 교체됐다).
+`apps/web/src/index.css`의 `:root`(라이트) / `.dark`(다크) 블록. 값은 모두 **hex**(sRGB)다.
+값 정본은 [QA Hub 공통 정책](docs/design/2026-10-30-qa-hub-shared-ui-policy.md) §1 이다. ADS v2(`@atlaskit/tokens@1.4.2`) 이식값은 Q1 에서 걷었다 — 옛 도출 기록은 `docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md`.
 
-다크 상태배경은 알파(`#RRGGBBAA`)다 — 게이트 2 리뷰에서 솔리드 등가의 상태-표면 충돌(C1)이 발견되어 ADS 정본 알파로 전환했다.
-
-정본 소스는 npm 패키지 **`@atlaskit/tokens@1.4.2`**(Apache-2.0, 재현·재검증 가능)다. 이 세대를 고른 이유는 BTS가 독립 확인한 5개 앵커 값(Blue100 `#E9F2FF`, Blue1000 `#082145`, 본문 텍스트 `#172B4D`, Blue700 `#0C66E4`, 그리고 구세대 v1 Blue400 `#0052CC`의 부재)과 완전히 일치하는 유일한 세대이기 때문이다. `#0052CC`는 구세대 v1 값이라 기각됐다 — v5.0.0 이상은 앵커값이 어긋나고, v8/v13/v16의 `palette.js`는 브랜드 리프레시로 Blue700이 `#1868DB`로 바뀌어 있다. 상세 도출 과정. `docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md`.
+**Q1 에서 정한 것 (정책 §11.2 · 11.3 · 11.5 「Q1 착수 때 정한다」).**
+- **토큰 이름은 shadcn 그대로 · 값만 옮긴다.** 소비처(약 140 파일)가 전부 토큰을 거치므로 이름을 새로 들이면 diff 만 커진다. 공통 이름(`bg` · `panel` · `well` …)과의 대응은 아래 표 「공통 토큰」 칸.
+- **흐린 글 `faint`(`#848A96`)는 흰 판 위 3.47:1 로 AA 미달**이다. 그래서 `--text-subtlest` 는 `muted` 값을 쓰고, `faint` 는 AA 예외인 `--text-disabled` 에만 쓴다.
+- **경고는 라이트 Yellow600 `#B38600`**(흰 판 3.32:1 · 잉크 글자 5.40:1). 원문에 값이 없고, Yellow400 은 흰 판 1.98:1 로 테두리 표식이 안 보인다. 다크는 원래 Yellow400 이라 그대로.
+- **포커스 링 `--ring` = 대표색 글자 값**(`#B84D05` 5.12:1 / `#FF9A4D` 8.37:1). 채움 `#FF7A1A` 은 흰 판 2.61:1 로 비글자 3:1 에 못 미친다.
+- **`--info` = 대표색.** 소비처가 진행 막대 · 활성 스프린트 · 진행 중 채움이라 정책 §1 「진행 중인 것」 자리다.
+- **처음 방문자 기본 테마는 이미 `system`** — `index.html` 프리하이드레이션이 저장값이 없으면 `prefers-color-scheme` 를 따른다.
 
 ### §A. shadcn 베이스 토큰 18종 (`--color-*` Tailwind 유틸로 완전 배선됨)
 
 `@theme inline` 블록이 이 18종 전부를 `--color-*`로 연결한다. `bg-primary`, `text-muted-foreground`, `border-input` 같은 표준 Tailwind 유틸리티로 바로 쓸 수 있다.
 
-| CSS 변수 | 라이트 | 다크 | 한국어 역할 |
-|---|---|---|---|
-| `--background` | `#FFFFFF` | `#161A1D` | 페이지 배경 |
-| `--foreground` | `#172B4D` | `#C7D1DB` | 기본 텍스트 |
-| `--card` | `#FFFFFF` | `#1D2125` | 카드 배경 |
-| `--card-foreground` | `#172B4D` | `#C7D1DB` | 카드 내부 텍스트 |
-| `--popover` | `#FFFFFF` | `#22272B` | 팝오버/드롭다운/다이얼로그 배경 |
-| `--popover-foreground` | `#172B4D` | `#C7D1DB` | 팝오버 텍스트 |
-| `--primary` | `#0C66E4` | `#0C66E4` | 브랜드 블루(ADS Blue700) — 핵심 CTA 배경. 다크에서도 동일 값 유지(Maxi 결정, §다크 모드 예외 참조) |
-| `--primary-foreground` | `#FFFFFF` | `#FFFFFF` | CTA 위 흰 텍스트 |
-| `--secondary` | `#F1F2F4` | `#A1BDD914` | 보조 액션 배경(Neutral200 / DarkNeutral200A — 다크는 알파 토큰. ADS 알파 뉴트럴은 어떤 표면 위에서도 한 스텝 구분되도록 설계됐다 — 게이트 2 리뷰 C1 해소) |
-| `--secondary-foreground` | `#172B4D` | `#C7D1DB` | 보조 액션 텍스트 |
-| `--muted` | `#F7F8F9` | `#BCD6F00A` | 비활성 영역 배경(Neutral100 / DarkNeutral100A — 다크는 알파 토큰) |
-| `--muted-foreground` | `#626F86` | `#8696A7` | 보조 텍스트(Neutral700 / DarkNeutral700) |
-| `--accent` | `#F1F2F4` | `#A1BDD914` | 강조/hover 영역 배경(Neutral200 / DarkNeutral200A — `--bg-neutral-hover`와 동일 스텝, 다크는 알파 토큰) |
-| `--accent-foreground` | `#172B4D` | `#C7D1DB` | 강조 영역 텍스트 |
-| `--destructive` | `#CA3521` | `#F87462` | 위험 액션·에러(Red700 / Red400) |
-| `--border` | `#DCDFE4` | `#2C333A` | 경계선(Neutral300 / DarkNeutral300) |
-| `--input` | `#DCDFE4` | `#2C333A` | 입력 필드 테두리(Neutral300 / DarkNeutral300) |
-| `--ring` | `#388BFF` | `#85B8FF` | 포커스 링(Blue500 / Blue300) |
+| CSS 변수 | 라이트 | 다크 | 공통 토큰 (정책 §1) | 한국어 역할 |
+|---|---|---|---|---|
+| `--background` | `#F5F6F8` | `#101114` | bg | 페이지 배경 |
+| `--foreground` | `#15171C` | `#ECEDEF` | ink | 기본 텍스트 |
+| `--card` | `#FFFFFF` | `#17191D` | panel | 카드(판) 배경 |
+| `--card-foreground` | `#15171C` | `#ECEDEF` | ink | 카드 내부 텍스트 |
+| `--popover` | `#FFFFFF` | `#17191D` | panel | 팝오버 · 드롭다운 · 창 배경 |
+| `--popover-foreground` | `#15171C` | `#ECEDEF` | ink | 팝오버 텍스트 |
+| `--primary` | `#FF7A1A` | `#FF7A1A` | 대표색 채움 | 주 버튼 · 로고 · 진행 막대. 한 화면에 하나 |
+| `--primary-foreground` | `#1A0D02` | `#1A0D02` | 채움 위 글자 | 주 버튼 글자(7.30:1) |
+| `--secondary` | `#F2F3F6` | `#1D2025` | well | 보조 액션 배경 |
+| `--secondary-foreground` | `#15171C` | `#ECEDEF` | ink | 보조 액션 텍스트 |
+| `--muted` | `#F2F3F6` | `#1D2025` | well | 오목한 칸 · 비활성 영역 배경 |
+| `--muted-foreground` | `#575E6B` | `#A6ABB5` | muted | 보조 텍스트 |
+| `--accent` | `#F2F3F6` | `#1D2025` | well | 마우스 올림 · 포커스 배경 |
+| `--accent-foreground` | `#15171C` | `#ECEDEF` | ink | 강조 영역 텍스트 |
+| `--destructive` | `#D4294F` | `#EE3D63` | 실패 칠 | 입력 오류 표시 · 위험 액션 |
+| `--border` | `#E3E5EA` | `#272A31` | line | 괘선 |
+| `--input` | `#CFD3DA` | `#363A43` | line2 | 입력 칸 테두리 |
+| `--ring` | `#B84D05` | `#FF9A4D` | 대표색 글자 | 포커스 링 |
 
-> **`--accent` ≈ `--bg-neutral-hover`.** 라이트 `#F1F2F4`, 다크 `#A1BDD914`로 두 토큰의 값이 완전히 같다(같은 팔레트 스텝 Neutral200/DarkNeutral200A를 가리킨다). DropdownMenu/Select는 `focus:bg-accent`를, Tabs/Dialog는 `hover:bg-(--bg-neutral-hover)`를 쓴다 — 값은 같지만 배선 경로(§A vs §7)가 다르다는 점에 유의(Command는 `focus:bg-accent`를 쓰지 않는다 — §4 표 참조). 신규 컴포넌트 작성 시 어느 쪽을 쓸지는 "shadcn 표준 hover/focus 패턴이면 `--accent`, ADS §7 상태 토큰 문맥이면 `--bg-*`"로 판단한다.
+> **`--accent` = `--secondary` = `--muted` = well.** 셋이 같은 값이다. DropdownMenu/Select 는 `focus:bg-accent`, Tabs/Dialog 는 `hover:bg-(--bg-neutral-hover)`(line, 한 단계 진함)를 쓴다.
+> 신규 컴포넌트는 "shadcn 표준 hover/focus 패턴이면 `--accent`, §7 상태 토큰 문맥이면 `--bg-*`"로 고른다.
+> 공통 정책의 `rail`(가장 바깥 줄 `#EBEDF1` / `#0A0B0D`)은 소비할 토큰이 없어 만들지 않았다 — 위쪽 바 · 왼쪽 줄을 그 색으로 칠할 때 정의한다(ADR D7).
 
 ### §7. 상태 토큰 12종 (Tailwind 유틸 미배선 — 임의값 문법으로 소비)
 
@@ -74,43 +81,43 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 | CSS 변수 | 라이트 | 다크 | 한국어 역할 | Tailwind 사용 예 |
 |---|---|---|---|---|
-| `--bg-neutral` | `#F7F8F9` | `#BCD6F00A` | 뉴트럴 배경(테이블 hover/footer, 스켈레톤. 다크는 DarkNeutral100A 알파 토큰) | `bg-(--bg-neutral)` |
-| `--bg-neutral-hover` | `#F1F2F4` | `#A1BDD914` | 뉴트럴 hover 배경(다크는 DarkNeutral200A 알파 토큰) | `hover:bg-(--bg-neutral-hover)` |
-| `--bg-neutral-press` | `#DCDFE4` | `#A6C5E229` | 뉴트럴 press(active) 배경(다크는 DarkNeutral300A 알파 토큰) | `active:bg-(--bg-neutral-press)` |
-| `--bg-neutral-solid` | `#F7F8F9` | `#1D2125` | **가림(occlusion)용 불투명 뉴트럴** — sticky 헤더 등 스크롤 콘텐츠를 가려야 하는 곳 전용. `--bg-neutral`과 달리 다크에서도 알파가 아닌 솔리드값(다크 `--card`와 동일 hex) | `sticky` 요소의 `bg-(--bg-neutral-solid)` |
-| `--bg-selected` | `#E9F2FF` | `#082145` | 선택 상태 배경(Blue100 / Blue1000) | `data-[state=selected]:bg-(--bg-selected)` |
-| `--text-selected` | `#0C66E4` | `#579DFF` | 선택 상태 텍스트(Blue700 / Blue400) | `data-[state=active]:text-(--text-selected)` |
-| `--text-subtle` | `#44546F` | `#9FADBC` | 보조 텍스트(Neutral800 / DarkNeutral800, `muted-foreground`보다 한 단계 진함) | `text-(--text-subtle)` |
-| `--text-subtlest` | `#626F86` | `#8696A7` | 최약 텍스트(`--muted-foreground`와 동일 값) | `text-(--text-subtlest)` |
-| `--text-disabled` | `#B3B9C4` | `#454F59` | 비활성 텍스트 | `disabled:text-(--text-disabled)` |
-| `--border-focus` | `#388BFF` | `#85B8FF` | 포커스 아웃라인(`--ring`과 동일 값 — 색 통일) | `focus-visible:outline-(--border-focus)` |
-| `--brand-hover` | `#0055CC` | `#0055CC` | 브랜드 hover/체크 상태 배경(Blue800 — 라이트/다크 동일값. ADS 다크 Blue300은 흰 글리프 대비 2.04:1로 미달해 기각, 결정 3과 대칭으로 라이트값을 다크에도 유지) | `data-[state=checked]:bg-(--brand-hover)` |
-| `--brand-text` | `#0C66E4` | `#579DFF` | 브랜드 텍스트(멘션 등) | `.mention { color: var(--brand-text) }` |
+| `--bg-neutral` | `#F2F3F6` | `#1D2025` | 뉴트럴 배경(테이블 hover/footer, 스켈레톤) = well | `bg-(--bg-neutral)` |
+| `--bg-neutral-hover` | `#E3E5EA` | `#272A31` | 뉴트럴 hover 배경 = line | `hover:bg-(--bg-neutral-hover)` |
+| `--bg-neutral-press` | `#CFD3DA` | `#363A43` | 뉴트럴 press(active) 배경 = line2 | `active:bg-(--bg-neutral-press)` |
+| `--bg-neutral-solid` | `#F2F3F6` | `#1D2025` | **가림(occlusion)용 불투명 뉴트럴** — sticky 헤더 등. well 이 이미 불투명이라 `--bg-neutral` 과 같은 값 | `sticky` 요소의 `bg-(--bg-neutral-solid)` |
+| `--bg-selected` | `#FFF1E6` | `#FF7A1A21` | 선택 상태 배경 = 대표색 옅은 바탕(다크 `rgba(255,122,26,.13)`) | `data-[state=selected]:bg-(--bg-selected)` |
+| `--text-selected` | `#B84D05` | `#FF9A4D` | 선택 상태 텍스트 = 대표색 글자 | `data-[state=active]:text-(--text-selected)` |
+| `--text-subtle` | `#575E6B` | `#A6ABB5` | 보조 텍스트 = muted | `text-(--text-subtle)` |
+| `--text-subtlest` | `#575E6B` | `#A6ABB5` | 최약 텍스트 = muted (faint 는 AA 미달 — §2 출처) | `text-(--text-subtlest)` |
+| `--text-disabled` | `#848A96` | `#737985` | 비활성 텍스트 = faint | `disabled:text-(--text-disabled)` |
+| `--border-focus` | `#B84D05` | `#FF9A4D` | 포커스 아웃라인(`--ring`과 동일 값) | `focus-visible:outline-(--border-focus)` |
+| `--brand-hover` | `#FF7A1A` | `#FF7A1A` | 체크박스 · 스위치 켜짐 채움 = 대표색 채움(글리프는 `--primary-foreground`) | `data-[state=checked]:bg-(--brand-hover)` |
+| `--brand-text` | `#B84D05` | `#FF9A4D` | 대표색 글자(멘션 · 링크) | `.mention { color: var(--brand-text) }` |
 
-> **`--border-focus` = `--ring`.** 라이트 `#388BFF`(Blue500), 다크 `#85B8FF`(Blue300)로 완전히 동일한 값이다 — 포커스 시각 신호를 팔레트 전역에서 하나로 통일하기 위한 의도적 설계다.
+> **`--border-focus` = `--ring`.** 포커스 신호를 하나로 통일한다.
 
 ### §C. 시맨틱 상태색 4종 + foreground 4종 + text 4종 (Tailwind 유틸로 완전 배선됨)
 
-`color.background.<status>.bold`(고강조 배경) 스텝을 채택했다. `--color-*`로 배선되어 `bg-warning`, `text-danger` 등 표준 유틸로 쓸 수 있다.
+`--color-*`로 배선되어 `bg-warning`, `text-danger` 등 표준 유틸로 쓸 수 있다. 판정 색은 판정에만 쓴다(정책 §1) — 예외는 실패 색의 입력 오류 표시 하나.
 
-| CSS 변수 | 라이트 | 다크 | ADS 팔레트 스텝 |
+| CSS 변수 | 라이트 | 다크 | 정책 §1 대응 |
 |---|---|---|---|
-| `--warning` | `#B65C02` | `#E2B203` | Orange700 / Yellow400 |
-| `--success` | `#1F845A` | `#4BCE97` | Green700 / Green400 |
-| `--danger` | `#CA3521` | `#F87462` | Red700 / Red400(=`--destructive`와 동일 값) |
-| `--info` | `#0C66E4` | `#579DFF` | Blue700 / Blue400(=`--primary` 라이트값과 동일) |
-| `--warning-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--warning` bold 배경 위 텍스트) |
-| `--success-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--success` bold 배경 위 텍스트) |
-| `--danger-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--danger` bold 배경 위 텍스트) |
-| `--info-foreground` | `#FFFFFF` | `#161A1D` | 흰색 / DarkNeutral0(`--info` bold 배경 위 텍스트) |
-| `--warning-text` | `#7F5F01` | `#F5CD47` | Yellow800 / Yellow300(tint 위 텍스트) |
-| `--success-text` | `#216E4E` | `#7EE2B8` | Green800 / Green300(tint 위 텍스트) |
-| `--danger-text` | `#AE2A19` | `#FF9C8F` | Red800 / Red300(tint 위 텍스트) |
-| `--info-text` | `#0055CC` | `#85B8FF` | Blue800 / Blue300(tint 위 텍스트) |
+| `--warning` | `#B38600` | `#E2B203` | 경고 — 노랑 쪽(원문에 값 없음, §2 출처) |
+| `--success` | `#16A34A` | `#3FB871` | 통과 칠 |
+| `--danger` | `#D4294F` | `#EE3D63` | 실패 칠(=`--destructive`와 동일 값) |
+| `--info` | `#FF7A1A` | `#FF7A1A` | 진행 중 = 대표색 채움 |
+| `--warning-foreground` | `#15171C` | `#161A1D` | 경고 칠 위 글자(잉크 5.40:1) |
+| `--success-foreground` | `#15171C` | `#161A1D` | 통과 칠 위 글자(흰 글자 3.30:1 미달 → 잉크 5.44:1) |
+| `--danger-foreground` | `#FFFFFF` | `#161A1D` | 실패 칠 위 글자(4.97:1 / 4.57:1) |
+| `--info-foreground` | `#1A0D02` | `#1A0D02` | 대표색 채움 위 글자 |
+| `--warning-text` | `#7F5F01` | `#F5CD47` | 옅은 바탕 위 경고 글자(원문에 값 없음 — 기존 값 유지) |
+| `--success-text` | `#166534` | `#6FD49A` | 통과 글자. ★라이트 편차 — 원문 `#15803D` 는 well 위 `/10` 에서 4.07:1 미달이라 한 단계 진한 green-800 |
+| `--danger-text` | `#B81E42` | `#FF8AA3` | 실패 글자 |
+| `--info-text` | `#9A3412` | `#FF9A4D` | 대표색 글자. ★라이트 편차 — 원문 `#B84D05` 는 well 위 `/10` 에서 4.22:1 미달이라 orange-800. 맨 글자(`--brand-text`)는 원문 값 그대로 |
 
-**텍스트 페어링 (★ bold vs tint 구분).**
-- **bold 배경 위** (`bg-warning` 등 고강조 배경): `text-{status}-foreground`. 라이트 흰 글자, 다크 어두운 글자(`#161A1D`). warning 대표 — 라이트 진오렌지+흰 글자, 다크 밝은 노랑+검은 글자로 페어링이 뒤집힌다.
-- **tint 배경 위 / 색 텍스트** (`bg-warning/10` 배너·상태 배지·색 텍스트): `text-{status}-text` (bold 토큰 아님). `--warning`(중간명도 bold)을 tint 위 글자로 쓰면 라이트 AA 미달(4.1:1)이라, ADS `color.text.<status>`(라이트 -800 어두움 / 다크 -300 밝음)를 별도 토큰으로 신설했다. 전 tint 표면(흰·muted·bg·card) AA≥4.9 실측(§10). **배지가 같은 색 tint 배너 위에 중첩되면** 둘 다 `/10`으로 붕괴하므로 내부 배지는 bold(`bg-warning text-warning-foreground`)로 대비를 살린다.
+**텍스트 페어링 (★ 칠 vs 옅은 바탕 구분).**
+- **칠 위** (`bg-warning` 등): `text-{status}-foreground`.
+- **옅은 바탕 위 / 색 텍스트** (`bg-warning/10` 배너·상태 배지·색 텍스트): `text-{status}-text` (칠 토큰 아님 — 칠 값은 글자로 쓰면 AA 미달). **배지가 같은 색 옅은 배너 위에 중첩되면** 둘 다 `/10`으로 붕괴하므로 내부 배지는 칠(`bg-warning text-warning-foreground`)로 대비를 살린다.
 
 **현재 소비처.** PR4(FR-UX-06)가 하드코딩 Tailwind 색 리터럴을 §C 토큰으로 전면 이관하면서, §C는 이제 프리미티브와 화면 전반에서 소비된다. 프리미티브 `components/ui/badge.tsx`의 색 variant(blue→info·green→success·red→danger·yellow→warning)가 tint 패턴 `bg-{status}/10 text-{status}-text`로 소비하고, 상태 배너·배지 약 29개 파일(`components/automation/RuleConflictWarningModal.tsx`·`AutomationYamlImportDialog.tsx`, `components/admin/WebhookDeliveryTable.tsx`, `components/backlog/SprintColumn.tsx`, `components/auth/BackupCodesSection.tsx` 등)이 동일 패턴 또는 bold(`bg-{status} text-{status}-foreground`)로 소비한다. `components/backlog/BacklogBoard.tsx`(백로그 절단 경고 배너, `border-warning bg-warning/10`)는 PR3가 먼저 이관한 선례다. **여전히 §C 미소비**로 남은 것은 DEFER/OUT 대상 — `components/workflow/WorkflowDiagram.tsx`(mermaid flowchart가 `var()` 미지원이라 하드코딩 유지) **1건뿐이다**. 범주색(이슈타입·차트)은 **PR22가 §C-2로 정의·소비 완료**했다.
 
@@ -128,7 +135,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | `--chart-4` | `#B65C02` | `#FAA53D` | 경고·지연(Orange) |
 | `--chart-5` | `#1F845A` | `#4BCE97` | **완료(Green)** |
 
-★ `--chart-1`이 `--primary`와 같은 `#0C66E4`인 것은 **의도**다(Atlassian 제품군 관례). 차트는 카드 경계와 범례 텍스트로 맥락이 분리된다 — plan-design-review 이슈 3에서 검토 후 유지 결정.
+★ 차트 · 범주색은 공통 정책 원문에 값이 없어 Q1 에서 그대로 뒀다. 정책 §1 「그래프 수치에 대표색을 쓰지 않는다」는 지켜진다 — 차트 토큰 어디에도 `--primary`(`#FF7A1A`) 값이 없다. `--chart-1` 파랑은 Q1 뒤로 대표색과 무관한 범주색이다.
 ★ `--chart-5` = 완료(초록)는 **가드가 적발해 정정한 매핑**이다. 초안의 "1=주 시리즈" 역할 배정이 완료 계열까지 흡수해 `--chart-5` 소비처가 0이 됐고, "6종이 `--chart-1~5`를 모두 소비한다" 어서션이 이를 잡았다. 부수 효과로 CFD·Velocity의 "완료"가 같은 색으로 통일됐다.
 
 **이슈타입·상태 8종** (타임라인 막대·캘린더 칩·즐겨찾기 별이 소비).
@@ -161,12 +168,12 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | ~~`--chart-1` ~ `--chart-5`~~ | 5 | **동결 해제 완료 (PR22)** — ADS v2 hex 5색으로 교체·실소비 중. 값은 아래 §C-2 참조 | — |
 | `--syntax-keyword/field/operator/string/number` (+`.dark`) | 5 | OKLCH, WCAG AA 검증 완료(§3 참조) | AQL overlay 정렬 정본 — 값 변경 금지, §3에서 별도 관리 |
 | `--font-mono` | 1 | D2Coding 기반 한글 mono 스택 | AQL overlay 정렬 정본 — §5에서 별도 관리, 값 변경 금지 |
-| `--sidebar` / `--sidebar-foreground` / `--sidebar-primary` / `--sidebar-primary-foreground` / `--sidebar-accent` / `--sidebar-accent-foreground` / `--sidebar-border` / `--sidebar-ring` | 8 | shadcn init 산출 OKLCH 그레이스케일(ADS v2 미이식) | 사이드바 리디자인 PR(PR11) 몫 — 그때 ADS v2 값으로 교체 |
+| ~~`--sidebar*`~~ 8종 | 8 | **동결 해제 완료 (Q1)** — 배경 side(`#F5F6F8` / `#0D0E11`) · 글자 ink · 활성 = 대표색 옅은 바탕 + 대표색 글자 · hover well · 테두리 line · 링 = `--ring` | — |
 
 ### 사용 가이드
 
-- **primary** — 페이지당 한 개의 핵심 CTA에만 쓴다.
-- **destructive / danger** — 되돌릴 수 없는 위험 액션 또는 에러 메시지. `--destructive`(§A)와 `--danger`(§C)는 라이트/다크 값이 동일하다 — 폼 검증 에러는 `--destructive`(shadcn 관례 유지), 상태 배지·알림 배너는 `--danger`(§C, 다른 시맨틱 3종과 대칭)를 쓴다.
+- **primary** — 페이지당 한 개의 핵심 CTA에만 쓴다. 대표색 자리는 다섯 곳뿐 — 누를 것 · 지금 고른 것 · 진행 중인 것 · 새 알림 · 로고(정책 §1). 줄마다 되풀이되는 버튼은 테두리 버튼.
+- **destructive / danger** — 에러 메시지 · 입력 오류. `--destructive`(§A)와 `--danger`(§C)는 라이트/다크 값이 동일하다 — 폼 검증 에러는 `--destructive`(shadcn 관례 유지), 상태 배지·알림 배너는 `--danger`(§C)를 쓴다. 정책 §1 「되돌릴 수 없는 일 단추는 잉크 채움」은 버튼 variant 를 바꾸는 일이라 Q4(창 · 확인 단추)에서 한다.
 - **muted / muted-foreground / text-subtle / text-subtlest** — 부가 정보, placeholder, 힌트. 본문 가독성이 요구되는 곳에는 쓰지 않는다.
 - **임의 색상 추가 금지** — 위 37개 토큰(§A 18 + §7 11 + §C 8) 외 색이 필요하면 이 문서에 신규 토큰을 먼저 등록한 뒤 사용한다.
 
@@ -354,8 +361,8 @@ Tailwind v4 기본값. `1` unit = `0.25rem` = `4px`.
 
 ## 7. 라운드 (Border Radius)
 
-> **⏳ 이행 예정 — 공통 정책 §3 (로드맵 Q1).** 판(Card · Dialog) 8px, 버튼 · 입력 칸 6px, 칩은 알약(`rounded-full`).
-> 지금의 Card 12px · Button/Input 8px 가 바뀐다. 행은 카드로 감싸지 않고 괘선으로 나눈다.
+> **✅ 이행 완료 — 공통 정책 §3 (로드맵 Q1, 2026-11-02).** 판(Card · Dialog · Popover) 8px, 버튼 · 입력 칸 6px, 칩은 알약(`rounded-full`).
+> 행은 카드로 감싸지 않고 괘선으로 나눈다.
 
 ### 명시 스케일 (calc 파생 폐기)
 
@@ -365,7 +372,7 @@ Tailwind v4 기본값. `1` unit = `0.25rem` = `4px`.
 |---|---|---|
 | `rounded-xs` | `--radius-xs` | 2px |
 | `rounded-sm` | `--radius-sm` | 3px |
-| `rounded-md` | `--radius-md` | 4px |
+| `rounded-md` | `--radius-md` | 6px |
 | `rounded-lg` | `--radius-lg` | 8px |
 | `rounded-xl` | `--radius-xl` | 12px |
 
@@ -375,17 +382,17 @@ Tailwind v4 기본값. `1` unit = `0.25rem` = `4px`.
 
 | 값 | Tailwind 클래스 | 사용처 |
 |---|---|---|
-| 4px | `rounded-md` | DropdownMenu/Select/Command 아이템, Checkbox(단, `rounded-[4px]` 하드코딩 — §4 비고 참조) |
-| 8px | `rounded-lg` | Button, Input, Textarea, Select trigger, Card 내부 요소, Popover/DropdownMenu/Select content, Dialog content |
-| 12px | `rounded-xl` | Card 컨테이너(가장 큰 컨테이너 단위) |
+| 4px | `rounded-[4px]` | Checkbox(하드코딩 — §4 비고 참조) |
+| 6px | `rounded-md` | Button, Input, Textarea, Select trigger, DropdownMenu/Select/Command 아이템 |
+| 8px | `rounded-lg` | Card 컨테이너, Popover/DropdownMenu/Select content, Dialog content |
 | — | `rounded-full` | Badge, Avatar, Switch thumb(라운드 스케일 미적용 — 원형/캡슐 형태는 별도) |
 
 Button의 `xs`/`sm` size variant는 `rounded-[min(var(--radius-md),10px)]` 형태로 토큰을 참조하되 작은 버튼에서 과도하게 둥글어지지 않도록 상한을 씌운다 — 이는 calc 배율 파생이 아니라 토큰값 자체를 `min()`으로 클램프하는 것이라 폐기 대상이 아니다.
 
 ### 일관성 규칙
 
-- 폼 컴포넌트(`<Input>`, `<Select>`, `<Button>`) 모두 `rounded-lg`(8px) 기본.
-- `<Card>` 컴포넌트는 `rounded-xl`(12px) — 컨테이너 단위는 한 단계 크게.
+- 폼 컴포넌트(`<Input>`, `<Select>`, `<Button>`) 모두 `rounded-md`(6px) 기본.
+- 판(`<Card>` · 창 · 팝오버)은 `rounded-lg`(8px). `rounded-xl`(12px)은 프리미티브에서 쓰지 않는다.
 - 같은 폼 안에서 라운드 값이 섞이지 않도록 한다.
 
 ---
@@ -405,8 +412,8 @@ Button의 `xs`/`sm` size variant는 `rounded-[min(var(--radius-md),10px)]` 형�
 
 ## 9. 다크 모드 정책
 
-> **⏳ 이행 예정 — 공통 정책 §1 · §4 (로드맵 Q1 · Q3).** 밝게 · 어둡게 두 벌 값이 공통 토큰으로 바뀌고, 다크에서 파랑 `--primary` 를 지키던 예외는 없어진다.
-> 전환은 화면 전체가 0.2초 겹쳐 바뀐다(View Transitions). `light` · `dark` · `system` 3종과 `class="dark"` 전략은 그대로 둔다.
+> **색은 이행 완료(Q1, 2026-11-02) · 전환 움직임은 ⏳ 이행 예정(Q3).** 두 벌 값이 공통 토큰으로 바뀌었고, 다크에서 파랑 `--primary` 를 지키던 예외는 없어졌다.
+> 전환은 화면 전체가 0.2초 겹쳐 바뀐다(View Transitions, Q3). `light` · `dark` · `system` 3종과 `class="dark"` 전략은 그대로 둔다.
 
 다크 모드는 **1급 시민으로 활성 상태**다 — §2의 모든 컬러 토큰 표가 라이트/다크 값을 쌍으로 제공하는 이유가 이것이다.
 
@@ -423,8 +430,8 @@ Button의 `xs`/`sm` size variant는 `rounded-[min(var(--radius-md),10px)]` 형�
 
 ### 다크에서 라이트와 다르게 동작하는 예외
 
-- **`--primary`/`--primary-foreground`**. ADS v2 정본은 다크 브랜드색을 밝은 파랑 Blue400(`#579DFF`)+어두운 글자로 정의하지만, BTS는 Maxi 결정으로 다크에서도 `#0C66E4`(Blue700)+흰 글자를 유지한다(shadcn 관례 우선). §2 §A 표의 `--primary` 다크 열이 이 예외를 반영한다.
-- **`--warning`**. 라이트는 Orange700(진오렌지+흰 글자), 다크는 Yellow400(밝은 노랑+검은 글자)으로 색상 계열 자체가 바뀐다(§2 §C 참조).
+- **`--primary`/`--primary-foreground`**. 예외 없음 — 라이트 · 다크 모두 `#FF7A1A` + `#1A0D02`(정책 §1). 옛 「다크도 Blue700」 예외(Maxi 결정 3)는 Q1 에서 없어졌다.
+- **`--warning`**. 라이트 Yellow600(`#B38600`), 다크 Yellow400(`#E2B203`) — 같은 노랑 계열, 밝기만 다르다. 칠 위 글자는 두 모드 모두 어두운 글자.
 
 ---
 
@@ -436,39 +443,33 @@ WCAG AA 기준. 본문 텍스트 4.5:1 이상, UI 컴포넌트/큰 텍스트(18p
 
 | 토큰 조합 | 라이트 대비 | 다크 대비 | 판정 | 비고 |
 |---|---|---|---|---|
-| 본문(`foreground` on `background`) | 14.10:1 | 11.31:1 | AA ✅ | |
-| `muted-foreground` on `background` | 5.08:1 | 5.78:1 | AA ✅ | |
-| `text-subtle` on `background` | 7.65:1 | 7.65:1 | AA ✅ | |
-| `text-subtlest` on `background` | 5.08:1 | 5.78:1 | AA ✅ | `muted-foreground`와 동일 hex라 대비값도 동일 |
-| `text-selected` on `bg-selected` | 4.61:1 | 5.84:1 | AA ✅ | |
-| `primary-foreground`(흰 글자) on `primary` | 5.20:1 | 5.20:1 | AA ✅ | 양쪽 모드 동일(다크도 Blue700 유지) |
-| warning bold 위 텍스트 | 4.65:1(흰 글자 on `#B65C02`) | 8.84:1(`#161A1D` on `#E2B203`) | AA ✅ | 다크는 어두운 글자로 페어링 반전(§9 참조) |
-| success bold 위 텍스트 | 4.66:1 | 8.81:1 | AA ✅ | |
-| danger bold 위 텍스트 | 5.19:1 | 6.39:1 | AA ✅ | |
-| info bold 위 텍스트 | 5.20:1 | 6.40:1 | AA ✅ | |
-| `success-text` on `bg-success/10`(tint, PR4) | 5.10:1 | 8.59:1 | AA ✅ | tint 위 색 텍스트. bold `--success`(4.11:1 미달) 대신 ADS 어두운 텍스트 토큰(-800/-300). 최악 표면(라이트 muted·다크 card) 기준 |
-| `warning-text` on `bg-warning/10`(tint, PR4) | 4.90:1 | 8.69:1 | AA ✅ | 라이트 Yellow800·다크 Yellow300 |
-| `danger-text` on `bg-danger/10`(tint, PR4) | 5.45:1 | 6.97:1 | AA ✅ | 라이트 Red800·다크 Red300 |
-| `info-text` on `bg-info/10`(tint, PR4) | 5.41:1 | 6.82:1 | AA ✅ | 라이트 Blue800·다크 Blue300 |
-| `ring`/`border-focus` on `background` | 3.33:1 | 8.58:1 | AA ✅(UI 3:1 기준) | 포커스 링은 텍스트가 아니라 UI 컴포넌트라 3:1 기준 적용 |
-| `.mention`(`color: var(--brand-text)`) | 4.64:1 | 5.51:1 | AA ✅ | |
-| `text-disabled` on `background` | 1.97:1 | 2.10:1 | 면제 | WCAG는 `disabled` 상태 텍스트에 대비 기준을 요구하지 않음 |
+| 본문(`foreground` on `background`) | 16.58:1 | 16.12:1 | AA ✅ | |
+| `muted-foreground` on `background` | 6.03:1 | 8.19:1 | AA ✅ | `text-subtle` · `text-subtlest` 도 같은 값 |
+| `muted-foreground` on `muted`(well) | 5.88:1 | 7.09:1 | AA ✅ | |
+| `foreground` on `bg-neutral-press`(line2) | 11.94:1 | 9.73:1 | AA ✅ | |
+| `text-selected` on `bg-selected` | 4.63:1 | 6.90:1 | AA ✅ | 다크 `bg-selected` 는 판 위 합성 실효색 `#35261D` |
+| `text-selected` on `bg-neutral-hover`(line) | **4.06:1** | 6.83:1 | ⚠️ 라이트 미달 | 고른 줄에 마우스를 올린 잠깐의 상태. 고름은 `bg-selected` 바탕으로도 전달된다 — 수용, 정책 원문 값 그대로 |
+| `primary-foreground` on `primary` | 7.30:1 | 7.30:1 | AA ✅ | 양쪽 모드 동일 |
+| warning 칠 위 텍스트 | 5.40:1(잉크 on `#B38600`) | 8.84:1 | AA ✅ | |
+| success 칠 위 텍스트 | 5.44:1(잉크 on `#16A34A`) | 6.92:1 | AA ✅ | 흰 글자는 3.30:1 이라 잉크 |
+| danger 칠 위 텍스트 | 4.97:1 | 4.57:1 | AA ✅ | |
+| info 칠 위 텍스트 | 7.30:1 | 7.30:1 | AA ✅ | = 대표색 채움 |
+| `success-text` on `bg-success/10` | 5.79:1 | 7.68:1 | AA ✅ | 최악 표면(well) 위 합성. 라이트는 편차 값 green-800(§2 §C) |
+| `warning-text` on `bg-warning/10` | 4.85:1 | 8.78:1 | AA ✅ | 최악 표면(well) |
+| `danger-text` on `bg-danger/10` | 4.95:1 | 6.67:1 | AA ✅ | 최악 표면(well) |
+| `info-text` on `bg-info/10` | 6.03:1 | 6.70:1 | AA ✅ | 최악 표면(well). 라이트는 편차 값 orange-800 |
+| `ring`/`border-focus` on `background` | 4.73:1 | 8.97:1 | AA ✅(UI 3:1 기준) | |
+| `.mention`(`color: var(--brand-text)`) on 판 | 5.12:1 | 8.37:1 | AA ✅ | |
+| 체크박스 글리프(`#1A0D02`) on `brand-hover` | 7.30:1 | 7.30:1 | AA ✅(UI 3:1 기준) | |
+| 경고 테두리(`--warning`) vs 판 | 3.32:1 | 8.89:1 | AA ✅(UI 3:1 기준) | |
+| `text-disabled`(faint) on `background` | 3.21:1 | 4.32:1 | 면제 | WCAG는 `disabled` 상태 텍스트에 대비 기준을 요구하지 않음 |
 
-**다크 상태배경(알파) 텍스트 대비 — 합성 실효색 기준(최악 표면 popover).** 게이트 2 리뷰 C1로 다크 `--secondary`/`--muted`/`--accent`/`--bg-neutral*`가 솔리드에서 알파(`#RRGGBBAA`)로 바뀌면서, 텍스트 대비는 알파를 실제로 겹칠 표면(카드 `#1D2125` / 팝오버 `#22272B`) 위에 합성한 실효색으로 계산해야 한다. 두 표면 중 더 밝은 팝오버 위 합성이 실효색도 더 밝아, 밝은 텍스트와의 대비가 가장 낮은 최악 케이스다 — 아래 값은 전부 팝오버 합성 기준이다(더 어두운 카드 위 합성은 대비가 더 여유롭다).
-
-| 토큰 조합 | 라이트 대비 | 다크 대비(팝오버 합성 실효색) | 판정 | 비고 |
-|---|---|---|---|---|
-| `muted-foreground` on `muted` | 4.77:1 | 4.54:1 | AA ✅ | 다크 `muted`=DarkNeutral100A(`#BCD6F00A`), 팝오버 위 합성 실효색 `#282E33` |
-| `accent-foreground`/`secondary-foreground` on `accent`/`secondary` | 12.59:1 | 8.30:1 | AA ✅ | 다크 `accent`/`secondary`=DarkNeutral200A(`#A1BDD914`), 팝오버 위 합성 실효색 `#2C3339` |
-| `foreground` on `bg-neutral-press` | 10.55:1 | 6.78:1 | AA ✅ | 다크 `bg-neutral-press`=DarkNeutral300A(`#A6C5E229`), 팝오버 위 합성 실효색 `#374048` |
-| `text-selected` on `bg-neutral-hover`(알파 표면 위에 놓이는 최악 케이스) | 4.65:1 | 4.69:1 | AA ✅ | 다크 `bg-neutral-hover`=DarkNeutral200A, 팝오버 위 합성 실효색 `#2C3339`(위 accent-foreground 행과 동일 합성면) |
-| 체크박스 글리프(흰색) on `brand-hover`(checked 상태) | 6.62:1 | 6.62:1 | AA ✅(UI 3:1 기준) | 라이트/다크 동일값(`#0055CC`) — 게이트 2 리뷰 C2, ADS 다크 Blue300(`#85B8FF`)은 2.04:1로 미달해 기각 |
-
-다크 checked fill(`#0055CC`)과 카드 배경(`#1D2125`)의 경계 자체 대비는 2.45:1로 UI 컴포넌트 3:1 기준에 못 미치지만, checked 상태는 fill 경계가 아니라 흰 글리프 대비 6.62:1(위 행)로 전달되므로 간과가 아닌 의도적 수용이다.
+다크 바탕 단계는 Q1 에서 알파가 아닌 불투명 값이 됐다 — 합성 실효색 계산이 필요 없다(옛 「게이트 2 C1」 알파 처방은 없어졌다).
+라이트 checked fill(`#FF7A1A`)과 흰 판의 경계 대비는 2.61:1 로 3:1 에 못 미치지만, checked 상태는 글리프 대비 7.30:1 과 체크박스 테두리(`--input`)로 전달되므로 의도적 수용이다.
 
 ### Syntax Highlight 토큰 대비 검증 (§3, WCAG AA 4.5:1 기준)
 
-배경 기준. 라이트 = `--background`(`#FFFFFF`), 다크 = `--background`(`#161A1D`).
+배경 기준. 라이트 `#FFFFFF`, 다크 `#161A1D`(Q1 전 `--background`). AQL 입력창은 판(`--card` `#FFFFFF` / `#17191D`) 위에 있어 Q1 뒤에도 근사값이 그대로다 — 값 재측정은 `--syntax-*` 동결을 푸는 Q2 몫.
 
 **계산 방법.** WCAG 상대 밝기 공식 `(L1 + 0.05) / (L2 + 0.05)`. OKLCH L → CIE Y_rel 변환 식. `Y = ((L×100 + 16) / 116)^3`.
 

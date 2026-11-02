@@ -150,7 +150,7 @@ interface ReadModeProps {
 
 /**
  * 클릭 진입이 가능할 때 본문 읽기 영역에 붙는 hover 어포던스 (FR-UX-11 F8 NFR5).
- * hover 배경은 DESIGN.md §7 상태 토큰 — 라이트 `#F1F2F4` / 다크 `#A1BDD914` 가 이미 정의돼
+ * hover 배경은 DESIGN.md §7 상태 토큰 — 라이트 `#E3E5EA` / 다크 `#272A31` 가 이미 정의돼
  * 두 테마에 자동 대응한다(임의 알파 금지).
  */
 const DESCRIPTION_CLICKABLE_CLS = '-mx-2 rounded px-2 cursor-text hover:bg-(--bg-neutral-hover)'

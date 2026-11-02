@@ -4,7 +4,7 @@
 > 루트 [`DESIGN.md`](../../DESIGN.md) 와 [`jira-parity-contract.md`](jira-parity-contract.md) 보다 우선한다.
 > **정보 구조 · 화면 배치 · 기능 흐름**은 그대로 Jira 패리티(계약 · 로드맵)가 정본이다.
 > **관련 FR.** FR-UX-06(시각 계층 — 팔레트 · 타이포 · 라운드 · 다크 모드가 이 정책으로 옮겨 간다).
-> **이행.** 코드는 아직 바뀌지 않았다. 이행 일은 [`jira-parity-roadmap.md`](jira-parity-roadmap.md) 「3차 캠페인」 Q1~Q6 에 줄로 나눠 뒀다.
+> **이행.** Q1 토큰(색 · 라운드)은 2026-11-02 이행했다 — 결정 · 편차는 DESIGN.md §2. 나머지 이행 일은 [`jira-parity-roadmap.md`](jira-parity-roadmap.md) 「3차 캠페인」 Q1~Q6 에 줄로 나눠 뒀다.
 > 이행 전까지 화면은 DESIGN.md 의 지금 값으로 돈다 — DESIGN.md 의 부딪히는 절에 「이행 예정」 표지가 붙어 있다.
 >
 > **옮긴 방식.** §1~§10 은 QA Hub 쪽 원문(`~/.claude/plans/qahub-shared-ui-policy.md`, 2026-10-30)을 **문장 그대로** 옮겼다 —
