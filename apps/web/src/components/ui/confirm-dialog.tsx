@@ -121,7 +121,9 @@ function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button
-            variant={destructive ? 'destructive' : 'default'}
+            // 되돌릴 수 없는 일은 판정 색이 아니라 잉크 채움(공통 정책 §1, Q4). 줄마다 되풀이되는
+            // destructive 단추(대개 이 창을 연다)는 그대로 두고 마지막 확인 한 곳만 칠한다
+            className={destructive ? 'bg-foreground text-background hover:bg-foreground/85' : undefined}
             disabled={confirming}
             onClick={onConfirm}
           >

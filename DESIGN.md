@@ -173,7 +173,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 ### 사용 가이드
 
 - **primary** — 페이지당 한 개의 핵심 CTA에만 쓴다. 대표색 자리는 다섯 곳뿐 — 누를 것 · 지금 고른 것 · 진행 중인 것 · 새 알림 · 로고(정책 §1). 줄마다 되풀이되는 버튼은 테두리 버튼.
-- **destructive / danger** — 에러 메시지 · 입력 오류. `--destructive`(§A)와 `--danger`(§C)는 라이트/다크 값이 동일하다 — 폼 검증 에러는 `--destructive`(shadcn 관례 유지), 상태 배지·알림 배너는 `--danger`(§C)를 쓴다. 정책 §1 「되돌릴 수 없는 일 단추는 잉크 채움」은 버튼 variant 를 바꾸는 일이라 Q4(창 · 확인 단추)에서 한다.
+- **destructive / danger** — 에러 메시지 · 입력 오류. `--destructive`(§A)와 `--danger`(§C)는 라이트/다크 값이 동일하다 — 폼 검증 에러는 `--destructive`(shadcn 관례 유지), 상태 배지·알림 배너는 `--danger`(§C)를 쓴다. 정책 §1 「되돌릴 수 없는 일 단추는 잉크 채움」은 Q4 에서 `ConfirmDialog` 의 확인 단추(`destructive` 일 때)에만 걸었다 — 줄마다 되풀이되는 `variant="destructive"` 단추(47곳 중 대부분 `sm`)는 대개 그 창을 여는 단추라 손대지 않았다. 판정 색(빨강)을 쓰는 이 줄 단추들을 테두리 단추로 옮기는 일은 남았다.
 - **muted / muted-foreground / text-subtle / text-subtlest** — 부가 정보, placeholder, 힌트. 본문 가독성이 요구되는 곳에는 쓰지 않는다.
 - **임의 색상 추가 금지** — 위 37개 토큰(§A 18 + §7 11 + §C 8) 외 색이 필요하면 이 문서에 신규 토큰을 먼저 등록한 뒤 사용한다.
 
