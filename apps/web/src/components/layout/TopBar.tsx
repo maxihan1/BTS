@@ -21,6 +21,7 @@ import { ProjectSwitcher } from '@/components/project/ProjectSwitcher'
 import { AccountMenu } from './AccountMenu'
 import { Button } from '@/components/ui/button'
 import { GlobalSearchBox } from './GlobalSearchBox'
+import { replayLogoMotion } from './logo-motion'
 
 /** TopBar 컴포넌트 props */
 export interface TopBarProps {
@@ -109,12 +110,14 @@ export function TopBar({ onHelpClick }: TopBarProps) {
              `sr-only` 는 접근가능 이름을 보존한 채 자리만 돌려준다. */}
       <Link
         to="/dashboards"
-        className="ml-1 flex items-center gap-1.5 text-sm font-semibold text-foreground"
+        className="ml-1 flex items-center gap-1.5 text-[18px] font-bold tracking-[-0.015em] text-foreground"
+        onMouseEnter={(e) => replayLogoMotion(e.currentTarget)}
       >
         <svg viewBox="0 0 28 28" aria-hidden="true" className="size-6 shrink-0">
           <rect width="28" height="28" rx="8" fill="#FF7A1A" />
           <path
             className="brand-logo-check"
+            pathLength={1}
             d="M8 14.5l4 4 8-9"
             fill="none"
             stroke="#1A0D02"
