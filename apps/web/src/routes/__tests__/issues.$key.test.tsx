@@ -600,14 +600,14 @@ describe('IssueDetailPage — 권한별 제목/편집 버튼 제어 (FR-PM-02 Ta
     })
 
     it('T-F11-14 (FR8 · E6 · noneditableFields): 라벨이 수정 금지면 l 이 포커스를 옮기지 않는다', async () => {
-      // 라벨 입력 자체는 `canEdit` 로 disabled 되지 않는다(저장 버튼만 잠긴다).
-      // 그래서 라우트가 막지 않으면 커서가 실제로 들어가 「쓸 수 있는 것처럼」 보인다.
+      // 라벨 칸은 「누르면 편집」이라 평소엔 입력이 없다(JV-17). 수정 금지면 `l` 이 칸을 열지
+      // 않아야 한다 — 열리면 커서가 들어가 「쓸 수 있는 것처럼」 보인다.
       renderDetail({ ...issueAtlas1Fixture, noneditableFields: ['labels'] })
       await waitForDetailLoaded()
 
       await pressKey('l')
 
-      expect(screen.getByTestId('label-autocomplete-input')).not.toHaveFocus()
+      expect(screen.queryByTestId('label-autocomplete-input')).not.toBeInTheDocument()
     })
 
     it('T-F11-15 (FR8 · E6 · noneditableFields): 제목이 수정 금지면 e 가 편집을 열지 않는다', async () => {

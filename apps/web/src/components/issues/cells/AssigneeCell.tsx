@@ -20,7 +20,7 @@ import { CELL_OPTION_CLASS, EditableCell } from './EditableCell'
 /**
  * 담당자 미배정 표시어.
  *
- * ★상세 화면의 `issueDetailStrings.assigneeUnassigned` 는 **'미지정'** 으로 글자가 다르다.
+ * ★상세 화면의 `issueDetailStrings.assigneeUnassigned` 는 **'할당되지 않음'** 으로 글자가 다르다.
  * 목록은 예전부터 '미배정' 이었고(`issue-columns.ts` `renderAssigneeCell`) 필터 체크박스
  * 라벨과도 같은 말이라, 여기서 상세 쪽 문구로 갈아타면 목록 표기가 조용히 바뀐다.
  * 두 화면의 문구 통일은 이 PR 범위 밖이다 — 목록 표기를 verbatim 유지한다.

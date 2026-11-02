@@ -218,14 +218,18 @@ export const issueDetailStrings = {
   labelRemoveLabel: '라벨 제거',
   /** 라벨 저장 버튼 */
   labelsSaveButton: '저장',
+  /** 라벨 편집 취소 버튼 — 고치던 칩을 버리고 닫는다 */
+  labelsCancelButton: '취소',
   /** 라벨 저장 실패 에러 메시지 */
   labelsSaveError: '라벨 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 
   // ── 담당자(assignee) — FR-IS-03 ─────────────────────────────────
   /** 메타패널 — 담당자 레이블 */
   assigneeLabel: '담당자',
-  /** 담당자 미할당 상태 표시 */
-  assigneeUnassigned: '미지정',
+  /** 담당자 미할당 상태 표시 (Jira 「할당되지 않음」) */
+  assigneeUnassigned: '할당되지 않음',
+  /** 이슈 상세 담당자 아래 링크 — 로그인 사용자를 바로 담당자로 지정한다 (단축키 `i` 와 같은 저장) */
+  assignToMe: '나에게 할당',
   /** 담당자 검색 input 자리표시자 */
   assigneeSearchPlaceholder: '사용자 검색',
   /**

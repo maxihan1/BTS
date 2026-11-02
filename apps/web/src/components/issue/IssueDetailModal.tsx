@@ -5,6 +5,7 @@ import { useMediaQuery } from '@/hooks/use-media-query'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { IssueDetailPage } from '@/routes/issues.$key'
 import { useIssueDetailModalStore } from './issueDetailModalStore'
+import { INLINE_EDIT_ATTR } from './meta/use-inline-edit'
 
 /**
  * 앱 전역에 하나만 마운트되는 이슈 상세 모달(`__root.tsx` 소유).
@@ -81,6 +82,11 @@ export function IssueDetailModal(): JSX.Element | null {
         // ★이슈 키를 포함해 고유하게. 계약 §2 — `getByRole('dialog')` 가 e2e 224곳에 있어
         // 이름이 겹치면 strict mode 충돌로 무관한 spec 이 죽는다.
         aria-label={`이슈 상세 ${openKey}`}
+        // 담당자 · 라벨 「누르면 편집」 칸 안의 Esc 는 그 칸만 닫는다(JV-17). Radix 는 document capture 로
+        // Esc 를 먼저 잡아서 칸 쪽 `preventDefault` 로는 늦다 — 여기서 창 닫기를 건너뛴다.
+        onEscapeKeyDown={(e) => {
+          if (e.target instanceof Element && e.target.closest(`[${INLINE_EDIT_ATTR}]`) !== null) e.preventDefault()
+        }}
       >
         {/* Radix 는 DialogContent 에 접근 가능한 제목을 요구한다. 시각적 제목은 pane 이
             자기 <h2> 로 그리므로 여기서는 스크린리더 전용으로만 둔다. */}

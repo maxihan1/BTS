@@ -267,10 +267,10 @@ describe('IssueMetaPanel — noneditableFields 비활성 (FR-PM-07 Task 6)', () 
     expect(screen.getByTestId('environment-save')).toBeDisabled()
   })
 
-  it('T6-B2: noneditableFields에 "labels"가 포함되면 라벨 저장 버튼이 disabled이어야 한다', () => {
+  it('T6-B2: noneditableFields에 "labels"가 포함되면 라벨 칸 여는 단추가 disabled이어야 한다', () => {
     renderPanel({ noneditableFields: ['labels'] }, true)
 
-    expect(screen.getByTestId('labels-save')).toBeDisabled()
+    expect(screen.getByTestId('labels-edit-trigger')).toBeDisabled()
   })
 
   it('T6-B3: noneditableFields에 커스텀 필드 키 "cf_region"이 포함되면 해당 CustomFieldInput이 disabled이어야 한다', () => {
@@ -284,11 +284,11 @@ describe('IssueMetaPanel — noneditableFields 비활성 (FR-PM-07 Task 6)', () 
     expect(input).toBeDisabled()
   })
 
-  it('T6-B4: noneditableFields가 빈 배열이고 canEdit=true이면 환경/라벨 저장 버튼이 활성이어야 한다', () => {
+  it('T6-B4: noneditableFields가 빈 배열이고 canEdit=true이면 환경 저장 · 라벨 여는 단추가 활성이어야 한다', () => {
     renderPanel({ noneditableFields: [] }, true)
 
     expect(screen.getByTestId('environment-save')).not.toBeDisabled()
-    expect(screen.getByTestId('labels-save')).not.toBeDisabled()
+    expect(screen.getByTestId('labels-edit-trigger')).not.toBeDisabled()
   })
 })
 

@@ -170,6 +170,20 @@ async function pickTransition(user: ReturnType<typeof userEvent.setup>, name: st
   await user.click(await screen.findByRole('button', { name: new RegExp(`^${name}`) }))
 }
 
+/**
+ * 담당자 · 라벨 「누르면 편집」 칸을 연다(JV-17). 여는 단추는 권한 조회가 끝나야 풀리므로
+ * 풀릴 때까지 기다린 뒤 누른다.
+ */
+async function openInlineEdit(
+  user: ReturnType<typeof userEvent.setup>,
+  section: HTMLElement,
+  triggerTestId: 'assignee-edit-trigger' | 'labels-edit-trigger',
+): Promise<void> {
+  const trigger = within(section).getByTestId(triggerTestId)
+  await waitFor(() => expect(trigger).toBeEnabled())
+  await user.click(trigger)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 3-상태 분기 테스트
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1258,6 +1272,7 @@ describe('IssueDetailPage — Task 6 (IssueDescription 배선 + 메타필드 mut
     expect(labelsSection).not.toBeNull()
     if (labelsSection === null) return
 
+    await openInlineEdit(user, labelsSection as HTMLElement, 'labels-edit-trigger')
     // LabelAutocompleteInput은 cmdk CommandPrimitive.Input — data-testid로 접근 (IssueMetaPanel.test.tsx와 동일 방식)
     const labelInput = within(labelsSection as HTMLElement).getByTestId('label-autocomplete-input')
     await user.click(labelInput)
@@ -1387,6 +1402,7 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    await openInlineEdit(user, assigneeSection, 'assignee-edit-trigger')
     // 후보는 검색해야 나온다 (2026-08-09 봉합). 예전에는 이 입력 없이도 목록이 떠 있었다.
     await user.type(
       within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),
@@ -1409,6 +1425,7 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    await openInlineEdit(user, assigneeSection, 'assignee-edit-trigger')
     await waitFor(() => expect(within(assigneeSection).queryByRole('button', { name: issueDetailStrings.assigneeUnassignButton })).toBeInTheDocument())
     await user.click(within(assigneeSection).getByRole('button', { name: issueDetailStrings.assigneeUnassignButton }))
     await waitFor(() => {
@@ -1429,11 +1446,13 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
   it('T4-A6: ★검색어가 비면 담당자 후보가 렌더되지 않는다', async () => {
     const fixture = { ...issueAtlas1Fixture, assigneeId: null }
     setupAssigneeStatefulHandlers(fixture)
+    const user = userEvent.setup()
     const { container } = renderPage('ATLAS-1')
     await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    await openInlineEdit(user, assigneeSection, 'assignee-edit-trigger')
 
     // 검색 입력은 있어야 한다 — 「후보가 없다」가 「셀렉터 자체가 없다」와 구분돼야 한다.
     await waitFor(() =>
@@ -1455,6 +1474,7 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    await openInlineEdit(user, assigneeSection, 'assignee-edit-trigger')
 
     const search = within(assigneeSection).getByLabelText(
       issueDetailStrings.assigneeSearchPlaceholder,
@@ -1480,6 +1500,7 @@ describe('IssueDetailPage — 담당자 배선 (Task 4)', () => {
     const aside = container.querySelector('aside')
     if (aside === null) throw new Error('aside not found')
     const assigneeSection = within(aside).getByTestId('assignee-section')
+    await openInlineEdit(user, assigneeSection, 'assignee-edit-trigger')
     // 후보는 검색해야 나온다 (2026-08-09 봉합). 예전에는 이 입력 없이도 목록이 떠 있었다.
     await user.type(
       within(assigneeSection).getByLabelText(issueDetailStrings.assigneeSearchPlaceholder),

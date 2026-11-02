@@ -241,25 +241,24 @@ describe('IssueMetaPanel — 삭제 버튼 권한 제어 (FR-PM-02 Task 5)', () 
     expect(envSaveButton).toBeDisabled()
   })
 
-  it('T5-M7: UPDATE=false → 라벨 저장 버튼이 disabled이어야 한다', () => {
+  it('T5-M7: UPDATE=false → 라벨 칸 여는 단추가 disabled이어야 한다', () => {
     renderPanel({ canEdit: false })
 
-    const labelsSaveButton = screen.getByTestId('labels-save')
-    expect(labelsSaveButton).toBeDisabled()
+    expect(screen.getByTestId('labels-edit-trigger')).toBeDisabled()
   })
 
-  it('T5-M8: UPDATE=true → 환경/라벨 저장 버튼이 활성이어야 한다', () => {
+  it('T5-M8: UPDATE=true → 환경 저장 · 라벨 여는 단추가 활성이어야 한다', () => {
     renderPanel({ canEdit: true })
 
     expect(screen.getByTestId('environment-save')).not.toBeDisabled()
-    expect(screen.getByTestId('labels-save')).not.toBeDisabled()
+    expect(screen.getByTestId('labels-edit-trigger')).not.toBeDisabled()
   })
 
-  it('T5-M9: 권한 로딩 중 → 환경/라벨 저장 버튼도 disabled이어야 한다 (fail-closed)', () => {
+  it('T5-M9: 권한 로딩 중 → 환경 저장 · 라벨 여는 단추도 disabled이어야 한다 (fail-closed)', () => {
     renderPanel({ isLoading: true })
 
     expect(screen.getByTestId('environment-save')).toBeDisabled()
-    expect(screen.getByTestId('labels-save')).toBeDisabled()
+    expect(screen.getByTestId('labels-edit-trigger')).toBeDisabled()
   })
 })
 
