@@ -1,6 +1,6 @@
 Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
 
-IBMPlexSansKR-Regular.woff2 · IBMPlexSansKR-SemiBold.woff2 — copied from test_platform apps/admin/src/web/fonts (S21).
+IBMPlexSansKR-Regular.woff2 · IBMPlexSansKR-SemiBold.woff2 (S21) · IBMPlexMono-Regular.woff2 · IBMPlexMono-Medium.woff2 (Q2) — copied from test_platform apps/admin/src/web/fonts.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
