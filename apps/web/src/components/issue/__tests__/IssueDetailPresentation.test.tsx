@@ -171,6 +171,22 @@ describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () =
  * BTS 상세는 본문 + 340px 메타 2단이라 서랍에 넣으면 보드가 찌그러지거나 가려진다(공통 정책 §5 의 BTS 편차).
  * 사람이 `⋯` 로 사이드바를 고르면 그 선택은 세션 동안 기억된다(J1 그대로).
  */
+/**
+ * 2026-10-28 Jira Cloud REA 실측(`docs/design/2026-10-28-jira-cloud-rea-gap.md` :159 · :170) —
+ * 보드 모달은 1280×720 화면에서 1160×601(약 91vw × 84vh), 빈 이슈에서도 같은 높이라 높이가 고정이다.
+ * 높이를 고정하면 본문이 불러와지는 동안 창이 출렁이지 않는다. 좁은 화면(`lg` 미만)은 종전 상한 그대로.
+ */
+describe('모달 크기 (Jira 실측)', () => {
+  it('넓은 화면에서 91vw · 최대 1160px · 높이 84vh 고정', () => {
+    useIssueDetailModalStore.setState({ openKey: 'ATLAS-1', presentation: 'modal' })
+    renderBoth()
+    const cls = screen.getByRole('dialog', { name: '이슈 상세 ATLAS-1' }).className
+    expect(cls).toContain('w-[91vw]')
+    expect(cls).toContain('max-w-[1160px]')
+    expect(cls).toContain('lg:h-[84vh]')
+  })
+})
+
 describe('표시 방식 기본값 (J1 · Q4 편차)', () => {
   it('저장된 선호가 없으면 모달로 연다', async () => {
     sessionStorage.removeItem('bts.issueDetail.presentation')
