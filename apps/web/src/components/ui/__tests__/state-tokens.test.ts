@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest'
 /**
  * 3차 캠페인 Q1 팔레트 — 정본: docs/design/2026-10-30-qa-hub-shared-ui-policy.md §1 · §11 (QA Hub 공통 정책).
  * 대응 결정(DESIGN.md §2): 토큰 이름은 shadcn 그대로 · 대표색 오렌지 · well/line/line2 바탕 단계 ·
- * subtlest=muted(faint 3.5:1 AA 미달) · 경고 라이트=Yellow600 · ring=대표색 글자 값 · 다크 파랑 예외 삭제.
+ * subtlest=faint · disabled=na(QA Hub 코드 값) · 경고 라이트=Yellow600 · ring=대표색 글자 값 · 다크 파랑 예외 삭제.
  * 값을 바꾸려면 정책 문서와 이 표를 같은 커밋에서 바꿔야 한다 — 값 지어내기 방지 가드.
  */
 const STATE_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
@@ -19,8 +19,8 @@ const STATE_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: 
   ['--bg-selected', '#FFF1E6', '#FF7A1A21'],
   ['--text-selected', '#B84D05', '#FF9A4D'],
   ['--text-subtle', '#575E6B', '#A6ABB5'],
-  ['--text-subtlest', '#575E6B', '#A6ABB5'],
-  ['--text-disabled', '#848A96', '#737985'],
+  ['--text-subtlest', '#646A76', '#8C929E'],
+  ['--text-disabled', '#848B97', '#7D8592'],
   ['--border-focus', '#B84D05', '#FF9A4D'],
   ['--brand-hover', '#FF7A1A', '#FF7A1A'],
   ['--brand-text', '#B84D05', '#FF9A4D'],
@@ -63,7 +63,7 @@ const SEMANTIC_FOREGROUND: ReadonlyArray<readonly [token: string, light: string,
 /** 시맨틱 상태색 — 판정 색 칠 · 경고 노랑 쪽 · info = 진행 중 = 대표색 */
 const SEMANTIC_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
   ['--warning', '#B38600', '#E2B203'],
-  ['--success', '#16A34A', '#3FB871'],
+  ['--success', '#15983F', '#3FB871'],
   ['--danger', '#D4294F', '#EE3D63'],
   ['--info', '#FF7A1A', '#FF7A1A'],
 ] as const

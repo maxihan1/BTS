@@ -40,7 +40,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 
 **Q1 에서 정한 것 (정책 §11.2 · 11.3 · 11.5 「Q1 착수 때 정한다」).**
 - **토큰 이름은 shadcn 그대로 · 값만 옮긴다.** 소비처(약 140 파일)가 전부 토큰을 거치므로 이름을 새로 들이면 diff 만 커진다. 공통 이름(`bg` · `panel` · `well` …)과의 대응은 아래 표 「공통 토큰」 칸.
-- **흐린 글 `faint`(`#848A96`)는 흰 판 위 3.47:1 로 AA 미달**이다. 그래서 `--text-subtlest` 는 `muted` 값을 쓰고, `faint` 는 AA 예외인 `--text-disabled` 에만 쓴다.
+- **값의 정본은 QA Hub 코드(`test_platform` `apps/admin/src/web/styles.css`)다.** 정책 문서 표와 다르면 코드가 이긴다(정책 머리말). 흐린 글 `faint` 는 코드 값 `#646A76` / `#8C929E`(AA 4.90:1 이상)라 `--text-subtlest` 에 쓰고, 사용 불가 글자는 「미실행 · 없음」 회색 `na`(`#848B97` / `#7D8592`). 통과 칠도 코드 값 `#15983F`.
 - **경고는 라이트 Yellow600 `#B38600`**(흰 판 3.32:1 · 잉크 글자 5.40:1). 원문에 값이 없고, Yellow400 은 흰 판 1.98:1 로 테두리 표식이 안 보인다. 다크는 원래 Yellow400 이라 그대로.
 - **포커스 링 `--ring` = 대표색 글자 값**(`#B84D05` 5.12:1 / `#FF9A4D` 8.37:1). 채움 `#FF7A1A` 은 흰 판 2.61:1 로 비글자 3:1 에 못 미친다.
 - **`--info` = 대표색.** 소비처가 진행 막대 · 활성 스프린트 · 진행 중 채움이라 정책 §1 「진행 중인 것」 자리다.
@@ -88,8 +88,8 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | `--bg-selected` | `#FFF1E6` | `#FF7A1A21` | 선택 상태 배경 = 대표색 옅은 바탕(다크 `rgba(255,122,26,.13)`) | `data-[state=selected]:bg-(--bg-selected)` |
 | `--text-selected` | `#B84D05` | `#FF9A4D` | 선택 상태 텍스트 = 대표색 글자 | `data-[state=active]:text-(--text-selected)` |
 | `--text-subtle` | `#575E6B` | `#A6ABB5` | 보조 텍스트 = muted | `text-(--text-subtle)` |
-| `--text-subtlest` | `#575E6B` | `#A6ABB5` | 최약 텍스트 = muted (faint 는 AA 미달 — §2 출처) | `text-(--text-subtlest)` |
-| `--text-disabled` | `#848A96` | `#737985` | 비활성 텍스트 = faint | `disabled:text-(--text-disabled)` |
+| `--text-subtlest` | `#646A76` | `#8C929E` | 최약 텍스트 = faint | `text-(--text-subtlest)` |
+| `--text-disabled` | `#848B97` | `#7D8592` | 비활성 텍스트 = na(미실행 · 없음 회색) | `disabled:text-(--text-disabled)` |
 | `--border-focus` | `#B84D05` | `#FF9A4D` | 포커스 아웃라인(`--ring`과 동일 값) | `focus-visible:outline-(--border-focus)` |
 | `--brand-hover` | `#FF7A1A` | `#FF7A1A` | 체크박스 · 스위치 켜짐 채움 = 대표색 채움(글리프는 `--primary-foreground`) | `data-[state=checked]:bg-(--brand-hover)` |
 | `--brand-text` | `#B84D05` | `#FF9A4D` | 대표색 글자(멘션 · 링크) | `.mention { color: var(--brand-text) }` |
@@ -103,11 +103,11 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | CSS 변수 | 라이트 | 다크 | 정책 §1 대응 |
 |---|---|---|---|
 | `--warning` | `#B38600` | `#E2B203` | 경고 — 노랑 쪽(원문에 값 없음, §2 출처) |
-| `--success` | `#16A34A` | `#3FB871` | 통과 칠 |
+| `--success` | `#15983F` | `#3FB871` | 통과 칠 |
 | `--danger` | `#D4294F` | `#EE3D63` | 실패 칠(=`--destructive`와 동일 값) |
 | `--info` | `#FF7A1A` | `#FF7A1A` | 진행 중 = 대표색 채움 |
 | `--warning-foreground` | `#15171C` | `#161A1D` | 경고 칠 위 글자(잉크 5.40:1) |
-| `--success-foreground` | `#15171C` | `#161A1D` | 통과 칠 위 글자(흰 글자 3.30:1 미달 → 잉크 5.44:1) |
+| `--success-foreground` | `#15171C` | `#161A1D` | 통과 칠 위 글자(흰 글자 3.75:1 미달 → 잉크 4.78:1) |
 | `--danger-foreground` | `#FFFFFF` | `#161A1D` | 실패 칠 위 글자(4.97:1 / 4.57:1) |
 | `--info-foreground` | `#1A0D02` | `#1A0D02` | 대표색 채움 위 글자 |
 | `--warning-text` | `#7F5F01` | `#F5CD47` | 옅은 바탕 위 경고 글자(원문에 값 없음 — 기존 값 유지) |
@@ -135,7 +135,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 | `--chart-4` | `#B65C02` | `#FAA53D` | 경고·지연(Orange) |
 | `--chart-5` | `#1F845A` | `#4BCE97` | **완료(Green)** |
 
-★ 차트 · 범주색은 공통 정책 원문에 값이 없어 Q1 에서 그대로 뒀다. 정책 §1 「그래프 수치에 대표색을 쓰지 않는다」는 지켜진다 — 차트 토큰 어디에도 `--primary`(`#FF7A1A`) 값이 없다. `--chart-1` 파랑은 Q1 뒤로 대표색과 무관한 범주색이다.
+★ 차트 · 범주색은 Q1 에서 그대로 뒀다. QA Hub 코드는 차트를 회색 단계 셋(`--chart-1~3`)으로 그리지만 그쪽 그래프는 판정 · 단일 수치뿐이고, BTS 는 5계열 범례(CFD · Velocity 등)를 색으로 가른다 — 회색 단계로 옮기면 계열 구분이 무너져 따로 정할 일로 남긴다. 정책 §1 「그래프 수치에 대표색을 쓰지 않는다」는 지켜진다 — 차트 토큰 어디에도 `--primary`(`#FF7A1A`) 값이 없다. `--chart-1` 파랑은 Q1 뒤로 대표색과 무관한 범주색이다.
 ★ `--chart-5` = 완료(초록)는 **가드가 적발해 정정한 매핑**이다. 초안의 "1=주 시리즈" 역할 배정이 완료 계열까지 흡수해 `--chart-5` 소비처가 0이 됐고, "6종이 `--chart-1~5`를 모두 소비한다" 어서션이 이를 잡았다. 부수 효과로 CFD·Velocity의 "완료"가 같은 색으로 통일됐다.
 
 **이슈타입·상태 8종** (타임라인 막대·캘린더 칩·즐겨찾기 별이 소비).
@@ -444,14 +444,15 @@ WCAG AA 기준. 본문 텍스트 4.5:1 이상, UI 컴포넌트/큰 텍스트(18p
 | 토큰 조합 | 라이트 대비 | 다크 대비 | 판정 | 비고 |
 |---|---|---|---|---|
 | 본문(`foreground` on `background`) | 16.58:1 | 16.12:1 | AA ✅ | |
-| `muted-foreground` on `background` | 6.03:1 | 8.19:1 | AA ✅ | `text-subtle` · `text-subtlest` 도 같은 값 |
+| `muted-foreground` on `background` | 6.03:1 | 8.19:1 | AA ✅ | `text-subtle` 도 같은 값 |
 | `muted-foreground` on `muted`(well) | 5.88:1 | 7.09:1 | AA ✅ | |
+| `text-subtlest`(faint) on `background` · well | 5.02:1 · 4.90:1 | 6.04:1 · 5.23:1 | AA ✅ | QA Hub 코드 값 |
 | `foreground` on `bg-neutral-press`(line2) | 11.94:1 | 9.73:1 | AA ✅ | |
 | `text-selected` on `bg-selected` | 4.63:1 | 6.90:1 | AA ✅ | 다크 `bg-selected` 는 판 위 합성 실효색 `#35261D` |
 | `text-selected` on `bg-neutral-hover`(line) | **4.06:1** | 6.83:1 | ⚠️ 라이트 미달 | 고른 줄에 마우스를 올린 잠깐의 상태. 고름은 `bg-selected` 바탕으로도 전달된다 — 수용, 정책 원문 값 그대로 |
 | `primary-foreground` on `primary` | 7.30:1 | 7.30:1 | AA ✅ | 양쪽 모드 동일 |
 | warning 칠 위 텍스트 | 5.40:1(잉크 on `#B38600`) | 8.84:1 | AA ✅ | |
-| success 칠 위 텍스트 | 5.44:1(잉크 on `#16A34A`) | 6.92:1 | AA ✅ | 흰 글자는 3.30:1 이라 잉크 |
+| success 칠 위 텍스트 | 4.78:1(잉크 on `#15983F`) | 6.92:1 | AA ✅ | 흰 글자는 3.75:1 이라 잉크 |
 | danger 칠 위 텍스트 | 4.97:1 | 4.57:1 | AA ✅ | |
 | info 칠 위 텍스트 | 7.30:1 | 7.30:1 | AA ✅ | = 대표색 채움 |
 | `success-text` on `bg-success/10` | 5.79:1 | 7.68:1 | AA ✅ | 최악 표면(well) 위 합성. 라이트는 편차 값 green-800(§2 §C) |
@@ -462,7 +463,7 @@ WCAG AA 기준. 본문 텍스트 4.5:1 이상, UI 컴포넌트/큰 텍스트(18p
 | `.mention`(`color: var(--brand-text)`) on 판 | 5.12:1 | 8.37:1 | AA ✅ | |
 | 체크박스 글리프(`#1A0D02`) on `brand-hover` | 7.30:1 | 7.30:1 | AA ✅(UI 3:1 기준) | |
 | 경고 테두리(`--warning`) vs 판 | 3.32:1 | 8.89:1 | AA ✅(UI 3:1 기준) | |
-| `text-disabled`(faint) on `background` | 3.21:1 | 4.32:1 | 면제 | WCAG는 `disabled` 상태 텍스트에 대비 기준을 요구하지 않음 |
+| `text-disabled`(na) on `background` | 3.17:1 | 5.07:1 | 면제 | WCAG는 `disabled` 상태 텍스트에 대비 기준을 요구하지 않음 |
 
 다크 바탕 단계는 Q1 에서 알파가 아닌 불투명 값이 됐다 — 합성 실효색 계산이 필요 없다(옛 「게이트 2 C1」 알파 처방은 없어졌다).
 라이트 checked fill(`#FF7A1A`)과 흰 판의 경계 대비는 2.61:1 로 3:1 에 못 미치지만, checked 상태는 글리프 대비 7.30:1 과 체크박스 테두리(`--input`)로 전달되므로 의도적 수용이다.
