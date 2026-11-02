@@ -1,6 +1,7 @@
 // 이슈 우선순위 선택 셀렉터 (IssueMetaPanel 분해 A, FR-IS-04)
 import type { JSX } from 'react'
 import { issueDetailStrings } from '@/i18n/ko'
+import { META_SELECT_CLASS } from './meta-row-class'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 상수
@@ -40,7 +41,7 @@ export function IssuePrioritySelect({ value, onPriorityChange }: IssuePrioritySe
 
   return (
     <select
-      className="w-full rounded-md border border-input bg-background px-2 text-sm min-h-[44px] focus:outline-none focus:ring-2 focus:ring-ring"
+      className={META_SELECT_CLASS}
       value={value}
       onChange={handleChange}
       aria-label={issueDetailStrings.prioritySelectLabel}

@@ -70,9 +70,9 @@ export function IssueLabelsEdit({
 
       {/* 저장 버튼 — 이슈 상세는 명시 저장. 생성 폼은 이 래퍼를 쓰지 않는다. */}
       <Button
-        variant="outline"
-        size="sm"
-        className="self-end min-h-[44px]"
+        variant="ghost"
+        size="xs"
+        className="self-end lg:min-h-0 max-lg:min-h-[44px]"
         onClick={() => onSave(chips)}
         disabled={!canEdit}
         aria-label={issueDetailStrings.labelsSaveButton}
