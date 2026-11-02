@@ -46,7 +46,7 @@ describe('Router', () => {
 
   it('/login 라우트 마운트 → LoginPage placeholder 렌더', async () => {
     renderWithRoute('/login')
-    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
+    expect(await screen.findByText(/Issue Bunker 로그인/)).toBeInTheDocument()
   })
 
   it('/dashboard 라우트 마운트 (인증 상태) → DashboardPage placeholder 렌더', async () => {
@@ -62,7 +62,7 @@ describe('Router', () => {
   // 인증 상태의 / → start_page 리다이렉트는 routeGuard.test.tsx 의 redirectToStartPage 가 검증
   it('/ 라우트 — 미인증이면 로그인 모달이 뜬다 (인덱스는 자체 화면을 갖지 않는다)', async () => {
     renderWithRoute('/')
-    expect(await screen.findByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeInTheDocument()
   })
 
   // ─── Task 8: 이슈 라우트 3개 + 네비 링크 ────────────────────────────────────
@@ -79,7 +79,7 @@ describe('Router', () => {
   it('/issues 라우트 — 미인증 상태에서 /login 으로 리다이렉트 (requireAuth 가드 적용 증거)', async () => {
     // clearSession 상태(미인증) — requireAuth 가드가 /login 으로 redirect
     renderWithRoute('/issues')
-    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
+    expect(await screen.findByText(/Issue Bunker 로그인/)).toBeInTheDocument()
   })
 
   it('/issues/new 라우트 마운트 (인증 상태) → IssueCreateRouteAdapter 렌더', async () => {
@@ -199,7 +199,7 @@ describe('Router', () => {
 
   it('/projects/ATLAS/sprints/:sprintId/burndown 라우트 — 미인증 상태에서 /login 으로 리다이렉트 (requireAuth 가드 적용 증거)', async () => {
     renderWithRoute('/projects/ATLAS/sprints/a0000000-0000-4000-8000-000000000001/burndown')
-    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
+    expect(await screen.findByText(/Issue Bunker 로그인/)).toBeInTheDocument()
   })
 
   it('/projects/ATLAS/sprints/:sprintId/burndown 라우트 마운트 (인증 상태) → 페이지 제목 h2 렌더 (셸이 h1 소유 · X-J5-14)', async () => {
@@ -222,7 +222,7 @@ describe('Router', () => {
 
   it('/projects/ATLAS/reports/velocity 라우트 — 미인증 상태에서 /login 으로 리다이렉트 (requireAuth 가드 적용 증거)', async () => {
     renderWithRoute('/projects/ATLAS/reports/velocity')
-    expect(await screen.findByText(/BTS 로그인/)).toBeInTheDocument()
+    expect(await screen.findByText(/Issue Bunker 로그인/)).toBeInTheDocument()
   })
 
   it('/projects/ATLAS/reports/velocity 라우트 마운트 (인증 상태) → 페이지 제목 h2 렌더 (셸이 h1 소유 · X-J5-14)', async () => {

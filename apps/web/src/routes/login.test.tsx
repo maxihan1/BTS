@@ -114,7 +114,7 @@ describe('LoginPage — SSO 하나뿐인 설치 (S21)', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { name: '로그아웃했습니다' })).toBeInTheDocument()
-    expect(screen.getByText('BTS')).toBeInTheDocument()
+    expect(screen.getByText('Issue Bunker')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).toBeNull()
     expect(replaceMock).not.toHaveBeenCalled()
 

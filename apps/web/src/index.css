@@ -732,3 +732,40 @@
   cursor: default;                 /* EC11: 비대화형 커서 */
   text-decoration: none;           /* EC11: 링크 오인 방지 */
 }
+
+/* 위쪽 바 로고 — 처음 열 때 한 번(합 1.5초): 상자 체크가 그어지고, 「Bunker」가 옆에서 밀려 나오며 밑줄이 그어졌다 사라진다.
+   QA Hub 제품군 로고 시안 「최종 2판 ㄱ」 https://claude.ai/artifact/4o4K668YqbXWq965i25Cvz (2026-11-02 Maxi 확정)
+   TopBar 는 셸에서 한 번만 mount 되어 화면을 옮겨도 다시 돌지 않는다. 움직임 줄이기면 끝 상태(체크 그어짐 · 밑줄 없음)만 보인다. */
+.brand-logo-check {
+  stroke-dasharray: 22;
+  animation: brand-logo-draw 0.45s 0.05s ease-out both;
+}
+.brand-logo-word {
+  display: inline-block;
+  position: relative;
+  animation: brand-logo-slide 0.5s 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.brand-logo-word::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 2px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: brand-logo-line 0.8s 0.7s ease both;
+}
+@keyframes brand-logo-draw { from { stroke-dashoffset: 22; } to { stroke-dashoffset: 0; } }
+@keyframes brand-logo-slide { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+@keyframes brand-logo-line {
+  0% { transform: scaleX(0); opacity: 1; }
+  45% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-logo-check,
+  .brand-logo-word,
+  .brand-logo-word::after { animation: none; }
+}

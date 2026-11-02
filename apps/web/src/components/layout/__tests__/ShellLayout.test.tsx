@@ -135,7 +135,7 @@ describe('ShellLayout', () => {
     renderShell()
 
     // TopBar — 로고(→ /dashboards)
-    expect(screen.getByRole('link', { name: /Atlas/ })).toHaveAttribute('href', '/dashboards')
+    expect(screen.getByRole('link', { name: 'Issue Bunker' })).toHaveAttribute('href', '/dashboards')
     // Sidebar — 메인 메뉴 nav
     expect(screen.getByRole('navigation', { name: navLabels.mainNav })).toBeInTheDocument()
     // 콘텐츠 — Outlet
@@ -147,7 +147,7 @@ describe('ShellLayout', () => {
     renderShell()
 
     expect(screen.queryByRole('navigation', { name: navLabels.mainNav })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /Atlas/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Issue Bunker' })).not.toBeInTheDocument()
     expect(screen.getByTestId('outlet-content')).toBeInTheDocument()
   })
 
