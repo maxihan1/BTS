@@ -159,3 +159,24 @@ export function searchBoardCards(board: BoardDetail, query: string): BoardDetail
     })),
   }
 }
+
+/**
+ * 보드 하위 작업 숨김 — 하위 작업 유형 카드를 뺀다. 보드는 기본으로 하위 작업을 숨긴다.
+ *
+ * 텍스트 검색과 같은 **클라이언트 필터**다. 판정은 유형 키 집합으로 받는다 —
+ * 하위 작업 유형(hierarchyLevel -1)은 프로젝트마다 늘어날 수 있어 `'subtask'` 하나로 고정하지 않는다.
+ *
+ * @param board 보드 상세
+ * @param subtaskTypeKeys 하위 작업 유형 키. 비면 원본을 그대로 돌려준다(참조 유지 — 하위 memo 보호)
+ * @returns 하위 작업 카드가 빠진 새 보드
+ */
+export function hideSubtaskCards(board: BoardDetail, subtaskTypeKeys: ReadonlySet<string>): BoardDetail {
+  if (subtaskTypeKeys.size === 0) return board
+  return {
+    ...board,
+    columns: board.columns.map((column) => ({
+      ...column,
+      cards: column.cards.filter((card) => !subtaskTypeKeys.has(card.typeKey)),
+    })),
+  }
+}

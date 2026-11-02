@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import type { BoardDetail } from '../api/boards'
 import {
   searchBoardCards,
+  hideSubtaskCards,
   searchToFilter,
   filterToSearch,
   isEmptyFilter,
@@ -277,5 +278,25 @@ describe('searchBoardCards — 보드 텍스트 검색 (JB-B-4)', () => {
 
   it('검색어가 비면 원본 참조를 그대로 돌려준다 (하위 memo 보호)', () => {
     expect(searchBoardCards(board, '   ')).toBe(board)
+  })
+})
+
+describe('hideSubtaskCards — 보드 하위 작업 숨김', () => {
+  const card = (issueKey: string, typeKey: string) =>
+    ({ issueKey, typeKey }) as BoardDetail['columns'][number]['cards'][number]
+  const board = {
+    columns: [
+      { columnId: 'c1', cards: [card('ATLAS-1', 'task'), card('ATLAS-2', 'subtask')] },
+      { columnId: 'c2', cards: [card('ATLAS-3', 'custom-sub'), card('ATLAS-4', 'bug')] },
+    ],
+  } as unknown as BoardDetail
+
+  it('하위 작업 유형 키에 든 카드만 뺀다 — 컬럼은 그대로', () => {
+    const result = hideSubtaskCards(board, new Set(['subtask', 'custom-sub']))
+    expect(result.columns.map((c) => c.cards.map((x) => x.issueKey))).toEqual([['ATLAS-1'], ['ATLAS-4']])
+  })
+
+  it('유형 키 집합이 비면 원본 참조를 그대로 돌려준다', () => {
+    expect(hideSubtaskCards(board, new Set())).toBe(board)
   })
 })

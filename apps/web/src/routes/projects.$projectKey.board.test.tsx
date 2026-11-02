@@ -6,9 +6,10 @@
 // 여기서 보는 것은 **배선**뿐이다 — 진입점이 있는가 · 권한을 그대로 내리는가 · 모달이 열리는가.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ReactNode } from 'react'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/test/server'
+import { subtaskIssueTypeFixture } from '@/mocks/issue-type-fixtures'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -149,6 +150,31 @@ describe('보드 라우트 — 툴바 배선 (JB-B-3 · JB-B-4)', () => {
 
     expect(screen.getByText('로그인 버그')).toBeInTheDocument()
     expect(screen.queryByText('결제 화면')).toBeNull()
+  })
+
+  it('하위 작업 카드는 기본으로 숨고 「하위 작업 표시」를 켜면 보인다 — 사용자 정의 하위 유형 포함', async () => {
+    server.use(
+      http.get('/api/v1/issue-types', () =>
+        HttpResponse.json({ data: [subtaskIssueTypeFixture, { ...subtaskIssueTypeFixture, id: 6, key: 'qa-sub', name: 'QA 하위' }] }),
+      ),
+    )
+    const board = mockBoard() as { data: { columns: { cards: unknown[] }[] } }
+    board.data.columns[0].cards.push(
+      { ...card('ATLAS-3', '기본 하위 작업'), typeKey: 'subtask' },
+      { ...card('ATLAS-4', '사용자 정의 하위 작업'), typeKey: 'qa-sub' },
+    )
+    mockBoard.mockReturnValue(board)
+    const user = userEvent.setup()
+    renderBoardPage()
+
+    expect(screen.getByText('결제 화면')).toBeInTheDocument()
+    expect(screen.queryByText('기본 하위 작업')).toBeNull()
+    await waitFor(() => { expect(screen.queryByText('사용자 정의 하위 작업')).toBeNull() })
+
+    await user.click(screen.getByRole('switch', { name: boardLabels.page.showSubtasks }))
+
+    expect(screen.getByText('기본 하위 작업')).toBeInTheDocument()
+    expect(screen.getByText('사용자 정의 하위 작업')).toBeInTheDocument()
   })
 
   it('활성 스프린트가 있으면 남은 일수와 「스프린트 완료」가 보드 헤더에 있다', () => {
