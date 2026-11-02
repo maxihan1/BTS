@@ -248,12 +248,12 @@ export const issueDetailStrings = {
   resolutionLabel: '해결 결과',
 
   // ── 표시 방식 토글 — Jira 패리티 J1 ──────────────────────────────────
-  /** 상세 헤더 `⋯` 메뉴 트리거 aria-label. 목록 `⋯`(보드/이슈 행)과 겹치지 않게 대상을 밝힌다 */
+  /** 옛 `⋯` 표시 방식 메뉴 이름 — 화면에서는 단추로 바뀌어 안 쓴다. 멈춘 e2e 스펙 셋이 참조해 남긴다 */
   presentationMenuAriaLabel: '이슈 상세 표시 방식',
-  /** `⋯` 항목 — 모달로 보고 있을 때 사이드바로 바꾼다 */
-  openInSidePanelItem: '사이드바로 열기',
-  /** `⋯` 항목 — 사이드바로 보고 있을 때 모달로 되돌린다 */
-  openInModalItem: '모달로 열기',
+  /** 상세 머리 전환 단추 — 모달로 보고 있을 때 사이드바로 바꾼다(Jira 실측 문구) */
+  openInSidePanelItem: '사이드바로 전환',
+  /** 상세 머리 전환 단추 — 사이드바로 보고 있을 때 모달로 되돌린다 */
+  openInModalItem: '모달로 전환',
   /** 사이드패널 영역의 접근 가능한 이름 (complementary 랜드마크) */
   sidePanelLabel: '이슈 상세 사이드패널',
 

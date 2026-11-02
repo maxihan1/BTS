@@ -77,7 +77,7 @@ export function IssueDetailModal(): JSX.Element | null {
         //   (900×700 실측 — 메타 2459px 를 229px 창으로 본다). 그 폭에서는 종전처럼 껍데기가
         //   한 덩어리로 스크롤해야 하므로 `overflow-y-auto` 를 기본값으로 두고 `lg:` 에서만
         //   `clip` 으로 덮는다. 좁은 폭은 미지원이 아니다 — 목록이 그 폭에서 이 화면으로 보낸다.
-        className="flex max-h-[90vh] w-[92vw] max-w-[1024px] flex-col overflow-y-auto p-0 lg:overflow-clip"
+        className="flex max-h-[90vh] w-[91vw] max-w-[1160px] flex-col overflow-y-auto p-0 lg:h-[84vh] lg:overflow-clip"
         // ★이슈 키를 포함해 고유하게. 계약 §2 — `getByRole('dialog')` 가 e2e 224곳에 있어
         // 이름이 겹치면 strict mode 충돌로 무관한 spec 이 죽는다.
         aria-label={`이슈 상세 ${openKey}`}

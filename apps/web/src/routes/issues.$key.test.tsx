@@ -2279,45 +2279,34 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
   // ── 표시 방식 토글 (Jira 패리티 J1) ─────────────────────────────────────────
 
   /**
-   * T1-9: `⋯` 메뉴의 「사이드바로 열기」가 표시 방식을 sidePanel 로 바꾼다.
+   * T1-9: 머리의 「사이드바로 전환」 단추가 표시 방식을 sidePanel 로 바꾼다.
    *
-   * Jira 원문 — "revert to sidebar by opening an issue in the modal, clicking the '…' and
-   * selecting 'Open issues in sidebar'". 토글이 사는 자리가 `⋯` 라는 것까지가 계약이다.
+   * 2026-10-28 Jira Cloud REA 실측(`docs/design/2026-10-28-jira-cloud-rea-gap.md` :170 · :398) —
+   * 보드 · 목록 모달 머리에 「사이드바로 전환」이 **단추로 바로** 있다(⋯ 안이 아니다).
+   * 09-04 문서 인용(⋯ 안)보다 실측이 새롭고 직접적이라 실측을 따른다.
    */
-  it('T1-9: variant="pane" 시 ⋯ 의 「사이드바로 열기」가 표시 방식을 sidePanel 로 바꾼다', async () => {
+  it('T1-9: variant="pane" 시 「사이드바로 전환」 단추가 표시 방식을 sidePanel 로 바꾼다', async () => {
     const user = userEvent.setup()
     renderPanePage('ATLAS-1', { onClose: vi.fn() })
 
     await screen.findByRole('button', { name: '닫기' })
-    await user.click(
-      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
-    )
-    await user.click(
-      await screen.findByRole('menuitem', { name: issueDetailStrings.openInSidePanelItem }),
-    )
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.openInSidePanelItem }))
 
     expect(useIssueDetailModalStore.getState().presentation).toBe('sidePanel')
   })
 
   /**
-   * T1-10: 이미 sidePanel 이면 같은 자리가 「모달로 열기」로 뒤집힌다.
+   * T1-10: 이미 sidePanel 이면 같은 자리가 「모달로 전환」으로 뒤집힌다.
    * 되돌아갈 길이 없으면 세션 내내 사이드바에 갇힌다 — 선호가 sessionStorage 라 새로고침도 안 듣는다.
    */
-  it('T1-10: presentation 이 sidePanel 이면 ⋯ 항목이 「모달로 열기」로 바뀐다', async () => {
+  it('T1-10: presentation 이 sidePanel 이면 단추가 「모달로 전환」으로 바뀐다', async () => {
     useIssueDetailModalStore.setState({ presentation: 'sidePanel' })
-    const user = userEvent.setup()
     renderPanePage('ATLAS-1', { onClose: vi.fn() })
 
     await screen.findByRole('button', { name: '닫기' })
-    await user.click(
-      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
-    )
-
+    expect(screen.getByRole('button', { name: issueDetailStrings.openInModalItem })).toBeInTheDocument()
     expect(
-      await screen.findByRole('menuitem', { name: issueDetailStrings.openInModalItem }),
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('menuitem', { name: issueDetailStrings.openInSidePanelItem }),
+      screen.queryByRole('button', { name: issueDetailStrings.openInSidePanelItem }),
     ).not.toBeInTheDocument()
   })
 
@@ -2333,12 +2322,7 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
     renderPanePage('ATLAS-1', { onClose: vi.fn() })
 
     await screen.findByRole('button', { name: '닫기' })
-    await user.click(
-      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
-    )
-    await user.click(
-      await screen.findByRole('menuitem', { name: issueDetailStrings.openInModalItem }),
-    )
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.openInModalItem }))
 
     expect(useIssueDetailModalStore.getState().openKey).toBe('ATLAS-1')
   })
@@ -2353,27 +2337,25 @@ describe('IssueDetailPage — Task 1 (variant page/pane, FR-UX-06 PR20)', () => 
     renderPanePage('ATLAS-1', { onClose: vi.fn() })
 
     await screen.findByRole('button', { name: '닫기' })
-    await user.click(
-      screen.getByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
-    )
-    await user.click(
-      await screen.findByRole('menuitem', { name: issueDetailStrings.openInSidePanelItem }),
-    )
+    await user.click(screen.getByRole('button', { name: issueDetailStrings.openInSidePanelItem }))
 
     expect(useIssueDetailModalStore.getState().presentation).toBe('sidePanel')
     expect(useIssueDetailModalStore.getState().openKey).toBeNull()
   })
 
   /**
-   * T1-11: 전체화면(`variant='page'`)에는 `⋯` 이 없다.
+   * T1-11: 전체화면(`variant='page'`)에는 표시 방식 단추가 없다.
    * 전체화면은 모달도 사이드바도 아니다 — 거기서 표시 방식을 물으면 무엇이 바뀌는지 알 수 없다.
    */
-  it('T1-11: variant 미지정(page) 에는 표시 방식 ⋯ 메뉴가 없다', async () => {
+  it('T1-11: variant 미지정(page) 에는 표시 방식 전환 단추가 없다', async () => {
     renderPage('ATLAS-1')
 
     await waitFor(() => expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument())
     expect(
-      screen.queryByRole('button', { name: issueDetailStrings.presentationMenuAriaLabel }),
+      screen.queryByRole('button', { name: issueDetailStrings.openInSidePanelItem }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: issueDetailStrings.openInModalItem }),
     ).not.toBeInTheDocument()
   })
 })

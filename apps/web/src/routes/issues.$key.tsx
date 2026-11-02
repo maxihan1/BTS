@@ -1016,7 +1016,8 @@ export function IssueDetailPage({
   //   좁은 폭은 미지원이 아니다 — `routes/issues.index.tsx` 가 `(min-width: 1024px)` 미만을
   //   명시적 지원 모드로 선언하고 그 모드의 행 클릭이 **이 화면**으로 온다.
   return (
-    <div className="mx-auto flex w-full max-w-[960px] flex-col px-6 pt-10 lg:h-full lg:min-h-0">
+    // 모달 · 사이드바(pane)는 껍데기가 폭을 정한다 — 안쪽 960px 상한을 또 걸면 Jira 실측 1160px 모달이 다시 좁아진다
+    <div className={`mx-auto flex w-full flex-col px-6 lg:h-full lg:min-h-0 ${variant === 'pane' ? 'pt-6' : 'max-w-[960px] pt-10'}`}>
       <IssueDetailHeader
         issue={issue}
         variant={variant}
