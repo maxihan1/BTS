@@ -3010,3 +3010,20 @@ describe('IssueDetailPage — 본문/메타 독립 스크롤 (Jira 패리티)', 
     expect(meta.contains(body)).toBe(false)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 머리 아이콘 줄 — 링크 복사 (2026-11-02 Jira 비교 화면 · 머리에는 아이콘 단추만)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('IssueDetailHeader — 링크 복사', () => {
+  it('「링크 복사」를 누르면 이 이슈의 주소를 클립보드에 넣는다', async () => {
+    setupIssueFoundHandler()
+    const user = userEvent.setup()
+    renderPage('ATLAS-1')
+
+    await user.click(await screen.findByRole('button', { name: issueDetailStrings.copyLinkAriaLabel }))
+
+    // userEvent.setup() 이 navigator.clipboard 를 자기 흉내로 바꿔 끼운다 — 거기서 바로 읽는다
+    await waitFor(async () => { expect(await navigator.clipboard.readText()).toBe(`${window.location.origin}/issues/ATLAS-1`) })
+  })
+})

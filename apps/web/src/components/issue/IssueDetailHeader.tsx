@@ -1,12 +1,21 @@
 // 이슈 상세 고정 헤더 — 경로·액션·제목. 본문/메타가 스크롤해도 이 영역은 제자리에 남는다 (J25~J27)
 import type { JSX, RefObject, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { FileDown, X } from 'lucide-react'
+import { ArrowRightLeft, FileDown, Link2, Pencil, X } from 'lucide-react'
+import { toast } from 'sonner'
 import type { IssueResponse } from '@/api/issues'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { IssueDetailPresentationMenu } from '@/components/issue/IssueDetailPresentationMenu'
 import { SUMMARY_MAX_LENGTH } from '@/components/issue/create/issue-create-schema'
 import { issueDetailStrings } from '@/i18n/ko'
+
+/** 이슈 주소를 클립보드에 넣는다 — 모달은 URL 을 바꾸지 않아서(09-04 결정) 공유할 주소를 따로 만들어 준다 */
+function copyIssueLink(issueKey: string): void {
+  navigator.clipboard
+    .writeText(`${window.location.origin}/issues/${issueKey}`)
+    .then(() => toast.success(issueDetailStrings.copyLinkDone))
+    .catch(() => toast.error(issueDetailStrings.copyLinkFailed))
+}
 
 interface IssueDetailHeaderProps {
   /** 표시할 이슈. `projectKey`·`key`·`summary` 만 쓴다. */
@@ -120,22 +129,27 @@ export function IssueDetailHeader({
           <span className="mx-1.5">/</span>
           <span className="font-medium text-foreground">{issue.key}</span>
         </nav>
-        <div className="flex gap-2">
-          {/* 이슈 이동 버튼 — UPDATE 권한 게이팅 (FR-MV-01 D6) */}
+        {/* 오른쪽 위는 아이콘 단추 한 줄 — Jira 실측(Maxi 비교 화면 2026-11-02) 머리에는 글자 단추가 없다.
+            이름(aria-label)은 그대로라 화면낭독기 · 테스트가 잡는 이름이 바뀌지 않는다 */}
+        <div className="flex gap-1">
+          <Button variant="ghost" size="icon-sm" aria-label={issueDetailStrings.copyLinkAriaLabel} title={issueDetailStrings.copyLinkAriaLabel} onClick={() => { copyIssueLink(issue.key) }}>
+            <Link2 className="size-4" aria-hidden="true" />
+          </Button>
+          {/* 이슈 이동 — UPDATE 권한 게이팅 (FR-MV-01 D6) */}
           {canEdit && (
-            <Button variant="outline" size="sm" aria-label="이슈 이동" onClick={onMoveClick}>
-              이슈 이동
+            <Button variant="ghost" size="icon-sm" aria-label="이슈 이동" title="이슈 이동" onClick={onMoveClick}>
+              <ArrowRightLeft className="size-4" aria-hidden="true" />
             </Button>
           )}
           <Button
-            variant="secondary"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
             disabled={isPdfDownloading}
             aria-label={issueDetailStrings.pdfDownloadAriaLabel}
+            title={issueDetailStrings.pdfDownloadAriaLabel}
             onClick={onPdfDownload}
           >
-            <FileDown className="size-4 mr-1.5" aria-hidden="true" />
-            {issueDetailStrings.pdfDownloadButton}
+            <FileDown className="size-4" aria-hidden="true" />
           </Button>
           {variant === 'pane' && <IssueDetailPresentationMenu issueKey={issueKey} />}
           {/* pane 전용 닫기 버튼 — split view 우측 페인 (FR-UX-06 PR20 Task 1) */}
@@ -188,24 +202,28 @@ export function IssueDetailHeader({
       ) : (
         <>
           {/* pane이면 h2로 강등 — 문서 h1 단일 계약 (FR-UX-06 PR20 Task 1) */}
-          {variant === 'pane' ? (
-            <h2 ref={paneTitleRef} tabIndex={-1} className="text-2xl font-semibold leading-snug mb-1">
-              {titleContent}
-            </h2>
-          ) : (
-            <h1 className="text-2xl font-semibold leading-snug mb-1">{titleContent}</h1>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={onEditStart}
-            disabled={!canEdit}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
-            aria-label={issueDetailStrings.editTitleButton}
-          >
-            {issueDetailStrings.editTitleButton}
-          </Button>
+          {/* 제목은 눌러서 고친다(Jira). 연필은 같은 진입의 키보드 · 화면낭독기 길 — 이름은 그대로 「✎ 제목 수정」 */}
+          <div className="flex items-start gap-1">
+            {variant === 'pane' ? (
+              <h2 ref={paneTitleRef} tabIndex={-1} className="text-2xl font-semibold leading-snug">
+                {titleContent}
+              </h2>
+            ) : (
+              <h1 className="text-2xl font-semibold leading-snug">{titleContent}</h1>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={onEditStart}
+              disabled={!canEdit}
+              className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+              aria-label={issueDetailStrings.editTitleButton}
+              title={issueDetailStrings.editTitleButton}
+            >
+              <Pencil className="size-4" aria-hidden="true" />
+            </Button>
+          </div>
         </>
       )}
     </div>

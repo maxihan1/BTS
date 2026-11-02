@@ -260,10 +260,14 @@ export const issueDetailStrings = {
   sidePanelLabel: '이슈 상세 사이드패널',
 
   // ── PDF 다운로드 — FR-IS-08 ──────────────────────────────────────────
-  /** PDF 다운로드 버튼 텍스트 */
-  pdfDownloadButton: 'PDF',
   /** PDF 다운로드 버튼 aria-label */
   pdfDownloadAriaLabel: '이슈를 PDF로 다운로드',
+  /** 상세 머리 — 이슈 주소 복사 단추(아이콘) 이름 */
+  copyLinkAriaLabel: '링크 복사',
+  /** 링크 복사 성공 토스트 */
+  copyLinkDone: '이슈 링크를 복사했어요',
+  /** 링크 복사 실패 토스트 — 브라우저가 클립보드를 막은 경우 */
+  copyLinkFailed: '링크를 복사하지 못했어요. 주소창에서 복사해 주세요',
   /** PDF 다운로드 실패 에러 메시지 */
   pdfDownloadError: 'PDF 다운로드에 실패했습니다.',
 
