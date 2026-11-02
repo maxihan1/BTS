@@ -146,6 +146,15 @@ export const navLabels = {
    * 혼선 없이 단독 식별된다(PL-9, nav-labels.test.ts 전수 검증).
    */
   breadcrumb: '탐색 경로',
+
+  /**
+   * 휴대폰(620px 미만) 아래 탭 nav aria-label (공통 정책 §6, 3차 캠페인 Q5).
+   * 다른 nav 이름(`메인 메뉴` · `관리 메뉴` · `프로젝트` · `탐색 경로` …)과 substring 관계가 없다.
+   */
+  bottomTabs: '아래 탭',
+
+  /** 아래 탭 마지막 칸 — 누르면 모든 메뉴가 담긴 메뉴판(모바일 드로어)이 열린다 */
+  allMenu: '전체',
 } as const
 
 /** navLabels const 추론 타입 */

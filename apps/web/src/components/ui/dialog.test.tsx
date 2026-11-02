@@ -141,6 +141,24 @@ describe('TC-4: 애니메이션 variant 문법 회귀 가드', () => {
     expect(content?.className).not.toContain('data-closed:')
   })
 
+  // 공통 정책 §6 (Q5) — 휴대폰(620px 미만)에서 작은 창은 아래에서 올라오는 판이다
+  it('620px 미만에서는 화면 아래에 붙는 판으로 그려진다', () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>제목텍스트</DialogTitle>
+          <DialogDescription>설명</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    )
+
+    const cls = document.querySelector('[data-slot="dialog-content"]')?.className ?? ''
+    expect(cls).toContain('max-[619px]:bottom-0')
+    expect(cls).toContain('max-[619px]:top-auto')
+    expect(cls).toContain('max-[619px]:rounded-b-none')
+    expect(cls).toContain('max-[619px]:data-open:slide-in-from-bottom-8')
+  })
+
   it('DialogOverlay는 열 때만 움직이고 닫을 때는 바로 사라진다 (공통 정책 §4, Q3)', () => {
     render(
       <Dialog open>
