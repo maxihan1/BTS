@@ -9,6 +9,7 @@ import com.atlas.bts.identity.pat.PersonalAccessToken
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.web.PatAuthenticationFilter
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.annotation.Order
@@ -27,6 +28,7 @@ import org.springframework.security.web.util.matcher.AntPathRequestMatcher.antMa
 import org.springframework.security.web.util.matcher.OrRequestMatcher
 import org.springframework.security.web.util.matcher.RequestMatcher
 import org.springframework.web.cors.CorsConfigurationSource
+import java.util.UUID
 
 /**
  * BTS 단일 SecurityFilterChain 설정 (FR-09-26 / FR-09-27 / FR-09-30).
@@ -108,6 +110,8 @@ class SecurityConfig(
     fun securityFilterChain(
         http: HttpSecurity,
         patUserResolver: PatUserResolver,
+        // BTS-F2-02: env BTS_QAHUB_AI_USER_ID (relaxed binding). 비면 게이트 꺼짐 · UUID 가 아니면 기동이 멈춘다.
+        @Value("\${bts.qahub-ai.user-id:}") qaHubAiUserId: String,
     ): SecurityFilterChain {
         // CookieCsrfTokenRepository 설정
         // withHttpOnlyFalse(): SPA가 Cookie 토큰 읽어 X-XSRF-TOKEN 헤더로 전송하므로 JS 접근 허용.
@@ -319,6 +323,11 @@ class SecurityConfig(
             // 미인증은 손대지 않고 통과 → 기존 401 흐름 유지(게이트가 401 을 403 으로 바꾸지 않음).
             .addFilterAfter(
                 MfaEnrollmentGateFilter(),
+                BearerTokenAuthenticationFilter::class.java,
+            )
+            // BTS-F2-02: 「QA Hub AI」 계정은 쓰기를 QA Hub 가 부르는 곳으로만 — 인증 필터 뒤라 principal 이 있다.
+            .addFilterAfter(
+                QaHubAiWriteGateFilter(qaHubAiUserId.takeIf { it.isNotBlank() }?.let(UUID::fromString)),
                 BearerTokenAuthenticationFilter::class.java,
             )
             // FR-09-11: SidRevokeJwtConverter — sid claim 으로 세션 revoke 여부 확인 후 인증 토큰 발급

@@ -80,6 +80,10 @@ bts:
     issuer-uri: ${BTS_AUTH_PLATFORM_ISSUER_URI:}
     client-id: ${BTS_AUTH_PLATFORM_CLIENT_ID:bts}
     client-secret: ${BTS_AUTH_PLATFORM_CLIENT_SECRET:}
+  qahub-ai:
+    # QA Hub 전용 계정 「QA Hub AI」 의 BTS 사용자 id (BTS-F2-02). 이 사용자의 쓰기는 QaHubAiWriteGateFilter 가
+    # QA Hub 가 부르는 곳으로만 연다. 비면 게이트가 꺼지고, UUID 가 아니면 기동이 멈춘다.
+    user-id: ${BTS_QAHUB_AI_USER_ID:}
   webauthn:
     # WebAuthn(패스키/보안키) Relying Party 설정 (FR-MF-03).
     # rp-id: RP 식별 도메인(포트/스킴 미포함). origin: 허용 origin(스킴+호스트+포트).
