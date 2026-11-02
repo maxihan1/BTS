@@ -11,6 +11,7 @@ import { ProjectViewChrome } from '@/components/project/ProjectViewChrome'
 import { TopBar } from './TopBar'
 import { Sidebar } from './Sidebar'
 import { IssueDetailSidePanel } from '@/components/issue/IssueDetailSidePanel'
+import { BottomTabBar } from './BottomTabBar'
 
 /**
  * `_shell` pathless 라우트의 컴포넌트 — 앱 크롬(상단바+사이드바) 조립을 담당한다.
@@ -167,7 +168,7 @@ export function ShellLayout(): JSX.Element {
             onClick={() => { setDrawerOpen(false) }}
           />
         )}
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        <main className="min-w-0 flex-1 overflow-y-auto max-[619px]:pb-14">
           {/* 프로젝트 크롬 (Jira 패리티 J5) — 제목 헤더 + 탭바. 경로에 projectKey 가 있을 때만
               스스로 마운트한다. 여기 한 곳이 프로젝트 하위 20여 화면 전부에 같은 정체성 줄을
               준다. 페이지마다 심으면 하나 빠뜨린 화면만 사라지고, 실제로 그 상태였다.
@@ -183,6 +184,8 @@ export function ShellLayout(): JSX.Element {
             `presentation` 하나가 정한다. */}
         <IssueDetailSidePanel />
       </div>
+      {/* 휴대폰(620px 미만) 아래 탭 — 「전체」가 위 모바일 드로어를 연다 (공통 정책 §6, Q5) */}
+      <BottomTabBar />
     </div>
   )
 }
