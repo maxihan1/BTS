@@ -15,6 +15,10 @@ import { issueDetailStrings } from '@/i18n/ko'
 // 상수 — 활동 탭 value (매직스트링 금지, DEVELOPMENT.md §2.3)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** 세그먼트 칸 — 높이 26px · 고른 칸 1px 테두리(그림자 대신). Jira 실측 「세그먼트 26px, 선택 = 옅은 바탕 + 1px 테두리」 */
+const SEGMENT_CLASS =
+  'h-[26px] flex-none px-3 data-[state=active]:shadow-none data-[state=active]:ring-1 data-[state=active]:ring-(--text-selected)'
+
 /**
  * 활동 탭 value 상수.
  * TabsList 렌더 순서(댓글 → 이력 → 작업로그 → 연결)와 일치한다.
@@ -128,17 +132,19 @@ export function IssueActivityTabs({
       }}
       className="mt-8"
     >
-      <TabsList>
-        <TabsTrigger value={ACTIVITY_TABS.COMMENT}>
+      {/* Jira 실측(2026-11-02 비교 화면) — 「활동」 섹션 제목 아래 테두리 있는 세그먼트 탭, 고른 칸은 옅은 바탕 + 1px 테두리 */}
+      <h3 className="text-base font-semibold">{issueDetailStrings.activityHeading}</h3>
+      <TabsList className="h-auto rounded-md border border-border bg-transparent p-0.5">
+        <TabsTrigger value={ACTIVITY_TABS.COMMENT} className={SEGMENT_CLASS}>
           {issueDetailStrings.activityCommentTabLabel}
         </TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TABS.HISTORY}>
+        <TabsTrigger value={ACTIVITY_TABS.HISTORY} className={SEGMENT_CLASS}>
           {issueDetailStrings.activityHistoryTabLabel}
         </TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TABS.WORKLOG}>
+        <TabsTrigger value={ACTIVITY_TABS.WORKLOG} className={SEGMENT_CLASS}>
           {issueDetailStrings.activityWorklogTabLabel}
         </TabsTrigger>
-        <TabsTrigger value={ACTIVITY_TABS.LINKS}>
+        <TabsTrigger value={ACTIVITY_TABS.LINKS} className={SEGMENT_CLASS}>
           {issueDetailStrings.activityLinksTabLabel}
         </TabsTrigger>
       </TabsList>

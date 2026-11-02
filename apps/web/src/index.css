@@ -571,6 +571,16 @@
   }
 }
 
+/* 편집기 빈 칸 안내 글자 — TipTap Placeholder 확장은 data-placeholder 와 클래스만 달고 그리는 것은 CSS 몫이다.
+   이 규칙이 없어 안내 글자가 한 번도 보이지 않았다(2026-11-02 댓글 칸 「댓글 추가…」 확인 중 발견) */
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+
 /* rich-text:start */
 /* 본문·댓글 리치 텍스트 서식 — 서버 sanitize allowlist(MarkdownRenderer.SANITIZE_POLICY)의 짝
  *

@@ -249,3 +249,19 @@ describe('RichTextEditor — 저장 포맷·잠금', () => {
     })
   })
 })
+
+// 댓글 작성칸 접기(2026-11-02 Jira 비교) — 포커스 전엔 도구 막대를 숨기되 칸 자체는 붙어 있어야 한다(단축키 m)
+describe('RichTextEditor — collapsedToolbar', () => {
+  it('collapsedToolbar 면 도구 막대가 포커스를 받을 때만 보이는 자리에 들어간다', () => {
+    renderEditor({ collapsedToolbar: true })
+    const wrapper = screen.getByRole('toolbar').parentElement
+    expect(wrapper?.className).toContain('hidden')
+    expect(wrapper?.className).toContain('group-focus-within:block')
+    expect(getBody()).toBeInTheDocument()
+  })
+
+  it('기본값이면 도구 막대가 늘 보인다 — 다른 소비처(본문 · 생성 폼)는 그대로', () => {
+    renderEditor()
+    expect(screen.getByRole('toolbar').parentElement?.className ?? '').not.toContain('hidden')
+  })
+})
