@@ -93,16 +93,21 @@ describe('ConfirmDialog', () => {
   //   그래서 이 판정만으로는 도달 불가 조합을 지키는 가짜 그린이었다
   //   (`unreachable-state-fixture-is-fake-green`).
 
-  // `destructive` 만으로 판정하면 안 된다 — button 의 **base** 클래스가 이미
-  // `aria-invalid:...destructive/20` 을 달고 있어 어떤 변형이든 참이 된다(실측).
-  // `bg-destructive/` 는 destructive 변형에만 있다.
-  it('destructive 면 확인 버튼이 파괴적 변형으로 그려진다', () => {
+  // 공통 정책 §1 (Q4) — 되돌릴 수 없는 일 단추는 판정 색이 아니라 **잉크 채움**이다.
+  // `bg-foreground` 는 destructive 변형에만 있다(base · 다른 변형에는 없다 — 실측).
+  it('destructive 면 확인 버튼이 잉크 채움으로 그려진다', () => {
     setup({ destructive: true })
-    expect(screen.getByRole('button', { name: '빼기' }).className).toContain('bg-destructive/')
+    expect(screen.getByRole('button', { name: '빼기' }).className).toContain('bg-foreground')
   })
 
-  it('destructive 가 아니면 파괴적 변형이 아니다 — 판정이 항상 참이 아님을 본다', () => {
+  it('destructive 가 아니면 잉크 채움이 아니다 — 판정이 항상 참이 아님을 본다', () => {
     setup({ destructive: false })
-    expect(screen.getByRole('button', { name: '빼기' }).className).not.toContain('bg-destructive/')
+    expect(screen.getByRole('button', { name: '빼기' }).className).not.toContain('bg-foreground')
+  })
+
+  // 공통 정책 §5 (Q4) — 첫 포커스는 안전한 단추다. Enter 한 번에 되돌릴 수 없는 일이 일어나지 않게.
+  it('열리면 첫 포커스는 취소 단추다', () => {
+    setup({ destructive: true })
+    expect(screen.getByRole('button', { name: '취소' })).toHaveFocus()
   })
 })

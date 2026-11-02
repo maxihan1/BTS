@@ -155,5 +155,9 @@ describe('TC-4: 애니메이션 variant 문법 회귀 가드', () => {
     expect(overlay).not.toBeNull()
     expect(overlay?.className).toContain('data-open:animate-in')
     expect(overlay?.className).not.toContain('data-closed:')
+    // 공통 정책 §5 (Q4) — 뒤 덮개는 검정 밝게 45% · 어둡게 60%, 흐리게 처리하지 않는다
+    expect(overlay?.className).toContain('bg-black/45')
+    expect(overlay?.className).toContain('dark:bg-black/60')
+    expect(overlay?.className).not.toContain('backdrop-blur')
   })
 })
