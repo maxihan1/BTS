@@ -471,6 +471,8 @@ export const issueDetailStrings = {
   activityHistoryTabLabel: '이력',
   /** 활동 영역 — 댓글 탭 라벨 (FR-CO-01). 탭 라벨은 E2E 계약이므로 하드코딩 금지 */
   activityCommentTabLabel: '댓글',
+  /** 활동 영역 제목 — 탭 위 섹션 제목(Jira 「활동」 실측 2026-11-02) */
+  activityHeading: '활동',
 } as const
 
 /** 2단계 인증(TOTP) 설정 및 로그인 2단계 UI 문자열 */
@@ -1234,7 +1236,7 @@ export const commentStrings = {
   /** 본문 입력 레이블 */
   commentBodyLabel: '댓글 입력',
   /** 본문 입력 placeholder */
-  commentBodyPlaceholder: '댓글을 입력하세요. Markdown 을 쓸 수 있습니다.',
+  commentBodyPlaceholder: '댓글 추가…',
   /** 작성 버튼 텍스트 */
   commentAddButton: '댓글 작성',
   /** 작성 중(제출 진행) 버튼 텍스트 */

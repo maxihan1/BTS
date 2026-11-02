@@ -43,6 +43,11 @@ export interface RichTextEditorProps {
    * 종전 `rows={4}` textarea 보다 커져 아래 필드를 밀어낸다(리뷰 D-1). 화면이 높이를 정하게 연다.
    */
   minHeightClass?: string
+  /**
+   * 포커스 전에는 도구 막대를 숨긴다 — 댓글 작성칸이 평소 「댓글 추가…」 한 줄로 보이게(Jira 실측, 2026-11-02).
+   * 칸 자체는 그대로 붙어 있어 단축키 `m` 의 포커스 대상이 사라지지 않는다.
+   */
+  collapsedToolbar?: boolean
 }
 
 /**
@@ -85,6 +90,7 @@ export function RichTextEditor({
   autoFocus = false,
   contentRef,
   minHeightClass = 'min-h-[8rem]',
+  collapsedToolbar = false,
 }: RichTextEditorProps): JSX.Element {
   const uploadImages = useEditorImageUpload(imageIssueKey ?? null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -217,12 +223,14 @@ export function RichTextEditor({
     //   걸리지 않는다 — 그 경고는 `Tooltip` **Root** 안에 Provider 를 넣는 것을 막는 것이고,
     //   여기는 소비처다. `delayDuration` 을 넘기지 않아 값도 앱 루트와 같은 기본 0 이다.
     <TooltipProvider>
-      <div className="rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
-      <RichTextToolbar
-        editor={editor}
-        // 이슈가 없으면 이미지 경로 자체가 없다 — 버튼도 그리지 않는다.
-        onInsertImage={imageIssueKey === undefined ? undefined : () => fileInputRef.current?.click()}
-      />
+      <div className="group rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-(--border-focus)">
+      <div className={collapsedToolbar ? 'hidden group-focus-within:block' : undefined}>
+        <RichTextToolbar
+          editor={editor}
+          // 이슈가 없으면 이미지 경로 자체가 없다 — 버튼도 그리지 않는다.
+          onInsertImage={imageIssueKey === undefined ? undefined : () => fileInputRef.current?.click()}
+        />
+      </div>
       <EditorContent editor={editor} />
       {/* 툴바 이미지 버튼의 실제 입구. 시각적으로 숨기되 접근성 트리에서도 뺀다 —
           툴바 버튼이 이미 이름을 갖고 있어 이중으로 읽히면 혼란스럽다. */}

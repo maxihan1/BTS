@@ -78,8 +78,10 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
   const isSubmitDisabled = plain === '' || isPending || isOverLimit
 
   return (
-    <div className="space-y-2">
-      <p className="block text-sm font-medium text-foreground">{commentStrings.commentBodyLabel}</p>
+    // 평소에는 「댓글 추가…」 한 줄 칸만 — 포커스를 받거나 글이 있으면 도구 막대 · 글자 수 · 등록이 펼쳐진다(Jira 실측 2026-11-02).
+    // 보이는 「댓글 입력」 라벨은 칸 안 안내 문구와 겹쳐 화면낭독기용으로만 남긴다(편집기 이름은 그대로)
+    <div className="group/compose space-y-2">
+      <p className="sr-only">{commentStrings.commentBodyLabel}</p>
       {/*
         ★`m` 단축키의 포커스 대상이 textarea 에서 contenteditable 로 바뀌었다.
         `focusRef` 타입도 HTMLDivElement 로 따라간다 — 그 ref 를 들고 `.focus()` 를 부르는
@@ -96,23 +98,27 @@ function CommentAddForm({ issueKey, focusRef }: CommentAddFormProps): JSX.Elemen
           ariaLabel={commentStrings.commentBodyLabel}
           imageIssueKey={issueKey}
           contentRef={focusRef}
+          collapsedToolbar
+          minHeightClass="min-h-10 group-focus-within/compose:min-h-[6rem]"
         />
       </div>
-      <TextLengthCounter
-        length={plain.length}
-        max={COMMENT_BODY_MAX_LENGTH}
-        testId="comment-add-length-counter"
-      />
-      <Button
-        type="button"
-        size="sm"
-        disabled={isSubmitDisabled}
-        onClick={() => mutate()}
-        aria-label={commentStrings.commentAddButton}
-        className="min-h-[44px]"
-      >
-        {isPending ? commentStrings.commentAddPending : commentStrings.commentAddButton}
-      </Button>
+      <div className={plain === '' ? 'hidden items-center gap-3 group-focus-within/compose:flex' : 'flex items-center gap-3'}>
+        <Button
+          type="button"
+          size="sm"
+          disabled={isSubmitDisabled}
+          onClick={() => mutate()}
+          aria-label={commentStrings.commentAddButton}
+          className="max-md:min-h-[44px]"
+        >
+          {isPending ? commentStrings.commentAddPending : commentStrings.commentAddButton}
+        </Button>
+        <TextLengthCounter
+          length={plain.length}
+          max={COMMENT_BODY_MAX_LENGTH}
+          testId="comment-add-length-counter"
+        />
+      </div>
     </div>
   )
 }
@@ -573,7 +579,7 @@ export function CommentSection({
 
   return (
     <section aria-label={commentStrings.commentSectionTitle} className="mt-6">
-      <h2 className="mb-3 text-sm font-semibold text-foreground">
+      <h2 className="sr-only">
         {commentStrings.commentSectionTitle}
       </h2>
 
