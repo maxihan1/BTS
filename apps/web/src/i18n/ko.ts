@@ -78,10 +78,12 @@ export const issueDetailStrings = {
   statLabel: '상태',
   /** 메타패널 — 보고자 레이블 */
   reporterLabel: '보고자',
-  /** 메타패널 — 프로젝트 레이블 */
-  projectLabel: '프로젝트',
-  /** 메타패널 — 버전 레이블 */
-  versionLabel: '버전',
+  /** 메타패널 — 늘 보는 필드 카드 제목(Jira 「세부 사항」 실측) */
+  detailsSectionLabel: '세부 사항',
+  /** 메타패널 — 덜 쓰는 필드를 접어 두는 카드 제목(Jira 「더 많은 필드」 실측) */
+  moreFieldsLabel: '더 많은 필드',
+  /** 「더 많은 필드」 제목 옆 — 안에 무엇이 있는지 한 줄로 */
+  moreFieldsHint: '영향도 · 환경 · 컴포넌트 · 버전 · 보안등급',
   /** 메타패널 — 생성일 레이블 */
   createdAtLabel: '생성',
   /** 메타패널 — 수정일 레이블 */

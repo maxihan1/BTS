@@ -16,5 +16,14 @@ export const META_LABEL_CLASS = 'text-sm font-medium text-foreground'
  * 「값은 테두리 없는 글자, 클릭하면 편집」). 넓은 화면은 Jira 밀도 32px, 좁은 화면은 터치 44px.
  */
 export const META_SELECT_CLASS =
-  'w-full cursor-pointer rounded-md border border-transparent bg-transparent px-2 text-sm lg:h-8 max-lg:min-h-[44px] ' +
+  'w-full cursor-pointer rounded-md border border-transparent bg-transparent px-2 text-sm md:h-8 max-md:min-h-[44px] ' +
   'hover:bg-(--bg-neutral-hover) focus:outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed'
+
+/** 접히는 카드(「세부 사항」 · 「더 많은 필드」) — 1px 테두리 · 모서리 8px(Jira 실측 r8, 공통 정책 판 8px) */
+export const META_CARD_CLASS = 'group rounded-lg border border-border overflow-hidden'
+
+/** 카드 제목 줄 — 누르면 접고 편다. 화살표는 열림 상태를 따라 돈다 */
+export const META_CARD_SUMMARY_CLASS =
+  'flex cursor-pointer list-none items-center px-3.5 py-2.5 text-sm font-semibold select-none ' +
+  "before:mr-2 before:inline-block before:text-muted-foreground before:transition-transform before:content-['›'] group-open:before:rotate-90 " +
+  'hover:bg-(--bg-neutral-hover) [&::-webkit-details-marker]:hidden'

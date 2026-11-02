@@ -267,9 +267,12 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
   })
 
   /**
-   * T7-6. 메타패널에 보고자, 프로젝트 키, 버전이 렌더되어야 한다.
+   * T7-6. 메타패널에 보고자가 렌더되고, 프로젝트 · 내부 버전 번호 줄은 없다.
+   *
+   * 2026-11-02 우측 재구성(Jira 「세부 사항」 실측) — 프로젝트 키는 머리 이동 경로에 이미 있고,
+   * 「버전 v3」은 낙관 잠금 번호라 공통 정책 §8 「시스템 안쪽 말을 화면에 옮기지 않는다」에 걸려 뺐다.
    */
-  it('T7-6: 메타패널에 보고자·프로젝트·버전이 렌더된다', async () => {
+  it('T7-6: 메타패널에 보고자가 렌더되고 프로젝트 · 내부 버전 줄은 없다', async () => {
     setupIssueFoundHandler()
 
     const { container } = renderPage('ATLAS-1')
@@ -279,28 +282,23 @@ describe('IssueDetailPage — 성공 레이아웃', () => {
       expect(aside).toBeInTheDocument()
       if (aside === null) return
       expect(within(aside).getByText('보고자')).toBeInTheDocument()
-      expect(within(aside).getByText('프로젝트')).toBeInTheDocument()
-      expect(within(aside).getByText('버전')).toBeInTheDocument()
+      expect(within(aside).queryByText('프로젝트')).not.toBeInTheDocument()
+      expect(within(aside).queryByText(/^v\d+$/)).not.toBeInTheDocument()
     })
   })
 
   /**
-   * T7-7. createdAt이 null인 경우 "—" 표기.
+   * T7-7. createdAt · updatedAt 이 null 인 경우 생성 · 수정 줄에 "—" 표기.
    */
   it('T7-7: createdAt null인 경우 "—"를 렌더한다', async () => {
     const nullDateFixture = { ...issueAtlas1Fixture, createdAt: null, updatedAt: null }
     setupIssueFoundHandler(nullDateFixture)
 
-    const { container } = renderPage('ATLAS-1')
+    renderPage('ATLAS-1')
 
-    await waitFor(() => {
-      const aside = container.querySelector('aside')
-      expect(aside).toBeInTheDocument()
-      if (aside === null) return
-      // 두 날짜 모두 null이므로 "—"가 두 개 이상 렌더되어야 함
-      const dashes = within(aside).getAllByText('—')
-      expect(dashes.length).toBeGreaterThanOrEqual(2)
-    })
+    // 두 날짜가 카드 밖 한 줄(「생성 — · 수정 —」)에 함께 선다 — 그 줄 안에 "—" 가 둘
+    const stamps = await screen.findByTestId('issue-timestamps')
+    expect(stamps.textContent?.match(/—/g)?.length).toBe(2)
   })
 })
 

@@ -79,7 +79,8 @@ export function IssueStateTransition({
   const current = statusMetaByKey.get(currentStateKey)
   const currentName = current?.name ?? currentStateKey
   const badge = (
-    <Badge data-testid="issue-state-badge" variant={statusBadgeVariant(current?.category)} className="max-w-full">
+    // 32px 단추 크기 — Jira 실측 JV-19(오른쪽 위 32px 상태 단추). 색은 상태 범주 그대로
+    <Badge data-testid="issue-state-badge" variant={statusBadgeVariant(current?.category)} className="h-8 max-w-full rounded-md px-3 text-sm font-semibold">
       <span className="truncate">{currentName}</span>
     </Badge>
   )
@@ -112,7 +113,7 @@ export function IssueStateTransition({
           size="sm"
           disabled={isTransitioning}
           aria-label={`${issueDetailStrings.transitionSelectLabel}, ${currentName}`}
-          className="min-h-[44px] max-w-full justify-start gap-1 px-1"
+          className="h-auto max-md:min-h-[44px] max-w-full justify-start gap-1 p-0 hover:bg-transparent hover:opacity-90"
         >
           {badge}
           <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 text-(--text-subtle)" />

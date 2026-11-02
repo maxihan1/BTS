@@ -56,7 +56,7 @@ export function IssueEnvironmentEdit({ value, onSave, canEdit }: IssueEnvironmen
       <Button
         variant="ghost"
         size="xs"
-        className="self-end lg:min-h-0 max-lg:min-h-[44px]"
+        className="self-end md:min-h-0 max-md:min-h-[44px]"
         onClick={() => onSave(draft)}
         disabled={!canEdit}
         aria-label={issueDetailStrings.environmentSaveButton}
