@@ -14,27 +14,25 @@ import { useBoards, useBoard, boardKeys } from '@/hooks/use-boards'
 import { useUpdateSwimlane } from '@/hooks/use-update-swimlane'
 import { useProjectPermissions } from '@/hooks/use-project-permissions'
 import { useIssueTypes } from '@/hooks/use-issue-types'
-import { SUBTASK_HIERARCHY_LEVEL } from '@/api/issue-types'
 import { KanbanBoard } from '@/components/board/KanbanBoard'
 import type { CardAssigneeDisplay } from '@/components/board/BoardCard'
 import { CreateBoardForm } from '@/components/board/CreateBoardForm'
 import { BoardSelectorDropdown } from '@/components/board/BoardSelectorDropdown'
 import { ActiveSprintSummary } from '@/components/board/ActiveSprintSummary'
 import { BoardCompleteSprintButton } from '@/components/board/BoardCompleteSprintButton'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import { BoardActionsMenu } from '@/components/board/BoardActionsMenu'
 import {
   ScrumSprintEmptyState,
   resolveScrumEmptyVariant,
 } from '@/components/board/ScrumSprintEmptyState'
 import { BoardFilterBar } from '@/components/board/BoardFilterBar'
+import { BoardSearchControls } from '@/components/board/BoardSearchControls'
 import { QuickFilterChips } from '@/components/board/QuickFilterChips'
 import { SwimlaneSelector } from '@/components/board/SwimlaneSelector'
 import { boardFilterLabels } from '@/i18n/board-filter-labels'
 import { boardLabels } from '@/i18n/board-labels'
 import { extractErrorCode } from '@/lib/extract-error-code'
-import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch, searchBoardCards, hideSubtaskCards } from '@/lib/board-filter'
+import { searchToFilter, filterToSearch, isEmptyFilter, queryStringToSearch, searchBoardCards, hideSubtaskCards, subtaskTypeKeysOf } from '@/lib/board-filter'
 import type { BoardFilterSearch } from '@/lib/board-filter'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 import { ProjectHeaderActions } from '@/components/project/ProjectChrome'
@@ -260,7 +258,6 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
 
   // 보드 텍스트 검색어 (JB-B-4) — 화면에서만 거른다. 보드를 바꾸면 비운다(아래 effect)
   const [searchQuery, setSearchQuery] = useState('')
-  // 하위 작업 표시 — 기본 꺼짐(숨김). 화면 상태라 새로 열면 다시 숨김이다
   const [showSubtasks, setShowSubtasks] = useState(false)
 
   // ── FR-UX-01 — 활성 퀵필터 id 추적 (FR6). navigate와 co-locate (리뷰 BLOCKER-B).
@@ -345,16 +342,11 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
   )
 
   // 검색어로 거른 보드 — 검색어가 비면 원본 참조 그대로라 KanbanBoard 의 memo 가 유지된다
-  // 하위 작업 유형 키 — `'subtask'` 를 미리 넣어 유형 목록 로딩 중에 하위 작업 카드가 깜빡 보였다 사라지지 않게 한다
-  const subtaskTypeKeys = useMemo(
-    () => new Set(['subtask', ...(issueTypes ?? []).filter((t) => t.hierarchyLevel === SUBTASK_HIERARCHY_LEVEL).map((t) => t.key)]),
-    [issueTypes],
-  )
   const searchedBoard = useMemo(() => {
     if (boardDetail === undefined) return undefined
-    const visible = showSubtasks ? boardDetail : hideSubtaskCards(boardDetail, subtaskTypeKeys)
+    const visible = showSubtasks ? boardDetail : hideSubtaskCards(boardDetail, subtaskTypeKeysOf(issueTypes))
     return searchBoardCards(visible, searchQuery)
-  }, [boardDetail, searchQuery, showSubtasks, subtaskTypeKeys])
+  }, [boardDetail, searchQuery, showSubtasks, issueTypes])
 
   // 활성 스프린트 — 칸반은 항상 null 이므로 `boardType` 을 다시 보지 않는다 (`activeSprintSchema` KDoc).
   const activeSprint = boardDetail?.activeSprint ?? null
@@ -578,20 +570,12 @@ export function BoardPage({ projectKey, selectedBoardId, filter }: BoardPageProp
           value={stableFilter}
           onChange={handleFilterChange}
           leadingSection={
-            <>
-              <Input
-                type="search"
-                aria-label={boardLabels.page.search}
-                placeholder={boardLabels.page.search}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-8 w-48"
-              />
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Switch checked={showSubtasks} onCheckedChange={setShowSubtasks} />
-                {boardLabels.page.showSubtasks}
-              </label>
-            </>
+            <BoardSearchControls
+              query={searchQuery}
+              onQueryChange={setSearchQuery}
+              showSubtasks={showSubtasks}
+              onShowSubtasksChange={setShowSubtasks}
+            />
           }
         />
       )}

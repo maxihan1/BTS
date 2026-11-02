@@ -1,5 +1,6 @@
 // URL search params ↔ BoardCardFilterParams 순수 매핑 유틸 (FR-BD-02)
 import type { BoardCardFilterParams, BoardDetail } from '../api/boards'
+import { SUBTASK_HIERARCHY_LEVEL } from '../api/issue-types'
 
 /**
  * URL search params에서 보드 필터 3종(assignee·label·component)을 표현하는 타입.
@@ -179,4 +180,17 @@ export function hideSubtaskCards(board: BoardDetail, subtaskTypeKeys: ReadonlySe
       cards: column.cards.filter((card) => !subtaskTypeKeys.has(card.typeKey)),
     })),
   }
+}
+
+/**
+ * 하위 작업 유형 키 집합 — `hierarchyLevel === -1` 인 유형. `'subtask'` 를 늘 넣어
+ * 유형 목록 로딩 중에 하위 작업 카드가 깜빡 보였다 사라지지 않게 한다.
+ *
+ * @param issueTypes 이슈 유형 목록. 로딩 중이면 undefined
+ */
+export function subtaskTypeKeysOf(
+  issueTypes: readonly { key: string; hierarchyLevel: number }[] | undefined,
+): Set<string> {
+  const keys = (issueTypes ?? []).filter((t) => t.hierarchyLevel === SUBTASK_HIERARCHY_LEVEL).map((t) => t.key)
+  return new Set(['subtask', ...keys])
 }
