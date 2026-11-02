@@ -125,7 +125,7 @@ describe('TC-3: DialogClose 클릭 시 닫힘', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('TC-4: 애니메이션 variant 문법 회귀 가드', () => {
-  it('DialogContent가 data-open/data-closed 애니메이션 variant를 유지한다', () => {
+  it('DialogContent는 열 때만 떠오르고 닫을 때는 바로 사라진다 (공통 정책 §4, Q3)', () => {
     render(
       <Dialog open>
         <DialogContent>
@@ -138,10 +138,10 @@ describe('TC-4: 애니메이션 variant 문법 회귀 가드', () => {
     const content = document.querySelector('[data-slot="dialog-content"]')
     expect(content).not.toBeNull()
     expect(content?.className).toContain('data-open:animate-in')
-    expect(content?.className).toContain('data-closed:animate-out')
+    expect(content?.className).not.toContain('data-closed:')
   })
 
-  it('DialogOverlay가 data-open/data-closed 애니메이션 variant를 유지한다', () => {
+  it('DialogOverlay는 열 때만 움직이고 닫을 때는 바로 사라진다 (공통 정책 §4, Q3)', () => {
     render(
       <Dialog open>
         <DialogContent>
@@ -154,6 +154,6 @@ describe('TC-4: 애니메이션 variant 문법 회귀 가드', () => {
     const overlay = document.querySelector('[data-slot="dialog-overlay"]')
     expect(overlay).not.toBeNull()
     expect(overlay?.className).toContain('data-open:animate-in')
-    expect(overlay?.className).toContain('data-closed:animate-out')
+    expect(overlay?.className).not.toContain('data-closed:')
   })
 })

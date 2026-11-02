@@ -49,8 +49,14 @@ export function resolveTheme(theme: Theme): 'light' | 'dark' {
  * @param theme 사용자 환경설정 theme 값('light'|'dark'|'system')
  */
 export function applyTheme(theme: Theme): void {
-  const resolved = resolveTheme(theme)
-  document.documentElement.classList.toggle('dark', resolved === 'dark')
+  const wantDark = resolveTheme(theme) === 'dark'
+  const root = document.documentElement
+  if (root.classList.contains('dark') === wantDark) return
+  const flip = () => root.classList.toggle('dark', wantDark)
+  // 밝게 · 어둡게 전환은 화면 전체가 0.2초 겹쳐 바뀐다(공통 정책 §4, Q3 — 시간은 index.css ::view-transition).
+  // 못 알아보는 브라우저는 바로 바뀐다. 움직임 줄이기는 index.css 가 view-transition 움직임을 끈다
+  if (typeof document.startViewTransition === 'function') document.startViewTransition(flip)
+  else flip()
 }
 
 /**

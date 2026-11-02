@@ -42,6 +42,11 @@
 
   --font-heading: var(--font-sans);
 
+  /* 모든 transition-* 유틸의 기본 시간 · 곡선을 움직임 토큰에 묶는다 (공통 정책 §4, Q3) */
+  --default-transition-duration: var(--t1);
+
+  --default-transition-timing-function: var(--ease);
+
   --font-sans: 'IBM Plex Sans KR', system-ui, sans-serif;
 
   /* mono — AQL overlay↔textarea 정렬 정본. 두 요소가 같은 스택을 보는 한 정렬은 글꼴과 무관하다(Q2 실측).
@@ -506,6 +511,63 @@
   html {
     /* 숫자는 늘 세로를 맞춘다(공통 정책 §2) — 한 번 걸어 두면 표 · 배지 · 개수가 다 따른다 */
     @apply font-sans tabular-nums;
+  }
+}
+
+/* 움직임 — QA Hub 공통 정책 §4 (3차 캠페인 Q3). 값은 QA Hub(test_platform styles.css)와 같고 두 벌(밝게 · 어둡게)이 같다.
+   소비처가 있는 것만 둔다(ADR D7) — --t3(0.3초) · 숫자 0.4초 · 맥박 1.6초 · 판 차례 간격은 그 움직임을 넣을 때 정의한다 */
+:root {
+  /* 누름 · 색 바뀜 · 마우스 올림 — Tailwind transition 기본값 */
+  --t1: 0.12s;
+  /* 화면 열기 · 서랍 · 창 · 테마 전환 */
+  --t2: 0.2s;
+  /* 곡선은 하나만. 데이터를 그리는 움직임에 튕김(넘침)을 쓰지 않는다 */
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 불러오는 중 뼈대 위를 빛이 한 번 훑는 시간 — 불러오는 동안만 되풀이한다 */
+  --dur-shimmer: 1.2s;
+}
+
+/* 밝게 · 어둡게 전환 — 화면 전체가 0.2초 겹쳐 바뀐다(lib/theme.ts 가 View Transitions 로 감싼다) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--t2);
+  animation-timing-function: var(--ease);
+}
+
+/* 불러오는 중 뼈대 — 회색 칸 위를 빛이 훑는다. 프리미티브 Skeleton 만 쓴다(skeleton-usage.test.ts) */
+.skeleton-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklab, var(--foreground) 6%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer var(--dur-shimmer) linear infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+
+/* 「움직임 줄이기」를 켠 사람에게는 모든 움직임을 끄고 바뀐 상태만 바로 보인다 — 일부만 끄지 않는다.
+   시간을 0 으로 두면 animation-fill-mode 가 끝 상태를 그대로 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }
 

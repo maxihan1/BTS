@@ -413,10 +413,29 @@ Button의 `xs`/`sm` size variant는 `rounded-[min(var(--radius-md),10px)]` 형�
 
 ---
 
+## 8-1. 움직임 (공통 정책 §4 — 로드맵 Q3, 2026-11-02)
+
+**원칙. 움직임은 바뀐 것만 알린다.** 값은 QA Hub 코드(`test_platform` styles.css)와 같고 밝게 · 어둡게가 같다. 정의는 `index.css` 「움직임」 블록.
+
+| 토큰 | 값 | 쓰는 곳 |
+|---|---|---|
+| `--t1` | 0.12s | 누름 · 색 바뀜 · 마우스 올림 — Tailwind `transition-*` 기본 시간(`--default-transition-duration`)이 이 값이다 |
+| `--t2` | 0.2s | 창 열기 · 테마 전환 |
+| `--ease` | `cubic-bezier(0.2, 0.8, 0.2, 1)` | 곡선은 하나 — Tailwind `transition-*` 기본 곡선 |
+| `--dur-shimmer` | 1.2s | 불러오는 중 뼈대 위 빛 훑음(`Skeleton` → `.skeleton-shimmer`) |
+
+**지금 걸린 움직임.** 누름 0.96배(`Button`) · 창은 열 때만 떠오르고 닫을 때는 바로 사라짐(`Dialog`) · 뼈대 빛 훑음 · 테마 전환 겹쳐 바뀜.
+**움직임 줄이기.** `prefers-reduced-motion: reduce` 면 전역 규칙이 모든 animation · transition · view-transition 을 0초로 끈다 — 일부만 끄지 않는다.
+
+**아직 없는 것 (정책 §4 목록 중).** 판 차례 등장(50ms 간격) · 숫자 0에서 올라가기(0.4초) · 막대 자람 · 선 그리기 · 탭 밑줄 · 왼쪽 줄 막대 미끄러짐 · 서버를 기다리는 단추의 맥박 점(1.6초) · 새 알림 점 한 번 커짐 · 토스트 3초.
+화면마다 붙이는 일이라 해당 화면을 고칠 때 넣는다. 그때 `--t3`(0.3초) · `--dur-count`(0.4초) · `--dur-pulse`(1.6초) · `--stagger`(0.05초)를 QA Hub 값 그대로 정의한다(ADR D7 — 소비처 없는 토큰은 만들지 않는다).
+
+---
+
 ## 9. 다크 모드 정책
 
-> **색은 이행 완료(Q1, 2026-11-02) · 전환 움직임은 ⏳ 이행 예정(Q3).** 두 벌 값이 공통 토큰으로 바뀌었고, 다크에서 파랑 `--primary` 를 지키던 예외는 없어졌다.
-> 전환은 화면 전체가 0.2초 겹쳐 바뀐다(View Transitions, Q3). `light` · `dark` · `system` 3종과 `class="dark"` 전략은 그대로 둔다.
+> **✅ 이행 완료 — 색(Q1) · 전환 움직임(Q3), 2026-11-02.** 두 벌 값이 공통 토큰으로 바뀌었고, 다크에서 파랑 `--primary` 를 지키던 예외는 없어졌다.
+> 전환은 화면 전체가 0.2초 겹쳐 바뀐다 — `applyTheme` 이 테마가 실제로 바뀔 때만 `document.startViewTransition` 으로 감싼다(§8-1). `light` · `dark` · `system` 3종과 `class="dark"` 전략은 그대로 둔다.
 
 다크 모드는 **1급 시민으로 활성 상태**다 — §2의 모든 컬러 토큰 표가 라이트/다크 값을 쌍으로 제공하는 이유가 이것이다.
 

@@ -70,6 +70,26 @@ describe('applyTheme', () => {
     applyTheme('system')
     expect(document.documentElement.classList.contains('dark')).toBe(false)
   })
+
+  // Q3 — 밝게 · 어둡게 전환은 화면 전체가 0.2초 겹쳐 바뀐다(공통 정책 §4). 바뀔 때만 감싼다
+  it('테마가 실제로 바뀌면 View Transitions 로 감싸 바꾼다', () => {
+    document.documentElement.classList.remove('dark')
+    const start = vi.fn((cb: () => void) => cb())
+    Object.assign(document, { startViewTransition: start })
+    applyTheme('dark')
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(document.documentElement.classList.contains('dark')).toBe(true)
+    Reflect.deleteProperty(document, 'startViewTransition')
+  })
+
+  it('이미 같은 테마면 전환 움직임을 걸지 않는다 — 첫 마운트 · 같은 값 재적용', () => {
+    document.documentElement.classList.add('dark')
+    const start = vi.fn((cb: () => void) => cb())
+    Object.assign(document, { startViewTransition: start })
+    applyTheme('dark')
+    expect(start).not.toHaveBeenCalled()
+    Reflect.deleteProperty(document, 'startViewTransition')
+  })
 })
 
 describe('readStoredTheme / writeStoredTheme', () => {

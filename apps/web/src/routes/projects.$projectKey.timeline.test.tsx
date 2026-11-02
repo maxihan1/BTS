@@ -161,7 +161,7 @@ describe('TimelinePage', () => {
     await renderTimelinePage()
 
     expect(screen.queryByTestId('gantt-chart')).not.toBeInTheDocument()
-    expect(document.querySelector('.animate-pulse')).toBeInTheDocument()
+    expect(document.querySelector('[data-slot="skeleton"]')).toBeInTheDocument()
   })
 
   /**

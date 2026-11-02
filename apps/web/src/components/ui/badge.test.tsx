@@ -31,12 +31,12 @@ describe('Badge', () => {
 })
 
 describe('Skeleton 스모크', () => {
-  it('animate-pulse 클래스를 가진 div를 렌더한다', () => {
+  it('skeleton-shimmer 클래스를 가진 div를 렌더한다 (Q3 빛 훑음)', () => {
     render(<Skeleton data-testid="skeleton" />)
 
     const skeleton = screen.getByTestId('skeleton')
     expect(skeleton.tagName).toBe('DIV')
-    expect(skeleton).toHaveClass('animate-pulse')
+    expect(skeleton).toHaveClass('skeleton-shimmer')
   })
 })
 
