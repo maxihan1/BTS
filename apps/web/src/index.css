@@ -246,7 +246,7 @@
 
   --sidebar-ring: #B84D05;
 
-  /* FR-UX-06 §7 상태 토큰 — 바탕 단계 well · line · line2 와 대표색. subtlest 는 AA(faint 3.5:1 미달) 때문에 muted, faint 는 disabled 만 */
+  /* FR-UX-06 §7 상태 토큰 — 바탕 단계 well · line · line2 와 대표색. subtlest = faint · disabled = na (QA Hub 코드 값, 2026-11-02 보정) */
   --bg-neutral: #F2F3F6;
 
   --bg-neutral-hover: #E3E5EA;
@@ -262,9 +262,9 @@
 
   --text-subtle: #575E6B;
 
-  --text-subtlest: #575E6B;
+  --text-subtlest: #646A76;
 
-  --text-disabled: #848A96;
+  --text-disabled: #848B97;
 
   --border-focus: #B84D05;
 
@@ -272,10 +272,10 @@
 
   --brand-text: #B84D05;
 
-  /* 시맨틱 상태색 — 통과 · 실패 = 판정 색 칠, 경고 = 노랑 쪽(Yellow600, 흰 바탕 3.3:1), info = 진행 중 = 대표색 */
+  /* 시맨틱 상태색 — 통과 · 실패 = 판정 색 칠(QA Hub 코드 값), 경고 = 노랑 쪽(Yellow600, 흰 바탕 3.3:1), info = 진행 중 = 대표색 */
   --warning: #B38600;
 
-  --success: #16A34A;
+  --success: #15983F;
 
   --danger: #D4294F;
 
@@ -421,9 +421,9 @@
 
   --text-subtle: #A6ABB5;
 
-  --text-subtlest: #A6ABB5;
+  --text-subtlest: #8C929E;
 
-  --text-disabled: #737985;
+  --text-disabled: #7D8592;
 
   --border-focus: #FF9A4D;
 
