@@ -101,6 +101,12 @@ export const navLabels = {
   /** 사이드바 펼치기 토글 aria-label (접힘 상태) */
   expandSidebar: '사이드바 펼치기',
 
+  /** 상단바 테마 전환 버튼 aria-label — 라이트일 때 / 다크일 때 */
+  themeToDark: '다크 모드로 전환',
+  themeToLight: '라이트 모드로 전환',
+  /** 테마 전환 저장 실패 토스트 */
+  themeSaveError: '테마를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+
   /**
    * 사이드바 폭 조절 핸들 aria-label (Jira 패리티 J6).
    *
