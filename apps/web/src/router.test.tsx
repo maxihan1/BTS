@@ -5,6 +5,7 @@ import { RouterProvider, createRouter, createMemoryHistory } from '@tanstack/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { routeTree } from './router'
 import { useAuthStore } from './auth/authStore'
+import { navLabels } from '@/i18n/nav-labels'
 import { server } from '@/test/server'
 import { burndownHandlers, resetBurndownStore, seedBurndown, DEFAULT_BURNDOWN } from '@/mocks/burndown-handlers'
 import { velocityHandlers, resetVelocityStore, seedVelocity, DEFAULT_VELOCITY } from '@/mocks/velocity-handlers'
@@ -100,7 +101,7 @@ describe('Router', () => {
     expect(await screen.findByText(/이슈 상세/)).toBeInTheDocument()
   })
 
-  it('dashboard에 /issues 네비 링크이 존재한다 (사이드바 메인 nav + 페이지 자체 링크, FR-UX-06 PR11부터 2개)', async () => {
+  it('dashboard에 /issues 네비 링크이 존재한다 (사이드바 메인 nav + 페이지 자체 링크 + 휴대폰 아래 탭, Q5부터 3개)', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'test-access-token',
       user: { username: 'tester', email: 't@t', authMethod: 'local', userId: 'u1', mustChangePassword: false, isSystemAdmin: false, mfaEnrollmentRequired: false },
@@ -109,11 +110,15 @@ describe('Router', () => {
     await screen.findByText(/환영합니다/)
     // PR11부터 사이드바(Sidebar) 메인 nav가 `이슈` 링크(FR3)를 신설해 페이지 자체 링크와
     // 함께 2개가 된다 — 둘 다 동일한 /issues로 연결되므로 의도된 중복(회귀 아님)이다.
+    // Q5(2026-11-02)부터 휴대폰 아래 탭(`BottomTabBar`)의 「이슈」가 셋째다. 620px 이상에서는 CSS 로
+    // 숨지만 jsdom 은 CSS 를 적용하지 않아 접근성 트리에 남는다 — 셋째가 정말 아래 탭 안인지까지 본다.
     const issueLinks = screen.getAllByRole('link', { name: /이슈/ })
-    expect(issueLinks).toHaveLength(2)
+    expect(issueLinks).toHaveLength(3)
     for (const link of issueLinks) {
       expect(link).toHaveAttribute('href', '/issues')
     }
+    const bottomTabs = screen.getByRole('navigation', { name: navLabels.bottomTabs })
+    expect(issueLinks.filter((link) => bottomTabs.contains(link))).toHaveLength(1)
   })
 
   // ─── Task 3: MFA 등록 강제 게이트 라우터 합성 ────────────────────────────────
