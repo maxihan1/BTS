@@ -6,6 +6,7 @@ import com.atlas.bts.identity.web.support.resolveActorId
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -32,12 +33,20 @@ import java.util.UUID
 class QaHubAiWriteGateFilter(
     private val qaHubAiUserId: UUID?,
 ) : OncePerRequestFilter() {
+    private val log = LoggerFactory.getLogger(QaHubAiWriteGateFilter::class.java)
+
+    init {
+        // 비면 조용히 꺼지므로 기동 로그로 켜짐 · 꺼짐을 남긴다 — 운영 .env 에 값이 들어갔는지 여기서 본다
+        log.info("QA Hub AI 쓰기 게이트 {}", qaHubAiUserId?.let { "켜짐 userId=$it" } ?: "꺼짐(BTS_QAHUB_AI_USER_ID 없음)")
+    }
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
         filterChain: FilterChain,
     ) {
         if (isQaHubAi() && request.method !in READ_METHODS && ALLOWED_WRITES.none { it.matches(request) }) {
+            log.warn("QA Hub AI 쓰기 차단 method={}", request.method) // 경로는 남기지 않는다(클래스 KDoc)
             response.status = HttpStatus.FORBIDDEN.value()
             response.contentType = MediaType.APPLICATION_JSON_VALUE
             response.writer.write(FORBIDDEN_BODY)
@@ -55,9 +64,13 @@ class QaHubAiWriteGateFilter(
 
         const val FORBIDDEN_BODY = """{"error":"forbidden"}"""
 
-        /** QA Hub 가 이 열쇠로 부르는 쓰기 다섯 곳 + 읽기지만 POST 인 AQL 검색 (test_platform `apps/admin/src/bts`). */
+        /**
+         * QA Hub 가 이 열쇠로 부르는 쓰기 다섯 곳 + 읽기지만 POST 인 AQL 검색 (test_platform `apps/admin/src/bts`).
+         * 로그아웃은 권한을 줄이기만 해서 연다 — 그 계정으로 브라우저에 들어왔을 때 세션을 끊을 수 있게.
+         */
         val ALLOWED_WRITES =
             listOf(
+                antMatcher(HttpMethod.POST, "/api/v1/auth/logout"),
                 antMatcher(HttpMethod.POST, "/api/v1/issues"),
                 antMatcher(HttpMethod.POST, "/api/v1/issues/*/comments"),
                 antMatcher(HttpMethod.POST, "/api/v1/issues/*/transition"),

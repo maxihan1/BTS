@@ -107,8 +107,11 @@ class QaHubAiWriteGateFilterTest {
         "PATCH, /api/v1/issues/DM-12/assignee",
         "POST, /api/v1/issues/DM-12/attachments",
         "POST, /api/v1/search/aql",
+        "POST, /api/v1/auth/logout",
         "GET, /api/v1/issues/DM-12",
         "GET, /api/v1/users/me/whoami",
+        "HEAD, /api/v1/issues/DM-12",
+        "OPTIONS, /api/v1/issues",
     )
     fun `QA Hub AI 열쇠는 QA Hub 가 부르는 쓰기 · 읽기가 통과한다`(
         method: String,
@@ -125,6 +128,7 @@ class QaHubAiWriteGateFilterTest {
         "POST, /api/v1/issues/DM-12/links",
         "POST, /api/v1/issues/DM-12/comments/c1",
         "PATCH, /api/v1/users/me/preferences",
+        "POST, /api/v1/issues/",
     )
     fun `QA Hub AI 열쇠의 그 밖 쓰기는 403 이다`(
         method: String,
@@ -142,7 +146,9 @@ class QaHubAiWriteGateFilterTest {
 
     @Test
     fun `같은 계정의 브라우저 로그인 JWT 도 막는다`() {
-        call("PATCH", "/api/v1/issues/DM-12", "qahub-jwt").andExpect(status().isForbidden)
+        call("PATCH", "/api/v1/issues/DM-12", "qahub-jwt")
+            .andExpect(status().isForbidden)
+            .andExpect(content().json("""{"error":"forbidden"}"""))
     }
 
     private fun call(
