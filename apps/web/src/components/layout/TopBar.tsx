@@ -19,6 +19,7 @@ import { issueCreateStrings } from '@/i18n/ko'
 import { InboxBell } from '@/components/inbox/InboxBell'
 import { ProjectSwitcher } from '@/components/project/ProjectSwitcher'
 import { AccountMenu } from './AccountMenu'
+import { ThemeToggleButton } from './ThemeToggleButton'
 import { Button } from '@/components/ui/button'
 import { GlobalSearchBox } from './GlobalSearchBox'
 import { replayLogoMotion } from './logo-motion'
@@ -232,6 +233,8 @@ export function TopBar({ onHelpClick }: TopBarProps) {
       >
         <Settings className="size-4" />
       </Link>
+
+      <ThemeToggleButton />
 
       <AccountMenu />
     </header>
