@@ -44,7 +44,7 @@ export function DistributionWidget({ title, note, rows }: DistributionWidgetProp
               </div>
               <div className="bg-muted h-1.5 overflow-hidden rounded-full" aria-hidden="true">
                 <div
-                  className="bg-primary h-full rounded-full"
+                  className="bg-muted-foreground h-full rounded-full"
                   style={{ width: max === 0 ? '0%' : `${String((row.count / max) * 100)}%` }}
                 />
               </div>

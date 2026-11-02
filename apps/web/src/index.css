@@ -1,4 +1,4 @@
-/* 전역 스타일 — Tailwind v4 CSS-first 설정 + ADS v2 팔레트 (FR-UX-06 PR3) */
+/* 전역 스타일 — Tailwind v4 CSS-first 설정 + QA Hub 공통 팔레트 (FR-UX-06 · 3차 캠페인 Q1) */
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -158,7 +158,7 @@
 
   --radius-sm: 3px;
 
-  --radius-md: 4px;
+  --radius-md: 6px;
 
   --radius-lg: 8px;
 
@@ -166,42 +166,44 @@
 }
 
 :root {
+  /* 색 값 정본 — docs/design/2026-10-30-qa-hub-shared-ui-policy.md §1 · §11 (QA Hub 공통 정책, 3차 캠페인 Q1).
+     토큰 이름은 shadcn 그대로 두고 값만 옮겼다. 차트 · 범주 · syntax 는 원문에 값이 없어 그대로 둔다 */
 
-  --background: #FFFFFF;
+  --background: #F5F6F8;
 
-  --foreground: #172B4D;
+  --foreground: #15171C;
 
   --card: #FFFFFF;
 
-  --card-foreground: #172B4D;
+  --card-foreground: #15171C;
 
   --popover: #FFFFFF;
 
-  --popover-foreground: #172B4D;
+  --popover-foreground: #15171C;
 
-  --primary: #0C66E4;
+  --primary: #FF7A1A;
 
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #1A0D02;
 
-  --secondary: #F1F2F4;
+  --secondary: #F2F3F6;
 
-  --secondary-foreground: #172B4D;
+  --secondary-foreground: #15171C;
 
-  --muted: #F7F8F9;
+  --muted: #F2F3F6;
 
-  --muted-foreground: #626F86;
+  --muted-foreground: #575E6B;
 
-  --accent: #F1F2F4;
+  --accent: #F2F3F6;
 
-  --accent-foreground: #172B4D;
+  --accent-foreground: #15171C;
 
-  --destructive: #CA3521;
+  --destructive: #D4294F;
 
-  --border: #DCDFE4;
+  --border: #E3E5EA;
 
-  --input: #DCDFE4;
+  --input: #CFD3DA;
 
-  --ring: #388BFF;
+  --ring: #B84D05;
 
   /* FR-UX-06 PR22 — ADR D7 이행. PR3가 동결해 둔 무채색 placeholder를 실소비(recharts 6종)와 함께 확정.
      역할 배정: 1=주 시리즈 / 2=강조 시리즈 / 3=중립(스코프·TODO·약속) / 4=보조 시리즈 / 5=완료 계열.
@@ -227,82 +229,76 @@
 
   --syntax-number: oklch(0.44 0.17 25);
 
-  /* FR-UX-06 PR11 (D7) — 사이드바 배경 = --surface-sunken 값 (§3.1) */
-  --sidebar: #F7F8F9;
+  /* 사이드바 8종 — 배경 side · 글자 ink · 활성 = 대표색 옅은 바탕 + 대표색 글자 · hover = well · 테두리 line · 링 = --ring */
+  --sidebar: #F5F6F8;
 
-  /* 사이드바 기본 텍스트 = --text 값 ≡ --foreground */
-  --sidebar-foreground: #172B4D;
+  --sidebar-foreground: #15171C;
 
-  /* 사이드바 활성 항목 배경 = --bg-selected 값 (§5.3 "사이드바 활성") */
-  --sidebar-primary: #E9F2FF;
+  --sidebar-primary: #FFF1E6;
 
-  /* 사이드바 활성 항목 텍스트 = --text-selected 값 */
-  --sidebar-primary-foreground: #0C66E4;
+  --sidebar-primary-foreground: #B84D05;
 
-  /* 사이드바 hover 배경 = --bg-neutral-hover 값 */
-  --sidebar-accent: #F1F2F4;
+  --sidebar-accent: #F2F3F6;
 
-  /* 사이드바 hover 텍스트 = --text 값 ≡ --foreground */
-  --sidebar-accent-foreground: #172B4D;
+  --sidebar-accent-foreground: #15171C;
 
-  /* 사이드바 우측 테두리 = --border 값 (§3.1 "border-right: 1px --border") */
-  --sidebar-border: #DCDFE4;
+  --sidebar-border: #E3E5EA;
 
-  /* 사이드바 포커스 링 = --ring 값 (앱 전역 포커스 링과 통일) */
-  --sidebar-ring: #388BFF;
+  --sidebar-ring: #B84D05;
 
-  /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
-  --bg-neutral: #F7F8F9;
+  /* FR-UX-06 §7 상태 토큰 — 바탕 단계 well · line · line2 와 대표색. subtlest 는 AA(faint 3.5:1 미달) 때문에 muted, faint 는 disabled 만 */
+  --bg-neutral: #F2F3F6;
 
-  --bg-neutral-hover: #F1F2F4;
+  --bg-neutral-hover: #E3E5EA;
 
-  --bg-neutral-press: #DCDFE4;
+  --bg-neutral-press: #CFD3DA;
 
-  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. 알파 --bg-neutral의 기본 표면 합성값과 동일 */
-  --bg-neutral-solid: #F7F8F9;
+  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. well 과 같은 값 */
+  --bg-neutral-solid: #F2F3F6;
 
-  --bg-selected: #E9F2FF;
+  --bg-selected: #FFF1E6;
 
-  --text-selected: #0C66E4;
+  --text-selected: #B84D05;
 
-  --text-subtle: #44546F;
+  --text-subtle: #575E6B;
 
-  --text-subtlest: #626F86;
+  --text-subtlest: #575E6B;
 
-  --text-disabled: #B3B9C4;
+  --text-disabled: #848A96;
 
-  --border-focus: #388BFF;
+  --border-focus: #B84D05;
 
-  --brand-hover: #0055CC;
+  --brand-hover: #FF7A1A;
 
-  --brand-text: #0C66E4;
+  --brand-text: #B84D05;
 
-  /* FR-UX-06 시맨틱 상태색 — ADS color.background.<status>.bold */
-  --warning: #B65C02;
+  /* 시맨틱 상태색 — 통과 · 실패 = 판정 색 칠, 경고 = 노랑 쪽(Yellow600, 흰 바탕 3.3:1), info = 진행 중 = 대표색 */
+  --warning: #B38600;
 
-  --success: #1F845A;
+  --success: #16A34A;
 
-  --danger: #CA3521;
+  --danger: #D4294F;
 
-  --info: #0C66E4;
+  --info: #FF7A1A;
 
-  /* bold 배경 위 텍스트 — 라이트=흰글자, 다크=어두운글자 (ADS 관례) */
-  --warning-foreground: #FFFFFF;
+  /* 칠 위 글자 — 4.5:1 넘는 쪽. 통과 칠 위 흰 글자는 3.3:1 이라 잉크 */
+  --warning-foreground: #15171C;
 
-  --success-foreground: #FFFFFF;
+  --success-foreground: #15171C;
 
   --danger-foreground: #FFFFFF;
 
-  --info-foreground: #FFFFFF;
+  --info-foreground: #1A0D02;
 
-  /* tint(옅은 배경) 위 색 텍스트 — ADS color.text.<status> 라이트 -800 (bold 토큰은 tint 위 AA 미달) */
+  /* 옅은 바탕(/10) 위 색 글자. 판정 · 대표색 글자 값이 기본이지만 success · info 는 well 위 /10 에서
+     4.07 · 4.22:1 로 AA 미달이라 같은 계열 한 단계 진한 값(Tailwind green-800 · orange-800)을 쓴다 — BTS 편차 */
   --warning-text: #7F5F01;
 
-  --success-text: #216E4E;
+  --success-text: #166534;
 
-  --danger-text: #AE2A19;
+  --danger-text: #B81E42;
 
-  --info-text: #0055CC;
+  --info-text: #9A3412;
 
   /* FR-UX-06 PR22 범주 토큰 — 소비처가 실재하는 것만 정의한다 (ADR D7).
      --type-*: 타임라인 이슈타입 막대(TimelineRow). 값은 디자인 스펙 §4.2 표 그대로.
@@ -334,41 +330,41 @@
 
 .dark {
 
-  --background: #161A1D;
+  --background: #101114;
 
-  --foreground: #C7D1DB;
+  --foreground: #ECEDEF;
 
-  --card: #1D2125;
+  --card: #17191D;
 
-  --card-foreground: #C7D1DB;
+  --card-foreground: #ECEDEF;
 
-  --popover: #22272B;
+  --popover: #17191D;
 
-  --popover-foreground: #C7D1DB;
+  --popover-foreground: #ECEDEF;
 
-  --primary: #0C66E4;           /* Maxi 결정 3 — 다크도 Blue700 + 흰 글자 (ADS Blue400 기각) */
+  --primary: #FF7A1A;
 
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #1A0D02;
 
-  --secondary: #A1BDD914;
+  --secondary: #1D2025;
 
-  --secondary-foreground: #C7D1DB;
+  --secondary-foreground: #ECEDEF;
 
-  --muted: #BCD6F00A;
+  --muted: #1D2025;
 
-  --muted-foreground: #8696A7;
+  --muted-foreground: #A6ABB5;
 
-  --accent: #A1BDD914;
+  --accent: #1D2025;
 
-  --accent-foreground: #C7D1DB;
+  --accent-foreground: #ECEDEF;
 
-  --destructive: #F87462;
+  --destructive: #EE3D63;
 
-  --border: #2C333A;
+  --border: #272A31;
 
-  --input: #2C333A;
+  --input: #363A43;
 
-  --ring: #85B8FF;
+  --ring: #FF9A4D;
 
   /* FR-UX-06 PR22 (다크) — 라이트와 동일 역할 배정, 400번대로 밝기 반전. 대비는 --card(#1D2125) 기준. */
   --chart-1: #579DFF;
@@ -392,75 +388,75 @@
 
   --syntax-number: oklch(0.75 0.16 25);
 
-  /* FR-UX-06 PR11 (D7) — --sidebar-* 8종 역할은 :root 주석 참조. 값만 다크 대응 */
-  --sidebar: #161A1D;
+  /* 사이드바 8종 — 역할은 :root 주석 참조. 값만 다크 대응 */
+  --sidebar: #0D0E11;
 
-  --sidebar-foreground: #C7D1DB;
+  --sidebar-foreground: #ECEDEF;
 
-  --sidebar-primary: #082145;
+  --sidebar-primary: #FF7A1A21;
 
-  --sidebar-primary-foreground: #579DFF;
+  --sidebar-primary-foreground: #FF9A4D;
 
-  --sidebar-accent: #A1BDD914;
+  --sidebar-accent: #1D2025;
 
-  --sidebar-accent-foreground: #C7D1DB;
+  --sidebar-accent-foreground: #ECEDEF;
 
-  --sidebar-border: #2C333A;
+  --sidebar-border: #272A31;
 
-  --sidebar-ring: #85B8FF;
+  --sidebar-ring: #FF9A4D;
 
-  /* FR-UX-06 §7 상태 토큰 — ADS v2 실제값 (PR2 alias → PR3 확정) */
-  --bg-neutral: #BCD6F00A;
+  /* FR-UX-06 §7 상태 토큰 — 다크 바탕 단계 */
+  --bg-neutral: #1D2025;
 
-  --bg-neutral-hover: #A1BDD914;
+  --bg-neutral-hover: #272A31;
 
-  --bg-neutral-press: #A6C5E229;
+  --bg-neutral-press: #363A43;
 
-  /* 가림(occlusion)용 불투명 뉴트럴 — sticky 헤더 등. 알파 --bg-neutral의 기본 표면 합성값과 동일 */
-  --bg-neutral-solid: #1D2125;
+  /* 가림(occlusion)용 불투명 뉴트럴 — well 과 같은 값 */
+  --bg-neutral-solid: #1D2025;
 
-  --bg-selected: #082145;
+  --bg-selected: #FF7A1A21;
 
-  --text-selected: #579DFF;
+  --text-selected: #FF9A4D;
 
-  --text-subtle: #9FADBC;
+  --text-subtle: #A6ABB5;
 
-  --text-subtlest: #8696A7;
+  --text-subtlest: #A6ABB5;
 
-  --text-disabled: #454F59;
+  --text-disabled: #737985;
 
-  --border-focus: #85B8FF;
+  --border-focus: #FF9A4D;
 
-  --brand-hover: #0055CC;
+  --brand-hover: #FF7A1A;
 
-  --brand-text: #579DFF;
+  --brand-text: #FF9A4D;
 
-  /* FR-UX-06 시맨틱 상태색 — ADS color.background.<status>.bold */
+  /* 시맨틱 상태색 (다크) — 경고는 원래 노랑(Yellow400)이라 그대로 */
   --warning: #E2B203;
 
-  --success: #4BCE97;
+  --success: #3FB871;
 
-  --danger: #F87462;
+  --danger: #EE3D63;
 
-  --info: #579DFF;
+  --info: #FF7A1A;
 
-  /* bold 배경 위 텍스트 — 라이트=흰글자, 다크=어두운글자 (ADS 관례) */
+  /* 칠 위 글자 — 다크는 어두운 글자 */
   --warning-foreground: #161A1D;
 
   --success-foreground: #161A1D;
 
   --danger-foreground: #161A1D;
 
-  --info-foreground: #161A1D;
+  --info-foreground: #1A0D02;
 
-  /* tint 위 색 텍스트 — ADS color.text.<status> 다크 -300 (다크 tint 위 AA≥6.8) */
+  /* 옅은 바탕 위 색 글자 (다크) — 판정 색 · 대표색의 「글자」 값 (panel 위 AA≥7.8) */
   --warning-text: #F5CD47;
 
-  --success-text: #7EE2B8;
+  --success-text: #6FD49A;
 
-  --danger-text: #FF9C8F;
+  --danger-text: #FF8AA3;
 
-  --info-text: #85B8FF;
+  --info-text: #FF9A4D;
 
   /* FR-UX-06 PR22 범주 토큰 (다크) — 라이트 700번대 → 다크 400번대, §4.2 규칙 승계.
      중립 2종만 DarkNeutral 800/850. foreground는 기존 4쌍과 동일하게 #161A1D. */

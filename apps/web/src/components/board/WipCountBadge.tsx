@@ -6,9 +6,9 @@ import { boardLabels } from '@/i18n/board-labels'
 // 디자인 토큰 상수 — 매직 클래스 금지
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** WIP 미초과(또는 제한 없음) 배지 — 기본 primary 톤 */
+/** WIP 미초과(또는 제한 없음) 배지 — 회색 단계. 개수는 대표색 다섯 자리 밖이다(공통 정책 §1) */
 const BADGE_NEUTRAL =
-  'rounded-full bg-primary px-1.5 py-0.5 text-xs font-medium text-primary-foreground'
+  'rounded-full bg-(--bg-neutral-press) px-1.5 py-0.5 text-xs font-medium text-foreground'
 
 /** WIP 초과 배지 — warning 주의 톤 (경고는 정보, 차단 아님) */
 const BADGE_EXCEEDED =

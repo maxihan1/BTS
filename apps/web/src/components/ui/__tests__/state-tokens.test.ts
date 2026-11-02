@@ -6,24 +6,24 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 /**
- * FR-UX-06 PR3 확정 팔레트 — 정본: docs/plans/2026-07-19-fr-ux-06-pr3-ads-palette-values.md
- * (@atlaskit/tokens@1.4.2) + Maxi 확정 4결정(warning=Orange, text 스텝=ADS 실측,
- * 다크 primary=shadcn 관례, ring=border-focus 통일).
- * 값을 바꾸려면 values.md 정본과 이 표를 같은 커밋에서 바꿔야 한다 — 값 지어내기 방지 가드.
+ * 3차 캠페인 Q1 팔레트 — 정본: docs/design/2026-10-30-qa-hub-shared-ui-policy.md §1 · §11 (QA Hub 공통 정책).
+ * 대응 결정(DESIGN.md §2): 토큰 이름은 shadcn 그대로 · 대표색 오렌지 · well/line/line2 바탕 단계 ·
+ * subtlest=muted(faint 3.5:1 AA 미달) · 경고 라이트=Yellow600 · ring=대표색 글자 값 · 다크 파랑 예외 삭제.
+ * 값을 바꾸려면 정책 문서와 이 표를 같은 커밋에서 바꿔야 한다 — 값 지어내기 방지 가드.
  */
 const STATE_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
-  ['--bg-neutral', '#F7F8F9', '#BCD6F00A'],
-  ['--bg-neutral-hover', '#F1F2F4', '#A1BDD914'],
-  ['--bg-neutral-press', '#DCDFE4', '#A6C5E229'],
-  ['--bg-neutral-solid', '#F7F8F9', '#1D2125'],
-  ['--bg-selected', '#E9F2FF', '#082145'],
-  ['--text-selected', '#0C66E4', '#579DFF'],
-  ['--text-subtle', '#44546F', '#9FADBC'],
-  ['--text-subtlest', '#626F86', '#8696A7'],
-  ['--text-disabled', '#B3B9C4', '#454F59'],
-  ['--border-focus', '#388BFF', '#85B8FF'],
-  ['--brand-hover', '#0055CC', '#0055CC'],
-  ['--brand-text', '#0C66E4', '#579DFF'],
+  ['--bg-neutral', '#F2F3F6', '#1D2025'],
+  ['--bg-neutral-hover', '#E3E5EA', '#272A31'],
+  ['--bg-neutral-press', '#CFD3DA', '#363A43'],
+  ['--bg-neutral-solid', '#F2F3F6', '#1D2025'],
+  ['--bg-selected', '#FFF1E6', '#FF7A1A21'],
+  ['--text-selected', '#B84D05', '#FF9A4D'],
+  ['--text-subtle', '#575E6B', '#A6ABB5'],
+  ['--text-subtlest', '#575E6B', '#A6ABB5'],
+  ['--text-disabled', '#848A96', '#737985'],
+  ['--border-focus', '#B84D05', '#FF9A4D'],
+  ['--brand-hover', '#FF7A1A', '#FF7A1A'],
+  ['--brand-text', '#B84D05', '#FF9A4D'],
 ] as const
 
 /**
@@ -32,40 +32,40 @@ const STATE_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: 
  * 되돌아가는 것을 차단 — [token, light, dark] 전수 대조.
  */
 const CORE_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
-  ['--background', '#FFFFFF', '#161A1D'],
-  ['--foreground', '#172B4D', '#C7D1DB'],
-  ['--card', '#FFFFFF', '#1D2125'],
-  ['--card-foreground', '#172B4D', '#C7D1DB'],
-  ['--popover', '#FFFFFF', '#22272B'],
-  ['--popover-foreground', '#172B4D', '#C7D1DB'],
-  ['--primary', '#0C66E4', '#0C66E4'],
-  ['--primary-foreground', '#FFFFFF', '#FFFFFF'],
-  ['--secondary', '#F1F2F4', '#A1BDD914'],
-  ['--secondary-foreground', '#172B4D', '#C7D1DB'],
-  ['--muted', '#F7F8F9', '#BCD6F00A'],
-  ['--muted-foreground', '#626F86', '#8696A7'],
-  ['--accent', '#F1F2F4', '#A1BDD914'],
-  ['--accent-foreground', '#172B4D', '#C7D1DB'],
-  ['--destructive', '#CA3521', '#F87462'],
-  ['--border', '#DCDFE4', '#2C333A'],
-  ['--input', '#DCDFE4', '#2C333A'],
-  ['--ring', '#388BFF', '#85B8FF'],
+  ['--background', '#F5F6F8', '#101114'],
+  ['--foreground', '#15171C', '#ECEDEF'],
+  ['--card', '#FFFFFF', '#17191D'],
+  ['--card-foreground', '#15171C', '#ECEDEF'],
+  ['--popover', '#FFFFFF', '#17191D'],
+  ['--popover-foreground', '#15171C', '#ECEDEF'],
+  ['--primary', '#FF7A1A', '#FF7A1A'],
+  ['--primary-foreground', '#1A0D02', '#1A0D02'],
+  ['--secondary', '#F2F3F6', '#1D2025'],
+  ['--secondary-foreground', '#15171C', '#ECEDEF'],
+  ['--muted', '#F2F3F6', '#1D2025'],
+  ['--muted-foreground', '#575E6B', '#A6ABB5'],
+  ['--accent', '#F2F3F6', '#1D2025'],
+  ['--accent-foreground', '#15171C', '#ECEDEF'],
+  ['--destructive', '#D4294F', '#EE3D63'],
+  ['--border', '#E3E5EA', '#272A31'],
+  ['--input', '#CFD3DA', '#363A43'],
+  ['--ring', '#B84D05', '#FF9A4D'],
 ] as const
 
-/** FR-UX-06 PR3 신설 시맨틱 foreground 4종 — bold 배경 위 텍스트 대비 확보 (게이트2 C3) */
+/** 시맨틱 foreground 4종 — 칠 위 글자. 라이트 통과 · 경고는 흰 글자 대비 미달이라 잉크 */
 const SEMANTIC_FOREGROUND: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
-  ['--warning-foreground', '#FFFFFF', '#161A1D'],
-  ['--success-foreground', '#FFFFFF', '#161A1D'],
+  ['--warning-foreground', '#15171C', '#161A1D'],
+  ['--success-foreground', '#15171C', '#161A1D'],
   ['--danger-foreground', '#FFFFFF', '#161A1D'],
-  ['--info-foreground', '#FFFFFF', '#161A1D'],
+  ['--info-foreground', '#1A0D02', '#1A0D02'],
 ] as const
 
-/** FR-UX-06 PR3 신설 시맨틱 상태색 — ADS color.background.<status>.bold */
+/** 시맨틱 상태색 — 판정 색 칠 · 경고 노랑 쪽 · info = 진행 중 = 대표색 */
 const SEMANTIC_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
-  ['--warning', '#B65C02', '#E2B203'],
-  ['--success', '#1F845A', '#4BCE97'],
-  ['--danger', '#CA3521', '#F87462'],
-  ['--info', '#0C66E4', '#579DFF'],
+  ['--warning', '#B38600', '#E2B203'],
+  ['--success', '#16A34A', '#3FB871'],
+  ['--danger', '#D4294F', '#EE3D63'],
+  ['--info', '#FF7A1A', '#FF7A1A'],
 ] as const
 
 /**
@@ -76,9 +76,9 @@ const SEMANTIC_TOKENS: ReadonlyArray<readonly [token: string, light: string, dar
  */
 const SEMANTIC_TEXT: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
   ['--warning-text', '#7F5F01', '#F5CD47'],
-  ['--success-text', '#216E4E', '#7EE2B8'],
-  ['--danger-text', '#AE2A19', '#FF9C8F'],
-  ['--info-text', '#0055CC', '#85B8FF'],
+  ['--success-text', '#166534', '#6FD49A'],
+  ['--danger-text', '#B81E42', '#FF8AA3'],
+  ['--info-text', '#9A3412', '#FF9A4D'],
 ] as const
 
 /**
@@ -91,14 +91,14 @@ const SEMANTIC_TEXT: ReadonlyArray<readonly [token: string, light: string, dark:
  * (§3.1 "border-right: 1px --border"), `--sidebar-ring`=포커스 링(`--ring`, 앱 전역과 통일).
  */
 const SIDEBAR_TOKENS: ReadonlyArray<readonly [token: string, light: string, dark: string]> = [
-  ['--sidebar', '#F7F8F9', '#161A1D'],
-  ['--sidebar-foreground', '#172B4D', '#C7D1DB'],
-  ['--sidebar-primary', '#E9F2FF', '#082145'],
-  ['--sidebar-primary-foreground', '#0C66E4', '#579DFF'],
-  ['--sidebar-accent', '#F1F2F4', '#A1BDD914'],
-  ['--sidebar-accent-foreground', '#172B4D', '#C7D1DB'],
-  ['--sidebar-border', '#DCDFE4', '#2C333A'],
-  ['--sidebar-ring', '#388BFF', '#85B8FF'],
+  ['--sidebar', '#F5F6F8', '#0D0E11'],
+  ['--sidebar-foreground', '#15171C', '#ECEDEF'],
+  ['--sidebar-primary', '#FFF1E6', '#FF7A1A21'],
+  ['--sidebar-primary-foreground', '#B84D05', '#FF9A4D'],
+  ['--sidebar-accent', '#F2F3F6', '#1D2025'],
+  ['--sidebar-accent-foreground', '#15171C', '#ECEDEF'],
+  ['--sidebar-border', '#E3E5EA', '#272A31'],
+  ['--sidebar-ring', '#B84D05', '#FF9A4D'],
 ] as const
 
 /**
@@ -159,7 +159,7 @@ const UNCONSUMED_TOKENS = [
 const RADIUS_TOKENS: ReadonlyArray<readonly [token: string, value: string]> = [
   ['--radius-xs', '2px'],
   ['--radius-sm', '3px'],
-  ['--radius-md', '4px'],
+  ['--radius-md', '6px'],
   ['--radius-lg', '8px'],
   ['--radius-xl', '12px'],
 ] as const

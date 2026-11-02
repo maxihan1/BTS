@@ -80,7 +80,7 @@ export function EditableCell({
         // 로케이터가 살아 있도록 **접두는 고정**이다.
         aria-label={`${label}, 현재 ${valueLabel}`}
         // ★토큰명 주의 — `--border-default` 는 **존재하지 않는다**(index.css 실측). 실제 이름은
-        // `--border`(라이트 #DCDFE4 · 다크 #2C333A). 없는 토큰을 쓰면 ring 색이 비어 hover
+        // `--border`(라이트 #E3E5EA · 다크 #272A31). 없는 토큰을 쓰면 ring 색이 비어 hover
         // 어포던스(FR2)가 조용히 사라진다 — 디자인 리뷰 Pass 5 가 잡은 실버그.
         //
         // 🛑 `select-text` 를 지우지 마라 — 장식이 아니다. `PopoverTrigger` 는 `<button>` 으로
