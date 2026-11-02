@@ -13,14 +13,15 @@ export type IssueDetailPresentation = 'modal' | 'sidePanel'
  * sessionStorage 접근은 사설 창·차단 설정에서 **접근 자체가 throw** 한다.
  * `use-sidebar-collapsed.ts` 의 fail-safe 템플릿과 같은 이유로 통째로 감싼다.
  *
- * @returns 저장된 선호. 없거나 읽기 실패면 `'sidePanel'` — QA Hub 공통 정책 §5 「상세 보기는 오른쪽 서랍」
- *   (3차 캠페인 Q4, 2026-11-02 Maxi 결정. 그 전 기본은 Jira 의 `'modal'`)
+ * @returns 저장된 선호. 없거나 읽기 실패면 `'modal'`(Jira 기본, J1).
+ *   2026-11-02 Q4 에서 `'sidePanel'` 을 기본으로 했다가(#626) 같은 날 Maxi 결정으로 되돌렸다 —
+ *   BTS 상세는 2단이라 서랍이 보드를 찌그러뜨린다. 공통 정책 §5 「오른쪽 서랍」의 BTS 편차다.
  */
 function readPreference(): IssueDetailPresentation {
   try {
-    return sessionStorage.getItem(PREFER_KEY) === 'modal' ? 'modal' : 'sidePanel'
+    return sessionStorage.getItem(PREFER_KEY) === 'sidePanel' ? 'sidePanel' : 'modal'
   } catch {
-    return 'sidePanel'
+    return 'modal'
   }
 }
 

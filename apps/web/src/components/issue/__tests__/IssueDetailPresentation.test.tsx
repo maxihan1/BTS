@@ -166,23 +166,24 @@ describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () =
 })
 
 /**
- * Q4(3차 캠페인, 2026-11-02 Maxi 결정) — 상세 기본은 **오른쪽 서랍**(사이드패널)이다.
- * QA Hub 공통 정책 §5 「상세 보기는 오른쪽 서랍 · 목록을 떠나지 않고 뒤를 어둡게 하지 않는다」.
- * 사람이 `⋯` 로 모달을 고르면 그 선택은 세션 동안 기억된다(J1 그대로).
+ * 상세 기본은 **가운데 모달**(Jira 기본, J1)이다.
+ * 2026-11-02 Q4 에서 오른쪽 서랍을 기본으로 했다가(#626) 같은 날 Maxi 결정으로 되돌렸다 —
+ * BTS 상세는 본문 + 340px 메타 2단이라 서랍에 넣으면 보드가 찌그러지거나 가려진다(공통 정책 §5 의 BTS 편차).
+ * 사람이 `⋯` 로 사이드바를 고르면 그 선택은 세션 동안 기억된다(J1 그대로).
  */
-describe('표시 방식 기본값 (Q4)', () => {
-  it('저장된 선호가 없으면 사이드패널로 연다', async () => {
+describe('표시 방식 기본값 (J1 · Q4 편차)', () => {
+  it('저장된 선호가 없으면 모달로 연다', async () => {
     sessionStorage.removeItem('bts.issueDetail.presentation')
     vi.resetModules()
     const { useIssueDetailModalStore: fresh } = await import('../issueDetailModalStore')
-    expect(fresh.getState().presentation).toBe('sidePanel')
+    expect(fresh.getState().presentation).toBe('modal')
   })
 
-  it('사람이 모달을 골라 두었으면 모달로 연다', async () => {
-    sessionStorage.setItem('bts.issueDetail.presentation', 'modal')
+  it('사람이 사이드바를 골라 두었으면 사이드바로 연다', async () => {
+    sessionStorage.setItem('bts.issueDetail.presentation', 'sidePanel')
     vi.resetModules()
     const { useIssueDetailModalStore: fresh } = await import('../issueDetailModalStore')
-    expect(fresh.getState().presentation).toBe('modal')
+    expect(fresh.getState().presentation).toBe('sidePanel')
     sessionStorage.removeItem('bts.issueDetail.presentation')
   })
 })
