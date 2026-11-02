@@ -36,7 +36,7 @@ export const importLabels = {
   },
   /** 토글 하단 한 줄 도움말 — 어느 모드가 어떤 입력에 맞는지 안내 (FR-IM-02 DR-3) */
   modeHelpText:
-    '바로 가져오기 = canonical 컬럼·JSON 첨부 zip / 매핑하며 가져오기 = 임의 CSV 컬럼·작성자·값 매핑',
+    '바로 가져오기 = BTS 내보내기 형식 그대로(CSV · JSON, 첨부는 zip) / 매핑하며 가져오기 = 다른 도구의 CSV 칸 · 작성자 · 값을 골라 맞춤',
   /** CREATE 권한이 명시적으로 거부됐을 때 폼을 대체하는 안내 카드의 제목 */
   createDeniedTitle: '가져오기를 사용할 수 없습니다',
   /**

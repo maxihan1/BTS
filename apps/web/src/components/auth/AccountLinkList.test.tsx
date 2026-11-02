@@ -65,7 +65,7 @@ describe('AccountLinkList — 빈 목록', () => {
   it('빈 배열이면 addCta 버튼을 렌더하고 클릭 시 onAddLink를 호출한다', () => {
     const onAddLink = vi.fn()
     render(<AccountLinkList links={[]} onUnlink={vi.fn()} onAddLink={onAddLink} />)
-    fireEvent.click(screen.getByRole('button', { name: '외부 계정 연결하기' }))
+    fireEvent.click(screen.getByRole('button', { name: '외부 계정 연결' }))
     expect(onAddLink).toHaveBeenCalledTimes(1)
   })
 })

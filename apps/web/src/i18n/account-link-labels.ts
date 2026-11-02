@@ -20,7 +20,7 @@ export const accountLinkLabels = {
     /** 연결된 계정 없음 안내 텍스트 */
     emptyMessage: '연결된 외부 계정이 없습니다.',
     /** 빈 상태에서 연결 추가 CTA 버튼 텍스트 */
-    addCta: '외부 계정 연결하기',
+    addCta: '외부 계정 연결',
     /** 로딩 상태 aria-label */
     loadingStatus: '연결된 계정 목록 로딩 중',
   },

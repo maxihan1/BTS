@@ -172,8 +172,8 @@ describe('AccountLinksSettingsPage — step-up 오케스트레이션', () => {
     seedLinks([])
     renderPage()
 
-    // "외부 계정 연결하기" CTA 버튼 클릭 → AddAccountDialog 열림
-    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결하기' })
+    // "외부 계정 연결" CTA 버튼 클릭 → AddAccountDialog 열림
+    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결' })
     fireEvent.click(addBtn)
 
     // LDAP 라디오 선택
@@ -205,8 +205,8 @@ describe('AccountLinksSettingsPage — SSO onSsoStart', () => {
     seedLinks([])
     renderPage()
 
-    // "외부 계정 연결하기" CTA
-    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결하기' })
+    // "외부 계정 연결" CTA
+    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결' })
     fireEvent.click(addBtn)
 
     // OIDC 라디오 선택
@@ -233,8 +233,8 @@ describe('AccountLinksSettingsPage — SSO onSsoStart', () => {
     seedLinks([])
     renderPage({ assignLocation })
 
-    // "외부 계정 연결하기" CTA
-    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결하기' })
+    // "외부 계정 연결" CTA
+    const addBtn = await screen.findByRole('button', { name: '외부 계정 연결' })
     fireEvent.click(addBtn)
 
     // OIDC 라디오 선택

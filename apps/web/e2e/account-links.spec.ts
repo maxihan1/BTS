@@ -47,7 +47,7 @@ const SCENARIO_KEY = {
 //
 // Given   alice 로그인 → /settings/account-links 진입
 // When    linkStore가 비어 있음 (초기 상태)
-// Then    빈 상태 메시지 + "외부 계정 연결하기" CTA 버튼 표시
+// Then    빈 상태 메시지 + "외부 계정 연결" CTA 버튼 표시
 // ─────────────────────────────────────────────────────────────────────────────
 
 test.describe('S1 빈 상태 목록 표시 (FR-AU-08)', () => {
@@ -64,8 +64,8 @@ test.describe('S1 빈 상태 목록 표시 (FR-AU-08)', () => {
     // Then. 빈 상태 메시지 확인 (AccountLinkList 빈 상태 렌더)
     await expect(page.getByText('연결된 외부 계정이 없습니다.')).toBeVisible()
 
-    // Then. CTA 버튼 확인 — exact:true로 "외부 계정 연결하기"와 "계정 추가" 텍스트 중복 방지
-    await expect(page.getByRole('button', { name: '외부 계정 연결하기', exact: true })).toBeVisible()
+    // Then. CTA 버튼 확인 — exact:true로 "외부 계정 연결"과 "계정 추가" 텍스트 중복 방지
+    await expect(page.getByRole('button', { name: '외부 계정 연결', exact: true })).toBeVisible()
   })
 })
 
@@ -73,7 +73,7 @@ test.describe('S1 빈 상태 목록 표시 (FR-AU-08)', () => {
 // S2 — LDAP 계정 연결 (step-up 재인증 → 연결 성공)
 //
 // Given   alice 로그인, step-up 미보유
-// When    "외부 계정 연결하기" → LDAP 선택 → "연결" 클릭
+// When    "외부 계정 연결" → LDAP 선택 → "연결" 클릭
 // Then    ReauthDialog(재인증 모달) 표시 → 비밀번호 입력 → 확인
 //         → 자동으로 step-up 유효 → 연결 성공 토스트 + 카드 표시
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,8 +87,8 @@ test.describe('S2 LDAP 계정 연결 — step-up 재인증 후 연결 (FR-AU-08)
     await page.goto('/settings/account-links')
     await expect(page.getByRole('heading', { name: '계정 연결', exact: true })).toBeVisible()
 
-    // When. "외부 계정 연결하기" CTA 클릭 → AddAccountDialog 열기
-    await page.getByRole('button', { name: '외부 계정 연결하기', exact: true }).click()
+    // When. "외부 계정 연결" CTA 클릭 → AddAccountDialog 열기
+    await page.getByRole('button', { name: '외부 계정 연결', exact: true }).click()
 
     // Then. AddAccountDialog 표시 확인
     await expect(page.getByRole('dialog')).toBeVisible()
@@ -138,7 +138,7 @@ test.describe('S2 LDAP 계정 연결 — step-up 재인증 후 연결 (FR-AU-08)
 // S4a — SSO 연결 시작 (재인증 → authorizeUrl 네비게이션 인터셉트)
 //
 // Given   alice 로그인
-// When    "외부 계정 연결하기" → Corp SAML 선택 → "연결" → 재인증 모달 → 재인증 성공
+// When    "외부 계정 연결" → Corp SAML 선택 → "연결" → 재인증 모달 → 재인증 성공
 // Then    POST /api/v1/auth/account/links/sso/start → authorizeUrl 반환
 //         → window.location.assign → /saml2/authenticate/saml-corp 네비게이션 인터셉트
 //
@@ -165,8 +165,8 @@ test.describe('S4a SSO 연결 시작 — 재인증 후 authorizeUrl 네비게이
     await page.goto('/settings/account-links')
     await expect(page.getByRole('heading', { name: '계정 연결', exact: true })).toBeVisible()
 
-    // When. "외부 계정 연결하기" → Corp SAML 선택
-    await page.getByRole('button', { name: '외부 계정 연결하기', exact: true }).click()
+    // When. "외부 계정 연결" → Corp SAML 선택
+    await page.getByRole('button', { name: '외부 계정 연결', exact: true }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('radio', { name: 'Corp SAML (SAML)', exact: true }).click()
 
@@ -249,7 +249,7 @@ test.describe('S5 계정 연결 해제 (FR-AU-08)', () => {
     await expect(page.getByRole('heading', { name: '계정 연결', exact: true })).toBeVisible()
 
     // Given. LDAP 연결 (S2 흐름) — 재인증 후 연결
-    await page.getByRole('button', { name: '외부 계정 연결하기', exact: true }).click()
+    await page.getByRole('button', { name: '외부 계정 연결', exact: true }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('radio', { name: 'BTS LDAP (LDAP)', exact: true }).click()
     await page.getByLabel('사용자명').fill('alice')
@@ -319,7 +319,7 @@ test.describe('S6 마지막 인증수단 409 — 해제 불가 안내 (FR-AU-08)
     await expect(page.getByRole('heading', { name: '계정 연결', exact: true })).toBeVisible()
 
     // Given. LDAP 연결 (S2 흐름) — 재인증 후 연결
-    await page.getByRole('button', { name: '외부 계정 연결하기', exact: true }).click()
+    await page.getByRole('button', { name: '외부 계정 연결', exact: true }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.getByRole('radio', { name: 'BTS LDAP (LDAP)', exact: true }).click()
     await page.getByLabel('사용자명').fill('alice')

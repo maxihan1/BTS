@@ -199,7 +199,7 @@ export const workflowPublishLabels = {
      */
     message: '다른 사용자가 먼저 워크플로를 업데이트했습니다. 이 변경은 다시 시도해도 반영되지 않습니다',
     /** 유일한 출구 */
-    action: '변경을 버리고 다시 편집하기',
+    action: '변경 버리고 다시 편집',
   },
 
   /** 공용 */
