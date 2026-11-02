@@ -72,7 +72,7 @@ export function IssueLabelsEdit({
       <Button
         variant="ghost"
         size="xs"
-        className="self-end lg:min-h-0 max-lg:min-h-[44px]"
+        className="self-end md:min-h-0 max-md:min-h-[44px]"
         onClick={() => onSave(chips)}
         disabled={!canEdit}
         aria-label={issueDetailStrings.labelsSaveButton}

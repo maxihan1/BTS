@@ -1,4 +1,4 @@
-// 이슈 상세 우측 메타패널 컴포넌트 — 상태 배지·전환 셀렉터·우선순위·영향도·환경·라벨·담당자·감시자·보안등급·커스텀필드·보고자·프로젝트·유형·버전·날짜 + 삭제 버튼
+// 이슈 상세 우측 메타패널 — 맨 위 상태 단추 · ⚡, 「세부 사항」 카드(담당자 · 보고자 · 라벨 · 우선순위 · 유형 · 즐겨찾기 · 감시자), 「더 많은 필드」, 생성 · 수정, 복제 · 삭제
 import type { JSX, RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -14,9 +14,6 @@ import type { UserSummary } from '@/api/users'
 import type { Component } from '@/api/components'
 import type { Version } from '@/api/versions.types'
 import { Button } from '@/components/ui/button'
-import { ComponentMultiSelect } from '@/components/issue/ComponentMultiSelect'
-import { VersionMultiSelect } from '@/components/issue/VersionMultiSelect'
-import { IssueSecurityLevelSelect } from '@/components/issue/IssueSecurityLevelSelect'
 import { IssueTypeIcon } from '@/components/issue/IssueTypeIcon'
 import { useDateFormat } from '@/hooks/use-date-format'
 import { issueDetailStrings } from '@/i18n/ko'
@@ -26,12 +23,11 @@ import { useCustomFields } from '@/hooks/use-custom-fields'
 import { WatchersSection } from '@/components/issue/WatchersSection'
 import { FavoriteButton } from '@/components/favorite/FavoriteButton'
 import { IssuePrioritySelect } from '@/components/issue/meta/IssuePrioritySelect'
-import { IssueImpactSelect } from '@/components/issue/meta/IssueImpactSelect'
 import { IssueTypeSelect } from '@/components/issue/meta/IssueTypeSelect'
-import { META_LABEL_CLASS, META_ROW_CLASS } from '@/components/issue/meta/meta-row-class'
-import { IssueEnvironmentEdit } from '@/components/issue/meta/IssueEnvironmentEdit'
+import { META_CARD_CLASS, META_CARD_SUMMARY_CLASS, META_LABEL_CLASS, META_ROW_CLASS } from '@/components/issue/meta/meta-row-class'
+import { IssueMoreFields } from '@/components/issue/meta/IssueMoreFields'
+import { IssueAutomationMenu } from '@/components/automation/IssueAutomationMenu'
 import { IssueLabelsEdit } from '@/components/issue/meta/IssueLabelsEdit'
-import { IssueCustomFieldsEdit } from '@/components/issue/meta/IssueCustomFieldsEdit'
 import { IssueAssigneeSelect } from '@/components/issue/meta/IssueAssigneeSelect'
 import { IssueReporterRow } from '@/components/issue/meta/IssueReporterRow'
 import { IssueStateTransition } from '@/components/issue/meta/IssueStateTransition'
@@ -719,84 +715,27 @@ export function IssueMetaPanel({
 
   return (
     <aside className="flex flex-col gap-3">
+      {/* 맨 위 — 상태 단추 · ⚡ 자동화. Jira 실측 JV-19: 상태는 오른쪽 위 32px 단추가 가장 눈에 띄는 자리다 */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="issue-status-row">
+        <IssueStateTransition
+          currentStateKey={issue.currentStateKey}
+          transitions={transitions}
+          onTransition={onTransition}
+          isTransitioning={isTransitioning}
+          unavailableReason={unavailableReason}
+        />
+        {/* 수동 실행 자동화 규칙 — Jira 이슈 화면 ⚡ 자리(상태 옆, R9 · JAU-5) */}
+        <IssueAutomationMenu projectKey={issue.projectKey} issueKey={issue.key} />
+      </div>
+
       {/* 보드가 정한 상세 보기 필드 — 조회 실패 안내와 빈 상태 판단은 섹션이 쥔다. */}
       <DetailViewFieldsSection state={detailView} />
 
-      {/* 메타 패널 카드 */}
-      <div className="border border-border rounded-lg overflow-hidden">
-        {/* 상태 — 현재 상태 배지가 곧 전환 메뉴 트리거 (FR-IS-01 · FR-WF-01 D9) */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.statLabel}</p>
-          <IssueStateTransition
-            currentStateKey={issue.currentStateKey}
-            transitions={transitions}
-            onTransition={onTransition}
-            isTransitioning={isTransitioning}
-            unavailableReason={unavailableReason}
-          />
-        </div>
+      {/* 세부 사항 — 늘 보는 필드만(Jira 「세부 사항」 카드). 나머지는 아래 「더 많은 필드」 */}
+      <details open className={META_CARD_CLASS} data-testid="details-card">
+        <summary className={META_CARD_SUMMARY_CLASS}>{issueDetailStrings.detailsSectionLabel}</summary>
 
-        {/* 해결 결과 — DONE 전환 후 resolution이 있을 때만 표시 (FR-IS-07) */}
-        {issue.resolution != null && (
-          <div className={META_ROW_CLASS}>
-            <p className={META_LABEL_CLASS}>{issueDetailStrings.resolutionLabel}</p>
-            <p className="text-sm font-medium" data-testid="issue-resolution">{issue.resolution.name}</p>
-          </div>
-        )}
-
-        {/* 유형 — 아이콘 옆 셀렉터 하나. 이름 글자는 셀렉터가 이미 보여 줘서 화면에서는 감춘다(같은 값이 두 번 보였다) */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.typeLabel}</p>
-          <div className="flex min-w-0 items-center gap-1">
-            <IssueTypeIcon iconName={currentType?.iconName ?? null} typeName={issue.typeName} />
-            <span className="sr-only" data-testid="issue-type-name">{issue.typeName}</span>
-            <IssueTypeSelect
-              value={issue.typeId}
-              availableTypes={availableTypes}
-              onTypeChange={onTypeChange}
-              currentTypeId={issue.typeId}
-            />
-          </div>
-        </div>
-
-        {/* 우선순위 — IssuePrioritySelect (FR-IS-04) */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.priorityLabel}</p>
-          <IssuePrioritySelect value={issue.priority} onPriorityChange={onPriorityChange} />
-        </div>
-
-        {/* 영향도 — IssueImpactSelect (FR-IS-04) */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.impactLabel}</p>
-          <IssueImpactSelect value={issue.impact} onImpactChange={onImpactChange} />
-        </div>
-
-        {/* 환경 — IssueEnvironmentEdit (FR-IS-04). restrictedFields에 "environment"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
-        {!isFieldHidden('environment', issue.restrictedFields) && (
-          <div className={META_ROW_CLASS} data-testid="environment-section">
-            <p className={META_LABEL_CLASS}>{issueDetailStrings.environmentLabel}</p>
-            <IssueEnvironmentEdit
-              value={issue.environment}
-              onSave={onEnvironmentSave}
-              canEdit={!isFieldDisabled('environment', canEdit, issue.noneditableFields)}
-            />
-          </div>
-        )}
-
-        {/* 라벨 — IssueLabelsEdit (FR-IS-04). restrictedFields에 "labels"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
-        {!isFieldHidden('labels', issue.restrictedFields) && (
-          <div className={META_ROW_CLASS} data-testid="labels-section">
-            <p className={META_LABEL_CLASS}>{issueDetailStrings.labelsLabel}</p>
-            <IssueLabelsEdit
-              value={issue.labels}
-              onSave={onLabelsSave}
-              canEdit={!isFieldDisabled('labels', canEdit, issue.noneditableFields)}
-              focusRef={labelsInputRef}
-            />
-          </div>
-        )}
-
-        {/* 담당자 — IssueAssigneeSelect (FR-IS-03). restrictedFields에 "assigneeId"가 있으면 섹션 전체 숨김 (FR-PM-07) */}
+        {/* 담당자 — restrictedFields 에 assigneeId 가 있으면 칸 전체 숨김 (FR-IS-03 · FR-PM-07) */}
         {!isFieldHidden('assigneeId', issue.restrictedFields) && (
           <div className={META_ROW_CLASS} data-testid="assignee-section">
             <p className={META_LABEL_CLASS}>{issueDetailStrings.assigneeLabel}</p>
@@ -812,101 +751,77 @@ export function IssueMetaPanel({
           </div>
         )}
 
-        {/* 즐겨찾기 — FavoriteButton (FR-UX-02). 감시자 섹션 위 배치. */}
+        <IssueReporterRow reporter={reporter} fallbackId={issue.reporterId} />
+
+        {/* 라벨 — restrictedFields 에 labels 가 있으면 칸 전체 숨김 (FR-IS-04 · FR-PM-07) */}
+        {!isFieldHidden('labels', issue.restrictedFields) && (
+          <div className={META_ROW_CLASS} data-testid="labels-section">
+            <p className={META_LABEL_CLASS}>{issueDetailStrings.labelsLabel}</p>
+            <IssueLabelsEdit
+              value={issue.labels}
+              onSave={onLabelsSave}
+              canEdit={!isFieldDisabled('labels', canEdit, issue.noneditableFields)}
+              focusRef={labelsInputRef}
+            />
+          </div>
+        )}
+
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.priorityLabel}</p>
+          <IssuePrioritySelect value={issue.priority} onPriorityChange={onPriorityChange} />
+        </div>
+
+        {/* 유형 — 아이콘 옆 셀렉터 하나. 이름 글자는 셀렉터가 이미 보여 줘서 화면에서는 감춘다 */}
+        <div className={META_ROW_CLASS}>
+          <p className={META_LABEL_CLASS}>{issueDetailStrings.typeLabel}</p>
+          <div className="flex min-w-0 items-center gap-1">
+            <IssueTypeIcon iconName={currentType?.iconName ?? null} typeName={issue.typeName} />
+            <span className="sr-only" data-testid="issue-type-name">{issue.typeName}</span>
+            <IssueTypeSelect value={issue.typeId} availableTypes={availableTypes} onTypeChange={onTypeChange} currentTypeId={issue.typeId} />
+          </div>
+        </div>
+
+        {/* 해결 결과 — DONE 전환 후 resolution 이 있을 때만 (FR-IS-07) */}
+        {issue.resolution != null && (
+          <div className={META_ROW_CLASS}>
+            <p className={META_LABEL_CLASS}>{issueDetailStrings.resolutionLabel}</p>
+            <p className="text-sm" data-testid="issue-resolution">{issue.resolution.name}</p>
+          </div>
+        )}
+
+        {/* 즐겨찾기 · 감시자 — 단축키(F · W)가 포커스를 보내는 자리라 접히는 카드에 넣지 않는다 (FR-UX-02 · FR-WT-01) */}
         <div className="px-3.5 py-2 border-b border-border flex items-center" data-testid="favorite-section">
           <FavoriteButton targetType="ISSUE" targetId={issue.key} focusRef={favoriteToggleRef} />
         </div>
-
-        {/* 감시자 — WatchersSection (FR-WT-01). 담당자/사람 관련 섹션 근처에 배치. */}
         <div className={META_ROW_CLASS} data-testid="watchers-section-wrapper">
           <WatchersSection issueKey={issue.key} focusRef={watchToggleRef} />
         </div>
+      </details>
 
-        {/* 컴포넌트 — ComponentMultiSelect (FR-CM-02) */}
-        <div className={META_ROW_CLASS} data-testid="components-section">
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.componentsLabel}</p>
-          <ComponentMultiSelect
-            value={componentIds}
-            options={components}
-            onChange={onComponentsChange}
-            disabled={!canEdit}
-          />
-        </div>
+      <IssueMoreFields
+        issue={issue}
+        canEdit={canEdit}
+        environmentHidden={isFieldHidden('environment', issue.restrictedFields)}
+        environmentEditable={!isFieldDisabled('environment', canEdit, issue.noneditableFields)}
+        onImpactChange={onImpactChange}
+        onEnvironmentSave={onEnvironmentSave}
+        componentIds={componentIds}
+        components={components}
+        onComponentsChange={onComponentsChange}
+        versions={versions}
+        affectsVersionIds={affectsVersionIds}
+        onAffectsVersionsChange={onAffectsVersionsChange}
+        fixVersionIds={fixVersionIds}
+        onFixVersionsChange={onFixVersionsChange}
+        onSecurityLevelChange={onSecurityLevelChange}
+        customFieldDefs={customFieldDefs}
+        onCustomFieldsSave={onCustomFieldsSave}
+      />
 
-        {/* 영향 버전 — VersionMultiSelect affects (FR-VR-03) */}
-        <div className={META_ROW_CLASS} data-testid="affects-versions-section">
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.affectsVersionsLabel}</p>
-          <VersionMultiSelect
-            variant="affects"
-            value={affectsVersionIds}
-            options={versions}
-            onChange={onAffectsVersionsChange}
-            disabled={!canEdit}
-          />
-        </div>
-
-        {/* 수정 버전 — VersionMultiSelect fix (FR-VR-03) */}
-        <div className={META_ROW_CLASS} data-testid="fix-versions-section">
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.fixVersionsLabel}</p>
-          <VersionMultiSelect
-            variant="fix"
-            value={fixVersionIds}
-            options={versions}
-            onChange={onFixVersionsChange}
-            disabled={!canEdit}
-          />
-        </div>
-
-        {/* 보안등급 — IssueSecurityLevelSelect (FR-PM-06 PR-B) */}
-        <div className={META_ROW_CLASS} data-testid="security-level-section">
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.securityLevelLabel}</p>
-          <IssueSecurityLevelSelect
-            projectKey={issue.projectKey}
-            value={issue.securityLevelId ?? null}
-            onChange={onSecurityLevelChange}
-            disabled={!canEdit}
-          />
-        </div>
-
-        {/* 커스텀 필드 — 활성 정의 기준 렌더, 미정의 잔존 키 생략 (FR-IS-10 E-2).
-            restrictedFields에 포함된 커스텀 필드는 IssueCustomFieldsEdit 내부에서 필터링 (FR-PM-07) */}
-        {customFieldDefs.length > 0 && (
-          <IssueCustomFieldsEdit
-            fieldDefs={customFieldDefs}
-            values={issue.customFields}
-            onSave={onCustomFieldsSave}
-            canEdit={canEdit}
-            restrictedFields={issue.restrictedFields}
-            noneditableFields={issue.noneditableFields}
-          />
-        )}
-
-        <IssueReporterRow reporter={reporter} fallbackId={issue.reporterId} />
-
-        {/* 프로젝트 */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.projectLabel}</p>
-          <p className="text-sm font-medium">{issue.projectKey}</p>
-        </div>
-
-        {/* 버전 (낙관락 OCC 버전 번호) */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.versionLabel}</p>
-          <p className="text-sm font-medium">v{issue.version}</p>
-        </div>
-
-        {/* 생성일 */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.createdAtLabel}</p>
-          <p className="text-sm font-medium">{formatDateTime(issue.createdAt)}</p>
-        </div>
-
-        {/* 수정일 */}
-        <div className={META_ROW_CLASS}>
-          <p className={META_LABEL_CLASS}>{issueDetailStrings.updatedAtLabel}</p>
-          <p className="text-sm font-medium">{formatDateTime(issue.updatedAt)}</p>
-        </div>
-      </div>
+      {/* 생성 · 수정 — Jira 처럼 카드 밖 작은 글자. 프로젝트(이동 경로에 있음)와 내부 버전 번호(낙관 잠금)는 화면에서 뺐다 */}
+      <p className="px-1 text-xs text-muted-foreground" data-testid="issue-timestamps">
+        {issueDetailStrings.createdAtLabel} {formatDateTime(issue.createdAt)} · {issueDetailStrings.updatedAtLabel} {formatDateTime(issue.updatedAt)}
+      </p>
 
       <IssueMetaActions
         onCloneClick={onCloneClick}
