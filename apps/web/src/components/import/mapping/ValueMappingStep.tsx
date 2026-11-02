@@ -21,9 +21,9 @@ const FIELD_LABELS: Record<ValueTargetField, string> = {
  * 값과 정확히 일치해야 확정 단계를 통과한다 — FIELD_LABELS와 동형으로 필드별 매핑.
  */
 const FIELD_HINTS: Record<ValueTargetField, string> = {
-  STATUS: '자유롭게 입력할 수 있습니다. BTS에 없는 값이면 새 값으로 등록됩니다.',
-  TYPE: 'BTS에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.',
-  PRIORITY: 'BTS에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.',
+  STATUS: '자유롭게 입력할 수 있습니다. Issue Bunker 에 없는 값이면 새 값으로 등록됩니다.',
+  TYPE: 'Issue Bunker 에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.',
+  PRIORITY: 'Issue Bunker 에 등록된 값과 정확히 일치해야 합니다. 일치하지 않으면 확정 단계에서 거부됩니다.',
 }
 
 /** targetField/sourceValue 쌍을 override map 키로 합성한다 */

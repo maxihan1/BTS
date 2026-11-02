@@ -102,17 +102,30 @@ export function TopBar({ onHelpClick }: TopBarProps) {
         )}
       </Button>
 
-      {/* 모바일(max-md)에서는 워드마크 텍스트만 감춘다 — A 마크는 남겨 홈 링크를 잃지 않는다.
-          🛑 `Atlas` 를 DOM 에서 빼지 마라. `getByRole('link', { name: 'Atlas' })` 계약이 깨진다.
+      {/* 제품 로고 「Issue Bunker」(2026-11-02 Maxi — QA Hub 제품군 로고 시안 「최종 2판 ㄱ」).
+          색은 공통 UI 정책 §1 로고 값을 직접 쓴다 — Q1 토큰 이행 때 대표색 토큰으로 옮긴다.
+          모바일(max-md)에서는 워드마크 텍스트만 감춘다 — 체크 마크는 남겨 홈 링크를 잃지 않는다.
+          🛑 `Issue Bunker` 를 DOM 에서 빼지 마라. `getByRole('link', { name: 'Issue Bunker' })` 계약이 깨진다.
              `sr-only` 는 접근가능 이름을 보존한 채 자리만 돌려준다. */}
       <Link
         to="/dashboards"
         className="ml-1 flex items-center gap-1.5 text-sm font-semibold text-foreground"
       >
-        <span className="flex size-6 items-center justify-center rounded bg-primary text-xs font-bold text-primary-foreground">
-          A
+        <svg viewBox="0 0 28 28" aria-hidden="true" className="size-6 shrink-0">
+          <rect width="28" height="28" rx="8" fill="#FF7A1A" />
+          <path
+            className="brand-logo-check"
+            d="M8 14.5l4 4 8-9"
+            fill="none"
+            stroke="#1A0D02"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+        <span className="max-md:sr-only">
+          Issue <span className="brand-logo-word text-[#B84D05] dark:text-[#FF9A4D]">Bunker</span>
         </span>
-        <span className="max-md:sr-only">Atlas</span>
       </Link>
 
       {/* 프로젝트 전환기는 모바일에서 감춘다 — 390px 에 4개 컨트롤이 다 들어가지 않는다.

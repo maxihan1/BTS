@@ -46,7 +46,7 @@ export const loginPageStrings = {
    * Radix 가 DialogTitle 을 aria-labelledby 로 연결하므로 이 값이 곧 `role="dialog"` 의 이름이 된다.
    * 다이얼로그 이름은 단계 전환 중에도 바뀌지 않는다.
    */
-  heading: 'BTS 로그인',
+  heading: 'Issue Bunker 로그인',
   /** 첫 진입 시 모달 설명문 */
   description: '계정 정보를 입력해 로그인하세요.',
   /** 세션 만료로 열린 모달의 설명문 — 이동 없이 현재 화면 위에 뜬다 */
@@ -55,10 +55,10 @@ export const loginPageStrings = {
 
 /**
  * SSO 하나뿐인 설치에서 `/login` 에 남는 화면 (S21 B안 ④) — 로그아웃 직후 · SSO 실패 때만 보인다.
- * 문구는 세 앱(BTS · QA Hub · Device Farm) 공통 시안 그대로다.
+ * 문구는 세 앱(Issue Bunker · Test Commander · Device VISION) 공통 시안 그대로다.
  */
 export const ssoLoginScreenStrings = {
-  appName: 'BTS',
+  appName: 'Issue Bunker',
   loggedOutHeading: '로그아웃했습니다',
   loggedOutDescription: '다시 들어가려면 로그인하세요',
   errorHeading: '로그인하지 못했습니다',
@@ -527,7 +527,7 @@ export const mfaStrings = {
   /** 다운로드 파일명 */
   backupDownloadFileName: 'bts-backup-codes.txt',
   /** 다운로드 파일 헤더 */
-  backupDownloadHeader: 'BTS 백업 코드 (각 코드는 1회만 사용 가능)',
+  backupDownloadHeader: 'Issue Bunker 백업 코드 (각 코드는 1회만 사용 가능)',
   /** 재생성 확인 Dialog 제목 */
   backupRegenerateConfirmTitle: '백업 코드 재생성',
   /** 재생성 확인 Dialog 본문 */
@@ -641,7 +641,7 @@ export const externalAccountStrings = {
   /** 2단계 인증 화면 안내 */
   mfaNotice: '2단계 인증은 통합 계정에서 켜고 끕니다.',
   /** MFA 는 SSO 로그인 때 반영된다 — 통합 계정 세션이 남아 있으면 MFA 없이 이어지므로 둘 다 로그아웃 */
-  mfaReloginHint: '켠 뒤에는 BTS 와 통합 계정에서 모두 로그아웃하고 다시 로그인하면 반영됩니다.',
+  mfaReloginHint: '켠 뒤에는 Issue Bunker 와 통합 계정에서 모두 로그아웃하고 다시 로그인하면 반영됩니다.',
   /** 계정 화면 링크 */
   openAccount: '통합 계정 열기',
 } as const

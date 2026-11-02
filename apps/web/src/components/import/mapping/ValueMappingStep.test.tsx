@@ -116,7 +116,7 @@ describe('ValueMappingStep', () => {
     renderStep()
 
     expect(screen.getByText(/자유롭게 입력/)).toBeInTheDocument()
-    expect(screen.getAllByText(/BTS.*값과.*일치/)).toHaveLength(2)
+    expect(screen.getAllByText(/Issue Bunker.*값과.*일치/)).toHaveLength(2)
   })
 
   it('fields가 빈 배열이면 안내 메시지를 표시한다', () => {

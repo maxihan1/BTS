@@ -116,7 +116,7 @@ describe('TopBar', () => {
   it('로고가 /dashboards(홈)로 연결된다', () => {
     renderTopBar()
 
-    expect(screen.getByRole('link', { name: /Atlas/ })).toHaveAttribute('href', '/dashboards')
+    expect(screen.getByRole('link', { name: 'Issue Bunker' })).toHaveAttribute('href', '/dashboards')
   })
 
   it('F13 — 전역 검색 입력창이 정확히 1개고 검색 버튼은 없다', () => {

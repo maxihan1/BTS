@@ -82,7 +82,7 @@ describe('LoginDialog — 열림 조건', () => {
   it('미인증 + /login 이면 열린다', async () => {
     renderDialog()
 
-    expect(await screen.findByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeInTheDocument()
   })
 
   it('미인증 + 세션 만료 플래그이면 현재 라우트를 유지한 채 열린다', async () => {
@@ -91,7 +91,7 @@ describe('LoginDialog — 열림 조건', () => {
 
     renderDialog()
 
-    expect(await screen.findByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeInTheDocument()
     // 세션 만료는 이동하지 않는 것이 요구사항이다 — navigate 가 불리면 작업 내용이 날아간다.
     expect(routerMocks.navigate).not.toHaveBeenCalled()
   })
@@ -101,7 +101,7 @@ describe('LoginDialog — 열림 조건', () => {
 
     renderDialog()
 
-    expect(screen.queryByRole('dialog', { name: 'BTS 로그인' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeNull()
   })
 
   it('미인증이어도 /login 이 아니고 만료 플래그도 없으면 열리지 않는다 (공개 라우트)', () => {
@@ -110,7 +110,7 @@ describe('LoginDialog — 열림 조건', () => {
 
     renderDialog()
 
-    expect(screen.queryByRole('dialog', { name: 'BTS 로그인' })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeNull()
   })
 })
 
@@ -118,28 +118,28 @@ describe('LoginDialog — 닫기 3경로 봉인', () => {
   it('ESC 로 닫히지 않는다', async () => {
     const user = userEvent.setup()
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
 
     await user.keyboard('{Escape}')
 
     // 닫으면 AuthBackdrop 만 남는 막다른 골목이 된다(D2).
-    expect(screen.getByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeInTheDocument()
   })
 
   it('오버레이 바깥 클릭으로 닫히지 않는다', async () => {
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
 
     const overlay = document.querySelector('[data-slot="dialog-overlay"]')
     expect(overlay).not.toBeNull()
     fireEvent.pointerDown(overlay as Element)
 
-    expect(screen.getByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeInTheDocument()
   })
 
   it('X 닫기 버튼을 렌더하지 않는다', async () => {
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
 
     // disabled X 는 "닫을 수 있는데 지금은 안 된다"는 거짓 신호라 아예 렌더하지 않는다(D2).
     expect(document.querySelector('[data-slot="dialog-close-button"]')).toBeNull()
@@ -150,7 +150,7 @@ describe('LoginDialog — 로그인 성공 후 라우팅 우선순위', () => {
   async function triggerSuccess() {
     const user = userEvent.setup()
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
     await user.click(screen.getByRole('button', { name: '성공 트리거' }))
   }
 
@@ -209,7 +209,7 @@ describe('LoginDialog — 세션 만료 재로그인은 이동 없이 화면을 
 
     const user = userEvent.setup()
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
 
     await user.click(screen.getByRole('button', { name: '성공 트리거' }))
@@ -228,7 +228,7 @@ describe('LoginDialog — 세션 만료 재로그인은 이동 없이 화면을 
 
     const user = userEvent.setup()
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
 
     await user.click(screen.getByRole('button', { name: '성공 트리거' }))
 
@@ -242,7 +242,7 @@ describe('LoginDialog — 세션 만료 재로그인은 이동 없이 화면을 
 
     const user = userEvent.setup()
     renderDialog()
-    await screen.findByRole('dialog', { name: 'BTS 로그인' })
+    await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })
 
     await user.click(screen.getByRole('button', { name: '성공 트리거' }))
 
@@ -286,6 +286,6 @@ describe('LoginDialog — SSO 하나뿐인 설치 (S21)', () => {
 
     renderDialog()
 
-    expect(await screen.findByRole('dialog', { name: 'BTS 로그인' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Issue Bunker 로그인' })).toBeInTheDocument()
   })
 })
