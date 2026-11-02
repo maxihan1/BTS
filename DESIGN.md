@@ -167,7 +167,7 @@ BTS(Project Atlas)는 사내 1,000명 규모 협업 워크스페이스다. 이 �
 |---|---|---|---|
 | ~~`--chart-1` ~ `--chart-5`~~ | 5 | **동결 해제 완료 (PR22)** — ADS v2 hex 5색으로 교체·실소비 중. 값은 아래 §C-2 참조 | — |
 | `--syntax-keyword/field/operator/string/number` (+`.dark`) | 5 | OKLCH, WCAG AA 검증 완료(§3 참조) | AQL overlay 정렬 정본 — 값 변경 금지, §3에서 별도 관리 |
-| `--font-mono` | 1 | D2Coding 기반 한글 mono 스택 | AQL overlay 정렬 정본 — §5에서 별도 관리, 값 변경 금지 |
+| ~~`--font-mono`~~ | 1 | **동결 해제 완료 (Q2)** — `IBM Plex Mono` 앞에 두고 한글 mono 스택이 뒤를 받친다. 정렬 조건은 §5 | — |
 | ~~`--sidebar*`~~ 8종 | 8 | **동결 해제 완료 (Q1)** — 배경 side(`#F5F6F8` / `#0D0E11`) · 글자 ink · 활성 = 대표색 옅은 바탕 + 대표색 글자 · hover well · 테두리 line · 링 = `--ring` | — |
 
 ### 사용 가이드
@@ -257,32 +257,35 @@ AQL(BTS의 이슈 검색 쿼리 언어) 쿼리 입력창의 syntax highlight용 
 
 ## 5. 타이포그래피
 
-> **⏳ 이행 예정 — 공통 정책 §2 · §11.4 (로드맵 Q2).** Geist → IBM Plex Sans KR(400 · 600) · IBM Plex Mono · IBM Plex Sans Condensed 600,
-> 숫자는 `tabular-nums`, 글꼴 파일은 제품 안에. 🔒 `--font-mono` 는 AQL overlay 정렬을 잰 뒤에 푼다.
+> **✅ 이행 완료 — 공통 정책 §2 · §11.4 (로드맵 Q2, 2026-11-02).** Geist → IBM Plex Sans KR(400 · 600) · IBM Plex Mono(400 · 500), 숫자는 전역 `tabular-nums`, 글꼴 파일은 제품 안에.
+> `--font-mono` 동결은 AQL overlay 정렬을 잰 뒤 풀었다(아래).
+> **IBM Plex Sans Condensed 600(큰 숫자)은 넣지 않았다** — QA Hub 코드(`test_platform` styles.css)도 싣지 않는다. 정본 코드가 싣는 날 같은 파일로 따라 넣는다.
 
 ### 폰트 스택
 
 | 역할 | 폰트 | 적용 방법 |
 |---|---|---|
-| 기본(영문/숫자) | `Geist Variable`(`@fontsource-variable/geist`) | `index.css` `@import` + `--font-sans: 'Geist Variable', sans-serif` |
-| 한국어 fallback | `Apple SD Gothic Neo`(macOS/iOS), `Malgun Gothic`(Windows), `Pretendard`(웹 권장 — 별도 설치 시), `system-ui` | `sans-serif` 제네릭이 OS 시스템 폰트로 연결됨 |
-| 제목(heading) | `--font-heading` → `--font-sans`와 동일 | 현재 분리 없음. 추후 별도 폰트 도입 시 이 변수 재정의 |
-| 고정폭(mono) | `--font-mono` 토큰(🔒 동결, 아래 상세) | `index.css` `@theme inline` + `font-mono` Tailwind 유틸 |
+| 기본(한글 · 영문 · 숫자) | `IBM Plex Sans KR` 400 · 600 (`assets/fonts/`, QA Hub 와 같은 파일) | `index.css` `@font-face` + `--font-sans: 'IBM Plex Sans KR', system-ui, sans-serif` |
+| 숫자 | 전역 `tabular-nums` (`html` 에 한 번) | 표 · 배지 · 개수가 다 따른다 |
+| 제목(heading) | `--font-heading` → `--font-sans`와 동일 | 분리 없음 |
+| 고정폭(mono) | `--font-mono` 토큰(아래 상세) | `index.css` `@theme inline` + `font-mono` Tailwind 유틸 |
 
-> 한국어 fallback 선택 이유. Geist는 라틴 문자 전용이라 한국어 글리프가 없다. OS 기본 시스템 폰트(macOS: Apple SD Gothic Neo, Windows: Malgun Gothic)가 가장 빠르게 로드된다. Pretendard는 가독성이 뛰어나지만 별도 웹폰트 설치가 필요하므로 도입 여부는 별도 검토 대상이다.
+> 굵기는 400 · 600 두 파일뿐이다(QA Hub 결정 — 파일이 굵기마다 따로라 벌을 늘리지 않는다). `font-medium`(500)은 400 으로, `font-bold`(700)는 600 으로 그려진다.
 
-### `--font-mono` 토큰 (🔒 동결 — FR-SR-02 AQL overlay 정렬 정본)
+### `--font-mono` 토큰 (FR-SR-02 AQL overlay 정렬 정본 — Q2 에서 동결 해제)
 
-AQL syntax highlight에서 `textarea`와 overlay `<pre>`의 **폰트가 다르면 글자 폭이 어긋나 하이라이트가 밀린다.** 두 요소가 동일한 `--font-mono`를 참조해 정렬 문제를 원천 차단한다. 값 변경 금지.
+AQL syntax highlight에서 `textarea`와 overlay `<pre>`의 **폰트가 다르면 글자 폭이 어긋나 하이라이트가 밀린다.** 두 요소가 같은 `SHARED_FONT_CLASSES`(`font-mono` 포함)를 써서 정렬 문제를 원천 차단한다.
+그래서 정렬 조건은 「두 요소가 같은 스택을 본다」이지 특정 글꼴이 아니다. Q2 실측(2026-11-02) — 한글 섞인 질의에서 textarea 글자를 빨갛게 드러내 겹쳐 보니 어긋남 0, 계산된 글꼴 · 크기 · 줄 높이 · 여백 · 폭(1206px) 모두 일치.
 
 ```
---font-mono: 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
+--font-mono: 'IBM Plex Mono', 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
              ui-monospace, 'Cascadia Code', 'Fira Code', 'Consolas',
              'Courier New', monospace;
 ```
 
 | 순위 | 폰트 | 이유 |
 |---|---|---|
+| 0 | `IBM Plex Mono` | 공통 정책 §2 — 숫자 · ID · 코드. 라틴 글자만 있어 한글은 다음 순위로 떨어진다. |
 | 1 | `D2Coding` | 한국 개발자 표준 한글 mono 폰트. ASCII + 완성형 한글 글리프 포함. |
 | 2 | `Sarasa Mono K` | CJK(한/중/일) 지원 고품질 mono. 미설치 시 fallback. |
 | 3 | `Noto Sans Mono CJK KR` | Google Fonts 계열 — CDN 가능. |
@@ -312,9 +315,9 @@ AQL syntax highlight에서 `textarea`와 overlay `<pre>`의 **폰트가 다르�
 | Tailwind 클래스 | 용도 |
 |---|---|
 | `font-normal`(400) | 본문, 입력 필드 값 |
-| `font-medium`(500) | label, 버튼, 강조 텍스트 |
+| `font-medium`(500) | label, 버튼, 강조 텍스트 — Plex Sans KR 에 500 이 없어 400 으로 그려진다 |
 | `font-semibold`(600) | 카드 제목, 섹션 헤딩 |
-| `font-bold`(700) | 페이지 주 제목(드물게) |
+| `font-bold`(700) | 페이지 주 제목(드물게) — 600 으로 그려진다 |
 
 ### 사용 가이드
 

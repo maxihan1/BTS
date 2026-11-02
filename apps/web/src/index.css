@@ -2,9 +2,10 @@
 @import 'tailwindcss';
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
 
-/* 로그인 남는 화면(B안) 전용 글꼴 — 세 앱 공통 시안. 그 화면이 그릴 때만 받는다 (S21) */
+/* 글꼴 — QA Hub 공통 정책 §2 (3차 캠페인 Q2). 파일은 제품 안에 싣는다(CDN 금지 — 사내망에서 막히면 숫자 폭이 어긋난다).
+   QA Hub(test_platform styles.css)와 같은 파일 · 같은 굵기 — Sans KR 400 · 600, Mono 400 · 500.
+   Sans KR 은 굵기마다 파일이 따로라 500(font-medium)은 400 으로, 700(font-bold)은 600 으로 그려진다 */
 @font-face {
   font-family: 'IBM Plex Sans KR';
   font-weight: 400;
@@ -17,6 +18,19 @@
   font-display: swap;
   src: url('./assets/fonts/IBMPlexSansKR-SemiBold.woff2') format('woff2');
 }
+/* 숫자 · ID · 코드. 라틴 글자만 있다 — 한글은 --font-mono 다음 순위(D2Coding …)로 떨어진다 */
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/IBMPlexMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/IBMPlexMono-Medium.woff2') format('woff2');
+}
 
 @custom-variant dark (&:is(.dark *));
 
@@ -28,10 +42,11 @@
 
   --font-heading: var(--font-sans);
 
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'IBM Plex Sans KR', system-ui, sans-serif;
 
-  /* AQL syntax highlight 전용 mono 폰트 — overlay↔textarea 정렬 정본 */
-  --font-mono: 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
+  /* mono — AQL overlay↔textarea 정렬 정본. 두 요소가 같은 스택을 보는 한 정렬은 글꼴과 무관하다(Q2 실측).
+     Plex Mono 에 한글이 없어 한글은 뒤 순위 한글 mono 로 떨어진다 */
+  --font-mono: 'IBM Plex Mono', 'D2Coding', 'Sarasa Mono K', 'Noto Sans Mono CJK KR',
                ui-monospace, 'Cascadia Code', 'Fira Code', 'Consolas',
                'Courier New', monospace;
 
@@ -489,7 +504,8 @@
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    /* 숫자는 늘 세로를 맞춘다(공통 정책 §2) — 한 번 걸어 두면 표 · 배지 · 개수가 다 따른다 */
+    @apply font-sans tabular-nums;
   }
 }
 
