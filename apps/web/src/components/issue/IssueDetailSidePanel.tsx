@@ -80,7 +80,7 @@ export function IssueDetailSidePanel(): JSX.Element | null {
       //   `hidden` 이 아니라 `clip` 인 이유는 `IssueDetailModal` 의 같은 줄과 같다 —
       //   `hidden` 은 스크롤 컨테이너를 만들어 `scrollIntoView` 에 밀린다. 이 패널은 지금
       //   유령 범위가 0 이지만, 같은 계약을 두 곳에 다르게 쓰면 다음에 갈린다.
-      className="flex w-[800px] min-w-0 max-w-[55vw] shrink-0 flex-col overflow-clip border-l border-border bg-background"
+      className="flex w-[800px] min-w-0 max-w-[55vw] shrink-0 flex-col overflow-clip border-l border-border bg-card animate-in fade-in-0 slide-in-from-right-8 duration-(--t2)"
     >
       {/* `min-h-0` 이 없으면 flex 자식의 최소 높이가 콘텐츠 높이라 안쪽 스크롤이 죽는다.
           ★`flex flex-col` 도 필수다 — 이유는 `IssueDetailModal` 의 같은 줄과 같다. */}

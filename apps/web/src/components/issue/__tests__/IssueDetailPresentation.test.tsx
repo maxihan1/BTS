@@ -164,3 +164,25 @@ describe('상세 표시 방식 — 모달 ↔ 사이드패널 배타 (J1)', () =
     expect(sidePanel()).toBeInTheDocument()
   })
 })
+
+/**
+ * Q4(3차 캠페인, 2026-11-02 Maxi 결정) — 상세 기본은 **오른쪽 서랍**(사이드패널)이다.
+ * QA Hub 공통 정책 §5 「상세 보기는 오른쪽 서랍 · 목록을 떠나지 않고 뒤를 어둡게 하지 않는다」.
+ * 사람이 `⋯` 로 모달을 고르면 그 선택은 세션 동안 기억된다(J1 그대로).
+ */
+describe('표시 방식 기본값 (Q4)', () => {
+  it('저장된 선호가 없으면 사이드패널로 연다', async () => {
+    sessionStorage.removeItem('bts.issueDetail.presentation')
+    vi.resetModules()
+    const { useIssueDetailModalStore: fresh } = await import('../issueDetailModalStore')
+    expect(fresh.getState().presentation).toBe('sidePanel')
+  })
+
+  it('사람이 모달을 골라 두었으면 모달로 연다', async () => {
+    sessionStorage.setItem('bts.issueDetail.presentation', 'modal')
+    vi.resetModules()
+    const { useIssueDetailModalStore: fresh } = await import('../issueDetailModalStore')
+    expect(fresh.getState().presentation).toBe('modal')
+    sessionStorage.removeItem('bts.issueDetail.presentation')
+  })
+})

@@ -199,4 +199,4 @@ shadcn 토큰 이름(`--primary` · `--background` …)을 그대로 두고 값�
 - **확인할 것.** `prefers-reduced-motion` 처리는 지금 사이드바 두 곳(`Sidebar.tsx` · `SidebarResizeHandle.tsx`)에만 있다 — 원문 §4 는 「모든 움직임을 끈다」라서 Q3 에서 전역으로 건다.
   처음 방문자의 기본 테마가 `system` 인지 Q1 에서 확인한다.
 - **경계 사례 — Maxi 확인 대상.** 원문 §5 「상세 보기는 오른쪽 서랍」은 창 규칙이지만 이슈 상세를 어디에 여는지는 Jira 패리티의 화면 배치이기도 하다.
-  Q4 착수 때 이슈 상세 · 보드 카드 상세의 열림 방식을 Maxi 에게 묻는다.
+  **2026-11-02 Maxi 결정 — 오른쪽 서랍.** 상세 기본 표시 방식을 `sidePanel` 로 바꿨다(`issueDetailModalStore`). `⋯` 로 모달을 고르면 세션 동안 기억(J1 그대로), 좁은 화면(1024px 미만)은 모달이 맡는다.
