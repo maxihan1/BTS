@@ -75,6 +75,21 @@ class SessionServiceTest {
     }
 
     @Test
+    fun `create — notAfter 가 14일보다 이르면 그때 끝나고 늦으면 14일이다 (S24 7일 상한)`() {
+        val saved = mutableListOf<Session>()
+        justRun { repo.save(capture(saved)) }
+        val oneDay = fixedNow.plus(1, ChronoUnit.DAYS)
+
+        service.create(userId, "oidc", null, null, notAfter = oneDay, authSid = "sid", authIdTokenEnc = "enc")
+        service.create(userId, "oidc", null, null, notAfter = fixedNow.plus(20, ChronoUnit.DAYS))
+
+        assertThat(saved[0].expiresAt).isEqualTo(oneDay)
+        assertThat(saved[0].authSid).isEqualTo("sid")
+        assertThat(saved[0].authIdTokenEnc).isEqualTo("enc")
+        assertThat(saved[1].expiresAt).isEqualTo(fixedNow.plus(14, ChronoUnit.DAYS))
+    }
+
+    @Test
     fun `create — device_fingerprint 가 SHA-256(ua+ip) hex 앞 12자로 설정된다`() {
         val savedSlot = slot<Session>()
         justRun { repo.save(capture(savedSlot)) }

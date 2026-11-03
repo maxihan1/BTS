@@ -48,7 +48,7 @@ class SessionService(
      * 신규 세션을 생성하고 DB 에 INSERT 한다.
      *
      * - [Session.id]: UUID v4 신규 생성
-     * - [Session.expiresAt]: `now + SESSION_TTL_DAYS`
+     * - [Session.expiresAt]: `now + SESSION_TTL_DAYS`. [notAfter] 를 주면 그보다 늦지 않다 (S24 7일 상한)
      * - [Session.deviceFingerprint]: `SHA-256(userAgent + ipAddress)` hex 앞 [FP_LENGTH]자.
      *   [ipAddress] 또는 [userAgent] 가 null 이면 null.
      *
@@ -59,15 +59,22 @@ class SessionService(
      * @param mfaVerified 2차 요소(TOTP) 통과 여부 (FR-MF-01). 기본 `false` — 1차 인증만 거친
      *   기존 로그인 흐름은 미전달 시 `false` 가 유지된다(회귀 0). TOTP 검증 성공 후 발급되는
      *   정식 세션만 `true` 로 생성한다. [Session.mfaVerified] → JWT `mfa_verified` 클레임 원천.
+     * @param notAfter 만료 상한 — Auth_platform 로그인은 `auth_time + 7일` (S24). null 이면 14일 그대로
+     * @param authSid Auth_platform id_token 의 `sid` — back-channel logout 이 찾는 키 (S24)
+     * @param authIdTokenEnc 로그아웃 때 쓸 id_token 암호문 (S24, `oidcSecretEncryptor`)
      * @return 저장된 [Session]
      */
     @Transactional
+    @Suppress("LongParameterList") // 로그인 경로마다 다른 선택 인자 — 기본값으로 기존 호출은 그대로
     fun create(
         userId: UUID,
         providerId: String,
         ipAddress: String?,
         userAgent: String?,
         mfaVerified: Boolean = false,
+        notAfter: Instant? = null,
+        authSid: String? = null,
+        authIdTokenEnc: String? = null,
     ): Session {
         val now = Instant.now(clock)
         val session =
@@ -79,11 +86,13 @@ class SessionService(
                 ipAddress = ipAddress,
                 userAgent = userAgent,
                 createdAt = now,
-                expiresAt = now.plus(SESSION_TTL_DAYS, ChronoUnit.DAYS),
+                expiresAt = listOfNotNull(now.plus(SESSION_TTL_DAYS, ChronoUnit.DAYS), notAfter).min(),
                 lastSeenAt = now,
                 revokedAt = null,
                 revokeReason = null,
                 mfaVerified = mfaVerified,
+                authSid = authSid,
+                authIdTokenEnc = authIdTokenEnc,
             )
         repo.save(session)
         return session

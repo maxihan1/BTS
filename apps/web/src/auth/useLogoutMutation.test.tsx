@@ -61,6 +61,26 @@ describe('useLogoutMutation', () => {
     expect(isLoggedOut()).toBe(true)
   })
 
+  it('Auth 로그인 세션이면 서버가 준 Auth 로그아웃 주소로 replace 한다 (S24)', async () => {
+    const redirect = 'https://auth.example.com/connect/logout?id_token_hint=t&post_logout_redirect_uri=x'
+    server.use(http.post('/api/v1/auth/logout', () => HttpResponse.json({ redirect })))
+    const replace = vi.fn()
+    vi.stubGlobal('location', { ...window.location, replace })
+
+    try {
+      const { result } = renderHook(() => useLogoutMutation(), { wrapper: createWrapper() })
+      result.current.mutate()
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(redirect))
+      // 세션은 먼저 지우고, 돌아온 /login 이 카드를 보이게 표시를 남긴다 · 앱 안 이동은 하지 않는다
+      expect(useAuthStore.getState().accessToken).toBeNull()
+      expect(isLoggedOut()).toBe(true)
+      expect(mockNavigate).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('서버가 실패해도 /login 으로 이동한다 — 사용자 로그아웃 의도 우선', async () => {
     // 🛑 성공 경로만 재면 「서버가 500 이면 로그인 화면에 갇힌 채 세션만 지워진」 상태를
     //    놓친다. 세션 정리가 onSettled 인 것과 같은 이유로 이동도 onSettled 다.

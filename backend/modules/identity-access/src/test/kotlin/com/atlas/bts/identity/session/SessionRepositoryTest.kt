@@ -10,7 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
 import org.springframework.context.annotation.Import
+import org.springframework.core.io.ClassPathResource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.jdbc.datasource.DataSourceUtils
+import org.springframework.jdbc.datasource.init.ScriptUtils
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import java.time.Instant
@@ -272,4 +275,85 @@ class SessionRepositoryTest {
         // 존재하지 않는 세션 ID에 대해 예외 없이 실행돼야 한다
         repo.updateLastSeen(UUID.randomUUID())
     }
+
+    // ── S24 back-channel logout ───────────────────────────────────────────────
+
+    @Test
+    fun `save — Auth sid 와 암호화 id token 이 저장되고 다시 읽힌다`() {
+        val session = buildSession(providerId = "oidc").copy(authSid = "sid-a", authIdTokenEnc = "cipher")
+
+        repo.save(session)
+
+        val found = repo.findById(session.id)!!
+        assertThat(found.authSid).isEqualTo("sid-a")
+        assertThat(found.authIdTokenEnc).isEqualTo("cipher")
+    }
+
+    @Test
+    fun `revokeActiveByAuthSid — 그 sid 의 살아 있는 세션만 폐기하고 id 를 돌려준다`() {
+        val a1 = buildSession(providerId = "oidc").copy(authSid = "sid-a")
+        val a2 = buildSession(providerId = "oidc").copy(authSid = "sid-a")
+        val other = buildSession(providerId = "oidc").copy(authSid = "sid-b")
+        listOf(a1, a2, other).forEach(repo::save)
+        repo.markRevoked(a2.id, "logout")
+
+        val revoked = repo.revokeActiveByAuthSid("sid-a", "backchannel_logout")
+
+        assertThat(revoked).containsExactly(a1.id)
+        assertThat(repo.findById(a1.id)!!.revokeReason).isEqualTo("backchannel_logout")
+        assertThat(repo.findById(a2.id)!!.revokeReason).isEqualTo("logout")
+        assertThat(repo.findById(other.id)!!.revokedAt).isNull()
+    }
+
+    @Test
+    fun `revokeActiveByUserCreatedBefore — 그 provider 의 기준 시각 전 세션만 폐기한다`() {
+        val cut = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        val before = buildSession(providerId = "oidc").copy(createdAt = cut.minusSeconds(60))
+        val after = buildSession(providerId = "oidc").copy(createdAt = cut.plusSeconds(1))
+        val local = buildSession(providerId = "local").copy(createdAt = cut.minusSeconds(60))
+        listOf(before, after, local).forEach(repo::save)
+
+        val revoked = repo.revokeActiveByUserCreatedBefore(userId, "oidc", cut, "backchannel_logout")
+
+        // 다시 보낸 token 이 그 뒤 로그인을 끊지 않고 · 로컬 비밀번호 세션은 남는다 (S24 §1)
+        assertThat(revoked).containsExactly(before.id)
+        assertThat(repo.findById(after.id)!!.revokedAt).isNull()
+        assertThat(repo.findById(local.id)!!.revokedAt).isNull()
+    }
+
+    @Test
+    fun `V038 — S24 전 oidc 세션과 그 refresh 만 끊고 sid 있는 oidc · 로컬 세션은 남긴다`() {
+        val pre = buildSession(providerId = "oidc")
+        val withSid = buildSession(providerId = "oidc").copy(authSid = "sid-a")
+        val local = buildSession(providerId = "local")
+        listOf(pre, withSid, local).forEach(repo::save)
+        val preToken = insertRefreshToken(pre.id)
+        val withSidToken = insertRefreshToken(withSid.id)
+
+        // 템플릿 DB 에는 이미 적용됐다 — 같은 SQL 을 이 데이터에 다시 돌린다 (테스트 트랜잭션 안)
+        val dataSource = requireNotNull(jdbc.jdbcTemplate.dataSource)
+        ScriptUtils.executeSqlScript(
+            DataSourceUtils.getConnection(dataSource),
+            ClassPathResource("db/migration/identity-access/V038__revoke_pre_s24_oidc_sessions.sql"),
+        )
+
+        assertThat(repo.findById(pre.id)?.revokeReason).isEqualTo("s24_relogin")
+        assertThat(repo.findById(withSid.id)?.revokedAt).isNull()
+        assertThat(repo.findById(local.id)?.revokedAt).isNull()
+        assertThat(refreshUsedAt(preToken)).isNotNull()
+        assertThat(refreshUsedAt(withSidToken)).isNull()
+    }
+
+    private fun insertRefreshToken(sessionId: UUID): UUID {
+        val id = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO refresh_tokens (id, session_id, token_hash, expires_at) " +
+                "VALUES (:id, :sid, :hash, NOW() + INTERVAL '1 day')",
+            mapOf("id" to id, "sid" to sessionId, "hash" to id.toString().replace("-", "").padEnd(64, '0')),
+        )
+        return id
+    }
+
+    private fun refreshUsedAt(id: UUID): Any? =
+        jdbc.queryForList("SELECT used_at FROM refresh_tokens WHERE id = :id", mapOf("id" to id)).single()["used_at"]
 }

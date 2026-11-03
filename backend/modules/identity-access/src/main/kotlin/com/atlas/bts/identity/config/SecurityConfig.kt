@@ -55,9 +55,9 @@ import java.util.UUID
  * - /actuator/health        — 헬스체크 (로드밸런서, CSRF skip)
  * - /api/v1/public/dashboards/{token} — 익명 공개 대시보드 조회 (FR-DB-03, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
  * - /ical/feed/{token}.ics — 익명 iCal 구독 피드 (FR-CA-02, GET 메서드 고정 read-only, 단일 세그먼트 토큰)
- * - 인바운드 웹훅 6경로 — 외부 서버-투-서버 호출 ([INBOUND_WEBHOOK_PATHS], 메서드 고정 + 정확 경로/단일 세그먼트).
- *   slack 4 · git 1 은 컨트롤러의 서명 검증이, automation 1 은 불투명 토큰 소지가 인증을 담당한다
- *   (★ 셋의 방어 등급이 균일하지 않다 — [INBOUND_WEBHOOK_PATHS] KDoc 참조)
+ * - 인바운드 웹훅 — 외부 서버-투-서버 호출 ([INBOUND_WEBHOOK_PATHS], 메서드 고정 + 정확 경로/단일 세그먼트).
+ *   slack · git · Auth back-channel logout 은 컨트롤러의 서명 검증이, automation 은 불투명 토큰 소지가 인증을 담당한다
+ *   (★ 방어 등급이 균일하지 않다 — [INBOUND_WEBHOOK_PATHS] KDoc 참조)
  *
  * ## CSRF Cookie 모드 (ADR docs/decisions/2026-05-20-csrf-cookie-mode.md)
  * CookieCsrfTokenRepository.withHttpOnlyFalse() — SPA가 Cookie를 읽어 X-XSRF-TOKEN 헤더로 전송.
@@ -270,7 +270,7 @@ class SecurityConfig(
                 //    「하위 매핑이 생기면 조용히 노출된다」며 경로 폭을 봉인한 논리와 같은 이유로
                 //    근거가 되지 못한다.
                 auth.requestMatchers(antMatcher(HttpMethod.GET, WS_HANDSHAKE_PATH)).permitAll()
-                // FR-AT-07: 인바운드 웹훅 6경로 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
+                // FR-AT-07 · S24: 인바운드 웹훅 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
                 // 목록을 순회한다(PR-A DEC-16 · PR-C ADR §D4).
                 // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.
                 //   git(/api/v1/webhooks/git/*) · automation(/api/v1/automation/webhooks/*) 두 경로군은 /api/**
@@ -413,13 +413,15 @@ class SecurityConfig(
         const val WS_HANDSHAKE_PATH = "/ws"
 
         /**
-         * 외부 시스템이 자격증명 없이 직접 호출하는 인바운드 웹훅 6경로 — slack 4 (FR-SL-01/03/04/05) ·
-         * git 1 (FR-AT-07 PR-C) · automation 1 (FR-AT-01).
+         * 외부 시스템이 자격증명 없이 직접 호출하는 인바운드 웹훅 — slack (FR-SL-01/03/04/05) ·
+         * git (FR-AT-07 PR-C) · automation (FR-AT-01) · Auth_platform back-channel logout (S24 · FR-AU-04).
          *
-         * DEVELOPMENT.md §1.4 정식 예외 — **근거 정본은 두 ADR**이다.
-         * - slack 4 — `docs/decisions/2026-07-15-slack-inbound-permitall-central.md` (게이트1 승인)
-         * - git 1 · automation 1 — `docs/decisions/2026-07-17-git-webhook-inbound-permitall.md`
+         * DEVELOPMENT.md §1.4 정식 예외 — **근거 정본은 ADR 셋**이다.
+         * - slack — `docs/decisions/2026-07-15-slack-inbound-permitall-central.md` (게이트1 승인)
+         * - git · automation — `docs/decisions/2026-07-17-git-webhook-inbound-permitall.md`
          *   (**2026-07-17 Maxi 게이트1 승인**, `DATA.md §1.5` 요구대로 plan-eng-review·plan-ceo-review 양쪽 CLEAR)
+         * - back-channel logout — `docs/decisions/2026-11-03-backchannel-logout-inbound-permitall.md`
+         *   (**2026-11-03 Maxi 게이트1 승인**, S24 plan 승인과 함께)
          *
          * ★ **편집 전 PR-C ADR §D4-a 필독. 이 목록이 permitAll · CSRF-ignore · bearer skip(§D7) 3곳을 구동한다.**
          * 하나만 빠뜨려도 증상이 전부 401/403 이라 어느 곳이 빠졌는지 구분되지 않는다. 이 단일 목록 구조가 막는 것은
@@ -435,6 +437,8 @@ class SecurityConfig(
          * - **automation 1** — **서명 검증이 없다.** 불투명 토큰 소지 자체가 인증이다. 따라서 slack ADR 의
          *   *"필터가 비키는 자리에 더 강한 검증이 선다"* 논거는 **이 경로에 성립하지 않는다**(PR-C ADR §D3).
          *   부수효과를 내는 POST 라 토큰이 새면 룰 actor 권한으로 이슈가 변경된다(§잔여위험 R1).
+         * - **back-channel logout 1** — Auth JWKS 의 RS256 서명 + `typ=logout+jwt` · iss · aud · iat ±5분
+         *   ([com.atlas.bts.identity.provider.oidc.LogoutTokenVerifier]). 할 수 있는 일은 세션 끊기뿐이다.
          *
          * ## 매처 형태 — 메서드 고정 + 단일 세그먼트 2겹
          * 전역 하위경로 와일드카드가 아니라 토큰 1개 path 만 노출한다 — [PUBLIC_DASHBOARDS_PATH]·[ICAL_FEED_PATH]
@@ -456,6 +460,8 @@ class SecurityConfig(
                 HttpMethod.POST to "/api/v1/webhooks/git/*",
                 // automation (FR-AT-01) — /api/v1/automation/webhooks/{token} 단일 세그먼트
                 HttpMethod.POST to "/api/v1/automation/webhooks/*",
+                // Auth_platform back-channel logout (S24 · FR-AU-04) — 정확 경로, logout_token 서명 확인
+                HttpMethod.POST to "/api/v1/auth/backchannel-logout",
             )
     }
 }

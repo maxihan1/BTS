@@ -1,4 +1,4 @@
-// 로그아웃 mutation 훅 — POST /api/v1/auth/logout 호출 후 세션 정리 + /login 이동
+// 로그아웃 mutation 훅 — POST /api/v1/auth/logout 호출 후 세션 정리 + /login 또는 Auth 로그아웃으로 이동
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { apiFetch, ApiError } from '@/api/client'
@@ -27,18 +27,27 @@ import { markLoggedOut } from './loginMemory'
  * `start-page.spec.ts`·`active-project.spec.ts` 가 「navigate 가 안 일어난다」를 헤더에 적어 두고
  * `popstate` 를 수동 재발행해 로그인 폼에 도달했다. 두 스펙이 초록이라 아무도 다시 보지 않았다.
  * 짝 판별식 = `e2e/logout-login-modal.spec.ts` — **우회를 쓰지 않는다.**
+ *
+ * ### Auth_platform 로그인이면 Auth 세션도 끝낸다 (S24)
+ * 서버가 200 `{ redirect }` 를 주면 그 주소(Auth `/connect/logout`)로 `location.replace` 한다 — Auth 세션이
+ * 끝나고 다른 앱에도 알린 뒤 `/login` 으로 돌아온다. 돌아온 `/login` 은 아래 localStorage 표시로 카드를 보인다.
+ * 204(로컬 비밀번호 등) · 실패면 지금처럼 `/login?logged_out` 으로 옮긴다.
  */
 export function useLogoutMutation() {
   const clearSession = useAuthStore((s) => s.clearSession)
   const navigate = useNavigate()
 
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<string | null> => {
       const res = await apiFetch('/api/v1/auth/logout', { method: 'POST' })
       if (!res.ok) {
         const body: unknown = await res.json().catch(() => ({}))
         throw new ApiError(res.status, body)
       }
+      if (res.status !== 200) return null
+      const body: unknown = await res.json().catch(() => null)
+      const redirect = (body as { redirect?: unknown } | null)?.redirect
+      return typeof redirect === 'string' ? redirect : null
     },
     onError: (error: ApiError | Error) => {
       // 서버/네트워크 실패는 사일런트 처리 — clearSession은 onSettled에서 항상 보장
@@ -46,14 +55,19 @@ export function useLogoutMutation() {
       const status = error instanceof ApiError ? error.status : 'network'
       console.error(`[logout] 서버 요청 실패 status=${status} (클라이언트 세션은 정리됩니다)`)
     },
-    onSettled: () => {
+    onSettled: (redirect) => {
       // 성공·실패 무관하게 반드시 클라이언트 세션 정리 — 사용자 로그아웃 의도 우선
       clearSession()
       // 새 탭 · 북마크로 열어도 카드가 나오게 브라우저에도 남긴다 (S22). 주소의 표시는 저장소가 막힌 브라우저 몫이다
       markLoggedOut()
+      // Auth 세션도 끝낸다 (S24) — replace 라 뒤로가기가 로그아웃 전 화면으로 돌아가지 않는다
+      if (redirect) {
+        window.location.replace(redirect)
+        return
+      }
       // 이어서 /login 으로 옮긴다. 여기서 하지 않으면 아무도 하지 않는다(위 KDoc).
       // 🛑 `logged_out` 표시를 떼지 마라. SSO 하나뿐인 설치의 `/login` 은 표시가 없으면 Auth 로
-      //    바로 넘기는데, BTS 로그아웃은 Auth 세션을 끝내지 않아 곧장 다시 로그인된다 (S21).
+      //    바로 넘기는데, 이 길(204)은 Auth 세션을 끝내지 않아 곧장 다시 로그인된다 (S21).
       void navigate({ to: '/login', search: { logged_out: true } })
     },
   })

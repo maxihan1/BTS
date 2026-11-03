@@ -19,6 +19,7 @@ import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.pat.PersonalAccessTokenService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
+import com.atlas.bts.identity.provider.oidc.AuthPlatformLogout
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
 import com.atlas.bts.identity.session.RefreshTokenService.FailureReason
@@ -191,6 +192,10 @@ class AuthControllerTest {
     @MockBean
     lateinit var trustedDeviceService: TrustedDeviceService
 
+    /** 기본 mock 은 null — Auth_platform 로그인이 아닌 세션처럼 204 (S24) */
+    @MockBean
+    lateinit var authPlatformLogout: AuthPlatformLogout
+
     /** 기본값: 전역 역할 없음 (일반 사용자). 역할 의존 케이스는 개별 테스트에서 재정의. */
     @org.junit.jupiter.api.BeforeEach
     fun stubSystemRoles() {
@@ -237,15 +242,7 @@ class AuthControllerTest {
                 anyCharArray(),
             ),
         ).thenReturn(AuthnResult.Success(principal))
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -473,6 +470,9 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             anyBool(),
+            org.mockito.ArgumentMatchers.nullable(Instant::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
         )
     }
 
@@ -495,15 +495,7 @@ class AuthControllerTest {
             .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
         `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
         `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -535,6 +527,9 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             captureBool(mfaVerifiedCaptor),
+            org.mockito.ArgumentMatchers.nullable(Instant::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
         )
         assertThat(mfaVerifiedCaptor.value).isTrue()
     }
@@ -563,6 +558,9 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             anyBool(),
+            org.mockito.ArgumentMatchers.nullable(Instant::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
         )
     }
 
@@ -666,15 +664,7 @@ class AuthControllerTest {
         `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
         `when`(mfaBackupCodeService.verifyAndConsume(mfaUserId, "ABCDE-FGHJK"))
             .thenReturn(MfaBackupCodeService.VerifyResult.Success)
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -708,6 +698,9 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             captureBool(mfaVerifiedCaptor),
+            org.mockito.ArgumentMatchers.nullable(Instant::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
         )
         assertThat(mfaVerifiedCaptor.value).isTrue()
         // method=backup_code 면 TOTP 경로는 타지 않는다(분기 격리).
@@ -743,6 +736,9 @@ class AuthControllerTest {
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             org.mockito.ArgumentMatchers.nullable(String::class.java),
             anyBool(),
+            org.mockito.ArgumentMatchers.nullable(Instant::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
+            org.mockito.ArgumentMatchers.nullable(String::class.java),
         )
     }
 
@@ -788,15 +784,7 @@ class AuthControllerTest {
             .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
         `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
         `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -835,15 +823,7 @@ class AuthControllerTest {
             .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
         `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
         `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -1037,15 +1017,7 @@ class AuthControllerTest {
         // User-Agent 헤더는 본 요청에서 설정하지 않아 null 일 수 있으므로 nullable 매처로 받는다.
         `when`(trustedDeviceService.trust(eqUuid(mfaUserId), org.mockito.ArgumentMatchers.nullable(String::class.java)))
             .thenReturn("new-raw-trusted-token")
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -1095,15 +1067,7 @@ class AuthControllerTest {
             .thenReturn(MfaChallengeClaims(userId = mfaUserId, providerId = "local", jti = mfaJti))
         `when`(mfaChallengeTokenService.consume(mfaJti)).thenReturn(true)
         `when`(mfaService.verifyLogin(mfaUserId, "123456")).thenReturn(VerifyResult.Success)
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -1147,6 +1111,48 @@ class AuthControllerTest {
         )
             .andExpect(status().isNoContent)
             .andExpect(cookie().maxAge("refresh_token", 0))
+    }
+
+    @Test
+    fun `logout of Auth_platform session returns 200 with Auth connect-logout redirect (S24)`() {
+        val sessionId = UUID.fromString("22222222-2222-2222-2222-222222222222")
+        val session =
+            Session(
+                id = sessionId,
+                userId = UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                providerId = "oidc",
+                deviceFingerprint = null,
+                ipAddress = null,
+                userAgent = null,
+                createdAt = Instant.parse("2026-05-29T09:00:00Z"),
+                expiresAt = Instant.parse("2026-05-30T09:00:00Z"),
+                lastSeenAt = Instant.parse("2026-05-29T09:00:00Z"),
+                revokedAt = null,
+                revokeReason = null,
+                authSid = "auth-sid",
+                authIdTokenEnc = "cipher",
+            )
+        val endSession = "https://auth.example.com/connect/logout?id_token_hint=t&post_logout_redirect_uri=x"
+        `when`(sessionService.lookup(sessionId)).thenReturn(session)
+        `when`(
+            authPlatformLogout.endSessionUrl(
+                org.mockito.ArgumentMatchers.eq(session) ?: session,
+                org.mockito.ArgumentMatchers.any(jakarta.servlet.http.HttpServletRequest::class.java)
+                    ?: org.springframework.mock.web.MockHttpServletRequest(),
+            ),
+        ).thenReturn(endSession)
+
+        mockMvc.perform(
+            post("/api/v1/auth/logout")
+                .with(jwt().jwt { it.subject(session.userId.toString()).claim("sid", sessionId.toString()) }),
+        )
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.redirect").value(endSession))
+            .andExpect(cookie().maxAge("refresh_token", 0))
+
+        // BTS 세션은 Auth 로 보내기 전에 이미 끊는다
+        verify(sessionService).revoke(sessionId, "logout")
+        verify(refreshTokenRepository).revokeChainFromSession(sessionId)
     }
 
     // ── logout 미인증 — 401 ────────────────────────────────────────────────────
@@ -1647,15 +1653,7 @@ class AuthControllerTest {
                 anyCharArray(),
             ),
         ).thenReturn(AuthnResult.Success(principal))
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -1799,15 +1797,7 @@ class AuthControllerTest {
                 anyCharArray(),
             ),
         ).thenReturn(AuthnResult.Success(principal))
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),
@@ -1866,6 +1856,24 @@ class AuthControllerTest {
     private fun eqStr(value: String): String = org.mockito.ArgumentMatchers.eq(value) ?: value
 
     /**
+     * `sessionService.create` stub — 어느 로그인이든. S24 선택 인자(notAfter · authSid · authIdTokenEnc)까지
+     * matcher 로 채운다 (Mockito 는 matcher 와 기본값을 섞지 못한다).
+     */
+    private fun whenSessionCreated() =
+        `when`(
+            sessionService.create(
+                anyUuid(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                anyBool(),
+                org.mockito.ArgumentMatchers.nullable(Instant::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+                org.mockito.ArgumentMatchers.nullable(String::class.java),
+            ),
+        )
+
+    /**
      * UUID 파라미터의 Mockito any() 매처 — Kotlin non-null UUID 에 null 전달 방지.
      */
     private fun anyUuid(): UUID = org.mockito.ArgumentMatchers.any(UUID::class.java) ?: UUID.randomUUID()
@@ -1920,15 +1928,7 @@ class AuthControllerTest {
                 anyCharArray(),
             ),
         ).thenReturn(AuthnResult.Success(principal))
-        `when`(
-            sessionService.create(
-                anyUuid(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                org.mockito.ArgumentMatchers.nullable(String::class.java),
-                anyBool(),
-            ),
-        ).thenReturn(mockSession)
+        whenSessionCreated().thenReturn(mockSession)
         `when`(
             jwtIssuer.issue(
                 anyUuid(),

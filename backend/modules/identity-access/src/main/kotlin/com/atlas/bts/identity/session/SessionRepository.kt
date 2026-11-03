@@ -89,6 +89,28 @@ interface SessionRepository {
      * @param id 갱신할 세션 ID
      */
     fun updateLastSeen(id: UUID)
+
+    /**
+     * Auth 세션 [authSid] 로 로그인한 활성 세션을 폐기하고 그 id 들을 돌려준다 (S24 back-channel logout).
+     *
+     * partial index `idx_sessions_auth_sid_active` (V037 — WHERE revoked_at IS NULL) 를 탄다.
+     */
+    fun revokeActiveByAuthSid(
+        authSid: String,
+        reason: String,
+    ): List<UUID>
+
+    /**
+     * 사용자의 [providerId] 세션 중 [before] 전에 만든 활성 세션을 폐기하고 그 id 들을 돌려준다
+     * (S24 back-channel logout — sid 없는 token). 기준이 받은 시각이 아니라 token `iat` 라서
+     * 다시 보낸 token 이 그 뒤 로그인을 끊지 못한다.
+     */
+    fun revokeActiveByUserCreatedBefore(
+        userId: UUID,
+        providerId: String,
+        before: Instant,
+        reason: String,
+    ): List<UUID>
 }
 
 /**
@@ -143,6 +165,8 @@ class JdbcSessionRepository(
                 "revokedAt" to session.revokedAt?.let { Timestamp.from(it) },
                 "revokeReason" to session.revokeReason,
                 "mfaVerified" to session.mfaVerified,
+                "authSid" to session.authSid,
+                "authIdTokenEnc" to session.authIdTokenEnc,
             ),
         )
     }
@@ -174,6 +198,34 @@ class JdbcSessionRepository(
             ),
         )
 
+    override fun revokeActiveByAuthSid(
+        authSid: String,
+        reason: String,
+    ): List<UUID> =
+        jdbc.queryForList(
+            SQL_REVOKE_ACTIVE_BY_AUTH_SID,
+            mapOf("authSid" to authSid, "reason" to reason, "now" to Timestamp.from(Instant.now())),
+            UUID::class.java,
+        )
+
+    override fun revokeActiveByUserCreatedBefore(
+        userId: UUID,
+        providerId: String,
+        before: Instant,
+        reason: String,
+    ): List<UUID> =
+        jdbc.queryForList(
+            SQL_REVOKE_ACTIVE_BY_USER_CREATED_BEFORE,
+            mapOf(
+                "userId" to userId,
+                "providerId" to providerId,
+                "before" to Timestamp.from(before),
+                "reason" to reason,
+                "now" to Timestamp.from(Instant.now()),
+            ),
+            UUID::class.java,
+        )
+
     override fun updateLastSeen(id: UUID) {
         jdbc.update(
             SQL_UPDATE_LAST_SEEN,
@@ -189,7 +241,8 @@ class JdbcSessionRepository(
     private companion object {
         const val SQL_FIND_BY_ID = """
             SELECT id, user_id, provider_id, device_fingerprint, ip_address, user_agent,
-                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified
+                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified,
+                   auth_sid, auth_id_token_enc
             FROM sessions
             WHERE id = :id
         """
@@ -203,7 +256,8 @@ class JdbcSessionRepository(
          */
         const val SQL_FIND_ACTIVE_BY_USER_ID = """
             SELECT id, user_id, provider_id, device_fingerprint, ip_address, user_agent,
-                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified
+                   created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified,
+                   auth_sid, auth_id_token_enc
             FROM sessions
             WHERE user_id = :userId
               AND revoked_at IS NULL
@@ -213,10 +267,12 @@ class JdbcSessionRepository(
         const val SQL_INSERT = """
             INSERT INTO sessions (
                 id, user_id, provider_id, device_fingerprint, ip_address, user_agent,
-                created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified
+                created_at, expires_at, last_seen_at, revoked_at, revoke_reason, mfa_verified,
+                auth_sid, auth_id_token_enc
             ) VALUES (
                 :id, :userId, :providerId, :deviceFingerprint, :ipAddress::INET, :userAgent,
-                :createdAt, :expiresAt, :lastSeenAt, :revokedAt, :revokeReason, :mfaVerified
+                :createdAt, :expiresAt, :lastSeenAt, :revokedAt, :revokeReason, :mfaVerified,
+                :authSid, :authIdTokenEnc
             )
         """
 
@@ -244,6 +300,26 @@ class JdbcSessionRepository(
                 revoke_reason = :reason
             WHERE user_id = :userId
               AND revoked_at IS NULL
+        """
+
+        const val SQL_REVOKE_ACTIVE_BY_AUTH_SID = """
+            UPDATE sessions
+            SET revoked_at   = :now,
+                revoke_reason = :reason
+            WHERE auth_sid = :authSid
+              AND revoked_at IS NULL
+            RETURNING id
+        """
+
+        const val SQL_REVOKE_ACTIVE_BY_USER_CREATED_BEFORE = """
+            UPDATE sessions
+            SET revoked_at   = :now,
+                revoke_reason = :reason
+            WHERE user_id = :userId
+              AND provider_id = :providerId
+              AND created_at < :before
+              AND revoked_at IS NULL
+            RETURNING id
         """
 
         /**
@@ -284,5 +360,7 @@ private object SessionRowMapper : RowMapper<Session> {
             revokedAt = rs.getTimestamp("revoked_at")?.toInstant(),
             revokeReason = rs.getString("revoke_reason"),
             mfaVerified = rs.getBoolean("mfa_verified"),
+            authSid = rs.getString("auth_sid"),
+            authIdTokenEnc = rs.getString("auth_id_token_enc"),
         )
 }
