@@ -16,18 +16,22 @@ import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.ProviderType
+import com.bts.shared.crypto.SecretEncryptor
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpHeaders
 import org.springframework.security.core.Authentication
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken
+import org.springframework.security.oauth2.core.oidc.OidcIdToken
 import org.springframework.security.oauth2.core.oidc.user.OidcUser
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler
 import org.springframework.stereotype.Component
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.time.Clock
+import java.time.Duration
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
@@ -74,6 +78,12 @@ import java.util.UUID
  * [OidcProviderConfigReader.findByRegistrationId](enabled 무관)와 달리 **enabled 재해소**
  * ([OidcProviderConfigReader.findEnabledByRegistrationId])로만 얻는다 — SAML 과 동일하게 enabled 를
  * 거른다(OIDC 의 enabled 미필터 비대칭 보정, start↔콜백 TOCTOU 차단, EC16). 인텐트가 없으면 무변경(EC1).
+ *
+ * **Auth_platform 통합 로그아웃 (S24)**:
+ * 사내 Auth_platform 로그인이면 id_token 의 `sid` 와 id_token 원문(`oidcSecretEncryptor` 암호문)을 세션에 둔다 —
+ * back-channel logout 이 `sid` 로 이 세션을 찾고, BTS 로그아웃이 id_token 으로 Auth 세션도 끝낸다.
+ * 세션 만료는 `min(14일, auth_time + 7일)` — Auth 세션이 7일에 끝나니 BTS 세션도 그보다 오래 살지 않는다.
+ * refresh cookie `Max-Age` 도 그 남은 시간이다.
  */
 @Component
 @Suppress("LongParameterList") // DI 생성자 — 세션/JWT 발급 협력자 + 연결 모드 분기(callbackProcessor) + Clock 주입
@@ -86,6 +96,7 @@ class OidcAuthenticationSuccessHandler(
     private val callbackProcessor: SsoLinkingCallbackProcessor,
     private val intentStore: SsoLinkingIntentStore,
     private val auditLogService: AuthAuditLogService,
+    @param:Qualifier("oidcSecretEncryptor") private val secretEncryptor: SecretEncryptor,
     private val clock: Clock = Clock.systemUTC(),
 ) : AuthenticationSuccessHandler {
     private val log = LoggerFactory.getLogger(OidcAuthenticationSuccessHandler::class.java)
@@ -127,10 +138,9 @@ class OidcAuthenticationSuccessHandler(
 
         // 사내 Auth_platform 이 MFA 를 거쳤다고 서명한 것(RFC 8176 amr)을 BTS 세션의 MFA 로 인정한다 — BTS TOTP 등록을 또 강제하지 않는다.
         // 다른 IdP 의 amr 은 뜻이 IdP 마다 달라 믿지 않는다.
-        val mfaVerified =
-            registrationId == AuthPlatformRegistrationRunner.REGISTRATION_ID &&
-                principal.idToken?.getClaimAsStringList("amr")?.contains("mfa") == true
-        issueTokens(request, response, account.userId, mfaVerified)
+        val authIdToken = principal.idToken?.takeIf { registrationId == AuthPlatformRegistrationRunner.REGISTRATION_ID }
+        val mfaVerified = authIdToken?.getClaimAsStringList("amr")?.contains("mfa") == true
+        issueTokens(request, response, account.userId, mfaVerified, authIdToken)
         // 일반 로그인 경로에서만 LOGIN_SUCCESS 기록(C-3) — 연결 모드 early-return 은 위에서 처리되어 도달하지 않는다.
         // best-effort(B-1) — 감사 INSERT 실패가 로그인 가용성을 인질로 잡지 않도록 recordAuditBestEffort 로 감싼다.
         // providerId="oidc", ip/userAgent 는 요청에서 캡처(PII 는 로그 미출력).
@@ -263,12 +273,15 @@ class OidcAuthenticationSuccessHandler(
      * 세션 생성 + refresh token 저장(HttpOnly Cookie) + access token 발급.
      *
      * [Saml2AuthenticationSuccessHandler] 와 동일한 컴포넌트를 호출한다.
+     *
+     * @param authIdToken Auth_platform 로그인의 id_token — 다른 IdP 는 null (S24, 클래스 KDoc)
      */
     private fun issueTokens(
         request: HttpServletRequest,
         response: HttpServletResponse,
         userId: UUID,
         mfaVerified: Boolean,
+        authIdToken: OidcIdToken?,
     ) {
         val session =
             sessionService.create(
@@ -277,6 +290,9 @@ class OidcAuthenticationSuccessHandler(
                 ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
                 userAgent = request.getHeader(HttpHeaders.USER_AGENT),
                 mfaVerified = mfaVerified,
+                notAfter = authIdToken?.authenticatedAt?.plus(AUTH_SESSION_MAX_DAYS, ChronoUnit.DAYS),
+                authSid = authIdToken?.getClaimAsString(SID_CLAIM),
+                authIdTokenEnc = authIdToken?.let { secretEncryptor.encrypt(it.tokenValue) },
             )
 
         val rawToken = generateRawToken()
@@ -292,7 +308,9 @@ class OidcAuthenticationSuccessHandler(
                 replacedBy = null,
             ),
         )
-        response.addHeader(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken))
+        // 쿠키도 세션만큼만 — 7일 상한이 걸린 세션에 14일 쿠키를 주지 않는다 (S24)
+        val maxAge = Duration.between(now, session.expiresAt).seconds.coerceAtLeast(0)
+        response.addHeader(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, maxAge))
 
         jwtIssuer.issue(
             userId = session.userId,
@@ -303,8 +321,10 @@ class OidcAuthenticationSuccessHandler(
     }
 
     /** refresh_token HttpOnly Secure SameSite=Strict Cookie 헤더 값 (SAML 핸들러와 동일 속성). */
-    private fun buildRefreshCookie(value: String): String =
-        "$REFRESH_COOKIE_NAME=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$REFRESH_MAX_AGE"
+    private fun buildRefreshCookie(
+        value: String,
+        maxAge: Long,
+    ): String = "$REFRESH_COOKIE_NAME=$value; HttpOnly; Secure; SameSite=Strict; Path=$COOKIE_PATH; Max-Age=$maxAge"
 
     /** [TOKEN_BYTES] 바이트 CSPRNG 난수를 hex 문자열로 인코딩한다. */
     private fun generateRawToken(): String {
@@ -325,8 +345,13 @@ class OidcAuthenticationSuccessHandler(
 
         const val REFRESH_COOKIE_NAME = "refresh_token"
         const val COOKIE_PATH = "/api/v1/auth"
-        const val REFRESH_MAX_AGE = 1_209_600
         const val REFRESH_TTL_DAYS = 14L
+
+        /** Auth_platform 세션 절대 수명 — 이 앱 세션 만료 상한 `auth_time + 7일` (S24 · 설계 D2) */
+        const val AUTH_SESSION_MAX_DAYS = 7L
+
+        /** id_token 의 Auth 세션 id 해시 claim (S23) */
+        const val SID_CLAIM = "sid"
         const val TOKEN_BYTES = 32
 
         /** 연결 모드 거부 시 돌아갈 서버 고정 설정 경로 (open-redirect 0, EC14 — SsoLinkingCallbackProcessor 와 동일). */

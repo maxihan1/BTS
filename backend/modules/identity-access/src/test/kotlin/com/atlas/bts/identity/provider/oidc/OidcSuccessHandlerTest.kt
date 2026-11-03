@@ -17,6 +17,7 @@ import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.Session
 import com.atlas.bts.identity.session.SessionService
 import com.atlas.bts.identity.spi.ProviderType
+import com.bts.shared.crypto.SecretEncryptor
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -33,6 +34,7 @@ import org.springframework.security.oauth2.core.oidc.user.OidcUser
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -57,6 +59,7 @@ class OidcSuccessHandlerTest {
     private lateinit var intentStore: SsoLinkingIntentStore
     private lateinit var auditLogService: AuthAuditLogService
     private lateinit var handler: OidcAuthenticationSuccessHandler
+    private val secretEncryptor = SecretEncryptor("test-app-encryption-key-for-oidc", "deadbeefcafef00d")
 
     private val fixedNow = Instant.parse("2026-06-01T10:00:00Z")
     private val clock = Clock.fixed(fixedNow, ZoneOffset.UTC)
@@ -128,7 +131,7 @@ class OidcSuccessHandlerTest {
         // 연결 모드 enabled 재해소(B1/EC16) — 기본은 활성. 비활성 테스트가 개별로 override 한다.
         every { configRepo.findEnabledByRegistrationId(registrationId) } returns oidcConfig
         every { autoProvisionService.provision(providerId, any()) } returns provisionedAccount
-        every { sessionService.create(userId, any(), any(), any(), any()) } returns session
+        every { sessionService.create(userId, any(), any(), any(), any(), any(), any(), any()) } returns session
         every {
             jwtIssuer.issue(userId, sessionId, any(), any())
         } returns accessTokenValue
@@ -143,6 +146,7 @@ class OidcSuccessHandlerTest {
                 callbackProcessor = callbackProcessor,
                 intentStore = intentStore,
                 auditLogService = auditLogService,
+                secretEncryptor = secretEncryptor,
                 clock = clock,
             )
     }
@@ -151,6 +155,7 @@ class OidcSuccessHandlerTest {
         preferredUsername: String? = email,
         amr: List<String>? = null,
         registrationId: String = this.registrationId,
+        idTokenClaims: Map<String, Any> = emptyMap(),
     ): OAuth2AuthenticationToken {
         val principal = mockk<OidcUser>()
         every { principal.subject } returns sub
@@ -159,7 +164,8 @@ class OidcSuccessHandlerTest {
         every { principal.preferredUsername } returns preferredUsername
         every { principal.name } returns sub
         every { principal.idToken } returns
-            OidcIdToken.withTokenValue("id-token").subject(sub).also { b -> amr?.let { b.claim("amr", it) } }.build()
+            OidcIdToken.withTokenValue("id-token").subject(sub).claims { it.putAll(idTokenClaims) }
+                .also { b -> amr?.let { b.claim("amr", it) } }.build()
         val token = mockk<OAuth2AuthenticationToken>()
         every { token.principal } returns principal
         every { token.authorizedClientRegistrationId } returns registrationId
@@ -245,7 +251,62 @@ class OidcSuccessHandlerTest {
             oidcAuthentication(amr = listOf("pwd", "mfa", "otp"), registrationId = "auth"),
         )
 
-        verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), true) }
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), true, any(), any(), any()) }
+    }
+
+    @Test
+    fun `Auth_platform 로그인은 id token 의 sid 와 암호화한 id token 을 세션에 둔다 (S24 로그아웃)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
+
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(registrationId = "auth", idTokenClaims = mapOf("sid" to "auth-sid-hash")),
+        )
+
+        val enc = slot<String>()
+        verify(exactly = 1) {
+            sessionService.create(userId, any(), any(), any(), any(), any(), "auth-sid-hash", capture(enc))
+        }
+        // 평문 토큰 금지 (DEVELOPMENT §1.1-1) — 저장값은 암호문이고 풀면 원문이다
+        assertThat(enc.captured).isNotEqualTo("id-token")
+        assertThat(secretEncryptor.decrypt(enc.captured)).isEqualTo("id-token")
+    }
+
+    @Test
+    fun `Auth_platform 에 6일 전 로그인했으면 세션은 1일 뒤 끝나고 쿠키도 그만큼이다 (S24 7일 상한)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
+        val authTime = fixedNow.minus(6, ChronoUnit.DAYS)
+        val capped = fixedNow.plus(1, ChronoUnit.DAYS)
+        every { sessionService.create(userId, any(), any(), any(), any(), any(), any(), any()) } returns
+            session.copy(expiresAt = capped)
+
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(registrationId = "auth", idTokenClaims = mapOf("auth_time" to authTime)),
+        )
+
+        verify(exactly = 1) {
+            sessionService.create(userId, any(), any(), any(), any(), authTime.plus(7, ChronoUnit.DAYS), any(), any())
+        }
+        verify { response.addHeader("Set-Cookie", match { it.contains("Max-Age=86400") }) }
+    }
+
+    @Test
+    fun `다른 IdP 는 sid 와 id token 을 두지 않고 만료 상한도 없다`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+
+        handler.onAuthenticationSuccess(
+            request(null),
+            response,
+            oidcAuthentication(idTokenClaims = mapOf("sid" to "x", "auth_time" to fixedNow)),
+        )
+
+        verify(exactly = 1) { sessionService.create(userId, any(), any(), any(), any(), null, null, null) }
+        verify { response.addHeader("Set-Cookie", match { it.contains("Max-Age=$SESSION_TTL_SECONDS") }) }
     }
 
     @Test

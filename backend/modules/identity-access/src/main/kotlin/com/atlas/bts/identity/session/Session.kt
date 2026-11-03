@@ -34,6 +34,8 @@ import java.util.UUID
  * - [revokeReason]: 폐기 사유 (예. "ADMIN_REVOKE", "LOGOUT", "PASSWORD_CHANGED"). null 허용.
  * - [mfaVerified]: 이 세션이 2차 요소(TOTP)까지 통과했는지 (FR-MF-01). JWT `mfa_verified` 클레임의 원천.
  *   refresh 회전 시 [RefreshTokenService.rotate] 가 이 값을 다시 발급 토큰에 전파한다(GAP-1). 기본 false.
+ * - [authSid]: Auth_platform 로그인이면 id_token 의 `sid`(Auth 세션 id 해시). back-channel logout 이 이 값으로 찾는다 (S24).
+ * - [authIdTokenEnc]: Auth_platform 로그인이면 로그아웃 때 쓸 id_token — `oidcSecretEncryptor` 암호문 (S24).
  *
  * @see RefreshToken 세션에 귀속되는 Refresh Token (1 Session : N RefreshToken)
  */
@@ -50,6 +52,8 @@ data class Session(
     val revokedAt: Instant?,
     val revokeReason: String?,
     val mfaVerified: Boolean = false,
+    val authSid: String? = null,
+    val authIdTokenEnc: String? = null,
 ) {
     /**
      * 세션이 현재 사용 가능한 상태인지 확인한다.

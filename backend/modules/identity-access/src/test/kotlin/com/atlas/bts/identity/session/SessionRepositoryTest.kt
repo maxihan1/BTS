@@ -272,4 +272,49 @@ class SessionRepositoryTest {
         // 존재하지 않는 세션 ID에 대해 예외 없이 실행돼야 한다
         repo.updateLastSeen(UUID.randomUUID())
     }
+
+    // ── S24 back-channel logout ───────────────────────────────────────────────
+
+    @Test
+    fun `save — Auth sid 와 암호화 id token 이 저장되고 다시 읽힌다`() {
+        val session = buildSession(providerId = "oidc").copy(authSid = "sid-a", authIdTokenEnc = "cipher")
+
+        repo.save(session)
+
+        val found = repo.findById(session.id)!!
+        assertThat(found.authSid).isEqualTo("sid-a")
+        assertThat(found.authIdTokenEnc).isEqualTo("cipher")
+    }
+
+    @Test
+    fun `revokeActiveByAuthSid — 그 sid 의 살아 있는 세션만 폐기하고 id 를 돌려준다`() {
+        val a1 = buildSession(providerId = "oidc").copy(authSid = "sid-a")
+        val a2 = buildSession(providerId = "oidc").copy(authSid = "sid-a")
+        val other = buildSession(providerId = "oidc").copy(authSid = "sid-b")
+        listOf(a1, a2, other).forEach(repo::save)
+        repo.markRevoked(a2.id, "logout")
+
+        val revoked = repo.revokeActiveByAuthSid("sid-a", "backchannel_logout")
+
+        assertThat(revoked).containsExactly(a1.id)
+        assertThat(repo.findById(a1.id)!!.revokeReason).isEqualTo("backchannel_logout")
+        assertThat(repo.findById(a2.id)!!.revokeReason).isEqualTo("logout")
+        assertThat(repo.findById(other.id)!!.revokedAt).isNull()
+    }
+
+    @Test
+    fun `revokeActiveByUserCreatedBefore — 그 provider 의 기준 시각 전 세션만 폐기한다`() {
+        val cut = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        val before = buildSession(providerId = "oidc").copy(createdAt = cut.minusSeconds(60))
+        val after = buildSession(providerId = "oidc").copy(createdAt = cut.plusSeconds(1))
+        val local = buildSession(providerId = "local").copy(createdAt = cut.minusSeconds(60))
+        listOf(before, after, local).forEach(repo::save)
+
+        val revoked = repo.revokeActiveByUserCreatedBefore(userId, "oidc", cut, "backchannel_logout")
+
+        // 다시 보낸 token 이 그 뒤 로그인을 끊지 않고 · 로컬 비밀번호 세션은 남는다 (S24 §1)
+        assertThat(revoked).containsExactly(before.id)
+        assertThat(repo.findById(after.id)!!.revokedAt).isNull()
+        assertThat(repo.findById(local.id)!!.revokedAt).isNull()
+    }
 }
