@@ -10,7 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest
 import org.springframework.context.annotation.Import
+import org.springframework.core.io.ClassPathResource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.jdbc.datasource.DataSourceUtils
+import org.springframework.jdbc.datasource.init.ScriptUtils
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import java.time.Instant
@@ -317,4 +320,40 @@ class SessionRepositoryTest {
         assertThat(repo.findById(after.id)!!.revokedAt).isNull()
         assertThat(repo.findById(local.id)!!.revokedAt).isNull()
     }
+
+    @Test
+    fun `V038 — S24 전 oidc 세션과 그 refresh 만 끊고 sid 있는 oidc · 로컬 세션은 남긴다`() {
+        val pre = buildSession(providerId = "oidc")
+        val withSid = buildSession(providerId = "oidc").copy(authSid = "sid-a")
+        val local = buildSession(providerId = "local")
+        listOf(pre, withSid, local).forEach(repo::save)
+        val preToken = insertRefreshToken(pre.id)
+        val withSidToken = insertRefreshToken(withSid.id)
+
+        // 템플릿 DB 에는 이미 적용됐다 — 같은 SQL 을 이 데이터에 다시 돌린다 (테스트 트랜잭션 안)
+        val dataSource = requireNotNull(jdbc.jdbcTemplate.dataSource)
+        ScriptUtils.executeSqlScript(
+            DataSourceUtils.getConnection(dataSource),
+            ClassPathResource("db/migration/identity-access/V038__revoke_pre_s24_oidc_sessions.sql"),
+        )
+
+        assertThat(repo.findById(pre.id)?.revokeReason).isEqualTo("s24_relogin")
+        assertThat(repo.findById(withSid.id)?.revokedAt).isNull()
+        assertThat(repo.findById(local.id)?.revokedAt).isNull()
+        assertThat(refreshUsedAt(preToken)).isNotNull()
+        assertThat(refreshUsedAt(withSidToken)).isNull()
+    }
+
+    private fun insertRefreshToken(sessionId: UUID): UUID {
+        val id = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO refresh_tokens (id, session_id, token_hash, expires_at) " +
+                "VALUES (:id, :sid, :hash, NOW() + INTERVAL '1 day')",
+            mapOf("id" to id, "sid" to sessionId, "hash" to id.toString().replace("-", "").padEnd(64, '0')),
+        )
+        return id
+    }
+
+    private fun refreshUsedAt(id: UUID): Any? =
+        jdbc.queryForList("SELECT used_at FROM refresh_tokens WHERE id = :id", mapOf("id" to id)).single()["used_at"]
 }
