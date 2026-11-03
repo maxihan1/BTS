@@ -15,6 +15,7 @@ import com.atlas.bts.identity.mfa.MfaService.VerifyResult
 import com.atlas.bts.identity.mfa.TrustedDeviceService
 import com.atlas.bts.identity.mfa.WebAuthnSecurityKeyService
 import com.atlas.bts.identity.provider.ldap.ProviderUnavailableException
+import com.atlas.bts.identity.provider.oidc.AuthPlatformLogout
 import com.atlas.bts.identity.session.RefreshToken
 import com.atlas.bts.identity.session.RefreshTokenRepository
 import com.atlas.bts.identity.session.RefreshTokenService
@@ -110,6 +111,7 @@ class AuthController(
     private val mfaBackupCodeService: MfaBackupCodeService,
     private val webAuthnSecurityKeyService: WebAuthnSecurityKeyService,
     private val trustedDeviceService: TrustedDeviceService,
+    private val authPlatformLogout: AuthPlatformLogout,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     private val log = LoggerFactory.getLogger(AuthController::class.java)
@@ -593,24 +595,35 @@ class AuthController(
      * EC-18 (idempotent): Authorization 헤더 없으면 Spring Security 가 401 반환. Controller 미도달.
      * 이미 폐기된 세션 revoke 는 SessionService.revoke 가 멱등으로 처리 (0 row 영향).
      *
+     * ## Auth_platform 세션도 끝낸다 (S24)
+     * 그 세션이 Auth_platform 로그인이라 id_token 을 갖고 있으면 **200 `{redirect}`** — 화면이 브라우저를
+     * Auth `/connect/logout` 으로 보내 Auth 세션을 끝내고(다른 앱엔 back-channel) `/login` 으로 돌아온다.
+     * 그 밖(로컬 비밀번호 · 다른 IdP · 이전 세션)은 지금처럼 204. 어느 쪽이든 BTS 세션은 먼저 끊는다.
+     *
      * @param jwt 인증된 JWT (Spring Security @AuthenticationPrincipal 주입)
-     * @return 204 No Content + Set-Cookie 만료
+     * @return 204 No Content 또는 200 [LogoutResponse] + Set-Cookie 만료
      */
     @PostMapping("/logout")
     fun logout(
         @AuthenticationPrincipal jwt: Jwt,
-    ): ResponseEntity<Unit> {
+        request: HttpServletRequest,
+    ): ResponseEntity<*> {
         val sidStr = jwt.getClaimAsString("sid")
+        var redirect: String? = null
         if (!sidStr.isNullOrBlank()) {
             val sid = UUID.fromString(sidStr)
+            redirect = sessionService.lookup(sid)?.let { authPlatformLogout.endSessionUrl(it, request) }
             sessionService.revoke(sid, REVOKE_REASON_LOGOUT)
             refreshTokenRepository.revokeChainFromSession(sid)
             recordLogout(jwt, sidStr)
         }
 
-        return ResponseEntity.noContent()
-            .header(HttpHeaders.SET_COOKIE, buildRefreshCookie("", 0))
-            .build()
+        val expireCookie = buildRefreshCookie("", 0)
+        return if (redirect == null) {
+            ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, expireCookie).build<Unit>()
+        } else {
+            ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, expireCookie).body(LogoutResponse(redirect))
+        }
     }
 
     /**
@@ -1013,3 +1026,10 @@ data class MfaRequiredResponse(
     @JsonProperty("mfa_challenge_token") val mfaChallengeToken: String,
     @JsonProperty("expires_in") val expiresIn: Long,
 )
+
+/**
+ * POST /api/v1/auth/logout 200 응답 — Auth_platform 세션도 끝낼 주소 (S24).
+ *
+ * @param redirect 브라우저가 `location.replace` 로 갈 Auth `/connect/logout` 주소
+ */
+data class LogoutResponse(val redirect: String)

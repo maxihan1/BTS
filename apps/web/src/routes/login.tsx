@@ -25,8 +25,9 @@ type Notice = 'loggedOut' | 'error'
  *
  * - `?error` — SSO 실패. Spring `oauth2Login` · `saml2Login` 의 기본 실패 주소가 `/login?error` 다.
  *   다시 넘기면 같은 실패를 되풀이한다.
- * - 로그아웃 표시 — `?logged_out`(로그아웃 직후) 또는 localStorage(새 탭 · 북마크, S22). BTS 로그아웃은
- *   Auth 세션을 끝내지 않아서 넘기면 로그아웃하자마자 다시 로그인된다. 카드의 버튼이 표시를 지운다.
+ * - 로그아웃 표시 — `?logged_out`(로그아웃 직후) 또는 localStorage(새 탭 · 북마크 · Auth 로그아웃에서 돌아옴, S22 · S24).
+ *   Auth 로그인이었으면 Auth 세션도 끝났으니 넘기면 Auth 로그인 화면이고, 아니면 Auth 세션이 남아 곧장 다시
+ *   로그인된다 — 어느 쪽이든 카드로 고르게 한다. 카드의 버튼이 표시를 지운다.
  * - 방금 넘겼는데 또 왔다 — Auth 는 통과했는데 BTS 세션을 못 이어받은 것이다(쿠키 설정 등).
  *   넘기면 두 서버 사이를 끝없이 오간다.
  */

@@ -4,7 +4,8 @@
 export const AUTO_SSO_AT_KEY = 'bts.login.auto-sso-at'
 /**
  * 로그아웃 표시(localStorage) — 새 탭 · 북마크로 열어도 Auth 로 바로 넘기지 않고 카드를 보인다.
- * BTS 로그아웃은 Auth SSO 세션을 끝내지 않아서 넘기면 곧장 다시 로그인된다.
+ * Auth 로그인 세션의 로그아웃은 Auth 세션도 끝내고(S24) `/login` 으로 돌아오는데, 그때 카드를 띄우는 것이 이 표시다.
+ * 그 밖의 로그아웃(로컬 비밀번호 등)은 Auth 세션이 남아 있을 수 있어 넘기면 곧장 다시 로그인된다.
  */
 const LOGGED_OUT_KEY = 'bts.login.logged-out'
 /** 마지막 계정(localStorage) — 카드의 「이 계정으로 로그인」. 토큰이 아니라 이름뿐이다(DEVELOPMENT §1.4-18) */
