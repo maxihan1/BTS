@@ -83,7 +83,8 @@ import java.util.UUID
  * 사내 Auth_platform 로그인이면 id_token 의 `sid` 와 id_token 원문(`oidcSecretEncryptor` 암호문)을 세션에 둔다 —
  * back-channel logout 이 `sid` 로 이 세션을 찾고, BTS 로그아웃이 id_token 으로 Auth 세션도 끝낸다.
  * 세션 만료는 `min(14일, auth_time + 7일)` — Auth 세션이 7일에 끝나니 BTS 세션도 그보다 오래 살지 않는다.
- * refresh cookie `Max-Age` 도 그 남은 시간이다.
+ * 로그인 응답의 refresh cookie `Max-Age` 도 그 남은 시간이다 (회전 뒤 cookie 는 14일이지만 rotate 가
+ * `sessions.expires_at` 으로 거절하므로 세션은 늘지 않는다).
  */
 @Component
 @Suppress("LongParameterList") // DI 생성자 — 세션/JWT 발급 협력자 + 연결 모드 분기(callbackProcessor) + Clock 주입
@@ -283,6 +284,8 @@ class OidcAuthenticationSuccessHandler(
         mfaVerified: Boolean,
         authIdToken: OidcIdToken?,
     ) {
+        // auth_time 이 없으면(계약 위반) 지금 기준 — auth_time ≤ 지금이라 늘 더 짧은 쪽이다 (fail-closed)
+        val authTime = authIdToken?.let { it.authenticatedAt ?: clock.instant() }
         val session =
             sessionService.create(
                 userId = userId,
@@ -290,7 +293,7 @@ class OidcAuthenticationSuccessHandler(
                 ipAddress = request.remoteAddr.takeIf { it.isNotBlank() },
                 userAgent = request.getHeader(HttpHeaders.USER_AGENT),
                 mfaVerified = mfaVerified,
-                notAfter = authIdToken?.authenticatedAt?.plus(AUTH_SESSION_MAX_DAYS, ChronoUnit.DAYS),
+                notAfter = authTime?.plus(AUTH_SESSION_MAX_DAYS, ChronoUnit.DAYS),
                 authSid = authIdToken?.getClaimAsString(SID_CLAIM),
                 authIdTokenEnc = authIdToken?.let { secretEncryptor.encrypt(it.tokenValue) },
             )
@@ -308,7 +311,7 @@ class OidcAuthenticationSuccessHandler(
                 replacedBy = null,
             ),
         )
-        // 쿠키도 세션만큼만 — 7일 상한이 걸린 세션에 14일 쿠키를 주지 않는다 (S24)
+        // 로그인 응답 쿠키도 세션만큼만 (S24) — 회전 뒤 쿠키는 14일이나 서버가 sessions.expires_at 으로 끊는다
         val maxAge = Duration.between(now, session.expiresAt).seconds.coerceAtLeast(0)
         response.addHeader(HttpHeaders.SET_COOKIE, buildRefreshCookie(rawToken, maxAge))
 

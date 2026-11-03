@@ -275,6 +275,18 @@ class OidcSuccessHandlerTest {
     }
 
     @Test
+    fun `Auth id token 에 auth_time 이 없으면 지금부터 7일 — 상한이 풀리지 않는다 (fail-closed)`() {
+        val response = mockk<HttpServletResponse>(relaxed = true)
+        every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")
+
+        handler.onAuthenticationSuccess(request(null), response, oidcAuthentication(registrationId = "auth"))
+
+        verify(exactly = 1) {
+            sessionService.create(userId, any(), any(), any(), any(), fixedNow.plus(7, ChronoUnit.DAYS), any(), any())
+        }
+    }
+
+    @Test
     fun `Auth_platform 에 6일 전 로그인했으면 세션은 1일 뒤 끝나고 쿠키도 그만큼이다 (S24 7일 상한)`() {
         val response = mockk<HttpServletResponse>(relaxed = true)
         every { configRepo.findByRegistrationId("auth") } returns oidcConfig.copy(registrationId = "auth")

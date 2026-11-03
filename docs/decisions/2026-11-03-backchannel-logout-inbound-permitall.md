@@ -41,7 +41,8 @@ decoder 는 컴포넌트 안에만 둔다. 두 번째 `JwtDecoder` @Bean 은 BTS
 
 맞는 token 이 하는 일은 `sessions` 폐기 + refresh chain 폐기뿐이다. 읽기 · 쓰기 · 권한 변경이 없다.
 - `sid` — `sessions.auth_sid` 가 같은 살아 있는 세션 (V037).
-- `sub` 만 — Auth provider 의 `user_external_accounts` 사용자의 `oidc` 세션 중 `created_at < iat + 1초`.
+- `sub` 만 — registration `auth` 의 authn provider(V011 OIDC 공용 행 — Auth 가 유일한 OIDC 등록이라 Auth 와 같다)로
+  찾은 `user_external_accounts` 사용자의 `oidc` 세션 중 `created_at < iat + 1초`.
   로컬 비밀번호 세션은 남긴다. 기준이 `iat` 라 다시 보낸 token 이 그 뒤 로그인을 끊지 못한다 (`jti` 기억 불필요).
 
 ## 결과 (Consequences)
@@ -55,8 +56,12 @@ decoder 는 컴포넌트 안에만 둔다. 두 번째 `JwtDecoder` @Bean 은 BTS
   (`min(14일, auth_time + 7일)`). 계약 §1 `ponytail:` — 놓침이 잦으면 Auth 쪽 재시도 큐.
 - **R2 Auth 키 탈취** — Auth 서명 키가 새면 임의 사용자의 Bunker 세션을 끊을 수 있다 (가용성만, 데이터 노출 없음).
   그 경우 Auth 로그인 자체가 무너진 상태라 이 경로가 더하는 위험은 작다.
-- **R3 rate limit 없음** — 모든 비인증 경로 공통 기존 부채 (git ADR R4). 서명 확인 전 비용은 JWT 파싱 한 번 ·
-  JWKS 는 캐시된다.
+- **R3 rate limit 없음** — 모든 비인증 경로 공통 기존 부채 (git ADR R4). 서명 확인 전 비용은 JWT 파싱 한 번.
+  모르는 `kid` 로 Auth JWKS 를 다시 받게 만드는 길은 막았다 — JWKS 캐시 5분 · 다시 받기 30초에 한 번 ·
+  연결 3초 · 읽기 5초 timeout (`LogoutTokenVerifier`). Auth 가 멈춰도 worker 는 최대 8초만 묶인다.
+- **R4 끊긴 탭의 refresh 가 replay 감사로 남는다** — back-channel 은 브라우저 cookie 를 지울 수 없어, 끊긴 BTS 탭의
+  다음 `/refresh` 가 `RefreshTokenService.rotate` 의 replay 분기(`SUSPICIOUS_REFRESH_REPLAY`)로 들어간다. 비밀번호 변경 ·
+  관리자 끊기와 같은 기존 구조이고 사용자는 로그인 화면으로 간다. 감사 잡음 — 후속에서 활성 검사를 앞에 둔다.
 
 ### 롤백
 

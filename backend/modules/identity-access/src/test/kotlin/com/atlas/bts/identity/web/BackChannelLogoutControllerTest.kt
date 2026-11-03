@@ -25,6 +25,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -38,6 +39,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActions
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.header
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
@@ -47,6 +49,7 @@ import java.net.InetSocketAddress
 import java.time.Instant
 import java.util.Date
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 @WebMvcTest(
     controllers = [BackChannelLogoutController::class],
@@ -58,10 +61,14 @@ class BackChannelLogoutControllerTest {
         private const val CLIENT_ID = "bts"
         private val authKey: RSAKey = RSAKeyGenerator(2048).keyID("auth-k1").generate()
 
+        /** JWKS 를 받은 횟수 — 모르는 kid 가 Auth 로 가는 요청을 늘리지 못하는지 본다 */
+        private val jwksFetches = AtomicInteger()
+
         /** 가짜 Auth JWKS — 새 의존성 없이 JDK HttpServer (계약 §3 Bunker test) */
         private val jwks: HttpServer =
             HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
                 createContext("/oauth2/jwks") { ex ->
+                    jwksFetches.incrementAndGet()
                     val body = JWKSet(authKey.toPublicJWK()).toString().toByteArray()
                     ex.responseHeaders.add("Content-Type", "application/json")
                     ex.sendResponseHeaders(200, body.size.toLong())
@@ -210,10 +217,38 @@ class BackChannelLogoutControllerTest {
     }
 
     @Test
-    fun `iat 가 5분 넘게 지났거나 exp 가 지났으면 400`() {
+    fun `iat 가 5분 넘게 지났으면 exp 가 남아도 400`() {
         val old = Instant.now().minusSeconds(600)
         expectRejected(sign(claims(old).expirationTime(Date.from(Instant.now().plusSeconds(60))).build()))
-        expectRejected(sign(claims(old).build()))
+    }
+
+    @Test
+    fun `exp 가 지났거나 없으면 iat 가 5분 안이어도 400`() {
+        val now = Instant.now()
+        expectRejected(sign(claims(now.minusSeconds(240)).expirationTime(Date.from(now.minusSeconds(120))).build()))
+        expectRejected(sign(claims().expirationTime(null).build()))
+    }
+
+    @Test
+    fun `모르는 kid 를 연달아 보내도 Auth JWKS 는 많아야 한 번 다시 받는다 (로그인 없는 경로의 증폭 차단)`() {
+        send(sign(claims().build())).andExpect(status().isOk) // 캐시를 채운다
+        resetService()
+        val before = jwksFetches.get()
+
+        repeat(3) { i -> expectRejected(sign(claims().build(), key = RSAKeyGenerator(2048).keyID("x-$i").generate())) }
+
+        assertThat(jwksFetches.get() - before).isLessThanOrEqualTo(1)
+    }
+
+    @Test
+    fun `GET 은 열지 않는다 — 메서드 고정이라 익명이면 401`() {
+        mockMvc.perform(get("/api/v1/auth/backchannel-logout")).andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `Auth issuer 가 설정되지 않은 설치는 모든 token 을 거절한다`() {
+        assertThatThrownBy { LogoutTokenVerifier("", CLIENT_ID).verify(sign(claims().build())) }
+            .isInstanceOf(org.springframework.security.oauth2.jwt.JwtException::class.java)
     }
 
     @Test

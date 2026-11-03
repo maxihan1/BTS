@@ -12,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional
  * logout_token 의 대상을 끊는다 (S24 계약 §1 「처리」).
  *
  * - `sid` 가 있으면 그 Auth 세션으로 로그인한 살아 있는 세션만.
- * - `sid` 가 없으면 그 `sub`(Auth user id — `user_external_accounts` 의 Auth provider 행) 사용자의
+ * - `sid` 가 없으면 그 `sub`(Auth user id — registration `auth` 의 authn provider 로 찾은 `user_external_accounts` 행.
+ *   그 provider 는 V011 의 OIDC 공용 행이라 Auth 가 유일한 OIDC 등록일 때 Auth 행과 같다) 사용자의
  *   `oidc` 세션 중 `created_at < iat + 1초` 인 것 전부 — `iat` 는 초로 내린 값이라 끄기와 같은 초에 먼저 만든
  *   세션(ms)도 끊게 1초를 더한다. 로컬 비밀번호 세션은 남긴다. 기준이 `iat` 라 다시 보낸 token 이
  *   그 뒤 로그인을 끊지 못한다 — `jti` 를 기억하지 않는다.

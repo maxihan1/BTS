@@ -3,19 +3,26 @@
 package com.atlas.bts.identity.provider.oidc
 
 import com.nimbusds.jose.JOSEObjectType
+import com.nimbusds.jose.JWSAlgorithm
+import com.nimbusds.jose.jwk.source.JWKSourceBuilder
 import com.nimbusds.jose.proc.DefaultJOSEObjectTypeVerifier
+import com.nimbusds.jose.proc.JWSVerificationKeySelector
+import com.nimbusds.jose.proc.SecurityContext
+import com.nimbusds.jose.util.DefaultResourceRetriever
+import com.nimbusds.jwt.proc.DefaultJWTProcessor
+import com.nimbusds.jwt.proc.JWTClaimsSetVerifier
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator
 import org.springframework.security.oauth2.core.OAuth2Error
 import org.springframework.security.oauth2.core.OAuth2TokenValidator
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult
-import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtException
 import org.springframework.security.oauth2.jwt.JwtValidators
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.stereotype.Component
+import java.net.URI
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -29,6 +36,10 @@ import java.time.Instant
  *
  * decoder 는 이 컴포넌트 안에만 둔다 — 두 번째 [JwtDecoder] @Bean 은 BTS 자신의 access token resource server 를
  * 모호하게 만든다. Auth issuer 가 설정되지 않은 설치(로컬 · test)는 모든 token 을 거절한다.
+ *
+ * **JWKS 받기 — 로그인 없는 경로라 공격자가 부르는 횟수를 정한다.** 모르는 `kid` 마다 다시 받으면 익명 요청이
+ * 그대로 Auth 로 가는 요청이 되고, Auth 가 멈춰 있으면 worker 가 묶인다. 그래서 Nimbus [JWKSourceBuilder]
+ * 기본값(캐시 5분 · 다시 받기 30초에 한 번)에 연결 3초 · 읽기 5초 timeout 을 건다. 제한에 걸린 token 은 400.
  */
 @Component
 class LogoutTokenVerifier(
@@ -40,13 +51,16 @@ class LogoutTokenVerifier(
 
     private val decoder: JwtDecoder? by lazy {
         if (issuer.isEmpty()) return@lazy null
-        NimbusJwtDecoder.withJwkSetUri("$issuer$JWKS_PATH")
-            .jwsAlgorithm(SignatureAlgorithm.RS256)
-            .jwtProcessorCustomizer {
-                it.jwsTypeVerifier = DefaultJOSEObjectTypeVerifier(JOSEObjectType(LOGOUT_JWT_TYPE))
+        val retriever = DefaultResourceRetriever(CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS, JWKS_SIZE_LIMIT)
+        val jwks = JWKSourceBuilder.create<SecurityContext>(URI("$issuer$JWKS_PATH").toURL(), retriever).build()
+        val processor =
+            DefaultJWTProcessor<SecurityContext>().apply {
+                jwsTypeVerifier = DefaultJOSEObjectTypeVerifier(JOSEObjectType(LOGOUT_JWT_TYPE))
+                jwsKeySelector = JWSVerificationKeySelector(JWSAlgorithm.RS256, jwks)
+                // claim 은 아래 Spring validator 가 본다 (NimbusJwtDecoder.withJwkSetUri 와 같은 분담)
+                jwtClaimsSetVerifier = JWTClaimsSetVerifier { _, _ -> }
             }
-            .build()
-            .apply { setJwtValidator(validatorFor(issuer)) }
+        NimbusJwtDecoder(processor).apply { setJwtValidator(validatorFor(issuer)) }
     }
 
     /**
@@ -99,6 +113,12 @@ class LogoutTokenVerifier(
         const val EVENTS = "events"
         const val NONCE = "nonce"
         const val SID = "sid"
+
+        const val CONNECT_TIMEOUT_MS = 3_000
+        const val READ_TIMEOUT_MS = 5_000
+
+        /** JWKS 응답 상한 — 키 몇 개짜리 JSON 이다 */
+        const val JWKS_SIZE_LIMIT = 50 * 1024
 
         /** `iat` 허용 폭 — 계약 §1 「5분 안」 */
         val IAT_WINDOW: Duration = Duration.ofMinutes(5)

@@ -270,7 +270,7 @@ class SecurityConfig(
                 //    「하위 매핑이 생기면 조용히 노출된다」며 경로 폭을 봉인한 논리와 같은 이유로
                 //    근거가 되지 못한다.
                 auth.requestMatchers(antMatcher(HttpMethod.GET, WS_HANDSHAKE_PATH)).permitAll()
-                // FR-AT-07: 인바운드 웹훅 6경로 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
+                // FR-AT-07 · S24: 인바운드 웹훅 — CSRF-ignore·bearer skip 과 **같은** [INBOUND_WEBHOOK_PATHS]
                 // 목록을 순회한다(PR-A DEC-16 · PR-C ADR §D4).
                 // ★ 아래 /api/** · anyRequest() 보다 반드시 위 — Spring Security 매처는 선언 순서대로 첫 매치가 이긴다.
                 //   git(/api/v1/webhooks/git/*) · automation(/api/v1/automation/webhooks/*) 두 경로군은 /api/**

@@ -612,10 +612,11 @@ class AuthController(
         var redirect: String? = null
         if (!sidStr.isNullOrBlank()) {
             val sid = UUID.fromString(sidStr)
-            redirect = sessionService.lookup(sid)?.let { authPlatformLogout.endSessionUrl(it, request) }
             sessionService.revoke(sid, REVOKE_REASON_LOGOUT)
             refreshTokenRepository.revokeChainFromSession(sid)
             recordLogout(jwt, sidStr)
+            // 끊은 뒤에 만든다 — 주소 만들기가 실패해도 BTS 세션은 이미 끊겼다. lookup 은 폐기된 행도 돌려준다
+            redirect = sessionService.lookup(sid)?.let { authPlatformLogout.endSessionUrl(it, request) }
         }
 
         val expireCookie = buildRefreshCookie("", 0)
