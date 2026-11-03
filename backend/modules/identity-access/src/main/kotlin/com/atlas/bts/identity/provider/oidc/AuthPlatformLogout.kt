@@ -38,12 +38,7 @@ class AuthPlatformLogout(
         session: Session,
         request: HttpServletRequest,
     ): String? {
-        val encrypted = session.authIdTokenEnc ?: return null
-        if (issuerUri.isBlank()) return null
-        val idToken =
-            runCatching { secretEncryptor.decrypt(encrypted) }
-                .onFailure { log.warn("Auth 로그아웃 id_token 복호화 실패 — BTS 세션만 끊는다: {}", it.javaClass.simpleName) }
-                .getOrNull() ?: return null
+        val idToken = session.authIdTokenEnc?.takeIf { issuerUri.isNotBlank() }?.let(::decryptOrNull) ?: return null
         val postLogout = ServletUriComponentsBuilder.fromContextPath(request).path(LOGIN_PATH).build().toUriString()
         return UriComponentsBuilder.fromUriString(issuerUri.trimEnd('/') + END_SESSION_PATH)
             .queryParam("id_token_hint", idToken)
@@ -52,6 +47,11 @@ class AuthPlatformLogout(
             .build()
             .toUriString()
     }
+
+    private fun decryptOrNull(encrypted: String): String? =
+        runCatching { secretEncryptor.decrypt(encrypted) }
+            .onFailure { log.warn("Auth 로그아웃 id_token 복호화 실패 — BTS 세션만 끊는다: {}", it.javaClass.simpleName) }
+            .getOrNull()
 
     private companion object {
         const val END_SESSION_PATH = "/connect/logout"

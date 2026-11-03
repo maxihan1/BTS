@@ -43,10 +43,12 @@ class AuthPlatformLogoutTest {
         val url = logout.endSessionUrl(session(encryptor.encrypt("h.p.s")), request)
 
         val parsed = UriComponentsBuilder.fromUriString(requireNotNull(url)).build()
-        assertThat(parsed.scheme + "://" + parsed.host + parsed.path).isEqualTo("https://auth.example.com/connect/logout")
+        assertThat(parsed.scheme + "://" + parsed.host + parsed.path)
+            .isEqualTo("https://auth.example.com/connect/logout")
         assertThat(parsed.queryParams["id_token_hint"]).containsExactly("h.p.s")
         // Auth 는 등록 문자열과 정확히 비교한다 — 기본 포트 · query 를 붙이지 않는다
-        assertThat(parsed.queryParams["post_logout_redirect_uri"]).containsExactly("https://bunker.example.com/login")
+        assertThat(parsed.queryParams["post_logout_redirect_uri"])
+            .containsExactly("https://bunker.example.com/login")
         assertThat(parsed.queryParams.keys).containsExactlyInAnyOrder("id_token_hint", "post_logout_redirect_uri")
     }
 
