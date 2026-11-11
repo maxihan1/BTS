@@ -573,7 +573,9 @@ class IssueControllerUpdateTest {
     @Test
     fun `PATCH custom-fields — 서비스에는 customFields 와 expectedVersion 만 간다`() {
         val captured = slot<AppUpdateIssueRequest>()
-        every { issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(captured)) } returns sampleResponse
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(captured))
+        } returns sampleResponse
         val fields = mapOf("test_fix_pr" to "https://github.com/o/r/pull/713")
 
         patchCustomFields(

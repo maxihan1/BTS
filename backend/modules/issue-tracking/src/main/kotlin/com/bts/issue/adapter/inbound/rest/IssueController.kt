@@ -639,7 +639,8 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
         // @NotNull 검증을 통과한 뒤라 둘 다 null 이 아니다 — !! 금지 규칙에 따라 명시적으로 꺼낸다.
         val customFields = request.customFields ?: error("customFields 는 @NotNull 검증 통과 후 null 일 수 없습니다.")
         val expectedVersion = request.expectedVersion ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
-        val appRequest = AppUpdateIssueRequest(summary = null, expectedVersion = expectedVersion, customFields = customFields)
+        val appRequest =
+            AppUpdateIssueRequest(summary = null, expectedVersion = expectedVersion, customFields = customFields)
         val response = service.updateIssue(CurrentActor.current(), IssueKey(key), appRequest)
         return ResponseEntity.ok(DataResponse(data = response))
     }
