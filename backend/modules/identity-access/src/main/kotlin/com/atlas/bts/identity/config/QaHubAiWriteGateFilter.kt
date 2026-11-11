@@ -68,6 +68,9 @@ class QaHubAiWriteGateFilter(
          * QA Hub 가 이 열쇠로 부르는 쓰기 + 읽기지만 POST 인 AQL 검색 (test_platform `apps/admin/src/bts`).
          * 사용자 정의 필드는 값만 고치는 좁은 길 `/custom-fields` 만 연다 — 이슈 필드 「테스트 수정 PR」에 PR 주소를 적는다
          * (BTS-F10-02). 제목 · 설명까지 고치는 `PATCH /api/v1/issues/{key}` 는 계속 막는다.
+         * 이 길은 필드 하나가 아니라 이 계정이 필드 권한(FR-PM-07)으로 고칠 수 있는 사용자 정의 필드 전부를 연다
+         * (값 null 이면 지운다 · `ISSUE_UPDATED` 자동화 규칙도 이 계정으로 처음 발화한다). 더 좁히려면 운영 필드 권한으로
+         * 이 계정의 편집을 「테스트 수정 PR」 하나로 묶는다 — 본문을 읽어 거르는 일은 이 필터가 하지 않는다.
          * 로그아웃은 권한을 줄이기만 해서 연다 — 그 계정으로 브라우저에 들어왔을 때 세션을 끊을 수 있게.
          */
         val ALLOWED_WRITES =
