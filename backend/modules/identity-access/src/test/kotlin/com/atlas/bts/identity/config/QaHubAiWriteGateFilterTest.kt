@@ -1,4 +1,4 @@
-// 「QA Hub AI」 쓰기 게이트를 실제 SecurityConfig 체인으로 본다 — 여섯 곳만 통과 · 그 밖 쓰기 403 · 읽기 · 다른 사용자 · JWT (BTS-F2-02)
+// 「QA Hub AI」 쓰기 게이트를 실제 SecurityConfig 체인으로 본다 — 일곱 곳만 통과 · 그 밖 쓰기 403 · 읽기 · 다른 사용자 · JWT (BTS-F2-02)
 
 package com.atlas.bts.identity.config
 
@@ -106,6 +106,7 @@ class QaHubAiWriteGateFilterTest {
         "POST, /api/v1/issues/DM-12/transition",
         "PATCH, /api/v1/issues/DM-12/assignee",
         "POST, /api/v1/issues/DM-12/attachments",
+        "PATCH, /api/v1/issues/DM-12/custom-fields",
         "POST, /api/v1/search/aql",
         "POST, /api/v1/auth/logout",
         "GET, /api/v1/issues/DM-12",
@@ -129,6 +130,8 @@ class QaHubAiWriteGateFilterTest {
         "POST, /api/v1/issues/DM-12/comments/c1",
         "PATCH, /api/v1/users/me/preferences",
         "POST, /api/v1/issues/",
+        "PUT, /api/v1/issues/DM-12/custom-fields",
+        "PATCH, /api/v1/projects/DM/custom-fields/f1",
     )
     fun `QA Hub AI 열쇠의 그 밖 쓰기는 403 이다`(
         method: String,
