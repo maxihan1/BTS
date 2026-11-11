@@ -559,6 +559,25 @@ class IssueControllerUpdateTest {
         patchLabels((1..21).map { "label$it" }).andExpect(status().isBadRequest)
     }
 
+    // 웹 이슈 상세의 필드 편집(routes/issues.$key.tsx customFieldsMutation)이 이 길로 customFields 를 보낸다.
+    // 컨트롤러가 이 칸을 빠뜨려 200 인데 저장이 안 됐다.
+    @Test
+    fun `PATCH 이슈 수정 — customFields 가 서비스로 넘어간다`() {
+        val captured = slot<AppUpdateIssueRequest>()
+        every {
+            issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(captured))
+        } returns sampleResponse
+        val fields = mapOf("note" to "새 값", "old" to null)
+
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(mapOf("customFields" to fields, "expectedVersion" to 1))),
+        ).andExpect(status().isOk)
+
+        assert(captured.captured.customFields == fields) { "customFields 가 서비스로 안 넘어갔다: ${captured.captured}" }
+    }
+
     // ── PATCH /{key}/custom-fields — 사용자 정의 필드만 쓰는 좁은 길 (BTS-F10-02) ──
     //
     // 「QA Hub AI」 쓰기 문이 이 경로만 연다. 본문에 다른 칸을 실어도 서비스에는 customFields 만 가야 한다.

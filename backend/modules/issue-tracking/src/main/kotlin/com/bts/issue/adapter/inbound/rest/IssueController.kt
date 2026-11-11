@@ -405,6 +405,7 @@ class IssueController(
                 environment = request.environment,
                 impact = request.impact,
                 securityLevel = toSecurityLevelPatch(request.securityLevelId),
+                customFields = request.customFields,
                 startDate = toDatePatch(request.startDate),
                 dueDate = toDatePatch(request.dueDate),
                 targetDate = toDatePatch(request.targetDate),
