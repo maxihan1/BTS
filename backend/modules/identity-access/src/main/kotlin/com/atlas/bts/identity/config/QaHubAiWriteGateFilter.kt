@@ -1,4 +1,4 @@
-// 「QA Hub AI」 계정의 쓰기를 QA Hub 가 부르는 곳(이슈 등록 · 댓글 · 상태 · 담당자 · 첨부 · AQL 검색)으로만 좁히는 게이트 필터 (BTS-F2-02 · FR-API-04)
+// 「QA Hub AI」 계정의 쓰기를 QA Hub 가 부르는 곳으로만 좁히는 게이트 필터 (BTS-F2-02 · F10-02 · FR-API-04)
 
 package com.atlas.bts.identity.config
 
@@ -65,7 +65,9 @@ class QaHubAiWriteGateFilter(
         const val FORBIDDEN_BODY = """{"error":"forbidden"}"""
 
         /**
-         * QA Hub 가 이 열쇠로 부르는 쓰기 다섯 곳 + 읽기지만 POST 인 AQL 검색 (test_platform `apps/admin/src/bts`).
+         * QA Hub 가 이 열쇠로 부르는 쓰기 + 읽기지만 POST 인 AQL 검색 (test_platform `apps/admin/src/bts`).
+         * 사용자 정의 필드는 값만 고치는 좁은 길 `/custom-fields` 만 연다 — 이슈 필드 「테스트 수정 PR」에 PR 주소를 적는다
+         * (BTS-F10-02). 제목 · 설명까지 고치는 `PATCH /api/v1/issues/{key}` 는 계속 막는다.
          * 로그아웃은 권한을 줄이기만 해서 연다 — 그 계정으로 브라우저에 들어왔을 때 세션을 끊을 수 있게.
          */
         val ALLOWED_WRITES =
@@ -76,6 +78,7 @@ class QaHubAiWriteGateFilter(
                 antMatcher(HttpMethod.POST, "/api/v1/issues/*/transition"),
                 antMatcher(HttpMethod.PATCH, "/api/v1/issues/*/assignee"),
                 antMatcher(HttpMethod.POST, "/api/v1/issues/*/attachments"),
+                antMatcher(HttpMethod.PATCH, "/api/v1/issues/*/custom-fields"),
                 antMatcher(HttpMethod.POST, "/api/v1/search/aql"),
             )
     }
