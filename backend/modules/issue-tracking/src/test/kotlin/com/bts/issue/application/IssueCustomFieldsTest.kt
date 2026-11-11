@@ -461,6 +461,49 @@ class IssueCustomFieldsTest : DescribeSpec({
                 }
             }
         }
+
+        // 필드 정의를 지워도 이슈 JSONB 의 값은 남는다(CustomFieldController 삭제 KDoc). 그 옛 값 때문에
+        // 다른 필드 쓰기가 422 로 막히면 안 된다 — 응답이 그 키를 숨겨 호출자는 지울 키를 모른다 (BTS-F10-02 리뷰).
+        context("정의가 지워진 필드의 옛 값이 남은 이슈") {
+            val withOrphan = existingCustomFields + ("deleted_field" to "옛 값")
+            val patchSlot = io.mockk.slot<com.bts.issue.repository.IssueFieldPatch>()
+
+            beforeEach {
+                every {
+                    permissionResolver.hasPermission(actor.value, IssuePermission.UPDATE, IssueScope.Issue(issueKey.value))
+                } returns true
+                every { customFieldDefinitionRepository.findActiveByProject(projectId) } returns
+                    listOf(salaryImpactDef, noteDef)
+                every { repo.findByKey(issueKey) } returns makeIssue(customFields = withOrphan)
+                every { repo.findByKeyWithType(issueKey) } returns makeResponse(customFields = existingCustomFields)
+                every { repo.updateFields(issueKey, capture(patchSlot), any()) } returns 1
+            }
+
+            it("다른 필드를 쓸 수 있고 옛 값은 그대로 남는다") {
+                val request =
+                    UpdateIssueRequest(
+                        summary = null,
+                        expectedVersion = existingVersion,
+                        customFields = mapOf("note" to "새 노트"),
+                    )
+
+                sut.updateIssue(actor, issueKey, request)
+
+                patchSlot.captured.customFields shouldBe
+                    mapOf("salary_impact" to 3.0, "note" to "새 노트", "deleted_field" to "옛 값")
+            }
+
+            it("지워진 필드에 새로 쓰는 것은 여전히 막는다") {
+                val request =
+                    UpdateIssueRequest(
+                        summary = null,
+                        expectedVersion = existingVersion,
+                        customFields = mapOf("deleted_field" to "x"),
+                    )
+
+                shouldThrow<CustomFieldValidationException> { sut.updateIssue(actor, issueKey, request) }
+            }
+        }
     }
 
     // ── 클론 E10 — custom_fields 미복사 ────────────────────────────────────────

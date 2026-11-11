@@ -1770,7 +1770,10 @@ class IssueApplicationService(
         val definitionRepo = customFieldDefinitionRepository
         if (definitionRepo != null) {
             val definitions = definitionRepo.findActiveByProject(existing.projectId)
-            validateCustomFields(definitions, merged)
+            // 정의가 지워진 필드의 옛 값은 남겨 두되 「미정의 키」 검사에서 뺀다 — 안 그러면 그 이슈는 어떤 필드도
+            // 못 쓴다. 이번에 보낸 키는 그대로 검사한다(지워진 필드에 새로 쓰기는 422) (BTS-F10-02 리뷰)
+            val definedKeys = definitions.mapTo(HashSet()) { it.key }
+            validateCustomFields(definitions, merged.filterKeys { it in definedKeys || it in patch })
         }
 
         return merged.toMap()

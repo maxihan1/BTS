@@ -612,6 +612,40 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
     }
 
     /**
+     * 이슈의 사용자 정의 필드 값만 고친다 (BTS-F10-02).
+     *
+     * `PATCH /{key}` 는 제목 · 설명 · 보안 등급까지 고칠 수 있어 「QA Hub AI」 쓰기 문이 막는다.
+     * QA Hub 가 이슈 필드 「테스트 수정 PR」에 PR 주소를 적는 일은 이 좁은 길로 한다 — 쓰기 문은 이 경로만 연다.
+     * 권한 · 필드 권한 · 값 검증 · 변경 기록은 [IssueApplicationService.updateIssue] 의 customFields 분기가 본다.
+     */
+    @Operation(operationId = "changeCustomFields", summary = "사용자 정의 필드 값 변경")
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "성공"),
+        ApiResponse(responseCode = "400", description = "요청 형식 오류", content = [Content()]),
+        ApiResponse(responseCode = "401", description = "미인증", content = [Content()]),
+        ApiResponse(responseCode = "403", description = "권한 없음", content = [Content()]),
+        ApiResponse(responseCode = "404", description = "이슈 미존재", content = [Content()]),
+        ApiResponse(responseCode = "409", description = "낙관적 잠금 충돌", content = [Content()]),
+        ApiResponse(responseCode = "422", description = "필드 값 검증 실패", content = [Content()]),
+    )
+    @SecurityRequirement(name = BEARER_AUTH_SCHEME)
+    @PatchMapping("/{key}/custom-fields")
+    fun changeCustomFields(
+        @PathVariable key: String,
+        @Valid @RequestBody request: ChangeCustomFieldsRequest,
+    ): ResponseEntity<DataResponse<IssueResponse>> {
+        log.info("IssueController.changeCustomFields key={} fields={}", key, request.customFields?.keys)
+
+        // @NotNull 검증을 통과한 뒤라 둘 다 null 이 아니다 — !! 금지 규칙에 따라 명시적으로 꺼낸다.
+        val customFields = request.customFields ?: error("customFields 는 @NotNull 검증 통과 후 null 일 수 없습니다.")
+        val expectedVersion = request.expectedVersion ?: error("expectedVersion 은 @NotNull 검증 통과 후 null 일 수 없습니다.")
+        val appRequest =
+            AppUpdateIssueRequest(summary = null, expectedVersion = expectedVersion, customFields = customFields)
+        val response = service.updateIssue(CurrentActor.current(), IssueKey(key), appRequest)
+        return ResponseEntity.ok(DataResponse(data = response))
+    }
+
+    /**
      * 이슈 담당자를 변경하거나 해제한다.
      *
      * ### 전용 서브리소스 설계 사유
