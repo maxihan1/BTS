@@ -558,4 +558,42 @@ class IssueControllerUpdateTest {
         stubSuccessfulUpdate()
         patchLabels((1..21).map { "label$it" }).andExpect(status().isBadRequest)
     }
+
+    // ── PATCH /{key}/custom-fields — 사용자 정의 필드만 쓰는 좁은 길 (BTS-F10-02) ──
+    //
+    // 「QA Hub AI」 쓰기 문이 이 경로만 연다. 본문에 다른 칸을 실어도 서비스에는 customFields 만 가야 한다.
+
+    private fun patchCustomFields(body: Map<String, Any?>) =
+        mockMvc.perform(
+            patch("/api/v1/issues/ATLAS-1/custom-fields")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(body)),
+        )
+
+    @Test
+    fun `PATCH custom-fields — 서비스에는 customFields 와 expectedVersion 만 간다`() {
+        val captured = slot<AppUpdateIssueRequest>()
+        every { issueApplicationService.updateIssue(any(), IssueKey("ATLAS-1"), capture(captured)) } returns sampleResponse
+        val fields = mapOf("test_fix_pr" to "https://github.com/o/r/pull/713")
+
+        patchCustomFields(
+            mapOf("customFields" to fields, "expectedVersion" to 3, "summary" to "몰래 바꾼 제목", "priority" to 1),
+        ).andExpect(status().isOk)
+
+        assert(captured.captured == AppUpdateIssueRequest(summary = null, expectedVersion = 3, customFields = fields)) {
+            "customFields 밖의 칸이 서비스로 새었다: ${captured.captured}"
+        }
+    }
+
+    @Test
+    fun `PATCH custom-fields — customFields 가 없으면 400`() {
+        stubSuccessfulUpdate()
+        patchCustomFields(mapOf("expectedVersion" to 3)).andExpect(status().isBadRequest)
+    }
+
+    @Test
+    fun `PATCH custom-fields — expectedVersion 이 없으면 400`() {
+        stubSuccessfulUpdate()
+        patchCustomFields(mapOf("customFields" to mapOf("test_fix_pr" to "x"))).andExpect(status().isBadRequest)
+    }
 }
