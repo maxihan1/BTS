@@ -616,7 +616,7 @@ offset 모드: cursor 파라미터 미지정 → Spring Page (무회귀).
      *
      * `PATCH /{key}` 는 제목 · 설명 · 보안 등급까지 고칠 수 있어 「QA Hub AI」 쓰기 문이 막는다.
      * QA Hub 가 이슈 필드 「테스트 수정 PR」에 PR 주소를 적는 일은 이 좁은 길로 한다 — 쓰기 문은 이 경로만 연다.
-     * 권한 · 필드 권한 · 값 검증 · 변경 기록은 `PATCH /{key}` 와 같은 [IssueApplicationService.updateIssue] 가 본다.
+     * 권한 · 필드 권한 · 값 검증 · 변경 기록은 [IssueApplicationService.updateIssue] 의 customFields 분기가 본다.
      */
     @Operation(operationId = "changeCustomFields", summary = "사용자 정의 필드 값 변경")
     @ApiResponses(
