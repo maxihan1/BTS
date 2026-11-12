@@ -16,6 +16,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.mockk.every
 import io.mockk.mockk
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
@@ -23,6 +24,9 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
 import org.springframework.test.context.web.WebAppConfiguration
@@ -100,7 +104,7 @@ class CustomFieldControllerTest {
     private val projectKey = "ATLAS"
     private val fieldId: UUID = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-000000000001")
     private val projectId: UUID = UUID.fromString("bbbbbbbb-cccc-dddd-eeee-000000000001")
-    private val actorId: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
+    private val actorId: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
 
     @Suppress("LongParameterList") // 테스트 헬퍼 — 도메인 필드 전체를 커버하기 위해 분리 불가
     private fun sampleDefinition(
@@ -125,8 +129,20 @@ class CustomFieldControllerTest {
             options = options,
         )
 
+    @AfterEach
+    fun clearSecurityContext() {
+        SecurityContextHolder.clearContext()
+    }
+
     @BeforeEach
     fun setUp() {
+        // 컨트롤러는 CurrentActor 로 SecurityContext 의 인증 주체를 actor 로 쓴다(PAT · JWT 필터가 채우는 자리).
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                actorId.toString(),
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
     }
 

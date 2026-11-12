@@ -9,7 +9,6 @@ import com.bts.issue.component.repository.ComponentRepository
 import com.bts.issue.customfield.application.CustomFieldApplicationService
 import com.bts.issue.customfield.domain.CustomFieldDefinition
 import com.bts.issue.customfield.domain.CustomFieldValueValidator
-import com.bts.issue.customfield.domain.FieldType
 import com.bts.issue.customfield.repository.CustomFieldDefinitionRepository
 import com.bts.issue.customfield.web.CustomFieldController
 import com.bts.issue.customfield.web.CustomFieldExceptionHandler
@@ -28,6 +27,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -39,6 +39,9 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -233,11 +236,16 @@ class CustomFieldIntegrationTest {
         ObjectMapper().registerKotlinModule().registerModule(JavaTimeModule())
 
     companion object {
-        /** PROJECT_ADMIN 시뮬레이션 actor UUID */
-        val ADMIN_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        /**
+         * PROJECT_ADMIN 시뮬레이션 actor UUID.
+         *
+         * 옛 컨트롤러 placeholder(`00000000-0000-0000-0000-000000000001`)와 일부러 다르게 둔다 — 같으면
+         * 컨트롤러가 인증 주체 대신 고정 번호를 넘겨도 테스트가 통과한다(2026-11-11 운영 403 의 원인).
+         */
+        val ADMIN_ACTOR_UUID: UUID = UUID.fromString("11111111-1111-4111-8111-111111111111")
 
         /** MEMBER 시뮬레이션 actor UUID (거부 경로 검증) */
-        val MEMBER_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000002")
+        val MEMBER_ACTOR_UUID: UUID = UUID.fromString("22222222-2222-4222-8222-222222222222")
 
         private const val PROJECT_KEY = "CFTEST"
         private const val OTHER_PROJECT_KEY = "CFOTHER"
@@ -257,6 +265,22 @@ class CustomFieldIntegrationTest {
     fun setUpEach() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         cleanCustomFields()
+        authenticateAs(ADMIN_ACTOR_UUID)
+    }
+
+    @AfterEach
+    fun tearDownEach() {
+        SecurityContextHolder.clearContext()
+    }
+
+    /** PAT · JWT 필터가 SecurityContext 에 넣는 것과 같은 모양(name = 사용자 UUID)으로 인증 주체를 둔다. */
+    private fun authenticateAs(userId: UUID) {
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                userId.toString(),
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_PAT")),
+            )
     }
 
     // ── A1. POST PROJECT_ADMIN → 201 ─────────────────────────────────────────
@@ -287,51 +311,24 @@ class CustomFieldIntegrationTest {
     /**
      * A2 MEMBER 생성 권한 거부.
      *
-     * Given  MEMBER_ACTOR 는 CREATE 권한 없음 (resolver stub 반환 false)
+     * Given  인증 주체가 MEMBER_ACTOR (resolver stub 반환 false)
      * When   POST /api/v1/projects/CFTEST/custom-fields
      * Then   403 CUSTOM_FIELD_ACCESS_DENIED
      *
-     * 이 시나리오가 non-prod AlwaysAllow 마스킹 없이 거부 경로를 실제로 검증한다.
-     * Controller의 SYSTEM_ACTOR_UUID 를 MEMBER_ACTOR_UUID 와 동일하게 맞추기 위해
-     * 커스텀 컨텍스트에서 SYSTEM_ACTOR_UUID 를 MEMBER_ACTOR_UUID 로 오버라이드한다.
-     * 현재 구현은 actorId = SYSTEM_ACTOR_UUID(고정)이므로 resolver를 actorId 기반으로
-     * 분기하는 대신, 별도 권한 거부 검증을 서비스 레이어 직접 호출 통합 테스트로 구성한다.
+     * A1 과 짝으로, 컨트롤러가 권한 판정에 **요청한 사용자**를 넘기는지 HTTP 로 확인한다.
      */
     @Test
-    fun `A2 권한 없는 요청 — CustomFieldApplicationService가 거부 예외 발생 + 403 응답`() {
-        // 서비스 레이어에서 권한 거부 예외를 통해 403이 반환되는지 검증한다.
-        // 현재 SYSTEM_ACTOR_UUID가 ADMIN_ACTOR_UUID이므로, 다른 projectId를 통해 거부를 유도한다.
-        // 대안: resolver를 요청마다 false 반환하도록 재구성 — 아래는 서비스 직접 호출 검증.
+    fun `A2 권한 없는 사용자의 요청 — 403 CUSTOM_FIELD_ACCESS_DENIED`() {
+        authenticateAs(MEMBER_ACTOR_UUID)
+        val body = buildCreateBody(key = "a2_field", name = "A2 필드", fieldType = "NUMBER")
 
-        val service = webApplicationContext.getBean(CustomFieldApplicationService::class.java)
-        val projectLookup = webApplicationContext.getBean(ProjectLookup::class.java)
-
-        // MEMBER_ACTOR_UUID를 actorId로 직접 서비스 호출 → resolver가 false 반환 → 예외 발생 검증
-        val projectId =
-            projectLookup.resolve(PROJECT_KEY)
-                ?: error("프로젝트 $PROJECT_KEY 를 찾을 수 없음")
-
-        val thrownException =
-            try {
-                service.create(
-                    actorId = MEMBER_ACTOR_UUID,
-                    projectIdOrKey = PROJECT_KEY,
-                    key = "a2_field",
-                    name = "A2 필드",
-                    fieldType = FieldType.NUMBER,
-                    required = false,
-                    displayOrder = 1,
-                    options = emptyList(),
-                )
-                null
-            } catch (ex: com.bts.issue.customfield.domain.CustomFieldAccessDeniedException) {
-                ex
-            }
-
-        checkNotNull(thrownException) { "MEMBER actorId 로 create 호출 시 CustomFieldAccessDeniedException 이 발생해야 한다" }
-        assert(thrownException.message?.contains(projectId.toString()) == true) {
-            "예외 메시지에 projectId 가 포함돼야 한다: ${thrownException.message}"
-        }
+        mockMvc.perform(
+            post("/api/v1/projects/$PROJECT_KEY/custom-fields")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body),
+        )
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.errorCode").value("CUSTOM_FIELD_ACCESS_DENIED"))
     }
 
     // ── C1. POST 201 + GET 목록 200 ──────────────────────────────────────────

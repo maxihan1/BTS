@@ -2,6 +2,7 @@
 
 package com.bts.issue.version.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.version.releasenotes.ReleaseNotesService
 import com.bts.issue.version.web.dto.ReleaseNotesResponse
@@ -12,9 +13,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
-
-/** actorId placeholder — FR-PM-03 실 추출 이연. SecurityConfig 가 401 을 보장한다. */
-private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
 
 /**
  * 릴리즈 노트 조회 REST 컨트롤러.
@@ -34,7 +32,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * ### 트랜잭션 / 권한
  * 트랜잭션 경계는 [ReleaseNotesService] 의 `@Transactional(readOnly = true)` 가 담당한다.
  * 릴리즈 노트는 읽기 동작이므로 버전 조회와 동일하게 READ 권한 게이트를 적용하지 않는다.
- * actorId 는 [SYSTEM_ACTOR_UUID] placeholder 를 사용한다(FR-PM-03 이연, 로깅 목적).
+ * actorId 는 [CurrentActor.current] 로 구한 요청 사용자다(로깅 목적).
  *
  * @param service 릴리즈 노트 생성 서비스.
  */
@@ -62,7 +60,7 @@ class ReleaseNotesController(
         log.debug("ReleaseNotesController.get projectIdOrKey={} versionId={}", projectIdOrKey, versionId)
         val releaseNotes =
             service.generate(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 versionId = versionId,
             )
