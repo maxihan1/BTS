@@ -2,6 +2,7 @@
 
 package com.bts.issue.version.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.version.application.VersionApplicationService
@@ -31,9 +32,6 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
-/** actorId placeholder — FR-PM-03 실 추출 이연. SecurityConfig 가 401 을 보장한다. */
-private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
-
 /**
  * 버전 REST API 컨트롤러.
  *
@@ -51,7 +49,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * 모든 트랜잭션은 [VersionApplicationService] 의 `@Transactional` 이 담당한다.
  *
  * ### actorId
- * FR-PM-03 이전까지 [SYSTEM_ACTOR_UUID] 를 placeholder 로 사용한다.
+ * [CurrentActor.current] 로 요청한 사용자(JWT subject · PAT 주인)를 권한 판정 actor 로 넘긴다.
  * Security 필터가 인증 없는 요청에 401 을 보장하므로 서비스 레이어까지 도달하는
  * 요청은 인증된 사용자임이 보장된다.
  *
@@ -91,7 +89,7 @@ class VersionController(
         log.info("VersionController.create projectIdOrKey={} name={}", projectIdOrKey, request.name)
         val version =
             service.create(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 name = request.name,
                 description = request.description,
@@ -124,7 +122,7 @@ class VersionController(
         log.debug("VersionController.list projectIdOrKey={}", projectIdOrKey)
         val versions =
             service.listByProject(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
             ).map(VersionResponse::from)
         return ResponseEntity.ok(DataResponse(data = versions))
@@ -154,7 +152,7 @@ class VersionController(
         log.debug("VersionController.getById projectIdOrKey={} id={}", projectIdOrKey, id)
         val version =
             service.getById(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 versionId = id,
             )
@@ -190,7 +188,7 @@ class VersionController(
         log.info("VersionController.update projectIdOrKey={} id={}", projectIdOrKey, id)
         val version =
             service.update(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 versionId = id,
                 name = request.name,
@@ -235,7 +233,7 @@ class VersionController(
         )
         val version =
             service.changeDates(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 versionId = id,
                 startDate = request.startDate,
@@ -277,7 +275,7 @@ class VersionController(
         val target = requireNotNull(request.status) { "status must not be null" }
         val version =
             service.changeStatus(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 versionId = id,
                 target = target,
@@ -311,7 +309,7 @@ class VersionController(
     ) {
         log.info("VersionController.delete projectIdOrKey={} id={}", projectIdOrKey, id)
         service.delete(
-            actorId = SYSTEM_ACTOR_UUID,
+            actorId = CurrentActor.current().value,
             projectIdOrKey = projectIdOrKey,
             versionId = id,
         )

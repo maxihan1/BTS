@@ -2,6 +2,7 @@
 
 package com.bts.issue.customfield.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.customfield.application.CustomFieldApplicationService
@@ -30,9 +31,6 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
-/** actorId placeholder — FR-PM-03 실 추출 이연. SecurityConfig 가 401 을 보장한다. */
-private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
-
 /**
  * 커스텀 필드 정의 REST API 컨트롤러.
  *
@@ -48,7 +46,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * 모든 트랜잭션은 [CustomFieldApplicationService] 의 `@Transactional` 이 담당한다.
  *
  * ### actorId
- * FR-PM-03 이전까지 [SYSTEM_ACTOR_UUID] 를 placeholder 로 사용한다.
+ * [CurrentActor.current] 로 요청한 사용자(JWT subject · PAT 주인)를 권한 판정 actor 로 넘긴다.
  * Security 필터가 인증 없는 요청에 401 을 보장하므로 서비스 레이어까지 도달하는
  * 요청은 인증된 사용자임이 보장된다.
  *
@@ -103,7 +101,7 @@ class CustomFieldController(
             }
         val definition =
             service.create(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 key = request.key,
                 name = request.name,
@@ -140,7 +138,7 @@ class CustomFieldController(
         log.debug("CustomFieldController.list projectIdOrKey={}", projectIdOrKey)
         val definitions =
             service.listByProject(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
             ).map(CustomFieldResponse::from)
         return ResponseEntity.ok(DataResponse(data = definitions))
@@ -170,7 +168,7 @@ class CustomFieldController(
         log.debug("CustomFieldController.getById projectIdOrKey={} fieldId={}", projectIdOrKey, fieldId)
         val definition =
             service.getById(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 fieldId = fieldId,
             )
@@ -218,7 +216,7 @@ class CustomFieldController(
             }
         val definition =
             service.update(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 fieldId = fieldId,
                 name = request.name,
@@ -260,7 +258,7 @@ class CustomFieldController(
     ) {
         log.info("CustomFieldController.delete projectIdOrKey={} fieldId={}", projectIdOrKey, fieldId)
         service.softDelete(
-            actorId = SYSTEM_ACTOR_UUID,
+            actorId = CurrentActor.current().value,
             projectIdOrKey = projectIdOrKey,
             fieldId = fieldId,
         )

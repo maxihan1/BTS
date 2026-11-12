@@ -2,6 +2,7 @@
 
 package com.bts.issue.template.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.config.BEARER_AUTH_SCHEME
 import com.bts.issue.project.ProjectLookup
@@ -32,9 +33,6 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
-/** actorId placeholder — FR-PM-03 실 추출 이연. SecurityConfig 가 401 을 보장한다. */
-private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
-
 /**
  * 이슈 템플릿 REST API 컨트롤러.
  *
@@ -56,7 +54,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * 모든 트랜잭션은 [IssueTemplateApplicationService] 의 `@Transactional` 이 담당한다.
  *
  * ### actorId
- * FR-PM-03 이전까지 [SYSTEM_ACTOR_UUID] 를 placeholder 로 사용한다.
+ * [CurrentActor.current] 로 요청한 사용자(JWT subject · PAT 주인)를 권한 판정 actor 로 넘긴다.
  * Security 필터가 인증 없는 요청에 401 을 보장하므로 서비스 레이어까지 도달하는
  * 요청은 인증된 사용자임이 보장된다.
  *
@@ -94,7 +92,7 @@ class IssueTemplateController(
     ): ResponseEntity<DataResponse<List<IssueTemplateResponse>>> {
         log.debug("IssueTemplateController.list projectIdOrKey={}", projectIdOrKey)
         val projectId = resolveProjectId(projectIdOrKey)
-        val templates = service.listByProject(SYSTEM_ACTOR_UUID, projectId).map(IssueTemplateResponse::from)
+        val templates = service.listByProject(CurrentActor.current().value, projectId).map(IssueTemplateResponse::from)
         return ResponseEntity.ok(DataResponse(data = templates))
     }
 
@@ -120,7 +118,7 @@ class IssueTemplateController(
     ): ResponseEntity<DataResponse<IssueTemplateResponse>> {
         log.debug("IssueTemplateController.getById projectIdOrKey={} templateId={}", projectIdOrKey, templateId)
         resolveProjectId(projectIdOrKey)
-        val template = service.getById(SYSTEM_ACTOR_UUID, templateId)
+        val template = service.getById(CurrentActor.current().value, templateId)
         return ResponseEntity.ok(DataResponse(data = IssueTemplateResponse.from(template)))
     }
 
@@ -190,7 +188,7 @@ class IssueTemplateController(
         val projectId = resolveProjectId(projectIdOrKey)
         val template =
             service.create(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectId = projectId,
                 issueTypeId = request.issueTypeId,
                 name = request.name,
@@ -232,7 +230,7 @@ class IssueTemplateController(
         val projectId = resolveProjectId(projectIdOrKey)
         val template =
             service.update(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectId = projectId,
                 templateId = templateId,
                 name = request.name,
@@ -267,7 +265,7 @@ class IssueTemplateController(
     ) {
         log.info("IssueTemplateController.delete projectIdOrKey={} templateId={}", projectIdOrKey, templateId)
         val projectId = resolveProjectId(projectIdOrKey)
-        service.delete(SYSTEM_ACTOR_UUID, projectId, templateId)
+        service.delete(CurrentActor.current().value, projectId, templateId)
     }
 
     // ── private helper ────────────────────────────────────────────────────────

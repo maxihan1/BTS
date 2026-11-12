@@ -19,6 +19,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
 import org.jooq.impl.DSL
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -31,6 +32,9 @@ import org.springframework.context.annotation.Profile
 import org.springframework.http.MediaType
 import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.jdbc.datasource.DriverManagerDataSource
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.context.junit.jupiter.SpringExtension
@@ -189,8 +193,20 @@ class VersionControllerIntegrationTest {
         }
     }
 
+    @AfterEach
+    fun clearSecurityContext() {
+        SecurityContextHolder.clearContext()
+    }
+
     @BeforeEach
     fun setUpEach() {
+        // 컨트롤러는 CurrentActor 로 SecurityContext 의 인증 주체를 actor 로 쓴다(PAT · JWT 필터가 채우는 자리).
+        SecurityContextHolder.getContext().authentication =
+            UsernamePasswordAuthenticationToken(
+                "11111111-1111-4111-8111-111111111111",
+                null,
+                listOf(SimpleGrantedAuthority("ROLE_USER")),
+            )
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build()
         conn().use { c ->
             c.createStatement().use { stmt ->

@@ -2,6 +2,7 @@
 
 package com.bts.issue.component.web
 
+import com.bts.issue.adapter.inbound.rest.CurrentActor
 import com.bts.issue.adapter.inbound.rest.DataResponse
 import com.bts.issue.component.application.ComponentApplicationService
 import com.bts.issue.component.web.dto.ChangeComponentLeadRequest
@@ -30,9 +31,6 @@ import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
-/** actorId placeholder — FR-PM-03 실 추출 이연. SecurityConfig 가 401 을 보장한다. */
-private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-000000000001")
-
 /**
  * 컴포넌트 REST API 컨트롤러.
  *
@@ -49,7 +47,7 @@ private val SYSTEM_ACTOR_UUID: UUID = UUID.fromString("00000000-0000-0000-0000-0
  * 모든 트랜잭션은 [ComponentApplicationService] 의 `@Transactional` 이 담당한다.
  *
  * ### actorId
- * FR-PM-03 이전까지 [SYSTEM_ACTOR_UUID] 를 placeholder 로 사용한다.
+ * [CurrentActor.current] 로 요청한 사용자(JWT subject · PAT 주인)를 권한 판정 actor 로 넘긴다.
  * Security 필터가 인증 없는 요청에 401 을 보장하므로 서비스 레이어까지 도달하는
  * 요청은 인증된 사용자임이 보장된다.
  *
@@ -90,7 +88,7 @@ class ComponentController(
         log.info("ComponentController.create projectIdOrKey={} name={}", projectIdOrKey, request.name)
         val component =
             service.create(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 name = request.name,
                 description = request.description,
@@ -122,7 +120,7 @@ class ComponentController(
         log.debug("ComponentController.list projectIdOrKey={}", projectIdOrKey)
         val components =
             service.listByProject(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
             ).map(ComponentResponse::from)
         return ResponseEntity.ok(DataResponse(data = components))
@@ -152,7 +150,7 @@ class ComponentController(
         log.debug("ComponentController.getById projectIdOrKey={} id={}", projectIdOrKey, id)
         val component =
             service.getById(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 componentId = id,
             )
@@ -188,7 +186,7 @@ class ComponentController(
         log.info("ComponentController.update projectIdOrKey={} id={}", projectIdOrKey, id)
         val component =
             service.update(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 componentId = id,
                 name = request.name,
@@ -233,7 +231,7 @@ class ComponentController(
         )
         val component =
             service.changeLead(
-                actorId = SYSTEM_ACTOR_UUID,
+                actorId = CurrentActor.current().value,
                 projectIdOrKey = projectIdOrKey,
                 componentId = id,
                 leadUserId = request.leadUserId,
@@ -267,7 +265,7 @@ class ComponentController(
     ) {
         log.info("ComponentController.delete projectIdOrKey={} id={}", projectIdOrKey, id)
         service.delete(
-            actorId = SYSTEM_ACTOR_UUID,
+            actorId = CurrentActor.current().value,
             projectIdOrKey = projectIdOrKey,
             componentId = id,
         )
