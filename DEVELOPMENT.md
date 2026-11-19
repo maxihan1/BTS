@@ -1,7 +1,7 @@
 # DEVELOPMENT.md
 
 > **BTS 개발 헌법 §2 — 절대 규칙 + 코드 스타일.**
-> `CLAUDE.md`가 진입점, 이 파일은 위반 시 빌드/리뷰가 차단되는 19개 절대 규칙 + 스타일.
+> `CLAUDE.md`가 진입점, 이 파일은 19개 절대 규칙 + 스타일. 지침이다. 실제로 막는 장치는 `docs/rules/behavior-rules.md` §2.
 > 관련. `DATA.md` (데이터/DB 규칙), Obsidian `Maxi_wiki/BTS/learnings.md` (과거 사고 회귀 방지).
 
 **목차.** [§1 절대 규칙 19개](#1-절대-규칙-never--19개) · [§2 코드 스타일](#2-코드-스타일) ·
