@@ -27,7 +27,7 @@
 | `DOC` | 문서 — `docs/**` · 루트 `*.md` · `*.html` | T0 |
 | `.husky/pre-commit` — `build-doc-index.mjs --check` | 커밋 | **강등 금지.** 저장소 밖 메모리의 유일한 봉인 |
 | `.husky/pre-commit` — lint-staged | 커밋 | worktree 가 훅을 침묵 무력화한 실측이 있다 — 로컬 훅은 **보조**다 |
-| `scripts/verify-master-plan.sh` EXIT 3/4 | merge 전 (`bts` 4단계 · 스펙이 바뀐 PR) | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
+| `scripts/verify-master-plan.sh` EXIT 3/4 | `/bts` 2단계 · FR 이 바뀐 PR | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
 
 ## 2. 실제로 막는 장치
 
@@ -36,6 +36,8 @@
 | `~/.claude/hooks/bts-test-guard.mjs` (user scope PreToolUse) | 명령 실행 전 | BTS 경로의 대상 없는 전체 테스트 · `pnpm verify` · Playwright · merge 전 관문 `select-test-scope.ts --run`(2026-10-21~) |
 | `.husky/pre-commit` — lint-staged · `build-doc-index.mjs --check` | 커밋 | 포맷 · 문서 인덱스 drift |
 | `scripts/verify-master-plan.sh` EXIT 3/4 | FR · 스펙이 바뀐 PR | FR 정합 · 카운트 drift · 표면 차집합(룰 J) · 줄수 규칙(룰 I) |
+| `package.json` preinstall — `scripts/workflow/block-worktree-install.mjs` | `pnpm install` 시작 전 | worktree 안 `pnpm install` (main 의 `node_modules` 덮어쓰기) |
+| `.husky/post-merge` | main 에서 merge 할 때 | `docs/progress.html` 을 다시 만들어 commit + push |
 
 CI 와 브랜치 보호는 없다. 이 표에 없는 규칙은 지침이다 — 지켜지지 않을 수 있다.
 
