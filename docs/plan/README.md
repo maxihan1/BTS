@@ -205,7 +205,7 @@ SDD `02-requirements.md §2.3` 임계를 강제. 3중 게이트로 PR 단위 회
 
 | 게이트 | 주기 | 측정 도구 | 임계 출처 | 차단력 |
 |---|---|---|---|---|
-| **PR-lite** | 매 PR (`/bts-codereview`) | axe-core (a11y) / bundle-analyzer (FE) / Pino slow-query (BE) | 회귀 0% (이전 PR 대비) | CI fail → 머지 차단 |
+| **PR-lite** | 매 PR | axe-core (a11y) / bundle-analyzer (FE) / Pino slow-query (BE) | 회귀 0% (이전 PR 대비) | 지침 — 막는 장치 없음 (CI 없음) |
 | **BC-strict** | 각 BC 완료 (`product/<bc>.md §NFR`) | k6 (API/검색) / Lighthouse CI (LCP/INP/CLS) / Playwright trace | SDD §2.3.1 절대 임계 | BC 완료 선언 차단 |
 | **GA-comprehensive** | 완제품 직전 1회 (전 BC 완료 후) | 위 전체 + 100 동접 시뮬레이션 + 보안 감사 (Trivy + Dependabot) + 마이그레이션 리허설 | SDD 17.7 + §2.3 전체 | GA 출시 차단 |
 
