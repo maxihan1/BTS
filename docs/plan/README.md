@@ -199,7 +199,7 @@ identity-access  ─┐
 
 ## §6. NFR 검증 3중 게이트
 
-SDD `02-requirements.md §2.3` 임계를 강제. 3중 게이트로 PR 단위 회귀 차단 + BC 완료 strict 검증 + GA 종합 감사.
+SDD `02-requirements.md §2.3` 임계를 3중 게이트로 잰다. PR 단위 회귀 확인(지침 — 막는 장치 없음) + BC 완료 strict 검증 + GA 종합 감사.
 
 ### §6.1 게이트 표
 
