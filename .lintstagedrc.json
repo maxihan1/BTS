@@ -1,5 +1,8 @@
 {
   "apps/web/**/*.{ts,tsx,js,jsx}": [
     "apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.js --max-warnings 0 --cache"
+  ],
+  "{backend/modules/**/src/main/**/*.kt,docs/WORDS.md}": [
+    "bash -c 'cd apps/web && node_modules/.bin/vitest run src/__tests__/words.test.ts'"
   ]
 }

@@ -1,3 +1,4 @@
 {
-  "**/*.{ts,tsx,js,jsx}": ["node_modules/.bin/eslint --max-warnings 0 --cache"]
+  "**/*.{ts,tsx,js,jsx}": ["node_modules/.bin/eslint --max-warnings 0 --cache"],
+  "{src/**/*.{ts,tsx},index.html}": ["bash -c 'node_modules/.bin/vitest run src/__tests__/words.test.ts'"]
 }
