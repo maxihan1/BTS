@@ -231,7 +231,7 @@ class UserProfileController(
         errorResponse(
             HttpStatus.CONFLICT,
             ERROR_DISPLAY_NAME_NOT_LDAP_LINKED,
-            "LDAP 연결 계정이 아니어서 재동기화할 수 없습니다.",
+            "연결된 디렉터리 계정이 없어 재설정할 수 없습니다.",
         )
 
     /** 아바타 미설정 → 404. */
