@@ -1017,7 +1017,7 @@ class BoardApplicationService(
         if (affected != orderedColumnIds.size) {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
-                "컬럼 구성이 그 사이 바뀌었습니다. 새로 고친 뒤 다시 시도하세요: boardId=$boardId",
+                "컬럼 구성이 그 사이 변경되었습니다. 새로고침한 뒤 다시 시도하세요: boardId=$boardId",
             )
         }
         return board.copy(

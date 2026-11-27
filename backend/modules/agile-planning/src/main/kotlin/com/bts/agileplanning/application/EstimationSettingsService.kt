@@ -41,7 +41,7 @@ class EstimationBoardNotFoundException :
  * [ResponseStatusException] 상속은 그대로이고, 상태 코드와 함께 봉투도 실린다.
  */
 class TimeTrackingBoardNotScrumException :
-    ResponseStatusException(HttpStatus.CONFLICT, "시간 추적은 스크럼 보드에서만 바꿀 수 있습니다.")
+    ResponseStatusException(HttpStatus.CONFLICT, "시간 추적은 스크럼 보드에서만 변경할 수 있습니다.")
 
 /**
  * 시간 추적 값이 허용값 밖일 때 — 400.

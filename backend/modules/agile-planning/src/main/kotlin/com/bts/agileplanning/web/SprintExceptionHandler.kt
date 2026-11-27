@@ -192,7 +192,7 @@ class SprintExceptionHandler {
             type = "agile-sprint-date-locked",
             title = "Sprint Date Locked",
             errorCode = AGILE_SPRINT_DATE_LOCKED,
-            detail = "완료된 스프린트는 기간을 바꿀 수 없습니다. 이름과 목표만 수정할 수 있습니다.",
+            detail = "완료된 스프린트는 기간을 변경할 수 없습니다. 이름과 목표만 수정할 수 있습니다.",
         )
     }
 
