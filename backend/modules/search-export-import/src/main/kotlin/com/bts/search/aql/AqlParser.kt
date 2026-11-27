@@ -136,7 +136,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     private fun parsePrimary(): AqlNode {
         val token =
             peek()
-                ?: throw AqlSyntaxException("표현식이 예상되었지만 입력이 끝났습니다.", currentPosition())
+                ?: throw AqlSyntaxException("표현식이 예상되었지만 쿼리 끝에 도달했습니다.", currentPosition())
 
         return when (token.type) {
             AqlTokenType.LPAREN -> {
@@ -169,7 +169,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
 
         val opToken =
             peek()
-                ?: throw AqlSyntaxException("연산자가 예상되었지만 입력이 끝났습니다.", fieldToken.position)
+                ?: throw AqlSyntaxException("연산자가 예상되었지만 쿼리 끝에 도달했습니다.", fieldToken.position)
 
         return when (opToken.type) {
             AqlTokenType.KW_NOT -> parseNotIn(fieldName, fieldToken.position)
@@ -251,7 +251,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
             advance() // ',' 소비
             val afterComma =
                 peek()
-                    ?: throw AqlSyntaxException("',' 뒤에 값이 예상되었지만 입력이 끝났습니다.", currentPosition())
+                    ?: throw AqlSyntaxException("',' 뒤에 값이 예상되었지만 쿼리 끝에 도달했습니다.", currentPosition())
             if (afterComma.type == AqlTokenType.RPAREN) {
                 throw AqlSyntaxException("',' 뒤에 값이 예상되었지만 ')' 를 만났습니다.", afterComma.position)
             }
@@ -269,7 +269,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     private fun parseValue(contextPos: Int): AqlValue {
         val token =
             peek()
-                ?: throw AqlSyntaxException("값이 예상되었지만 입력이 끝났습니다.", contextPos)
+                ?: throw AqlSyntaxException("값이 예상되었지만 쿼리 끝에 도달했습니다.", contextPos)
         return when (token.type) {
             AqlTokenType.QUOTED_STRING, AqlTokenType.IDENT, AqlTokenType.BARE_WORD -> {
                 advance()
@@ -523,7 +523,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     private fun expectIdent(what: String): AqlToken {
         val token =
             peek()
-                ?: throw AqlSyntaxException("$what 이 예상되었지만 입력이 끝났습니다.", currentPosition())
+                ?: throw AqlSyntaxException("$what 이 예상되었지만 쿼리 끝에 도달했습니다.", currentPosition())
         if (token.type != AqlTokenType.IDENT && token.type != AqlTokenType.BARE_WORD) {
             throw AqlSyntaxException(
                 "$what 이 예상되었지만 '${token.lexeme}' 를 만났습니다.",
@@ -547,7 +547,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     ) {
         val token =
             peek()
-                ?: throw AqlSyntaxException("$label 이 예상되었지만 입력이 끝났습니다.", contextPos)
+                ?: throw AqlSyntaxException("$label 이 예상되었지만 쿼리 끝에 도달했습니다.", contextPos)
         if (token.type != expected) {
             throw AqlSyntaxException(
                 "$label 이 예상되었지만 '${token.lexeme}' 를 만났습니다.",
@@ -561,7 +561,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     private fun expectLparen(contextPos: Int) {
         val token =
             peek()
-                ?: throw AqlSyntaxException("'(' 가 예상되었지만 입력이 끝났습니다.", contextPos)
+                ?: throw AqlSyntaxException("'(' 가 예상되었지만 쿼리 끝에 도달했습니다.", contextPos)
         if (token.type != AqlTokenType.LPAREN) {
             throw AqlSyntaxException(
                 "'(' 가 예상되었지만 '${token.lexeme}' 를 만났습니다.",
@@ -575,7 +575,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     private fun expectRparen() {
         val token =
             peek()
-                ?: throw AqlSyntaxException("')' 가 예상되었지만 입력이 끝났습니다.", currentPosition())
+                ?: throw AqlSyntaxException("')' 가 예상되었지만 쿼리 끝에 도달했습니다.", currentPosition())
         if (token.type != AqlTokenType.RPAREN) {
             throw AqlSyntaxException(
                 "')' 가 예상되었지만 '${token.lexeme}' 를 만났습니다.",
@@ -589,7 +589,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
     private fun expectRparenForValueList() {
         val token =
             peek()
-                ?: throw AqlSyntaxException("IN 목록의 ')' 가 예상되었지만 입력이 끝났습니다.", currentPosition())
+                ?: throw AqlSyntaxException("IN 목록의 ')' 가 예상되었지만 쿼리 끝에 도달했습니다.", currentPosition())
         if (token.type != AqlTokenType.RPAREN) {
             throw AqlSyntaxException(
                 "IN 목록의 ')' 가 예상되었지만 '${token.lexeme}' 를 만났습니다.",
@@ -604,7 +604,7 @@ class AqlParser(private val tokens: List<AqlToken>) {
         val remaining = peek()
         if (remaining != null) {
             throw AqlSyntaxException(
-                "예상치 않은 토큰: '${remaining.lexeme}'. 쿼리가 정상적으로 끝나야 합니다.",
+                "예상치 않은 토큰: '${remaining.lexeme}'. 쿼리가 이 위치에서 종료되어야 합니다.",
                 remaining.position,
             )
         }

@@ -202,7 +202,7 @@ class ImportRowParser {
     private fun readLogicalLine(reader: BufferedReader): String? {
         var line = reader.readLine() ?: return null
         while (countQuotes(line) % 2 != 0) {
-            val next = reader.readLine() ?: throw ImportParseException("CSV 따옴표가 닫히지 않은 채 파일이 끝났습니다")
+            val next = reader.readLine() ?: throw ImportParseException("CSV 따옴표가 닫히지 않은 채 파일 끝에 도달했습니다")
             line += "\n$next"
         }
         return line

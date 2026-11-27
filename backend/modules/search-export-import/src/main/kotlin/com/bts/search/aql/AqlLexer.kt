@@ -164,7 +164,7 @@ class AqlLexer(private val input: String) {
         }
         // 닫는 따옴표 없이 입력 끝
         throw AqlLexException(
-            "닫히지 않은 따옴표 — 컬럼 $start 에서 시작한 문자열이 닫히지 않았습니다.",
+            "컬럼 $start 에서 시작한 문자열의 따옴표가 닫히지 않았습니다.",
             start,
         )
     }
