@@ -145,7 +145,7 @@ class UserProfileService(
     @Transactional
     fun resyncDisplayName(userId: UUID): ProfileView {
         if (!externalAccountRepository.existsByUserId(userId)) {
-            throw DisplayNameNotLdapLinkedException("표시 이름을 디렉터리 값으로 되돌릴 수 없습니다.")
+            throw DisplayNameNotLdapLinkedException("표시 이름을 디렉터리 값으로 재설정할 수 없습니다.")
         }
         userRepository.resyncDisplayNameSource(userId)
         return loadView(userId)

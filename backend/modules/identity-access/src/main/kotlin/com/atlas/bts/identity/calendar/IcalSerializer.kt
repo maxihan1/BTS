@@ -10,7 +10,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 private const val ICS_PRODID = "-//BTS//Atlas Issues//KO"
-private const val ICS_CALENDAR_NAME = "BTS 내 일정"
+private const val ICS_CALENDAR_NAME = "Issue Bunker 내 일정"
 
 /** worklog 소요 시간이 0초여도 DTSTART==DTEND(무점유 이벤트)가 되지 않도록 두는 최소 표시 길이(초). */
 private const val MIN_WORKLOG_DISPLAY_SECONDS = 60

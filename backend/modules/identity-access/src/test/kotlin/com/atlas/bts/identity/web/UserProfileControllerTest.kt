@@ -196,7 +196,7 @@ class UserProfileControllerTest {
     @Test
     fun `POST resync returns 409 when user is not LDAP-linked`() {
         every { userProfileService.resyncDisplayName(userId) } throws
-            DisplayNameNotLdapLinkedException("표시 이름을 디렉터리 값으로 되돌릴 수 없습니다.")
+            DisplayNameNotLdapLinkedException("표시 이름을 디렉터리 값으로 재설정할 수 없습니다.")
 
         mockMvc.perform(
             post("/api/v1/users/me/profile/display-name/resync")
