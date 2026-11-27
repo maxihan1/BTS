@@ -77,7 +77,7 @@ class AutomationRuleRepository(
         val affected = jdbc.update(SQL_UPDATE, automationRuleUpdateParams(rule))
         if (affected == 0) {
             throw OptimisticLockingFailureException(
-                "룰(${rule.id}) 갱신 실패 — 다른 변경이 먼저 반영되었거나 삭제되었습니다(기대 version=${rule.version - 1}).",
+                "룰(${rule.id}) 갱신에 실패했습니다. 다른 변경이 먼저 반영되었거나 삭제되었습니다(기대 version=${rule.version - 1}).",
             )
         }
     }

@@ -317,7 +317,7 @@ private class FieldPriorityAnalyzer(private val rules: List<AutomationRule>) {
                 type = ConflictType.FIELD_CONFLICT,
                 ruleIds = listOf(a.id, b.id),
                 detail =
-                    "규칙 '${a.name}'과(와) '${b.name}'가 동시에 발화할 때 " +
+                    "규칙 '${a.name}'과(와) '${b.name}'가 동시에 실행될 때 " +
                         "필드 '$field'에 서로 다른 값을 설정해 충돌합니다.",
             )
         }
