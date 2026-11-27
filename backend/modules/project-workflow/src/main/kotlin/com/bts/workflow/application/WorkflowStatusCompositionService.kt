@@ -98,7 +98,7 @@ class WorkflowStatusCompositionService(
         val composition = compositionRepository.findComposition(workflowId)
         val target =
             composition.firstOrNull { it.statusId == statusId }
-                ?: throw WorkflowStatusCompositionException(workflowKey, "그 워크플로우에 편성되지 않은 상태다")
+                ?: throw WorkflowStatusCompositionException(workflowKey, "그 워크플로우에 편성되지 않은 상태입니다")
 
         requireRemovable(workflowKey, workflowId, composition.size, target.statusKey)
 
@@ -151,7 +151,7 @@ class WorkflowStatusCompositionService(
         if (compositionSize <= 1) {
             throw WorkflowStatusCompositionException(
                 workflowKey,
-                "마지막 남은 상태는 뺄 수 없다 — 상태가 0개면 워크플로우를 조회할 수 없게 된다",
+                "마지막 남은 상태는 제거할 수 없습니다. 상태가 0개면 워크플로우를 조회할 수 없게 됩니다",
             )
         }
         val projectIds = schemeAssignmentRepository.findProjectRefsByWorkflowId(workflowId).map { it.id }.toSet()
@@ -205,14 +205,14 @@ class WorkflowStatusCompositionService(
         requested: List<UUID>,
     ) {
         if (requested.size != requested.toSet().size) {
-            throw WorkflowStatusCompositionException(workflowKey, "순서 요청에 같은 상태가 두 번 들어 있다")
+            throw WorkflowStatusCompositionException(workflowKey, "순서 요청에 같은 상태가 두 번 들어 있습니다")
         }
         if (requested.toSet() != current) {
             val missing = current - requested.toSet()
             val unknown = requested.toSet() - current
             throw WorkflowStatusCompositionException(
                 workflowKey,
-                "순서 요청은 그 워크플로우의 상태 전부를 담아야 한다 (빠짐 ${missing.size}건 · 모르는 상태 ${unknown.size}건)",
+                "순서 요청은 그 워크플로우의 상태 전부를 담아야 합니다 (누락 ${missing.size}건 · 알 수 없는 상태 ${unknown.size}건)",
             )
         }
     }

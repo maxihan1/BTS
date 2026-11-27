@@ -427,9 +427,9 @@ class WorkflowSchemeApplicationService(
             scopeResolver.ofScheme(schemeKey.value),
         )
         val defaults = mappings.count { it.first == null }
-        if (defaults != 1) throw SchemeMappingsInvalidException("기본 매핑은 정확히 하나여야 한다 — 받은 수 $defaults")
+        if (defaults != 1) throw SchemeMappingsInvalidException("기본 매핑은 정확히 하나여야 합니다. 받은 수: $defaults")
         val types = mappings.mapNotNull { it.first }
-        if (types.size != types.toSet().size) throw SchemeMappingsInvalidException("이슈 타입이 겹친다 — $types")
+        if (types.size != types.toSet().size) throw SchemeMappingsInvalidException("이슈 타입이 중복되었습니다: $types")
 
         val scheme = schemeRepo.findByKey(schemeKey) ?: throw WorkflowSchemeNotFoundException(schemeKey.value)
         val schemeId = requireNotNull(scheme.id) { "scheme.id must not be null" }

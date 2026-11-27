@@ -67,7 +67,7 @@ class WorkflowPublishExceptionHandler {
                         //   같은 409 가 반복된다. 그 상태의 유일한 출구는 초안을 버리고 다시 시작하는 것이다.
                         message =
                             "그 사이 다른 사용자가 이 워크플로우를 발행했습니다. " +
-                                "지금 초안은 옛 버전을 기준으로 만들어져 그대로는 발행할 수 없습니다 — " +
+                                "지금 초안은 옛 버전을 기준으로 만들어져 그대로는 발행할 수 없습니다. " +
                                 "초안을 폐기하고 최신 정의에서 다시 편집해 주세요.",
                     ),
             ),
@@ -173,7 +173,7 @@ class WorkflowPublishExceptionHandler {
                 error =
                     ErrorBody(
                         code = "WORKFLOW_MIGRATION_IN_FLIGHT",
-                        message = "이미 진행 중인 상태 이관이 있습니다. 끝난 뒤 다시 시도하세요.",
+                        message = "이미 진행 중인 상태 이관이 있습니다. 완료된 뒤 다시 시도하세요.",
                     ),
             ),
         )

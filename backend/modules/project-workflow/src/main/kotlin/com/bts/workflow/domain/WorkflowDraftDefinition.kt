@@ -130,8 +130,8 @@ data class DraftStateDto(
     private fun parseCategory(): StateCategory =
         StateCategory.entries.firstOrNull { it.name == category }
             ?: throw IllegalArgumentException(
-                "상태 '$key' 의 카테고리 '$category' 를 모른다. " +
-                    "쓸 수 있는 값. ${StateCategory.entries.joinToString(" · ") { it.name }}",
+                "상태 '$key' 의 카테고리 '$category' 는 지원하지 않습니다. " +
+                    "사용할 수 있는 값: ${StateCategory.entries.joinToString(" · ") { it.name }}",
             )
 }
 
@@ -169,8 +169,8 @@ data class DraftTransitionDto(
         require(kind != TransitionKind.INITIAL.name) { "생성 전환 '$name' 에는 전환 화면을 둘 수 없습니다." }
         screen.forEach {
             require(it.field in DraftScreenFieldDto.FIELDS) {
-                "전환 '$name' 의 화면 필드 '${it.field}' 를 모른다. " +
-                    "쓸 수 있는 값. ${DraftScreenFieldDto.FIELDS.joinToString(" · ")}"
+                "전환 '$name' 의 화면 필드 '${it.field}' 는 지원하지 않습니다. " +
+                    "사용할 수 있는 값: ${DraftScreenFieldDto.FIELDS.joinToString(" · ")}"
             }
         }
         require(screen.distinctBy { it.field }.size == screen.size) {
@@ -197,8 +197,8 @@ data class DraftTransitionDto(
     private fun parseKind(): TransitionKind =
         TransitionKind.entries.firstOrNull { it.name == kind }
             ?: throw IllegalArgumentException(
-                "전환 '$name' 의 종류 '$kind' 를 모른다. " +
-                    "쓸 수 있는 값. ${TransitionKind.entries.joinToString(" · ") { it.name }}",
+                "전환 '$name' 의 종류 '$kind' 는 지원하지 않습니다. " +
+                    "사용할 수 있는 값: ${TransitionKind.entries.joinToString(" · ") { it.name }}",
             )
 }
 

@@ -98,7 +98,7 @@ class WorkflowDraftService(
 
         val current =
             currentDefinitionReader.read(key)
-                ?: throw WorkflowInvalidRequestException(key, "발행된 정의를 읽을 수 없다")
+                ?: throw WorkflowInvalidRequestException(key, "발행된 정의를 읽을 수 없습니다")
         return DraftView(
             definition = current,
             baseVersion = workflow.version,
@@ -198,12 +198,12 @@ class WorkflowDraftService(
         )
         val workflow = requireLive(key)
         if (workflow.origin != SEED_ORIGIN) {
-            throw WorkflowInvalidRequestException(key, "사용자가 만든 워크플로우에는 되돌릴 기본값이 없다")
+            throw WorkflowInvalidRequestException(key, "사용자가 만든 워크플로우에는 초기화할 기본값이 없습니다")
         }
 
         val yaml =
             standardDefaults.loadStandardYaml(key)
-                ?: throw WorkflowInvalidRequestException(key, "기본값 YAML 을 찾을 수 없다")
+                ?: throw WorkflowInvalidRequestException(key, "기본값 YAML 을 찾을 수 없습니다")
 
         // ★ 상태 이름·카테고리는 **카탈로그**에서 가져온다 — YAML 의 값이 아니다.
         //
@@ -314,7 +314,7 @@ class WorkflowDraftService(
         if (baseVersion > currentVersion) {
             throw WorkflowInvalidRequestException(
                 key,
-                "편집 기준 버전 $baseVersion 은 아직 존재하지 않는다 (현재 $currentVersion). 화면을 다시 불러올 것",
+                "편집 기준 버전 $baseVersion 은 아직 존재하지 않습니다 (현재 $currentVersion). 화면을 새로고침하세요",
             )
         }
     }
@@ -333,14 +333,14 @@ class WorkflowDraftService(
             definition.toWorkflow()
         } catch (ex: IllegalArgumentException) {
             // 원인을 cause 로 넘긴다 — 400 응답에는 사람 말만 싣고 스택은 로그에 남는다.
-            throw WorkflowInvalidRequestException(key, ex.message ?: "초안 정의가 규칙을 어겼다", ex)
+            throw WorkflowInvalidRequestException(key, ex.message ?: "초안 정의가 규칙에 맞지 않습니다", ex)
         }
         // ★ 규칙 관문도 여기서 태운다. 발행 경로만 태우면 「저장은 204 인데 발행에서 400」이 되고,
         //   그것이 바로 이 KDoc 이 없애겠다고 적은 막다른 길이다 — 문서가 앞서 가면 안 된다.
         try {
             ruleWriter.checkAll(definition)
         } catch (ex: TransitionRuleRejected) {
-            throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙이 관문을 지나지 못했다", ex)
+            throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙 검사를 통과하지 못했습니다", ex)
         }
     }
 

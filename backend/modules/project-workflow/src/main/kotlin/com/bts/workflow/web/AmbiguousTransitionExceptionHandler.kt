@@ -73,7 +73,7 @@ class AmbiguousTransitionExceptionHandler {
                         code = "AMBIGUOUS_TRANSITION",
                         message =
                             "이동할 수 있는 전환이 ${ex.candidates.size}개입니다. " +
-                                "어느 전환인지 골라 주세요.",
+                                "어느 전환인지 선택해 주세요.",
                     ),
                 candidates = ex.candidates,
             ),

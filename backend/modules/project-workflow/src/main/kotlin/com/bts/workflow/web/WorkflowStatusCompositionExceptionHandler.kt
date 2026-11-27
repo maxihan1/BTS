@@ -40,7 +40,7 @@ class WorkflowStatusCompositionExceptionHandler {
                 error =
                     ErrorBody(
                         code = "WORKFLOW_STATUS_IN_USE",
-                        message = "이 상태에 있는 이슈가 ${ex.issueCount}건입니다. 이슈를 다른 상태로 옮긴 뒤 빼 주세요.",
+                        message = "이 상태에 있는 이슈가 ${ex.issueCount}건입니다. 이슈를 다른 상태로 옮긴 뒤 제거해 주세요.",
                     ),
             ),
         )
@@ -68,7 +68,7 @@ class WorkflowStatusCompositionExceptionHandler {
                         code = "WORKFLOW_STATUS_REFERENCED_BY_TRANSITION",
                         message =
                             "이 상태를 쓰는 전환이 ${ex.transitionNames.size}건입니다" +
-                                "(${ex.transitionNames.joinToString(", ")}). 그 전환을 먼저 지운 뒤 빼 주세요.",
+                                "(${ex.transitionNames.joinToString(", ")}). 그 전환을 먼저 삭제한 뒤 제거해 주세요.",
                     ),
             ),
         )

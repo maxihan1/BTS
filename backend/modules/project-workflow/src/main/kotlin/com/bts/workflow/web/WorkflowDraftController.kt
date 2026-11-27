@@ -88,7 +88,7 @@ class WorkflowDraftController(
         // D10 이전 편집기 탭은 전환에 `screen` 을 싣지 않는다. 그대로 받으면 기본값(빈 화면)으로 읽혀
         // 화면 정의가 조용히 지워진다 — 지금 편집기는 늘 싣으므로(zod strict) 키가 없으면 옛 탭이다.
         if (body.path("definition").path("transitions").any { !it.has("screen") }) {
-            throw WorkflowInvalidRequestException(key, "편집기가 옛 버전입니다. 새로 고침한 뒤 다시 저장하세요.")
+            throw WorkflowInvalidRequestException(key, "편집기가 옛 버전입니다. 새로고침한 뒤 다시 저장하세요.")
         }
         val request =
             try {
