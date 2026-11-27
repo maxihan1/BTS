@@ -154,10 +154,10 @@ class SlackBlockKitRenderer(
         val usage =
             listOf(
                 "*Atlas 명령어*",
-                "`/atlas help` — 명령어 사용법 안내",
-                "`/atlas view <이슈키>` — 이슈 요약 카드 조회",
-                "`/atlas search <프로젝트키> <AQL>` — 이슈 검색",
-                "`/atlas create <프로젝트키> <제목>` — 이슈 생성",
+                "`/atlas help`: 명령어 사용법 안내",
+                "`/atlas view <이슈키>`: 이슈 요약 카드 조회",
+                "`/atlas search <프로젝트키> <AQL>`: 이슈 검색",
+                "`/atlas create <프로젝트키> <제목>`: 이슈 생성",
             ).joinToString("\n")
 
         return objectMapper.createArrayNode().apply {
