@@ -246,7 +246,7 @@ internal fun TransitionKeyResolver.resolveTransitionOrThrow(
         transitionKey.toTransitionIdOrNull()
             ?: return resolveByCompositeKey(workflowKey, transitionKey, notFound)
     return resolveById(workflowKey, transitionId)
-        ?: notFound("전환 미존재 — workflowKey='$workflowKey' transitionId='$transitionId'")
+        ?: notFound("전환이 없습니다: workflowKey='$workflowKey' transitionId='$transitionId'")
 }
 
 /**
@@ -269,14 +269,14 @@ private fun TransitionKeyResolver.resolveByCompositeKey(
 ): UUID {
     val parts = transitionKey.split(TRANSITION_KEY_SEPARATOR)
     if (parts.size != 2) {
-        notFound("transitionKey 형식 오류 — '$TRANSITION_KEY_SEPARATOR' 구분자 필요: '$transitionKey'")
+        notFound("transitionKey 형식이 잘못되었습니다. '$TRANSITION_KEY_SEPARATOR' 구분자가 필요합니다: '$transitionKey'")
     }
     val (fromStateKey, toStateKey) = parts
     val ids = resolveTransitionIds(workflowKey, fromStateKey, toStateKey)
     return ids.singleOrNull()
         ?: notFound(
-            "전환을 특정할 수 없다(${ids.size}건) — workflowKey='$workflowKey' " +
-                "transitionKey='$transitionKey'. 2건 이상이면 전환 id 로 지목해야 한다",
+            "전환을 특정할 수 없습니다(${ids.size}건): workflowKey='$workflowKey' " +
+                "transitionKey='$transitionKey'. 2건 이상이면 전환 id 로 지정해야 합니다",
         )
 }
 
@@ -298,7 +298,7 @@ internal fun List<TransitionRuleRow>.requireContains(
     notFound: (String) -> Nothing,
 ) {
     if (none { it.id == id }) {
-        notFound("$ruleLabel 미존재 — id='$id' transitionId='$transitionId'")
+        notFound("$ruleLabel 을(를) 찾을 수 없습니다: id='$id' transitionId='$transitionId'")
     }
 }
 

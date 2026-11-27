@@ -327,7 +327,7 @@ class WorkflowPublishService(
         key: String,
         workflowId: UUID,
     ) = draftRepository.findByWorkflowId(workflowId)
-        ?: throw WorkflowInvalidRequestException(key, "발행할 초안이 없다. 먼저 초안을 저장할 것")
+        ?: throw WorkflowInvalidRequestException(key, "발행할 초안이 없습니다. 먼저 초안을 저장하세요")
 
     /**
      * 초안이 발행 가능한 상태인지 본다 — 상태·전환 invariant 와 규칙 관문을 한 자리에서 태운다.
@@ -345,12 +345,12 @@ class WorkflowPublishService(
         try {
             definition.toWorkflow()
         } catch (ex: IllegalArgumentException) {
-            throw WorkflowInvalidRequestException(key, ex.message ?: "초안 정의가 규칙을 어겼다", ex)
+            throw WorkflowInvalidRequestException(key, ex.message ?: "초안 정의가 규칙에 맞지 않습니다", ex)
         }
         try {
             ruleWriter.checkAll(definition)
         } catch (ex: TransitionRuleRejected) {
-            throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙이 관문을 지나지 못했다", ex)
+            throw WorkflowInvalidRequestException(key, ex.message ?: "전환 규칙 검사를 통과하지 못했습니다", ex)
         }
         requireExactlyOneInitial(key, definition)
     }
@@ -382,7 +382,7 @@ class WorkflowPublishService(
         if (count != 1) {
             throw WorkflowInvalidRequestException(
                 key,
-                "이슈가 처음 놓일 상태를 정하는 시작 전환이 정확히 1개여야 발행할 수 있다 (현재 ${count}개)",
+                "이슈가 처음 놓일 상태를 정하는 시작 전환이 정확히 1개여야 발행할 수 있습니다 (현재 ${count}개)",
             )
         }
     }
@@ -403,7 +403,7 @@ class WorkflowPublishService(
         if (missing.isNotEmpty()) {
             throw WorkflowInvalidRequestException(
                 key,
-                "상태 ${missing.joinToString(" · ")} 가 전역 카탈로그에 없다. 상태를 먼저 만들 것",
+                "상태 ${missing.joinToString(" · ")} 가 전역 카탈로그에 없습니다. 상태를 먼저 만드세요",
             )
         }
         // 받아 놓고 버리지 않는다 — 초안의 이름·카테고리가 카탈로그와 다르면 거절한다(절대 규칙 16).
@@ -516,19 +516,19 @@ class WorkflowPublishService(
         // E2 — 빈 목록은 「아무것도 안 옮기는 일괄작업」을 만든다. 관리자는 202 를 받고도 발행이
         //      계속 409 인 이유를 알 수 없다.
         if (mappings.isEmpty()) {
-            reject("옮길 매핑이 없다. 빠지는 상태마다 옮길 곳을 정할 것")
+            reject("옮길 매핑이 없습니다. 빠지는 상태마다 옮길 곳을 정하세요")
         }
 
         // E4 — 같은 출발지가 두 번 오면 어느 도착지가 이기는지 목록 순서가 정한다.
         val duplicated = mappings.groupingBy { it.fromStatusKey }.eachCount().filterValues { it > 1 }.keys
         if (duplicated.isNotEmpty()) {
-            reject("출발 상태 ${duplicated.joinToString(" · ")} 가 여러 번 왔다. 상태마다 한 번만 정할 것")
+            reject("출발 상태 ${duplicated.joinToString(" · ")} 가 여러 번 들어왔습니다. 상태마다 한 번만 정하세요")
         }
 
         // F7 — 빠지지도 않는 상태를 출발지로 실으면 멀쩡한 이슈가 통째로 옮겨진다.
         val notRemoved = mappings.map { it.fromStatusKey }.filterNot { it in removed }
         if (notRemoved.isNotEmpty()) {
-            reject("상태 ${notRemoved.joinToString(" · ")} 는 이 초안에서 빠지지 않는다. 옮길 대상이 아니다")
+            reject("상태 ${notRemoved.joinToString(" · ")} 는 이 초안에서 빠지지 않습니다. 옮길 대상이 아닙니다")
         }
 
         // F8 — 도착지가 초안에 없으면 발행 직후 그 이슈들이 다시 「빠지는 상태에 남은 이슈」가 되어
@@ -536,7 +536,7 @@ class WorkflowPublishService(
         val draftKeys = definition.states.map { it.key }.toSet()
         val notInDraft = mappings.map { it.toStatusKey }.filterNot { it in draftKeys }
         if (notInDraft.isNotEmpty()) {
-            reject("도착 상태 ${notInDraft.joinToString(" · ")} 가 초안에 없다")
+            reject("도착 상태 ${notInDraft.joinToString(" · ")} 가 초안에 없습니다")
         }
 
         // F16 — 이관은 발행보다 먼저 실행된다(D2 로 둘을 쪼갠 부작용). 도착지가 아직 편성에 없으면
@@ -544,8 +544,8 @@ class WorkflowPublishService(
         val notLive = mappings.map { it.toStatusKey }.filterNot { it in live }
         if (notLive.isNotEmpty()) {
             reject(
-                "도착 상태 ${notLive.joinToString(" · ")} 는 아직 발행되지 않았다. " +
-                    "초안에만 있는 상태로는 옮길 수 없다",
+                "도착 상태 ${notLive.joinToString(" · ")} 는 아직 발행되지 않았습니다. " +
+                    "초안에만 있는 상태로는 옮길 수 없습니다",
             )
         }
 
@@ -553,7 +553,7 @@ class WorkflowPublishService(
         if (scopes.isEmpty()) {
             // 범위는 아카이브를 포함하므로(E7) 여기 오는 것은 「스킴 미연결」이거나 「전부 소프트
             // 삭제」다. 둘 다 관리자가 스킴·프로젝트 상태를 봐야 풀린다.
-            reject("이 워크플로우를 쓰는 프로젝트가 없다. 스킴 연결과 프로젝트 삭제 여부를 확인할 것")
+            reject("이 워크플로우를 쓰는 프로젝트가 없습니다. 스킴 연결과 프로젝트 삭제 여부를 확인하세요")
         }
 
         // F14 — 상한 초과는 출구 없는 막다른 길이다. 워커가 아무것도 적재하지 않고 FAILED 로 끝나
@@ -561,8 +561,8 @@ class WorkflowPublishService(
         val targets = mappings.sumOf { issueStatusUsagePort.countIssuesInStatusWithin(it.fromStatusKey, scopes) }
         if (targets > STATUS_MIGRATION_MAX_TARGETS) {
             reject(
-                "옮길 이슈가 $targets 건으로 한 번에 처리할 수 있는 $STATUS_MIGRATION_MAX_TARGETS 건을 넘는다. " +
-                    "범위를 나눠 요청할 것",
+                "옮길 이슈가 $targets 건으로 한 번에 처리할 수 있는 $STATUS_MIGRATION_MAX_TARGETS 건을 넘습니다. " +
+                    "범위를 나눠 요청하세요",
             )
         }
     }
@@ -586,7 +586,7 @@ class WorkflowPublishService(
 
         // 예외마다 작업 1건이다 — 상한이 없으면 요청 하나로 빈 작업을 수천 건 큐잉할 수 있다(R11C 리뷰 S1).
         if (exceptions.size > STATUS_MIGRATION_MAX_EXCEPTIONS) {
-            reject("예외가 ${exceptions.size}건으로 한 번에 받을 수 있는 $STATUS_MIGRATION_MAX_EXCEPTIONS 건을 넘는다")
+            reject("예외가 ${exceptions.size}건으로 한 번에 받을 수 있는 $STATUS_MIGRATION_MAX_EXCEPTIONS 건을 넘습니다")
         }
         val defaults = mappings.map { it.fromStatusKey }.toSet()
         val draftKeys = definition.states.map { it.key }.toSet()
@@ -596,16 +596,16 @@ class WorkflowPublishService(
                 .eachCount()
                 .filterValues { it > 1 }
                 .keys
-        if (duplicated.isNotEmpty()) reject("같은 (프로젝트, 이슈 타입, 출발 상태) 예외가 여러 번 왔다 — $duplicated")
+        if (duplicated.isNotEmpty()) reject("같은 (프로젝트, 이슈 타입, 출발 상태) 예외가 여러 번 들어왔습니다: $duplicated")
         exceptions.forEach { e ->
-            if (e.fromStatusKey !in defaults) reject("예외의 출발 상태 ${e.fromStatusKey} 에 기본 대상이 없다")
+            if (e.fromStatusKey !in defaults) reject("예외의 출발 상태 ${e.fromStatusKey} 에 기본 대상이 없습니다")
             // F8 · F16 과 같은 축 — 도착지는 초안에도 지금 편성에도 있어야 한다.
             if (e.toStatusKey !in draftKeys || e.toStatusKey !in live) {
-                reject("예외의 도착 상태 ${e.toStatusKey} 가 초안과 지금 편성에 함께 있지 않다")
+                reject("예외의 도착 상태 ${e.toStatusKey} 가 초안과 지금 편성에 함께 있지 않습니다")
             }
-            val filter = scopes[e.projectKey] ?: reject("프로젝트 ${e.projectKey} 는 이 워크플로우를 쓰지 않는다")
+            val filter = scopes[e.projectKey] ?: reject("프로젝트 ${e.projectKey} 는 이 워크플로우를 쓰지 않습니다")
             if (!filter.covers(e.issueTypeId)) {
-                reject("프로젝트 ${e.projectKey} 에서 이슈 타입 ${e.issueTypeId} 는 이 워크플로우를 쓰지 않는다")
+                reject("프로젝트 ${e.projectKey} 에서 이슈 타입 ${e.issueTypeId} 는 이 워크플로우를 쓰지 않습니다")
             }
         }
     }

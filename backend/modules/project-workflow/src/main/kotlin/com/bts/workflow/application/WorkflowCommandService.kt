@@ -78,7 +78,7 @@ class WorkflowCommandService(
         if (command.statuses.isEmpty()) {
             throw WorkflowInvalidRequestException(
                 command.key,
-                "워크플로우에는 상태가 하나 이상 있어야 한다 — 상태가 0개면 조회 자체가 불가능하다",
+                "워크플로우에는 상태가 하나 이상 있어야 합니다. 상태가 0개면 조회 자체가 불가능합니다",
             )
         }
         val ownerId = resolveOwner(command.key, command.projectKey)
@@ -329,7 +329,7 @@ class WorkflowCommandService(
         if (kind == TransitionKind.INITIAL && writeRepository.hasInitialTransition(workflowId, excludingId)) {
             throw TransitionConflictException(
                 workflowKey,
-                "최초 전환은 워크플로우당 하나입니다. 기존 최초 전환을 고치거나 지운 뒤 다시 시도해 주세요.",
+                "최초 전환은 워크플로우당 하나입니다. 기존 최초 전환을 수정하거나 삭제한 뒤 다시 시도해 주세요.",
             )
         }
         return TransitionShape(
@@ -361,7 +361,7 @@ class WorkflowCommandService(
         if (kind == TransitionKind.NORMAL && fromStatusKey == null) {
             throw WorkflowInvalidRequestException(
                 workflowKey,
-                "보통 전환에는 출발 상태가 필요합니다. 출발 상태를 고르거나 전환 종류를 바꿔 주세요.",
+                "보통 전환에는 출발 상태가 필요합니다. 출발 상태를 선택하거나 전환 종류를 변경해 주세요.",
             )
         }
         if (kind != TransitionKind.NORMAL && fromStatusKey != null) {
@@ -447,9 +447,9 @@ class WorkflowCommandService(
         if (projectKey == null) return null
         val parsed =
             runCatching { ProjectKey(projectKey) }
-                .getOrElse { throw WorkflowInvalidRequestException(workflowKey, "프로젝트 키 형식이 아니다: $projectKey") }
+                .getOrElse { throw WorkflowInvalidRequestException(workflowKey, "프로젝트 키 형식이 아닙니다: $projectKey") }
         return projectLookupPort.findIdByKey(parsed)
-            ?: throw WorkflowInvalidRequestException(workflowKey, "그런 프로젝트가 없다: $projectKey")
+            ?: throw WorkflowInvalidRequestException(workflowKey, "프로젝트가 없습니다: $projectKey")
     }
 
     /**

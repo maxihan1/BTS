@@ -301,7 +301,7 @@ class ValidatorControllerTest {
         allowPermission()
         every {
             service.create(workflowKey, existingTransitionKey, "RequiredField", mapOf("field" to "resolution"), 0)
-        } throws TransitionConflictException(workflowKey, "초안이 열려 있어 전환 규칙을 고칠 수 없습니다.")
+        } throws TransitionConflictException(workflowKey, "초안이 열려 있어 전환 규칙을 수정할 수 없습니다.")
 
         mockMvc.perform(
             post(basePath(existingTransitionKey))
@@ -310,7 +310,7 @@ class ValidatorControllerTest {
         )
             .andExpect(status().isConflict)
             .andExpect(jsonPath("$.error.code").value("WORKFLOW_TRANSITION_CONFLICT"))
-            .andExpect(jsonPath("$.error.message").value("초안이 열려 있어 전환 규칙을 고칠 수 없습니다."))
+            .andExpect(jsonPath("$.error.message").value("초안이 열려 있어 전환 규칙을 수정할 수 없습니다."))
     }
 
     /**

@@ -136,7 +136,7 @@ class WorkflowExceptionHandler {
                 error =
                     ErrorBody(
                         code = "WORKFLOW_LOCKED",
-                        message = "편집이 잠긴 워크플로우입니다. 발행이 끝난 뒤 다시 시도해 주세요.",
+                        message = "편집이 잠긴 워크플로우입니다. 발행이 완료된 뒤 다시 시도해 주세요.",
                     ),
             ),
         )

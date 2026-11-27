@@ -52,11 +52,11 @@ class WorkflowSchemeNotFoundException(
 class SchemeChangeStrandsIssuesException(
     val strandedByType: List<StrandedIssueType>,
 ) : WorkflowSchemeDomainException(
-        "새 워크플로우에 없는 상태에 이슈가 남는다 — " +
+        "새 워크플로우에 없는 상태에 이슈가 남습니다: " +
             strandedByType.joinToString(" · ") { t ->
                 t.statuses.entries.joinToString(" · ") { "${t.issueTypeId}/${it.key} ${it.value}건" }
             } +
-            ". 이슈 타입마다 옮길 상태를 고를 것",
+            ". 이슈 타입마다 옮길 상태를 선택하세요",
     ) {
     /** 상태 키 → 이슈 수 (타입 합산). #524 응답 계약 — 하위 호환으로 남긴다. */
     val strandedByStatus: Map<String, Long>
@@ -90,7 +90,7 @@ class SchemeStatusMappingInvalidException(
  *
  * errorCode: `SCHEME_MIGRATION_IN_FLIGHT` (409)
  */
-class SchemeMigrationInFlightException : WorkflowSchemeDomainException("끝나지 않은 상태 이관이 있다 — 끝난 뒤 다시 시도할 것")
+class SchemeMigrationInFlightException : WorkflowSchemeDomainException("진행 중인 상태 이관이 있습니다. 완료된 뒤 다시 시도하세요")
 
 /**
  * 하나 이상의 프로젝트가 사용 중인 스킴을 삭제하려 할 때 던지는 예외.

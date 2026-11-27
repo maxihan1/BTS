@@ -72,7 +72,7 @@ class TransitionRuleGuard(
             } catch (ex: IllegalArgumentException) {
                 throw TransitionRuleRejected(
                     TransitionRuleRejected.Reason.UNSUPPORTED,
-                    ex.message ?: "validator '$type' 을 만들 수 없다",
+                    ex.message ?: "validator '$type' 을 만들 수 없습니다",
                     ex,
                 )
             }
@@ -83,29 +83,29 @@ class TransitionRuleGuard(
                 unreadKeys.isNotEmpty() ->
                     TransitionRuleRejected(
                         TransitionRuleRejected.Reason.UNSUPPORTED,
-                        "validator '$type' config 에 쓰이지 않는 키가 있다: ${unreadKeys.joinToString()} — " +
-                            "이 type 이 읽는 키는 ${tracked.readKeys.joinToString()} 뿐이다",
+                        "validator '$type' config 에 쓰이지 않는 키가 있습니다: ${unreadKeys.joinToString()}. " +
+                            "이 type 이 읽는 키는 ${tracked.readKeys.joinToString()} 뿐입니다",
                     )
                 config.toString().toByteArray().size > MAX_VALIDATOR_CONFIG_BYTES ->
                     TransitionRuleRejected(
                         TransitionRuleRejected.Reason.UNSUPPORTED,
-                        "validator '$type' config 가 너무 크다 — 최대 $MAX_VALIDATOR_CONFIG_BYTES 바이트",
+                        "validator '$type' config 가 너무 큽니다. 최대 $MAX_VALIDATOR_CONFIG_BYTES 바이트입니다",
                     )
                 !isEditable(instance) ->
                     TransitionRuleRejected(
                         TransitionRuleRejected.Reason.NOT_EDITABLE,
-                        "validator '$type' 은 이 API 로 편집할 수 없는 타입이다",
+                        "validator '$type' 은 이 API 로 편집할 수 없는 타입입니다",
                     )
                 instance is RequiredFieldValidator && instance.field !in RequiredFieldValidator.ENGINE_FIELDS ->
                     TransitionRuleRejected(
                         TransitionRuleRejected.Reason.UNSUPPORTED,
-                        "RequiredField 는 아직 '${instance.field}' 필드를 검사할 수 없다 — " +
-                            "지금은 ${RequiredFieldValidator.ENGINE_FIELDS.joinToString()} 만 동작한다",
+                        "RequiredField 는 아직 '${instance.field}' 필드를 검사할 수 없습니다. " +
+                            "지금은 ${RequiredFieldValidator.ENGINE_FIELDS.joinToString()} 만 동작합니다",
                     )
                 onInitial && instance.phase == ValidatorPhase.AVAILABILITY ->
                     TransitionRuleRejected(
                         TransitionRuleRejected.Reason.UNSUPPORTED,
-                        "validator '$type' 은 조건이라 이슈 생성(최초) 전환에 붙일 수 없다 — 생성에는 숨길 버튼이 없다",
+                        "validator '$type' 은 조건이라 이슈 생성(최초) 전환에 추가할 수 없습니다. 생성에는 숨길 버튼이 없습니다",
                     )
                 else -> null
             }
@@ -128,7 +128,7 @@ class TransitionRuleGuard(
         } catch (ex: IllegalArgumentException) {
             throw TransitionRuleRejected(
                 TransitionRuleRejected.Reason.UNSUPPORTED,
-                ex.message ?: "post-action '$type' 을 만들 수 없다",
+                ex.message ?: "post-action '$type' 을 만들 수 없습니다",
                 ex,
             )
         }
@@ -137,7 +137,7 @@ class TransitionRuleGuard(
         val rejection =
             when {
                 type !in RUNTIME_CONSUMED_POST_ACTIONS ->
-                    "post-action '$type' 은 아직 전환 때 실행하는 곳이 없어 저장할 수 없다 — 지금은 $CALL_WEBHOOK 만 동작한다"
+                    "post-action '$type' 은 아직 전환 때 실행하는 곳이 없어 저장할 수 없습니다. 지금은 $CALL_WEBHOOK 만 동작합니다"
                 type == CALL_WEBHOOK && !url.startsWith("http://") && !url.startsWith("https://") ->
                     "CALL_WEBHOOK url 은 http:// 또는 https:// 로 시작해야 합니다: '$url'"
                 else -> null
@@ -213,7 +213,7 @@ internal fun WorkflowDraftRepository.requireNoOpenDraft(workflowKey: String) {
     if (existsForLiveWorkflow(workflowKey)) {
         throw TransitionConflictException(
             workflowKey,
-            "초안이 열려 있어 전환 규칙을 고칠 수 없습니다. 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.",
+            "초안이 열려 있어 전환 규칙을 수정할 수 없습니다. 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.",
         )
     }
 }

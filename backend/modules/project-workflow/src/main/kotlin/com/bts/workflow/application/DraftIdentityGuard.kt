@@ -27,8 +27,8 @@ internal fun requireKeyMatchesPath(
     if (definition.key.isNotBlank() && definition.key != pathKey) {
         throw WorkflowInvalidRequestException(
             pathKey,
-            "초안이 담은 워크플로우 키 '${definition.key}' 가 경로 '$pathKey' 와 다르다. " +
-                "워크플로우 키는 이 API 로 바꿀 수 없다",
+            "초안이 담은 워크플로우 키 '${definition.key}' 가 경로 '$pathKey' 와 다릅니다. " +
+                "워크플로우 키는 이 API 로 변경할 수 없습니다",
         )
     }
 }
@@ -86,15 +86,15 @@ internal fun requireStatesMatchCatalog(
         if (state.name != row.name) {
             throw WorkflowInvalidRequestException(
                 pathKey,
-                "상태 '${state.key}' 의 이름은 카탈로그가 정한다 (카탈로그 '${row.name}' · 초안 " +
-                    "'${state.name}'). 이름을 바꾸려면 상태 API 를 쓸 것",
+                "상태 '${state.key}' 의 이름은 카탈로그가 정합니다 (카탈로그 '${row.name}' · 초안 " +
+                    "'${state.name}'). 이름을 변경하려면 상태 API 를 사용하세요",
             )
         }
         if (state.category != row.category) {
             throw WorkflowInvalidRequestException(
                 pathKey,
-                "상태 '${state.key}' 의 카테고리는 카탈로그가 정한다 (카탈로그 '${row.category}' · 초안 " +
-                    "'${state.category}'). 카테고리를 바꾸려면 상태 API 를 쓸 것",
+                "상태 '${state.key}' 의 카테고리는 카탈로그가 정합니다 (카탈로그 '${row.category}' · 초안 " +
+                    "'${state.category}'). 카테고리를 변경하려면 상태 API 를 사용하세요",
             )
         }
     }

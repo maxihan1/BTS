@@ -111,7 +111,7 @@ class SchemeStatusMigrationService(
         val duplicated =
             statusMappings.groupingBy { it.issueTypeId to it.fromStatusKey }.eachCount().filterValues { it > 1 }
         if (duplicated.isNotEmpty()) {
-            throw SchemeStatusMappingInvalidException("같은 (이슈 타입, 출발 상태)에 매핑이 둘 이상이다 — ${duplicated.keys}")
+            throw SchemeStatusMappingInvalidException("같은 (이슈 타입, 출발 상태)에 매핑이 둘 이상입니다: ${duplicated.keys}")
         }
         val byType = statusMappings.groupBy { it.issueTypeId }
         val covered =
@@ -128,7 +128,7 @@ class SchemeStatusMigrationService(
                     val to = byType.getValue(t.issueTypeId).first { it.fromStatusKey == from }.toStatusKey
                     if (to !in t.targetStatusKeys) {
                         throw SchemeStatusMappingInvalidException(
-                            "이슈 타입 ${t.issueTypeId} 의 도착 상태 $to 가 워크플로우 ${t.workflowKey} 에 없다",
+                            "이슈 타입 ${t.issueTypeId} 의 도착 상태 $to 가 워크플로우 ${t.workflowKey} 에 없습니다",
                         )
                     }
                     StatusMigrationMapping(fromStatusKey = from, toStatusKey = to)
