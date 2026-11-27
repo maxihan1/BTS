@@ -212,7 +212,7 @@ export function DashboardTile({
               disabled={!effectiveCanEdit}
               // C3: tile.title?: string — undefined 방어
               aria-label={
-                effectiveCanEdit ? `${tile.title ?? ''} — 클릭하여 제목 편집` : (tile.title ?? '')
+                effectiveCanEdit ? `${tile.title ?? ''} (클릭하여 제목 편집)` : (tile.title ?? '')
               }
             >
               {tile.title}

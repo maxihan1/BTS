@@ -1603,7 +1603,7 @@ const patchEstimationHandler = http.patch(
     }
     // ★404 가 아니라 409 다 — 보드는 있고 **조작이 막힌** 것이다(E5).
     if ((board.boardType ?? DEFAULT_BOARD_TYPE) !== 'SCRUM') {
-      return settingsError(409, 'AGILE_TIME_TRACKING_NOT_SCRUM', '시간 추적은 스크럼 보드에서만 바꿀 수 있습니다.')
+      return settingsError(409, 'AGILE_TIME_TRACKING_NOT_SCRUM', '시간 추적은 스크럼 보드에서만 변경할 수 있습니다.')
     }
 
     const settings = settingsFor(boardId)

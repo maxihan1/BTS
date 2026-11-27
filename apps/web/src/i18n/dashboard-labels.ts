@@ -229,7 +229,7 @@ export const gadgetPickerLabels = {
   /** 보드는 프로젝트에 종속이라 프로젝트를 먼저 골라야 한다 */
   selectProjectFirst: '먼저 프로젝트를 선택하세요',
   /** 조용히 비우지 않는다 — 값이 사라진 것처럼 보이면 안 된다 */
-  boardResetByProjectChange: '프로젝트를 바꿔 보드 선택을 지웠습니다. 보드를 다시 골라 주세요.',
+  boardResetByProjectChange: '프로젝트를 변경해 보드 선택을 초기화했습니다. 보드를 다시 선택해 주세요.',
   /** 보드 종류 — 번다운은 스크럼에만 있다 */
   scrum: '스크럼',
   kanban: '칸반',

@@ -43,7 +43,7 @@ export const PROJECT_REPORT_LINKS: readonly ProjectReportLink[] = [
   {
     to: '/projects/$projectKey/reports/velocity',
     label: '벨로시티',
-    question: '스프린트마다 얼마나 끝냈나',
+    question: '스프린트마다 얼마나 완료했나',
   },
   {
     to: '/projects/$projectKey/reports/cfd',
@@ -53,7 +53,7 @@ export const PROJECT_REPORT_LINKS: readonly ProjectReportLink[] = [
   {
     to: '/projects/$projectKey/reports/cycle-time',
     label: '사이클/리드 타임',
-    question: '하나 끝내는 데 얼마나 걸리나',
+    question: '하나 완료하는 데 얼마나 걸리나',
   },
   {
     to: '/projects/$projectKey/reports/worklog',

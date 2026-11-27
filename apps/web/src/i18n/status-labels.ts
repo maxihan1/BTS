@@ -11,10 +11,10 @@ export const statusLabels = {
   expiryLabel: '유지 기간',
   saveButton: '저장',
   savingButton: '저장 중...',
-  clearButton: '상태 지우기',
+  clearButton: '상태 초기화',
   errorMessage: '상태를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   presets: {
-    none: '안 지움',
+    none: '삭제 안 함',
     '30m': '30분',
     '1h': '1시간',
     '4h': '4시간',

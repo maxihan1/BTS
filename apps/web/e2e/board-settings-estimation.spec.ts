@@ -50,7 +50,7 @@
 //   함의를 표 전체에 붙이면 안 된다.
 //
 // ★**⑤ 만 좁게 특정되지 않는다** — 6건 전부가 죽는다. 「미설정」이라는 상태 자체를 지우는
-//   변경이라 작업일을 만지는 모든 시나리오의 출발점(`근무일 고르기` 버튼)이 사라지기 때문이다.
+//   변경이라 작업일을 만지는 모든 시나리오의 출발점(`근무일 선택` 버튼)이 사라지기 때문이다.
 //   좁히려고 단언을 빼지 않았다 — 넓은 것이 사실이고, 그 사실이 곧 「미설정은 이 화면의
 //   뼈대」라는 뜻이다.
 // ★**①②는 짝으로만 산다.** 잠금만 재면 「항상 잠긴 구현」이 통과한다.
@@ -397,7 +397,7 @@ async function expectWorkingDaysUnset(page: Page): Promise<void> {
   await expect(page.getByRole('list', { name: workingDaysLabels.daysGroupLabel })).toHaveCount(0)
 }
 
-/** 「미설정 → 근무일 고르기(월~금) → 비근무일 등록 → 저장」 한 묶음 */
+/** 「미설정 → 근무일 선택(월~금) → 비근무일 등록 → 저장」 한 묶음 */
 async function configureWorkingDaysWithHoliday(page: Page): Promise<void> {
   await settingsTab(page, tabs.workingDays).click()
   await page.getByRole('button', { name: workingDaysLabels.configureDays, exact: true }).click()
@@ -489,7 +489,7 @@ test.describe('보드 설정 — 추정 · 작업일 (부채 177 Task 23)', () =
     await page.getByRole('button', { name: workingDaysLabels.configureDays, exact: true }).click()
 
     const friday = dayCheckbox(page, workingDaysLabels.dayLabels.FRI)
-    await expect(friday).toBeChecked() // 「근무일 고르기」의 출발점은 월~금이다
+    await expect(friday).toBeChecked() // 「근무일 선택」의 출발점은 월~금이다
     await friday.click()
     await expect(friday).not.toBeChecked()
 

@@ -536,7 +536,7 @@ describe('ImportMappingWizard', () => {
     await user.click(screen.getByRole('button', { name: '다음' }))
 
     await waitFor(() => screen.getByText('alice@example.com'))
-    expect(screen.queryByText('필드 매핑이 바뀌어 작성자를 다시 수집했습니다.')).not.toBeInTheDocument()
+    expect(screen.queryByText('필드 매핑이 변경되어 작성자를 다시 수집했습니다.')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '이전' }))
     await waitFor(() => screen.getByTestId('field-mapping-row-Status'))
@@ -544,13 +544,13 @@ describe('ImportMappingWizard', () => {
     await user.click(screen.getByRole('button', { name: '다음' }))
 
     await waitFor(() => {
-      expect(screen.getByText('필드 매핑이 바뀌어 작성자를 다시 수집했습니다.')).toBeInTheDocument()
+      expect(screen.getByText('필드 매핑이 변경되어 작성자를 다시 수집했습니다.')).toBeInTheDocument()
     })
 
     await user.click(screen.getByRole('button', { name: '다음' }))
 
     await waitFor(() => {
-      expect(screen.getByText('필드 매핑이 바뀌어 값을 다시 수집했습니다.')).toBeInTheDocument()
+      expect(screen.getByText('필드 매핑이 변경되어 값을 다시 수집했습니다.')).toBeInTheDocument()
     })
   })
 

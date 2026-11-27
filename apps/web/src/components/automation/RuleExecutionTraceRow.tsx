@@ -31,7 +31,7 @@ const labels = {
 
 /** 실패 사유 코드 중 사람이 읽을 말이 따로 있는 것 — 나머지는 코드 그대로 보인다. */
 const errorLabels: Readonly<Record<string, string>> = {
-  TARGET_LIMIT_EXCEEDED: '상한 넘음 — 대상 이슈가 200개를 넘어 하나도 바꾸지 않음',
+  TARGET_LIMIT_EXCEEDED: '상한 초과: 대상 이슈가 200개를 넘어 하나도 변경하지 않음',
 }
 
 /**

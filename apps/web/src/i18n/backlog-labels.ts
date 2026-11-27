@@ -145,7 +145,7 @@ export const backlogLabels = {
 
   /** 칸 aria-label 생성 함수 */
   columnAriaLabel: (name: string, count: number): string =>
-    `${name} 칸, ${count}개 이슈`,
+    `${name}, ${count}개 이슈`,
 
   /** 카드 aria-label 생성 함수 */
   cardAriaLabel: (key: string, summary: string): string =>
@@ -164,7 +164,7 @@ export const backlogLabels = {
   truncatedWarning: '이슈 수가 많아 일부만 표시됩니다. 필터를 적용해 범위를 줄이세요.',
 
   /** 순서 반영 실패 경고 메시지 */
-  rerankFailedWarning: '이슈 이동은 완료됐지만 순서 반영이 실패했습니다. 잠시 후 새로 고침 시 위치가 기본값으로 보일 수 있습니다.',
+  rerankFailedWarning: '이슈 이동은 완료됐지만 순서 반영이 실패했습니다. 잠시 후 새로고침 시 위치가 기본값으로 보일 수 있습니다.',
 
   /** 이동 실패 에러 메시지 */
   moveFailedError: '이슈 이동에 실패했습니다. 다시 시도해 주세요.',
@@ -220,7 +220,7 @@ export const backlogLabels = {
   // 기존 e2e 가 strict mode 로 깨진다.
 
   /** 백로그 칸 이슈 생성 진입점 (아이콘 버튼의 sr-only 이름) */
-  createIssueInBacklog: '백로그 칸에 이슈 추가',
+  createIssueInBacklog: '백로그에 이슈 추가',
 
   /**
    * 스프린트 칸 이슈 생성 진입점 이름.
@@ -368,8 +368,8 @@ export const backlogLabels = {
      */
     deleteDescription: (sprintName: string, issueCount: number): string =>
       issueCount > 0
-        ? `「${sprintName}」을(를) 지웁니다. 이슈 ${issueCount}건은 삭제되지 않고 백로그로 돌아갑니다.`
-        : `「${sprintName}」을(를) 지웁니다.`,
+        ? `「${sprintName}」을(를) 삭제합니다. 이슈 ${issueCount}건은 삭제되지 않고 백로그로 돌아갑니다.`
+        : `「${sprintName}」을(를) 삭제합니다.`,
 
     /** 삭제 확인 버튼 */
     deleteConfirm: '삭제',
@@ -390,10 +390,10 @@ export const backlogLabels = {
     deleteForbidden: '이 스프린트를 삭제할 권한이 없습니다.',
 
     /** 404 — 이미 지워졌다. 창을 닫고 목록을 다시 보면 없다 */
-    deleteNotFound: '스프린트를 찾을 수 없습니다. 이미 지워졌을 수 있습니다.',
+    deleteNotFound: '스프린트를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.',
 
     /** 그 밖의 상태 코드 — 그냥 다시 보내면 되는 실패 */
-    deleteFailed: '스프린트를 지우지 못했습니다.',
+    deleteFailed: '스프린트를 삭제하지 못했습니다.',
 
     /**
      * 상태 코드조차 없는 실패 — 연결이 끊겼거나 응답이 상한 안에 오지 않았다.

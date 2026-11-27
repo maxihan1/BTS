@@ -32,7 +32,7 @@ export const workflowPublishLabels = {
     /** 발행 버튼 */
     publish: '워크플로 업데이트',
     /** 기본값 복원 버튼 */
-    reset: '기본값으로 되돌리기',
+    reset: '기본값으로 초기화',
     /** 초안 폐기 버튼 */
     discard: '변경 취소',
     /**
@@ -51,7 +51,7 @@ export const workflowPublishLabels = {
     dialogTitle: '업무 항목을 새 상태로 이동',
     /** 다이얼로그 설명 */
     dialogDescription:
-      '업데이트된 워크플로에 없는 상태의 업무 항목이 있습니다. 옮길 상태를 정하면 이동이 끝난 뒤 워크플로가 업데이트됩니다',
+      '업데이트된 워크플로에 없는 상태의 업무 항목이 있습니다. 옮길 상태를 정하면 이동이 완료된 뒤 워크플로가 업데이트됩니다',
     /** 빠지는 상태 목록의 제목 */
     removedHeading: '사라지는 상태',
     /** 빠지는 상태가 없을 때 */
@@ -118,7 +118,7 @@ export const workflowPublishLabels = {
      * 「벗어나도 계속된다」를 함께 말하는 것은 이관이 서버 작업이라 화면을 닫아도 멈추지 않기
      * 때문이다 — 모르면 사용자가 화면을 지키고 앉아 있는다.
      */
-    inProgressNotice: '이동이 끝나면 워크플로가 자동으로 업데이트됩니다. 이 화면을 벗어나도 이동은 계속됩니다',
+    inProgressNotice: '이동이 완료되면 워크플로가 자동으로 업데이트됩니다. 이 화면을 벗어나도 이동은 계속됩니다',
     /** 이관 완료 문구 */
     completed: '이관이 완료됐습니다',
     /** 실패 항목 목록의 제목. `failedCount === 0` 이면 목록 자체를 그리지 않는다 */
@@ -156,7 +156,7 @@ export const workflowPublishLabels = {
   /** 기본값 복원 다이얼로그 */
   reset: {
     /** 다이얼로그 제목 — 화면 전역 고유 */
-    dialogTitle: '기본값으로 되돌리기',
+    dialogTitle: '기본값으로 초기화',
     /** 설명. 「초안까지만」이 이 기능의 핵심이다 */
     dialogDescription: '기본 정의를 편집기로 불러옵니다. 「워크플로 업데이트」를 눌러야 반영됩니다',
     /** 확인 버튼 */
@@ -168,7 +168,7 @@ export const workflowPublishLabels = {
     /** 다이얼로그 제목 — 화면 전역 고유 */
     dialogTitle: '변경 취소',
     /** 설명 */
-    dialogDescription: '편집 중인 변경을 버리고 지금 반영된 워크플로로 되돌아갑니다',
+    dialogDescription: '편집 중인 변경을 버리고 지금 반영된 워크플로 상태로 돌아갑니다',
     /**
      * 진행률 폴링이 5xx·네트워크로 멈췄을 때만 설명에 덧붙이는 한 줄
      * (`useMigrationWizard.pollRetryable`).
@@ -182,7 +182,7 @@ export const workflowPublishLabels = {
      * 다음번 경고까지 같이 무뎌진다.
      */
     migrationRunningWarning:
-      '이동이 아직 진행 중일 수 있습니다. 취소해도 이미 옮겨진 이슈는 되돌아오지 않습니다',
+      '이동이 아직 진행 중일 수 있습니다. 취소해도 이미 옮겨진 이슈는 원래 상태로 돌아가지 않습니다',
     /** 확인 버튼 */
     confirm: '변경 버리기',
   },

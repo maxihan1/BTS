@@ -72,7 +72,7 @@ export async function goToBoardNameStep(scope: Page | Locator): Promise<void> {
  * @param sprintName 스프린트 이름
  */
 export function backlogSprintColumn(page: Page, sprintName: string): Locator {
-  return page.getByRole('region', { name: new RegExp(`^${sprintName} 칸`) })
+  return page.getByRole('region', { name: new RegExp(`^${sprintName}, `) })
 }
 
 /**

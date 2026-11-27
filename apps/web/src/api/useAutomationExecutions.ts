@@ -168,7 +168,7 @@ export function useRuleExecutionDetail(
       // enabled 가드가 id !== null을 보장하지만, queryFn 스코프에서 타입을 좁히려면
       // 명시적 가드가 필요하다(`as string` 강제 캐스팅 대신).
       if (id === null) {
-        return Promise.reject(new Error('useRuleExecutionDetail: id가 null인 상태에서는 조회할 수 없다'))
+        return Promise.reject(new Error('useRuleExecutionDetail: id가 null인 상태에서는 조회할 수 없습니다'))
       }
       return fetchRuleExecution(id)
     },

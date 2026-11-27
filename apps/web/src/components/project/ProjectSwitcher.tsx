@@ -124,7 +124,7 @@ export function ProjectSwitcher(): JSX.Element | null {
           variant="ghost"
           size="default"
           className="ml-1 gap-1 rounded-md px-2 hover:bg-accent"
-          aria-label={`${TRIGGER_LABEL}${activeProject === undefined ? '' : ` — 현재 ${activeProject.name}`}`}
+          aria-label={`${TRIGGER_LABEL}${activeProject === undefined ? '' : `, 현재 ${activeProject.name}`}`}
         >
           <span data-testid="project-switcher-current" className={CURRENT_LABEL_CLASS}>
             {activeProject?.name ?? TRIGGER_LABEL}

@@ -248,7 +248,7 @@ describe('GitWebhookSection — 등록→URL 모달 순차(FR2)·reset 닫기(FR
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('GitWebhookSection — 삭제 확인 문구 (FR14)', () => {
-  it('삭제 확인 모달이 "연동이 끊기고 복구할 수 없습니다" + "provider 설정의 URL 도 함께 교체" 두 가지를 말한다', async () => {
+  it('삭제 확인 모달이 "연동이 끊기고 복원할 수 없습니다" + "provider 설정의 URL 도 함께 교체" 두 가지를 말한다', async () => {
     seedGitWebhooks(DEFAULT_GIT_WEBHOOKS)
     const target = firstSeedWebhook()
     const user = userEvent.setup({ delay: null })
@@ -257,7 +257,7 @@ describe('GitWebhookSection — 삭제 확인 문구 (FR14)', () => {
     await screen.findByTestId(`git-webhook-row-${target.id}`)
     await user.click(screen.getByTestId(`git-webhook-delete-${target.id}`))
 
-    expect(await screen.findByText(/연동이 끊기고 복구할 수 없습니다/)).toBeInTheDocument()
+    expect(await screen.findByText(/연동이 끊기고 복원할 수 없습니다/)).toBeInTheDocument()
     expect(screen.getByText(/provider 설정의 URL 도 함께 교체/)).toBeInTheDocument()
   })
 })

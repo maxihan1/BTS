@@ -55,6 +55,7 @@ bash scripts/verify-master-plan.sh                                         # FR 
 | DB · 마이그레이션 · 트랜잭션 | `DATA.md` |
 | 도메인 · 기술 결정 · 용어 | `docs/sdd/README.md` · `Maxi_wiki/BTS/glossary.md` |
 | UI/UX 상위 정책 (색 · 글꼴 · 모양 · 움직임 · 창 · 휴대폰 · 문구) | `docs/design/2026-10-30-qa-hub-shared-ui-policy.md` |
+| 표준 단어 (화면 · 서버 문구의 쓰는 말 · 쓰지 않는 말) | `docs/WORDS.md` |
 | UI/UX 기준 (Jira 패리티 — 정보 구조 · 화면 배치) | `docs/design/jira-parity-contract.md` |
 | FR 진척 | `docs/plan/README.md` · `product/<bc>.md` · `docs/INDEX-fr.md`(grep 전용) |
 | 표면 이름 · 차단 장치 | `docs/rules/behavior-rules.md` |

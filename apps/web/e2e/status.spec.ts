@@ -55,7 +55,7 @@ test.describe('FR-PR-02 상태 메시지', () => {
     await page.getByRole('button', { name: statusLabels.saveButton, exact: true }).click()
     await expect(page.getByText(EMOJI)).toBeVisible()
 
-    // When. 다시 열어 "상태 지우기"
+    // When. 다시 열어 "상태 초기화"
     await openStatusModal(page)
     await page.getByRole('button', { name: statusLabels.clearButton, exact: true }).click()
 

@@ -111,7 +111,7 @@ export const workflowSchemeLabels = {
   /** 표준 스킴 보호 (SchemeMetaPanel.tsx) */
   standardProtect: {
     /** 표준 스킴 안내 카드 텍스트 */
-    notice: '표준 스킴 — 키/이름 변경 + 삭제 불가. 매핑만 자유 변경 가능',
+    notice: '표준 스킴: 키/이름 변경 + 삭제 불가. 매핑만 자유 변경 가능',
     /** name/description disabled 이유 tooltip 텍스트 */
     fieldTooltip: '표준 스킴은 키/이름/설명 변경 불가',
     /** 삭제 disabled 이유 tooltip 텍스트 */
@@ -193,9 +193,9 @@ export const workflowSchemeLabels = {
   /** 프로젝트 설정의 스킴 관리 구역 (FR-WF-08 PR ⑤) */
   projectManagement: {
     /** 아무 스킴도 고르지 않았을 때 */
-    pickPrompt: '왼쪽에서 스킴을 고르면 매핑과 설정을 볼 수 있습니다.',
+    pickPrompt: '왼쪽에서 스킴을 선택하면 매핑과 설정을 볼 수 있습니다.',
     /** 전역 템플릿을 골랐을 때의 안내 */
-    globalReadOnlyNotice: '전역 공유 템플릿이라 이 프로젝트에서는 고칠 수 없습니다. 복제해서 쓰세요.',
+    globalReadOnlyNotice: '전역 공유 템플릿이라 이 프로젝트에서는 수정할 수 없습니다. 복제해서 쓰세요.',
     /** 전역 템플릿을 내 프로젝트 사본으로 만드는 버튼 */
     copyToProject: '내 프로젝트로 복제',
     /** 복제본 이름 접미 */
@@ -225,7 +225,7 @@ export const workflowSchemeLabels = {
   /** 유형별 상태 이관 마법사 (R11 · 갭 JCW-1) */
   migration: {
     step1Title: '상태 매핑 (1/2)',
-    step1Description: '워크플로우가 바뀌는 업무 유형마다, 새 워크플로우에 없는 상태의 이슈를 옮길 상태를 고르세요.',
+    step1Description: '워크플로우가 변경되는 업무 유형마다, 새 워크플로우에 없는 상태의 이슈를 옮길 상태를 선택하세요.',
     step2Title: '이슈 옮기는 중 (2/2)',
     step2Description: '이슈를 새 상태로 옮기고 있습니다. 창을 닫아도 계속 진행됩니다.',
     /** 유형 소제목 — 이름을 못 찾으면 id */
@@ -239,6 +239,6 @@ export const workflowSchemeLabels = {
     close: '닫기',
     /** 진행률 한 줄 */
     progress: (processed: number, total: number) => `${String(processed)} / ${String(total)}`,
-    switched: '프로젝트 스킴을 바꿨습니다',
+    switched: '프로젝트 스킴을 변경했습니다',
   },
 }

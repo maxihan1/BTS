@@ -56,7 +56,7 @@ const CUSTOM_FIELD_PREFIX = 'cf_'
  */
 const labels = {
   heading: '카드에 표시할 필드',
-  description: '요약은 항상 카드 맨 위에 보입니다. 뷰마다 최대 3개를 더 고를 수 있습니다.',
+  description: '요약은 항상 카드 맨 위에 보입니다. 뷰마다 최대 3개를 더 선택할 수 있습니다.',
   viewGroupLabel: '카드 레이아웃 뷰',
   viewBoard: '보드',
   viewBacklog: '백로그',
@@ -65,7 +65,7 @@ const labels = {
   customEmpty: '이 프로젝트에는 커스텀 필드가 없습니다.',
   customLoadError: '커스텀 필드를 불러오지 못했습니다.',
   customRetry: '커스텀 필드 다시 불러오기',
-  limitReached: '뷰당 3개까지입니다. 다른 필드를 고르려면 먼저 하나를 해제하세요.',
+  limitReached: '뷰당 3개까지입니다. 다른 필드를 선택하려면 먼저 하나를 해제하세요.',
   saveFailed: '카드 레이아웃을 저장하지 못했습니다.',
   saveForbidden: '카드 레이아웃을 저장할 권한이 없습니다.',
   saveRetry: '다시 시도',

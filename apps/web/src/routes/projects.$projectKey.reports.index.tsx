@@ -15,7 +15,7 @@ import { PROJECT_REPORT_LINKS } from '@/components/project/project-report-links'
 const REPORTS_INDEX_TITLE = '리포트'
 
 /** 착지 화면 부제 — 「무엇을 고르는 자리인가」를 한 줄로 말한다 */
-const REPORTS_INDEX_DESCRIPTION = '보고 싶은 것을 골라 여세요'
+const REPORTS_INDEX_DESCRIPTION = '보고 싶은 보고서를 선택하세요'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Router adapter

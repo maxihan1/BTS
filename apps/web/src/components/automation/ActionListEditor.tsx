@@ -11,7 +11,7 @@ import type { ActionFormState } from './ActionConfigEditor'
 
 const TEXT = {
   addActionButton: '액션 추가',
-  emptyStateMessage: '아직 액션이 없습니다 — 트리거만으로도 유효하지만, 액션을 추가하면 자동 실행됩니다.',
+  emptyStateMessage: '아직 액션이 없습니다. 트리거만으로도 유효하지만, 액션을 추가하면 자동 실행됩니다.',
   moveUpLabel: '위로',
   moveDownLabel: '아래로',
 } as const

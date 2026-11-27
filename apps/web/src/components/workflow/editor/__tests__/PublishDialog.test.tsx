@@ -1,6 +1,6 @@
 // 발행 다이얼로그 테스트 — 이관 필요 분기 · 보드 고지 · 발행 차단 사유
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PublishDialog } from '../PublishDialog'
 import { workflowPublishLabels as labels } from '@/i18n/workflow-publish-labels'
@@ -97,7 +97,9 @@ describe('발행 다이얼로그', () => {
     // 키를 그대로 그리면 사용자가 `done` 을 읽는다.
     renderDialog({ preview: preview({ removedStatusKeys: ['done'] }) })
 
-    expect(screen.getByText(/완료/)).toBeInTheDocument()
+    // 설명 문장(「이동이 완료된 뒤」)에도 「완료」가 있어 사라지는 상태 목록 안에서만 찾는다
+    const removed = screen.getByRole('region', { name: labels.publish.removedHeading })
+    expect(within(removed).getByText(/완료/)).toBeInTheDocument()
   })
 
   it('사라지는 상태가 있으면 보드 컬럼 고지가 무조건 뜬다', () => {

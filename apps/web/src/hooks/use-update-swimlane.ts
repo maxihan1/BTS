@@ -30,7 +30,7 @@ export function useUpdateSwimlane(boardId: string | undefined) {
   return useMutation<BoardMeta, unknown, SwimlaneField>({
     mutationFn: (swimlaneField) => {
       if (boardId === undefined || boardId === '') {
-        return Promise.reject(new Error('보드가 확정되기 전에는 스윔레인을 바꿀 수 없다'))
+        return Promise.reject(new Error('보드가 확정되기 전에는 스윔레인을 변경할 수 없습니다'))
       }
       return updateBoardSwimlane(boardId, swimlaneField)
     },

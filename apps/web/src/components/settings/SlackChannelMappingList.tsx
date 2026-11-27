@@ -32,7 +32,7 @@ const labels = {
   genericError: '채널 매핑을 불러오지 못했습니다.',
   deleteFailed: '삭제에 실패했습니다.',
   deleteConfirmTitle: '채널 매핑을 삭제하시겠습니까?',
-  deleteConfirmMessage: '삭제하면 되돌릴 수 없습니다.',
+  deleteConfirmMessage: '삭제하면 복원할 수 없습니다.',
   deleteConfirmButton: '삭제',
   deleteCancelButton: '취소',
   channelIdLabel: '채널 ID',

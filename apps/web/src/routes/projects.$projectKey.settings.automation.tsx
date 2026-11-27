@@ -137,7 +137,7 @@ export function ProjectAutomationSettingsPage({
       <header className="space-y-1">
         <h2 className="text-xl font-semibold">자동화</h2>
         <p className="text-muted-foreground text-sm">
-          이슈 이벤트·예약 일정·PR 머지에 따라 자동으로 실행될 규칙과, 규칙을 발화시키는 웹훅 연동을
+          이슈 이벤트·예약 일정·PR 머지에 따라 자동으로 실행될 규칙과, 규칙을 실행시키는 웹훅 연동을
           관리합니다.
         </p>
       </header>

@@ -231,7 +231,7 @@ describe('RuleExecutionTraceRow', () => {
       expect(pre?.textContent).toContain('ATLAS-100')
     })
 
-    it('웹훅 대상 상한을 넘은 실패는 코드 대신 「상한 넘음」으로 보인다 (BTS-F2-01)', async () => {
+    it('웹훅 대상 상한을 넘은 실패는 코드 대신 「상한 초과」으로 보인다 (BTS-F2-01)', async () => {
       server.use(
         http.get('/api/v1/automation/executions/:id', () =>
           HttpResponse.json({
@@ -245,7 +245,7 @@ describe('RuleExecutionTraceRow', () => {
 
       await user.click(screen.getByRole('button', { expanded: false }))
 
-      expect(await screen.findByText(/^상한 넘음/)).toBeInTheDocument()
+      expect(await screen.findByText(/^상한 초과/)).toBeInTheDocument()
       expect(screen.queryByText('TARGET_LIMIT_EXCEEDED')).not.toBeInTheDocument()
     })
 

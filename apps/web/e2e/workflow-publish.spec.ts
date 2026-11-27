@@ -79,8 +79,8 @@ test('P4 기본값 복원은 초안까지만 간다 (D7)', async ({ page }) => {
   await loginAsSystemAdmin(page)
   await openEditor(page)
 
-  await page.getByRole('button', { name: '기본값으로 되돌리기' }).click()
-  const dialog = page.getByRole('dialog', { name: '기본값으로 되돌리기' })
+  await page.getByRole('button', { name: '기본값으로 초기화' }).click()
+  const dialog = page.getByRole('dialog', { name: '기본값으로 초기화' })
   await expect(dialog).toContainText('발행해야 운영에 반영됩니다')
   await dialog.getByRole('button', { name: '초안으로 불러오기' }).click()
 

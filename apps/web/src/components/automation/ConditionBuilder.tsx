@@ -16,7 +16,7 @@ const TEXT = {
   removeComparisonLabel: '조건 삭제',
   removeGroupLabel: '그룹 삭제',
   negateLabel: '아님(NOT)',
-  emptyGroupHint: '조건을 추가하세요 — 그룹이 비어있으면 저장 시 제거됩니다.',
+  emptyGroupHint: '조건을 추가하세요. 그룹이 비어있으면 저장 시 제거됩니다.',
 } as const
 
 /**

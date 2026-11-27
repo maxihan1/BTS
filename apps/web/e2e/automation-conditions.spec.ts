@@ -40,7 +40,7 @@ const SETTINGS_URL = `/projects/${PROJECT_KEY}/settings/automation`
 const SEED_SCHEDULED_RULE_NAME = '매일 오전 스캔'
 
 /** ConditionBuilder.tsx TEXT.emptyGroupHint 리터럴 — 빈 그룹 힌트 문구(회귀 가드용 리터럴 고정) */
-const CONDITION_EMPTY_GROUP_HINT = '조건을 추가하세요 — 그룹이 비어있으면 저장 시 제거됩니다.'
+const CONDITION_EMPTY_GROUP_HINT = '조건을 추가하세요. 그룹이 비어있으면 저장 시 제거됩니다.'
 
 const labels = {
   heading: '자동화 룰',

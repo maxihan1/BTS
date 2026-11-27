@@ -17,7 +17,7 @@ import { loginAsAlice } from './fixtures/session-fixtures'
 const BACKLOG_URL = '/projects/ATLAS/backlog'
 const BOARD_URL = '/projects/ATLAS/board'
 
-const BACKLOG_ENTRY = '백로그 칸에 이슈 추가'
+const BACKLOG_ENTRY = '백로그에 이슈 추가'
 const SPRINT_1_ENTRY = '스프린트 1 스프린트에 이슈 추가'
 const BOARD_ENTRY = '이슈 추가'
 
@@ -30,7 +30,7 @@ const SPRINT_1_NAME = '스프린트 1'
 
 /** 칸(region)을 이름으로 한정한다 — 칸 밖 요소와 섞이지 않게 (backlog.spec.ts 관례). */
 function column(page: Page, name: string) {
-  return page.getByRole('region', { name: new RegExp(`^${name} 칸`) })
+  return page.getByRole('region', { name: new RegExp(`^${name}, `) })
 }
 
 /** 생성·배정 요청을 수집한다 — 「1회 제출 + 배정 1회」를 네트워크로 증명한다. */

@@ -196,7 +196,7 @@ export const boardLabels = {
     renameCancel: '취소',
 
     /** 이름 변경 실패 — 모르는 코드일 때의 기본 문구 */
-    renameFailed: '보드 이름을 바꾸지 못했습니다.',
+    renameFailed: '보드 이름을 변경하지 못했습니다.',
 
     /**
      * 삭제 확인 다이얼로그 제목.
@@ -218,7 +218,7 @@ export const boardLabels = {
      * @param boardName 지울 보드 이름
      */
     deleteDialogDescription: (boardName: string): string =>
-      `「${boardName}」을(를) 지웁니다. 이 보드의 이슈는 삭제되지 않습니다.`,
+      `「${boardName}」을(를) 삭제합니다. 이 보드의 이슈는 삭제되지 않습니다.`,
 
     /** 삭제 확인 버튼 */
     deleteConfirm: '삭제',
@@ -227,7 +227,7 @@ export const boardLabels = {
     deleteCancel: '취소',
 
     /** 삭제 실패 — 모르는 코드일 때의 기본 문구 */
-    deleteFailed: '보드를 지우지 못했습니다.',
+    deleteFailed: '보드를 삭제하지 못했습니다.',
 
     /**
      * 상태 코드조차 없는 실패 — 연결이 끊겼거나 응답이 상한 안에 오지 않았다.
@@ -339,7 +339,7 @@ export const boardLabels = {
      * 거짓이다. 대신 **다섯 탭이 공유하는 사실**을 말한다 — 이 화면의 모든 설정은 보드 단위다
      * (스펙 R7 · 편차 X7). 그것이 사용자가 여기서 가장 자주 오해하는 축이다.
      */
-    pageDescription: '이 보드에만 적용되는 설정입니다. 같은 프로젝트의 다른 보드는 바뀌지 않습니다.',
+    pageDescription: '이 보드에만 적용되는 설정입니다. 같은 프로젝트의 다른 보드는 변경되지 않습니다.',
 
     /** 보드 화면으로 돌아가는 링크 */
     backToBoard: '보드로 돌아가기',
@@ -445,7 +445,7 @@ export const boardLabels = {
      * 409 만 되돌리고 나머지를 삼키면 네트워크 단절·500 에서 화면이 서버와 다른 것을
      * 보여 준다. 문구는 공통이되 **되돌림은 모든 실패에서** 일어난다.
      */
-    stateChangeFailed: '상태 매핑을 바꾸지 못했습니다.',
+    stateChangeFailed: '상태 매핑을 변경하지 못했습니다.',
 
     /** 컬럼 추가 버튼 · 다이얼로그 제목 (J23) */
     addColumn: '컬럼 추가',
@@ -482,7 +482,7 @@ export const boardLabels = {
      * @param cardCountText 영향 카드 수 문구. 「카드 N개」 형태만 온다.
      */
     deleteColumnDescription: (cardCountText: string): string =>
-      `이 컬럼의 상태는 미매핑으로 돌아갑니다. ${cardCountText}가 보드에서 사라집니다. 이슈 자체는 지워지지 않습니다.`,
+      `이 컬럼의 상태는 미매핑으로 돌아갑니다. ${cardCountText}가 보드에서 사라집니다. 이슈 자체는 삭제되지 않습니다.`,
 
     /**
      * 컬럼 삭제 확인 설명 — 보드가 조회 상한에 잘렸을 때 (S6 · C5).
@@ -491,7 +491,7 @@ export const boardLabels = {
      * 「1000개 이상」으로 부풀리면 컬럼에 대해 거짓이 된다.
      */
     deleteColumnDescriptionTruncated:
-      '이 컬럼의 상태는 미매핑으로 돌아갑니다. 이 컬럼의 카드가 보드에서 사라집니다 — 보드가 조회 상한에 걸려 몇 장인지 셀 수 없습니다. 이슈 자체는 지워지지 않습니다.',
+      '이 컬럼의 상태는 미매핑으로 돌아갑니다. 이 컬럼의 카드가 보드에서 사라집니다. 보드가 조회 상한에 걸려 몇 장인지 집계할 수 없습니다. 이슈 자체는 삭제되지 않습니다.',
 
     /** 컬럼 삭제 확인 버튼 */
     deleteColumnConfirm: '컬럼 삭제',
@@ -506,7 +506,7 @@ export const boardLabels = {
      * 자가 치유 경합으로 500 이 되고(부채 179), 이 화면이 그 상태로 가는 클릭 한 번짜리
      * 경로를 만들지 않는다.
      */
-    lastColumnLocked: '마지막 컬럼은 지울 수 없습니다.',
+    lastColumnLocked: '마지막 컬럼은 삭제할 수 없습니다.',
 
     /**
      * 컬럼 이름 편집 입력의 접근성 이름 (J24).
@@ -530,10 +530,10 @@ export const boardLabels = {
     reorderHandleLabel: (columnName: string): string => `컬럼 순서 변경: ${columnName}`,
 
     /** 컬럼 갱신(이름·WIP) 실패 */
-    updateColumnFailed: '컬럼을 바꾸지 못했습니다.',
+    updateColumnFailed: '컬럼을 변경하지 못했습니다.',
 
     /** 컬럼 순서 변경 실패 */
-    reorderFailed: '컬럼 순서를 바꾸지 못했습니다.',
+    reorderFailed: '컬럼 순서를 변경하지 못했습니다.',
 
     /** WIP 제한 표시 — 무제한일 때 */
     wipUnlimited: 'WIP 제한 없음',
@@ -582,13 +582,13 @@ export const boardLabels = {
        *
        * 서버가 뒤늦게 낸 **409** 에도 같은 문구를 쓴다 — 사용자가 할 다음 행동이 같기 때문이다.
        */
-      kanbanLocked: '시간 추적은 스크럼 보드에서만 바꿀 수 있습니다. 저장된 값은 지워지지 않습니다.',
+      kanbanLocked: '시간 추적은 스크럼 보드에서만 변경할 수 있습니다. 저장된 값은 삭제되지 않습니다.',
 
       /** 저장 실패 — 상태 코드를 모르거나 그 밖의 실패 */
       saveFailed: '시간 추적을 저장하지 못했습니다.',
 
       /** 저장 실패 — 403 */
-      saveForbidden: '시간 추적을 바꿀 권한이 없습니다.',
+      saveForbidden: '시간 추적을 변경할 권한이 없습니다.',
 
       /** 저장 재시도 버튼. 409 에는 그리지 않는다 — 재시도로 풀리지 않는 실패다 */
       saveRetry: '다시 시도',
@@ -614,7 +614,7 @@ export const boardLabels = {
        * ★요일 라벨(`월요일` 등)을 되풀이하지 않는다 — Playwright `getByText` 부분 일치가
        * 체크박스 라벨과 설명문을 함께 잡는다(형제 `estimation.estimationDescription` 과 같은 계약).
        */
-      standardDescription: '팀이 보통 일하는 요일입니다. 번다운의 x축과 ideal 선이 이 요일만 셉니다.',
+      standardDescription: '팀이 보통 일하는 요일입니다. 번다운의 x축과 ideal 선이 이 요일만 집계합니다.',
 
       /** 요일 체크박스 묶음의 접근성 이름 */
       daysGroupLabel: '표준 근무일 요일',
@@ -649,10 +649,10 @@ export const boardLabels = {
        * 「근무일 0개」와 구분되지 않는다. 두 상태의 뜻이 정반대다 — 미설정은 달력일 **전부**,
        * 0개는 근무일이 **하나도 없음**이다.
        */
-      unsetNotice: '표준 근무일을 아직 설정하지 않았습니다. 번다운은 지금처럼 달력일 전부를 셉니다.',
+      unsetNotice: '표준 근무일을 아직 설정하지 않았습니다. 번다운은 지금처럼 달력일 전부를 집계합니다.',
 
       /** 미설정 상태에서 요일 고르기를 시작하는 버튼 */
-      configureDays: '근무일 고르기',
+      configureDays: '근무일 선택',
 
       /**
        * 설정된 근무일을 다시 미설정으로 되돌리는 버튼.
@@ -661,10 +661,10 @@ export const boardLabels = {
        * 「근무일을 쓰지 않겠다」는 뜻은 값을 비우는 것이 아니라 미설정으로 되돌리는 것이다
        * (백엔드 `WorkingDaysSettingsService` KDoc 이 사용자에게 그렇게 안내한다).
        */
-      resetToUnset: '미설정으로 되돌리기',
+      resetToUnset: '미설정으로 초기화',
 
       /** 근무일을 전부 해제했을 때의 안내 — 저장이 막힌 이유와 다음 행동을 함께 말한다 (E1) */
-      zeroDaysHint: '근무일을 최소 하루 골라야 저장할 수 있습니다. 근무일을 쓰지 않으려면 미설정으로 되돌리세요.',
+      zeroDaysHint: '근무일을 최소 하루 선택해야 저장할 수 있습니다. 근무일을 쓰지 않으려면 미설정으로 초기화하세요.',
 
       /** 비근무일 섹션 제목 (J39 — *"Non-working days"*) */
       nonWorkingHeading: '비근무일',
@@ -706,7 +706,7 @@ export const boardLabels = {
       regionLabel: '지역',
 
       /** 지역 드롭다운의 값 없음 표시 */
-      regionPlaceholder: '지역을 고르세요',
+      regionPlaceholder: '지역을 선택하세요',
 
       /** 지역 검색 입력 placeholder */
       regionSearch: '지역 검색',
@@ -715,7 +715,7 @@ export const boardLabels = {
       timezoneLabel: '타임존',
 
       /** 타임존 드롭다운의 값 없음 표시 */
-      timezonePlaceholder: '타임존을 고르세요',
+      timezonePlaceholder: '타임존을 선택하세요',
 
       /** 타임존 검색 입력 placeholder */
       timezoneSearch: '타임존 검색',
@@ -724,7 +724,7 @@ export const boardLabels = {
       comboboxEmpty: '일치하는 항목이 없습니다.',
 
       /** 타임존 미설정 안내 — 미설정은 UTC 기준이다 (스펙 E7) */
-      timezoneUnset: '타임존을 설정하지 않으면 UTC 기준으로 셉니다.',
+      timezoneUnset: '타임존을 설정하지 않으면 UTC 기준으로 집계합니다.',
 
       /**
        * 저장 버튼.
@@ -742,7 +742,7 @@ export const boardLabels = {
       saveFailed: '작업일 설정을 저장하지 못했습니다.',
 
       /** 저장 실패 — 403 */
-      saveForbidden: '작업일 설정을 바꿀 권한이 없습니다.',
+      saveForbidden: '작업일 설정을 변경할 권한이 없습니다.',
 
       /**
        * 저장 실패 — 400.
@@ -752,7 +752,7 @@ export const boardLabels = {
        * 서버 JVM 의 tzdb 에는 없는 지역을 고를 수 있다. 재시도로 풀리지 않으므로 재시도 버튼을
        * 주지 않는다(형제 `estimation.kanbanLocked` 와 같은 결).
        */
-      saveInvalid: '작업일 설정 값을 확인해 주세요. 근무일과 타임존을 다시 고르면 저장할 수 있습니다.',
+      saveInvalid: '작업일 설정 값을 확인해 주세요. 근무일과 타임존을 다시 선택하면 저장할 수 있습니다.',
 
       /** 저장 재시도 버튼. 400 에는 그리지 않는다 — 같은 값을 다시 보내도 같은 400 이다 */
       saveRetry: '다시 시도',
@@ -874,7 +874,7 @@ export const boardLabels = {
        *
        * @param group 그룹 이름.
        */
-      emptyGroup: (group: string): string => `${group}에 표시할 필드가 없습니다. 아래에서 골라 추가하세요.`,
+      emptyGroup: (group: string): string => `${group}에 표시할 필드가 없습니다. 아래에서 선택해 추가하세요.`,
 
       /**
        * 후보 드롭다운의 접근성 이름이자 값 없을 때의 표시 문구 (J48 — *"select the field from
@@ -908,7 +908,7 @@ export const boardLabels = {
        * @param group 그룹 이름.
        * @param field 필드 이름.
        */
-      reorderHandle: (group: string, field: string): string => `${group}의 ${field} 순서 바꾸기`,
+      reorderHandle: (group: string, field: string): string => `${group}의 ${field} 순서 변경`,
 
       /**
        * 그 그룹의 후보를 다 쓴 상태.
@@ -917,7 +917,7 @@ export const boardLabels = {
        *
        * @param group 그룹 이름.
        */
-      allAdded: (group: string): string => `${group}에 고를 수 있는 필드를 모두 추가했습니다.`,
+      allAdded: (group: string): string => `${group}에 선택할 수 있는 필드를 모두 추가했습니다.`,
 
       /** 후보 검색 입력 placeholder. 팝오버는 한 번에 하나만 열리므로 그룹별로 나누지 않는다 */
       candidateSearch: '필드 검색',
@@ -929,7 +929,7 @@ export const boardLabels = {
       saveFailed: '상세 화면 구성을 저장하지 못했습니다.',
 
       /** 저장 실패 — 403 */
-      saveForbidden: '상세 화면 구성을 바꿀 권한이 없습니다.',
+      saveForbidden: '상세 화면 구성을 변경할 권한이 없습니다.',
 
       /**
        * 저장 실패 — 400.
@@ -971,7 +971,7 @@ export function boardManageErrorMessage(errorCode: string | null, fallback: stri
     case 'AGILE_ACCESS_DENIED':
       return '이 보드를 관리할 권한이 없습니다.'
     case 'AGILE_BOARD_NOT_FOUND':
-      return '보드를 찾을 수 없습니다. 이미 지워졌을 수 있습니다.'
+      return '보드를 찾을 수 없습니다. 이미 삭제되었을 수 있습니다.'
     case 'AGILE_VALIDATION_FAILED':
       return '보드 이름을 확인해 주세요. 비어 있을 수 없습니다.'
     case 'AGILE_UNAUTHENTICATED':

@@ -36,7 +36,7 @@ export const importLabels = {
   },
   /** 토글 하단 한 줄 도움말 — 어느 모드가 어떤 입력에 맞는지 안내 (FR-IM-02 DR-3) */
   modeHelpText:
-    '바로 가져오기 = BTS 내보내기 형식 그대로(CSV · JSON, 첨부는 zip) / 매핑하며 가져오기 = 다른 도구의 CSV 칸 · 작성자 · 값을 골라 맞춤',
+    '바로 가져오기 = Issue Bunker 내보내기 형식 그대로(CSV · JSON, 첨부는 zip) / 매핑하며 가져오기 = 다른 도구의 CSV 열 · 작성자 · 값을 선택해 맞춤',
   /** CREATE 권한이 명시적으로 거부됐을 때 폼을 대체하는 안내 카드의 제목 */
   createDeniedTitle: '가져오기를 사용할 수 없습니다',
   /**
@@ -72,7 +72,7 @@ export const importLabels = {
    *   무해한 소음으로 보여 조용히 깎이는 것을 막는다.
    */
   gateChangedWhileBusy:
-    '이 프로젝트의 상태가 바뀐 것 같습니다. 진행 중인 작업은 그대로 두었지만, 이 작업은 실패할 수 있습니다.',
+    '이 프로젝트의 상태가 변경된 것 같습니다. 진행 중인 작업은 그대로 두었지만, 이 작업은 실패할 수 있습니다.',
   /**
    * 사용자 매핑 단계(`import/mapping/UserMappingStep.tsx`)의 후보 재검색 input placeholder.
    *

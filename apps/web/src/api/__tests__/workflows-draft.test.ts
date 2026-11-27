@@ -284,7 +284,7 @@ describe('resetToDefault', () => {
   it('사용자 워크플로우는 400 이다', async () => {
     fetchMock.mockResolvedValue(
       reply(400, {
-        error: { code: 'WORKFLOW_INVALID_REQUEST', message: '사용자가 만든 워크플로우에는 되돌릴 기본값이 없다' },
+        error: { code: 'WORKFLOW_INVALID_REQUEST', message: '사용자가 만든 워크플로우에는 초기화할 기본값이 없습니다' },
       }),
     )
 

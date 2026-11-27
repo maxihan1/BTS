@@ -93,7 +93,7 @@ export const issueDetailStrings = {
   /** 삭제 권한 없을 때 사유 메시지 (aria-label / title) */
   deleteButtonNoPermission: '삭제 권한이 없습니다',
   /** 삭제 확인 메시지 */
-  deleteConfirmMessage: '이 이슈를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+  deleteConfirmMessage: '이 이슈를 삭제하시겠습니까? 삭제한 이슈는 복원할 수 없습니다.',
   /** 삭제 확인 버튼 */
   confirmButton: '확인',
   /** 제목 편집 버튼 텍스트 */
@@ -269,9 +269,9 @@ export const issueDetailStrings = {
   /** 상세 머리 — 이슈 주소 복사 단추(아이콘) 이름 */
   copyLinkAriaLabel: '링크 복사',
   /** 링크 복사 성공 토스트 */
-  copyLinkDone: '이슈 링크를 복사했어요',
+  copyLinkDone: '이슈 링크를 복사했습니다',
   /** 링크 복사 실패 토스트 — 브라우저가 클립보드를 막은 경우 */
-  copyLinkFailed: '링크를 복사하지 못했어요. 주소창에서 복사해 주세요',
+  copyLinkFailed: '링크를 복사하지 못했습니다. 주소창에서 복사해 주세요',
   /** PDF 다운로드 실패 에러 메시지 */
   pdfDownloadError: 'PDF 다운로드에 실패했습니다.',
 
@@ -649,7 +649,7 @@ export const mfaStrings = {
 /** 비밀번호 · MFA 를 사내 통합 로그인(Auth_platform)이 맡을 때 설정 화면 대신 보이는 안내 (VITE_AUTH_ACCOUNT_URL) */
 export const externalAccountStrings = {
   /** 비밀번호 화면 안내 */
-  passwordNotice: '비밀번호는 통합 계정에서 바꿉니다.',
+  passwordNotice: '비밀번호는 통합 계정에서 변경합니다.',
   /** 2단계 인증 화면 안내 */
   mfaNotice: '2단계 인증은 통합 계정에서 켜고 끕니다.',
   /** MFA 는 SSO 로그인 때 반영된다 — 통합 계정 세션이 남아 있으면 MFA 없이 이어지므로 둘 다 로그아웃 */
@@ -933,7 +933,7 @@ export const issueCreateStrings = {
   minimizeButton: '최소화',
   /** 오른쪽 아래 알약 — 누르면 입력 그대로 모달로 돌아온다. 제목이 비면 모달 제목만 */
   dockRestore: (summary: string): string =>
-    summary.trim() === '' ? '새 이슈 만들기 다시 열기' : `새 이슈 만들기 다시 열기 — ${summary}`,
+    summary.trim() === '' ? '새 이슈 만들기 다시 열기' : `새 이슈 만들기 다시 열기: ${summary}`,
 
   // ── FR-UX-09 F3 — 스프린트 배정 부분 성공 ───────────────────────────────
   /**
@@ -1280,7 +1280,7 @@ export const commentStrings = {
   /** 삭제 확인 다이얼로그 제목 */
   commentDeleteDialogTitle: '댓글을 삭제할까요?',
   /** 삭제 확인 다이얼로그 본문 — 되돌릴 수 없음을 알린다 */
-  commentDeleteDialogBody: '삭제한 댓글은 목록에서 사라지며 되돌릴 수 없습니다.',
+  commentDeleteDialogBody: '삭제한 댓글은 목록에서 사라지며 복원할 수 없습니다.',
   /** 삭제 확인 다이얼로그의 확인 버튼 */
   commentDeleteDialogConfirm: '삭제',
   /** 삭제 확인 다이얼로그의 취소 버튼 */

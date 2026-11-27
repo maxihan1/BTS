@@ -49,7 +49,7 @@ export const projectSummaryLabels = {
     /** 상태 개요 — DONE 은 최근 2주 완료분만 (Jira 원문 스펙) */
     statusOverview: '상태 개요',
     /** 상태 개요의 DONE 창을 밝히는 각주 */
-    statusOverviewNote: '완료는 최근 2주 안에 완료된 항목만 셉니다.',
+    statusOverviewNote: '완료는 최근 2주 안에 완료된 항목만 집계합니다.',
     /** 우선순위 분포 */
     priority: '우선순위',
     /** 작업 유형 분포 */
