@@ -105,4 +105,4 @@ class SprintBoardNotScrumException :
  * 내부 식별자(sprintId)와 거부된 날짜 값은 message 에 포함하지 않는다.
  */
 class SprintDateLockedException :
-    ResponseStatusException(HttpStatus.BAD_REQUEST, "완료된 스프린트는 기간을 바꿀 수 없습니다. 이름과 목표만 수정할 수 있습니다.")
+    ResponseStatusException(HttpStatus.BAD_REQUEST, "완료된 스프린트는 기간을 변경할 수 없습니다. 이름과 목표만 수정할 수 있습니다.")
