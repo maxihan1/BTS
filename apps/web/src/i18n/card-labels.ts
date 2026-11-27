@@ -27,7 +27,7 @@ export const cardLabels = {
    * @returns "라벨 {n}개 더 — {label1}, {label2}, ..."
    */
   moreLabelsAriaLabel: (hidden: readonly string[]): string =>
-    `라벨 ${hidden.length}개 더 — ${hidden.join(', ')}`,
+    `라벨 ${hidden.length}개 더: ${hidden.join(', ')}`,
 } as const
 
 /** cardLabels const 추론 타입 */

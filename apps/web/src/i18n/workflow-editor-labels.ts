@@ -60,7 +60,7 @@ export const workflowEditorLabels = {
     /** 페이지 h1 */
     heading: '워크플로우',
     /** 페이지 설명 */
-    description: '이 프로젝트가 쓸 수 있는 워크플로우입니다. 전역 템플릿은 복제해서 고칩니다.',
+    description: '이 프로젝트가 쓸 수 있는 워크플로우입니다. 전역 템플릿은 복제해서 수정합니다.',
     /** 목록 table aria-label */
     table: '프로젝트 워크플로우 목록',
     /** 표 헤더 — 소유 */
@@ -122,7 +122,7 @@ export const workflowEditorLabels = {
     /** 전환 규칙(검증기·후처리) 화면으로 가는 링크 (WF-08-1) */
     rulesLink: '전환 규칙 편집',
     /** 링크 옆 안내 — 규칙은 초안을 거치지 않으므로 초안이 열린 동안 막힌다는 것을 미리 말한다 (WF-08-1) */
-    rulesHint: '검증기·후처리는 별도 화면에서 고치며 발행 없이 바로 반영됩니다. 초안이 열려 있는 동안에는 고칠 수 없습니다.',
+    rulesHint: '검증기·후처리는 별도 화면에서 수정하며 발행 없이 바로 반영됩니다. 초안이 열려 있는 동안에는 수정할 수 없습니다.',
     /** 생성 폼의 최초 상태 필드 — '상태 추가'(동작)를 빌려 쓰지 마라 */
     initialStatusField: '최초 상태',
     /** 워크플로우를 못 불러왔을 때 — 목록 화면의 빈 상태 문구를 돌려 쓰지 마라 */
@@ -130,11 +130,11 @@ export const workflowEditorLabels = {
     /** 없는 키로 들어왔을 때 */
     notFound: '그 워크플로우를 찾을 수 없습니다',
     /** 403 — 전역 워크플로우이거나 이 프로젝트의 관리자가 아닐 때 (FR-WF-08 D7) */
-    forbidden: '이 워크플로우를 편집할 권한이 없습니다. 전역 워크플로우는 시스템 관리자, 프로젝트 워크플로우는 그 프로젝트 관리자가 고칩니다.',
+    forbidden: '이 워크플로우를 편집할 권한이 없습니다. 전역 워크플로우는 시스템 관리자, 프로젝트 워크플로우는 그 프로젝트 관리자가 수정합니다.',
     /** 상태 카탈로그를 못 불러왔을 때 — 「상태가 없다」와 구별해야 한다 */
     catalogFailed: '상태 카탈로그를 불러오지 못해 상태를 편집할 수 없습니다',
     /** 카탈로그에 없는 상태가 섞여 있을 때 */
-    unknownStatuses: '카탈로그에 없는 상태가 있어 순서를 바꿀 수 없습니다',
+    unknownStatuses: '카탈로그에 없는 상태가 있어 순서를 변경할 수 없습니다',
   },
 
   /**
@@ -157,7 +157,7 @@ export const workflowEditorLabels = {
     /** 시작 노드 aria-label — mermaid 의 `[*]` 에 대응한다 */
     initialNode: '이슈 생성 시작점',
     /** 잠긴 워크플로우 안내 — 끌어도 안 움직이는 이유를 말한다 */
-    lockedHint: '잠긴 워크플로우라 배치를 바꿀 수 없습니다',
+    lockedHint: '잠긴 워크플로우라 배치를 변경할 수 없습니다',
   },
 
   /** 상태 패널 */
@@ -179,7 +179,7 @@ export const workflowEditorLabels = {
     /** 폼으로 넘어가는 버튼 · 폼 제출 버튼 */
     open: '새 상태 만들기',
     /** 고르기로 돌아가는 버튼 */
-    back: '목록에서 고르기',
+    back: '목록에서 선택',
     /** 키 입력 — 만든 뒤에는 바꿀 수 없다 */
     key: '상태 키',
     keyPlaceholder: '예: in-review',
@@ -191,7 +191,7 @@ export const workflowEditorLabels = {
     categoryInProgress: '진행 중',
     categoryDone: '완료',
     /** 전역 카탈로그라는 사실과 권한을 미리 말한다 — 프로젝트 관리자는 403 을 받는다 */
-    hint: '새 상태는 모든 워크플로우가 함께 쓰는 카탈로그에 들어가고, 키는 만든 뒤 바꿀 수 없습니다. 시스템 관리자만 만들 수 있습니다.',
+    hint: '새 상태는 모든 워크플로우가 함께 쓰는 카탈로그에 들어가고, 키는 만든 뒤 변경할 수 없습니다. 시스템 관리자만 만들 수 있습니다.',
   },
 
   /** 전환 패널 */
@@ -213,7 +213,7 @@ export const workflowEditorLabels = {
     /** 드래그 핸들 접두 — `${dragHandle} ${전환이름}` */
     dragHandle: '전환 순서 변경',
     /** 목록 위 안내 — 이 순서가 어디에 쓰이는지 */
-    orderHint: '이 순서대로 이슈 화면의 상태 메뉴에 나옵니다. 끌어서 바꿉니다.',
+    orderHint: '이 순서대로 이슈 화면의 상태 메뉴에 나옵니다. 끌어서 변경합니다.',
   },
 
   /**
@@ -246,7 +246,7 @@ export const workflowEditorLabels = {
     /** NORMAL — 출발 상태를 지정하는 보통 전환 */
     kindNormal: '특정 상태에서',
     /** NORMAL 설명 — 이름만으로는 두 종류를 가를 수 없다 */
-    kindNormalDescription: '고른 출발 상태에서만 쓸 수 있습니다',
+    kindNormalDescription: '선택한 출발 상태에서만 쓸 수 있습니다',
     /** GLOBAL — 어느 상태에서나 쓸 수 있는 전환 */
     kindGlobal: '모든 상태에서',
     /** GLOBAL 설명 */
@@ -274,7 +274,7 @@ export const workflowEditorLabels = {
     /** 상태 선택 다이얼로그 */
     statusPicker: '워크플로우에 추가할 상태 선택',
     /** 상태 선택 다이얼로그 설명 — 뜻이 다른 문구를 빌려 쓰지 마라(한때 관리 허브 카드 설명을 썼다) */
-    statusPickerDescription: '카탈로그에서 이 워크플로우에 넣을 상태를 고릅니다',
+    statusPickerDescription: '카탈로그에서 이 워크플로우에 넣을 상태를 선택합니다',
     /** 전환 폼 다이얼로그 — 생성 */
     transitionCreate: '전환 만들기',
     /** 전환 폼 다이얼로그 — 수정 */

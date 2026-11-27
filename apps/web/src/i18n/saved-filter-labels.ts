@@ -73,7 +73,7 @@ export const savedFilterLabels = {
   nameConflictError: '같은 이름의 필터가 이미 있습니다',
 
   /** OCC 충돌 오류 (409 SEARCH_FILTER_CONFLICT) */
-  conflictError: '다른 사용자가 수정했습니다. 새로 고침 후 다시 시도하세요',
+  conflictError: '다른 사용자가 수정했습니다. 새로고침 후 다시 시도하세요',
 
   /** 로딩 중 안내 */
   loading: '불러오는 중...',

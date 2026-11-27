@@ -33,7 +33,7 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   // WorkflowStatusCompositionExceptionHandler
   //   ★ 이 코드는 사유 넷(미편성 상태 · 마지막 상태 · 중복 · 집합 불일치)이 공용으로 쓴다.
   //     「마지막 상태」로 단정하면 나머지 셋에서 거짓 안내가 된다 — 서버 문구를 덧붙인다.
-  WORKFLOW_STATUS_COMPOSITION_INVALID: '상태 편성을 바꿀 수 없습니다',
+  WORKFLOW_STATUS_COMPOSITION_INVALID: '상태 편성을 변경할 수 없습니다',
   WORKFLOW_STATUS_IN_USE: '이 상태를 쓰는 이슈가 있어 뺄 수 없습니다',
   WORKFLOW_STATUS_REFERENCED_BY_TRANSITION: '이 상태를 가리키는 전환이 있어 뺄 수 없습니다',
   // TransitionConflictExceptionHandler
@@ -47,7 +47,7 @@ export const WORKFLOW_ADMIN_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   WORKFLOW_PUBLISH_MAPPING_REQUIRED: '사라지는 상태에 이슈가 남아 있습니다. 옮길 상태를 정하세요',
   // 축은 여덟이지만 코드는 하나다 — 무엇을 고쳐야 하는지는 서버 메시지가 싣는다.
   WORKFLOW_MIGRATION_INVALID_MAPPING: '옮길 상태 지정이 올바르지 않습니다',
-  WORKFLOW_MIGRATION_IN_FLIGHT: '이미 진행 중인 상태 이관이 있습니다. 끝난 뒤 다시 시도하세요',
+  WORKFLOW_MIGRATION_IN_FLIGHT: '이미 진행 중인 상태 이관이 있습니다. 완료된 뒤 다시 시도하세요',
   //   ★ 「초안이 없다」를 범용 400 문구로 접으면 「요청이 잘못됐다」로 보인다 — 관리자가 할 일이 다르다.
   WORKFLOW_DRAFT_NOT_FOUND: '편집 중인 초안이 없습니다',
   // StatusExceptionHandler

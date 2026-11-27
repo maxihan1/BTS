@@ -218,7 +218,7 @@ const CANDIDATE_TWO_ID = '44444444-4444-4444-8444-444444444444'
 const AMBIGUOUS_BODY = {
   error: {
     code: 'AMBIGUOUS_TRANSITION',
-    message: '이동할 수 있는 전환이 2개입니다. 어느 전환인지 골라 주세요.',
+    message: '이동할 수 있는 전환이 2개입니다. 어느 전환인지 선택해 주세요.',
   },
   candidates: [
     { transitionId: CANDIDATE_ONE_ID, name: '조건부 승인' },

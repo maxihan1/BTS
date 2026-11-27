@@ -54,11 +54,11 @@ const labels = {
   cronLabel: 'cron 표현식',
   cronHint: '6필드 cron, 예: `0 0 9 * * *` = 매일 09:00',
   fieldsLabel: '특정 필드 (선택)',
-  fieldsDescription: '특정 필드 변경 시만 발화합니다. 비워두면 전체 필드 변경에 반응합니다.',
+  fieldsDescription: '특정 필드 변경 시만 실행됩니다. 비워두면 전체 필드 변경에 반응합니다.',
   fieldsPlaceholder: '필드 키 입력 후 Enter',
   targetBranchLabel: '대상 브랜치 (선택)',
-  targetBranchDescription: '지정한 브랜치로 병합될 때만 발화합니다. 비워두면 모든 브랜치에 반응합니다.',
-  noGitWebhooksWarning: '이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다.',
+  targetBranchDescription: '지정한 브랜치로 병합될 때만 실행됩니다. 비워두면 모든 브랜치에 반응합니다.',
+  noGitWebhooksWarning: '이 프로젝트에 Git 웹훅이 없어 이 룰은 실행되지 않습니다.',
   noGitWebhooksWarningHint: '아래 "Git 웹훅" 섹션에서 웹훅을 등록해야 이 트리거가 정상 동작합니다.',
   basicSectionLabel: '기본',
   triggerSectionLabel: '트리거',
@@ -264,7 +264,7 @@ export function validateActions(actions: ActionFormState[]): ActionValidationErr
   actions.forEach((action, index) => {
     const missing = missingRequiredInput(action)
     if (missing !== null) {
-      errors.push({ index, message: `${index + 1}번째 액션 — ${missing}` })
+      errors.push({ index, message: `${index + 1}번째 액션: ${missing}` })
       return
     }
     if (action.type !== 'SET_FIX_VERSIONS') return
@@ -273,7 +273,7 @@ export function validateActions(actions: ActionFormState[]): ActionValidationErr
     if (mode === 'replace' && versionIds.length === 0) {
       errors.push({
         index,
-        message: `${index + 1}번째 액션 — 교체할 버전을 하나 이상 선택하거나 "전체 해제"를 선택해주세요.`,
+        message: `${index + 1}번째 액션: 교체할 버전을 하나 이상 선택하거나 "전체 해제"를 선택해주세요.`,
       })
     }
   })

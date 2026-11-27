@@ -771,9 +771,9 @@ describe('AutomationRuleFormDialog — PR_MERGED targetBranch (FR-AT-07 PR-D Tas
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('AutomationRuleFormDialog — FR15 PR_MERGED 웹훅 0건 경고', () => {
-  const NO_WEBHOOKS_WARNING_TEXT = '이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다.'
+  const NO_WEBHOOKS_WARNING_TEXT = '이 프로젝트에 Git 웹훅이 없어 이 룰은 실행되지 않습니다.'
 
-  it('웹훅 0건 + PR_MERGED 선택 → "이 프로젝트에 Git 웹훅이 없어 이 룰은 발화하지 않습니다." 를 렌더한다', async () => {
+  it('웹훅 0건 + PR_MERGED 선택 → "이 프로젝트에 Git 웹훅이 없어 이 룰은 실행되지 않습니다." 를 렌더한다', async () => {
     renderWithClient(
       <AutomationRuleFormDialog projectKey={PROJECT_KEY} open onOpenChange={vi.fn()} />,
     )

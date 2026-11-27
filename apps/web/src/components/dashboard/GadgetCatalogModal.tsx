@@ -105,7 +105,7 @@ export function GadgetCatalogModal({ open, onAdd, onClose }: GadgetCatalogModalP
       <DialogContent className="max-w-2xl" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>
-            {isStep2 ? `가젯 설정 — ${selectedEntry.label}` : '가젯 추가'}
+            {isStep2 ? `가젯 설정: ${selectedEntry.label}` : '가젯 추가'}
           </DialogTitle>
         </DialogHeader>
 

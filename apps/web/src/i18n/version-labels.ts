@@ -138,7 +138,7 @@ export function versionTransitionLabel(
     case 'release':
       return '릴리스'
     case 'unrelease':
-      return '되돌리기'
+      return '릴리스 취소'
     case 'archive':
       return '보관'
     case 'unarchive':

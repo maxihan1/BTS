@@ -155,7 +155,7 @@ const CANDIDATES = [
   { transitionId: CANDIDATE_TWO_ID, name: '즉시 완료' },
 ]
 
-const AMBIGUOUS_MESSAGE = '이동할 수 있는 전환이 2개입니다. 어느 전환인지 골라 주세요.'
+const AMBIGUOUS_MESSAGE = '이동할 수 있는 전환이 2개입니다. 어느 전환인지 선택해 주세요.'
 
 describe('IssueStateTransition — 같은 도착 상태 전환이 둘일 때 (T21)', () => {
   const duplicated: IssueTransition[] = [

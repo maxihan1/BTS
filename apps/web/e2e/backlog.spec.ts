@@ -255,7 +255,7 @@ const PAIR_VIEW_MARGIN_PX = 24
 
 /**
  * role="region" + aria-label에 columnName이 포함된 첫 번째 요소를 반환한다.
- * BacklogColumn/SprintColumn: aria-label="{name} 칸, {count}개 이슈"
+ * BacklogColumn/SprintColumn: aria-label="{name}, {count}개 이슈"
  * 이슈 수는 동작 후 변경되므로 filter(hasText: /^{name}/) 로 시작 텍스트만 매칭한다.
  */
 function getColumnLocator(

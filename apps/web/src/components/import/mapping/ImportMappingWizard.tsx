@@ -265,7 +265,7 @@ function ConfirmErrorList({ errors }: { readonly errors: MappingIssue[] }): JSX.
           role="alert"
           className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
         >
-          {issue.field != null ? `값/필드: ${issue.field} — ${issue.message}` : issue.message}
+          {issue.field != null ? `값/필드 ${issue.field}: ${issue.message}` : issue.message}
         </p>
       ))}
     </div>
@@ -679,7 +679,7 @@ function WizardStepContent({
     return (
       <WizardLayout steps={visibleSteps} current={step}>
         {state.recollectNotice && (
-          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 바뀌어 작성자를 다시 수집했습니다.</p>
+          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 변경되어 작성자를 다시 수집했습니다.</p>
         )}
         <UserMappingStep
           users={state.collectedUsers ?? []}
@@ -696,7 +696,7 @@ function WizardStepContent({
     return (
       <WizardLayout steps={visibleSteps} current={step}>
         {state.recollectNotice && (
-          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 바뀌어 값을 다시 수집했습니다.</p>
+          <p className="mb-2 text-xs text-muted-foreground">필드 매핑이 변경되어 값을 다시 수집했습니다.</p>
         )}
         <ValueMappingStep
           fields={state.collectedValues ?? []}

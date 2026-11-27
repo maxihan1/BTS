@@ -50,7 +50,7 @@ const labels = {
   toggleFailed: '변경에 실패했습니다.',
   deleteFailed: '삭제에 실패했습니다.',
   deleteConfirmTitle: '자동화 룰을 삭제하시겠습니까?',
-  deleteConfirmMessage: '삭제하면 되돌릴 수 없습니다.',
+  deleteConfirmMessage: '삭제하면 복원할 수 없습니다.',
   deleteConfirmButton: '삭제',
   deleteCancelButton: '취소',
   noActionsBadge: '액션 없음',

@@ -13,7 +13,7 @@ vi.mock('sonner', () => ({
 
 import { toast } from 'sonner'
 
-const DETAIL = '새 워크플로우에 없는 상태에 이슈가 남는다 — review 3건. 그 이슈를 새 워크플로우에도 있는 상태로 먼저 옮길 것'
+const DETAIL = '새 워크플로우에 없는 상태에 이슈가 남습니다: review 3건. 이슈 타입마다 옮길 상태를 선택하세요'
 
 describe('스킴 변경이 이슈를 남길 때 (WF-02-1)', () => {
   it('백엔드 ProblemDetail 의 errorCode 를 읽고 남는 상태를 안내한다', async () => {
@@ -32,7 +32,7 @@ describe('스킴 변경이 이슈를 남길 때 (WF-02-1)', () => {
     expect((error as WorkflowSchemeApiError).errorCode).toBe('SCHEME_CHANGE_STRANDS_ISSUES')
 
     notifySchemeError(error)
-    expect(toast.error).toHaveBeenCalledWith('새 워크플로우에 없는 상태에 이슈가 남아 바꿀 수 없습니다', {
+    expect(toast.error).toHaveBeenCalledWith('새 워크플로우에 없는 상태에 이슈가 남아 변경할 수 없습니다', {
       description: DETAIL,
     })
   })

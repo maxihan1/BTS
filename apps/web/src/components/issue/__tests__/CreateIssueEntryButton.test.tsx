@@ -4,7 +4,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CreateIssueEntryButton } from '@/components/issue/CreateIssueEntryButton'
 
-const LABEL = '백로그 칸에 이슈 추가'
+const LABEL = '백로그에 이슈 추가'
 
 describe('CreateIssueEntryButton — 권한 게이트 (FR-6, fail-closed)', () => {
   it('canCreate=true 면 활성이고 누르면 onClick 이 호출된다', async () => {

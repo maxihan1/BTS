@@ -116,7 +116,7 @@ const TARGET_ISSUE_KEYS = sprintIssueKeys(TARGET_SPRINT)
  * @returns 백로그 칸 region
  */
 function backlogColumn(page: Page): Locator {
-  return page.getByRole('region', { name: new RegExp(`^${backlogLabels.backlogTitle} 칸`) })
+  return page.getByRole('region', { name: new RegExp(`^${backlogLabels.backlogTitle}, `) })
 }
 
 /**

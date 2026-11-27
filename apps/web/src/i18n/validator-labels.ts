@@ -40,11 +40,11 @@ export const validatorLabels = {
      * (ADR `2026-08-25-workflow-transition-rule-hard-delete`).
      */
     deleteDescription:
-      '이 규칙을 지우면 되돌릴 수 없습니다. 다시 걸려면 규칙을 처음부터 만들어야 합니다.',
+      '이 규칙을 삭제하면 복원할 수 없습니다. 다시 적용하려면 규칙을 처음부터 만들어야 합니다.',
     /** 삭제 확인 버튼 */
     deleteConfirmButton: '규칙 삭제',
     /** 삭제 취소 버튼 */
-    deleteCancelButton: '되돌아가기',
+    deleteCancelButton: '취소',
   },
 
   /** 폼 필드 라벨·placeholder·인라인 검증 메시지 */
@@ -52,7 +52,7 @@ export const validatorLabels = {
     /** 규칙 종류 select label */
     typeLabel: '규칙 종류 선택',
     /** 규칙 종류 미선택 placeholder 옵션 */
-    typePlaceholder: '규칙 종류를 고르세요',
+    typePlaceholder: '규칙 종류를 선택하세요',
     /** edit 모드에서 규칙 종류를 고정 표시할 때의 label */
     typeFixedLabel: '규칙 종류',
     /** config 입력 구획 제목 */
@@ -70,7 +70,7 @@ export const validatorLabels = {
      * 그대로 보여주는 쪽이 안전하다(제약 C1 · 엣지 E3).
      */
     unknownTypeDescription:
-      '저장된 값을 그대로 보여줍니다. 값을 바꾸려면 이 규칙을 지우고 다시 걸어 주세요.',
+      '저장된 값을 그대로 보여줍니다. 값을 변경하려면 이 규칙을 삭제하고 다시 추가해 주세요.',
     /** 읽기 전용으로 보여주는 원본 config 구획 제목 */
     rawConfigLegend: '저장된 값',
   },
@@ -80,11 +80,11 @@ export const validatorLabels = {
     /** 섹션 제목 */
     title: '전환 규칙 설정',
     /** 섹션 보조 설명 */
-    description: '전환을 고르면 그 전환에 걸린 검증 규칙을 보고 고칠 수 있습니다.',
+    description: '전환을 선택하면 그 전환에 적용된 검증 규칙을 보고 수정할 수 있습니다.',
     /** 전환 선택 select label — 형제의 `전환 선택` 을 부분문자열로 품지 않는다 */
     transitionSelectLabel: '규칙 대상 전환',
     /** 전환 미선택 placeholder 옵션 */
-    transitionSelectPlaceholder: '전환을 고르세요',
+    transitionSelectPlaceholder: '전환을 선택하세요',
     /** 규칙 추가 버튼 */
     addButton: '규칙 추가',
   },
@@ -111,11 +111,11 @@ export const validatorLabels = {
      * 가 정본이라 여기서 종류 이름을 늘어놓지 않는다.
      */
     initialTransitionNotice:
-      '이슈 생성 전환에는 「후보에서 감춤」 규칙을 걸 수 없습니다. 「실행 시 차단」 규칙만 이슈를 만들 때 검사합니다.',
+      '이슈 생성 전환에는 「후보에서 감춤」 규칙을 추가할 수 없습니다. 「실행 시 차단」 규칙만 이슈를 만들 때 검사합니다.',
     /** 규칙 0건 빈 상태 제목 */
-    emptyTitle: '걸린 규칙이 없습니다',
+    emptyTitle: '적용된 규칙이 없습니다',
     /** 규칙 0건 빈 상태 설명 */
-    emptyDescription: '규칙을 걸면 이 전환을 막거나 전환 후보에서 감출 수 있습니다.',
+    emptyDescription: '규칙을 추가하면 이 전환을 막거나 전환 후보에서 감출 수 있습니다.',
     /** 빈 상태에서 규칙 추가로 유도하는 버튼 */
     emptyActionButton: '첫 규칙 추가',
     /** 로딩 중 스켈레톤의 스크린리더 안내 */
@@ -135,9 +135,9 @@ export const validatorLabels = {
       unknown: '판정 불가',
     },
     /** `editable=false` + `phase` 가 있는 행의 편집 불가 사유 */
-    notEditableTypeReason: '이 규칙 종류는 화면에서 고칠 수 없습니다. 지운 뒤 다시 걸어 주세요.',
+    notEditableTypeReason: '이 규칙 종류는 화면에서 수정할 수 없습니다. 삭제한 뒤 다시 추가해 주세요.',
     /** `editable=false` + `phase=null` 인 행(손상 행)의 편집 불가 사유 */
-    notEditableBrokenReason: '규칙 값이 종류와 맞지 않아 고칠 수 없습니다. 지운 뒤 다시 걸어 주세요.',
+    notEditableBrokenReason: '규칙 값이 종류와 맞지 않아 수정할 수 없습니다. 삭제한 뒤 다시 추가해 주세요.',
   },
 
   /** 조회·저장 실패 안내 */
@@ -145,15 +145,15 @@ export const validatorLabels = {
     /** 목록 조회 실패 */
     loadFailed: '전환 규칙을 불러오지 못했습니다.',
     /** 목록 조회 403 — 공유 워크플로우는 시스템 관리자, 프로젝트 워크플로우는 그 프로젝트 관리자 몫이다 (WF-08-1) */
-    forbidden: '이 워크플로우의 전환 규칙을 고칠 권한이 없습니다.',
+    forbidden: '이 워크플로우의 전환 규칙을 수정할 권한이 없습니다.',
     /** 쓰기 409 — 초안이 열린 동안 고친 규칙은 다음 발행이 초안 것으로 덮는다 (WF-08-1) */
-    draftOpen: '초안이 열려 있어 규칙을 고칠 수 없습니다. 편집기에서 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.',
+    draftOpen: '초안이 열려 있어 규칙을 수정할 수 없습니다. 편집기에서 초안을 발행하거나 폐기한 뒤 다시 시도해 주세요.',
     /** 목록 조회 실패 재시도 버튼 */
     retryButton: '다시 시도',
     /** 삭제 실패 */
-    removeFailed: '규칙을 지우지 못했습니다.',
+    removeFailed: '규칙을 삭제하지 못했습니다.',
     /** 전환 미선택 시 추가 버튼 비활성 안내 */
-    selectTransitionFirst: '전환을 먼저 고르세요.',
+    selectTransitionFirst: '전환을 먼저 선택하세요.',
     /** errorCode 를 못 읽었을 때의 기본 문구 */
     unknown: '규칙을 저장하지 못했습니다. 값을 확인하고 다시 시도해 주세요.',
   },
@@ -193,7 +193,7 @@ export function validatorErrorMessage(
     case 'WORKFLOW_VALIDATOR_INVALID':
       return '규칙 값이 이 규칙 종류의 요구와 맞지 않습니다. 값을 확인해 주세요.'
     case 'WORKFLOW_VALIDATOR_TYPE_NOT_EDITABLE':
-      return '이 규칙 종류는 화면에서 만들거나 고칠 수 없습니다.'
+      return '이 규칙 종류는 화면에서 만들거나 수정할 수 없습니다.'
     case 'WORKFLOW_VALIDATOR_NOT_FOUND':
       return '규칙 또는 전환을 찾을 수 없습니다. 목록을 새로 불러와 주세요.'
     case 'WORKFLOW_SCHEME_ACCESS_DENIED':

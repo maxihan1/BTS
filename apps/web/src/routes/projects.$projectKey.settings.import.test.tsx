@@ -317,7 +317,7 @@ describe('ProjectImportSettingsPage — 모드 토글', () => {
 
     expect(
       screen.getByText(
-        '바로 가져오기 = BTS 내보내기 형식 그대로(CSV · JSON, 첨부는 zip) / 매핑하며 가져오기 = 다른 도구의 CSV 칸 · 작성자 · 값을 골라 맞춤',
+        '바로 가져오기 = Issue Bunker 내보내기 형식 그대로(CSV · JSON, 첨부는 zip) / 매핑하며 가져오기 = 다른 도구의 CSV 열 · 작성자 · 값을 선택해 맞춤',
       ),
     ).toBeInTheDocument()
   })

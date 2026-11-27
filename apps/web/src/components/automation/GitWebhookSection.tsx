@@ -35,7 +35,7 @@ const labels = {
   registerFailed: '등록에 실패했습니다.',
   deleteConfirmTitle: 'Git 웹훅을 삭제하시겠습니까?',
   deleteConfirmMessage:
-    '연동이 끊기고 복구할 수 없습니다. 삭제 후에는 provider 설정의 URL 도 함께 교체해야 다시 정상 동작합니다.',
+    '연동이 끊기고 복원할 수 없습니다. 삭제 후에는 provider 설정의 URL 도 함께 교체해야 다시 정상 동작합니다.',
   deleteConfirmButton: '삭제',
   deleteCancelButton: '취소',
   reissueHelp:

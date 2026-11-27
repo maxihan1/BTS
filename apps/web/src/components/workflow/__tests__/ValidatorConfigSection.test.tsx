@@ -326,7 +326,7 @@ describe('ValidatorConfigSection — 규칙 추가', () => {
     server.use(
       http.post(`/api/v1/workflows/${WF_KEY}/transitions/${EMPTY_TX_ID}/validators`, () =>
         HttpResponse.json(
-          { error: { code: 'WORKFLOW_TRANSITION_CONFLICT', message: '초안이 열려 있어 전환 규칙을 고칠 수 없습니다.' } },
+          { error: { code: 'WORKFLOW_TRANSITION_CONFLICT', message: '초안이 열려 있어 전환 규칙을 수정할 수 없습니다.' } },
           { status: 409 },
         ),
       ),
@@ -455,7 +455,7 @@ describe('ValidatorConfigSection — 규칙 삭제', () => {
 
     const confirm = await screen.findByRole('dialog', { name: validatorLabels.dialog.deleteTitle })
     expect(within(confirm).getByText(validatorLabels.dialog.deleteDescription)).toBeInTheDocument()
-    expect(validatorLabels.dialog.deleteDescription).toContain('되돌릴 수 없습니다')
+    expect(validatorLabels.dialog.deleteDescription).toContain('복원할 수 없습니다')
     // 확인 전에는 지워지지 않는다.
     expect(screen.getByText(VALIDATOR_TYPES.customExpression)).toBeInTheDocument()
 

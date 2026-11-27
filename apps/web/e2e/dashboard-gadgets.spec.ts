@@ -431,7 +431,7 @@ test.describe('FR-DB-02 가젯 시스템 (카탈로그/추가/렌더/게이팅/�
       await page.getByRole('button', { name: label, exact: true }).click()
 
       // Then. Step 2 설정 폼 — 스코프 드롭다운을 순서대로 채운다
-      await expect(page.getByText(`가젯 설정 — ${label}`)).toBeVisible()
+      await expect(page.getByText(`가젯 설정: ${label}`)).toBeVisible()
       await fillScopeSelects(page)
 
       await page.getByRole('button', { name: '추가', exact: true }).click()

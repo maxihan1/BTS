@@ -619,12 +619,12 @@ function renderBoardWithFixedFilter(filter: BacklogFilter, onFilterChange: (next
  * 세로 스택의 **칸** region 만 고른다 (FR-UX-13 F16).
  *
  * ★F16 이 에픽 패널을 스택 위에 얹으면서 화면의 `role="region"` 이 2종이 됐다 —
- * 칸(`{이름} 칸, N개 이슈`)과 에픽 패널(`에픽`). 무명 `getAllByRole('region')` 은
+ * 칸(`{이름}, N개 이슈`)과 에픽 패널(`에픽`). 무명 `getAllByRole('region')` 은
  * 이제 패널까지 세므로, 「칸이 몇 개인가」를 재는 곳은 전부 이 헬퍼를 지난다.
  * 이름 규칙은 `backlogLabels.columnAriaLabel` 이 소유한다.
  */
 function getColumnRegions(): HTMLElement[] {
-  return screen.getAllByRole('region', { name: /칸, \d+개 이슈$/ })
+  return screen.getAllByRole('region', { name: /, \d+개 이슈$/ })
 }
 
 /** 이름으로 칸 region 하나를 집는다 — 카드 수가 필터에 따라 변하므로 이름을 통째로 만든다 */
@@ -2454,7 +2454,7 @@ describe('BacklogBoard — 필터·에픽 패널 배선 (FR-UX-13 F16)', () => {
 
     expect(await screen.findByText(BACKLOG_FILTERED_EMPTY_TITLE)).toBeInTheDocument()
     // 「0개 이슈」 칸 3개를 남기는 것과 다르다 — 빈 상태가 스택을 **대체**한다
-    expect(screen.queryAllByRole('region', { name: /칸, \d+개 이슈$/ })).toHaveLength(0)
+    expect(screen.queryAllByRole('region', { name: /, \d+개 이슈$/ })).toHaveLength(0)
 
     await user.click(screen.getByRole('button', { name: BACKLOG_FILTER_RESET_LABEL }))
 
@@ -3007,7 +3007,7 @@ describe('BacklogBoard — 보드 스코프 (FR-BD-04)', () => {
     renderBoardWithBoardSwitch()
 
     const section = screen.getByRole('region', {
-      name: new RegExp(`^${backlogLabels.backlogTitle} 칸`),
+      name: new RegExp(`^${backlogLabels.backlogTitle}, `),
     })
     await user.type(within(section).getByPlaceholderText(/스프린트 이름/i), '보드 A 스프린트')
     await user.click(within(section).getByRole('button', { name: /스프린트 생성/i }))

@@ -59,7 +59,7 @@ const labels = {
   webhookHeaderKeyLabel: '헤더 이름',
   webhookHeaderValueLabel: '헤더 값',
   webhookBodyLabel: '본문',
-  emptyActionsMessage: '아직 액션이 없습니다 — 트리거만으로도 유효하지만, 액션을 추가하면 자동 실행됩니다.',
+  emptyActionsMessage: '아직 액션이 없습니다. 트리거만으로도 유효하지만, 액션을 추가하면 자동 실행됩니다.',
   noActionsBadge: '액션 없음',
   aliceMemberLabel: '앨리스',
   bobMemberLabel: '밥',

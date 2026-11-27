@@ -37,12 +37,12 @@ describe('backlogLabels — 콜론 종결 금지 (글로벌 §5)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('backlogLabels — columnAriaLabel 함수', () => {
-  it('columnAriaLabel("백로그", 5) → "백로그 칸, 5개 이슈"', () => {
-    expect(backlogLabels.columnAriaLabel('백로그', 5)).toBe('백로그 칸, 5개 이슈')
+  it('columnAriaLabel("백로그", 5) → "백로그, 5개 이슈"', () => {
+    expect(backlogLabels.columnAriaLabel('백로그', 5)).toBe('백로그, 5개 이슈')
   })
 
-  it('columnAriaLabel("스프린트 1", 0) → "스프린트 1 칸, 0개 이슈"', () => {
-    expect(backlogLabels.columnAriaLabel('스프린트 1', 0)).toBe('스프린트 1 칸, 0개 이슈')
+  it('columnAriaLabel("스프린트 1", 0) → "스프린트 1, 0개 이슈"', () => {
+    expect(backlogLabels.columnAriaLabel('스프린트 1', 0)).toBe('스프린트 1, 0개 이슈')
   })
 
   it('columnAriaLabel 반환값이 콜론으로 끝나지 않는다', () => {

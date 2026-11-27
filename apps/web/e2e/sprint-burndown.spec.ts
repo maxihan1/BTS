@@ -59,7 +59,7 @@ const labels = {
 
 /**
  * role="region" + aria-label에 columnName이 포함된 첫 번째 요소를 반환한다.
- * SprintColumn: aria-label="{name} 칸, {count}개 이슈"
+ * SprintColumn: aria-label="{name}, {count}개 이슈"
  */
 function getSprintColumn(page: import('@playwright/test').Page) {
   return page

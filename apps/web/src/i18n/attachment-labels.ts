@@ -40,7 +40,7 @@ export const attachmentLabels = {
   deleteButton: '삭제',
 
   /** 인라인 삭제 확인 — 경고 문구 (하드삭제이므로 복구 불가 명시) */
-  deleteWarning: '삭제하면 복구할 수 없습니다. 정말 삭제하시겠습니까?',
+  deleteWarning: '삭제하면 복원할 수 없습니다. 정말 삭제하시겠습니까?',
 
   /** 인라인 삭제 확인 버튼 */
   deleteConfirmButton: '확인',

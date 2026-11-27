@@ -101,7 +101,7 @@ const SCRUM_EMPTY = {
 
 /** 백로그 칸 locator — 백로그 칸은 이름이 고정이다 */
 function backlogColumn(page: Page): Locator {
-  return page.getByRole('region', { name: new RegExp(`^${backlogLabels.backlogTitle} 칸`) })
+  return page.getByRole('region', { name: new RegExp(`^${backlogLabels.backlogTitle}, `) })
 }
 
 /**

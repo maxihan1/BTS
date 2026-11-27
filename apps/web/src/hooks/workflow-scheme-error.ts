@@ -9,7 +9,7 @@ const SCHEME_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   MAPPING_DEFAULT_DUPLICATE: '기본 매핑은 한 개만 허용됩니다',
   SCHEME_STANDARD_NOT_DELETABLE: '표준 스킴은 삭제할 수 없습니다',
   SCHEME_STANDARD_FIELD_LOCKED: '표준 스킴의 키/이름은 변경할 수 없습니다',
-  SCHEME_CHANGE_STRANDS_ISSUES: '새 워크플로우에 없는 상태에 이슈가 남아 바꿀 수 없습니다',
+  SCHEME_CHANGE_STRANDS_ISSUES: '새 워크플로우에 없는 상태에 이슈가 남아 변경할 수 없습니다',
 }
 
 /** 알 수 없는 에러에 사용되는 기본 메시지 */

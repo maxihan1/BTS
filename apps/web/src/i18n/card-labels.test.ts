@@ -60,12 +60,12 @@ describe('cardLabels.estimateAriaLabel', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('cardLabels.moreLabelsAriaLabel', () => {
-  it('moreLabelsAriaLabel(["d", "e"]) → "라벨 2개 더 — d, e"', () => {
-    expect(cardLabels.moreLabelsAriaLabel(['d', 'e'])).toBe('라벨 2개 더 — d, e')
+  it('moreLabelsAriaLabel(["d", "e"]) → "라벨 2개 더: d, e"', () => {
+    expect(cardLabels.moreLabelsAriaLabel(['d', 'e'])).toBe('라벨 2개 더: d, e')
   })
 
-  it('숨은 라벨이 1개면 "라벨 1개 더 — a"', () => {
-    expect(cardLabels.moreLabelsAriaLabel(['a'])).toBe('라벨 1개 더 — a')
+  it('숨은 라벨이 1개면 "라벨 1개 더: a"', () => {
+    expect(cardLabels.moreLabelsAriaLabel(['a'])).toBe('라벨 1개 더: a')
   })
 
   it('moreLabelsAriaLabel 결과는 콜론으로 끝나지 않는다', () => {

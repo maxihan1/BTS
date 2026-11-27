@@ -179,11 +179,11 @@ function generateBulkOperationId(): string {
  */
 function invalidMappingReason(removed: string[], mappings: StatusMappingInput[]): string | null {
   if (mappings.length === 0) {
-    return '옮길 매핑이 없다. 빠지는 상태마다 옮길 곳을 정할 것'
+    return '옮길 매핑이 없습니다. 빠지는 상태마다 옮길 곳을 정하세요'
   }
   const notRemoved = mappings.map((m) => m.fromStatusKey).filter((key) => !removed.includes(key))
   if (notRemoved.length > 0) {
-    return `상태 ${notRemoved.join(' · ')} 는 이 초안에서 빠지지 않는다. 옮길 대상이 아니다`
+    return `상태 ${notRemoved.join(' · ')} 는 이 초안에서 빠지지 않습니다. 옮길 대상이 아닙니다`
   }
   return null
 }
@@ -250,7 +250,7 @@ export const workflowDraftHandlers = [
     // ★ 초안이 없으면 **400** 이다. 404 가 아니다 — 그 코드는 DELETE /draft 전용이고,
     //   여기는 requireDraft 가 WorkflowInvalidRequestException 을 던진다.
     if (stored === undefined) {
-      return problem(400, 'WORKFLOW_INVALID_REQUEST', '발행할 초안이 없다. 먼저 초안을 저장할 것')
+      return problem(400, 'WORKFLOW_INVALID_REQUEST', '발행할 초안이 없습니다. 먼저 초안을 저장하세요')
     }
     const removed = removedKeys(key, stored.definition)
     return HttpResponse.json({
@@ -269,7 +269,7 @@ export const workflowDraftHandlers = [
     const key = keyOf(params)
     const stored = draftStore.get(key)
     if (stored === undefined) {
-      return problem(400, 'WORKFLOW_INVALID_REQUEST', '발행할 초안이 없다. 먼저 초안을 저장할 것')
+      return problem(400, 'WORKFLOW_INVALID_REQUEST', '발행할 초안이 없습니다. 먼저 초안을 저장하세요')
     }
     const body = (await request.json()) as { baseVersion: number }
 
@@ -310,7 +310,7 @@ export const workflowDraftHandlers = [
     const stored = draftStore.get(key)
     // ★ 초안이 없으면 발행/미리보기와 같은 축으로 400 이다. 404 가 아니다.
     if (stored === undefined) {
-      return problem(400, 'WORKFLOW_INVALID_REQUEST', '발행할 초안이 없다. 먼저 초안을 저장할 것')
+      return problem(400, 'WORKFLOW_INVALID_REQUEST', '발행할 초안이 없습니다. 먼저 초안을 저장하세요')
     }
     const body = (await request.json()) as MigrateRequestBody
 
@@ -377,7 +377,7 @@ export const workflowDraftHandlers = [
   http.post('/api/v1/workflows/:key/reset-to-default', async ({ params, request }) => {
     const key = keyOf(params)
     if (!seedWorkflowKeys.has(key)) {
-      return problem(400, 'WORKFLOW_INVALID_REQUEST', '사용자가 만든 워크플로우에는 되돌릴 기본값이 없다')
+      return problem(400, 'WORKFLOW_INVALID_REQUEST', '사용자가 만든 워크플로우에는 초기화할 기본값이 없습니다')
     }
     const published = workflowStore.get(key)
     if (published === undefined) {

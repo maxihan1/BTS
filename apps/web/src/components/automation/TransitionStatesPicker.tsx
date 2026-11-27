@@ -5,7 +5,7 @@ import { extractStatusOptions, useProjectWorkflows } from '@/hooks/use-workflows
 import type { StatusOption } from '@/hooks/use-workflows'
 
 const labels = {
-  description: '고르지 않으면 모든 상태가 해당합니다. 둘 다 비우면 모든 전환에 발화합니다.',
+  description: '선택하지 않으면 모든 상태가 해당합니다. 둘 다 비우면 모든 전환에서 실행됩니다.',
   from: '이전 상태 (From)',
   to: '이후 상태 (To)',
   loading: '상태를 불러오는 중…',
